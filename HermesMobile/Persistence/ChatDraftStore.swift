@@ -568,6 +568,10 @@ final class ChatDraftStore {
     private let attachmentSweepMaxAge: TimeInterval
     private var drafts: [ChatDraftKey: ChatDraft] = [:]
     private var keysChangedBeforeLoad: Set<ChatDraftKey> = []
+    /// Sessions deleted in this launch. On iPad a chat stays on screen while
+    /// its session is deleted from the sidebar, so it parks its queue after
+    /// the discard; that must not bring back a draft nobody can open.
+    private var deletedSessionKeys: Set<ChatDraftKey> = []
     private var loadTask: Task<[ChatDraftKey: ChatDraft], Never>?
     private var persistTask: Task<Void, Never>?
     private var isLoaded = false
@@ -636,12 +640,14 @@ final class ChatDraftStore {
 
     /// Parks the messages queued behind a run in one draft, in one write
     /// (merge rule: `ChatDraftQueueParking`). Synchronous, so it lands even
-    /// while the chat's view is going away. Returns the merged draft.
+    /// while the chat's view is going away. Returns the merged draft, or nil
+    /// when the chat's session was deleted.
     func parkQueuedMessages(
         _ texts: [String],
         attachments: [ChatDraftAttachment],
         for key: ChatDraftKey
-    ) -> ChatDraft {
+    ) -> ChatDraft? {
+        guard !deletedSessionKeys.contains(key) else { return nil }
         markChangedBeforeLoad(key)
         let merged = ChatDraftQueueParking.merged(
             drafts[key] ?? ChatDraft(),
@@ -663,8 +669,10 @@ final class ChatDraftStore {
     }
 
     /// Removes one composer draft and deletes attachment copies that no other
-    /// draft still references. Used after the server accepts session deletion.
+    /// draft still references. Used after the server accepts session deletion;
+    /// a later queue park for the key is skipped.
     func discardDraft(for key: ChatDraftKey) async {
+        deletedSessionKeys.insert(key)
         await loadIfNeeded()
         await discardDrafts(matching: { $0 == key })
     }

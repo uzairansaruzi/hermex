@@ -773,7 +773,7 @@ final class ChatDraftStoreTests: XCTestCase {
     /// Queued texts were typed first, so the draft's own text goes last. A
     /// queued text already carries its quotes as Markdown; the draft's own
     /// quotes stay quotes.
-    func testQueuedMessagesMergeBeforeExistingDraftText() async {
+    func testQueuedMessagesMergeBeforeExistingDraftText() async throws {
         let store = ChatDraftStore(
             persistence: RecordingChatDraftPersistence(),
             debounceDuration: .seconds(10)
@@ -787,11 +787,11 @@ final class ChatDraftStoreTests: XCTestCase {
         store.setAttachments([own], for: key)
         store.setDraft("other server", for: otherServer)
 
-        let parked = store.parkQueuedMessages(
+        let parked = try XCTUnwrap(store.parkQueuedMessages(
             ["> Earlier quote\n\nfirst", "second"],
             attachments: [own, queued],
             for: key
-        )
+        ))
 
         XCTAssertEqual(parked.text, "> Earlier quote\n\nfirst\n\nsecond\n\ntyped later")
         XCTAssertEqual(parked.quotes, [quote])
@@ -800,6 +800,29 @@ final class ChatDraftStoreTests: XCTestCase {
         XCTAssertEqual(stored, parked)
         let untouched = await store.draft(for: otherServer)
         XCTAssertEqual(untouched, ChatDraft(text: "other server"))
+    }
+
+    /// On iPad the chat stays on screen while its session is deleted from the
+    /// sidebar, so it parks its queue after the delete discarded its draft.
+    /// That must not bring back a draft nobody can open.
+    func testParkingAfterSessionDeleteLeavesNoDraft() async {
+        let store = ChatDraftStore(
+            persistence: RecordingChatDraftPersistence(),
+            debounceDuration: .seconds(10)
+        )
+        let key = ChatDraftKey(serverID: "https://example.com", context: .session("chat-1"))
+        store.setDraft("typed", for: key)
+        await store.discardDraft(for: key)
+
+        let parked = store.parkQueuedMessages(
+            ["queued"],
+            attachments: [makeAttachmentRecord(name: "photo.jpg", file: "a-photo.jpg")],
+            for: key
+        )
+
+        XCTAssertNil(parked)
+        let stored = await store.draft(for: key)
+        XCTAssertNil(stored)
     }
 
     private func makeAttachmentRecord(name: String, file: String?) -> ChatDraftAttachment {

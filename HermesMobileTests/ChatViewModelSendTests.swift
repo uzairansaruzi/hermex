@@ -9965,6 +9965,43 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertNil(reopened.queuedMessagesReceipt)
     }
 
+    /// An interrupt whose cancel is still in flight when the chat is covered
+    /// (Files, a fork) had its message parked into the draft, so the refused
+    /// cancel must not report that message as queued (#857).
+    @MainActor
+    func testInterruptParkedWhileCancelIsInFlightReportsNoQueue() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let cancelStarted = expectation(description: "Cancel started")
+        let releaseCancel = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"stream-123"}"#, for: request)
+            case "/api/chat/cancel":
+                cancelStarted.fulfill()
+                releaseCancel.wait()
+                return apiTestJSONResponse(#"{"ok":false}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let didStart = await viewModel.sendMessage("Keep working")
+        XCTAssertTrue(didStart)
+        let interrupt = Task { await viewModel.submitStreamingMessage("interrupting", behavior: .interrupt) }
+        defer { releaseCancel.signal() }
+        await fulfillment(of: [cancelStarted], timeout: 2)
+
+        XCTAssertEqual(viewModel.takeQueuedMessages().map(\.text), ["interrupting"])
+        releaseCancel.signal()
+        let result = await interrupt.value
+
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(viewModel.activeStreamID, "stream-123")
+        XCTAssertNil(viewModel.queuedMessagesReceipt)
+    }
+
     /// A chat covered by Files while the run's first queued message is sending
     /// parks the rest into its composer. The drained send finishing must not
     /// swap the parked files back out of the composer (#857).

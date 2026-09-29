@@ -2411,13 +2411,14 @@ struct ChatView: View {
         let queuedAttachments = queued.flatMap(\.attachments)
         // Only files with a durable copy can be restored on reopen, as in
         // `syncDraftAttachments`.
-        let parked = draftStore.parkQueuedMessages(
+        // Nil when the session was just deleted: there is no draft to show.
+        guard let parked = draftStore.parkQueuedMessages(
             queued.map(\.text),
             attachments: queuedAttachments
                 .map(ChatDraftAttachment.init(pending:))
                 .filter { $0.file != nil },
             for: draftKey
-        )
+        ) else { return }
         // Not the user's edit, but a send still in flight must not clear it.
         draftRevision &+= 1
         draftMessage = parked.text

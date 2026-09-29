@@ -562,6 +562,9 @@ final class ChatViewModel {
     private var skillSlashSuggestionsLoad: Task<Void, Never>?
     private var queuedSlashMessages: [QueuedSlashMessage] = []
     private var isDrainingQueuedSlashMessage = false
+    /// Counts `takeQueuedMessages()` hand-overs, so an interrupt whose cancel
+    /// was in flight across one knows its message went to the draft.
+    @ObservationIgnored private var queueHandOverCount = 0
     private var activeBtwStreamID: String?
     private var activeBtwMessageID: String?
     private var activeBtwQuestion: String?
@@ -3022,7 +3025,12 @@ final class ChatViewModel {
         }
 
         enqueueQueuedSlashMessage(message, attachments: attachmentCoordinator.consumePendingAttachments(), atFront: true)
+        let handOverCount = queueHandOverCount
         await cancelActiveStream()
+
+        // The chat was left while the cancel was in flight, so the message is
+        // in the draft now (#857) and nothing is queued to report.
+        guard queueHandOverCount == handOverCount else { return .executed(message: nil) }
 
         if activeStreamID != nil {
             return .executed(message: Self.interruptQueuedFallbackNotice)
@@ -5513,6 +5521,7 @@ final class ChatViewModel {
         guard !queuedSlashMessages.isEmpty else { return [] }
         let queued = queuedSlashMessages
         queuedSlashMessages.removeAll()
+        queueHandOverCount &+= 1
         pinnedLocalNotices.removeAll { $0 == Self.interruptQueuedFallbackNotice }
         return queued
     }
