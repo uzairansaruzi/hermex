@@ -514,14 +514,15 @@ rules. A lost or unrecognized acknowledgment schedules recovery; it never causes
 an automatic prompt retry. Identical text in recovered history cannot reliably
 attribute a submission, so it never silently consumes the restored draft.
 
-Send is one button, with Stop beside it while the bot works. Idle, Send starts
-a turn. On a working bot it opens the send-choice card (`SendChoiceCard`, the
-same card a long-press on the Sessions Send button opens) listing Steer, Queue
-and Interrupt from `BotPromptMode.busyChoices`. Steer drops out while
-attachments are staged, because the host only accepts them on a fresh turn. A
-pick submits at once; a scrim tap or escape closes the card without sending.
-Command-Return does what a Send tap does. The bot finishing, or the choices
-changing under the card, closes it, so the next send asks again.
+Idle, Send starts a turn. While the bot works, Stop sits beside Send in the
+expanded composer and takes its place in the collapsed pill, and Send opens the
+send-choice card (`SendChoiceCard`, the same card a long-press on the Sessions
+Send button opens) listing Steer, Queue and Interrupt from
+`BotPromptMode.busyChoices`. Steer drops out while attachments are staged,
+because the host only accepts them on a fresh turn. A pick submits at once; a
+scrim tap or escape closes the card without sending. Command-Return does what a
+Send tap does. The bot finishing, or the choices changing under the card, closes
+it, so the next send asks again.
 
 `BotPromptMode` validates the acknowledgment for each operation. `session.steer`
 accepts `status: queued` as guidance queued, not read; `session.redirect` accepts

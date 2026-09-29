@@ -552,7 +552,7 @@ struct MessageComposerView: View {
                 SendChoiceCard(
                     choices: sendChoices,
                     onPick: pickSendBehavior,
-                    onDismiss: { choosingSendBehavior = false }
+                    onDismiss: closeSendChoices
                 )
             }
             .frame(width: 0, height: 0)
@@ -562,7 +562,7 @@ struct MessageComposerView: View {
         .onChange(of: sendChoices) { _, choices in
             guard choices.isEmpty else { return }
             cancelScheduledSendChoices()
-            choosingSendBehavior = false
+            closeSendChoices()
         }
         .onChange(of: isPressingSend) { _, isPressing in
             if isPressing {
@@ -945,9 +945,20 @@ struct MessageComposerView: View {
         sendHoldWorkItem = nil
     }
 
+    /// Closes the send-choice card. The hold's swallow flag closes with it,
+    /// unless that finger is still down: its release must not send (or stop).
+    /// A hold released off the button would otherwise leave the flag set and
+    /// eat the next VoiceOver or keyboard activation of Send.
+    private func closeSendChoices() {
+        choosingSendBehavior = false
+        if !isPressingSend {
+            sendHoldOpenedChoices = false
+        }
+    }
+
     /// The card's rows and VoiceOver's named actions both land here.
     private func pickSendBehavior(_ behavior: StreamingSendBehavior) {
-        choosingSendBehavior = false
+        closeSendChoices()
         // A pick can outlive the run or the draft it was offered for.
         guard sendChoices.contains(behavior) else { return }
         if voiceInput.isListening {
