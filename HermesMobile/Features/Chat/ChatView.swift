@@ -257,6 +257,9 @@ struct ChatView: View {
     private let composerAccessoryVerticalSpacing: CGFloat = 8
     private let activeRunStatusSpacerHeight: CGFloat = 36
     private let approvalBypassStatusSpacerHeight: CGFloat = 38
+    /// The composer and its status stack keep 16 pt side insets of their own;
+    /// this cap lines those insets up with the transcript's reading column.
+    private let composerMaximumWidth = ChatReadingWidth.maximumWidth(horizontalPadding: 16)
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
@@ -744,6 +747,7 @@ struct ChatView: View {
                 clarificationInset(maximumExpandedHeight: clarificationMaximumHeight)
 
                 messageComposer
+                    .frame(maxWidth: composerMaximumWidth)
 
                 approvalOverlay
             }
@@ -1354,6 +1358,7 @@ struct ChatView: View {
                 }
             }
             .padding(.horizontal)
+            .frame(maxWidth: composerMaximumWidth)
             .padding(.bottom, composerHeight + 8 + clarificationFootprintHeight)
             .allowsHitTesting(false)
             .zIndex(8)

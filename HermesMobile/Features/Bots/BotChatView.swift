@@ -137,7 +137,13 @@ import SwiftUI
                         }
                         Color.clear.frame(height: 1).id("bot-transcript-bottom")
                     }
-                    .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 20 : 16)
+                    .padding(.horizontal, transcriptHorizontalPadding)
+                    // Centred in the reading column; the scroll view stays full width.
+                    .frame(
+                        maxWidth: ChatReadingWidth.maximumWidth(horizontalPadding: transcriptHorizontalPadding),
+                        alignment: .leading
+                    )
+                    .frame(maxWidth: .infinity)
                     .padding(.top, 16)
                     .padding(.bottom, 44)
                     // A tapped row must stay under the finger: stop following so
@@ -425,6 +431,10 @@ import SwiftUI
         proxy.scrollTo("bot-transcript-bottom", anchor: .bottom)
     }
 
+    private var transcriptHorizontalPadding: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 20 : 16
+    }
+
     /// The composer over the same bottom fade the main chat uses, so the two
     /// transcripts end identically. The fade reaches 34 pt above the composer.
     private var composer: some View {
@@ -434,6 +444,9 @@ import SwiftUI
             onReconnect: { recoveryID = UUID() },
             onShowRequest: { showRequestID = UUID() }
         )
+        // Lined up with the reading column; the material fade below stays full width.
+        .frame(maxWidth: ChatReadingWidth.maximumWidth(horizontalPadding: 16))
+        .frame(maxWidth: .infinity)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { composerHeight = $0 }
         .background(alignment: .bottom) {
             BottomComposerMaterialFade(composerHeight: composerHeight)

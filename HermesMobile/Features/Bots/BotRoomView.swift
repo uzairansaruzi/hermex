@@ -66,6 +66,9 @@ import SwiftUI
                     Color.clear.frame(height: 1).id("room-bottom")
                 }
                 .padding(16)
+                // Centred in the reading column; the scroll view stays full width.
+                .frame(maxWidth: ChatReadingWidth.maximumWidth(horizontalPadding: 16))
+                .frame(maxWidth: .infinity)
                 .background {
                     ChatScrollObserver(isStreaming: false, onFollowEvent: handleFollowEvent, onMetrics: updateScrollMetrics)
                         .accessibilityHidden(true)
@@ -109,6 +112,7 @@ import SwiftUI
                 }
                 if reader.showsComposer { BotRoomComposerView(reader: reader, roster: roster, avatars: avatars) }
             }
+            .frame(maxWidth: ChatReadingWidth.maximumWidth(horizontalPadding: 16))
         }
         .task(id: pill?.errorText) {
             guard let text = pill?.errorText else { return }
