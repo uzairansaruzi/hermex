@@ -287,9 +287,14 @@ private struct TranscriptLinksModifier: ViewModifier {
         router.openInAppBrowser = { presented.wrappedValue = InAppBrowserPage(url: $0) }
         return content
             .environment(\.openURL, router.openURL)
-            .sheet(item: presented) { page in
-                SafariView(url: page.url) { presented.wrappedValue = nil }
-                    .ignoresSafeArea()
+            // Presented from a sibling so no presentation modifier wraps the
+            // link readers: with `.sheet` on the content, iOS 26 re-ran every
+            // reader on each owner pass (ChatTranscriptEnvironmentStabilityTests).
+            .background {
+                Color.clear.sheet(item: presented) { page in
+                    SafariView(url: page.url) { presented.wrappedValue = nil }
+                        .ignoresSafeArea()
+                }
             }
     }
 }
