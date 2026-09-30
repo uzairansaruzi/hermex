@@ -80,16 +80,20 @@ final class ComposerRecallTests: XCTestCase {
         XCTAssertEqual(ComposerRecall.lastSentText(in: messages), "fix the build")
     }
 
-    /// Bot Chat appends one `\n\n` block per attachment to the prompt it sends.
+    /// Bot Chat appends one `\n\n` block per attachment to the prompt it sends:
+    /// the image routing note, or `file.attach`'s ref to the UUID-prefixed copy.
     func testBotChatAttachmentRefsAreStrippedAndAnAttachmentOnlySendIsSkipped() {
         let image = BotAttachmentUpload.imageReference(path: "/home/hermes/.hermes/images/photo.jpg")
         let messages = [
             message("user", "hello"),
             message("assistant", "Hi."),
             message("user", "\n\n" + image),
-            message("user", "@file:uploads/report.pdf")
+            message("user", "@file:/home/hermes/.hermes/attachments/3F2504E0-4F89-41D3-9A0C-0305E82C3301-report.pdf")
         ]
-        let typedAndAttached = [message("user", "compare these\n\n@file:`my notes.md`\n\n" + image)]
+        let typedAndAttached = [message(
+            "user",
+            "compare these\n\n@file:`attachments/0B6B4C1E-2D7A-4E8F-9C3B-5A1D2E3F4A5B-my notes.md`\n\n" + image
+        )]
 
         XCTAssertEqual(
             ComposerRecall.lastSentText(in: messages, typedText: BotAttachmentUpload.typedText(of:)), "hello"
@@ -97,6 +101,16 @@ final class ComposerRecallTests: XCTestCase {
         XCTAssertEqual(
             ComposerRecall.lastSentText(in: typedAndAttached, typedText: BotAttachmentUpload.typedText(of:)),
             "compare these"
+        )
+    }
+
+    /// Only the refs the send added go: a `@file:` line the user typed stays.
+    func testATypedFileReferenceInBotChatIsKept() {
+        let messages = [message("user", "read this\n\n@file:docs/notes.md")]
+
+        XCTAssertEqual(
+            ComposerRecall.lastSentText(in: messages, typedText: BotAttachmentUpload.typedText(of:)),
+            "read this\n\n@file:docs/notes.md"
         )
     }
 

@@ -56,14 +56,17 @@ enum BotAttachmentUpload {
     }
 
     /// A sent prompt without the references `BotConversation.attachmentPrompt`
-    /// appended to it, one `\n\n` block per file: `file.attach`'s one-line
-    /// `@file:` ref or `imageReference`. What is left is what the user typed,
-    /// which is what ↑ recalls; an attachment-only prompt comes back empty.
+    /// appended to it, one `\n\n` block per file: `imageReference`, or
+    /// `file.attach`'s one-line `@file:` ref, whose file name keeps the UUID
+    /// prefix `fileAttach` gave it. What is left is what the user typed, which
+    /// is what ↑ recalls; an attachment-only prompt comes back empty. A typed
+    /// `@file:` line has no such prefix, so it stays.
     static func typedText(of prompt: String) -> String {
         let image = /\[The user attached an image: [^\n]*\]\n\[Examine it with the vision_analyze tool using image_url: \/[^\n]*\]/
+        let file = /@file:[`"']?(?:[^\n]*\/)?[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}-[^\n\/]+/
         var blocks = prompt.components(separatedBy: "\n\n")
         while let last = blocks.last?.trimmingCharacters(in: .whitespacesAndNewlines),
-              (last.hasPrefix("@file:") && !last.contains("\n")) || last.wholeMatch(of: image) != nil {
+              last.wholeMatch(of: file) != nil || last.wholeMatch(of: image) != nil {
             blocks.removeLast()
         }
         return blocks.joined(separator: "\n\n")
