@@ -65,6 +65,10 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     var acceptsAttachments = true
     var isKeyboardSendEnabled = false
     var onKeyboardSend: () -> Void = {}
+    /// The chat's last sent message, which ↑ brings back into an empty editor
+    /// on a hardware keyboard. Nil where there is no single author to recall
+    /// (Bot rooms), which leaves ↑ to move the caret.
+    var recallLastSentText: (() -> String?)?
     var onPasteFileProviders: ([NSItemProvider]) -> Void = { _ in }
     var onPasteFileURLs: ([URL]) -> Void = { _ in }
     var onPasteImageProviders: ([NSItemProvider]) -> Void = { _ in }
@@ -300,11 +304,14 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     /// Replaces the whole draft, chips and all. The fallback for an edit the
     /// input system could not apply in place, and for a deliberate clear.
-    func replaceDocument(with source: String) {
+    /// `isComplete` draws a reference that ends the text as a chip, the way the
+    /// transcript draws a sent message.
+    func replaceDocument(with source: String, isComplete: Bool = false) {
         let tokens = ComposerChipTokenizer.tokens(
             in: source,
             catalog: chipCatalog,
-            preservingTrailing: renderedTokens
+            preservingTrailing: renderedTokens,
+            isComplete: isComplete
         )
         render(
             source: source,
@@ -549,12 +556,27 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             input: ComposerKeyboardCommand.input,
             modifierFlags: ComposerKeyboardCommand.modifierFlags
         )
-        return (super.keyCommands ?? []) + [sendCommand]
+        guard recallLastSentText != nil else {
+            return (super.keyCommands ?? []) + [sendCommand]
+        }
+        let recallCommand = UIKeyCommand(
+            title: ComposerRecall.commandTitle,
+            action: #selector(recallLastSentTextFromKeyboard),
+            input: UIKeyCommand.inputUpArrow,
+            modifierFlags: []
+        )
+        // Arrow keys go to text editing first otherwise.
+        recallCommand.wantsPriorityOverSystemBehavior = true
+        return (super.keyCommands ?? []) + [sendCommand, recallCommand]
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(sendMessageFromKeyboard) {
             return isKeyboardSendEnabled
+        }
+
+        if action == #selector(recallLastSentTextFromKeyboard) {
+            return recallableText != nil
         }
 
         if action == #selector(paste(_:)), !acceptsAttachments {
@@ -571,6 +593,38 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     @objc private func sendMessageFromKeyboard() {
         guard isKeyboardSendEnabled else { return }
         onKeyboardSend()
+    }
+
+    /// What ↑ would bring back. Only an empty editor takes it, so ↑ inside a
+    /// draft, or with a quote staged, keeps moving the caret.
+    private var recallableText: String? {
+        guard isEditable, quotes.isEmpty, textStorage.length == 0,
+              let text = recallLastSentText?(), !text.isEmpty
+        else {
+            return nil
+        }
+        return text
+    }
+
+    /// Fills the empty editor with the last sent message as one undoable edit:
+    /// chips drawn as its bubble draws them, the caret at the end, and the
+    /// draft published like typing. Drawing chips replaces the document and
+    /// clears the undo stack, so the undo that empties the editor again is
+    /// registered here rather than left to the input system.
+    @objc private func recallLastSentTextFromKeyboard() {
+        guard let text = recallableText else { return }
+
+        replaceDocument(with: text, isComplete: true)
+        delegate?.textViewDidChange?(self)
+
+        guard let undoManager else { return }
+        undoManager.beginUndoGrouping()
+        undoManager.registerUndo(withTarget: self) { textView in
+            let draft = NSRange(location: 0, length: (textView.sourceText as NSString).length)
+            guard let range = textView.displayTextRange(forSourceRange: draft) else { return }
+            textView.replace(range, withText: "")
+        }
+        undoManager.endUndoGrouping()
     }
 
     override func paste(_ sender: Any?) {

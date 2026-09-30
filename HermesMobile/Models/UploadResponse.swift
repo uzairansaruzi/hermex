@@ -169,6 +169,12 @@ extension PendingAttachment {
         return "\(draft)\n\n[Attached files: \(references.joined(separator: ", "))]"
     }
 
+    /// True for the text `chatMessageText` makes up for an attachment-only
+    /// send: it names the files, not anything the user typed.
+    static func isAttachmentOnlyMessageText(_ text: String) -> Bool {
+        text.wholeMatch(of: /I've uploaded \d+ file\(s\): .+/) != nil
+    }
+
     /// The steer text with the web UI's attached-files note appended verbatim
     /// (`static/commands.js`, `_steerTextWithPendingFiles`), so a steer reads
     /// the same from either client. The files are already uploaded, so the

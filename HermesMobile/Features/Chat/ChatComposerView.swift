@@ -214,6 +214,9 @@ struct MessageComposerView: View {
     /// Each edit the user makes to the draft here (typing, completions,
     /// dictation), after it lands in `draftMessage`, for the owner to persist.
     let onDraftEdit: (String) -> Void
+    /// The chat's last sent message, for ↑ in an empty composer on a hardware
+    /// keyboard. A closure, so the transcript is scanned only when ↑ is pressed.
+    var recallLastSentText: (() -> String?)? = nil
     /// A file chip the user tapped, by workspace-relative path.
     let onOpenFileReference: (String) -> Void
     let onSelectGitBranch: (GitCheckoutTarget) -> Void
@@ -824,7 +827,8 @@ struct MessageComposerView: View {
                         onOpenFileReference(path)
                     },
                     onTapQuote: presentQuote,
-                    onRemoveQuote: removeQuote
+                    onRemoveQuote: removeQuote,
+                    recallLastSentText: recallLastSentText
                 )
 
                 if !isExpanded {

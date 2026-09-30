@@ -142,6 +142,7 @@
 		C04100000000000000000001 /* ChatComposerConfigLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04100000000000000000002 /* ChatComposerConfigLoader.swift */; };
 		C04100000000000000000003 /* ChatComposerConfigLoaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04100000000000000000004 /* ChatComposerConfigLoaderTests.swift */; };
 		C05000000000000000000001 /* ChatComposerAttachmentStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05000000000000000000002 /* ChatComposerAttachmentStripView.swift */; };
+		C0DE89400000000000000001 /* ComposerRecall.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE89400000000000000002 /* ComposerRecall.swift */; };
 		C042A000000000000000001 /* ChatComposerSelectorControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C042A000000000000000002 /* ChatComposerSelectorControls.swift */; };
 		C040F000000000000000001 /* ProviderGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = C040F000000000000000002 /* ProviderGlyph.swift */; };
 		C040F000000000000000003 /* ProviderLogos.bundle in Resources */ = {isa = PBXBuildFile; fileRef = C040F000000000000000004 /* ProviderLogos.bundle */; };
@@ -283,6 +284,7 @@
 		C28702000000000000000003 /* ChatDraftStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C28702000000000000000004 /* ChatDraftStoreTests.swift */; };
 		C28702000000000000000005 /* ChatDraftAttachmentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C28702000000000000000006 /* ChatDraftAttachmentStore.swift */; };
 		C28702000000000000000007 /* ChatDraftAttachmentStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C28702000000000000000008 /* ChatDraftAttachmentStoreTests.swift */; };
+		C0DE89400000000000000005 /* ComposerRecallTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE89400000000000000006 /* ComposerRecallTests.swift */; };
 		C04400000000000000000003 /* CacheFallbackPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04400000000000000000004 /* CacheFallbackPolicyTests.swift */; };
 		C86900000000000000000003 /* NetworkPathMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C86900000000000000000004 /* NetworkPathMonitorTests.swift */; };
 		1A2B3C4D5E6F7000000000F5 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */; };
@@ -752,6 +754,7 @@
 		C04100000000000000000002 /* ChatComposerConfigLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerConfigLoader.swift; sourceTree = "<group>"; };
 		C04100000000000000000004 /* ChatComposerConfigLoaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerConfigLoaderTests.swift; sourceTree = "<group>"; };
 		C05000000000000000000002 /* ChatComposerAttachmentStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerAttachmentStripView.swift; sourceTree = "<group>"; };
+		C0DE89400000000000000002 /* ComposerRecall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerRecall.swift; sourceTree = "<group>"; };
 		C042A000000000000000002 /* ChatComposerSelectorControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatComposerSelectorControls.swift; sourceTree = "<group>"; };
 		C040F000000000000000002 /* ProviderGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderGlyph.swift; sourceTree = "<group>"; };
 		C040F000000000000000004 /* ProviderLogos.bundle */ = {isa = PBXFileReference; lastKnownFileType = wrapper.plug-in; path = ProviderLogos.bundle; sourceTree = "<group>"; };
@@ -893,6 +896,7 @@
 		C28702000000000000000004 /* ChatDraftStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatDraftStoreTests.swift; sourceTree = "<group>"; };
 		C28702000000000000000006 /* ChatDraftAttachmentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatDraftAttachmentStore.swift; sourceTree = "<group>"; };
 		C28702000000000000000008 /* ChatDraftAttachmentStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatDraftAttachmentStoreTests.swift; sourceTree = "<group>"; };
+		C0DE89400000000000000006 /* ComposerRecallTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerRecallTests.swift; sourceTree = "<group>"; };
 		C04400000000000000000004 /* CacheFallbackPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheFallbackPolicyTests.swift; sourceTree = "<group>"; };
 		C86900000000000000000004 /* NetworkPathMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPathMonitorTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -1341,6 +1345,7 @@
 				0B077A87C9D846D7A9D27D7A /* BotPendingRequestTests.swift */,
 				C28702000000000000000004 /* ChatDraftStoreTests.swift */,
 				C28702000000000000000008 /* ChatDraftAttachmentStoreTests.swift */,
+				C0DE89400000000000000006 /* ComposerRecallTests.swift */,
 				10CA110C0DE000000000C002 /* LocalizationCatalogTests.swift */,
 				1A2B3C4D5E6F7000000000BC /* APIClientTests.swift */,
 				B5A1000000000000000000A1 /* ServerRegistryTests.swift */,
@@ -1758,6 +1763,7 @@
 				73EE08E38F415FF38272C255 /* FilePathAutocompleteView.swift */,
 				417A680DBE734B64988AC062 /* ComposerSlashTrigger.swift */,
 				C05000000000000000000002 /* ChatComposerAttachmentStripView.swift */,
+				C0DE89400000000000000002 /* ComposerRecall.swift */,
 				C04900000000000000000002 /* ChatComposerTextInputView.swift */,
 				C04900000000000000000004 /* ChatComposerVoiceControls.swift */,
 				C042A000000000000000002 /* ChatComposerSelectorControls.swift */,
@@ -2518,6 +2524,7 @@
 				CAB298E458D85C9DAC9599EF /* FilePathAutocompleteView.swift in Sources */,
 				E067C191AC494934863F613D /* ComposerSlashTrigger.swift in Sources */,
 					C05000000000000000000001 /* ChatComposerAttachmentStripView.swift in Sources */,
+				C0DE89400000000000000001 /* ComposerRecall.swift in Sources */,
 					C04900000000000000000001 /* ChatComposerTextInputView.swift in Sources */,
 					C04900000000000000000003 /* ChatComposerVoiceControls.swift in Sources */,
 					C042A000000000000000001 /* ChatComposerSelectorControls.swift in Sources */,
@@ -2841,6 +2848,7 @@
 				B5A100000000000000000005 /* SharedDraftStoreTests.swift in Sources */,
 				C28702000000000000000003 /* ChatDraftStoreTests.swift in Sources */,
 				C28702000000000000000007 /* ChatDraftAttachmentStoreTests.swift in Sources */,
+				C0DE89400000000000000005 /* ComposerRecallTests.swift in Sources */,
 				B5A100000000000000000009 /* ShareInputReaderTests.swift in Sources */,
 				B5A100000000000000000060 /* AuthManagerStateTests.swift in Sources */,
 				B5A220000000000000000005 /* ChatMarkerMessageClassifierTests.swift in Sources */,

@@ -56,6 +56,9 @@ struct ComposerTextInputView: View {
     let onTapChip: (ComposerChipToken) -> Void
     let onTapQuote: (ComposerQuote) -> Void
     let onRemoveQuote: (UUID) -> Void
+    /// The chat's last sent message, for ↑ in an empty editor. Nil turns the
+    /// shortcut off.
+    var recallLastSentText: (() -> String?)? = nil
 
     var placeholder = String(localized: "Ask anything... /commands")
     /// Text-only clients reject file/image paste and drop before invoking callbacks.
@@ -79,6 +82,7 @@ struct ComposerTextInputView: View {
                 onTapQuote: onTapQuote,
                 onRemoveQuote: onRemoveQuote,
                 onKeyboardSend: onKeyboardSend,
+                recallLastSentText: recallLastSentText,
                 onHeightChange: updateMeasuredHeight,
                 onPasteFileProviders: onPasteFileProviders,
                 onPasteFileURLs: onPasteFileURLs,
@@ -205,6 +209,7 @@ private struct ComposerTextView: UIViewRepresentable {
     let onTapQuote: (ComposerQuote) -> Void
     let onRemoveQuote: (UUID) -> Void
     let onKeyboardSend: () -> Void
+    let recallLastSentText: (() -> String?)?
     let onHeightChange: (CGFloat) -> Void
     let onPasteFileProviders: ([NSItemProvider]) -> Void
     let onPasteFileURLs: ([URL]) -> Void
@@ -242,6 +247,7 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.allowsEditingTextAttributes = false
         textView.isKeyboardSendEnabled = isKeyboardSendEnabled
         textView.onKeyboardSend = onKeyboardSend
+        textView.recallLastSentText = recallLastSentText
         textView.onPasteFileProviders = onPasteFileProviders
         textView.onPasteFileURLs = onPasteFileURLs
         textView.onPasteImageProviders = onPasteImageProviders
@@ -274,6 +280,7 @@ private struct ComposerTextView: UIViewRepresentable {
         context.coordinator.syncEditing(for: textView, isDisabled: isDisabled)
         textView.isKeyboardSendEnabled = isKeyboardSendEnabled
         textView.onKeyboardSend = onKeyboardSend
+        textView.recallLastSentText = recallLastSentText
         textView.onPasteFileProviders = onPasteFileProviders
         textView.onPasteFileURLs = onPasteFileURLs
         textView.onPasteImageProviders = onPasteImageProviders

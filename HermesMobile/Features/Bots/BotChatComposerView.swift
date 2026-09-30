@@ -324,6 +324,8 @@ struct BotChatComposerView: View {
                     // Tapping a chip opens its full passage in issue #564; here it
                     // is inert, and the swipe-to-remove is the way back out.
                     onTapChip: { _ in }, onTapQuote: { _ in }, onRemoveQuote: { model.removeQuote($0) },
+                    // Live rows count, so a prompt still in flight is the one ↑ recalls.
+                    recallLastSentText: { ComposerRecall.lastSentText(in: model.messages + model.liveMessages) },
                     placeholder: String(localized: "Ask anything..."), acceptsAttachments: model.mayEditDraft
                 )
                 if !isExpanded {

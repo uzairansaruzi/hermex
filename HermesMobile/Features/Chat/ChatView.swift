@@ -580,6 +580,7 @@ struct ChatView: View {
                 await viewModel.loadFileChipReferences(draft: draft)
             },
             onDraftEdit: persistDraftEdit,
+            recallLastSentText: { viewModel.lastSentText },
             onOpenFileReference: { path in
                 openedFileReference = FileReference(path: path, line: nil, column: nil)
             },

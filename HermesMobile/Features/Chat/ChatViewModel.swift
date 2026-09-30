@@ -214,6 +214,9 @@ final class ChatViewModel {
     private(set) var messages: [ChatMessage] = [] {
         didSet { recomputeDisplayedTranscriptMessages() }
     }
+    /// The message ↑ brings back into an empty composer. Computed on demand:
+    /// the composer asks only when ↑ is pressed.
+    var lastSentText: String? { ComposerRecall.lastSentText(in: messages) }
     /// Memoized transcript mapping, recomputed once whenever `messages` or
     /// `messagesOffset` changes. Views read this single cached value instead of
     /// re-running the full classification pass on every body evaluation.
