@@ -1042,6 +1042,30 @@ import Vision
         skilled.suspend()
     }
 
+    /// An agent that never started leaves its prompt row saved but outside the host's
+    /// live history, so the host refuses every cut at it with 4018.
+    func testRetryHidesOnceTheHostCannotCutTheFailedPrompt() async throws {
+        let wire = BotFixtureWire(); wire.turnStartedAt = 200; wire.history = [failedPromptRow]
+        wire.inflight = failedInflight(surface: .object([
+            "layer": .string("runtime"), "code": .string("agent_init_failed"), "retryable": .bool(true)
+        ]))
+        wire.submitFailure = .rejected(4018)
+        let model = make(wire); await model.recover()
+        XCTAssertTrue(model.offersRetry)
+
+        await model.retryFailedTurn()
+        XCTAssertEqual(model.errorMessage, String(localized: "This message can’t be changed any more."))
+        let refreshed = expectation(description: "snapshot after the refusal")
+        withObservationTracking { _ = model.turn } onChange: { refreshed.fulfill() }
+        await fulfillment(of: [refreshed], timeout: 5)
+        XCTAssertEqual(model.turn, .interrupted)
+        XCTAssertNotNil(model.turnFailure, "the host still keeps the failure")
+        XCTAssertEqual(model.titleFace, .failed)
+        XCTAssertFalse(model.offersRetry, "the same cut would fail on every tap")
+        XCTAssertEqual(wire.calls.filter { $0.0 == "prompt.submit" }.count, 1, "one refused write and no resend")
+        model.suspend()
+    }
+
     func testAStopShowsNoOutcomeRow() async throws {
         let wire = BotFixtureWire(); wire.running = true
         let model = make(wire); await model.recover()

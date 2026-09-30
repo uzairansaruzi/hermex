@@ -233,7 +233,10 @@ the future (no timer; a passed time drops on the next redraw), and Retry when
 `HermesCall.promptRewind`: one `prompt.submit` that cuts at the failed prompt's
 saved `row_id` and resends the raw `inflight.user` (a `/skill` row resends its
 invocation), with both confirmations and never `queued`; 4009 says to wait and
-changes nothing, 4018 says the message can't be changed and rereads.
+changes nothing, 4018 says the message can't be changed, hides Retry for that
+row and rereads. The host resolves the cut against its in-memory history, so a
+turn whose agent never started (`runtime`/`agent_init_failed`) always gets 4018:
+its prompt row is saved at submit but never reaches that history.
 `turnNotice` holds what only `message.complete` carries: an `https`
 `billing.billing_url` ("Open billing page" in Safari; the host's long billing
 text is left out) and the host's `warning`, shown verbatim even under a

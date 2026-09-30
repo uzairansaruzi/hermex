@@ -179,6 +179,10 @@ import Observation
     /// The failed turn's prompt as the host holds it (`inflight.user`, any mention
     /// note included), which Retry resends.
     @ObservationIgnored private var failedPrompt: String?
+    /// The failed prompt's row the host refused to cut (4018), for example after an
+    /// agent that never started. Retry hides for it, since the same cut fails on
+    /// every tap; the user sends the prompt again from the composer.
+    private var uncuttableRowID: Int?
     private var snapshotIsBusy: Bool?
     private var snapshotDirty = false
     private var fullSnapshotNeeded = false
@@ -340,7 +344,8 @@ import Observation
     }
 
     /// Whether the outcome row offers Retry: the host says retrying can help and the
-    /// failed prompt's saved row names where to cut. Hidden otherwise.
+    /// failed prompt's saved row names where to cut. Hidden otherwise, and once the
+    /// host has refused to cut that row.
     var offersRetry: Bool { retryTarget != nil }
     var mayRetry: Bool { maySend && retryTarget != nil }
 
@@ -348,7 +353,8 @@ import Observation
     /// prompt, or a `/skill` row's invocation, which the host expands again on a cut.
     private var retryTarget: (rowID: Int, text: String)? {
         guard turnFailure?.offersRetry == true, let id = activePromptMessageID,
-              let row = messages.last(where: { $0.id == id }), row.role == "user", let rowID = row.rowID else { return nil }
+              let row = messages.last(where: { $0.id == id }), row.role == "user", let rowID = row.rowID,
+              rowID != uncuttableRowID else { return nil }
         guard let text = row.displayKind == "skill_invocation" ? row.content : failedPrompt,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return (rowID, text)
@@ -1201,7 +1207,10 @@ import Observation
                 // The host never queues a cut, so nothing changed.
                 errorMessage = String(localized: "Wait for the bot to finish.")
             case BotFailure.rejected(4018):
-                // The row left the live transcript (compacted or cut elsewhere).
+                // The host can't place the row in its live transcript (compacted, cut
+                // elsewhere, or never reached by an agent that didn't start). The same
+                // cut would fail again, so Retry goes.
+                uncuttableRowID = target.rowID
                 errorMessage = String(localized: "This message can’t be changed any more.")
                 refreshAfterPrompt()
             default:
