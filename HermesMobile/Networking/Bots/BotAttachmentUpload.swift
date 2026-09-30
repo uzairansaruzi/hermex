@@ -54,4 +54,18 @@ enum BotAttachmentUpload {
         "[The user attached an image: \(URL(fileURLWithPath: path).lastPathComponent)]\n"
             + "[Examine it with the vision_analyze tool using image_url: \(path)]"
     }
+
+    /// A sent prompt without the references `BotConversation.attachmentPrompt`
+    /// appended to it, one `\n\n` block per file: `file.attach`'s one-line
+    /// `@file:` ref or `imageReference`. What is left is what the user typed,
+    /// which is what ↑ recalls; an attachment-only prompt comes back empty.
+    static func typedText(of prompt: String) -> String {
+        let image = /\[The user attached an image: [^\n]*\]\n\[Examine it with the vision_analyze tool using image_url: \/[^\n]*\]/
+        var blocks = prompt.components(separatedBy: "\n\n")
+        while let last = blocks.last?.trimmingCharacters(in: .whitespacesAndNewlines),
+              (last.hasPrefix("@file:") && !last.contains("\n")) || last.wholeMatch(of: image) != nil {
+            blocks.removeLast()
+        }
+        return blocks.joined(separator: "\n\n")
+    }
 }

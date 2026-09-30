@@ -325,7 +325,11 @@ struct BotChatComposerView: View {
                     // is inert, and the swipe-to-remove is the way back out.
                     onTapChip: { _ in }, onTapQuote: { _ in }, onRemoveQuote: { model.removeQuote($0) },
                     // Live rows count, so a prompt still in flight is the one ↑ recalls.
-                    recallLastSentText: { ComposerRecall.lastSentText(in: model.messages + model.liveMessages) },
+                    // The attachment refs the send appended don't come back.
+                    recallLastSentText: {
+                        ComposerRecall.lastSentText(in: model.messages + model.liveMessages,
+                                                    typedText: BotAttachmentUpload.typedText(of:))
+                    },
                     placeholder: String(localized: "Ask anything..."), acceptsAttachments: model.mayEditDraft
                 )
                 if !isExpanded {

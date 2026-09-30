@@ -65,6 +65,41 @@ final class ComposerRecallTests: XCTestCase {
         XCTAssertEqual(ComposerRecall.lastSentText(in: messages), "what I sent")
     }
 
+    /// A compaction mid-turn can append a user-role task-list snapshot, or a
+    /// user-role summary, after the user's message. The transcript draws both
+    /// as cards; the user never typed them.
+    func testCompactionMarkerRowsAreSkipped() {
+        let messages = [
+            message("user", "fix the build"),
+            message("assistant", "Working."),
+            message("user", "[Your active task list was preserved across context compression]\n- [ ] run the tests"),
+            message("user", "[CONTEXT COMPACTION] Earlier turns were summarized."),
+            message("assistant", "Still working.")
+        ]
+
+        XCTAssertEqual(ComposerRecall.lastSentText(in: messages), "fix the build")
+    }
+
+    /// Bot Chat appends one `\n\n` block per attachment to the prompt it sends.
+    func testBotChatAttachmentRefsAreStrippedAndAnAttachmentOnlySendIsSkipped() {
+        let image = BotAttachmentUpload.imageReference(path: "/home/hermes/.hermes/images/photo.jpg")
+        let messages = [
+            message("user", "hello"),
+            message("assistant", "Hi."),
+            message("user", "\n\n" + image),
+            message("user", "@file:uploads/report.pdf")
+        ]
+        let typedAndAttached = [message("user", "compare these\n\n@file:`my notes.md`\n\n" + image)]
+
+        XCTAssertEqual(
+            ComposerRecall.lastSentText(in: messages, typedText: BotAttachmentUpload.typedText(of:)), "hello"
+        )
+        XCTAssertEqual(
+            ComposerRecall.lastSentText(in: typedAndAttached, typedText: BotAttachmentUpload.typedText(of:)),
+            "compare these"
+        )
+    }
+
     func testNoUserMessageReturnsNil() {
         XCTAssertNil(ComposerRecall.lastSentText(in: []))
         XCTAssertNil(ComposerRecall.lastSentText(in: [message("assistant", "Hi, how can I help?")]))

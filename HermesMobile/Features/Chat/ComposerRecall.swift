@@ -10,22 +10,30 @@ enum ComposerRecall {
 
     /// The newest message the user wrote, as the text they typed, or nil when
     /// they have sent nothing here. Scans from the end, skipping every row the
-    /// user didn't write: other roles, and Bot system deliveries (a display
-    /// kind other than a steer). A steer loses its out-of-band wrapper and a
-    /// send loses its `[Attached files: …]` marker; an attachment-only send has
-    /// no typed text left, so the message before it wins.
-    static func lastSentText(in messages: [ChatMessage]) -> String? {
+    /// user didn't write: other roles, Bot system deliveries (a display kind
+    /// other than a steer), and the compaction markers the transcript draws as
+    /// cards. A steer loses its out-of-band wrapper and a send loses its
+    /// `[Attached files: …]` marker; an attachment-only send has no typed text
+    /// left, so the message before it wins.
+    ///
+    /// - Parameter typedText: removes a surface's own attachment text from a
+    ///   user row. Bot Chat passes `BotAttachmentUpload.typedText(of:)`.
+    static func lastSentText(
+        in messages: [ChatMessage],
+        typedText: (String) -> String = { $0 }
+    ) -> String? {
         for message in messages.reversed() {
             guard message.role == "user",
                   message.displayKind == nil || message.displayKind == ChatMessage.steerDisplayKind,
+                  ChatMarkerMessageClassifier.classify(message) == nil,
                   let content = message.content
             else {
                 continue
             }
 
-            let typed = MessageAttachment.contentWithoutAttachedFilesMarker(
+            let typed = typedText(MessageAttachment.contentWithoutAttachedFilesMarker(
                 in: ChatMessage.strippedSteerText(from: content) ?? content
-            )
+            ))
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
             guard !typed.isEmpty, !PendingAttachment.isAttachmentOnlyMessageText(typed) else { continue }
