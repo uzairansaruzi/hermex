@@ -135,7 +135,9 @@ class ReadinessTests(unittest.TestCase):
 
 class PortTests(unittest.TestCase):
     def listener(self):
+        """A listening socket bound the way `hermes serve` (uvicorn) binds, with SO_REUSEADDR."""
         listener = socket.socket()
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind(("127.0.0.1", 0))
         listener.listen()
         return listener
@@ -161,16 +163,19 @@ class PortTests(unittest.TestCase):
 class InstallTests(unittest.TestCase):
     SHA = "0" * 40
 
+    def setUp(self):
+        self.cache = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.cache)
+        self.root = self.cache / self.SHA
+        (self.root / "src").mkdir(parents=True)
+        (self.root / "src" / "pyproject.toml").write_text("")
+
     def test_an_interrupted_install_is_redone_and_a_finished_one_reused(self):
-        cache = Path(tempfile.mkdtemp())
-        self.addCleanup(shutil.rmtree, cache)
-        root = cache / self.SHA
-        (root / "src").mkdir(parents=True)
-        (root / "src" / "pyproject.toml").write_text("")
+        root = self.root
         # An install stopped after uv wrote the entry point.
         (root / ".venv" / "bin").mkdir(parents=True)
         (root / ".venv" / "bin" / "hermes").write_text("")
-        with patch.object(local, "CACHE", cache), patch.object(local, "run") as run, \
+        with patch.object(local, "CACHE", self.cache), patch.object(local, "run") as run, \
                 patch.object(local.shutil, "which", return_value="/usr/bin/tool"):
             self.assertEqual(local.ensure_install(self.SHA), root / ".venv" / "bin" / "hermes")
             self.assertEqual([made.args[0][:3] for made in run.call_args_list],
@@ -178,6 +183,16 @@ class InstallTests(unittest.TestCase):
             run.reset_mock()
             local.ensure_install(self.SHA)
             self.assertEqual(run.call_args_list, [])
+
+    def test_a_run_that_waited_for_another_install_reuses_it(self):
+        def other_run_finishes(lock, operation):
+            self.assertEqual(operation, local.fcntl.LOCK_EX)
+            (self.root / "installed").touch()
+        with patch.object(local, "CACHE", self.cache), patch.object(local, "run") as run, \
+                patch.object(local.fcntl, "flock", side_effect=other_run_finishes) as flock:
+            self.assertEqual(local.ensure_install(self.SHA), self.root / ".venv" / "bin" / "hermes")
+        self.assertEqual(flock.call_count, 1)
+        self.assertEqual(run.call_args_list, [])
 
 
 class StopTests(unittest.TestCase):

@@ -21,6 +21,7 @@ process found by name (so never `hermes dashboard --stop`).
 
 import argparse
 from contextlib import suppress
+import fcntl
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -207,18 +208,27 @@ def run(command):
 def ensure_install(sha):
     """Returns the pinned `hermes` executable, cloning and installing it once per pin.
 
-    The `installed` stamp is written last, so an interrupted install is redone.
+    The `installed` stamp is written last, so an interrupted install is redone. The
+    cache is shared by every worktree, so a run waits on its lock while another installs.
     """
     root = CACHE / sha
-    venv = root / ".venv"
-    hermes = venv / "bin" / "hermes"
     installed = root / "installed"
-    if installed.exists():
-        return hermes
+    if not installed.exists():
+        root.mkdir(parents=True, exist_ok=True)
+        with open(root / "lock", "w") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if not installed.exists():
+                install(root, sha)
+                installed.touch()
+    return root / ".venv" / "bin" / "hermes"
+
+
+def install(root, sha):
+    """Clones the pinned commit into root/src and installs it into root/.venv."""
     for tool in ("git", "uv"):
         if not shutil.which(tool):
             sys.exit("%s is required for the first run: it clones and installs hermes-agent." % tool)
-    root.mkdir(parents=True, exist_ok=True)
+    venv = root / ".venv"
     source = root / "src"
     if not (source / "pyproject.toml").exists():
         partial = Path(tempfile.mkdtemp(prefix="src-", dir=root))
@@ -234,8 +244,6 @@ def ensure_install(sha):
     # --system-certs trusts the macOS store, as git does, so a TLS-inspecting proxy works.
     run(["uv", "venv", "--quiet", "--system-certs", "--clear", "--python", "3.13", str(venv)])
     run(["uv", "pip", "install", "--quiet", "--system-certs", "--python", str(venv / "bin" / "python"), "-e", str(source)])
-    installed.touch()
-    return hermes
 
 
 def require_free(port):
