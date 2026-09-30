@@ -239,6 +239,44 @@ import XCTest
         for text in names { XCTAssertFalse(conversation.contains(text), "The welcome leaves with the first message: \(conversation)") }
     }
 
+    func testANewSixMemberRoomStacksEveryMemberAtTheLargestTextSize() async throws {
+        let server = URL(string: "https://room.example")!
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
+        let wire = RoomWire(); wire.kind = "message.member"
+        let names = ["Ada", "Linus", "Grace", "Alan", "Barbara", "Edsger"]
+        wire.members = names.map { name in
+            .object(["member_id": .string(name.lowercased()), "profile": .string(name.lowercased()), "display_name": .string(name)])
+        }
+        let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 0)))
+        let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: room.id),
+                                   connection: connection, room: room, cache: BotHistoryCache(), makeWire: { _ in wire })
+        let window = try show(NavigationStack {
+            BotRoomView(reader: reader, roster: [], avatars: [:])
+        }
+        .environment(\.scenePhase, .inactive)
+        .environment(\.dynamicTypeSize, .accessibility5))
+        defer { reader.close(); close(window) }
+        await reader.open()
+        let prompt = "Say something to the group"
+        await settle(window)
+        let transcript = try XCTUnwrap(descendants(window).compactMap { $0 as? UIScrollView }.first {
+            !($0 is UITextView) && ($0.keyboardDismissMode == .interactive || $0.keyboardDismissMode == .interactiveWithAccessory)
+        })
+        func outgrows() -> Bool {
+            transcript.contentSize.height > transcript.bounds.height - transcript.adjustedContentInset.top
+                - transcript.adjustedContentInset.bottom + 1
+        }
+        await settle(window, until: outgrows)
+        XCTAssertTrue(outgrows(), "Six stacked members outgrow the transcript: \(transcript.contentSize), \(transcript.bounds)")
+        drag(transcript, to: -transcript.adjustedContentInset.top)
+        let top = try await screenshot(window, name: "895-largest-text-welcome-top", awaiting: [names[0]])
+        drag(transcript, to: transcript.contentSize.height - transcript.bounds.height + transcript.adjustedContentInset.bottom)
+        let bottom = try await screenshot(window, name: "895-largest-text-welcome-bottom", awaiting: [names[5], prompt])
+        for text in names + [prompt] {
+            XCTAssertTrue("\(top) \(bottom)".contains(text), "Scrolling reaches \(text): top \(top) / bottom \(bottom)")
+        }
+    }
+
     func testRoomMessageSearchShowsRoomAndSenderAfterOpeningTheRoom() async throws {
         let server = URL(string: "https://search.example")!
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
