@@ -166,8 +166,19 @@ import Observation
     private var clockRevision = 0
     /// When this phone first saw the current turn, for a host that sends no start time.
     private var turnObservedAt = Date()
-    /// Whether the last snapshot's interruption was a host error rather than a stop.
-    private var turnFailed = false
+    /// The failure the host keeps for the last turn (`inflight.error`), read from every
+    /// snapshot, so reopening, backgrounding or a push tap rebuilds the same outcome
+    /// row. Nil after a success or a Stop, and once the host starts the next turn. It
+    /// stays on screen while disconnected, and is never cached.
+    private(set) var turnFailure: HermesTurnOutcome?
+    /// What only a live or replayed `message.complete` carries: a billing link and the
+    /// host's warning. Kept across suspend and a continuous reconnect; cleared by
+    /// `message.start`, an accepted send, or a gap in the stream that could hide a
+    /// newer turn. Never cached.
+    private(set) var turnNotice: HermesTurnOutcome?
+    /// The failed turn's prompt as the host holds it (`inflight.user`, any mention
+    /// note included), which Retry resends.
+    @ObservationIgnored private var failedPrompt: String?
     private var snapshotIsBusy: Bool?
     private var snapshotDirty = false
     private var fullSnapshotNeeded = false
@@ -253,7 +264,7 @@ import Observation
                 phase = .working(turn: turnStartedAt.map { String($0) } ?? runtime ?? "",
                                  startedAt: turnStartedAt.map(Date.init(timeIntervalSince1970:)) ?? turnObservedAt)
             case .idle: phase = .finished(.complete)
-            case .interrupted: phase = .finished(turnFailed ? .failed : .cancelled)
+            case .interrupted: phase = .finished(turnFailure != nil ? .failed : .cancelled)
             case .unknown, .submitting, .uncertain: phase = .unknown
             }
         }
@@ -322,10 +333,25 @@ import Observation
     var titleFace: TitleFace {
         switch turn {
         case .needsAttention: return .waiting
-        case .interrupted: return turnFailed ? .failed : .resting
+        case .interrupted: return turnFailure != nil ? .failed : .resting
         case .running, .stopping: return .working
         case .unknown, .idle, .submitting, .uncertain: return .resting
         }
+    }
+
+    /// Whether the outcome row offers Retry: the host says retrying can help and the
+    /// failed prompt's saved row names where to cut. Hidden otherwise.
+    var offersRetry: Bool { retryTarget != nil }
+    var mayRetry: Bool { maySend && retryTarget != nil }
+
+    /// The failed prompt's durable row and the text a retry resends: the host's raw
+    /// prompt, or a `/skill` row's invocation, which the host expands again on a cut.
+    private var retryTarget: (rowID: Int, text: String)? {
+        guard turnFailure?.offersRetry == true, let id = activePromptMessageID,
+              let row = messages.last(where: { $0.id == id }), row.role == "user", let rowID = row.rowID else { return nil }
+        guard let text = row.displayKind == "skill_invocation" ? row.content : failedPrompt,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return (rowID, text)
     }
 
     var mayGuide: Bool {
@@ -677,9 +703,10 @@ import Observation
         // ring still holds, which is the whole current turn. Without either, every
         // live row and notice is dropped rather than shown incomplete or stale: a
         // notice whose clear was in the gap has no snapshot state to reconcile it.
+        // The turn notice goes too, since the gap may hide a newer turn's start.
         if replayWasReset {
             guard let start = missed.lastIndex(where: { $0["type"].text == "message.start" }) else {
-                liveActivity = BotTurnActivity(); return
+                liveActivity = BotTurnActivity(); turnNotice = nil; return
             }
             missed.removeFirst(start)
         }
@@ -693,15 +720,20 @@ import Observation
         }
     }
 
-    /// Feeds activity events to the live reducer, plan and work status. Returns
-    /// false for event types that carry conversation text or turn state instead.
+    /// Feeds activity events to the live reducer, plan, work status and turn notice.
+    /// Returns false for event types that carry conversation text or turn state instead.
     @discardableResult
     private func applyActivity(type: String, payload: BotJSON) -> Bool {
         switch type {
         case "message.start":
             clockRevision += 1
             confirmedWorkingStart = nil
-            liveActivity = BotTurnActivity(); workStatus = nil
+            liveActivity = BotTurnActivity(); workStatus = nil; turnNotice = nil
+            return false
+        case "message.complete":
+            // Only this frame carries the billing link and warning; the snapshot it
+            // schedules owns everything else about how the turn ended.
+            turnNotice = HermesTurnOutcome(complete: payload)
             return false
         case "todo.updated":
             if let next = BotPlan(payload), next.revision >= (plan?.revision ?? 0) { plan = next }
@@ -757,6 +789,9 @@ import Observation
         }
         if let next = BotPlan(snapshot["todo_state"]), next.revision >= (plan?.revision ?? 0) { plan = next }
         let inflight = snapshot["inflight"]
+        let failure = HermesTurnOutcome(inflight: inflight)
+        if failure != turnFailure { turnFailure = failure }
+        failedPrompt = failure == nil ? nil : inflight["user"].text
         let startedAt = inflight["started_at"].number ?? snapshot["turn_started_at"].number
         if clockRevision == self.clockRevision, running, let startedAt, startedAt.isFinite, startedAt > 0,
            startedAt <= Date().timeIntervalSince1970 {
@@ -820,8 +855,8 @@ import Observation
         else if uncertainSend || uncertainStop { turn = .uncertain }
         else if localOperation { /* A snapshot cannot acknowledge a local command. */ }
         else if running || continuation || queued { turn = .running }
-        else if inflight["error"] != .null || snapshot["status"].text == "interrupted" {
-            turn = .interrupted; turnFailed = inflight["error"] != .null
+        else if failure != nil || snapshot["status"].text == "interrupted" {
+            turn = .interrupted
             completionArmed = false
         }
         else {
@@ -971,7 +1006,7 @@ import Observation
             }
             guard outcome != .unknown else { throw BotFailure.unsupported }
             // A voice-stop phrase is taken but starts no turn, so it is not a send.
-            if outcome != .voiceStopped { emit(.sent) }
+            if outcome != .voiceStopped { emit(.sent); clearTurnOutcome() }
             drafts.setDraft("", for: draftKey)
             drafts.setQuotes([], for: draftKey)
             drafts.setAttachments([], for: draftKey)
@@ -1128,6 +1163,52 @@ import Observation
     private func refreshAfterPrompt() {
         turn = .unknown
         fullSnapshotNeeded = true; snapshotDirty = true; scheduleRefresh()
+    }
+
+    /// The host took the next prompt, so the last turn's outcome row goes.
+    private func clearTurnOutcome() {
+        turnFailure = nil; turnNotice = nil; failedPrompt = nil
+    }
+
+    /// Starts the failed turn again in place: one `prompt.submit` cuts the failed
+    /// prompt's row and resubmits it (`HermesCall.promptRewind`), so the transcript
+    /// shows the prompt once, here and in Desktop. Deliberate only: a lost reply is
+    /// never resent, and the snapshot read after reconnecting shows whether the turn
+    /// ran. The composer draft is never touched.
+    func retryFailedTurn() async {
+        guard mayRetry, let runtime, let target = retryTarget else { return }
+        let owner = generation, revision = turnRevision
+        localOperation = true; errorMessage = nil
+        do {
+            let reply = try await request(.promptRewind(sessionID: runtime, text: target.text, beforeRowID: target.rowID),
+                                          owner: owner) { [weak self] in
+                guard let self else { throw BotFailure.stale }
+                try self.check(owner)
+                guard self.connectionState == .connected, self.runtime == runtime,
+                      self.turnRevision == revision else { throw BotFailure.stale }
+            }
+            // A cut only ever starts a turn; any other reply is a shape this build can't read.
+            guard reply["status"].text == "streaming" else { throw BotFailure.unsupported }
+            emit(.sent); clearTurnOutcome()
+            localOperation = false
+            refreshAfterPrompt()
+        } catch {
+            guard owner == generation, !Task.isCancelled else { return }
+            localOperation = false
+            switch error {
+            case BotFailure.stale: return
+            case BotFailure.rejected(4009):
+                // The host never queues a cut, so nothing changed.
+                errorMessage = String(localized: "Wait for the bot to finish.")
+            case BotFailure.rejected(4018):
+                // The row left the live transcript (compacted or cut elsewhere).
+                errorMessage = String(localized: "This message can’t be changed any more.")
+                refreshAfterPrompt()
+            default:
+                // Anything short of a definite refusal may follow the cut: reread, never resend.
+                disconnected(BotPromptMode.send.definitelyRejected(error) ? error : BotFailure.transport)
+            }
+        }
     }
 
     func prepareStop() -> StopAction? {
@@ -1389,7 +1470,7 @@ import Observation
             clockRevision += 1; confirmedWorkingStart = nil
             replayWasReset = true; snapshotDirty = true; fullSnapshotNeeded = true
             turnRevision += 1
-            liveActivity = BotTurnActivity()
+            liveActivity = BotTurnActivity(); turnNotice = nil
             serverRequests.removeAll(); requestRevision += 1
             if !localOperation { turn = .unknown }
             scheduleRefresh(); return
@@ -1399,9 +1480,9 @@ import Observation
         if discontinuity {
             clockRevision += 1; confirmedWorkingStart = nil
             replayWasReset = true; fullSnapshotNeeded = true; turnRevision += 1
-            // Missed events may hold tool rows, a notice's clear or a request's
-            // cancellation; partial or stale state is worse than none.
-            liveActivity = BotTurnActivity()
+            // Missed events may hold tool rows, a notice's clear, a newer turn's
+            // start or a request's cancellation; partial or stale state is worse than none.
+            liveActivity = BotTurnActivity(); turnNotice = nil
             serverRequests.removeAll(); requestRevision += 1
             if !localOperation { turn = .unknown }
         }

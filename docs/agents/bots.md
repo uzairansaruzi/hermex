@@ -209,14 +209,38 @@ a chat view model; `BotMessageActions` builds that list, and for a Bot it is
 Copy over the Markdown source, by the canonical-chat policy of #481. The host
 does support rewind (`prompt.submit` with `confirm_truncate` and a
 `truncate_before_row_id` taken from the snapshot's durable `row_id`) and
-`session.branch`; Bot Chat does not offer edit, regenerate or branch yet
-(#745). Group rooms use the same seam. Under a settled message, one reply
-footer (`BotReplyFooter`, on `ChatMessageMetaRow`) shows the host `timestamp`
+`session.branch`; Bot Chat uses rewind only to retry a failed turn (below) and
+does not offer edit, regenerate or branch yet (#745). Group rooms use the same
+seam. Under a settled message, one reply footer (`BotReplyFooter`, on
+`ChatMessageMetaRow`) shows the host `timestamp`
 (room `created_at`) on user messages and turn-ending replies, following
 Settings → Chat → Message Timestamps; a dated separator (`TranscriptTimeline`)
 opens the window and any row 30+ minutes after the previous stamped one, and
 shows even with that setting off. Later footer parts join this row rather than
 adding one.
+
+A failed turn gets an outcome row under it (`BotTurnOutcomeRow`, #878), after
+any live reply and before the plan and request card. Its failure half is
+`BotConversation.turnFailure`, decoded by `HermesTurnOutcome` from the
+snapshot's retained `inflight` (`error`, `error_surface {layer, code,
+retryable, resets_at?, message?}`, `recoverable`). The host keeps that until the
+next turn starts or the session closes, so reopening, backgrounding and a push
+tap all rebuild it. The row shows a Hermex title (the surface's own `message`
+first, then the code, then the layer, else "The turn failed"), the raw `error`
+capped at four selectable lines, "Limit resets at …" while `resets_at` is in
+the future (no timer; a passed time drops on the next redraw), and Retry when
+`retryable` is true, or `recoverable` is true without a surface. Retry is
+`HermesCall.promptRewind`: one `prompt.submit` that cuts at the failed prompt's
+saved `row_id` and resends the raw `inflight.user` (a `/skill` row resends its
+invocation), with both confirmations and never `queued`; 4009 says to wait and
+changes nothing, 4018 says the message can't be changed and rereads.
+`turnNotice` holds what only `message.complete` carries: an `https`
+`billing.billing_url` ("Open billing page" in Safari; the host's long billing
+text is left out) and the host's `warning`, shown verbatim even under a
+successful reply. It is live-only: replay rebuilds it while the ring holds the
+turn's frames, and a gap that could hide a newer turn's start drops it. Both
+survive suspend and a continuous reconnect, clear on `message.start` and on the
+next accepted send, and are never cached. Rooms and Sessions are unchanged.
 
 Bot Chat rows take Desktop's Tapbacks (#761). `session.resume` rows carry the
 durable `row_id` (projected as `ChatMessage.rowID`) and
@@ -612,9 +636,9 @@ rule). An arriving approval, opening the chat onto one, stopping, and the
 start a beat, and the face is still while the app is inactive.
 The title face also reads the turn (`BotConversation.titleFace`): while the bot
 needs attention (any blocking request, readable or not) it shows Curious eyes and
-only blinks, and after a host-reported failure it shows Sad eyes until the next
-send; a user Stop rests. These state faces override a pinned expression, and
-VoiceOver adds "Needs attention" or "Turn failed" after the name. Inbox rows,
+only blinks, and after a host-reported failure (`turnFailure`, which also draws
+the outcome row) it shows Sad eyes until the next send; a user Stop rests.
+These state faces override a pinned expression, and VoiceOver adds "Needs attention" or "Turn failed" after the name. Inbox rows,
 pinned tiles, rooms, chips and the Live Activity avatar keep the pinned expression.
 Reduce Motion, the shape and expression picker tiles, photos and the extensions
 render one still frame; inbox rows and pinned tiles blink.

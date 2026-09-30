@@ -42,6 +42,11 @@ enum HermesCall: Equatable, Sendable {
     /// Always `queued`: even an idle Send can race Desktop, so a fresh send never
     /// inherits a host setting that converts it into a redirect or steer.
     case promptSubmit(sessionID: String, text: String)
+    /// Cuts the transcript at one durable prompt row and starts the turn again with
+    /// `text`, in one call under the host's history lock. Never `queued`: the host
+    /// refuses a cut while busy (4009) instead of queueing or steering it. Retry of
+    /// a failed turn (#878) uses it; edit and retry-from-here (#745) will too.
+    case promptRewind(sessionID: String, text: String, beforeRowID: Int)
     case sessionSteer(sessionID: String, text: String)
     case sessionRedirect(sessionID: String, text: String)
     case sessionInterrupt(sessionID: String)
@@ -185,7 +190,7 @@ enum HermesCall: Equatable, Sendable {
         case .sessionResume: return "session.resume"
         case .sessionEventsSince: return "session.events.since"
         case .sessionActiveList: return "session.active_list"
-        case .promptSubmit: return "prompt.submit"
+        case .promptSubmit, .promptRewind: return "prompt.submit"
         case .sessionSteer: return "session.steer"
         case .sessionRedirect: return "session.redirect"
         case .sessionInterrupt: return "session.interrupt"
@@ -252,6 +257,11 @@ enum HermesCall: Equatable, Sendable {
         case .sessionActiveList, .groupsCapabilities: return [:]
         case .promptSubmit(let sessionID, let text):
             return ["session_id": .string(sessionID), "text": .string(text), "queued": .bool(true)]
+        case .promptRewind(let sessionID, let text, let rowID):
+            // `confirm_empty_truncate` too, as Desktop sends whenever it names a row:
+            // cutting at the first prompt legitimately empties the transcript.
+            return ["session_id": .string(sessionID), "text": .string(text), "truncate_before_row_id": .number(Double(rowID)),
+                    "confirm_truncate": .bool(true), "confirm_empty_truncate": .bool(true)]
         case .sessionSteer(let sessionID, let text), .sessionRedirect(let sessionID, let text):
             return ["session_id": .string(sessionID), "text": .string(text)]
         case .sessionInterrupt(let sessionID), .commandsCatalog(let sessionID), .subagentList(let sessionID):
@@ -372,6 +382,8 @@ enum HermesCall: Equatable, Sendable {
             valid = !sessionID.isEmpty && !opID.isEmpty && answerIsValid
         case .messageReact(let sessionID, _, let emoji):
             valid = !sessionID.isEmpty && emoji?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != true
+        case .promptRewind(let sessionID, let text, let rowID):
+            valid = !sessionID.isEmpty && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && rowID > 0
         case .groupsList(let offset): valid = offset >= 0
         case .groupsState(let roomID), .groupsDisband(let roomID): valid = BotRoomRPC.validID(roomID)
         case .groupsLog(let roomID, let sinceSeq, let limit):

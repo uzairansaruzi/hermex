@@ -118,6 +118,14 @@ import SwiftUI
                         if let reply = model.liveMessages.first(where: { $0.role == "assistant" }) {
                             BotArtifactMessageView(message: reply, model: model, isLive: true)
                         }
+                        // How the last turn ended sits under it, before any plan or request.
+                        if model.turnFailure != nil || model.turnNotice?.warning != nil {
+                            BotTurnOutcomeRow(
+                                failure: model.turnFailure, notice: model.turnNotice,
+                                offersRetry: model.offersRetry, mayRetry: model.mayRetry,
+                                onRetry: { Task { await model.retryFailedTurn() } }
+                            )
+                        }
                         if let plan = model.plan {
                             BotPlanRowView(plan: plan).id("bot-plan")
                         }

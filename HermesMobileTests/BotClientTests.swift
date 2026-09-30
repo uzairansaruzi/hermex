@@ -607,6 +607,19 @@ import XCTest
         XCTAssertEqual(socket.sentTextFrames, 2)
     }
 
+    /// A rewind cuts one durable row and resends a prompt; an empty prompt or a
+    /// row id the host never issued is refused before the socket.
+    func testRewindAdmitsOnlyARowAndThePromptItResends() {
+        let rejected: [HermesCall] = [
+            .promptRewind(sessionID: "", text: "hi", beforeRowID: 41),
+            .promptRewind(sessionID: "runtime", text: " \n", beforeRowID: 41),
+            .promptRewind(sessionID: "runtime", text: "hi", beforeRowID: 0)
+        ]
+        for call in rejected {
+            XCTAssertThrowsError(try call.params()) { XCTAssertEqual($0 as? BotFailure, .unsupported) }
+        }
+    }
+
     /// The inbox's live-status read is `session.active_list` with no parameters,
     /// exactly as Desktop's background sync sends it; anything else stays local.
     func testActiveListAllowlistAdmitsOnlyTheEmptyRead() async throws {
