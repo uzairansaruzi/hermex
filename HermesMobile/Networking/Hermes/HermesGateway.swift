@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// The one gateway WebSocket a `HermesConnection` shares among its Bot screens. The inbox,
 /// each open chat, a room, the creator and the editor hold their own `BotClient` on it.
@@ -60,6 +61,8 @@ import Foundation
         let continuation: CheckedContinuation<BotJSON, Error>
         /// The screen that sent it; nil for the handshake's own call.
         let consumer: Int?
+        /// `HermesCall.method`, for the log.
+        let method: String
         let deadline: Task<Void, Never>
         let rejection: HermesCall.Rejection
     }
@@ -107,7 +110,12 @@ import Foundation
             entry.deadline.cancel()
             entry.continuation.resume(throwing: BotFailure.transport)
         }
-        if !consumers.contains(where: { $0.client != nil }) { end(nil) }
+        guard !consumers.contains(where: { $0.client != nil }) else { return }
+        if socket != nil || opening != nil {
+            let label = socketLabel(generation)
+            HermesConnectionLog.logger.notice("\(label, privacy: .public) closed, last screen left")
+        }
+        end(nil)
     }
 
     /// Ends the socket for good because the connection was replaced. Attached screens hear
@@ -136,16 +144,18 @@ import Foundation
             guard owner == generation, !Task.isCancelled, maySend(consumer) else { throw BotFailure.stale }
         } else { text = String(decoding: try JSONEncoder().encode(frame), as: UTF8.self) }
         let timesOutLocally = call.timesOutLocally, cancellationSafe = call.isCancellationSafe
-        let rejection = call.rejection, rpcDeadline = options.rpcDeadline
+        let rejection = call.rejection, rpcDeadline = options.rpcDeadline, method = call.method
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 let deadline = Task { [weak self] in
                     do { try await Task.sleep(for: rpcDeadline) } catch { return }
-                    guard let self, self.generation == owner else { return }
+                    guard let self, self.generation == owner, self.pending[id] != nil else { return }
+                    let label = self.socketLabel(owner), seconds = rpcDeadline.components.seconds
+                    HermesConnectionLog.logger.error("\(label, privacy: .public): \(method, privacy: .public) got no reply in \(seconds, privacy: .public) s")
                     if timesOutLocally { self.settle(id, throwing: BotFailure.transport) }
                     else { self.expire(id) }
                 }
-                pending[id] = Pending(continuation: continuation, consumer: consumer, deadline: deadline, rejection: rejection)
+                pending[id] = Pending(continuation: continuation, consumer: consumer, method: method, deadline: deadline, rejection: rejection)
                 Task { [weak self] in
                     guard let self, self.generation == owner, self.pending[id] != nil else { return }
                     do {
@@ -206,7 +216,11 @@ import Foundation
                 for index in consumers.indices { consumers[index].attached = true }
             } catch {
                 // An attempt a leave, fault or retirement already ended has nothing left to end.
-                if owner == generation { end(nil) }
+                if owner == generation {
+                    let label = socketLabel(owner), reason = HermesConnectionLog.reason(error)
+                    HermesConnectionLog.logger.error("\(label, privacy: .public) failed to open: \(reason, privacy: .public)")
+                    end(nil)
+                }
                 throw error
             }
         }
@@ -222,16 +236,17 @@ import Foundation
         }
         let upgrade = try await http.gatewayUpgrade()
         try check()
+        let label = socketLabel(owner)
         let socket: any BotSocket
         if let socketFactory = options.socketFactory { socket = socketFactory(upgrade) }
         else {
             let task = http.session.webSocketTask(with: upgrade)
             task.maximumMessageSize = 16 * 1024 * 1024
             task.resume()
-            socket = NativeBotSocket(task: task)
+            socket = NativeBotSocket(task: task, label: label)
         }
         self.socket = socket
-        let ready = try await Self.receive(socket)
+        let ready = try await Self.receive(socket, label: label)
         try check()
         guard ready["method"].text == "event", ready["params"]["type"].text == "gateway.ready",
               let epoch = ready["params"]["payload"]["replay_epoch"].text, !epoch.isEmpty
@@ -247,13 +262,15 @@ import Foundation
         catch BotFailure.rejected {}
         try check()
         startHeartbeat(socket, generation: owner)
+        HermesConnectionLog.logger.notice("\(label, privacy: .public) open")
     }
 
     private func startReader(_ socket: any BotSocket, generation owner: Int) {
+        let label = socketLabel(owner)
         reader = Task { [weak self] in
             do {
                 while !Task.isCancelled {
-                    let frame = try await Self.receive(socket)
+                    let frame = try await Self.receive(socket, label: label)
                     guard let self, self.generation == owner else { return }
                     self.consume(frame, generation: owner)
                 }
@@ -286,7 +303,8 @@ import Foundation
         }
     }
 
-    private static func receive(_ socket: any BotSocket) async throws -> BotJSON {
+    /// Reads one frame, or closes `socket` after 45 s of silence. `label` names the socket in the log.
+    private static func receive(_ socket: any BotSocket, label: String) async throws -> BotJSON {
         // Heartbeats keep a healthy quiet socket alive. Silence eventually becomes
         // disconnected/unknown instead of leaving a permanent Working label.
         try await withThrowingTaskGroup(of: BotJSON.self) { group in
@@ -302,6 +320,7 @@ import Foundation
             }
             group.addTask {
                 try await Task.sleep(for: .seconds(45))
+                HermesConnectionLog.logger.error("\(label, privacy: .public): no frame for 45 s; closing")
                 socket.cancel()
                 throw BotFailure.transport
             }
@@ -316,7 +335,14 @@ import Foundation
         // Server requests have string ids and no replay sequence. Forward the
         // original envelope so screens cannot mistake them for sequenced events.
         if frame["id"].text != nil, frame["method"].text != nil { deliver(frame, generation: owner); return }
-        guard let id = frame["id"].integer, let entry = pending.removeValue(forKey: id) else { return }
+        // The keepalive's pongs have string ids and are dropped here, unlogged.
+        guard let id = frame["id"].integer else { return }
+        guard let entry = pending.removeValue(forKey: id) else {
+            // Usually a late reply to a screen that has left.
+            let label = socketLabel(owner)
+            HermesConnectionLog.logger.notice("\(label, privacy: .public): reply for call \(id, privacy: .public) matched no open call")
+            return
+        }
         entry.deadline.cancel()
         if let code = frame["error"]["code"].integer {
             switch entry.rejection {
@@ -348,9 +374,11 @@ import Foundation
     }
 
     /// Closes the socket, fails every call on it with `.transport` and drops every screen.
-    /// The attached ones hear `error` once; nil ends it silently (the last screen left, or
-    /// opening failed and its waiters get the error from `join`).
+    /// The attached ones hear `error` once, and the log records it; nil ends it silently
+    /// (the last screen left, or opening failed and its waiters get the error from `join`),
+    /// and the caller logs why.
     private func end(_ error: Error?) {
+        let label = socketLabel(generation), wasLive = socket != nil || opening != nil
         generation += 1
         opening = nil
         reader?.cancel(); reader = nil
@@ -365,8 +393,17 @@ import Foundation
             entry.continuation.resume(throwing: BotFailure.transport)
         }
         guard let error else { return }
+        if wasLive, (error as? BotFailure) == .stale {
+            HermesConnectionLog.logger.notice("\(label, privacy: .public) closed, connection retired")
+        } else if wasLive {
+            let reason = HermesConnectionLog.reason(error), calls = interrupted.count, screens = lost.count
+            HermesConnectionLog.logger.error("\(label, privacy: .public) dropped: \(reason, privacy: .public); calls failed: \(calls, privacy: .public), screens told: \(screens, privacy: .public)")
+        }
         for client in lost { client.socketEnded(error) }
     }
+
+    /// Names socket `number` of this connection in the log, such as `c1 socket s0`.
+    private func socketLabel(_ number: Int) -> String { "c\(http.serial) socket s\(number)" }
 }
 
 /// How the socket treats each request once it is on the wire.
@@ -414,19 +451,37 @@ protocol BotSocket: Sendable {
 /// URLSession reports the handshake.
 struct NativeBotSocket: BotSocket {
     let task: URLSessionWebSocketTask
+    /// Names this socket in the log.
+    let label: String
+    /// Set by `cancel()`, so our own close, which URLSession also reports as code 1000, is not logged.
+    private let isClosedHere = OSAllocatedUnfairLock(initialState: false)
+
+    init(task: URLSessionWebSocketTask, label: String) {
+        self.task = task
+        self.label = label
+    }
 
     /// A refused upgrade fails the first read with a bare `URLError`; the handshake's HTTP
-    /// status, when there is one, says what refused it.
+    /// status, when there is one, says what refused it, and the gateway logs that failure.
+    /// A socket the other end closed logs its close code, never its reason: a proxy can put
+    /// any bytes there.
     func receive() async throws -> URLSessionWebSocketTask.Message {
         do { return try await task.receive() } catch {
             if let status = (task.response as? HTTPURLResponse)?.statusCode, let refusal = BotFailure(upgradeStatus: status) {
                 throw refusal
             }
+            let code = task.closeCode
+            if code != .invalid, !isClosedHere.withLock({ $0 }) {
+                HermesConnectionLog.logger.error("\(label, privacy: .public) closed by the other end with code \(code.rawValue, privacy: .public)")
+            }
             throw error
         }
     }
     func send(_ message: URLSessionWebSocketTask.Message) async throws { try await task.send(message) }
-    func cancel() { task.cancel(with: .normalClosure, reason: nil) }
+    func cancel() {
+        isClosedHere.withLock { $0 = true }
+        task.cancel(with: .normalClosure, reason: nil)
+    }
 }
 
 extension BotFailure {

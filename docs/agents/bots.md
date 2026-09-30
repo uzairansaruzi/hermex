@@ -76,6 +76,18 @@ reconnects. A chat's session stays attached to the shared socket after the chat
 leaves, until the socket closes; leaving a screen never closes a host session. The
 connection form and dev auto-login probe on their own connection, so their own socket.
 
+`HermesConnection` and `HermesGateway` log the connection's lifecycle to the device
+log (`HermesConnectionLog`), under the bundle ID and the category `HermesConnection`:
+each sign-in with its release, or the step that failed (`status`, `login`, `identity`,
+`ticket`) and why; the socket opening or failing to open (a refused upgrade with its
+status); a drop with its reason and any close code the other end sent; 45 seconds of
+silence; the last screen leaving; retirement; a reply that matched no open call; and a
+call past its deadline, by method. Lines name connections `c1`, `c2`, … and each
+connection's sockets `s0`, `s1`, …, never the server: interpolate only numbers, step,
+case and method names and `HermesConnectionLog.reason(_:)`, each `.public`, and never a
+host, address, URL, session or runtime id, Profile name, title, message text, ticket,
+replay epoch or install id. Events, deltas and keepalive pongs are never logged.
+
 Requests are typed in `Networking/Hermes/`: every HTTP request (method, path, query, JSON body) is a
 `HermesREST` case, and every JSON-RPC request is a `HermesCall` case, one per
 operation the app uses and none for any other upstream method. A case carries only

@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// One direct-Hermes connection: one ephemeral cookie jar, one password sign-in, the path
 /// every Bot HTTP request and gateway upgrade is sent through, and the one gateway socket
@@ -43,6 +44,10 @@ import Foundation
     private var epoch = 0
     private var signInTask: Task<Void, Error>?
     private(set) var isRetired = false
+    /// Numbers connections in this process (`c1`, `c2`, …), so log lines from two servers
+    /// can be told apart without naming either.
+    let serial: Int
+    private static var connectionCount = 0
 
     /// `headers` are sent to this connection's origin only; production passes none.
     /// `gateway` configures the shared socket; tests script it.
@@ -51,6 +56,8 @@ import Foundation
         self.connection = connection
         self.headers = headers
         gatewayOptions = gateway
+        Self.connectionCount += 1
+        serial = Self.connectionCount
         let admitted = headers.values
         redirectGuard = CrossOriginHeaderStripper(baseURL: connection.address, customHeaderProvider: { admitted })
         let standard = configuration.copy() as? URLSessionConfiguration ?? .ephemeral
@@ -86,23 +93,38 @@ import Foundation
     private func beginSignIn(on session: URLSession) -> Task<Void, Error> {
         let attempt = Task {
             defer { signInTask = nil }
-            let status = try await publicStatus(on: session)
-            try checkCurrent()
-            serverVersion = status["version"].text
-            serverInstallID = BotConnection.installID(in: status)
-            try connection.requireSameInstall(serverInstallID)
-            guard status["auth_required"].flag == true else { throw BotFailure.unsupported }
-            // #708 replaces this branch with the browser sign-in flow.
-            guard status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.browserSignIn }
-            _ = try await decoded(.login(username: connection.username, password: connection.password), on: session)
-            try checkCurrent()
-            let identity = try await decoded(.identity, on: session)
-            try checkCurrent()
-            guard identity["provider"].text == "basic" else { throw BotFailure.wrongIdentity }
-            // Trust on first use, in memory only: a later sign-in here must reach the same install.
-            if connection.installID == nil { connection.installID = serverInstallID }
-            isSignedIn = true
-            epoch += 1
+            // The step a failure is logged at.
+            var step = "status"
+            do {
+                let status = try await publicStatus(on: session)
+                try checkCurrent()
+                serverVersion = status["version"].text
+                serverInstallID = BotConnection.installID(in: status)
+                try connection.requireSameInstall(serverInstallID)
+                guard status["auth_required"].flag == true else { throw BotFailure.unsupported }
+                // #708 replaces this branch with the browser sign-in flow.
+                guard status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.browserSignIn }
+                step = "login"
+                _ = try await decoded(.login(username: connection.username, password: connection.password), on: session)
+                try checkCurrent()
+                step = "identity"
+                let identity = try await decoded(.identity, on: session)
+                try checkCurrent()
+                guard identity["provider"].text == "basic" else { throw BotFailure.wrongIdentity }
+                // Trust on first use, in memory only: a later sign-in here must reach the same install.
+                if connection.installID == nil { connection.installID = serverInstallID }
+                isSignedIn = true
+                epoch += 1
+                let release = serverVersion ?? "unreported"
+                HermesConnectionLog.logger.notice("c\(self.serial, privacy: .public): signed in, release \(release, privacy: .public)")
+            } catch {
+                // A retired connection has already logged that it was retired.
+                if !isRetired {
+                    let reason = HermesConnectionLog.reason(error), failedStep = step
+                    HermesConnectionLog.logger.error("c\(self.serial, privacy: .public): sign-in failed at \(failedStep, privacy: .public): \(reason, privacy: .public)")
+                }
+                throw error
+            }
         }
         signInTask = attempt
         return attempt
@@ -151,9 +173,19 @@ import Foundation
 
     /// Mints one single-use ticket and returns the gateway upgrade that presents it.
     func gatewayUpgrade() async throws -> URLRequest {
-        let ticket = try JSONDecoder().decode(BotJSON.self, from: try await data(.ticket))
-        guard let token = ticket["ticket"].text, !token.isEmpty else { throw BotFailure.unsupported }
-        return prepared(try HermesREST.gatewayUpgrade(base: connection.address, ticket: token))
+        // Signs in first, so a failure logged as the ticket's is never the sign-in's, which logs its own step.
+        try await signIn()
+        do {
+            let ticket = try JSONDecoder().decode(BotJSON.self, from: try await data(.ticket))
+            guard let token = ticket["ticket"].text, !token.isEmpty else { throw BotFailure.unsupported }
+            return prepared(try HermesREST.gatewayUpgrade(base: connection.address, ticket: token))
+        } catch {
+            if !isRetired {
+                let reason = HermesConnectionLog.reason(error)
+                HermesConnectionLog.logger.error("c\(self.serial, privacy: .public): sign-in failed at ticket: \(reason, privacy: .public)")
+            }
+            throw error
+        }
     }
 
     /// Whether `saved` is still this connection: the same UUID, address, account and
@@ -170,6 +202,7 @@ import Foundation
     /// flight stops and stores nothing, every call, late reply and resend after this
     /// throws `.stale`, and the gateway socket closes, telling each attached screen once.
     func retire() {
+        HermesConnectionLog.logger.notice("c\(self.serial, privacy: .public): connection retired")
         isRetired = true
         isSignedIn = false
         signInTask?.cancel()
@@ -322,5 +355,32 @@ struct HermesHeaders: Sendable {
         }
         guard let http = parts.url else { return false }
         return APIClient.isSameOrigin(http, as: address)
+    }
+}
+
+/// The device log for a Hermes connection, under the bundle ID and the category
+/// `HermesConnection`: sign-ins, and the gateway socket opening, closing and dropping, a
+/// reply that matched no open call and a call that got no reply. Lines name connections
+/// `c1`, `c2`, … and each connection's sockets `s0`, `s1`, …, never the server itself.
+/// Interpolate only numbers, step, case and method names and `reason(_:)`, each
+/// `privacy: .public`; never a host, address, URL, session or runtime id, Profile name,
+/// title, message text, ticket, replay epoch or install id. Events, deltas and keepalive
+/// pongs are never logged.
+enum HermesConnectionLog {
+    static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "HermesMobile", category: "HermesConnection")
+
+    /// Names `error` for a log line without its description or user info: a `URLError`'s
+    /// user info holds the failing URL, and so the host, and a rejection can carry the
+    /// host's own text. `BotFailure`'s payloads are status and error codes only.
+    static func reason(_ error: Error) -> String {
+        switch error {
+        case let failure as BotFailure: return "\(failure)"
+        case let error as URLError: return "URLError \(error.code.rawValue)"
+        case is DecodingError: return "DecodingError"
+        case is CancellationError: return "cancelled"
+        default:
+            let error = error as NSError
+            return "\(error.domain) \(error.code)"
+        }
     }
 }

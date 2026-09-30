@@ -989,7 +989,7 @@ import XCTest
         let refusing = try await BotHandshakeListener { _ in "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n" }
         defer { refusing.cancel() }
         let refused = refusing.socketTask(on: session)
-        do { _ = try await NativeBotSocket(task: refused).receive(); XCTFail("Expected a refused upgrade") }
+        do { _ = try await NativeBotSocket(task: refused, label: "refused").receive(); XCTFail("Expected a refused upgrade") }
         catch { XCTAssertEqual(error as? BotFailure, .upgradeRefused(403)) }
 
         let dropping = try await BotHandshakeListener { key in
@@ -998,7 +998,7 @@ import XCTest
         }
         defer { dropping.cancel() }
         let dropped = dropping.socketTask(on: session)
-        do { _ = try await NativeBotSocket(task: dropped).receive(); XCTFail("Expected the dropped socket's error") }
+        do { _ = try await NativeBotSocket(task: dropped, label: "dropped").receive(); XCTFail("Expected the dropped socket's error") }
         catch {
             XCTAssertEqual((dropped.response as? HTTPURLResponse)?.statusCode, 101)
             XCTAssertNil(error as? BotFailure, "A drop after the upgrade must reach the transport retry unwrapped")
