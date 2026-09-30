@@ -1023,11 +1023,15 @@ import XCTest
         XCTAssertEqual(identifier.textContentType, .username)
         XCTAssertEqual(password.textContentType, .password)
 
-        // Return on the password field is Save, the same guard as the button.
+        // Return in the account field moves to the password, where Return is
+        // Save, the same guard as the button.
         XCTAssertTrue(identifier.becomeFirstResponder())
         identifier.insertText("tomsmith")
         await settle(window)
-        XCTAssertTrue(password.becomeFirstResponder())
+        identifier.sendActions(for: .editingDidEndOnExit)
+        await settle(window)
+        XCTAssertTrue(password.isFirstResponder, "Return in the account field moves to the password")
+        XCTAssertEqual(sent, [], "Return in the account field never saves")
         password.sendActions(for: .editingDidEndOnExit)
         await settle(window)
         XCTAssertEqual(sent, [], "No password yet, so nothing is saved")
