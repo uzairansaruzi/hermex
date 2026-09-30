@@ -399,9 +399,11 @@ own tasks (`tour`, `terminal.read`, `window.read`, `preview.read`,
 `preview.act`) and a request queued behind the card are silent too. A stopped
 run is silent when this phone stopped it: a Stop or an Interrupt send
 (`session.redirect`) in flight, an acknowledged Stop, or an accepted Interrupt
-or voice stop for the card it stopped. A cancel that arrives while the phone is away is matched in the
-reconnect replay against the envelope (id and method only) on screen when it
-left; a truncated replay stays silent. The note clears on the next accepted
+or voice stop for the card it stopped. A cancel that arrives while the phone is
+away is matched in the reconnect replay against the envelope (id and method
+only) on screen when it left. It must be the replay's last `request.cancel`:
+request frames are not sequenced, so a later cancel is the only trace of a
+card that took the slot after it. A truncated replay stays silent. The note clears on the next accepted
 prompt, a new request, or leaving the connection, and is never cached.
 
 Connection operations (`manage_connections`) are an event plus an RPC, not a

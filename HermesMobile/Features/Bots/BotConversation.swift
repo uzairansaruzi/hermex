@@ -725,15 +725,16 @@ import Observation
         if cursor < latest { replayWasReset = true }
         epoch = receivedEpoch; sequence = latest
         // A card withdrawn while the phone was away leaves its note, but only from
-        // a complete replay: a truncated one may have lost what came after.
+        // a complete replay whose last cancel is that card's: host requests are
+        // unsequenced frames, so a later cancel is the only trace of a request
+        // that took the slot after it, and a truncated replay may have lost more.
         if let left = envelopeShownWhenLeft {
             envelopeShownWhenLeft = nil
-            let cancel = missed.last { event in
-                event["type"].text == "request.cancel"
-                    && BotRequestWithdrawal.Envelope(id: event["payload"]["id"].text ?? "",
-                                                     method: event["payload"]["method"].text ?? "") == left
+            let cancel = missed.last { $0["type"].text == "request.cancel" }?["payload"]
+            if !replayWasReset, let cancel,
+               BotRequestWithdrawal.Envelope(id: cancel["id"].text ?? "", method: cancel["method"].text ?? "") == left {
+                withdrawnRequest = withdrawal(of: left, reason: cancel["reason"].text)
             }
-            if !replayWasReset, let cancel { withdrawnRequest = withdrawal(of: left, reason: cancel["payload"]["reason"].text) }
         }
         // Replay never appends text; the full snapshot below owns it. It does rebuild
         // the current turn's activity: every missed event when the sequence was

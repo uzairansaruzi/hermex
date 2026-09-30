@@ -1922,5 +1922,17 @@ extension BotAnsweringTests {
             model.suspend()
             XCTAssertNil(model.withdrawnRequest)
         }
+        // A later request's cancel in the same replay means another card took the
+        // slot after this one (its unsequenced frame is not replayed): stay silent.
+        let wire = BotFixtureWire()
+        let model = await approvalOnScreen(wire)
+        model.suspend()
+        wire.replay = BotFixtureWire.replay(latest: 2, truncated: false,
+                                            events: [cancel("srq-a", "approval", reason: "timeout", seq: 1),
+                                                     cancel("srq-b", "approval", reason: "resolved", seq: 2)])
+        await model.recover()
+        XCTAssertNil(model.pendingRequest)
+        XCTAssertNil(model.withdrawnRequest)
+        model.suspend()
     }
 }
