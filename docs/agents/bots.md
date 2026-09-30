@@ -398,8 +398,8 @@ silent; other requests answered elsewhere send no cancel at all. The renderer's
 own tasks (`tour`, `terminal.read`, `window.read`, `preview.read`,
 `preview.act`) and a request queued behind the card are silent too. A stopped
 run is silent when this phone stopped it: a Stop or an Interrupt send
-(`session.redirect`) in flight, an acknowledged Stop, or an accepted Interrupt
-or voice stop for the card it stopped. A cancel that arrives while the phone is
+(`session.redirect`) in flight, an acknowledged Stop, or an Interrupt the host
+answered `redirected` (not `queued`) or a voice stop, for the card it stopped. A cancel that arrives while the phone is
 away is matched in the reconnect replay against the envelope (id and method
 only) on screen when it left. It must be the replay's last `request.cancel`:
 request frames are not sequenced, so a later cancel is the only trace of a

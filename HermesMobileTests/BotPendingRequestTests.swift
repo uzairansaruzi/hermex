@@ -1783,16 +1783,19 @@ extension BotAnsweringTests {
     }
 
     /// Interrupt (Stop & send) and a voice stop are this phone's own stop too, even when the
-    /// host withdraws the card before it acknowledges the message. A plain Queue
-    /// stops nothing, so a stop from elsewhere after it still says so.
+    /// host withdraws the card before it acknowledges the message. A plain Queue,
+    /// and an Interrupt the host queued for the next turn because the current one
+    /// was still being built, stop nothing, so a stop from elsewhere after them
+    /// still says so.
     func testStopAndSendAndAVoiceStopWithdrawWithoutANote() async throws {
-        let cases: [(BotPromptMode, BotJSON?, Bool)] = [
-            (.redirect, .object(["status": .string("redirected")]), false),
-            (.redirect, .object(["status": .string("redirected")]), true),
-            (.queue, .object(["voice_stopped": .bool(true)]), false),
-            (.queue, nil, false)
+        let cases: [(BotPromptMode, BotJSON?, Bool, stoppedHere: Bool)] = [
+            (.redirect, .object(["status": .string("redirected")]), false, true),
+            (.redirect, .object(["status": .string("redirected")]), true, true),
+            (.queue, .object(["voice_stopped": .bool(true)]), false, true),
+            (.queue, nil, false, false),
+            (.redirect, .object(["status": .string("queued")]), false, false)
         ]
-        for (mode, reply, beforeReply) in cases {
+        for (mode, reply, beforeReply, stoppedHere) in cases {
             for reason in ["interrupted", "session_closed"] {
                 let wire = BotFixtureWire(); wire.openClarify = BotFixtureWire.clarify()
                 wire.promptReply = reply
@@ -1813,8 +1816,8 @@ extension BotAnsweringTests {
                 }
                 XCTAssertNil(model.pendingRequest)
                 XCTAssertEqual(model.withdrawnRequest?.message,
-                               reply == nil ? "Question withdrawn because the work stopped." : nil,
-                               "\(mode) \(reason) before reply: \(beforeReply)")
+                               stoppedHere ? nil : "Question withdrawn because the work stopped.",
+                               "\(mode) \(reply?["status"].text ?? "") \(reason) before reply: \(beforeReply)")
                 model.suspend()
             }
         }

@@ -1047,8 +1047,9 @@ import Observation
                 return
             }
             guard outcome != .unknown else { throw BotFailure.unsupported }
-            // An Interrupt send (Stop & send) and a voice stop stop the work behind the card on screen.
-            if action.mode == .redirect || outcome == .voiceStopped, let shown { envelopeStoppedHere = shown }
+            // An Interrupt send (Stop & send) and a voice stop stop the work behind the card on
+            // screen. An Interrupt queued for the next turn (`redirectQueued`) stopped nothing.
+            if outcome == .redirected || outcome == .voiceStopped, let shown { envelopeStoppedHere = shown }
             // A voice-stop phrase is taken but starts no turn, so it is not a send.
             if outcome != .voiceStopped { emit(.sent); clearTurnOutcome(); withdrawnRequest = nil }
             drafts.setDraft("", for: draftKey)
