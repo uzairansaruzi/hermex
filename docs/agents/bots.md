@@ -1396,6 +1396,13 @@ centered system lines. `room.activity`, `turn.settled`, `turn.deferred`,
 room-wide working/blocked state, never an inferred active member. Pending actions
 use the participant controls below; unknown kinds show Desktop attention. Room profiles link to existing bot profiles and expose the lifecycle controls below.
 
+A new room opens on a welcome instead of an empty transcript: every member's
+still face and name in centred rows of up to three (stacked at accessibility
+text sizes), then “Say something to the group” while the composer shows. It
+shows while the room is live with no earlier history and no user or member
+message loaded (`BotRoomReader.showsWelcome`), so a rename before anyone speaks
+keeps it, and the first message replaces it for good.
+
 The socket allowlist admits four room reads, four participant commands and three lifecycle commands with typed parameter checks.
 Room RPC errors preserve `data.reason`: `room_history_expired` or code 4114 removes
 the room with a toast; 4123 asks for a gateway restart on the Mac. No replica, peer, promotion, or demotion method is permitted.

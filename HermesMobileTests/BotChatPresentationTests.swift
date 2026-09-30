@@ -198,6 +198,47 @@ import XCTest
         XCTAssertFalse(editor.acceptsAttachments)
     }
 
+    func testANewRoomShowsItsMembersUntilTheFirstMessage() async throws {
+        let server = URL(string: "https://room.example")!
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
+        let wire = RoomWire(); wire.kind = "message.member"
+        let names = ["Ada", "Linus", "Grace"]
+        wire.members = names.map { name in
+            .object(["member_id": .string(name.lowercased()), "profile": .string(name.lowercased()), "display_name": .string(name)])
+        }
+        let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 0)))
+        let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: room.id),
+                                   connection: connection, room: room, cache: BotHistoryCache(), makeWire: { _ in wire })
+        let window = try show(NavigationStack {
+            BotRoomView(reader: reader, roster: [], avatars: [:])
+        }.environment(\.scenePhase, .inactive))
+        defer { reader.close(); close(window) }
+        await reader.open()
+        let prompt = "Say something to the group"
+        let welcome = try await screenshot(window, name: "895-new-room-welcome", awaiting: names + [prompt])
+        for text in names + [prompt] { XCTAssertTrue(welcome.contains(text), "Expected \(text) on the new room: \(welcome)") }
+        XCTAssertFalse(welcome.contains("No messages yet"), welcome)
+        let transcript = try XCTUnwrap(descendants(window).compactMap { $0 as? UIScrollView }.first {
+            !($0 is UITextView) && ($0.keyboardDismissMode == .interactive || $0.keyboardDismissMode == .interactiveWithAccessory)
+        })
+        let visible = transcript.bounds.height - transcript.adjustedContentInset.top - transcript.adjustedContentInset.bottom
+        XCTAssertEqual(transcript.contentSize.height, visible, accuracy: 1,
+                       "The welcome fills the visible transcript without scrolling: \(transcript.bounds), \(transcript.adjustedContentInset)")
+
+        wire.authority = "another-install"
+        await reader.poll()
+        let foreign = try await screenshot(window, name: "895-foreign-room-welcome", awaiting: names + ["Managed by another Hermes"])
+        for text in names { XCTAssertTrue(foreign.contains(text), "A foreign room still shows \(text): \(foreign)") }
+        XCTAssertFalse(foreign.contains(prompt), "A room this phone can't write to has no prompt: \(foreign)")
+
+        wire.latest = 1
+        await reader.poll()
+        await settle(window) { (try? replyLeaves(in: window))?.visible.contains("Message 1") == true }
+        XCTAssertTrue(try replyLeaves(in: window).visible.contains("Message 1"))
+        let conversation = try screenshot(window, name: "895-first-message")
+        for text in names { XCTAssertFalse(conversation.contains(text), "The welcome leaves with the first message: \(conversation)") }
+    }
+
     func testRoomMessageSearchShowsRoomAndSenderAfterOpeningTheRoom() async throws {
         let server = URL(string: "https://search.example")!
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")

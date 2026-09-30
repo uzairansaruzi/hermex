@@ -30,51 +30,59 @@ import SwiftUI
         ScrollViewReader { proxy in
             let start = window.start(in: reader.events, keeping: pendingSequence)
             let hasHiddenEvents = start > 0
+            let showsWelcome = reader.showsWelcome
             ScrollView {
-                // Eager over a bounded window, like Bot Chat: member replies are
-                // hosted selection documents, and a lazy stack places unbuilt rows
-                // from an estimate, so the jump to a search hit missed on a cold
-                // open (issue #553). The window keeps the build to the newest page.
-                VStack(spacing: 16) {
-                    if hasHiddenEvents || reader.hasEarlier {
-                        Button("Load earlier") { loadEarlier(proxy: proxy) }
-                            .disabled(!hasHiddenEvents && (reader.loadingEarlier || reader.link != .live))
-                    }
-                    if reader.foreignAuthority {
-                        Text("Managed by another Hermes").font(.caption).foregroundStyle(.secondary)
-                    }
-                    let gapStarts = BotRoomEvent.gapStarts(in: reader.events[start...])
-                    ForEach(reader.events[start...]) { event in
-                        // One view per event, so a search hit's scroll lands on the event.
-                        VStack(spacing: 16) {
-                            if gapStarts.contains(event.seq), let timestamp = event.timestamp {
-                                TranscriptTimeSeparator(timestamp: timestamp)
-                            }
-                            BotRoomEventView(
-                                event: event,
-                                room: reader.room,
-                                roster: roster,
-                                avatars: avatars,
-                                transcriptMediaCacheNamespace: "\(reader.key.server.absoluteString)|bot-room:\(reader.room.id)"
-                            )
+                // At least as tall as the visible transcript while a new room shows
+                // its welcome, which centres it; taller, and scrolling, only when
+                // the welcome is (at accessibility text sizes).
+                ZStack {
+                    if showsWelcome { Color.clear.containerRelativeFrame(.vertical) }
+                    // Eager over a bounded window, like Bot Chat: member replies are
+                    // hosted selection documents, and a lazy stack places unbuilt rows
+                    // from an estimate, so the jump to a search hit missed on a cold
+                    // open (issue #553). The window keeps the build to the newest page.
+                    VStack(spacing: 16) {
+                        if hasHiddenEvents || reader.hasEarlier {
+                            Button("Load earlier") { loadEarlier(proxy: proxy) }
+                                .disabled(!hasHiddenEvents && (reader.loadingEarlier || reader.link != .live))
                         }
+                        if reader.foreignAuthority {
+                            Text("Managed by another Hermes").font(.caption).foregroundStyle(.secondary)
+                        }
+                        let gapStarts = BotRoomEvent.gapStarts(in: reader.events[start...])
+                        ForEach(reader.events[start...]) { event in
+                            // One view per event, so a search hit's scroll lands on the event.
+                            VStack(spacing: 16) {
+                                if gapStarts.contains(event.seq), let timestamp = event.timestamp {
+                                    TranscriptTimeSeparator(timestamp: timestamp)
+                                }
+                                BotRoomEventView(
+                                    event: event,
+                                    room: reader.room,
+                                    roster: roster,
+                                    avatars: avatars,
+                                    transcriptMediaCacheNamespace: "\(reader.key.server.absoluteString)|bot-room:\(reader.room.id)"
+                                )
+                            }
+                        }
+                        if showsWelcome {
+                            BotRoomWelcomeView(room: reader.room, roster: roster, avatars: avatars,
+                                               showsPrompt: reader.showsComposer)
+                        }
+                        Color.clear.frame(height: 0).id("room-actions")
+                        ForEach(Array(reader.status.actions.enumerated()), id: \.offset) { _, action in
+                            BotRoomActionCard(reader: reader, action: action)
+                        }
+                        Color.clear.frame(height: 1).id("room-bottom")
                     }
-                    if reader.events.isEmpty && reader.link == .live {
-                        Text("No messages yet.").foregroundStyle(.secondary)
+                    .padding(16)
+                    // Centred in the reading column; the scroll view stays full width.
+                    .frame(maxWidth: ChatReadingWidth.maximumWidth(horizontalPadding: 16))
+                    .frame(maxWidth: .infinity)
+                    .background {
+                        ChatScrollObserver(isStreaming: false, onFollowEvent: handleFollowEvent, onMetrics: updateScrollMetrics)
+                            .accessibilityHidden(true)
                     }
-                    Color.clear.frame(height: 0).id("room-actions")
-                    ForEach(Array(reader.status.actions.enumerated()), id: \.offset) { _, action in
-                        BotRoomActionCard(reader: reader, action: action)
-                    }
-                    Color.clear.frame(height: 1).id("room-bottom")
-                }
-                .padding(16)
-                // Centred in the reading column; the scroll view stays full width.
-                .frame(maxWidth: ChatReadingWidth.maximumWidth(horizontalPadding: 16))
-                .frame(maxWidth: .infinity)
-                .background {
-                    ChatScrollObserver(isStreaming: false, onFollowEvent: handleFollowEvent, onMetrics: updateScrollMetrics)
-                        .accessibilityHidden(true)
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -357,6 +365,68 @@ struct BotRoomMemberAvatar: View {
         } else if let placeholder = BotProfile(.object(["name": .string("unknown")])) {
             BotAvatarView(profile: placeholder, avatar: nil, size: size, motion: .still)
         }
+    }
+}
+
+/// What a new room opens on: every member's face and name, then, when this
+/// phone can write to the room, the invitation to speak. One VoiceOver element.
+/// Faces stay still, like the room's other faces (#517).
+struct BotRoomWelcomeView: View {
+    let room: BotGroupRoom
+    let roster: [BotProfile]
+    let avatars: [String: UIImage]
+    let showsPrompt: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        VStack(spacing: 20) {
+            if dynamicTypeSize.isAccessibilitySize {
+                // Stacked, so full names fit at accessibility text sizes.
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(room.members) { member in
+                        HStack(spacing: 14) {
+                            BotRoomMemberAvatar(member: member, roster: roster, avatars: avatars, size: 44)
+                            Text(member.name)
+                        }
+                    }
+                }
+            } else {
+                VStack(spacing: 14) {
+                    ForEach(Self.rows(of: room.members), id: \.startIndex) { row in
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(row) { member in
+                                VStack(spacing: 6) {
+                                    BotRoomMemberAvatar(member: member, roster: roster, avatars: avatars, size: 44)
+                                    Text(member.name).font(.caption).lineLimit(1).truncationMode(.middle)
+                                }
+                                .frame(maxWidth: 100)
+                            }
+                        }
+                    }
+                }
+            }
+            if showsPrompt {
+                Text("Say something to the group")
+                    .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var accessibilityLabel: String {
+        let names = room.members.map(\.name).formatted(.list(type: .and))
+        return showsPrompt ? String(localized: "Group members: \(names). Say something to the group.")
+            : String(localized: "Group members: \(names).")
+    }
+
+    /// Rows of up to three, balanced so four members make two rows of two.
+    private static func rows(of members: [BotGroupRoom.Member]) -> [ArraySlice<BotGroupRoom.Member>] {
+        guard !members.isEmpty else { return [] }
+        let rowCount = (members.count + 2) / 3
+        let perRow = (members.count + rowCount - 1) / rowCount
+        return stride(from: 0, to: members.count, by: perRow).map { members[$0..<min($0 + perRow, members.count)] }
     }
 }
 

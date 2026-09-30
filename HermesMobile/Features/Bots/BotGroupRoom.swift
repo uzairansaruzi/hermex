@@ -94,6 +94,11 @@ struct BotRoomEvent: Identifiable, Equatable {
             (id: $0.seq, timestamp: ["message.user", "message.member"].contains($0.kind) ? $0.timestamp : nil)
         })
     }
+    /// True once the user or a member has said something. System rows such as
+    /// a rename don't count, so a room renamed before its first message is new.
+    static func hasConversation(in events: some Sequence<BotRoomEvent>) -> Bool {
+        events.contains { ["message.user", "message.member"].contains($0.kind) }
+    }
     var visible: Bool {
         ["message.user", "message.member", "turn.failed", "turn.cancelled", "room.stop_requested", "room.renamed"].contains(kind)
     }

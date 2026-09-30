@@ -210,6 +210,36 @@ import XCTest
         XCTAssertEqual(BotRoomEvent.gapStarts(in: events[1...]), [2, 6], "the window's first message is dated")
     }
 
+    func testARoomIsNewUntilItsFirstUserOrMemberMessage() async throws {
+        func events(_ kinds: String...) -> [BotRoomEvent] {
+            kinds.enumerated().compactMap { BotRoomEvent(RoomFixture.event($0.offset + 1, kind: $0.element)) }
+        }
+        XCTAssertFalse(BotRoomEvent.hasConversation(in: []))
+        XCTAssertFalse(BotRoomEvent.hasConversation(in: events("room.renamed", "turn.failed")),
+                       "A rename before anyone speaks leaves the room new")
+        XCTAssertTrue(BotRoomEvent.hasConversation(in: events("room.renamed", "message.user")))
+        XCTAssertTrue(BotRoomEvent.hasConversation(in: events("message.member")))
+
+        let wire = RoomWire(); wire.latest = 1; wire.kind = "room.renamed"
+        let reader = makeReader(wire)
+        XCTAssertFalse(reader.showsWelcome, "A room that hasn't loaded can't say it is empty")
+        await reader.open()
+        XCTAssertTrue(reader.showsWelcome)
+        reader.draft = "hello everyone"
+        await reader.send()
+        XCTAssertEqual(reader.events.map(\.kind), ["room.renamed", "message.user"])
+        XCTAssertFalse(reader.showsWelcome, "The first message ends the welcome")
+        reader.close()
+
+        let olderWire = RoomWire(); olderWire.latest = 250; olderWire.kind = "room.renamed"
+        let older = makeReader(olderWire)
+        await older.open()
+        XCTAssertTrue(older.hasEarlier)
+        XCTAssertFalse(BotRoomEvent.hasConversation(in: older.events))
+        XCTAssertFalse(older.showsWelcome, "Only system rows are loaded, but earlier history may hold messages")
+        older.close()
+    }
+
     func testMemberFallbackAndForeignAuthorityAndScopedIdentity() throws {
         let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 0)))
         let event = try XCTUnwrap(BotRoomEvent(RoomFixture.event(1, kind: "message.member")))
@@ -740,6 +770,8 @@ enum RoomFixture {
     var capabilities = RoomFixture.capabilities
     var disbanded = false
     var roomName = "Comms"
+    /// The members `groups.state` reports; nil keeps the fixture's one member.
+    var members: [BotJSON]?
     var listedRooms: [BotJSON]?
     var listCalls = 0
     var listFailure: Error?
@@ -834,6 +866,7 @@ enum RoomFixture {
             if holdState { return await withCheckedContinuation { held = $0; onHeld?() } }
             var room = RoomFixture.room(latest: latest).fields!
             room["name"] = .string(roomName)
+            if let members { room["members"] = .array(members) }
             room["authority_gateway_id"] = .string(authority); room["authority_epoch"] = .number(Double(epoch))
             return .object(["room": .object(room), "driver_status": driverStatus])
         case "groups.log":

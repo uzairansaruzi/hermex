@@ -204,6 +204,9 @@ import Observation
         link == .live && !uncertainDisband && !foreignAuthority && capabilities.authority != nil && room.authority == capabilities.authority
     }
     var showsComposer: Bool { !foreignAuthority }
+    /// A new room opens on its members instead of an empty transcript: live, with
+    /// no earlier history to load and no message from the user or a member yet.
+    var showsWelcome: Bool { link == .live && !hasEarlier && !BotRoomEvent.hasConversation(in: events) }
     var showsStop: Bool { status.working || status.stopping > 0 || awaitingStop }
     var mayStop: Bool { allows("groups.stop") && !busy && !awaitingStop && status.stopping == 0 && status.stoppable > 0 }
     var mayEditDraft: Bool { !busy && uncertainSend == nil }
