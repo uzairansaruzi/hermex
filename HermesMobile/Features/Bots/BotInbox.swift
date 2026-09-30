@@ -377,10 +377,12 @@ import UIKit
 
     /// A chat or room opened from this inbox saw the host refuse `rejected` and is
     /// handing off to the sign-in form. The inbox takes the same stop as its own 401,
-    /// so the `open()` that runs as it reappears sends nothing. A record other than the
-    /// inbox's current one is ignored.
+    /// so the `open()` that runs as it reappears sends nothing. A record that signs in
+    /// differently from the inbox's is ignored; an install id the inbox recorded after
+    /// the chat opened is not a difference.
     func noteRejectedSignIn(_ rejected: BotConnection) {
-        guard rejected == connection else { return }
+        guard let connection, rejected.id == connection.id, rejected.address == connection.address,
+              rejected.username == connection.username, rejected.password == connection.password else { return }
         close(); setLiveStatuses([:]); link = .disconnected
         routeFailures = 0; routeAdvice = nil
         errorMessage = BotConnectionAdvice.message(for: BotFailure.rejected(401), address: rejected.address)

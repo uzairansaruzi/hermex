@@ -140,7 +140,7 @@ import SwiftUI
             }
         }
         .navigationDestination(isPresented: $showingProfile) {
-            BotRoomProfileView(reader: reader, roster: roster, avatars: avatars)
+            BotRoomProfileView(reader: reader, roster: roster, avatars: avatars, onUpdateSignIn: onUpdateSignIn)
         }
         .task(id: revision) {
             visible = true

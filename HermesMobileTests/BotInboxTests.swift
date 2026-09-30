@@ -780,7 +780,7 @@ import XCTest
     /// A chat or room saw the 401 while the inbox was off screen. Handing off to the form
     /// marks the inbox, so its reappearing `open()` sends nothing; another record is ignored.
     func testAChatsRejectedPasswordIsNotSentAgainAsTheInboxReturns() async throws {
-        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        let wire = BotInboxFixtureWire(roster: [row("triage")]); wire.serverInstallID = "install-1"
         var spare = 0
         let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
                              avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
@@ -788,13 +788,16 @@ import XCTest
         }
         await inbox.open()
         let saved = try XCTUnwrap(inbox.connection)
+        XCTAssertEqual(saved.installID, "install-1")
         inbox.close()
 
         var other = saved; other.password = "older"
         inbox.noteRejectedSignIn(other)
-        XCTAssertFalse(inbox.needsSignIn, "a chat built from another record says nothing about this one")
+        XCTAssertFalse(inbox.needsSignIn, "a chat built from another sign-in says nothing about this one")
 
-        inbox.noteRejectedSignIn(saved)
+        // The chat opened before the inbox recorded the host's install id.
+        var chat = saved; chat.installID = nil
+        inbox.noteRejectedSignIn(chat)
         await inbox.open()
         XCTAssertEqual(spare, 1, "the refused password is not sent again")
         XCTAssertEqual(inbox.link, .disconnected)
