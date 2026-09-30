@@ -173,14 +173,14 @@ import OSLog
 
     /// Mints one single-use ticket and returns the gateway upgrade that presents it.
     func gatewayUpgrade() async throws -> URLRequest {
-        // Signs in first, so a failure logged as the ticket's is never the sign-in's, which logs its own step.
-        try await signIn()
         do {
             let ticket = try JSONDecoder().decode(BotJSON.self, from: try await data(.ticket))
             guard let token = ticket["ticket"].text, !token.isEmpty else { throw BotFailure.unsupported }
             return prepared(try HermesREST.gatewayUpgrade(base: connection.address, ticket: token))
         } catch {
-            if !isRetired {
+            // A failed sign-in, including the one after the ticket's 401, leaves this
+            // connection signed out and has already logged its own step.
+            if !isRetired, isSignedIn {
                 let reason = HermesConnectionLog.reason(error)
                 HermesConnectionLog.logger.error("c\(self.serial, privacy: .public): sign-in failed at ticket: \(reason, privacy: .public)")
             }
