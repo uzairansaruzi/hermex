@@ -777,6 +777,31 @@ import XCTest
         XCTAssertFalse(inbox.needsSignIn)
     }
 
+    /// A chat or room saw the 401 while the inbox was off screen. Handing off to the form
+    /// marks the inbox, so its reappearing `open()` sends nothing; another record is ignored.
+    func testAChatsRejectedPasswordIsNotSentAgainAsTheInboxReturns() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        var spare = 0
+        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
+                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
+            spare += 1; return wire
+        }
+        await inbox.open()
+        let saved = try XCTUnwrap(inbox.connection)
+        inbox.close()
+
+        var other = saved; other.password = "older"
+        inbox.noteRejectedSignIn(other)
+        XCTAssertFalse(inbox.needsSignIn, "a chat built from another record says nothing about this one")
+
+        inbox.noteRejectedSignIn(saved)
+        await inbox.open()
+        XCTAssertEqual(spare, 1, "the refused password is not sent again")
+        XCTAssertEqual(inbox.link, .disconnected)
+        XCTAssertEqual(inbox.errorMessage, "Hermes didn't accept the username or password.")
+        XCTAssertTrue(inbox.needsSignIn)
+    }
+
     func testOtherRefusalsKeepReconnect() async throws {
         for failure in [BotFailure.notDashboard, .rejected(403), .blocked] {
             let wire = BotInboxFixtureWire(roster: [row("triage")])

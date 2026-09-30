@@ -144,8 +144,7 @@ import SwiftUI
         }
         .task(id: revision) {
             visible = true
-            // A rejected password is never sent again on its own (#884).
-            if scenePhase == .active && !reader.needsSignIn { await reader.open(owner: owner) }
+            if scenePhase == .active { await reader.open(owner: owner) }
         }
         .onChange(of: scenePhase) {
             if scenePhase == .active && visible { revision = UUID() }

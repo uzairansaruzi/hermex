@@ -16,9 +16,9 @@ import Observation
     private(set) var link = Link.idle
     private(set) var errorMessage: String?
     /// True after the host refused the saved username or password (`.rejected(401)`).
-    /// The room offers Update sign-in instead of Reconnect and does not reopen on
-    /// foreground: it reconnects with the record it was built from, so the fix goes
-    /// through the inbox.
+    /// The room offers Update sign-in instead of Reconnect. It stays set for this
+    /// reader's life, because the reader only signs in with the record it was built
+    /// from; the fix goes through the inbox, which opens the room with a new reader.
     private(set) var needsSignIn = false
     private(set) var hasEarlier = false
     private(set) var loadingEarlier = false
@@ -77,6 +77,9 @@ import Observation
 
     /// Room and profile share state, but each visible screen claims async ownership.
     /// Navigation callbacks can arrive in either order; the old screen cannot close the new socket.
+    /// Once the host has refused this reader's password, a reopen only restores the saved
+    /// history and stops: the reader signs in with the record it was built from, so it
+    /// never sends that password again (#884).
     func open(owner: UUID? = nil) async {
         viewOwner = owner
         suspend()
@@ -87,8 +90,16 @@ import Observation
             log = BotRoomLog(); events = []; hasEarlier = false; hasRecentLog = false
         }
         recentOwner = cache.recent.begin(.room(key))
+        // Checked before `makeWire`, which can retire a newer shared connection.
+        if needsSignIn {
+            await historyRemoval?.value
+            let cached = try? await cache.roomHistory(key)
+            guard viewOwner == owner, wire == nil, !Task.isCancelled else { return }
+            restore(cached); link = .stopped
+            return
+        }
         let client = makeWire(connection)
-        wire = client; link = .connecting; errorMessage = nil; needsSignIn = false
+        wire = client; link = .connecting; errorMessage = nil
         client.onDisconnect = { [weak self] error in
             guard let self, self.wire === client else { return }
             self.fail(error, client)
@@ -97,12 +108,7 @@ import Observation
             await historyRemoval?.value
             let cached = try? await cache.roomHistory(key)
             try check(client)
-            if let cached, !hasRecentLog {
-                var restored = BotRoomLog()
-                restored.apply(cached.replayPage)
-                restored.loadedEarlier(from: cached.earlierBoundary ?? 0)
-                log = restored; publishLog()
-            }
+            restore(cached)
             try await client.connect()
             try check(client)
             let value = try await client.call(.groupsCapabilities)
@@ -400,6 +406,15 @@ import Observation
             foreignAuthority = true
         }
         return moved
+    }
+
+    /// Shows the disk history when `open` found no recent window to restore.
+    private func restore(_ cached: BotHistoryCache.Snapshot?) {
+        guard let cached, !hasRecentLog else { return }
+        var restored = BotRoomLog()
+        restored.apply(cached.replayPage)
+        restored.loadedEarlier(from: cached.earlierBoundary ?? 0)
+        log = restored; publishLog()
     }
 
     private func publishLog() {

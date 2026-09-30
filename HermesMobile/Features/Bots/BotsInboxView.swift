@@ -286,7 +286,8 @@ import SwiftUI
 
     /// Opens the sign-in form for a password the host refused. A chat or room returns
     /// here first: its client is bound to the rejected sign-in, and the inbox reloads the
-    /// record when the form closes.
+    /// record when the form closes. Its callback calls `noteRejectedSignIn` before it
+    /// pops, so the inbox's reappearing `open()` does not send that password again.
     private func updateSignIn() {
         updatingSignIn = true; showingSetup = true
     }
@@ -296,7 +297,7 @@ import SwiftUI
                     avatars: inbox.avatars, conversation: selection.conversation, onConversationUnavailable: {
                         selection.profile = nil
                         toast = String(localized: "That conversation is no longer available.")
-                    }, onUpdateSignIn: { selection.profile = nil; updateSignIn() })
+                    }, onUpdateSignIn: { inbox.noteRejectedSignIn(connection); selection.profile = nil; updateSignIn() })
             // A composite rather than a concatenation: a Profile name and a
             // conversation root are both arbitrary server strings, so joining them
             // could let two destinations share one identity and keep the wrong
@@ -540,7 +541,7 @@ extension BotsInboxView {
                     }, onChanged: { inbox.updateRoom($0, connectionID: key.connectionID) }, onDisbanded: {
                         inbox.removeRoom(key); selection.room = nil
                     }), roster: inbox.profiles, avatars: inbox.avatars,
-                        onUpdateSignIn: { selection.room = nil; updateSignIn() })
+                        onUpdateSignIn: { inbox.noteRejectedSignIn(connection); selection.room = nil; updateSignIn() })
                     .id(key)
                 }
             }

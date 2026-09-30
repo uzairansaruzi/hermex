@@ -565,25 +565,35 @@ import XCTest
         XCTAssertNil(reader.uncertainSend)
     }
 
-    /// A refused password stops the room with Update sign-in; any other stop keeps
-    /// Reconnect, and a successful open clears it (#884).
+    /// A refused password stops the room with Update sign-in, and any other stop keeps
+    /// Reconnect. A reopen after backgrounding shows the saved history again but builds
+    /// no client, so the refused password is never sent again (#884).
     func testARejectedPasswordStopsTheRoomNeedingSignIn() async {
-        let wire = RoomWire(); wire.connectFailure = BotFailure.rejected(401)
-        let reader = makeReader(wire)
+        let wire = RoomWire(); wire.latest = 3; wire.connectFailure = BotFailure.transport
+        var clients = 0
+        let reader = BotRoomReader(key: key(), connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!,
+                                   cache: BotHistoryCache(), makeWire: { _ in clients += 1; return wire })
         await reader.open()
         XCTAssertEqual(reader.link, .stopped)
-        XCTAssertTrue(reader.needsSignIn)
+        XCTAssertFalse(reader.needsSignIn, "a lost route keeps Reconnect")
 
-        wire.connectFailure = BotFailure.transport
-        await reader.open()
-        XCTAssertEqual(reader.link, .stopped)
-        XCTAssertFalse(reader.needsSignIn)
-
-        wire.connectFailure = BotFailure.rejected(401); await reader.open()
         wire.connectFailure = nil; await reader.open()
         XCTAssertEqual(reader.link, .live)
-        XCTAssertFalse(reader.needsSignIn)
         reader.close()
+
+        wire.connectFailure = BotFailure.rejected(401); await reader.open()
+        XCTAssertEqual(reader.link, .stopped)
+        XCTAssertTrue(reader.needsSignIn)
+        XCTAssertEqual(clients, 3)
+
+        reader.close()
+        XCTAssertTrue(reader.events.isEmpty)
+        await reader.open()
+        XCTAssertEqual(clients, 3, "the refused password is not sent again")
+        XCTAssertEqual(reader.link, .stopped)
+        XCTAssertTrue(reader.needsSignIn)
+        XCTAssertEqual(reader.events.map(\.seq), [1, 2, 3], "the saved history is back on screen")
+        XCTAssertEqual(reader.errorMessage, "Hermes didn't accept the username or password.")
     }
 
     func testRoomMentionsUseHandlesAndIncludeBroadcastTargets() throws {

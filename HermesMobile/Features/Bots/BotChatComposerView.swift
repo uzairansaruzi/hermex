@@ -591,8 +591,8 @@ enum BotComposerPill: Equatable {
 
     /// Rooms share the action pill, but their host exposes no turn start time.
     /// Routine working/connecting states stay quiet; requests and recovery remain reachable.
-    /// `needsSignIn` holds Update sign-in in place even after a background leaves the
-    /// room idle, because the room does not reopen with a rejected password.
+    /// `needsSignIn` holds Update sign-in in place even while a background leaves the
+    /// room idle, because the room never signs in again with a rejected password.
     static func room(link: BotRoomReader.Link, blocked: Bool, hasActions: Bool,
                      mayRetry: Bool, needsSignIn: Bool = false, errorText: String?) -> BotComposerPill? {
         if let errorText { return .error(errorText) }

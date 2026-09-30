@@ -49,7 +49,8 @@ import SwiftUI
             if reader.finishingStop { Text("Finishing stop…").font(.callout) }
             if reader.link == .stopped {
                 if let error = reader.errorMessage { Text(error).font(.callout) }
-                Button("Reconnect") { revision = UUID() }
+                // The reader never resends a refused password; the room's Update sign-in is the way out (#884).
+                if !reader.needsSignIn { Button("Reconnect") { revision = UUID() } }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
