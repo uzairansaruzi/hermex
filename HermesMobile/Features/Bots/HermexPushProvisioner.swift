@@ -393,10 +393,14 @@ import UserNotifications
         }
     }
 
-    /// Settings' plugin update (#851), from a confirmed tap only: reinstall hermex-push over
-    /// itself (cloned again from `main`), restart the gateway, then read what the host has
-    /// loaded. The keys stay in `plugin-data`, so a paired phone stays paired; an update
-    /// started from a pairing failure ends here too, since pairing waits for its own tap.
+    /// Settings' plugin update (#851), from a confirmed tap only: turn hermex-push off,
+    /// reinstall it over itself (cloned again from `main`, which turns it back on), restart
+    /// the gateway, then read what the host has loaded. Current Hermes asks at a terminal
+    /// before it replaces an enabled plugin that declares Python packages, and refuses the
+    /// dashboard's reinstall; a disabled one skips that question, and enabling it runs
+    /// Hermes's own dependency admission. The keys stay in `plugin-data`, so a paired phone
+    /// stays paired; an update started from a pairing failure ends here too, since pairing
+    /// waits for its own tap.
     /// The dashboard that serves the pairing route and runs Bot turns loads plugins only
     /// when it starts, and no route restarts it, so "restart needed" is the usual end.
     func updatePlugin() async {
@@ -413,7 +417,15 @@ import UserNotifications
         let client = dashboard(connection)
         do { try await client.signIn() } catch { return failSignIn(error, remedy: .retryUpdate) }
         do {
-            try await client.installPlugin(identifier: HermexPushPlugin.installIdentifier)
+            try await client.setPlugin(HermexPushPlugin.name, enabled: false)
+            do {
+                try await client.installPlugin(identifier: HermexPushPlugin.installIdentifier)
+            } catch {
+                // Turning a plugin off only edits the host's config, so the running gateway keeps
+                // it; turning it back on keeps the next restart from dropping push.
+                try? await client.setPlugin(HermexPushPlugin.name, enabled: true)
+                throw error
+            }
             step = .restart
             phase = .updatingPlugin(step)
             try await client.restartGateway()

@@ -1613,9 +1613,15 @@ known version. Only a plugin that is behind costs a second read, `GET
 /api/dashboard/plugins/hub`, whose per-plugin `version` is `plugin.yaml` on disk; the newest
 on disk means the update is only waiting for a restart. The answer lives in memory, never in
 `PushPairing`, so "Restart Hermes to finish" always reflects what the host says now. The
-update is one confirmed action: the same forced install setup uses (it clones `main` again;
-the keys stay in `plugin-data`, so the phone stays paired), `POST /api/gateway/restart`, then
-the pairing route again. The hub caches for 5 s and an install clears it, so no rescan is
+update is one confirmed action: `POST /api/dashboard/agent-plugins/hermex-push/disable`, the
+same forced install setup uses (it clones `main` again and turns the plugin back on; the keys
+stay in `plugin-data`, so the phone stays paired), `POST /api/gateway/restart`, then the
+pairing route again. The plugin goes off first because current Hermes asks at a terminal
+before it replaces an enabled plugin that declares Python packages (hermex-push declares
+`cryptography`) and refuses the dashboard's reinstall with a 400; a disabled plugin skips that
+question, and enabling runs Hermes's own dependency admission. Turning a plugin off only edits
+config, so the running gateway keeps it; a failed install turns it back on so the next
+restart keeps push. The hub caches for 5 s and an install clears it, so no rescan is
 needed. The dashboard process that serves the pairing route and runs Bot turns loads plugin
 code only when it starts, and no route restarts it, so the usual end is a card asking the
 user to restart `hermes dashboard`, with "Check again" (#934 tracks restarting from the

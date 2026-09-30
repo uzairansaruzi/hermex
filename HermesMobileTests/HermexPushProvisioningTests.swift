@@ -736,6 +736,9 @@ import XCTest
             "GET https://a.example.com/api/status",
             "POST https://a.example.com/auth/password-login",
             "GET https://a.example.com/api/auth/me",
+            // Off first: Hermes refuses the dashboard's reinstall of an enabled plugin that
+            // declares Python packages; the install turns it back on.
+            "POST https://a.example.com/api/dashboard/agent-plugins/hermex-push/disable",
             "POST https://a.example.com/api/dashboard/agent-plugins/install",
             "POST https://a.example.com/api/gateway/restart",
             "GET https://a.example.com/api/plugins/hermex-push/pairing"
@@ -793,26 +796,30 @@ import XCTest
         ], "Check again is one read")
     }
 
-    func testAFailedReinstallIsNamedInTheCardAndInterruptsNothing() async throws {
+    func testAFailedReinstallTurnsThePluginBackOnAndInterruptsNothing() async throws {
         let registrar = try await pairedRegistrar(serverA)
         PushHTTPFixture.handler = { request in
             switch request.url?.path {
-            case "/api/dashboard/agent-plugins/install": return (500, .null)
+            case "/api/dashboard/agent-plugins/install": return (400, .null)
             case "/api/plugins/hermex-push/pairing": return (200, PushHTTPFixture.pairingBody(version: nil))
             default: return nil
             }
         }
         let provisioner = makeProvisioner(server: serverA, registrar: registrar)
         await provisioner.checkPlugin()
+        PushHTTPFixture.clearCalls()
 
         await provisioner.updatePlugin()
 
         XCTAssertEqual(provisioner.pluginCard, .failed(HermexPushProvisioner.Failure(
             title: "Couldn’t reinstall the plugin",
-            message: "This Hermes host refused the step (HTTP 500). Check the host’s logs, then try again.",
+            message: "This Hermes host refused the step (HTTP 400). Check the host’s logs, then try again.",
             remedy: .retryUpdate)))
-        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/gateway/restart") },
-                       "A refused install restarts nothing")
+        XCTAssertEqual(PushHTTPFixture.calls.suffix(3), [
+            "POST https://a.example.com/api/dashboard/agent-plugins/hermex-push/disable",
+            "POST https://a.example.com/api/dashboard/agent-plugins/install",
+            "POST https://a.example.com/api/dashboard/agent-plugins/hermex-push/enable"
+        ], "A refused install turns the plugin back on, so the next restart keeps push, and restarts nothing")
         XCTAssertFalse(provisioner.isWorking)
         XCTAssertNotNil(provisioner.pairing)
         XCTAssertEqual(registrar.actions, [])
