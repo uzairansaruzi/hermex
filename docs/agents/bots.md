@@ -84,9 +84,10 @@ status); a drop with its reason and any close code the other end sent; 45 second
 silence; the last screen leaving; retirement; a reply that matched no open call; and a
 call past its deadline, by method. Lines name connections `c1`, `c2`, … and each
 connection's sockets `s0`, `s1`, …, never the server: interpolate only numbers, step,
-case and method names and `HermesConnectionLog.reason(_:)`, each `.public`, and never a
-host, address, URL, session or runtime id, Profile name, title, message text, ticket,
-replay epoch or install id. Events, deltas and keepalive pongs are never logged.
+case and method names, the release `/api/status` reports (upstream's package version) and
+`HermesConnectionLog.reason(_:)`, each `.public`, and never a host, address, URL,
+session or runtime id, Profile name, title, message text, ticket, replay epoch or
+install id. Events, deltas and keepalive pongs are never logged.
 
 Requests are typed in `Networking/Hermes/`: every HTTP request (method, path, query, JSON body) is a
 `HermesREST` case, and every JSON-RPC request is a `HermesCall` case, one per

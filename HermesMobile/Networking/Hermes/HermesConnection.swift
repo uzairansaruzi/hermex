@@ -362,10 +362,10 @@ struct HermesHeaders: Sendable {
 /// `HermesConnection`: sign-ins, and the gateway socket opening, closing and dropping, a
 /// reply that matched no open call and a call that got no reply. Lines name connections
 /// `c1`, `c2`, … and each connection's sockets `s0`, `s1`, …, never the server itself.
-/// Interpolate only numbers, step, case and method names and `reason(_:)`, each
-/// `privacy: .public`; never a host, address, URL, session or runtime id, Profile name,
-/// title, message text, ticket, replay epoch or install id. Events, deltas and keepalive
-/// pongs are never logged.
+/// Interpolate only numbers, step, case and method names, the release `/api/status`
+/// reports (upstream's package version) and `reason(_:)`, each `privacy: .public`; never
+/// a host, address, URL, session or runtime id, Profile name, title, message text,
+/// ticket, replay epoch or install id. Events, deltas and keepalive pongs are never logged.
 enum HermesConnectionLog {
     static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "HermesMobile", category: "HermesConnection")
 
