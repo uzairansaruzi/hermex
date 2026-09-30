@@ -264,6 +264,30 @@ import Vision
         XCTAssertEqual(delays, [1, 2, 4, 8, 16, 30, 30].map { .seconds($0) })
         XCTAssertEqual(model.connectionState, .disconnected)
         XCTAssertEqual(model.errorMessage, BotFailure.rejected(401).localizedDescription)
+        XCTAssertTrue(model.needsSignIn)
+        model.suspend()
+    }
+
+    /// Only a refused password swaps Reconnect for Update sign-in; a proxy's 502 keeps
+    /// the quiet retry (#884).
+    func testOnlyARejectedPasswordNeedsSignIn() async {
+        let wire = BotFixtureWire(); wire.lookupFailure = .rejected(401)
+        var delays = 0
+        let model = make(wire, reconnectDelay: { _ in delays += 1; throw CancellationError() })
+        await model.recover()
+        XCTAssertTrue(model.needsSignIn)
+        XCTAssertFalse(model.isReconnecting)
+        XCTAssertEqual(delays, 0, "a refused password is never retried on its own")
+
+        wire.lookupFailure = .rejected(502)
+        await model.recover()
+        XCTAssertFalse(model.needsSignIn)
+        XCTAssertTrue(model.isReconnecting)
+
+        wire.lookupFailure = nil
+        await model.recover()
+        XCTAssertEqual(model.connectionState, .connected)
+        XCTAssertFalse(model.needsSignIn)
         model.suspend()
     }
 

@@ -9,8 +9,17 @@ import Observation
     @State private var copiedPrompt = false
     @State private var copiedAddress = false
     @State private var statusCheck: Task<Void, Never>?
+    @FocusState private var passwordFocused: Bool
+    /// Set when the host refused the saved password: the field opens focused with the
+    /// stored password kept, so typing replaces it and Connect alone retries as is.
+    private let focusesPassword: Bool
+    /// Runs once a sign-in is saved, even if the form closed while it connected.
+    private let onSaved: () -> Void
 
-    init(server: URL) { _setup = State(initialValue: BotConnectionSetup(server: server)) }
+    init(server: URL, focusesPassword: Bool = false, onSaved: @escaping () -> Void = {}) {
+        _setup = State(initialValue: BotConnectionSetup(server: server))
+        self.focusesPassword = focusesPassword; self.onSaved = onSaved
+    }
 
     var body: some View {
         Form {
@@ -27,6 +36,7 @@ import Observation
                 TextField("Username", text: $setup.username).textContentType(.username)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 SecureField("Password", text: $setup.password).textContentType(.password)
+                    .focused($passwordFocused)
             } footer: {
                 Text("Domains, Tailscale names and IP addresses work. You can include http:// or https://.")
             }
@@ -36,14 +46,16 @@ import Observation
                     Text(error).foregroundStyle(.red).accessibilityIdentifier("hermes-connection-error")
                 }
                 Button(setup.isConnecting ? String(localized: "Connecting…") : String(localized: "Connect")) {
-                    operation = Task { if await setup.connect(), !Task.isCancelled { dismiss() } }
+                    operation = Task { if await setup.connect() { onSaved(); if !Task.isCancelled { dismiss() } } }
                 }
                 .frame(maxWidth: .infinity)
                 .disabled(!setup.canConnect)
                 .accessibilityIdentifier("hermes-connection-connect")
                 if setup.offersHostReplacement {
                     Button("Connect to this host instead", role: .destructive) {
-                        operation = Task { if await setup.connect(replacingHost: true), !Task.isCancelled { dismiss() } }
+                        operation = Task {
+                            if await setup.connect(replacingHost: true) { onSaved(); if !Task.isCancelled { dismiss() } }
+                        }
                     }
                     .frame(maxWidth: .infinity)
                     .accessibilityIdentifier("hermes-connection-replace-host")
@@ -82,7 +94,11 @@ import Observation
         .navigationTitle("Hermes connection")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
-        .task { setup.load(); await setup.checkStatus() }
+        .task {
+            setup.load()
+            if focusesPassword { passwordFocused = true }
+            await setup.checkStatus()
+        }
         .onDisappear { operation?.cancel(); statusCheck?.cancel(); setup.cancel() }
         .confirmationDialog("Remove this connection from Hermex?", isPresented: $confirmingRemoval, titleVisibility: .visible) {
             Button("Remove Hermes connection", role: .destructive) {

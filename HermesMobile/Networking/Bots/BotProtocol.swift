@@ -60,7 +60,7 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .missingChat: return String(localized: "Open this bot’s chat in Hermes Desktop, then refresh.")
         case .wrongIdentity: return String(localized: "The conversation identity changed. Check this bot in Desktop.")
         case .differentHost: return String(localized: "The Hermes host at this address reports a different identity than the one you connected to. Check the address in the Hermes connection.")
-        case .rejected(401): return String(localized: "Sign in again. Check your Bot connection username and password.")
+        case .rejected(401): return String(localized: "Hermes didn't accept the username or password.")
         // Hermes's REST routes never answer 403, but the gateway upgrade does (see `.upgradeRefused`).
         // Hermes never answers 520-530 itself. 502-504 usually come from a proxy; Hermes's own 503
         // (its auth provider is unreachable) shares the approved proxy copy.

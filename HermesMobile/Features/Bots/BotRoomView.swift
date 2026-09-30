@@ -17,9 +17,12 @@ import SwiftUI
     private var followsLatest: Bool { followLatch.isFollowing }
     let roster: [BotProfile]
     let avatars: [String: UIImage]
+    /// Leaves the room for the inbox's sign-in form, after the host refused the password.
+    let onUpdateSignIn: () -> Void
 
-    init(reader: BotRoomReader, roster: [BotProfile], avatars: [String: UIImage]) {
+    init(reader: BotRoomReader, roster: [BotProfile], avatars: [String: UIImage], onUpdateSignIn: @escaping () -> Void = {}) {
         _reader = State(initialValue: reader); self.roster = roster; self.avatars = avatars
+        self.onUpdateSignIn = onUpdateSignIn
         _pendingSequence = State(initialValue: reader.initialSequence)
     }
 
@@ -105,7 +108,7 @@ import SwiftUI
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 10) {
                 if let pill {
-                    BotComposerPillView(pill: pill, onReconnect: { revision = UUID() },
+                    BotComposerPillView(pill: pill, onReconnect: { revision = UUID() }, onUpdateSignIn: onUpdateSignIn,
                         onShowRequest: { showRequestID = UUID() }, onCancelUpload: {},
                         onDismissError: { if let text = pill.errorText { dismissedErrors.insert(text) } },
                         onRetrySend: { Task { await reader.send(retry: true) } })
@@ -141,7 +144,8 @@ import SwiftUI
         }
         .task(id: revision) {
             visible = true
-            if scenePhase == .active { await reader.open(owner: owner) }
+            // A rejected password is never sent again on its own (#884).
+            if scenePhase == .active && !reader.needsSignIn { await reader.open(owner: owner) }
         }
         .onChange(of: scenePhase) {
             if scenePhase == .active && visible { revision = UUID() }
@@ -197,7 +201,7 @@ import SwiftUI
 
     private var pill: BotComposerPill? {
         BotComposerPill.room(link: reader.link, blocked: reader.status.blocked,
-            hasActions: !reader.status.actions.isEmpty, mayRetry: reader.mayResend,
+            hasActions: !reader.status.actions.isEmpty, mayRetry: reader.mayResend, needsSignIn: reader.needsSignIn,
             errorText: errorTexts.first { !dismissedErrors.contains($0) })
     }
 }

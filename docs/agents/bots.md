@@ -163,6 +163,12 @@ status, an access proxy's own sign-in (`.blocked`: a redirect to another host or
 non-JSON 401 on `/api/status`), a host with browser sign-in only (`.browserSignIn`),
 and a refused gateway upgrade (`.upgradeRefused`). The inbox and chat use the same
 copy for the messages they show, and none of these three retries on its own.
+A rejected password (`.rejected(401)`) offers "Update sign-in" in place of
+Reconnect in the inbox, a chat and a room: it opens the connection form with the
+password focused, from the inbox, because a chat's or room's client is bound to
+the rejected record. The app never resends that password on its own; foregrounding,
+pull to refresh and closing the form unsaved send nothing until the saved record
+changes or the form saves a sign-in.
 
 `BotConversation` owns one server/connection/Profile view lifetime. It resolves
 exact-title Bot Chat, keeps canonical root, compression tip and runtime IDs

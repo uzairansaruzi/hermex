@@ -565,6 +565,27 @@ import XCTest
         XCTAssertNil(reader.uncertainSend)
     }
 
+    /// A refused password stops the room with Update sign-in; any other stop keeps
+    /// Reconnect, and a successful open clears it (#884).
+    func testARejectedPasswordStopsTheRoomNeedingSignIn() async {
+        let wire = RoomWire(); wire.connectFailure = BotFailure.rejected(401)
+        let reader = makeReader(wire)
+        await reader.open()
+        XCTAssertEqual(reader.link, .stopped)
+        XCTAssertTrue(reader.needsSignIn)
+
+        wire.connectFailure = BotFailure.transport
+        await reader.open()
+        XCTAssertEqual(reader.link, .stopped)
+        XCTAssertFalse(reader.needsSignIn)
+
+        wire.connectFailure = BotFailure.rejected(401); await reader.open()
+        wire.connectFailure = nil; await reader.open()
+        XCTAssertEqual(reader.link, .live)
+        XCTAssertFalse(reader.needsSignIn)
+        reader.close()
+    }
+
     func testRoomMentionsUseHandlesAndIncludeBroadcastTargets() throws {
         var value = RoomFixture.room(latest: 0).fields!
         value["members"] = .array([.object(["member_id": .string("member"), "handle": .string("chief"), "display_name": .string("Chief of Staff")])])

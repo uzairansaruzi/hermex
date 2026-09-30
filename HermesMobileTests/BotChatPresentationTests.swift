@@ -47,6 +47,18 @@ import XCTest
                        .error("Outcome unknown"))
     }
 
+    /// A refused password takes Reconnect's slot, and keeps it once a background has
+    /// left the room idle, because the room does not reopen on its own (#884).
+    func testRoomPillOffersUpdateSignInAfterARejectedPassword() {
+        XCTAssertEqual(BotComposerPill.room(link: .stopped, blocked: false, hasActions: false, mayRetry: false,
+                                            needsSignIn: true, errorText: nil), .updateSignIn)
+        XCTAssertEqual(BotComposerPill.room(link: .idle, blocked: false, hasActions: false, mayRetry: false,
+                                            needsSignIn: true, errorText: nil), .updateSignIn)
+        XCTAssertEqual(BotComposerPill.room(link: .stopped, blocked: false, hasActions: false, mayRetry: false,
+                                            needsSignIn: true, errorText: "Hermes didn't accept the username or password."),
+                       .error("Hermes didn't accept the username or password."), "the error still shows first")
+    }
+
     func testRoomManagementShowsMemberChipsAndStoppingReason() async throws {
         let server = URL(string: "https://room.example")!
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
@@ -857,6 +869,26 @@ import XCTest
         XCTAssertNil(BotComposerPill.resolve(requestText: nil, requestHasCard: false, errorText: nil, voiceStatus: nil,
                                              offersReconnect: false, isUploading: false),
                      "a connected, idle or working bot shows no text above the composer")
+    }
+
+    func testComposerPillOffersUpdateSignInInReconnectsSlot() {
+        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, requestHasCard: false, errorText: nil, voiceStatus: nil,
+                                               offersReconnect: true, needsSignIn: true, isUploading: true), .updateSignIn)
+        XCTAssertEqual(BotComposerPill.resolve(requestText: nil, requestHasCard: false, errorText: "Hermes didn't accept the username or password.",
+                                               voiceStatus: nil, offersReconnect: true, needsSignIn: true, isUploading: false),
+                       .error("Hermes didn't accept the username or password."), "the error still shows first")
+    }
+
+    /// Update sign-in lands on the form ready to type over the refused password (#884).
+    func testConnectionFormCanOpenWithThePasswordFocused() async throws {
+        let focused = expectation(forNotification: UITextField.textDidBeginEditingNotification, object: nil)
+        let window = try show(NavigationStack {
+            BotConnectionView(server: URL(string: "https://focus-\(UUID().uuidString).example")!, focusesPassword: true)
+        })
+        defer { close(window) }
+        await fulfillment(of: [focused], timeout: callbackTimeout)
+        let field = try XCTUnwrap(descendants(window).compactMap { $0 as? UITextField }.first { $0.isFirstResponder })
+        XCTAssertTrue(field.isSecureTextEntry, "the password field, not the address or username, has focus")
     }
 
     func testPendingRequestOutranksUncertainStopInStatus() async throws {

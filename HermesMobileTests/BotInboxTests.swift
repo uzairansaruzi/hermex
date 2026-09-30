@@ -724,8 +724,74 @@ import XCTest
         await inbox.open()
         XCTAssertEqual(inbox.link, .disconnected)
         XCTAssertEqual(inbox.errorMessage, BotFailure.rejected(401).localizedDescription)
+        XCTAssertTrue(inbox.needsSignIn, "a refused password offers the sign-in form")
         await Task.yield(); await Task.yield()
         XCTAssertEqual(spare, 1, "no automatic retry after a refusal")
+    }
+
+    /// Foregrounding, pull to refresh and closing the form unsaved all rerun `open()`;
+    /// none of them may spend another of the host's password logins (#884).
+    func testARejectedPasswordIsNotSentAgainUntilTheSavedSignInChanges() async throws {
+        let store = try connectedStore()
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.connectError = BotFailure.rejected(401)
+        var spare = 0
+        let inbox = BotInbox(server: server, store: store, unread: BotUnreadStore(defaults: defaults),
+                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
+            spare += 1; return wire
+        }
+        await inbox.open()
+        await inbox.open()
+        XCTAssertEqual(spare, 1, "the unchanged, rejected record is not sent again")
+        XCTAssertEqual(inbox.link, .disconnected)
+        XCTAssertEqual(inbox.errorMessage, "Hermes didn't accept the username or password.")
+        XCTAssertTrue(inbox.needsSignIn)
+
+        let old = try XCTUnwrap(store.load(server: server))
+        try store.save(BotConnection(id: old.id, name: old.name, address: old.address, username: old.username,
+                                     password: "new", hermesVersion: nil), server: server)
+        wire.connectError = nil
+        await inbox.open()
+        XCTAssertEqual(spare, 2, "a new password signs in")
+        XCTAssertEqual(inbox.link, .live)
+        XCTAssertNil(inbox.errorMessage)
+        XCTAssertFalse(inbox.needsSignIn)
+    }
+
+    /// The host may have been the problem, so a save from the form retries even an
+    /// unchanged record (Decision D3 on #884).
+    func testASavedSignInRetriesTheUnchangedRecord() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.connectError = BotFailure.rejected(401)
+        var spare = 0
+        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
+                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
+            spare += 1; return wire
+        }
+        await inbox.open()
+        wire.connectError = nil
+        inbox.signInSaved()
+        await inbox.open()
+        XCTAssertEqual(spare, 2)
+        XCTAssertEqual(inbox.link, .live)
+        XCTAssertFalse(inbox.needsSignIn)
+    }
+
+    func testOtherRefusalsKeepReconnect() async throws {
+        for failure in [BotFailure.notDashboard, .rejected(403), .blocked] {
+            let wire = BotInboxFixtureWire(roster: [row("triage")])
+            wire.connectError = failure
+            var spare = 0
+            let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
+                                 avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
+                spare += 1; return wire
+            }
+            await inbox.open()
+            XCTAssertNotNil(inbox.errorMessage, "\(failure)")
+            XCTAssertFalse(inbox.needsSignIn, "\(failure)")
+            await inbox.open()
+            XCTAssertEqual(spare, 2, "Reconnect still tries again after \(failure)")
+        }
     }
 
     func testAnotherHostShowsTheMessageAndDoesNotRetryOnItsOwn() async throws {

@@ -15,6 +15,11 @@ import Observation
     private(set) var status = BotRoomStatus(.null)
     private(set) var link = Link.idle
     private(set) var errorMessage: String?
+    /// True after the host refused the saved username or password (`.rejected(401)`).
+    /// The room offers Update sign-in instead of Reconnect and does not reopen on
+    /// foreground: it reconnects with the record it was built from, so the fix goes
+    /// through the inbox.
+    private(set) var needsSignIn = false
     private(set) var hasEarlier = false
     private(set) var loadingEarlier = false
     private(set) var foreignAuthority = false
@@ -83,7 +88,7 @@ import Observation
         }
         recentOwner = cache.recent.begin(.room(key))
         let client = makeWire(connection)
-        wire = client; link = .connecting; errorMessage = nil
+        wire = client; link = .connecting; errorMessage = nil; needsSignIn = false
         client.onDisconnect = { [weak self] error in
             guard let self, self.wire === client else { return }
             self.fail(error, client)
@@ -426,6 +431,7 @@ import Observation
         guard wire === client else { return }
         suspend(); link = .stopped
         errorMessage = error.localizedDescription
+        needsSignIn = error as? BotFailure == .rejected(401)
         if let failure = error as? BotRoomFailure, failure.expired { discardHistory(); close(); onExpired() }
     }
 }

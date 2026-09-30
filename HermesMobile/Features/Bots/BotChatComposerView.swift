@@ -13,6 +13,8 @@ struct BotChatComposerView: View {
     let onReconnect: () -> Void
     /// Scrolls the transcript back to the pending request card.
     let onShowRequest: () -> Void
+    /// Leaves the chat for the inbox's sign-in form, after the host refused the password.
+    var onUpdateSignIn: () -> Void = {}
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -70,7 +72,8 @@ struct BotChatComposerView: View {
             // receipt for work the transcript already shows. With nothing to act
             // on, the user's quick replies take the same slot, so the two never stack.
             if let pill {
-                BotComposerPillView(pill: pill, onReconnect: onReconnect, onShowRequest: onShowRequest,
+                BotComposerPillView(pill: pill, onReconnect: onReconnect, onUpdateSignIn: onUpdateSignIn,
+                                    onShowRequest: onShowRequest,
                                     onCancelUpload: { model.cancelAttachmentUpload() },
                                     onDismissError: { if let text = pill.errorText { dismissedErrors.insert(text) } })
                     .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
@@ -121,6 +124,7 @@ struct BotChatComposerView: View {
             errorText: errorTexts.first { !dismissedErrors.contains($0) },
             voiceStatus: voiceStatus,
             offersReconnect: model.connectionState == .disconnected && !model.isReconnecting && model.errorMessage != nil,
+            needsSignIn: model.needsSignIn,
             isUploading: model.isUploadingAttachments
         )
     }
@@ -567,15 +571,18 @@ enum BotComposerPill: Equatable {
     case error(String)
     case voice(ComposerVoiceStatus)
     case reconnect
+    /// Reconnect's slot after the host refused the saved password: reconnecting
+    /// would only send it again, so the button opens the sign-in form instead.
+    case updateSignIn
     case uploading
     case retrySend
 
     static func resolve(requestText: String?, requestHasCard: Bool, errorText: String?, voiceStatus: ComposerVoiceStatus?,
-                        offersReconnect: Bool, isUploading: Bool) -> BotComposerPill? {
+                        offersReconnect: Bool, needsSignIn: Bool = false, isUploading: Bool) -> BotComposerPill? {
         if let requestText { return requestHasCard ? .request(requestText) : .notice(requestText) }
         if let errorText { return .error(errorText) }
         if let voiceStatus { return .voice(voiceStatus) }
-        if offersReconnect { return .reconnect }
+        if offersReconnect { return needsSignIn ? .updateSignIn : .reconnect }
         if isUploading { return .uploading }
         return nil
     }
@@ -584,9 +591,12 @@ enum BotComposerPill: Equatable {
 
     /// Rooms share the action pill, but their host exposes no turn start time.
     /// Routine working/connecting states stay quiet; requests and recovery remain reachable.
+    /// `needsSignIn` holds Update sign-in in place even after a background leaves the
+    /// room idle, because the room does not reopen with a rejected password.
     static func room(link: BotRoomReader.Link, blocked: Bool, hasActions: Bool,
-                     mayRetry: Bool, errorText: String?) -> BotComposerPill? {
+                     mayRetry: Bool, needsSignIn: Bool = false, errorText: String?) -> BotComposerPill? {
         if let errorText { return .error(errorText) }
+        if needsSignIn { return .updateSignIn }
         if link == .stopped { return .reconnect }
         if mayRetry { return .retrySend }
         if link == .live && blocked {
@@ -597,11 +607,12 @@ enum BotComposerPill: Equatable {
     }
 }
 
-/// One centered capsule with material and no motion of its own. Request and
-/// Reconnect are buttons; an error is tappable to dismiss; Uploading carries Cancel.
+/// One centered capsule with material and no motion of its own. Request, Reconnect
+/// and Update sign-in are buttons; an error is tappable to dismiss; Uploading carries Cancel.
 struct BotComposerPillView: View {
     let pill: BotComposerPill
     let onReconnect: () -> Void
+    let onUpdateSignIn: () -> Void
     let onShowRequest: () -> Void
     let onCancelUpload: () -> Void
     let onDismissError: () -> Void
@@ -621,6 +632,8 @@ struct BotComposerPillView: View {
                 Label(status.text, systemImage: status.systemImage)
             case .reconnect:
                 Button(action: onReconnect) { Label("Reconnect", systemImage: "arrow.clockwise") }
+            case .updateSignIn:
+                Button(action: onUpdateSignIn) { Label("Update sign-in", systemImage: "key") }
             case .retrySend:
                 Button(action: onRetrySend) { Label("Retry send", systemImage: "arrow.up") }
             case .uploading:

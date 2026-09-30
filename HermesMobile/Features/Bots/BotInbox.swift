@@ -168,6 +168,10 @@ import UIKit
     private(set) var avatars: [String: UIImage] = [:]
     private(set) var link = Link.idle
     private(set) var errorMessage: String?
+    /// True after the host refused the saved username or password (`.rejected(401)`).
+    /// The inbox offers the sign-in form instead of Reconnect, and `open()` never sends
+    /// that record again until it changes or the form saves a sign-in (#884).
+    private(set) var needsSignIn = false
     /// What to check once an empty inbox has failed to reach the host
     /// `routeFailuresBeforeAdvice` times in a row. The quiet retry goes on behind it,
     /// and `open()` leaves it alone so it holds steady between attempts.
@@ -280,7 +284,9 @@ import UIKit
     }
 
     /// Connects, reads the roster and avatars, and keeps the socket for live
-    /// `sessions.changed` reloads. Also the pull-to-refresh and Reconnect path.
+    /// `sessions.changed` reloads. Also the pull-to-refresh, Reconnect and foreground
+    /// path, so a rejected password stays unsent here until the saved record changes
+    /// or `signInSaved()` runs.
     func open() async {
         close(); hasRoomList = false
         var client: (any BotTransport)?
@@ -295,11 +301,15 @@ import UIKit
             if connection?.id != saved?.id || connection?.address != saved?.address {
                 routeFailures = 0; routeAdvice = nil
             }
+            if connection != saved { needsSignIn = false }
             connection = saved
             guard let saved else { link = .idle; return }
             if seen.isEmpty { seen = unread.load(connectionID: saved.id) }
             if roomFlags == BotRoomOrganizeStore.Flags() { roomFlags = roomStore.load(connectionID: saved.id) }
             if sectionOrder.isEmpty { sectionOrder = sectionOrderStore.load(server: server, connectionID: saved.id) }
+            // Each resend spends one of the host's ten password logins a minute per client
+            // IP, which Desktop and the browser may share behind the same tunnel.
+            guard !needsSignIn else { link = .disconnected; return }
             let opened = makeWire(saved)
             client = opened
             wire = opened; link = .connecting; errorMessage = nil; notice = nil; readsLiveStatus = true; retriesStatusRead = false
@@ -338,6 +348,7 @@ import UIKit
                 // A saved-connection read can fail before any client exists; that is
                 // still a visible failure with the Reconnect path, not a stale roster.
                 link = .disconnected; errorMessage = (error as? BotFailure ?? .transport).localizedDescription
+                needsSignIn = error as? BotFailure == .rejected(401)
                 setLiveStatuses([:])
             }
         }
@@ -360,6 +371,10 @@ import UIKit
         try? store.save(fresh, server: server)
     }
 
+    /// The connection form signed in and saved. The next `open()` connects even when the
+    /// saved record is unchanged, because the fix may have been on the host.
+    func signInSaved() { needsSignIn = false }
+
     func close() {
         reconnectTask?.cancel(); reconnectTask = nil
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
@@ -370,13 +385,14 @@ import UIKit
 
     /// A lost socket or a failed read is retried quietly, with growing delays, for
     /// as long as the inbox stays open; the roster stays on screen meanwhile. Only
-    /// a refusal the user has to act on shows a message and the Reconnect button:
-    /// sign-in, an unsupported host or address, an address that now reaches a
-    /// different host or is not a dashboard, an access proxy's own sign-in, a host
-    /// with browser sign-in only, a refused gateway upgrade, and any other permanent
-    /// HTTP client error (a 404 is not a Hermes host). Server errors, rate limits and
-    /// JSON-RPC faults other than "method missing" are the retry loop's problem;
-    /// an empty inbox shows `routeAdvice` if the host stays unreachable.
+    /// a refusal the user has to act on shows a message and the Reconnect button
+    /// (Update sign-in for a rejected password): sign-in, an unsupported host or
+    /// address, an address that now reaches a different host or is not a dashboard,
+    /// an access proxy's own sign-in, a host with browser sign-in only, a refused
+    /// gateway upgrade, and any other permanent HTTP client error (a 404 is not a
+    /// Hermes host). Server errors, rate limits and JSON-RPC faults other than
+    /// "method missing" are the retry loop's problem; an empty inbox shows
+    /// `routeAdvice` if the host stays unreachable.
     private static func isRetryable(_ error: Error) -> Bool {
         switch error as? BotFailure {
         case .unsupported, .wrongIdentity, .differentHost, .invalidAddress, .notDashboard,
@@ -804,6 +820,7 @@ import UIKit
             routeFailures = 0; routeAdvice = nil
             errorMessage = address.map { BotConnectionAdvice.message(for: error, address: $0) }
                 ?? (error as? BotFailure ?? .transport).localizedDescription
+            needsSignIn = error as? BotFailure == .rejected(401)
             return
         }
         if Self.isRouteFailure(error) { routeFailures += 1 } else { routeFailures = 0; routeAdvice = nil }

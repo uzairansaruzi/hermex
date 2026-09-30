@@ -11,6 +11,9 @@ import SwiftUI
     /// bot's canonical chat has since moved on, so the inbox can take the user back
     /// instead of leaving a dead transcript on screen (#554).
     private let onConversationUnavailable: (() -> Void)?
+    /// Leaves the chat for the inbox's sign-in form, after the host refused the password.
+    /// The inbox owns the form because a new password needs a new chat client (#884).
+    private let onUpdateSignIn: () -> Void
     @State private var model: BotConversation
     @State private var stopAction: BotConversation.StopAction?
     @State private var recoveryID = UUID()
@@ -37,17 +40,19 @@ import SwiftUI
 
     init(server: URL, connection: BotConnection, profile: BotProfile, roster: [BotProfile],
          avatars: [String: UIImage], conversation: String? = nil,
-         onConversationUnavailable: (() -> Void)? = nil) {
+         onConversationUnavailable: (() -> Void)? = nil, onUpdateSignIn: @escaping () -> Void = {}) {
         mentionAvatars = avatars
         self.onConversationUnavailable = onConversationUnavailable
+        self.onUpdateSignIn = onUpdateSignIn
         _model = State(initialValue: BotConversation(server: server, connection: connection, profile: profile,
                                                      roster: roster, conversation: conversation, historyCache: .shared,
                                                      liveActivityFeed: .shared))
     }
 
-    init(model: BotConversation, onConversationUnavailable: (() -> Void)? = nil) {
+    init(model: BotConversation, onConversationUnavailable: (() -> Void)? = nil, onUpdateSignIn: @escaping () -> Void = {}) {
         mentionAvatars = [:]
         self.onConversationUnavailable = onConversationUnavailable
+        self.onUpdateSignIn = onUpdateSignIn
         _model = State(initialValue: model)
     }
 
@@ -270,7 +275,8 @@ import SwiftUI
                 .presentationDragIndicator(.visible)
         }
         .task(id: recoveryID) {
-            if scenePhase == .active { await model.recover() }
+            // A rejected password is never sent again on its own (#884).
+            if scenePhase == .active && !model.needsSignIn { await model.recover() }
         }
         .onChange(of: scenePhase) {
             if scenePhase == .active { recoveryID = UUID(); workingBeat.rearm() }
@@ -444,7 +450,8 @@ import SwiftUI
             model: model, mentionAvatars: mentionAvatars, isFocused: $composerFocused,
             onStop: { stopAction = model.prepareStop() },
             onReconnect: { recoveryID = UUID() },
-            onShowRequest: { showRequestID = UUID() }
+            onShowRequest: { showRequestID = UUID() },
+            onUpdateSignIn: onUpdateSignIn
         )
         // Lined up with the reading column; the material fade below stays full width.
         .frame(maxWidth: ChatReadingWidth.maximumWidth(horizontalPadding: 16))

@@ -72,6 +72,10 @@ import Observation
     /// only when this is nil.
     private(set) var activePromptMessageID: String?
     private(set) var errorMessage: String?
+    /// True after the host refused the saved username or password (`.rejected(401)`).
+    /// The chat offers Update sign-in instead of Reconnect and does not recover on
+    /// foreground; a new password needs a new client, so the fix goes through the inbox.
+    private(set) var needsSignIn = false
     let chatControls = BotChatControls()
     let attachments: BotAttachmentDraft
     private(set) var draft = ""
@@ -555,7 +559,7 @@ import Observation
         recentOwner = historyCache?.recent.begin(recentKey)
         let owner = generation
         connectionState = .recovering
-        errorMessage = nil
+        errorMessage = nil; needsSignIn = false
         do {
             if !hydrated {
                 let saved = await drafts.draft(for: draftKey)
@@ -1500,6 +1504,7 @@ import Observation
         default: shouldRetryConnection = false
         }
         errorMessage = shouldRetryConnection ? nil : BotConnectionAdvice.message(for: failure, address: connection.address)
+        needsSignIn = failure == .rejected(401)
         syncLiveActivity()
         scheduleReconnect()
     }

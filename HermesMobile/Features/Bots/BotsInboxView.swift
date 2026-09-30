@@ -10,6 +10,9 @@ import SwiftUI
     @State private var showingSearch = false
     @State private var searchedProfile: (connectionID: UUID, profileID: String)?
     @State private var showingSetup = false
+    /// True while the form is open to replace a password the host refused; it opens
+    /// with the password field focused.
+    @State private var updatingSignIn = false
     @State private var revision = UUID()
     @State private var editSelection: BotProfileEditSelection?
     @State private var creation: BotCreationIntent?
@@ -67,7 +70,12 @@ import SwiftUI
             if inbox.connection != nil {
                 if let message = inbox.errorMessage ?? inbox.routeAdvice {
                     Text(message).font(.callout)
-                    Button("Reconnect") { revision = UUID() }
+                    // Reconnecting would only send the refused password again (#884).
+                    if inbox.needsSignIn {
+                        Button("Update sign-in", action: updateSignIn)
+                    } else {
+                        Button("Reconnect") { revision = UUID() }
+                    }
                 } else if inbox.isLoadingRoster {
                     // The first row speaks for the set, so VoiceOver hears one
                     // "Loading bots" instead of nothing.
@@ -276,12 +284,19 @@ import SwiftUI
         .padding(.vertical, 12)
     }
 
+    /// Opens the sign-in form for a password the host refused. A chat or room returns
+    /// here first: its client is bound to the rejected sign-in, and the inbox reloads the
+    /// record when the form closes.
+    private func updateSignIn() {
+        updatingSignIn = true; showingSetup = true
+    }
+
     private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
         BotChatView(server: server, connection: connection, profile: profile, roster: inbox.profiles,
                     avatars: inbox.avatars, conversation: selection.conversation, onConversationUnavailable: {
                         selection.profile = nil
                         toast = String(localized: "That conversation is no longer available.")
-                    })
+                    }, onUpdateSignIn: { selection.profile = nil; updateSignIn() })
             // A composite rather than a concatenation: a Profile name and a
             // conversation root are both arbitrary server strings, so joining them
             // could let two destinations share one identity and keep the wrong
@@ -508,8 +523,10 @@ extension BotsInboxView {
             .sheet(isPresented: $showingSectionOrder) {
                 BotSectionOrderView(inbox: inbox)
             }
-            .sheet(isPresented: $showingSetup, onDismiss: { revision = UUID() }) {
-                NavigationStack { BotConnectionView(server: server) }
+            .sheet(isPresented: $showingSetup, onDismiss: { updatingSignIn = false; revision = UUID() }) {
+                NavigationStack {
+                    BotConnectionView(server: server, focusesPassword: updatingSignIn) { inbox.signInSaved() }
+                }
             }
             .navigationDestination(item: $selection.profile) { profile in
                 if let connection = inbox.connection { chat(profile, connection) }
@@ -522,7 +539,8 @@ extension BotsInboxView {
                         toast = String(localized: "This room’s history is no longer available.")
                     }, onChanged: { inbox.updateRoom($0, connectionID: key.connectionID) }, onDisbanded: {
                         inbox.removeRoom(key); selection.room = nil
-                    }), roster: inbox.profiles, avatars: inbox.avatars)
+                    }), roster: inbox.profiles, avatars: inbox.avatars,
+                        onUpdateSignIn: { selection.room = nil; updateSignIn() })
                     .id(key)
                 }
             }
