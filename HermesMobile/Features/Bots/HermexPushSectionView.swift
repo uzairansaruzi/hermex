@@ -307,9 +307,8 @@ import SwiftUI
         }
     }
 
-    /// The collapsed label's second line: the card's state in a few words, so an update or
-    /// a pending restart shows without opening the section. "Up to date" and a failed read
-    /// need no line: both answer a tap made in the open section.
+    /// The collapsed label's second line: the card's state in a few words, so every card that
+    /// asks for an action shows without opening the section. "Up to date" needs no line.
     @ViewBuilder private func pluginLine(_ card: HermexPushProvisioner.PluginCard) -> some View {
         switch card {
         case .status(.available), .failed:
@@ -319,7 +318,9 @@ import SwiftUI
         case .status(.restartNeeded):
             captionLine("arrow.clockwise.circle.fill", tint: .orange, text: String(localized: "Restart Hermes to finish"),
                         textTint: .secondary)
-        case .status(.upToDate), .status(.checkFailed):
+        case .status(.checkFailed(let failure)):
+            captionLine("exclamationmark.triangle.fill", tint: .red, text: failure.title, textTint: .secondary)
+        case .status(.upToDate):
             EmptyView()
         }
     }
