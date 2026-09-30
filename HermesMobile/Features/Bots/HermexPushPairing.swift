@@ -71,8 +71,12 @@ enum HermexPushPlugin {
 /// to retry.
 enum HermexPushFailure: Error, Equatable, LocalizedError {
     case unusablePairing, pairingUnavailable, noConnection
+    /// A plugin update turned hermex-push off and could not turn it back on.
+    case pluginLeftOff
     var errorDescription: String? {
         switch self {
+        case .pluginLeftOff:
+            return String(localized: "Hermes still has the plugin turned off, so notifications stop when Hermes restarts. Try again to turn it back on.")
         case .unusablePairing:
             return String(localized: "This Hermes host returned pairing keys Hermex cannot use. Update the hermex-push plugin.")
         case .pairingUnavailable:

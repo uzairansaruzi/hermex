@@ -825,6 +825,52 @@ import XCTest
         XCTAssertEqual(registrar.actions, [])
     }
 
+    func testAnUpdateThatCannotTurnThePluginBackOnSaysPushStopsAtTheNextRestart() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/dashboard/agent-plugins/install": return (400, .null)
+            case "/api/dashboard/agent-plugins/hermex-push/enable": return (502, .null)
+            case "/api/plugins/hermex-push/pairing": return (200, PushHTTPFixture.pairingBody(version: nil))
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+        await provisioner.checkPlugin()
+
+        await provisioner.updatePlugin()
+
+        XCTAssertEqual(provisioner.pluginCard, .failed(HermexPushProvisioner.Failure(
+            title: "Couldn’t reinstall the plugin",
+            message: "Hermes still has the plugin turned off, so notifications stop when Hermes restarts. Try again to turn it back on.",
+            remedy: .retryUpdate)))
+    }
+
+    func testATurnOffThatFailsIsUndoneBeforeAnythingIsInstalled() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            // The host may have applied the change before the answer was lost.
+            case "/api/dashboard/agent-plugins/hermex-push/disable": return (504, .null)
+            case "/api/plugins/hermex-push/pairing": return (200, PushHTTPFixture.pairingBody(version: nil))
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+        await provisioner.checkPlugin()
+        PushHTTPFixture.clearCalls()
+
+        await provisioner.updatePlugin()
+
+        XCTAssertEqual(PushHTTPFixture.calls.suffix(2), [
+            "POST https://a.example.com/api/dashboard/agent-plugins/hermex-push/disable",
+            "POST https://a.example.com/api/dashboard/agent-plugins/hermex-push/enable"
+        ], "Turned back on, and nothing installed")
+        guard case .failed(let failure)? = provisioner.pluginCard else { return XCTFail("Expected the failed card") }
+        XCTAssertEqual(failure.title, "Couldn’t reinstall the plugin")
+        XCTAssertEqual(failure.remedy, .retryUpdate)
+    }
+
     func testTheOldPluginPairingFailureOffersTheUpdateWhichDoesNotPairByItself() async throws {
         let registrar = FakePushRegistrar()
         let newest = newest
