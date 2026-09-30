@@ -265,6 +265,11 @@ import SwiftUI
         case .status(.upToDate(let version)):
             callout("checkmark.circle.fill", tint: .green, title: Text("Plugin up to date"),
                     message: Text("hermex-push \(version.description) is loaded on your host."))
+        case .status(.checkFailed(let failure)):
+            callout("exclamationmark.triangle.fill", tint: .red, title: Text(failure.title), message: Text(failure.message),
+                    action: provisioner.phase == .checkingPlugin ? String(localized: "Checking…") : String(localized: "Check again")) {
+                Task { await provisioner.checkPluginAgain() }
+            }
         case .failed(let failure):
             failureCallout(failure, action: String(localized: "Try again"))
         }
@@ -303,7 +308,8 @@ import SwiftUI
     }
 
     /// The collapsed label's second line: the card's state in a few words, so an update or
-    /// a pending restart shows without opening the section. "Up to date" needs no line.
+    /// a pending restart shows without opening the section. "Up to date" and a failed read
+    /// need no line: both answer a tap made in the open section.
     @ViewBuilder private func pluginLine(_ card: HermexPushProvisioner.PluginCard) -> some View {
         switch card {
         case .status(.available), .failed:
@@ -313,7 +319,7 @@ import SwiftUI
         case .status(.restartNeeded):
             captionLine("arrow.clockwise.circle.fill", tint: .orange, text: String(localized: "Restart Hermes to finish"),
                         textTint: .secondary)
-        case .status(.upToDate):
+        case .status(.upToDate), .status(.checkFailed):
             EmptyView()
         }
     }

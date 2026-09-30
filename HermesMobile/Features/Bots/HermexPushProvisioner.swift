@@ -64,6 +64,9 @@ import UserNotifications
         case restartNeeded
         /// An update or check just brought it to the newest. Shown until Settings closes.
         case upToDate(HermexPushPluginVersion)
+        /// The update changed the host, but reading its version failed; the card offers
+        /// the read again, never a second reinstall and restart.
+        case checkFailed(Failure)
     }
 
     /// The card at the top of the section: the plugin's standing, the update's progress,
@@ -373,7 +376,9 @@ import UserNotifications
         if case .upToDate = standing { pluginUpdate = nil } else { pluginUpdate = standing }
     }
 
-    /// "Check again" once the host has been restarted: one read, whose answer replaces the card.
+    /// "Check again" once the host has been restarted, or after a failed read: one read,
+    /// whose answer replaces the card. A failure goes to the red row and leaves the card
+    /// standing, except a card that is itself a failed read, which takes the newer answer.
     func checkPluginAgain() async {
         guard !isWorking, let connection else { return }
         setupRanLast = false
@@ -381,7 +386,11 @@ import UserNotifications
         do {
             pluginUpdate = try await pluginStanding(dashboard(connection))
             phase = .idle
-        } catch { fail(PluginUpdateStep.check.failureTitle, error) }
+        } catch {
+            guard case .checkFailed = pluginUpdate else { return fail(PluginUpdateStep.check.failureTitle, error) }
+            pluginUpdate = .checkFailed(Self.checkFailure(error))
+            phase = .idle
+        }
     }
 
     /// Settings' plugin update (#851), from a confirmed tap only: reinstall hermex-push over
@@ -412,9 +421,17 @@ import UserNotifications
             phase = .updatingPlugin(step)
             pluginUpdate = try await afterRestart { try await self.pluginStanding(client) }
             phase = .idle
+        } catch where step == .check {
+            // The host already took the reinstall and the restart; only the read is left to retry.
+            pluginUpdate = .checkFailed(Self.checkFailure(error))
+            phase = .idle
         } catch {
             phase = .failed(Failure(title: step.failureTitle, message: Self.message(for: error), remedy: .retryUpdate))
         }
+    }
+
+    private static func checkFailure(_ error: Error) -> Failure {
+        Failure(title: PluginUpdateStep.check.failureTitle, message: message(for: error))
     }
 
     private var isUpdatingPlugin: Bool {

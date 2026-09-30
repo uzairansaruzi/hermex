@@ -893,6 +893,49 @@ import XCTest
         XCTAssertNil(provisioner.pairing)
     }
 
+    func testAnUpdateWhoseCheckFailsOffersTheReadAgainRatherThanAnotherRestart() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        let newest = newest
+        var restarted = false
+        var pairingStatus = 200
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            // The host changes, then stops answering the version read.
+            case "/api/gateway/restart": restarted = true; pairingStatus = 500; return nil
+            case "/api/plugins/hermex-push/pairing":
+                return (pairingStatus, PushHTTPFixture.pairingBody(version: restarted ? newest : "0.2.0"))
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+        await provisioner.checkPlugin()
+
+        await provisioner.updatePlugin()
+
+        let checkFailed = { (status: Int) in HermexPushProvisioner.PluginCard.status(.checkFailed(HermexPushProvisioner.Failure(
+            title: "Couldn’t check the plugin version",
+            message: "This Hermes host refused the step (HTTP \(status)). Check the host’s logs, then try again."))) }
+        XCTAssertEqual(provisioner.pluginCard, checkFailed(500))
+        XCTAssertNil(provisioner.failure, "The card names it once")
+
+        pairingStatus = 503
+        await provisioner.checkPluginAgain()
+        XCTAssertEqual(provisioner.pluginCard, checkFailed(503), "A second failed read replaces the first")
+        XCTAssertNil(provisioner.failure)
+
+        pairingStatus = 200
+        PushHTTPFixture.clearCalls()
+        await provisioner.checkPluginAgain()
+
+        XCTAssertEqual(provisioner.pluginCard, .status(.upToDate(HermexPushPlugin.newestVersion)))
+        XCTAssertEqual(PushHTTPFixture.calls, [
+            "GET https://a.example.com/api/status",
+            "POST https://a.example.com/auth/password-login",
+            "GET https://a.example.com/api/auth/me",
+            "GET https://a.example.com/api/plugins/hermex-push/pairing"
+        ], "Only a read: the host already took the reinstall and the restart")
+    }
+
     func testTurningNotificationsOffDropsThePluginUpdate() async throws {
         let registrar = try await pairedRegistrar(serverA)
         PushHTTPFixture.handler = { request in

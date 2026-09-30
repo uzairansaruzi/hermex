@@ -1559,7 +1559,8 @@ the pairing route again. The hub caches for 5 s and an install clears it, so no 
 needed. The dashboard process that serves the pairing route and runs Bot turns loads plugin
 code only when it starts, and no route restarts it, so the usual end is a card asking the
 user to restart `hermes dashboard`, with "Check again" (#934 tracks restarting from the
-phone). A failure whose copy says "Update the hermex-push plugin." (keys this build cannot
+phone). A version read that fails after the reinstall and restart also offers "Check again",
+never a second reinstall and restart. A failure whose copy says "Update the hermex-push plugin." (keys this build cannot
 use, at setup or from the test notification) offers the same update. An update started there
 never pairs by itself; "Turn on notifications…" stays the way to pair. Turning notifications
 off drops the offer, because its install would enable the plugin again. Bump the constant in
