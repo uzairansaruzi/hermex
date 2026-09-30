@@ -12,21 +12,26 @@ import UIKit
 @MainActor final class AppLockSceneDelegate: NSObject, UIWindowSceneDelegate {
     private let lock = AppLock.shared
     private var lockWindow: UIWindow?
+    private var lockHost: UIHostingController<AppLockView>?
     /// The app window that was key when the lock appeared; it is key again when the lock goes.
     private weak var coveredKeyWindow: UIWindow?
-    /// The text input that had the keyboard when the lock appeared; it gets it back after.
+    /// The text input that last had the keyboard behind the lock; it gets it back after.
     private weak var coveredTextInput: UIResponder?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene, session.role == .windowApplication else { return }
         let window = UIWindow(windowScene: windowScene)
         window.windowLevel = .alert + 1
-        let host = UIHostingController(rootView: AppLockView(lock: lock))
+        let host = UIHostingController(rootView: AppLockView(lock: lock, icon: .current))
         host.view.backgroundColor = .systemBackground
         window.rootViewController = host
         // VoiceOver reads only the lock while it is up.
         window.accessibilityViewIsModal = true
         lockWindow = window
+        lockHost = host
+        for name in [UITextField.textDidBeginEditingNotification, UITextView.textDidBeginEditingNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(textInputDidBeginEditing(_:)), name: name, object: nil)
+        }
         update()
         followLock()
     }
@@ -61,6 +66,21 @@ import UIKit
         }
     }
 
+    /// Something behind the lock took the keyboard after it appeared, such as the composer of
+    /// a new chat an App Intent or share opened: it goes until the lock does, like one that was
+    /// focused before, so no keys (⌘↩ included) reach the hidden app.
+    @objc private func textInputDidBeginEditing(_ notification: Notification) {
+        guard let window = lockWindow, !window.isHidden, let input = notification.object as? UIResponder else { return }
+        // On the next turn: resigning inside the begin-editing call leaves UIKit half done.
+        Task { @MainActor [weak self, weak input] in
+            guard let self, let input, input.isFirstResponder,
+                  let window = lockWindow, !window.isHidden else { return }
+            coveredTextInput = input
+            input.resignFirstResponder()
+            if !window.isKeyWindow { window.makeKey() }
+        }
+    }
+
     private func update() {
         guard let window = lockWindow, let scene = window.windowScene else { return }
         if lock.showsLockWindow {
@@ -71,6 +91,8 @@ import UIKit
                     coveredTextInput = input
                     input.resignFirstResponder()
                 }
+                // The icon can change in Settings, which SwiftUI doesn't observe.
+                lockHost?.rootView = AppLockView(lock: lock, icon: .current)
                 window.overrideUserInterfaceStyle = Self.themeStyle
                 window.isHidden = false
                 UIAccessibility.post(notification: .screenChanged, argument: nil)
@@ -121,6 +143,8 @@ private extension UIResponder {
 /// Static: nothing animates or repaints.
 struct AppLockView: View {
     let lock: AppLock
+    /// The user's chosen app icon, read each time the window appears.
+    let icon: AppIconChoice
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -128,7 +152,7 @@ struct AppLockView: View {
         GeometryReader { proxy in
             ScrollView {
                 VStack(spacing: 0) {
-                    AppLockIcon()
+                    AppLockIcon(choice: icon)
 
                     if lock.isPasscodeMissing {
                         passcodeMissing
@@ -198,6 +222,8 @@ extension AppLockCapability.Method {
 
 /// The user's chosen app icon, as the Settings icon picker previews it.
 private struct AppLockIcon: View {
+    let choice: AppIconChoice
+
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -212,7 +238,7 @@ private struct AppLockIcon: View {
     }
 
     private var previewImageName: String {
-        AppIconChoice.current.previewImageName
+        choice.previewImageName
             ?? (colorScheme == .dark ? AppIconChoice.dark : AppIconChoice.light).previewImageName
             ?? "AppIconLightPreview"
     }
