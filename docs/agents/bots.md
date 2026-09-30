@@ -915,8 +915,8 @@ those values into manager calls.
   owed until a write actually lands, so the feed's same-tick chips write cannot drop
   it, and an ask that arrives while ActivityKit is still creating the activity alerts
   on its first write. A repeated waiting event stays silent. On a paired server the
-  run's finish and failure also alert once, through the relay's final update (see
-  Push previews and taps, #888).
+  run's finish or failure can also alert once, through the relay's final update, under
+  the Replies and subagent-mute preferences (see Push previews and taps, #888).
 - **Ownership.** Before every stale or end call the feed checks
   `drivenSessionID`, so an activity a webui run or another bot took over is never
   touched. Token rotation and retirement are serialized: an in-flight registration
@@ -1548,7 +1548,8 @@ preference and muted subagents; a failure follows only the subagent mute. The `e
 removes the activity from the Lock Screen after 5 minutes (done) or 30 s (failed), as the
 app's local end does. The plugin reports a stopped run as `done`, so a run stopped from
 another device alerts "Response complete"; a Stop in Hermex retires the registration
-first, so it usually does not.
+first, so it usually does not. APNs stores only the latest push for an offline phone, so
+a phone that is offline when the run ends gets the `end` without the alert.
 
 While the app is open, `PushAppDelegate` presents relay pushes itself (#566); iOS would
 otherwise show none, approvals included. `PushPresence` records the conversation on
