@@ -86,18 +86,14 @@ import Foundation
     private func beginSignIn(on session: URLSession) -> Task<Void, Error> {
         let attempt = Task {
             defer { signInTask = nil }
-            let status: BotJSON
-            do { status = try await decoded(.status, on: session) }
-            // `/api/status` is public on every dashboard, so a 401, a 404 or a non-JSON
-            // body there means the address is something else, such as the webui.
-            catch BotFailure.rejected(let code) where code == 401 || code == 404 { throw BotFailure.notDashboard }
-            catch is DecodingError { throw BotFailure.notDashboard }
+            let status = try await publicStatus(on: session)
             try checkCurrent()
             serverVersion = status["version"].text
             serverInstallID = BotConnection.installID(in: status)
             try connection.requireSameInstall(serverInstallID)
-            guard status["auth_required"].flag == true,
-                  status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.unsupported }
+            guard status["auth_required"].flag == true else { throw BotFailure.unsupported }
+            // #708 replaces this branch with the browser sign-in flow.
+            guard status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.browserSignIn }
             _ = try await decoded(.login(username: connection.username, password: connection.password), on: session)
             try checkCurrent()
             let identity = try await decoded(.identity, on: session)
@@ -181,11 +177,29 @@ import Foundation
         liveGateway?.retire()
     }
 
-    /// The status, login and identity reads, which run before there is a session.
+    /// The login and identity reads, which run before there is a session.
     private func decoded(_ rest: HermesREST, on session: URLSession) async throws -> BotJSON {
         let data = try await Self.send(prepared(try rest.request(base: connection.address)), on: session,
                                        accepting: 200..<201, redirectGuard: redirectGuard)
         return try JSONDecoder().decode(BotJSON.self, from: data)
+    }
+
+    /// The first sign-in read. `/api/status` is public on every dashboard, so a 404, a body
+    /// that is not JSON, or a 401 whose body is a JSON object (the webui's auth gate) means
+    /// the address is something else, such as the webui. Any other 401 comes from something
+    /// in front of Hermes, such as Cloudflare Access.
+    private func publicStatus(on session: URLSession) async throws -> BotJSON {
+        let request = prepared(try HermesREST.status.request(base: connection.address))
+        let (data, response) = try await Self.exchange(request, on: session, redirectGuard: redirectGuard)
+        let body = try? JSONDecoder().decode(BotJSON.self, from: data)
+        switch response.statusCode {
+        case 200:
+            guard let body else { throw BotFailure.notDashboard }
+            return body
+        case 401: throw body?.fields != nil ? BotFailure.notDashboard : BotFailure.blocked
+        case 404: throw BotFailure.notDashboard
+        case let code: throw BotFailure.rejected(code)
+        }
     }
 
     private func session(for deadline: Deadline) -> URLSession {
@@ -194,10 +208,21 @@ import Foundation
 
     private nonisolated static func send(_ request: URLRequest, on session: URLSession, accepting accepted: Range<Int>,
                                          redirectGuard: CrossOriginHeaderStripper) async throws -> Data {
-        let (data, response) = try await session.data(for: request, delegate: redirectGuard)
-        guard let response = response as? HTTPURLResponse else { throw BotFailure.transport }
+        let (data, response) = try await exchange(request, on: session, redirectGuard: redirectGuard)
         guard accepted.contains(response.statusCode) else { throw BotFailure.rejected(response.statusCode) }
         return data
+    }
+
+    /// Sends `request` and returns the final reply, whatever its status. A reply from another
+    /// host means a redirect led to something in front of Hermes, such as an access proxy's
+    /// sign-in page, and throws `.blocked`, like the status probe. Only the host is compared:
+    /// a same-host redirect from http to https is not a proxy.
+    private nonisolated static func exchange(_ request: URLRequest, on session: URLSession,
+                                             redirectGuard: CrossOriginHeaderStripper) async throws -> (Data, HTTPURLResponse) {
+        let (data, response) = try await session.data(for: request, delegate: redirectGuard)
+        guard let response = response as? HTTPURLResponse else { throw BotFailure.transport }
+        if let final = response.url?.host, final.lowercased() != request.url?.host?.lowercased() { throw BotFailure.blocked }
+        return (data, response)
     }
 
     /// Adds this connection's headers to a request for its own origin. A header the request

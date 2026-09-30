@@ -4,6 +4,9 @@ import XCTest
 @MainActor final class BotClientTests: XCTestCase {
     override func tearDown() {
         BotHTTPFixture.handler = nil
+        BotHTTPFixture.raw = nil
+        BotHTTPFixture.redirect = nil
+        BotHTTPFixture.requested = []
         super.tearDown()
     }
 
@@ -892,6 +895,88 @@ import XCTest
         }
     }
 
+    /// An access proxy such as Cloudflare Access redirects the public status read to its own
+    /// sign-in page on another host. That page is not "not a dashboard", and no password goes out.
+    func testAnAccessProxyRedirectIsBlockedBeforeThePasswordGoesOut() async {
+        BotHTTPFixture.redirect = URL(string: "https://team.cloudflareaccess.com/cdn-cgi/access/login")!
+        BotHTTPFixture.raw = { _ in (200, Data("<html>Sign in</html>".utf8)) }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in
+            XCTFail("Must not open a socket")
+            return BotScriptedSocket()
+        }
+        do { try await client.connect(); XCTFail("Expected an access proxy") }
+        catch { XCTAssertEqual(error as? BotFailure, .blocked) }
+        XCTAssertEqual(BotHTTPFixture.requested.map(\.absoluteString),
+                       ["https://hermes.example/api/status", "https://team.cloudflareaccess.com/cdn-cgi/access/login"])
+        client.close()
+    }
+
+    /// Cloudflare Access can refuse the status read with its own 401 page instead of
+    /// redirecting. Only a JSON 401, the webui's auth gate, reads as "not a dashboard".
+    func testAStatusRefusedWithoutAJSONBodyIsBlocked() async {
+        var paths: [String] = []
+        BotHTTPFixture.raw = { request in
+            paths.append(request.url!.path)
+            return (401, Data("<html>Unauthorized</html>".utf8))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let client = BotClient(connection: connection(), configuration: configuration)
+        do { try await client.connect(); XCTFail("Expected an access proxy") }
+        catch { XCTAssertEqual(error as? BotFailure, .blocked) }
+        XCTAssertEqual(paths, ["/api/status"])
+        client.close()
+    }
+
+    /// A host that only offers an OIDC provider supports Bot chat; Hermex just can't sign in
+    /// there yet (#708), so it says that, and the password never goes out.
+    func testAHostWithOnlyBrowserSignInSaysSoBeforeThePasswordGoesOut() async {
+        var paths: [String] = []
+        BotHTTPFixture.handler = { request in
+            paths.append(request.url!.path)
+            return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("nous")])]))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let client = BotClient(connection: connection(), configuration: configuration)
+        do { try await client.connect(); XCTFail("Expected browser sign-in only") }
+        catch { XCTAssertEqual(error as? BotFailure, .browserSignIn) }
+        XCTAssertEqual(paths, ["/api/status"])
+        client.close()
+    }
+
+    /// A refused upgrade fails the socket's first read with a bare `URLError`; its HTTP status
+    /// says what refused it. Proxy, rate-limit and timeout statuses keep today's retry.
+    func testAGatewayUpgradeStatusNamesItsFailure() {
+        XCTAssertNil(BotFailure(upgradeStatus: 101), "An accepted upgrade keeps the socket's own error")
+        for status in [401, 403, 404] { XCTAssertEqual(BotFailure(upgradeStatus: status), .upgradeRefused(status)) }
+        for status in [408, 429, 502, 503] { XCTAssertEqual(BotFailure(upgradeStatus: status), .rejected(status)) }
+    }
+
+    func testARefusedUpgradeFailsTheConnectWithItsFailure() async {
+        BotHTTPFixture.handler = { request in
+            switch request.url!.path {
+            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
+            case "/auth/password-login": return (200, .object([:]))
+            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
+            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
+            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
+            }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in
+            let socket = BotScriptedSocket()
+            socket.receiveFailure = BotFailure.upgradeRefused(403)
+            return socket
+        }
+        do { try await client.connect(); XCTFail("Expected a refused upgrade") }
+        catch { XCTAssertEqual(error as? BotFailure, .upgradeRefused(403)) }
+        client.close()
+    }
+
     func testARefusedPasswordStaysASignInFailure() async {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {
@@ -1064,14 +1149,31 @@ import XCTest
 
 private final class BotHTTPFixture: URLProtocol {
     static var handler: ((URLRequest) -> (Int, BotJSON))?
+    /// Answers instead of `handler` with a body that need not be JSON, such as a proxy's page.
+    static var raw: ((URLRequest) -> (Int, Data))?
+    /// When set, a request to any other host is answered with a 302 to this URL.
+    static var redirect: URL?
+    /// Every URL loaded, redirect targets included.
+    static var requested: [URL] = []
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        guard let handler = Self.handler else { client?.urlProtocol(self, didFailWithError: BotFailure.transport); return }
-        let (status, value) = handler(request)
-        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+        let url = request.url!
+        Self.requested.append(url)
+        if let target = Self.redirect, url.host != target.host {
+            let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: nil, headerFields: ["Location": target.absoluteString])!
+            client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: target), redirectResponse: response)
+            return
+        }
+        let status: Int, body: Data
+        if let raw = Self.raw { (status, body) = raw(request) }
+        else if let handler = Self.handler {
+            let (code, value) = handler(request)
+            (status, body) = (code, try! JSONEncoder().encode(value))
+        } else { client?.urlProtocol(self, didFailWithError: BotFailure.transport); return }
+        let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: try! JSONEncoder().encode(value))
+        client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
@@ -1092,6 +1194,8 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     var onPing: (() -> Void)?
     /// Thrown by every send, handshake and keepalive included, as a dropped connection would.
     var sendFailure: Error?
+    /// Thrown by the next receive instead of its frame, as a refused upgrade fails the first read.
+    var receiveFailure: Error?
     /// Replies to caller RPCs; the handshake and keepalive are not counted.
     private(set) var sentTextFrames = 0
     /// Caller RPCs only, so allowlist assertions ignore the handshake.
@@ -1102,6 +1206,7 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
         try await withCheckedThrowingContinuation { continuation in
             lock.lock()
             if closed { lock.unlock(); continuation.resume(throwing: BotFailure.transport) }
+            else if let failure = receiveFailure { receiveFailure = nil; lock.unlock(); continuation.resume(throwing: failure) }
             else if !frames.isEmpty { let frame = frames.removeFirst(); lock.unlock(); continuation.resume(returning: frame) }
             else { waiter = continuation; lock.unlock() }
         }

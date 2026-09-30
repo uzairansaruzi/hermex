@@ -412,7 +412,31 @@ protocol BotSocket: Sendable {
 
 private struct NativeBotSocket: BotSocket {
     let task: URLSessionWebSocketTask
-    func receive() async throws -> URLSessionWebSocketTask.Message { try await task.receive() }
+
+    /// A refused upgrade fails the first read with a bare `URLError`; the handshake's HTTP
+    /// status, when there is one, says what refused it.
+    func receive() async throws -> URLSessionWebSocketTask.Message {
+        do { return try await task.receive() } catch {
+            if let status = (task.response as? HTTPURLResponse)?.statusCode, let refusal = BotFailure(upgradeStatus: status) {
+                throw refusal
+            }
+            throw error
+        }
+    }
     func send(_ message: URLSessionWebSocketTask.Message) async throws { try await task.send(message) }
     func cancel() { task.cancel(with: .normalClosure, reason: nil) }
+}
+
+extension BotFailure {
+    /// The failure a gateway upgrade answered with `status` stands for, or nil for 101, an
+    /// accepted upgrade whose later errors are the socket's own. 408, 429 and 5xx keep
+    /// `.rejected` and its quiet retry and proxy copy; any other status is `.upgradeRefused`,
+    /// which does not heal on its own.
+    init?(upgradeStatus status: Int) {
+        switch status {
+        case 101: return nil
+        case 408, 429, 500...599: self = .rejected(status)
+        default: self = .upgradeRefused(status)
+        }
+    }
 }

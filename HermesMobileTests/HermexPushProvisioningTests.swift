@@ -354,6 +354,25 @@ import XCTest
         XCTAssertEqual(PushHTTPFixture.calls, ["GET https://a.example.com/api/status"])
     }
 
+    /// An access proxy's refusal and a host with browser sign-in only stop setup at sign-in
+    /// with words the user can act on, before the password goes out.
+    func testSignInStopsWithTheAccessProxyOrBrowserSignInCopy() async throws {
+        let rows: [((Int, BotJSON), String)] = [
+            // A proxy's 401 page: not the webui's JSON object.
+            ((401, .null), "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Hermex can't do that yet. Use an address that skips it, such as the dashboard's local network address."),
+            ((200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("nous")])])),
+             "This Hermes host doesn’t offer the password sign-in push setup needs.")
+        ]
+        for (status, message) in rows {
+            PushHTTPFixture.reset()
+            PushHTTPFixture.handler = { request in request.url?.path == "/api/status" ? status : nil }
+            let provisioner = makeProvisioner(server: serverA, registrar: FakePushRegistrar())
+            await provisioner.enable()
+            XCTAssertEqual(provisioner.failure, HermexPushProvisioner.Failure(title: "Sign in to Hermes", message: message))
+            XCTAssertEqual(PushHTTPFixture.calls, ["GET https://a.example.com/api/status"])
+        }
+    }
+
     func testEachFailureNamesWhatAnsweredIt() {
         let unusable = HermexPushFailure.unusablePairing.errorDescription
         let cases: [(any Error, String?)] = [
@@ -368,7 +387,7 @@ import XCTest
             (PushRelayError.transport, "Could not reach the notification relay. Check this iPhone’s internet connection, then try again."),
             (BotFailure.unsupported, "This Hermes host doesn’t offer the password sign-in push setup needs."),
             (BotFailure.wrongIdentity, "This Hermes host doesn’t offer the password sign-in push setup needs."),
-            // The shared sign-in reads a status 401, 404 or non-JSON body as another kind of server.
+            // The shared sign-in reads a status 404, a JSON 401 or a non-JSON body as another kind of server.
             (BotFailure.notDashboard, "This Hermes host doesn’t offer the password sign-in push setup needs."),
             (BotFailure.rejected(401), "This Hermes host rejected the saved sign-in. Update the Hermes connection, then try again."),
             (URLError(.timedOut), "The host did not answer in time. It may still be finishing this step — wait a moment, then try again."),

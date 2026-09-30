@@ -312,18 +312,21 @@ import XCTest
     }
 
     /// The fixture carries the headers onto the redirected request, as a server's redirect
-    /// would, so only the connection's redirect guard can remove them.
+    /// would, so only the connection's redirect guard can remove them. A reply from another
+    /// host then ends the sign-in as `.blocked` before the password goes out.
     func testACrossOriginRedirectDropsTheHeadersBeforeTheRelay() async throws {
         let relay = HermexPushPlugin.defaultRelayURL.appendingPathComponent("api/status")
         let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
             request.url?.host == "hermes.example" && request.url?.path == "/api/status" ? .redirect(relay) : nil
         }, headers: try HermesHeaders([cloudflare, access]))
-        try await http.signIn()
+        do { try await http.signIn(); XCTFail("Expected a reply from another host to be blocked") }
+        catch { XCTAssertEqual(error as? BotFailure, .blocked) }
         let hop = try XCTUnwrap(HermesHostFixture.requests.first { $0.url?.host == relay.host })
         XCTAssertNil(hop.value(forHTTPHeaderField: "Authorization"))
         XCTAssertNil(hop.value(forHTTPHeaderField: "X-Access"))
-        let login = try XCTUnwrap(HermesHostFixture.requests.first { $0.url?.path == "/auth/password-login" })
-        XCTAssertEqual(login.value(forHTTPHeaderField: "X-Access"), "token", "Requests to the origin keep them")
+        let status = try XCTUnwrap(HermesHostFixture.requests.first { $0.url?.host == "hermes.example" })
+        XCTAssertEqual(status.value(forHTTPHeaderField: "X-Access"), "token", "Requests to the origin keep them")
+        XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
     }
 
     private func assertStale(_ label: String, _ body: () async throws -> Void) async {

@@ -37,9 +37,21 @@ indirect enum BotJSON: Codable, Hashable, Sendable {
 }
 
 enum BotFailure: Error, Equatable, LocalizedError {
-    /// `notDashboard`: the address answered `/api/status` with 401, 404 or a body that
-    /// is not JSON, so it is not a Hermes dashboard (often the webui address). Permanent.
+    /// `notDashboard`: the address answered `/api/status` with 404, a JSON 401 (the webui's
+    /// auth gate) or a body that is not JSON, so it is not a Hermes dashboard (often the
+    /// webui address). Permanent.
     case stale, unsupported, missingChat, wrongIdentity, differentHost, rejected(Int), transport, invalidAddress, notDashboard
+    /// Something in front of Hermes wants its own sign-in: a request ended on another host
+    /// (an access proxy's login page), or `/api/status` answered a 401 whose body is not a
+    /// JSON object. Permanent.
+    case blocked
+    /// The host requires sign-in but offers no `basic` provider, only a browser (OIDC)
+    /// one Hermex can't use yet. Permanent.
+    case browserSignIn
+    /// The gateway upgrade was refused with this HTTP status after a good sign-in, usually
+    /// by a proxy that drops the ticket header or has no WebSocket support. Permanent;
+    /// 408, 429 and 5xx arrive as `.rejected` instead (`init(upgradeStatus:)`).
+    case upgradeRefused(Int)
     var errorDescription: String? {
         switch self {
         case .stale: return String(localized: "This action is no longer current. Refresh the conversation.")
@@ -49,8 +61,9 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .wrongIdentity: return String(localized: "The conversation identity changed. Check this bot in Desktop.")
         case .differentHost: return String(localized: "The Hermes host at this address reports a different identity than the one you connected to. Check the address in the Hermes connection.")
         case .rejected(401): return String(localized: "Sign in again. Check your Bot connection username and password.")
-        // Hermes never answers 403 or 520-530 itself. 502-504 usually come from a proxy; Hermes's
-        // own 503 (its auth provider is unreachable) shares the approved proxy copy.
+        // Hermes's REST routes never answer 403, but the gateway upgrade does (see `.upgradeRefused`).
+        // Hermes never answers 520-530 itself. 502-504 usually come from a proxy; Hermes's own 503
+        // (its auth provider is unreachable) shares the approved proxy copy.
         case .rejected(403): return String(localized: "Something in front of Hermes, such as Cloudflare Access, blocked the request.")
         case .rejected(502...504): return String(localized: "Your proxy answered, but Hermes didn't. Check that the dashboard is running on the host.")
         case .rejected(520...530): return String(localized: "Cloudflare can't reach your tunnel. Check that cloudflared and the dashboard are running on the host.")
@@ -58,6 +71,9 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .rejected(4090): return String(localized: "Another Hermes process owns this conversation. Resolve it on the host, then refresh.")
         case .rejected(4130): return String(localized: "This conversation is too large to open here. Use Desktop.")
         case .invalidAddress: return String(localized: "Enter a Hermes HTTP or HTTPS address without a path, credentials or query.")
+        case .blocked: return String(localized: "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Hermex can't do that yet. Use an address that skips it, such as the dashboard's local network address.")
+        case .browserSignIn: return String(localized: "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.")
+        case .upgradeRefused: return String(localized: "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through.")
         default: return String(localized: "Connection lost. The bot may still be working. Reconnect to check its current conversation.")
         }
     }

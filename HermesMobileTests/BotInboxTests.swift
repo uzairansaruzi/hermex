@@ -626,6 +626,31 @@ import XCTest
         XCTAssertEqual(spare, 1, "no automatic retry for an address that is not a dashboard")
     }
 
+    /// An access proxy, a host with browser sign-in only, and a refused gateway upgrade each
+    /// need the user to change something, so the inbox says what and stops retrying.
+    func testSignInFailuresTheUserMustFixShowTheirMessageInsteadOfRetrying() async throws {
+        let rows: [(BotFailure, String)] = [
+            (.blocked, "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Hermex can't do that yet. Use an address that skips it, such as the dashboard's local network address."),
+            (.browserSignIn, "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host."),
+            (.upgradeRefused(403), "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through.")
+        ]
+        for (failure, message) in rows {
+            let wire = BotInboxFixtureWire(roster: [row("triage")])
+            wire.connectError = failure
+            var spare = 0
+            let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
+                                 avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
+                spare += 1; return wire
+            }
+            await inbox.open()
+            XCTAssertEqual(inbox.errorMessage, message, "\(failure)")
+            XCTAssertFalse(inbox.isLoadingRoster, "\(failure)")
+            await Task.yield(); await Task.yield()
+            XCTAssertEqual(spare, 1, "no automatic retry after \(failure)")
+            inbox.close()
+        }
+    }
+
     func testAnUnreachableHostReplacesTheSkeletonWithAdviceAfterThreeTriesAndKeepsRetrying() async throws {
         let failing = (0..<3).map { _ in
             let wire = BotInboxFixtureWire(roster: [row("triage")])

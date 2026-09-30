@@ -285,6 +285,26 @@ import Vision
         model.suspend()
     }
 
+    /// A proxy that refuses the gateway upgrade does not heal on its own, and each retry
+    /// would mint another ticket.
+    func testReconnectStopsWithAdviceWhenTheGatewayUpgradeIsRefused() async {
+        let wire = BotFixtureWire()
+        var delays = 0
+        let model = make(wire, reconnectDelay: { _ in
+            delays += 1
+            wire.lookupFailure = .upgradeRefused(403)
+        })
+        await model.recover()
+        let stopped = expectation(description: "The proxy needs the user's attention")
+        wire.onDisconnect?(BotFailure.transport)
+        withObservationTracking { _ = model.isReconnecting } onChange: { stopped.fulfill() }
+        await fulfillment(of: [stopped], timeout: 3)
+        XCTAssertEqual(delays, 1, "no retry is scheduled after a refused upgrade")
+        XCTAssertEqual(model.connectionState, .disconnected)
+        XCTAssertEqual(model.errorMessage, "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through.")
+        model.suspend()
+    }
+
     func testFailedDraftClearAfterAcknowledgmentKeepsTextDurablyHeld() async throws {
         let persistence = BotFailingDraftClear()
         let wire = BotFixtureWire(); wire.running = true

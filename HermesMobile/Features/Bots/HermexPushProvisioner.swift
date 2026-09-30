@@ -417,9 +417,11 @@ import UserNotifications
             return String(localized: "This Hermes host rejected the saved sign-in. Update the Hermes connection, then try again.")
         case BotFailure.differentHost:
             return BotFailure.differentHost.localizedDescription
+        case BotFailure.blocked:
+            return BotFailure.blocked.localizedDescription
         case BotFailure.rejected(let status):
             return String(localized: "This Hermes host refused the step (HTTP \(status)). Check the host’s logs, then try again.")
-        case BotFailure.unsupported, BotFailure.wrongIdentity, BotFailure.notDashboard:
+        case BotFailure.unsupported, BotFailure.wrongIdentity, BotFailure.notDashboard, BotFailure.browserSignIn:
             return String(localized: "This Hermes host doesn’t offer the password sign-in push setup needs.")
         case BotFailure.transport, is URLError:
             return String(localized: "The host did not answer in time. It may still be finishing this step — wait a moment, then try again.")

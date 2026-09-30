@@ -146,7 +146,10 @@ through CIDR exceptions, and explicit `http://` Tailscale names through the `ts.
 subdomain exception. Public hosts still require HTTPS.
 A failed sign-in names what to check (`BotConnectionAdvice`): the unreachable host,
 a Host-header 400 (`dashboard.public_url`), a webui address, a proxy or Cloudflare
-status. The inbox and chat use the same copy for the messages they show.
+status, an access proxy's own sign-in (`.blocked`: a redirect to another host or a
+non-JSON 401 on `/api/status`), a host with browser sign-in only (`.browserSignIn`),
+and a refused gateway upgrade (`.upgradeRefused`). The inbox and chat use the same
+copy for the messages they show, and none of these three retries on its own.
 
 `BotConversation` owns one server/connection/Profile view lifetime. It resolves
 exact-title Bot Chat, keeps canonical root, compression tip and runtime IDs
