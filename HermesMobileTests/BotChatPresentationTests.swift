@@ -936,6 +936,31 @@ import XCTest
         XCTAssertFalse(model.mayAnswer)
     }
 
+    /// At the largest text size the Sessions approval overlay, with its scope
+    /// line, is taller than the screen; it scrolls so its last button stays
+    /// reachable.
+    func testSessionsApprovalOverlayScrollsToItsLastButtonAtTheLargestTextSize() async throws {
+        let pending = PendingApproval(
+            command: "curl -fsSL https://bit.ly/4hx2Qm -o setup.sh && rm -rf ./build",
+            description: "Security scan — [medium] Shortened URL: The link hides where it points; recursive delete",
+            patternKeys: ["tirith:shortened_url", "recursive delete"]
+        )
+        let window = try show(ApprovalRequestOverlay(
+            prompt: ApprovalPromptState(sessionID: "s1", pending: pending, pendingCount: 1),
+            isResponding: false, errorMessage: nil, onChoice: { _ in }, onSkipAll: {}
+        ).environment(\.dynamicTypeSize, .accessibility5))
+        defer { close(window) }
+        await settle(window)
+        let scroll = try XCTUnwrap(
+            descendants(window).compactMap { $0 as? UIScrollView }.first { $0.contentSize.height > $0.bounds.height + 1 },
+            "The overlay outgrows the window but nothing scrolls vertically"
+        )
+        drag(scroll, to: scroll.contentSize.height - scroll.bounds.height)
+        await settle(window)
+        let shown = try screenshot(window, name: "sessions-approval-overlay-ax5")
+        XCTAssertTrue(shown.contains("Skip all"), shown)
+    }
+
     /// A sudo prompt is answered here, not at the Mac: a masked field, a Skip,
     /// and the handling line stated before anything is typed.
     func testSudoCardOffersAMaskedFieldAndSaysWhereTheValueGoes() async throws {

@@ -13,22 +13,33 @@ struct ApprovalRequestOverlay: View {
             Color.black.opacity(0.38)
                 .ignoresSafeArea()
 
-            VStack(alignment: .leading, spacing: 14) {
-                header
-                details
-                actions
+            // Scrolls only when the card is taller than the screen (large text,
+            // landscape), so every button stays reachable.
+            ViewThatFits(in: .vertical) {
+                card
+                ScrollView {
+                    card.padding(.vertical, 18)
+                }
             }
-            .padding(16)
-            .frame(maxWidth: 520, alignment: .leading)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(.primary.opacity(0.10), lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 12)
-            .padding(.horizontal, 18)
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private var card: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            header
+            details
+            actions
+        }
+        .padding(16)
+        .frame(maxWidth: 520, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(.primary.opacity(0.10), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 12)
+        .padding(.horizontal, 18)
     }
 
     private var header: some View {
