@@ -607,6 +607,10 @@ struct MessageComposerView: View {
                 autoStartVoiceInputIfNeeded()
             }
         }
+        .onChange(of: AppLock.shared.isLocked) { _, isLocked in
+            // The intent's dictation waits for the app lock (#885).
+            if !isLocked { autoStartVoiceInputIfNeeded() }
+        }
         .onChange(of: voiceNoteRecorder.elapsed) { _, elapsed in
             // Enforce the max-duration cap: auto-stop and send (not cancel) once
             // the clip hits the limit, mirroring a finger release.
@@ -1354,12 +1358,14 @@ struct MessageComposerView: View {
 
     /// Starts dictation once for a composer opened by the "New Chat with Voice" intent (#338),
     /// mirroring a mic tap. Gated so it fires a single time, only while the app is active and
-    /// the mic is free; the reused tap path handles the mic/speech permission prompt and surfaces
-    /// a clear error if access is denied, so a denied/undetermined mic degrades gracefully.
+    /// unlocked (the scene stays active under the app lock, so the microphone never starts
+    /// behind it) and the mic is free; the reused tap path handles the mic/speech permission
+    /// prompt and surfaces a clear error if access is denied, so a denied/undetermined mic
+    /// degrades gracefully.
     @MainActor
     private func autoStartVoiceInputIfNeeded() {
         guard autoStartsVoiceInput, !didAutoStartVoiceInput else { return }
-        guard scenePhase == .active else { return }
+        guard scenePhase == .active, !AppLock.shared.isLocked else { return }
         didAutoStartVoiceInput = true
         guard !voiceInput.isListening, !isVoiceInputDisabled else { return }
         toggleVoiceInput()

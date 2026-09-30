@@ -23,7 +23,13 @@ extension FocusedValues {
 }
 
 struct HermexCommands: Commands {
-    @FocusedValue(\.hermexSceneActions) private var actions
+    @FocusedValue(\.hermexSceneActions) private var focusedActions
+
+    /// Every command is off while the app lock is up (#885). Read live, so a stale
+    /// menu can't act either.
+    @MainActor private var actions: HermexSceneActions? {
+        AppLock.shared.isLocked ? nil : focusedActions
+    }
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {

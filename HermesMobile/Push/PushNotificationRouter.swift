@@ -111,7 +111,13 @@ struct WebuiPushDestination: Hashable {
 /// (#566). Chat screens report themselves; `PushAppDelegate` asks `presentation`
 /// when a push arrives in the foreground.
 @MainActor final class PushPresence {
-    static let shared = PushPresence()
+    static let shared = PushPresence(appLock: .shared)
+
+    private let appLock: AppLock
+
+    init(appLock: AppLock) {
+        self.appLock = appLock
+    }
 
     struct Viewer: Hashable {
         let server: URL
@@ -124,7 +130,8 @@ struct WebuiPushDestination: Hashable {
     static let attentionKinds: Set<String> = ["approval", "clarify", "input", "turn_error"]
 
     private var entry: (owner: UUID, viewer: Viewer)?
-    var viewer: Viewer? { entry?.viewer }
+    /// None while the app lock hides the screen, so its chat's banners still show (#885).
+    var viewer: Viewer? { appLock.isLocked ? nil : entry?.viewer }
 
     func enter(_ viewer: Viewer, owner: UUID) { entry = (owner, viewer) }
 

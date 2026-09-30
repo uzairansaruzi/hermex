@@ -243,7 +243,8 @@ import XCTest
     }
 
     func testPresenceOnlyClearsForTheScreenThatEntered() {
-        let presence = PushPresence()
+        // An unlocked app: a locked one reports no chat on screen (AppLockTests).
+        let presence = PushPresence(appLock: AppLock(defaults: UserDefaults(suiteName: "PushPreviewTests.presence")!))
         let chat = PushPresence.Viewer(server: server, sessionID: "s1")
         let (old, replacement) = (UUID(), UUID())
         // A deep link can rebuild the same conversation before the old screen disappears.

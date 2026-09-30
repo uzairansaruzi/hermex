@@ -587,6 +587,10 @@ struct SettingsView: View {
                     serverUpdateAction
                 }
 
+                SettingsCard(title: String(localized: "Privacy")) {
+                    AppLockSettingsRow()
+                }
+
                 SettingsCard(title: String(localized: "App")) {
                     SettingsInfoRow(title: String(localized: "Version"), value: appVersion)
                     SettingsInfoRow(title: String(localized: "Build"), value: appBuild)
@@ -1946,6 +1950,42 @@ private struct SettingsToggleRow: View {
         }
         .toggleStyle(.switch)
         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+    }
+}
+
+/// The app lock toggle (#885), app-wide rather than per server. `AppLock` authenticates
+/// before it changes, so the switch moves only once iOS says yes.
+private struct AppLockSettingsRow: View {
+    @Environment(\.scenePhase) private var scenePhase
+    private let lock = AppLock.shared
+
+    var body: some View {
+        let capability = lock.capability
+
+        SettingsToggleRow(
+            title: title(for: capability.method),
+            systemImage: capability.method.systemImage,
+            isOn: Binding(get: { lock.isEnabled }, set: { isOn in Task { await lock.setEnabled(isOn) } })
+        )
+        // Without a passcode it can still be turned off: nothing could unlock it anyway.
+        .disabled(lock.isAuthenticating || (!capability.hasPasscode && !lock.isEnabled))
+        .onAppear { lock.refreshCapability() }
+        .onChange(of: scenePhase) { _, phase in
+            // The passcode or Face ID may have changed in iOS Settings.
+            if phase == .active { lock.refreshCapability() }
+        }
+
+        SettingsFootnote(capability.hasPasscode
+            ? String(localized: "Locks Hermex when it opens and after a minute away. Notifications, Live Activities and the share sheet still show their content.")
+            : String(localized: "Set a passcode in iOS Settings to use this."))
+    }
+
+    private func title(for method: AppLockCapability.Method) -> String {
+        switch method {
+        case .faceID: String(localized: "Require Face ID")
+        case .touchID: String(localized: "Require Touch ID")
+        case .passcode: String(localized: "Require Passcode")
+        }
     }
 }
 
