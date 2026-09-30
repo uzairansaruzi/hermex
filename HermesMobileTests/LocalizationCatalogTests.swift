@@ -270,4 +270,27 @@ final class LocalizationCatalogTests: XCTestCase {
             }
         }
     }
+
+    /// The hermex-push relay sends these keys as the `loc-key` of a Live Activity's end alert
+    /// (#888), and iOS resolves them from this catalog. A rename or cleanup here has no
+    /// compile error to catch it: the alert would silently fall back to the English key.
+    func testRelayLiveActivityAlertKeysAreLocalizedInEveryShippedLanguage() throws {
+        let data = try Data(contentsOf: catalogURL())
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let strings = try XCTUnwrap(root["strings"] as? [String: Any])
+
+        for key in ["Response complete", "Response failed"] {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], "\(key) is missing; the relay sends it as a loc-key")
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], key)
+            for language in Self.shippedLanguages {
+                let localization = try XCTUnwrap(
+                    localizations[language] as? [String: Any],
+                    "[\(language)] \(key)"
+                )
+                XCTAssertTrue(hasNonEmptyValue(localization), "[\(language)] \(key) is empty")
+                let translatedValue = (localization["stringUnit"] as? [String: Any])?["value"] as? String
+                XCTAssertNotEqual(translatedValue, key, "[\(language)] \(key) still uses English")
+            }
+        }
+    }
 }

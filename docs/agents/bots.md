@@ -914,7 +914,9 @@ those values into manager calls.
   it is not in the foreground (`AgentLiveActivityAlertPolicy`, #740). The alert stays
   owed until a write actually lands, so the feed's same-tick chips write cannot drop
   it, and an ask that arrives while ActivityKit is still creating the activity alerts
-  on its first write. A repeated waiting event stays silent.
+  on its first write. A repeated waiting event stays silent. On a paired server the
+  run's finish and failure also alert once, through the relay's final update (see
+  Push previews and taps, #888).
 - **Ownership.** Before every stale or end call the feed checks
   `drivenSessionID`, so an activity a webui run or another bot took over is never
   touched. Token rotation and retirement are serialized: an in-flight registration
@@ -1537,7 +1539,16 @@ push restores the existing global local-notification preference. Webui Live Acti
 on a paired server hand off to the relay like a bot's (see Bot Live Activity). Grouping (`thread-id`), the self-rewriting banner (`apns-collapse-id`) and "no
 reply or error banner while a Live Activity carries the session" are relay policy (`relay/src/policy.ts`),
 not app code. Approvals and questions still banner during an activity, since its
-`waiting` update is silent (#740).
+`waiting` update is silent (#740). In place of the reply or error banner, the run's end
+alerts once (#888): before the `end`, the relay sends the activity a final update with
+a sound and the text "Hermex" / "Response complete" or "Response failed", the body a
+`loc-key` that iOS resolves from `Localizable.xcstrings` (the iPhone shows the expanded
+activity; only Apple Watch shows the text). A finish follows the server's Replies
+preference and muted subagents; a failure follows only the subagent mute. The `end` then
+removes the activity from the Lock Screen after 5 minutes (done) or 30 s (failed), as the
+app's local end does. The plugin reports a stopped run as `done`, so a run stopped from
+another device alerts "Response complete"; a Stop in Hermex retires the registration
+first, so it usually does not.
 
 While the app is open, `PushAppDelegate` presents relay pushes itself (#566); iOS would
 otherwise show none, approvals included. `PushPresence` records the conversation on

@@ -66354,6 +66354,7 @@
       }
     },
     "Response complete" : {
+      "comment" : "A run finished. The hermex-push relay also sends this exact key as the loc-key of a Live Activity's end alert: renaming it leaves that alert in English.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -66460,6 +66461,7 @@
       }
     },
     "Response failed" : {
+      "comment" : "A run failed. The hermex-push relay also sends this exact key as the loc-key of a Live Activity's end alert: renaming it leaves that alert in English.",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
