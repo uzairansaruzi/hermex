@@ -146,8 +146,7 @@ import XCTest
     func testDesktopTaskKindsMapFromTheirServerRequests() {
         let expected: [String: BotDesktopTaskRequest.Kind] = [
             "terminal.read": .terminalRead, "window.read": .windowRead, "preview.read": .previewRead,
-            "preview.act": .previewAct, "tour": .tour, "vault.unlock_prompt": .vaultUnlock,
-            "vault.save_login": .vaultSaveLogin, "vault.code": .vaultCode
+            "preview.act": .previewAct, "tour": .tour
         ]
         XCTAssertEqual(Set(expected.values), Set(BotDesktopTaskRequest.Kind.allCases))
         for (method, kind) in expected {
@@ -156,10 +155,44 @@ import XCTest
             XCTAssertFalse(kind.title.isEmpty)
             XCTAssertFalse(kind.detail.isEmpty)
         }
-        // Only the password-manager prompts wait for someone at the Mac, and
-        // they are the only ones there is anything to skip.
-        XCTAssertEqual(Set(BotDesktopTaskRequest.Kind.allCases.filter(\.needsSomeoneAtTheMac)),
-                       [.vaultUnlock, .vaultSaveLogin, .vaultCode])
+    }
+
+    /// The password-vault prompts are answered here like sudo and secret, and
+    /// carry what their card names: the password manager, the site and the
+    /// origin a login is saved for, and the host's hint when it sent one.
+    func testVaultPromptsAreAnswerableCredentialsWithTheirParams() {
+        let unlock = BotServerRequest(frame("vault.unlock_prompt", params: [
+            "backend": .string("onepassword"), "display_name": .string("1Password")
+        ]))?.pending
+        XCTAssertEqual(unlock, .credential(BotCredentialRequest(
+            kind: .vaultUnlock, requestID: "srq-1", envVar: nil, prompt: nil, displayName: "1Password"
+        )))
+        let save = BotServerRequest(frame("vault.save_login", params: [
+            "origin": .string("https://github.com"), "site": .string("github.com")
+        ]))?.pending
+        XCTAssertEqual(save, .credential(BotCredentialRequest(
+            kind: .vaultSaveLogin, requestID: "srq-1", envVar: nil, prompt: nil,
+            origin: "https://github.com", site: "github.com"
+        )))
+        // At the pin the host always sends an empty hint; blank reads as absent.
+        let code = BotServerRequest(frame("vault.code", params: ["site": .string("github.com"), "hint": .string("")]))?.pending
+        XCTAssertEqual(code, .credential(BotCredentialRequest(
+            kind: .vaultCode, requestID: "srq-1", envVar: nil, prompt: nil, site: "github.com"
+        )))
+        for pending in [unlock, save, code] { XCTAssertEqual(pending?.isAnswerable, true) }
+
+        guard case .credential(let unlockRequest)? = unlock, case .credential(let saveRequest)? = save,
+              case .credential(let codeRequest)? = code else { return XCTFail("Expected three credential requests") }
+        XCTAssertTrue(unlockRequest.title.contains("1Password"), unlockRequest.title)
+        XCTAssertTrue(unlockRequest.handling.contains("1Password"), unlockRequest.handling)
+        XCTAssertTrue(saveRequest.title.contains("github.com"), saveRequest.title)
+        XCTAssertTrue(codeRequest.title.contains("github.com"), codeRequest.title)
+        // The host's hint, when it sends one, is the card's own words for the code.
+        guard case .credential(let hinted)? = BotServerRequest(frame("vault.code", params: [
+            "hint": .string("Check your authenticator app")
+        ]))?.pending else { return XCTFail("Expected a code request") }
+        XCTAssertEqual(hinted.detail, "Check your authenticator app")
+        XCTAssertNotEqual(codeRequest.detail, hinted.detail)
     }
 
     /// `mcp.setup` no longer exists at the pin; it and any future method still
@@ -592,6 +625,96 @@ import XCTest
         model.suspend()
     }
 
+    // MARK: password-vault prompts
+
+    /// The master password is answered here like sudo, as the prompt's `value`.
+    func testAVaultUnlockSendsTheMasterPasswordAsItsValue() async {
+        let wire = BotFixtureWire()
+        let model = await blocked(on: wire)
+        wire.onEvent?(serverRequest("vault.unlock_prompt", id: "unlock-1", params: [
+            "backend": .string("onepassword"), "display_name": .string("1Password")
+        ]))
+        XCTAssertTrue(model.mayAnswer)
+        await model.answerCredential(action(model), value: "correct horse")
+        XCTAssertEqual(wire.calls.last { $0.0 == "request.answer" }?.1,
+                       ["id": .string("unlock-1"), "result": .object(["value": .string("correct horse")])])
+        XCTAssertEqual(model.requestResolution, BotRequestResolution(requestID: "unlock-1", outcome: .answered))
+        XCTAssertNil(model.pendingRequest)
+        model.suspend()
+    }
+
+    /// A login goes as one JSON-encoded string holding both fields, built by an
+    /// encoder so a quote or backslash in the password cannot break it. A login
+    /// missing either field has no value to send at all.
+    func testASaveLoginSendsIdentifierAndPasswordAsOneJSONString() async throws {
+        XCTAssertNil(BotCredentialRequest.saveLoginValue(identifier: "", password: "hunter2"))
+        XCTAssertNil(BotCredentialRequest.saveLoginValue(identifier: "  ", password: "hunter2"))
+        XCTAssertNil(BotCredentialRequest.saveLoginValue(identifier: "tomsmith", password: ""))
+
+        let wire = BotFixtureWire()
+        let model = await blocked(on: wire)
+        wire.onEvent?(serverRequest("vault.save_login", id: "save-1", params: [
+            "origin": .string("https://github.com"), "site": .string("github.com")
+        ]))
+        let password = #"Super "Secret" \Password!"#
+        let value = try XCTUnwrap(BotCredentialRequest.saveLoginValue(identifier: " tomsmith ", password: password))
+        await model.answerCredential(action(model), value: value)
+
+        let sent = try XCTUnwrap(wire.calls.last { $0.0 == "request.answer" }?.1)
+        XCTAssertEqual(sent["id"], .string("save-1"))
+        let json = try XCTUnwrap(sent["result"]?["value"].text, "The value is a string, not an object")
+        let login = try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String]
+        XCTAssertEqual(login, ["identifier": "tomsmith", "password": password])
+        XCTAssertEqual(model.requestResolution?.outcome, .answered)
+        model.suspend()
+    }
+
+    /// The host strips spaces and dashes itself, so the phone sends the code untouched.
+    func testAVaultCodeIsSentAsTyped() async {
+        let wire = BotFixtureWire()
+        let model = await blocked(on: wire)
+        wire.onEvent?(serverRequest("vault.code", id: "code-1", params: [
+            "site": .string("github.com"), "hint": .string("")
+        ]))
+        await model.answerCredential(action(model), value: "123 456")
+        XCTAssertEqual(wire.calls.last { $0.0 == "request.answer" }?.1,
+                       ["id": .string("code-1"), "result": .object(["value": .string("123 456")])])
+        XCTAssertEqual(model.requestResolution?.outcome, .answered)
+        model.suspend()
+    }
+
+    /// Skip is the host's own decline for every vault prompt: an empty value
+    /// releases the bot now instead of parking it until the prompt times out.
+    func testSkippingAVaultPromptSendsAnEmptyValue() async {
+        for method in ["vault.unlock_prompt", "vault.save_login", "vault.code"] {
+            let wire = BotFixtureWire()
+            let model = await blocked(on: wire)
+            wire.onEvent?(serverRequest(method, id: "vault-1", params: ["site": .string("example.com")]))
+            XCTAssertTrue(model.mayAnswer, method)
+            await model.skipCredential(action(model))
+            XCTAssertEqual(wire.calls.last { $0.0 == "request.answer" }?.1,
+                           ["id": .string("vault-1"), "result": .object(["value": .string("")])], method)
+            XCTAssertEqual(model.requestResolution?.outcome, .answered, method)
+            XCTAssertNil(model.pendingRequest, method)
+            model.suspend()
+        }
+    }
+
+    /// A prompt the host already timed out answers `expired`: the card goes
+    /// inert, the connection stays up, and the code is sent once, never again.
+    func testAnExpiredVaultPromptReportsAlreadyResolved() async {
+        let wire = BotFixtureWire(); wire.answerStatus = "expired"
+        let model = await blocked(on: wire)
+        wire.onEvent?(serverRequest("vault.code", id: "code-2", params: ["site": .string("github.com")]))
+        await model.answerCredential(action(model), value: "123456")
+        XCTAssertEqual(wire.calls.filter { $0.0 == "request.answer" }.count, 1)
+        XCTAssertEqual(model.requestResolution, BotRequestResolution(requestID: "code-2", outcome: .alreadyResolved))
+        XCTAssertEqual(model.connectionState, .connected)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertFalse(model.mayAnswer)
+        model.suspend()
+    }
+
     // MARK: Desktop-task kinds
 
     func testADesktopTaskBlocksTheTurnAndIsNeverAnswerable() async {
@@ -622,38 +745,16 @@ import XCTest
         model.suspend()
     }
 
-    /// A password-manager prompt waits for someone at the Mac. The phone cannot
-    /// answer it, but Skip releases the bot now with the host's empty value.
-    func testAVaultPromptIsSkippedFromThePhone() async {
-        for method in ["vault.unlock_prompt", "vault.save_login", "vault.code"] {
-            let wire = BotFixtureWire()
-            let model = await blocked(on: wire)
-            wire.onEvent?(serverRequest(method, id: "vault-1", params: ["site": .string("example.com")]))
-            // Skipping is not answering: the password or code only goes in at the Mac.
-            XCTAssertFalse(model.pendingRequest?.isAnswerable ?? true)
-            XCTAssertFalse(model.mayAnswer)
-            XCTAssertTrue(model.mayDecline)
-
-            await model.declineDesktopTask(action(model))
-            XCTAssertEqual(wire.calls.last { $0.0 == "request.answer" }?.1,
-                           ["id": .string("vault-1"), "result": .object(["value": .string("")])])
-            XCTAssertEqual(model.requestResolution?.outcome, .answered)
-            XCTAssertNil(model.pendingRequest)
-            model.suspend()
-        }
-    }
-
-    /// Every other Desktop task has nothing to decline, and a decline aimed at
-    /// one must never reach the wire.
-    func testADesktopTaskThatCannotBeDeclinedNeverDispatches() async {
+    /// A Desktop task has no answer from here: an answer aimed at one, even the
+    /// empty value Skip sends, never reaches the wire.
+    func testADesktopTaskIsNeverAnswered() async {
         let wire = BotFixtureWire()
         let model = await blocked(on: wire)
         wire.onEvent?(serverRequest("preview.read", id: "prev-1"))
-        XCTAssertFalse(model.mayDecline)
         XCTAssertNil(model.prepareAnswer())
-        await model.declineDesktopTask(
-            BotConversation.AnswerAction(generation: 0, runtime: "runtime", requestID: "prev-1")
-        )
+        let forged = BotConversation.AnswerAction(generation: 0, runtime: "runtime", requestID: "prev-1")
+        await model.skipCredential(forged)
+        await model.answerCredential(forged, value: "never sent")
         XCTAssertFalse(wire.calls.contains { $0.0 == "request.answer" })
         XCTAssertNil(model.requestResolution)
         model.suspend()
@@ -828,7 +929,7 @@ extension BotAnsweringTests {
         let wire = BotFixtureWire()
         wire.openRequests = .array([serverRequest("vault.code")])
         let model = await blocked(on: wire)
-        await model.declineDesktopTask(action(model))
+        await model.skipCredential(action(model))
         XCTAssertEqual(wire.calls.last { $0.0 == "request.answer" }?.1["result"],
                        .object(["value": .string("")]))
         model.suspend()

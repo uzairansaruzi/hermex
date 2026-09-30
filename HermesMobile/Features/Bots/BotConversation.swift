@@ -388,8 +388,7 @@ import Observation
 
     /// The one request blocking this conversation, in order: a question, the
     /// snapshot's approval, a server-request approval, any other server request
-    /// (a credential prompt or a Desktop task such as `vault.*`), then an open
-    /// connection operation.
+    /// (a credential prompt or a Desktop task), then an open connection operation.
     var pendingRequest: BotPendingRequest? {
         let current = serverRequests.compactMap(\.pending)
         return current.first { if case .question = $0 { return true }; return false }
@@ -403,14 +402,6 @@ import Observation
     var mayAnswer: Bool {
         guard let request = pendingRequest, request.isAnswerable else { return false }
         return mayDispatchAnswer(for: request.requestID)
-    }
-
-    /// True when the request on screen can be skipped from here. Separate from
-    /// `mayAnswer`: a Desktop task is never answerable, but the kinds with a
-    /// person in the loop can still be declined rather than waited out.
-    var mayDecline: Bool {
-        guard case .desktopTask(let task)? = pendingRequest, task.kind.needsSomeoneAtTheMac else { return false }
-        return mayDispatchAnswer(for: task.requestID)
     }
 
     /// A resolved or expired request stays inert; an uncertain one is actionable
@@ -1251,10 +1242,10 @@ import Observation
         }
     }
 
-    /// Captures what an answer or a decline is validated against, or nil when
-    /// the request on screen cannot be acted on right now.
+    /// Captures what an answer is validated against, or nil when the request on
+    /// screen cannot be acted on right now.
     func prepareAnswer() -> AnswerAction? {
-        guard mayAnswer || mayDecline, let runtime, let id = pendingRequest?.requestID else { return nil }
+        guard mayAnswer, let runtime, let id = pendingRequest?.requestID else { return nil }
         return AnswerAction(generation: generation, runtime: runtime, requestID: id)
     }
 
@@ -1298,9 +1289,10 @@ import Observation
         await dispatchAnswers([BotQuestionAnswer(questionID: nil, text: "")], for: action)
     }
 
-    /// Sends the value the user typed for a `sudo` or `secret` request.
-    /// The value is passed straight to the dispatch and never stored on the model,
-    /// so nothing retains it once the write completes.
+    /// Sends the value the user typed for a credential request: a password,
+    /// secret or code, or a save-login's JSON string. The value is passed straight
+    /// to the dispatch and never stored on the model, so nothing retains it once
+    /// the write completes.
     func answerCredential(_ action: AnswerAction, value: String) async {
         guard case .credential(let request)? = pendingRequest, request.requestID == action.requestID,
               action == prepareAnswer() else { return }
@@ -1313,22 +1305,11 @@ import Observation
     }
 
     /// Declines to supply the value. An empty string is the host's own skip: the
-    /// secret tool records a skip and the sudo command is left to fail, which is
-    /// the honest outcome and far better than parking the bot until it times out.
+    /// secret tool records a skip, the sudo command is left to fail and a vault
+    /// prompt is declined, which is the honest outcome and far better than
+    /// parking the bot until it times out.
     func skipCredential(_ action: AnswerAction) async {
         await answerCredential(action, value: "")
-    }
-
-    /// Skips a `vault.*` prompt the phone cannot answer. An empty `value` is the
-    /// host's own "declined", so the bot moves on now instead of waiting for
-    /// someone at the Mac.
-    func declineDesktopTask(_ action: AnswerAction) async {
-        guard case .desktopTask(let task)? = pendingRequest, task.requestID == action.requestID,
-              task.kind.needsSomeoneAtTheMac, action == prepareAnswer() else { return }
-        await deliver(action, confirming: .declined) {
-            let reply = try await self.answerServerRequest(action, result: .value(""))
-            return reply["status"].text == "expired" ? .alreadyResolved : .answered
-        }
     }
 
     private func dispatchAnswers(_ answers: [BotQuestionAnswer], for action: AnswerAction) async {

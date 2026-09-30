@@ -78,11 +78,11 @@ final class ChatHapticsTests: XCTestCase {
     @MainActor
     func testBotFeedbackPlaysTheMatchingSessionsHaptic() {
         var feedback: [ChatHapticFeedback] = []
-        let events: [BotFeedback.Event] = [.sent, .approved(.once), .approved(.deny), .answered, .declined, .stopped, .turnCompleted]
+        let events: [BotFeedback.Event] = [.sent, .approved(.once), .approved(.deny), .answered, .stopped, .turnCompleted]
         for event in events { ChatHaptics.botFeedback(event, isEnabled: true) { feedback.append($0) } }
         ChatHaptics.botFeedback(.sent, isEnabled: false) { feedback.append($0) }
 
-        XCTAssertEqual(feedback, [.lightImpact, .lightImpact, .warning, .selection, .warning, .mediumImpact, .success])
+        XCTAssertEqual(feedback, [.lightImpact, .lightImpact, .warning, .selection, .mediumImpact, .success])
     }
 
     func testStreamingPulseThrottleAllowsOneTickPerInterval() {

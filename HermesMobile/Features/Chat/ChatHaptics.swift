@@ -18,8 +18,6 @@ struct BotFeedback: Equatable {
         case approved(BotApprovalRequest.Choice)
         /// A clarify answer or skip, or a credential value or skip.
         case answered
-        /// A Desktop task called off from the phone.
-        case declined
         case stopped
         /// A turn this screen watched go from busy to idle.
         case turnCompleted
@@ -61,7 +59,7 @@ enum ChatHaptics {
     }
 
     /// The Sessions haptic for a confirmed Bot Chat or room event, so a bot feels
-    /// the same as a session. Declining a Desktop task reads as a deny.
+    /// the same as a session.
     static func botFeedback(_ event: BotFeedback.Event, isEnabled: Bool, performer: Performer? = nil) {
         switch event {
         case .sent: messageSent(isEnabled: isEnabled, performer: performer)
@@ -70,7 +68,6 @@ enum ChatHaptics {
             guard let choice = ApprovalChoice(rawValue: choice.rawValue) else { return }
             approvalSubmitted(choice, isEnabled: isEnabled, performer: performer)
         case .answered: clarificationSubmitted(isEnabled: isEnabled, performer: performer)
-        case .declined: approvalSubmitted(.deny, isEnabled: isEnabled, performer: performer)
         case .stopped: streamCancelled(isEnabled: isEnabled, performer: performer)
         case .turnCompleted: assistantResponseCompleted(isEnabled: isEnabled, performer: performer)
         }

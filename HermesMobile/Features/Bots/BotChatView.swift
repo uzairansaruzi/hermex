@@ -139,7 +139,6 @@ import SwiftUI
                                 resolution: resolution(for: request),
                                 onApprove: approve, onAnswer: answer, onSkip: skip,
                                 onCredential: sendCredential,
-                                canDecline: model.mayDecline, onDecline: decline,
                                 onStop: { stopAction = model.prepareStop() },
                                 onConnection: answerConnection
                             )
@@ -348,11 +347,6 @@ import SwiftUI
     private func sendCredential(_ value: String) {
         guard let action = model.prepareAnswer() else { return }
         Task { await model.answerCredential(action, value: value) }
-    }
-
-    private func decline() {
-        guard let action = model.prepareAnswer() else { return }
-        Task { await model.declineDesktopTask(action) }
     }
 
     private func answerConnection(_ answer: BotConnectionOperation.Answer) {

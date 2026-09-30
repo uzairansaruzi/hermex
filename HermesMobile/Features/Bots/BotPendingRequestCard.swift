@@ -9,9 +9,9 @@ import UIKit
 /// vocabulary. `isEnabled` false is a resolved, expired or in-flight request:
 /// the card stays readable and stops acting.
 ///
-/// Only the Desktop-task body has no input, because its answer is data or a
-/// password only Hermes Desktop holds. Everything else — approvals, questions,
-/// sudo and secret prompts, connection operations — is answered from here.
+/// Only the Desktop-task body has no input, because its answer is data only
+/// Hermes Desktop holds. Everything else — approvals, questions, sudo, secret
+/// and password-vault prompts, connection operations — is answered from here.
 struct BotPendingRequestCard: View {
     static let cornerRadius: CGFloat = 14
 
@@ -28,11 +28,8 @@ struct BotPendingRequestCard: View {
     let onApprove: (BotApprovalRequest.Choice) -> Void
     let onAnswer: ([BotQuestionAnswer]) -> Void
     let onSkip: () -> Void
-    /// Sends a typed sudo password or secret. Empty is the host's skip.
+    /// Sends a credential request's typed value. Empty is the host's skip.
     let onCredential: (String) -> Void
-    /// Skips a Desktop task that waits for a person at the Mac (`vault.*`).
-    let canDecline: Bool
-    let onDecline: () -> Void
     let onStop: () -> Void
     /// One row's answer, or Continue, for a connection operation.
     let onConnection: (BotConnectionOperation.Answer) -> Void
@@ -59,10 +56,7 @@ struct BotPendingRequestCard: View {
                 // timed-out sudo prompt must never ride along into a secret.
                 .id(credential.requestID)
             case .desktopTask(let task):
-                BotDesktopTaskRequestBody(
-                    task: task, identity: identity, canStop: canStop,
-                    canDecline: canDecline, onDecline: onDecline, onStop: onStop
-                )
+                BotDesktopTaskRequestBody(task: task, identity: identity, canStop: canStop, onStop: onStop)
             case .connection(let operation):
                 BotConnectionRequestBody(
                     operation: operation, identity: identity, isEnabled: isEnabled,
@@ -95,7 +89,7 @@ struct BotPendingRequestCard: View {
         case .question(let question):
             summary = question.questions.first?.prompt ?? String(localized: "Input needed")
         case .credential(let credential):
-            summary = credential.kind.title
+            summary = credential.title
         case .desktopTask(let task):
             summary = task.kind.title
         case .connection:
@@ -359,13 +353,16 @@ private struct BotQuestionRequestBody: View {
     }
 }
 
-/// A sudo password or a secret the bot asked for. Masked, sent straight to the
-/// host and never held on the model, in a draft or anywhere else on the phone.
-/// The field offers Password AutoFill, so a saved key can fill it, and its
-/// value belongs to one request: the card keys this body by request id, so a
+/// A sudo password, a secret the bot asked for, or a password-vault prompt: a
+/// master password, a login to save, or a one-time code. Masked, sent straight
+/// to the host and never held on the model, in a draft or anywhere else on the
+/// phone. The fields offer AutoFill for their content type, and their values
+/// belong to one request: the card keys this body by request id, so a
 /// replacement request starts empty. Skip is a first-class answer: it releases
 /// the bot immediately instead of leaving it parked until the host's deadline.
 private struct BotCredentialRequestBody: View {
+    private enum Field { case identifier, value }
+
     let credential: BotCredentialRequest
     let identity: String
     let isEnabled: Bool
@@ -373,40 +370,68 @@ private struct BotCredentialRequestBody: View {
     let onCredential: (String) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @FocusState private var focus: Field?
+    /// The masked value: a password, secret or code.
     @State private var value = ""
+    /// Save login only: the email or username sent with the password.
+    @State private var identifier = ""
 
-    private var canSubmit: Bool { isEnabled && !isAnswering && !value.isEmpty }
+    private var isSaveLogin: Bool { credential.kind == .vaultSaveLogin }
+
+    /// What Send hands over, or nil while anything it needs is empty. A login
+    /// goes as one JSON string, so it needs both fields.
+    private var outgoing: String? {
+        guard !value.isEmpty else { return nil }
+        return isSaveLogin ? BotCredentialRequest.saveLoginValue(identifier: identifier, password: value) : value
+    }
+
+    private var canSubmit: Bool { isEnabled && !isAnswering && outgoing != nil }
+
+    private var canEdit: Bool { isEnabled && !isAnswering }
 
     var body: some View {
-        BotRequestHeader(
-            systemImage: credential.kind == .sudo ? "lock.shield.fill" : "key.fill",
-            tint: .secondary, title: credential.kind.title, identity: identity
-        )
+        BotRequestHeader(systemImage: symbol, tint: .secondary, title: credential.title, identity: identity)
         Text(credential.detail)
             .font(.subheadline)
             .foregroundStyle(.primary)
             .fixedSize(horizontal: false, vertical: true)
-        if let envVar = credential.envVar {
-            // The name the host will store it under, so the user knows which of
-            // their keys to paste before they paste one.
-            Text(envVar)
+        // A secret's storage name, so the user knows which of their keys to
+        // paste; or the origin a login is saved for, so they can check the
+        // exact address before handing over a password.
+        if let block = isSaveLogin ? credential.origin : credential.envVar {
+            Text(verbatim: block)
                 .font(.system(.footnote, design: .monospaced))
                 .textSelection(.enabled)
                 .pendingRequestBlockSurface()
         }
-        HStack(alignment: .bottom, spacing: 10) {
-            SecureField(credential.kind == .sudo ? "Administrator password" : "Secret value", text: $value)
-                .textContentType(.password)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.send)
-                .onSubmit(submit)
-                .tint(PendingRequestSubmitButton.fill(canSubmit: canSubmit, colorScheme: colorScheme))
-                .pendingRequestFieldSurface()
-                .disabled(!isEnabled || isAnswering)
+        VStack(alignment: .leading, spacing: 8) {
+            if isSaveLogin {
+                TextField("Email or username", text: $identifier)
+                    .textContentType(.username)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.next)
+                    .focused($focus, equals: .identifier)
+                    .onSubmit { focus = .value }
+                    .tint(PendingRequestSubmitButton.fill(canSubmit: canSubmit, colorScheme: colorScheme))
+                    .pendingRequestFieldSurface()
+                    .disabled(!canEdit)
+            }
+            HStack(alignment: .bottom, spacing: 10) {
+                SecureField(fieldPrompt, text: $value)
+                    .textContentType(credential.kind == .vaultCode ? .oneTimeCode : .password)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.send)
+                    .focused($focus, equals: .value)
+                    .onSubmit(submit)
+                    .tint(PendingRequestSubmitButton.fill(canSubmit: canSubmit, colorScheme: colorScheme))
+                    .pendingRequestFieldSurface()
+                    .disabled(!canEdit)
 
-            PendingRequestSubmitButton(isBusy: isAnswering, canSubmit: canSubmit, action: submit)
-                .accessibilityLabel(credential.kind == .sudo ? "Send password" : "Send secret")
+                PendingRequestSubmitButton(isBusy: isAnswering, canSubmit: canSubmit, action: submit)
+                    .accessibilityLabel(sendLabel)
+            }
         }
         Text(credential.handling)
             .font(.caption)
@@ -416,40 +441,64 @@ private struct BotCredentialRequestBody: View {
             Text("Skip").frame(maxWidth: .infinity)
         }
         .buttonStyle(.chatDecision(.secondary))
-        .disabled(!isEnabled || isAnswering)
+        .disabled(!canEdit)
         .accessibilityHint(Text(credential.kind.skipConsequence))
     }
 
+    private var symbol: String {
+        switch credential.kind {
+        case .sudo: return "lock.shield.fill"
+        case .secret: return "key.fill"
+        case .vaultUnlock: return "lock.fill"
+        case .vaultSaveLogin: return "person.badge.key.fill"
+        case .vaultCode: return "123.rectangle.fill"
+        }
+    }
+
+    private var fieldPrompt: LocalizedStringKey {
+        switch credential.kind {
+        case .sudo: return "Administrator password"
+        case .secret: return "Secret value"
+        case .vaultUnlock: return "Master password"
+        case .vaultSaveLogin: return "Password"
+        // Not the catalog's "Code", which several languages read as program code.
+        case .vaultCode: return "Verification code"
+        }
+    }
+
+    private var sendLabel: LocalizedStringKey {
+        switch credential.kind {
+        case .sudo, .vaultUnlock: return "Send password"
+        case .secret: return "Send secret"
+        case .vaultSaveLogin: return "Save login"
+        case .vaultCode: return "Send code"
+        }
+    }
+
     private func submit() {
-        guard canSubmit else { return }
-        let outgoing = value
+        guard canSubmit, let outgoing else { return }
         // Dropped from the view the moment it is handed over; the model never
         // holds it either, so no layer of the phone keeps the value around.
         value = ""
+        identifier = ""
         onCredential(outgoing)
     }
 }
 
-/// A request only Hermes Desktop answers. Most are work its renderer does by
-/// itself, with no answer a person gives; the host releases the bot on its own
+/// A request only Hermes Desktop answers: work its renderer does by itself,
+/// with no answer a person gives. The host releases the bot on its own
 /// deadline, so the card reports the wait and keeps Stop for the user who does
-/// not want to wait it out. A password-manager prompt waits for someone at the
-/// Mac, so its card also offers Skip.
+/// not want to wait it out.
 private struct BotDesktopTaskRequestBody: View {
     let task: BotDesktopTaskRequest
     let identity: String
     let canStop: Bool
-    let canDecline: Bool
-    let onDecline: () -> Void
     let onStop: () -> Void
 
     var body: some View {
         BotRequestHeader(
             systemImage: "desktopcomputer", tint: .secondary,
-            title: task.kind.needsSomeoneAtTheMac
-                ? String(localized: "Waiting on Hermes Desktop")
-                : String(localized: "Hermes Desktop is handling this"),
-            identity: identity
+            title: String(localized: "Hermes Desktop is handling this"), identity: identity
         )
         Text(task.kind.title)
             .font(.subheadline)
@@ -459,15 +508,6 @@ private struct BotDesktopTaskRequestBody: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-        // Skipping beats stopping where it is offered: it calls off this one
-        // request and lets the bot finish its work, where Stop ends the work.
-        if task.kind.needsSomeoneAtTheMac {
-            Button(action: onDecline) {
-                Text("Skip").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.chatDecision(.secondary))
-            .disabled(!canDecline)
-        }
         Button(role: .destructive, action: onStop) {
             Label("Stop current work", systemImage: "stop.fill").frame(maxWidth: .infinity)
         }

@@ -109,7 +109,7 @@ struct BotRoomActionCard: View {
                 isEnabled: reader.mayAct(action), canStop: reader.mayStop,
                 isAnswering: reader.busy && reader.inactiveActions.contains(action.id), resolution: nil,
                 onApprove: { choice in Task { await reader.act(action, choice: choice) } },
-                onAnswer: { _ in }, onSkip: {}, onCredential: { _ in }, canDecline: false, onDecline: {},
+                onAnswer: { _ in }, onSkip: {}, onCredential: { _ in },
                 onStop: { Task { await reader.stop() } }, onConnection: { _ in })
         } else {
             VStack(alignment: .leading, spacing: 12) {

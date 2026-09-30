@@ -130,11 +130,10 @@ struct BotChatComposerView: View {
     }
 
     /// What the blocked bot is waiting on. "Handling this" is only true where
-    /// there is nothing to do: a request the phone can answer or decline has an
-    /// action on its card, and saying it is handled would hide that.
+    /// there is nothing to do: a request the phone can answer has an action on
+    /// its card, and saying it is handled would hide that.
     private var requestText: String {
         if model.pendingRequest?.isAnswerable == true { return String(localized: "Waiting for your answer") }
-        if model.mayDecline { return String(localized: "Waiting on Hermes Desktop") }
         if model.pendingRequest == nil { return String(localized: "Needs attention. Answer the request in Hermes Desktop on this same connection.") }
         return String(localized: "Hermes Desktop is handling this")
     }

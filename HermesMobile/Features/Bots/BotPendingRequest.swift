@@ -8,8 +8,8 @@ import Foundation
 /// server request: see `BotConnectionOperation`.
 ///
 /// Only `desktopTask` is unanswerable, and not for want of a credential path: the
-/// answer is data or input only Hermes Desktop holds, so no client without that
-/// window can produce one.
+/// answer is data only Hermes Desktop's own window holds, so no client without
+/// that window can produce one.
 enum BotPendingRequest: Equatable {
     case approval(BotApprovalRequest)
     case question(BotQuestionRequest)
@@ -63,7 +63,9 @@ struct BotServerRequest: Equatable {
         } else if let kind = BotCredentialRequest.Kind(rawValue: method) {
             pending = .credential(BotCredentialRequest(
                 kind: kind, requestID: id,
-                envVar: Self.trimmed(params["env_var"]), prompt: Self.trimmed(params["prompt"])
+                envVar: Self.trimmed(params["env_var"]), prompt: Self.trimmed(params["prompt"]),
+                displayName: Self.trimmed(params["display_name"]), origin: Self.trimmed(params["origin"]),
+                site: Self.trimmed(params["site"]), hint: Self.trimmed(params["hint"])
             ))
         } else if let kind = BotDesktopTaskRequest.Kind(rawValue: method) {
             pending = .desktopTask(BotDesktopTaskRequest(kind: kind, requestID: id))
@@ -219,8 +221,9 @@ struct BotQuestionRequest: Equatable {
     }
 }
 
-/// A value only the person can supply: the Mac's administrator password, or a
-/// secret the bot asked for by name.
+/// A value only the person can supply: the Mac's administrator password, a
+/// secret the bot asked for by name, or what its password vault needs to sign
+/// in (a password manager's master password, a login to save, a one-time code).
 ///
 /// Answers carry `{value}` through `request.answer`. An empty value skips
 /// without retaining a secret.
@@ -228,19 +231,18 @@ struct BotCredentialRequest: Equatable {
     /// The server request method.
     enum Kind: String, Equatable, CaseIterable {
         case sudo, secret
-
-        var title: String {
-            switch self {
-            case .sudo: return String(localized: "Administrator password needed")
-            case .secret: return String(localized: "Secret needed")
-            }
-        }
+        case vaultUnlock = "vault.unlock_prompt"
+        case vaultSaveLogin = "vault.save_login"
+        case vaultCode = "vault.code"
 
         /// What skipping costs, so declining is an informed choice too.
         var skipConsequence: String {
             switch self {
             case .sudo: return String(localized: "Skip to let the command fail instead.")
             case .secret: return String(localized: "Skip to continue without it.")
+            case .vaultUnlock: return String(localized: "Skip to continue without unlocking it.")
+            case .vaultSaveLogin: return String(localized: "Skip to continue without saving a login.")
+            case .vaultCode: return String(localized: "Skip to continue without the code.")
             }
         }
     }
@@ -251,6 +253,31 @@ struct BotCredentialRequest: Equatable {
     let envVar: String?
     /// `secret` only: the host's own words for what it wants.
     let prompt: String?
+    /// `vault.unlock_prompt` only: the password manager to unlock, such as 1Password.
+    var displayName: String? = nil
+    /// `vault.save_login` only: the sign-in page's origin, which the login is saved for.
+    var origin: String? = nil
+    /// `vault.save_login` and `vault.code`: the site's host name.
+    var site: String? = nil
+    /// `vault.code` only: the host's own words about the code.
+    var hint: String? = nil
+
+    /// The card's title, naming the password manager or site when the host sent one.
+    var title: String {
+        switch kind {
+        case .sudo: return String(localized: "Administrator password needed")
+        case .secret: return String(localized: "Secret needed")
+        case .vaultUnlock:
+            guard let displayName else { return String(localized: "Unlock password manager") }
+            return String(localized: "Unlock \(displayName)")
+        case .vaultSaveLogin:
+            guard let site else { return String(localized: "Save a login?") }
+            return String(localized: "Save a login for \(site)?")
+        case .vaultCode:
+            guard let site else { return String(localized: "Verification code") }
+            return String(localized: "Verification code for \(site)")
+        }
+    }
 
     /// What the bot is asking for, preferring the host's wording when it sent any.
     var detail: String {
@@ -259,12 +286,23 @@ struct BotCredentialRequest: Equatable {
             return String(localized: "A command on this Mac needs an administrator password to run.")
         case .secret:
             return prompt ?? String(localized: "This bot needs a secret value to carry on.")
+        case .vaultUnlock:
+            guard let displayName else {
+                return String(localized: "This bot needs a password manager unlocked to sign in for you.")
+            }
+            return String(localized: "This bot needs \(displayName) unlocked to sign in for you.")
+        case .vaultSaveLogin:
+            return String(localized: "The bot reached this sign-in page and has no login for it.")
+        case .vaultCode:
+            return hint ?? String(localized: "The site asked for a sign-in code.")
         }
     }
 
     /// Where the value ends up, stated before it is typed. `sudo` is used for the
     /// one command and never written down; `secret` is saved on the host under
-    /// `envVar`. Neither is ever stored by Hermex.
+    /// `envVar`; an unlock goes to the password manager's own CLI; a login is
+    /// saved in Hermes's own vault on the host, not the user's password manager;
+    /// a code is typed into the page. None is ever stored by Hermex.
     var handling: String {
         switch kind {
         case .sudo:
@@ -274,19 +312,35 @@ struct BotCredentialRequest: Equatable {
                 return String(localized: "Saved on this bot's Mac. Hermex never saves it.")
             }
             return String(localized: "Saved on this bot's Mac as \(envVar). Hermex never saves it.")
+        case .vaultUnlock:
+            guard let displayName else {
+                return String(localized: "Goes straight to the password manager on this bot's Mac to unlock it for this chat. Hermex never saves it.")
+            }
+            return String(localized: "Goes straight to \(displayName) on this bot's Mac to unlock it for this chat. Hermex never saves it.")
+        case .vaultSaveLogin:
+            return String(localized: "Saved in Hermes's password vault on this bot's Mac, then filled into the page. The model never sees the password, and Hermex never saves it.")
+        case .vaultCode:
+            return String(localized: "Typed into the page on this bot's Mac. The model never sees it, and Hermex never saves it.")
         }
+    }
+
+    /// The `value` a save-login answer carries: one JSON-encoded string holding
+    /// `{identifier, password}`, which is how the host's vault reads it. Nil
+    /// unless both are filled, because the host reads a login missing either as
+    /// declined.
+    static func saveLoginValue(identifier: String, password: String) -> String? {
+        let identifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !identifier.isEmpty, !password.isEmpty,
+              let data = try? JSONEncoder().encode(["identifier": identifier, "password": password]) else { return nil }
+        return String(decoding: data, as: UTF8.self)
     }
 }
 
-/// A request only Hermes Desktop can answer. Most are work its own window
-/// performs and answers by itself: serializing its terminal scrollback, the OS
-/// window beneath it, its preview pane. Nobody types an answer to those, on the
-/// phone or at the Mac; the host's deadline passes and the bot carries on, so the
-/// phone reports the wait rather than sending anyone to a desk.
-///
-/// The password-manager prompts (`vault.*`) wait for a person at the Mac. The
-/// phone cannot answer them, but it can skip one: an empty `value` is the host's
-/// own "declined", so the bot moves on now instead of waiting for the Mac.
+/// A request only Hermes Desktop can answer: work its own window performs and
+/// answers by itself, serializing its terminal scrollback, the OS window beneath
+/// it, its preview pane. Nobody types an answer to those, on the phone or at the
+/// Mac; the host's deadline passes and the bot carries on, so the phone reports
+/// the wait rather than sending anyone to a desk.
 struct BotDesktopTaskRequest: Equatable {
     /// The server request method.
     enum Kind: String, Equatable, CaseIterable {
@@ -295,9 +349,6 @@ struct BotDesktopTaskRequest: Equatable {
         case windowRead = "window.read"
         case previewRead = "preview.read"
         case previewAct = "preview.act"
-        case vaultUnlock = "vault.unlock_prompt"
-        case vaultSaveLogin = "vault.save_login"
-        case vaultCode = "vault.code"
 
         /// What is happening, in the user's words rather than the wire name.
         var title: String {
@@ -307,23 +358,11 @@ struct BotDesktopTaskRequest: Equatable {
             case .previewRead: return String(localized: "This bot is reading the preview pane on the Mac.")
             case .previewAct: return String(localized: "This bot is using the preview pane on the Mac.")
             case .tour: return String(localized: "This bot is running a tour in Hermes Desktop.")
-            case .vaultUnlock: return String(localized: "This bot needs a password manager unlocked in Hermes Desktop.")
-            case .vaultSaveLogin: return String(localized: "This bot wants to save a login in Hermes Desktop.")
-            case .vaultCode: return String(localized: "This bot needs a sign-in code entered in Hermes Desktop.")
             }
         }
 
-        /// True for the kinds a person answers at the Mac, which are also the
-        /// kinds the phone can skip. Skipping is not answering: the password or
-        /// code still only goes in at the Mac, but saying no is a decision the
-        /// host takes from here. The rest have nothing to skip — the renderer
-        /// answers or the deadline passes, and either way nobody is kept waiting.
-        var needsSomeoneAtTheMac: Bool { [.vaultUnlock, .vaultSaveLogin, .vaultCode].contains(self) }
-
         var detail: String {
-            needsSomeoneAtTheMac
-                ? String(localized: "Answer this in Hermes Desktop on the Mac. Skip it here and the bot carries on without it.")
-                : String(localized: "Hermes Desktop answers this by itself, and the bot carries on without it if it cannot. There is nothing to do here or at the Mac.")
+            String(localized: "Hermes Desktop answers this by itself, and the bot carries on without it if it cannot. There is nothing to do here or at the Mac.")
         }
     }
 

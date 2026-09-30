@@ -438,21 +438,30 @@ without `answers`, the host's cancel-all shape for a batch.
 
 The phone uses the acknowledged `request.answer` proxy for both live and restored
 requests: unlike a bare response frame, it distinguishes `ok` from `expired`.
-`sudo` and `secret` send `result: {value}`; an empty value skips. Credential input
+`sudo`, `secret` and the password-vault prompts (`vault.unlock_prompt`,
+`vault.save_login`, `vault.code`) are all `BotCredentialRequest`s and send
+`result: {value}`; an empty value is the host's skip or decline. Credential input
 uses a `SecureField` and passes directly to dispatch without storing the value.
-The field offers Password AutoFill (`.password`) for both kinds and is keyed by
-request id, so a replacement request never inherits a half-typed value. With no
-associated domain, iOS offers no "Save Password?" afterward.
+The field offers AutoFill for its content type (`.password`, or `.oneTimeCode`
+for `vault.code`) and is keyed by request id, so a replacement request never
+inherits a half-typed value. With no associated domain, iOS offers no "Save
+Password?" afterward.
+
+The vault prompts carry `display_name` (unlock), `origin` and `site` (save
+login), and optional `site` and `hint` (code). An unlock's master password goes
+to the password manager's CLI on the host, which keeps only a session token. A
+save-login answer is one JSON-encoded string `{"identifier", "password"}`,
+built by `BotCredentialRequest.saveLoginValue` and sent only when both are
+filled; the host saves it in Hermes's own encrypted vault on the Mac (Desktop →
+Settings → Passwords & Logins), not in 1Password or Bitwarden, and fills the
+page. A code is sent as typed; the host strips spaces and dashes.
 The old per-kind answer methods (`clarify.respond`, `sudo.respond`,
 `secret.respond`, `mcp.setup.respond`) no longer exist at the pin and are off
 the allowlist.
 
 `terminal.read`, `window.read`, `preview.read`, `preview.act` and `tour` require
 Desktop renderer data the phone cannot supply. Their cards report the wait and
-retain Stop. The `vault.*` prompts (unlock a password manager, save a login, a
-sign-in code) wait for someone at the Mac; the phone cannot answer them but
-offers Skip, which sends `request.answer` with `result: {value: ""}`, the host's
-decline.
+retain Stop.
 
 Nothing is sent without a tap. Generation, runtime and request id are captured
 on tap and revalidated at socket dispatch. `ok` means accepted; `expired` means

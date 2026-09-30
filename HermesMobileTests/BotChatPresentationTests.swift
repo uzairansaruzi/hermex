@@ -987,6 +987,60 @@ import XCTest
         let secretField = try XCTUnwrap(descendants(window).compactMap { $0 as? UITextField }.first)
         XCTAssertEqual(secretField.text ?? "", "", "The Mac password never rides into the secret that replaces it")
         XCTAssertEqual(secretField.textContentType, .password, "The Passwords key needs a password content type")
+        XCTAssertTrue(secretField.becomeFirstResponder())
+        secretField.insertText("sk-1")
+        await settle(window)
+        XCTAssertEqual(secretField.text, "sk-1")
+
+        // A sign-in code stays masked, and offers the code Messages or Mail received.
+        harness.request = .credential(BotCredentialRequest(
+            kind: .vaultCode, requestID: "code-3", envVar: nil, prompt: nil, site: "github.com"
+        ))
+        await settle(window)
+        let codeField = try XCTUnwrap(descendants(window).compactMap { $0 as? UITextField }.first)
+        XCTAssertEqual(codeField.text ?? "", "", "The secret never rides into the code that replaces it")
+        XCTAssertTrue(codeField.isSecureTextEntry)
+        XCTAssertEqual(codeField.textContentType, .oneTimeCode)
+    }
+
+    /// A save-login card asks for the account in a plain field and the password
+    /// in a masked one, each with its AutoFill type. Save does nothing until
+    /// both are filled, then hands over one JSON string and empties both fields.
+    func testSaveLoginCardNeedsBothFieldsBeforeItSaves() async throws {
+        var sent: [String] = []
+        let harness = CredentialCardHarnessModel(request: .credential(BotCredentialRequest(
+            kind: .vaultSaveLogin, requestID: "save-1", envVar: nil, prompt: nil,
+            origin: "https://github.com", site: "github.com"
+        )))
+        let window = try show(CredentialCardHarnessView(model: harness, onCredential: { sent.append($0) }))
+        defer { close(window) }
+        await settle(window)
+
+        let fields = descendants(window).compactMap { $0 as? UITextField }
+        XCTAssertEqual(fields.count, 2)
+        let identifier = try XCTUnwrap(fields.first { !$0.isSecureTextEntry }, "The account name is a plain field")
+        let password = try XCTUnwrap(fields.first(where: \.isSecureTextEntry), "The password is never in the clear")
+        XCTAssertEqual(identifier.textContentType, .username)
+        XCTAssertEqual(password.textContentType, .password)
+
+        // Return on the password field is Save, the same guard as the button.
+        XCTAssertTrue(identifier.becomeFirstResponder())
+        identifier.insertText("tomsmith")
+        await settle(window)
+        XCTAssertTrue(password.becomeFirstResponder())
+        password.sendActions(for: .editingDidEndOnExit)
+        await settle(window)
+        XCTAssertEqual(sent, [], "No password yet, so nothing is saved")
+
+        password.insertText("hunter2")
+        await settle(window)
+        password.sendActions(for: .editingDidEndOnExit)
+        await settle(window)
+        XCTAssertEqual(sent.count, 1)
+        let login = try JSONSerialization.jsonObject(with: Data(try XCTUnwrap(sent.first).utf8)) as? [String: String]
+        XCTAssertEqual(login, ["identifier": "tomsmith", "password": "hunter2"])
+        XCTAssertEqual(identifier.text ?? "", "", "The account leaves the field once it is handed over")
+        XCTAssertEqual(password.text ?? "", "", "The password leaves the field once it is handed over")
     }
 
     /// A connection row's secret field is masked and offers AutoFill, its plain
@@ -1436,12 +1490,13 @@ import XCTest
 
 private struct CredentialCardHarnessView: View {
     let model: CredentialCardHarnessModel
+    var onCredential: (String) -> Void = { _ in }
     var onConnection: (BotConnectionOperation.Answer) -> Void = { _ in }
     var body: some View {
         BotPendingRequestCard(
             request: model.request, identity: "Fixture Mac", isEnabled: true, canStop: true,
             isAnswering: false, resolution: nil, onApprove: { _ in }, onAnswer: { _ in }, onSkip: {},
-            onCredential: { _ in }, canDecline: false, onDecline: {}, onStop: {}, onConnection: onConnection
+            onCredential: onCredential, onStop: {}, onConnection: onConnection
         )
     }
 }
