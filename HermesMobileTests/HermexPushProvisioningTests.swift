@@ -361,7 +361,7 @@ import XCTest
             // A proxy's 401 page: not the webui's JSON object.
             ((401, .null), "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Hermex can't do that yet. Use an address that skips it, such as the dashboard's local network address."),
             ((200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("nous")])])),
-             "This Hermes host doesn’t offer the password sign-in push setup needs.")
+             "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.")
         ]
         for (status, message) in rows {
             PushHTTPFixture.reset()

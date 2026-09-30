@@ -1,3 +1,5 @@
+import CryptoKit
+import Network
 import XCTest
 @testable import HermesMobile
 
@@ -977,6 +979,32 @@ import XCTest
         client.close()
     }
 
+    /// A real handshake over loopback: URLSession keeps a refused upgrade's status on the
+    /// task, and a socket that opened (101) and then dropped keeps its own error, so the
+    /// inbox and chat still retry it quietly.
+    func testANativeSocketNamesARefusedUpgradeButNotALaterDrop() async throws {
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+
+        let refusing = try await BotHandshakeListener { _ in "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n" }
+        defer { refusing.cancel() }
+        let refused = refusing.socketTask(on: session)
+        do { _ = try await NativeBotSocket(task: refused).receive(); XCTFail("Expected a refused upgrade") }
+        catch { XCTAssertEqual(error as? BotFailure, .upgradeRefused(403)) }
+
+        let dropping = try await BotHandshakeListener { key in
+            let accept = Data(Insecure.SHA1.hash(data: Data((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").utf8))).base64EncodedString()
+            return "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: \(accept)\r\n\r\n"
+        }
+        defer { dropping.cancel() }
+        let dropped = dropping.socketTask(on: session)
+        do { _ = try await NativeBotSocket(task: dropped).receive(); XCTFail("Expected the dropped socket's error") }
+        catch {
+            XCTAssertEqual((dropped.response as? HTTPURLResponse)?.statusCode, 101)
+            XCTAssertNil(error as? BotFailure, "A drop after the upgrade must reach the transport retry unwrapped")
+        }
+    }
+
     func testARefusedPasswordStaysASignInFailure() async {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {
@@ -1256,5 +1284,61 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
         let waiting = waiter; waiter = nil
         lock.unlock()
         waiting?.resume(throwing: BotFailure.transport)
+    }
+}
+
+/// A loopback listener that answers each gateway upgrade with a canned HTTP reply and
+/// hangs up. `reply` gets the request's `Sec-WebSocket-Key`.
+final class BotHandshakeListener: @unchecked Sendable {
+    private let listener: NWListener
+    private let port: UInt16
+
+    init(reply: @escaping @Sendable (String) -> String) async throws {
+        let parameters = NWParameters.tcp
+        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
+        let listener = try NWListener(using: parameters)
+        listener.newConnectionHandler = { connection in
+            connection.start(queue: .global())
+            BotHandshakeListener.readRequest(on: connection, received: Data()) { request in
+                let key = request.components(separatedBy: "\r\n")
+                    .first { $0.lowercased().hasPrefix("sec-websocket-key:") }
+                    .map { $0.dropFirst("sec-websocket-key:".count).trimmingCharacters(in: .whitespaces) } ?? ""
+                connection.send(content: Data(reply(key).utf8), completion: .contentProcessed { _ in connection.cancel() })
+            }
+        }
+        self.listener = listener
+        port = try await withCheckedThrowingContinuation { continuation in
+            listener.stateUpdateHandler = { [weak listener] state in
+                switch state {
+                case .ready:
+                    listener?.stateUpdateHandler = nil
+                    continuation.resume(returning: listener?.port?.rawValue ?? 0)
+                case .failed(let error):
+                    listener?.stateUpdateHandler = nil
+                    continuation.resume(throwing: error)
+                default: break
+                }
+            }
+            listener.start(queue: .global())
+        }
+    }
+
+    /// A started gateway upgrade to this listener.
+    func socketTask(on session: URLSession) -> URLSessionWebSocketTask {
+        let task = session.webSocketTask(with: URL(string: "ws://127.0.0.1:\(port)/api/ws")!)
+        task.resume()
+        return task
+    }
+
+    func cancel() { listener.cancel() }
+
+    /// Reads until the blank line that ends the request's headers.
+    private static func readRequest(on connection: NWConnection, received: Data, then answer: @escaping @Sendable (String) -> Void) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { data, _, isComplete, error in
+            let request = received + (data ?? Data())
+            let text = String(decoding: request, as: UTF8.self)
+            if text.contains("\r\n\r\n") || isComplete || error != nil { answer(text) }
+            else { readRequest(on: connection, received: request, then: answer) }
+        }
     }
 }

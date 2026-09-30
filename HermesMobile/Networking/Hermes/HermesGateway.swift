@@ -410,7 +410,9 @@ protocol BotSocket: Sendable {
     func cancel()
 }
 
-private struct NativeBotSocket: BotSocket {
+/// The production socket. Tests open one against a loopback listener to check how
+/// URLSession reports the handshake.
+struct NativeBotSocket: BotSocket {
     let task: URLSessionWebSocketTask
 
     /// A refused upgrade fails the first read with a bare `URLError`; the handshake's HTTP
