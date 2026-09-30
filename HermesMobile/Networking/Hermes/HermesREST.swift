@@ -9,6 +9,8 @@ import Foundation
 /// 2026-09-19: install takes `{identifier, enable, force, ref}` and has no profile
 /// parameter, enable and disable are path-only, and `PUT /api/env` and the gateway
 /// restart take an optional `profile` Hermex leaves unset so every Profile inherits.
+/// The plugins hub (#851) is read at the pin ca678285: `{plugins: [{name, version, …}]}`,
+/// cached for 5 s and cleared by an install, so an update needs no rescan first.
 enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
@@ -30,6 +32,8 @@ enum HermesREST: Equatable, Sendable {
     case setPlugin(name: String, enabled: Bool)
     case restartGateway
     case pushPairing
+    /// Every agent plugin with its on-disk version.
+    case pluginsHub
 
     func request(base: URL) throws -> URLRequest {
         switch self {
@@ -73,6 +77,7 @@ enum HermesREST: Equatable, Sendable {
             return try Self.send("POST", url, [:])
         case .restartGateway: return try Self.send("POST", base.appendingPathComponent("api/gateway/restart"), [:])
         case .pushPairing: return Self.get(base.appendingPathComponent("api/plugins/hermex-push/pairing"))
+        case .pluginsHub: return Self.get(base.appendingPathComponent("api/dashboard/plugins/hub"))
         }
     }
 

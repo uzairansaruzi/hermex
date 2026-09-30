@@ -153,7 +153,8 @@ final class HermesRequestTests: XCTestCase {
             (.setPlugin(name: "hermex-push", enabled: false), "POST",
              "https://hermes.example:9120/api/dashboard/agent-plugins/hermex-push/disable", .object([:]), json),
             (.restartGateway, "POST", "https://hermes.example:9120/api/gateway/restart", .object([:]), json),
-            (.pushPairing, "GET", "https://hermes.example:9120/api/plugins/hermex-push/pairing", nil, [:])
+            (.pushPairing, "GET", "https://hermes.example:9120/api/plugins/hermex-push/pairing", nil, [:]),
+            (.pluginsHub, "GET", "https://hermes.example:9120/api/dashboard/plugins/hub", nil, [:])
         ]
         for (rest, method, url, body, headers) in cases {
             let request = try rest.request(base: base)

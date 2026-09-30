@@ -1479,7 +1479,7 @@ in the order the host needs: `PUT /api/env` sets
 /api/dashboard/agent-plugins/install` and `…/hermex-push/enable` install the
 plugin, `POST /api/gateway/restart` loads it, and `GET
 /api/plugins/hermex-push/pairing` returns `{relay_url, install_key, preview_key,
-platform, payload_version}`. Verified against a live 0.21.3 host on 2026-09-19:
+platform, payload_version, plugin_version}` (`plugin_version` from plugin 0.2.0 on). Verified against a live 0.21.3 host on 2026-09-19:
 install takes `{identifier, force, enable, catalog_name, ref}` with no Profile
 parameter, enable and disable are path-only, and only `PUT /api/env` and the
 restart accept one. The install identifier is
@@ -1544,6 +1544,25 @@ about the host → relay leg. One tap is one request with no retry. Any 200 is d
 `event_limit`), a non-JSON refusal from the relay's hosting (#834), and any other answer
 each get their own message. The button is off while Reply Notifications are off (the relay
 would skip the banner yet answer accepted) or iOS notifications are off for Hermex.
+
+Settings also offers a plugin update (#851). `HermexPushPlugin.newestVersion` is the newest
+plugin this build knows. Each time the Notifications section appears on a paired server,
+`checkPlugin()` makes one read of the pairing route: its `plugin_version` is the code the
+dashboard process has loaded, and a missing or unparseable one counts as older than every
+known version. Only a plugin that is behind costs a second read, `GET
+/api/dashboard/plugins/hub`, whose per-plugin `version` is `plugin.yaml` on disk; the newest
+on disk means the update is only waiting for a restart. The answer lives in memory, never in
+`PushPairing`, so "Restart Hermes to finish" always reflects what the host says now. The
+update is one confirmed action: the same forced install setup uses (it clones `main` again;
+the keys stay in `plugin-data`, so the phone stays paired), `POST /api/gateway/restart`, then
+the pairing route again. The hub caches for 5 s and an install clears it, so no rescan is
+needed. The dashboard process that serves the pairing route and runs Bot turns loads plugin
+code only when it starts, and no route restarts it, so the usual end is a card asking the
+user to restart `hermes dashboard`, with "Check again" (#934 tracks restarting from the
+phone). A failure whose copy says "Update the hermex-push plugin." (keys this build cannot
+use, at setup or from the test notification) offers the same update. An update started there
+never pairs by itself; "Turn on notifications…" stays the way to pair. Bump the constant in
+the release that follows a plugin release (TESTFLIGHT.md's release gates).
 
 Every way out removes this phone at the relay and wipes the keys.
 `HermexPushProvisioner.disable()` stops the host sending first, then calls

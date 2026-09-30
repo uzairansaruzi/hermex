@@ -38,6 +38,9 @@ Before external distribution, all of these must hold:
 - The owner tested this exact build on a physical iPhone as described in
   [Test the release candidate](#test-the-release-candidate).
 - No unresolved P0/P1 issue blocks normal use; accepted risks are recorded.
+- `HermexPushPlugin.newestVersion` equals `version` in `plugin/plugin.yaml` on
+  hermex-push `main`. If the plugin changed since the last release, bump the
+  constant, or Settings will never offer paired hosts the update.
 - The build is processed, with compliance information resolved and symbols uploaded.
 - TestFlight information, privacy policy URL, and reviewer access are complete.
 - Beta App Review has approved the build for external testing.

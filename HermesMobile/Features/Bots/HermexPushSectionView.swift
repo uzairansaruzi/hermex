@@ -9,6 +9,7 @@ import SwiftUI
     @State private var isExpanded = false
     @State private var isConfirmingEnable = false
     @State private var isConfirmingDisable = false
+    @State private var isConfirmingUpdate = false
     @State private var preferenceTask: Task<Void, Never>?
     private let sharedSettings: SharedSettings
 
@@ -43,13 +44,17 @@ import SwiftUI
                          ? String(localized: "Push off · Current server")
                          : String(localized: "Push on · Current server"))
                         .font(AppFont.caption()).foregroundStyle(Color.secondary)
+                    if let card = provisioner.pluginCard { pluginLine(card) }
                 }
             }
             .foregroundStyle(Color.primary)
             .frame(minHeight: 44)
         }
         .transaction { $0.animation = nil }
-        .task { await provisioner.reload() }
+        .task {
+            await provisioner.reload()
+            await provisioner.checkPlugin()
+        }
         // Runs on appear and on every return to the app, so allowing notifications in
         // iOS Settings clears the notice without re-running setup.
         .task(id: scenePhase) {
@@ -72,9 +77,19 @@ import SwiftUI
         } message: {
             Text("This iPhone is removed from the relay, the plugin is disabled on your Hermes host, and the keys stored on this iPhone are deleted.")
         }
+        .confirmationDialog("Update the hermex-push plugin?", isPresented: $isConfirmingUpdate, titleVisibility: .visible) {
+            // Like setup, the run outlives the screen: the host has already been asked to change.
+            Button("Update plugin") { Task { await provisioner.updatePlugin() } }
+        } message: {
+            // An update offered by a pairing failure has no pairing to keep.
+            Text(provisioner.pairing == nil
+                 ? String(localized: "Your Hermes host downloads hermex-push again from GitHub and restarts its gateway, interrupting work running there. To finish, you’ll likely need to restart Hermes on the host yourself.")
+                 : String(localized: "Your Hermes host downloads hermex-push again from GitHub and restarts its gateway, interrupting work running there. This iPhone stays paired. To finish, you’ll likely need to restart Hermes on the host yourself."))
+        }
     }
 
     @ViewBuilder private var pushSettings: some View {
+        if let card = provisioner.pluginCard { pluginCallout(card) }
         if let pairing = provisioner.pairing {
             if pairing.preferencesNeedSync == true {
                 Text("Preferences aren’t confirmed. Try again to sync this iPhone with the relay.")
@@ -140,7 +155,13 @@ import SwiftUI
         }
         .buttonStyle(.plain)
         .disabled(provisioner.isWorking)
-        if let failure = provisioner.failure { failureRow(failure) }
+        if let failure = provisioner.failure {
+            switch failure.remedy {
+            case .none: failureRow(failure)
+            case .updatePlugin: failureCallout(failure, action: String(localized: "Update plugin…"))
+            case .retryUpdate: EmptyView() // The plugin card at the top shows it.
+            }
+        }
     }
 
     private func preferenceToggle(_ title: String, keyPath: WritableKeyPath<PushPreferences, Bool>, inverted: Bool = false) -> some View {
@@ -220,6 +241,89 @@ import SwiftUI
             }
             .buttonStyle(.plain)
         }
+    }
+
+    /// The plugin update (#851) as design C's card at the top of the section: one card for
+    /// every state, in the notifications-off row's style. No spinner: a dashed circle and
+    /// the running step's name carry progress.
+    @ViewBuilder private func pluginCallout(_ card: HermexPushProvisioner.PluginCard) -> some View {
+        let newest = HermexPushPlugin.newestVersion.description
+        switch card {
+        case .status(.available(let loaded)):
+            callout("arrow.up.circle.fill", tint: .blue, title: Text("Plugin update available"),
+                    message: loaded.map { Text("Your Hermes host has hermex-push \($0.description) loaded. The newest is \(newest).") }
+                        ?? Text("Your Hermes host has an older hermex-push loaded. The newest is \(newest)."),
+                    action: String(localized: "Update plugin…")) { isConfirmingUpdate = true }
+        case .updating(let step):
+            callout("circle.dashed", tint: .secondary, title: Text("Updating the plugin…"), message: Text(step.progress))
+        case .status(.restartNeeded):
+            callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
+                    message: Text("The new plugin is installed, but Hermes loads plugins only when it starts. Restart `hermes dashboard` on your host, then check again. Hermex can’t restart it from this iPhone."),
+                    action: provisioner.phase == .checkingPlugin ? String(localized: "Checking…") : String(localized: "Check again")) {
+                Task { await provisioner.checkPluginAgain() }
+            }
+        case .status(.upToDate(let version)):
+            callout("checkmark.circle.fill", tint: .green, title: Text("Plugin up to date"),
+                    message: Text("hermex-push \(version.description) is loaded on your host."))
+        case .failed(let failure):
+            failureCallout(failure, action: String(localized: "Try again"))
+        }
+    }
+
+    /// A failure the plugin update answers: the update's own, or keys an old plugin sent.
+    /// Either way the action asks for the same confirmation before the host changes.
+    private func failureCallout(_ failure: HermexPushProvisioner.Failure, action: String) -> some View {
+        callout("exclamationmark.triangle.fill", tint: .red, title: Text(failure.title), message: Text(failure.message),
+                action: action) { isConfirmingUpdate = true }
+    }
+
+    /// The card itself. With an action, the whole card is the button, so it stays a
+    /// full-width target at every Dynamic Type size.
+    @ViewBuilder private func callout(_ symbol: String, tint: Color, title: Text, message: Text,
+                                      action: String? = nil, perform: @escaping () -> Void = {}) -> some View {
+        let card = HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: symbol).foregroundStyle(tint).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                title.fontWeight(.semibold).foregroundStyle(Color.primary)
+                message.foregroundStyle(.secondary)
+                if let action { Text(action).foregroundStyle(.tint).padding(.top, 2) }
+            }
+            Spacer(minLength: 0)
+        }
+        .font(AppFont.footnote())
+        .padding(.vertical, 10).padding(.horizontal, 12)
+        .background(.fill.tertiary, in: RoundedRectangle(cornerRadius: 12))
+        if action != nil {
+            Button(action: perform) { card }
+                .buttonStyle(.plain)
+                .disabled(provisioner.isWorking)
+        } else {
+            card.accessibilityElement(children: .combine)
+        }
+    }
+
+    /// The collapsed label's second line: the card's state in a few words, so an update or
+    /// a pending restart shows without opening the section. "Up to date" needs no line.
+    @ViewBuilder private func pluginLine(_ card: HermexPushProvisioner.PluginCard) -> some View {
+        switch card {
+        case .status(.available), .failed:
+            captionLine("arrow.up.circle.fill", tint: .blue, text: String(localized: "Plugin update available"), textTint: .blue)
+        case .updating:
+            captionLine("circle.dashed", tint: .secondary, text: String(localized: "Updating plugin…"), textTint: .secondary)
+        case .status(.restartNeeded):
+            captionLine("arrow.clockwise.circle.fill", tint: .orange, text: String(localized: "Restart Hermes to finish"),
+                        textTint: .secondary)
+        case .status(.upToDate):
+            EmptyView()
+        }
+    }
+
+    private func captionLine(_ symbol: String, tint: Color, text: String, textTint: Color) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Image(systemName: symbol).foregroundStyle(tint).accessibilityHidden(true)
+            Text(text).foregroundStyle(textTint)
+        }
+        .font(AppFont.caption())
     }
 
     private func failureRow(_ failure: HermexPushProvisioner.Failure) -> some View {

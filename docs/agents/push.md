@@ -13,7 +13,10 @@ see [Push provisioning](bots.md#push-provisioning) and
 - **Plugin.** `hermex-push` runs on the user's Hermes host (installed from
   `uzairansaruzi/hermex-push`). It watches the agent, seals each notification's
   text with AES-256-GCM, and posts the event to the relay. Tool arguments and
-  results never leave the host.
+  results never leave the host. When a paired host has an older plugin loaded
+  than the newest this build knows, Settings → Notifications offers to update
+  it; the dashboard still has to be restarted on the host to load it
+  ([Push provisioning](bots.md#push-provisioning)).
 - **Relay.** A Cloudflare Worker in the same repository. The default is
   `https://hermex-relay.hermex-relay.workers.dev`; a host overrides it with
   `HERMEX_PUSH_RELAY_URL`, so self-hosting is a server-side setting. The relay
