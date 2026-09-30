@@ -190,12 +190,19 @@ enum ApprovalScope {
         case other
     }
 
+    /// Keys whose prompts grant every allow choice for one call only and save
+    /// nothing: MCP trust and elicitation consent (`_consent` in
+    /// `tools/approval_prompt.py`) and protected instruction file writes
+    /// (`tools/file_tools_write_guards.py`).
+    private static let oneTimeKeys: Set<String> = ["mcp_elicitation", "protected_instruction_file"]
+
     /// Nil when Allow session isn't offered (a smart-denied prompt, or a room
-    /// approval's once and deny) or the host sent no keys to allowlist.
+    /// approval's once and deny), the host sent no keys to allowlist, or the
+    /// prompt is a one-time confirmation with no scope to describe.
     static func line(
         keys: [String], description: String?, command: String?, toolName: String?, host: Host
     ) -> AttributedString? {
-        guard !keys.isEmpty else { return nil }
+        guard !keys.isEmpty, !keys.contains(where: oneTimeKeys.contains) else { return nil }
         let subject = subject(of: keys, description: description, command: command, toolName: toolName)
         switch host {
         case .webui:

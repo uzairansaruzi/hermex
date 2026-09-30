@@ -1580,6 +1580,15 @@ extension BotAnsweringTests {
         XCTAssertNil(botLine(keys: [], description: "recursive delete"))
     }
 
+    /// An MCP trust prompt offers all four choices, but each one is a single
+    /// accept that saves nothing, so there is no scope to name.
+    func testNoLineForAOneTimeConfirmationEvenWithEveryChoice() {
+        XCTAssertNil(botLine(keys: ["mcp_elicitation"],
+                             description: "Server 'notes' is configured 'trust: untrusted'. Approve to run 'append' once, or deny to block it.",
+                             command: "MCP tool 'append' on UNTRUSTED server 'notes' wants to run."))
+        XCTAssertNil(sessionsText(keys: ["protected_instruction_file"], description: "Write to AGENTS.md"))
+    }
+
     /// The tool comes from the default `<tool>:<sha12>` rule key, else `tool_name`,
     /// else the command's `<tool>`; the raw `plugin_rule:` key never shows.
     func testAPluginRuleNamesItsToolInMonospaceAndNeverTheKey() throws {

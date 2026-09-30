@@ -438,8 +438,10 @@ raw and monospaced, from the default `<tool>:<sha12>` rule key, else
 else is "every action like this one". Hermes keeps a Tirith finding
 session-only even under Always, so a mixed prompt says so and a Tirith-only
 prompt (no Always offered) names only the chat. No Allow session offered (a
-smart-denied prompt, a room approval) means no line. The key shapes are
-verified against `tools/approval.py` at `ca678285`.
+smart-denied prompt, a room approval) means no line, and so do the one-time
+`mcp_elicitation` and `protected_instruction_file` keys, whose every allow
+choice is a single accept. The key shapes are verified against
+`tools/approval.py` at `ca678285`.
 
 `BotQuestionRequest` reads single and batch clarification from `clarify`
 server requests (there is no `pending_clarify` snapshot field), including locked

@@ -113,7 +113,7 @@ struct ApprovalRequestOverlay: View {
 
     @ViewBuilder
     private func approvalButton(
-        _ title: String,
+        _ title: LocalizedStringKey,
         systemImage: String,
         choice: ApprovalChoice,
         prominent: Bool,
