@@ -13,6 +13,12 @@ import XCTest
         "thinking.delta", "reasoning.available", // activity, `BotConversation.applyActivity`
         "session.title" // unused; only schedules a snapshot read
     ]
+    /// The event types the local tool and approval turn adds to `knownTurnEvents`.
+    private static let knownToolEvents: Set<String> = [
+        "tool.start", "tool.complete", // tool rows, `BotTurnActivity`
+        "request.cancel", // withdraws the answered approval card
+        "message.interim", "session.usage" // unused; only schedule a snapshot read
+    ]
 
     private static let tests = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
     private static let directory = tests.appendingPathComponent("Fixtures/HermesAgent")
@@ -124,6 +130,44 @@ import XCTest
         XCTAssertEqual(params.last?["type"].text, "session.info")
         XCTAssertEqual(params.last?["payload"]["running"].flag, false)
         XCTAssertEqual(Set(types).subtracting(Self.knownTurnEvents), [], "A new upstream event type")
+    }
+
+    /// The tool and approval turn `scripts/capture-hermes-fixtures --local` records from
+    /// `scripts/local-hermes`: its `approval` request becomes the card Bot Chat shows, and
+    /// its events settle one turn whose one terminal call completed.
+    func testToolApprovalTurnDecodesAndSettles() throws {
+        // `fixture` skips off-tree, so prove the tree is here before a missing file can fail.
+        _ = try fixture("manifest")
+        let file = Self.directory.appendingPathComponent("turn-tool-approval-frames.json")
+        guard let data = try? Data(contentsOf: file) else {
+            return XCTFail("Missing turn-tool-approval-frames.json; run scripts/capture-hermes-fixtures --local against scripts/local-hermes")
+        }
+        let capture = try JSONDecoder().decode(BotJSON.self, from: data)
+        XCTAssertEqual(capture["version"].text, BotConnection.testedHermesVersion)
+        let pin = try String(contentsOf: Self.tests.deletingLastPathComponent().appendingPathComponent("HERMES_AGENT_TESTED_SHA"), encoding: .utf8)
+        XCTAssertEqual(capture["hermes_agent_sha"].text, pin.split(separator: "\n").first.map(String.init))
+        let frames = try XCTUnwrap(capture["frames"].list)
+
+        let requests = frames.filter { $0["method"].text != "event" }
+        XCTAssertEqual(requests.count, 1, "One server request: the approval")
+        let request = try XCTUnwrap(requests.first.flatMap(BotServerRequest.init))
+        guard case .approval(let approval) = request.pending else { return XCTFail("\(request.method) is not an approval") }
+        XCTAssertEqual(approval.command?.contains("python3 -c"), true)
+        XCTAssertEqual(approval.choices.first, .once)
+        XCTAssertEqual(approval.choices.last, .deny)
+
+        let events = frames.filter { $0["method"].text == "event" }.map { $0["params"] }
+        XCTAssertTrue(events.allSatisfy { $0["session_id"].text == request.sessionID }, "One runtime carries the turn")
+        let types = events.compactMap { $0["type"].text }
+        XCTAssertEqual(Set(types).subtracting(Self.knownTurnEvents.union(Self.knownToolEvents)), [], "A new upstream event type")
+        var activity = BotTurnActivity()
+        for event in events { activity.apply(type: event["type"].text ?? "", payload: event["payload"]) }
+        XCTAssertEqual(activity.toolCalls.map(\.name), ["terminal"])
+        XCTAssertEqual(activity.toolCalls.map(\.isCompleted), [true])
+        let completed = try XCTUnwrap(types.lastIndex(of: "message.complete"), "The turn completes")
+        XCTAssertLessThan(try XCTUnwrap(types.firstIndex(of: "tool.complete")), completed, "The tool finished inside the turn")
+        XCTAssertEqual(events.last?["type"].text, "session.info")
+        XCTAssertEqual(events.last?["payload"]["running"].flag, false)
     }
 }
 

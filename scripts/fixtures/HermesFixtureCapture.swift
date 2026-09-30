@@ -3,23 +3,23 @@ import Foundation
 /// Records what a live hermes-agent host sends for the Bot surfaces Hermex reads, and
 /// writes it as sanitized JSON fixtures for `HermesAgentFixtureTests`. Run it through
 /// `scripts/capture-hermes-fixtures`, which compiles this file and supplies the
-/// `hermex-bot` Keychain credentials in the environment.
+/// `hermex-bot` Keychain credentials (or, with `--local`, `scripts/local-hermes`'s)
+/// in the environment.
 ///
 /// The capture signs in like `BotClient.connect`, reads `/api/status` and
-/// `profiles.list`, runs one canned turn in a disposable hidden session on the
-/// `inbox-triage` bot, resumes it, then closes and deletes it. Nothing reaches disk
-/// until the allow-list sanitizer and the leak check have both passed.
+/// `profiles.list`, runs one turn in a disposable hidden session (see `Mode`),
+/// resumes it, then closes and deletes it. Nothing reaches disk until the
+/// allow-list sanitizer and the leak check have both passed.
 @main
 struct HermesFixtureCapture {
-    static let profile = "inbox-triage"
     static let title = "hermex-fixture-capture"
-    static let prompt = "Reply with exactly: ok. Do not use tools."
 
     static func main() async {
         let arguments = Array(CommandLine.arguments.dropFirst())
         do {
-            guard let root = arguments.first else { throw Failure("usage: HermesFixtureCapture <repo-root> [--keep-raw <file> | --from-raw <file>]") }
+            guard let root = arguments.first else { throw Failure("usage: HermesFixtureCapture <repo-root> [--local] [--keep-raw <file> | --from-raw <file>]") }
             let options = try Options(Array(arguments.dropFirst()))
+            let mode = Mode(local: options.local)
             let repo = URL(fileURLWithPath: root)
             let pin = try Pin(repo.appendingPathComponent("HERMES_AGENT_TESTED_SHA"))
             var secrets = try Secrets.fromEnvironment()
@@ -27,14 +27,14 @@ struct HermesFixtureCapture {
             if let source = options.fromRaw {
                 raw = try JSONDecoder().decode(JSON.self, from: Data(contentsOf: source))
             } else {
-                (raw, secrets.ticket) = try await Capture(secrets: secrets, pin: pin).run()
+                (raw, secrets.ticket) = try await Capture(secrets: secrets, pin: pin, mode: mode).run()
                 if let keep = options.keepRaw {
                     try writePrivately(encode(raw), to: keep)
                     print("Kept the unsanitized capture at \(keep.path); move it to the Trash when done.")
                 }
             }
-            let files = try Sanitizer.fixtures(raw: raw, pin: pin)
-            try LeakCheck.verify(files, raw: raw, secrets: secrets)
+            let files = try Sanitizer.fixtures(raw: raw, pin: pin, mode: mode)
+            try LeakCheck.verify(files, raw: raw, secrets: secrets, mode: mode)
             let directory = repo.appendingPathComponent("HermesMobileTests/Fixtures/HermesAgent")
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             for (name, data) in files { try data.write(to: directory.appendingPathComponent(name), options: .atomic) }
@@ -74,11 +74,13 @@ struct Failure: Error, CustomStringConvertible {
 }
 
 struct Options {
+    var local = false
     var keepRaw: URL?
     var fromRaw: URL?
     init(_ arguments: [String]) throws {
         var rest = arguments[...]
         while let flag = rest.popFirst() {
+            if flag == "--local" { local = true; continue }
             guard let value = rest.popFirst() else { throw Failure("\(flag) needs a file") }
             switch flag {
             case "--keep-raw": keepRaw = URL(fileURLWithPath: value)
@@ -87,6 +89,21 @@ struct Options {
             }
         }
         if keepRaw != nil, fromRaw != nil { throw Failure("--keep-raw and --from-raw are exclusive") }
+    }
+}
+
+/// What one run records. A real host gets the canned text turn on its `inbox-triage`
+/// bot, and any tool or request traffic fails the capture. `--local` records the
+/// scripted tool and approval turn from `scripts/local-hermes` on its `default`
+/// Profile, and is the only mode that lets that traffic and its fields through.
+struct Mode {
+    let local: Bool
+    var profile: String { local ? "default" : "inbox-triage" }
+    var prompt: String { local ? "Run the quick check." : "Reply with exactly: ok. Do not use tools." }
+    /// String keys the sanitizer keeps: `Sanitizer.keptStrings`, plus what the tool
+    /// and approval fixture test reads in local mode.
+    var keptStrings: Set<String> {
+        local ? Sanitizer.keptStrings.union(["command", "description", "choices", "name", "request_id"]) : Sanitizer.keptStrings
     }
 }
 
@@ -167,12 +184,13 @@ indirect enum JSON: Codable, Equatable {
 final class Capture {
     private let secrets: Secrets
     private let pin: Pin
+    private let mode: Mode
     private let session = URLSession(configuration: .ephemeral)
     private var socket: URLSessionWebSocketTask?
     private var frames: [JSON] = []
     private var nextID = 0
 
-    init(secrets: Secrets, pin: Pin) { self.secrets = secrets; self.pin = pin }
+    init(secrets: Secrets, pin: Pin, mode: Mode) { self.secrets = secrets; self.pin = pin; self.mode = mode }
 
     /// Returns the raw capture and the socket ticket, which the leak check needs
     /// but the raw capture never stores.
@@ -196,7 +214,7 @@ final class Capture {
         var stored: String?
         do {
             let create = try await call("session.create", [
-                "profile": .string(HermesFixtureCapture.profile), "title": .string(HermesFixtureCapture.title),
+                "profile": .string(mode.profile), "title": .string(HermesFixtureCapture.title),
                 "hidden": .bool(true), "follow_profile_config": .bool(true), "close_on_disconnect": .bool(true)
             ])
             // Keep whichever id arrived, so cleanup can still reach a half-described session.
@@ -205,7 +223,7 @@ final class Capture {
             guard let runtime = runtimes.first, let storedID = stored else { throw Failure("session.create returned no ids") }
             print("Disposable session: stored id \(storedID).")
             let firstFrame = frames.count
-            _ = try await call("prompt.submit", ["session_id": .string(runtime), "text": .string(HermesFixtureCapture.prompt), "queued": .bool(true)])
+            _ = try await call("prompt.submit", ["session_id": .string(runtime), "text": .string(mode.prompt), "queued": .bool(true)])
             try await waitForSettledTurn(runtime: runtime, from: firstFrame)
             // `hidden` should keep the session out of Desktop's ordinary list. A title
             // lookup ignores `hidden`, so compare the plain listings instead.
@@ -217,7 +235,7 @@ final class Capture {
             }
             print("Hidden check passed: absent without include_hidden, listed with it.")
             let resume = try await call("session.resume", [
-                "profile": .string(HermesFixtureCapture.profile), "session_id": .string(storedID), "close_on_disconnect": .bool(false)
+                "profile": .string(mode.profile), "session_id": .string(storedID), "close_on_disconnect": .bool(false)
             ])
             if let id = resume["session_id"].text, !runtimes.contains(id) { runtimes.append(id) }
             guard resume["running"].flag == false else { throw Failure("session.resume reports the turn still running") }
@@ -266,7 +284,7 @@ final class Capture {
         guard let stored else { return }
         for attempt in 1...5 {
             do {
-                _ = try await call("session.delete", ["profile": .string(HermesFixtureCapture.profile), "session_id": .string(stored)])
+                _ = try await call("session.delete", ["profile": .string(mode.profile), "session_id": .string(stored)])
                 break
             } catch let failure as RPCFailure where failure.code == 4007 {
                 break
@@ -281,22 +299,31 @@ final class Capture {
 
     /// Whether the Profile's recent-session listing (not a title lookup) returns `stored`.
     private func listed(_ stored: String, includeHidden: Bool) async throws -> Bool {
-        let reply = try await call("session.list", ["profile": .string(HermesFixtureCapture.profile), "include_hidden": .bool(includeHidden)])
+        let reply = try await call("session.list", ["profile": .string(mode.profile), "include_hidden": .bool(includeHidden)])
         guard let rows = reply["sessions"].list else { throw Failure("session.list returned no sessions array") }
         return rows.contains { $0["id"].text == stored }
     }
 
     /// Reads until the runtime's first `session.info` with `running: false` after
     /// `message.complete`; the host emits `message.complete` before post-turn work.
+    /// In local mode it approves the scripted command once, the way Bot Chat does.
     private func waitForSettledTurn(runtime: String, from start: Int) async throws {
         let deadline = Date().addingTimeInterval(180)
         var index = start
         var completed = false
+        var approved: Set<String> = []
         while true {
             while index < frames.count {
-                let params = frames[index]["params"]
+                let frame = frames[index]
+                let params = frame["params"]
                 index += 1
-                guard frames[index - 1]["method"].text == "event", params["session_id"].text == runtime else { continue }
+                if mode.local, frame["method"].text == "approval", params["session_id"].text == runtime,
+                   let request = params["request_id"].text, approved.insert(request).inserted {
+                    _ = try await call("approval.respond", [
+                        "session_id": .string(runtime), "request_id": .string(request), "choice": .string("once")
+                    ])
+                }
+                guard frame["method"].text == "event", params["session_id"].text == runtime else { continue }
                 if params["type"].text == "message.complete" { completed = true }
                 if completed, params["type"].text == "session.info", params["payload"]["running"].flag == false { return }
             }
@@ -380,81 +407,98 @@ enum Sanitizer {
     static let paths: Set<String> = ["path", "cwd", "hermes_home", "config_path", "env_path", "git_repo_root"]
     static let emptied: Set<String> = ["mcp_servers", "tools", "skills"]
 
-    static func fixtures(raw: JSON, pin: Pin) throws -> [String: Data] {
+    static func fixtures(raw: JSON, pin: Pin, mode: Mode) throws -> [String: Data] {
         let status = raw["status"]
         guard status["version"].text == pin.release else { throw Failure("the capture is from \(status["version"].text ?? "an unknown release"), the pin is \(pin.release)") }
         guard let runtime = raw["runtime_id"].text, let frames = raw["frames"].list else { throw Failure("the capture has no turn") }
+        let turn = try settledTurn(frames, runtime: runtime, mode: mode)
+        let stamp: [String: JSON] = [
+            "hermes_agent_sha": .string(pin.sha), "version": .string(pin.release),
+            "captured_at": .string(raw["captured_at"].text ?? ISO8601DateFormatter().string(from: Date()))
+        ]
+        if mode.local {
+            // The real-host fixtures stay as they are; the local turn gets one file with its own pin.
+            let file = stamp.merging(["frames": clean(.array(turn), transcript: true, mode: mode)]) { $1 }
+            return ["turn-tool-approval-frames.json": try HermesFixtureCapture.encode(.object(file))]
+        }
 
         var statusFields = status.fields ?? [:]
         for key in ["profiles", "gateway_shared_with"] where statusFields[key]?.list != nil {
-            statusFields[key] = .array([.string(HermesFixtureCapture.profile)])
+            statusFields[key] = .array([.string(mode.profile)])
         }
         if let parked = statusFields["parked_profiles"]?.list {
-            statusFields["parked_profiles"] = .array(parked.filter { $0.text == HermesFixtureCapture.profile })
+            statusFields["parked_profiles"] = .array(parked.filter { $0.text == mode.profile })
         }
         // Keyed by the host's configured messaging platforms, which are not ours to publish.
         if statusFields["gateway_platforms"]?.fields != nil { statusFields["gateway_platforms"] = .object([:]) }
 
         var roster = raw["profiles"].fields ?? [:]
-        let rows = roster["profiles"]?.list?.filter { $0["name"].text == HermesFixtureCapture.profile } ?? []
+        let rows = roster["profiles"]?.list?.filter { $0["name"].text == mode.profile } ?? []
         guard rows.count == 1, rows[0]["canonical_session"].fields != nil else {
-            throw Failure("profiles.list has no \(HermesFixtureCapture.profile) row with a canonical_session")
+            throw Failure("profiles.list has no \(mode.profile) row with a canonical_session")
         }
         roster["profiles"] = .array(rows)
 
-        let turn = try settledTurn(frames, runtime: runtime)
-        let manifest = JSON.object([
-            "hermes_agent_sha": .string(pin.sha), "version": .string(pin.release),
-            "captured_at": .string(raw["captured_at"].text ?? ISO8601DateFormatter().string(from: Date()))
-        ])
         return [
-            "manifest.json": try HermesFixtureCapture.encode(manifest),
-            "status.json": try HermesFixtureCapture.encode(clean(.object(statusFields), transcript: false)),
-            "profiles-list.json": try HermesFixtureCapture.encode(clean(.object(roster), transcript: false)),
-            "session-resume.json": try HermesFixtureCapture.encode(clean(raw["resume"], transcript: true)),
-            "turn-frames.json": try HermesFixtureCapture.encode(clean(.array(turn), transcript: true))
+            "manifest.json": try HermesFixtureCapture.encode(.object(stamp)),
+            "status.json": try HermesFixtureCapture.encode(clean(.object(statusFields), transcript: false, mode: mode)),
+            "profiles-list.json": try HermesFixtureCapture.encode(clean(.object(roster), transcript: false, mode: mode)),
+            "session-resume.json": try HermesFixtureCapture.encode(clean(raw["resume"], transcript: true, mode: mode)),
+            "turn-frames.json": try HermesFixtureCapture.encode(clean(.array(turn), transcript: true, mode: mode))
         ]
     }
 
-    /// The runtime's event frames up to and including the settled `session.info`.
-    /// Anything that means the canned turn used a tool or asked the user aborts.
-    static func settledTurn(_ frames: [JSON], runtime: String) throws -> [JSON] {
+    /// The runtime's frames up to and including the settled `session.info`. On a real
+    /// host, anything that means the canned turn used a tool or asked the user aborts.
+    /// Local mode keeps tool and approval traffic and its one `approval` request, and
+    /// still aborts on any other request.
+    static func settledTurn(_ frames: [JSON], runtime: String, mode: Mode) throws -> [JSON] {
         var kept: [JSON] = []
         var completed = false
+        var approvals = 0
         for frame in frames {
             let params = frame["params"]
             guard params["session_id"].text == runtime else { continue }
+            if mode.local, frame["method"].text == "approval", frame["id"] != .null {
+                approvals += 1
+                kept.append(frame)
+                continue
+            }
             guard frame["method"].text == "event", frame["id"] == .null else {
-                throw Failure("the host sent a \(frame["method"].text ?? "") request during the canned turn")
+                throw Failure("the host sent a \(frame["method"].text ?? "") request during the \(mode.local ? "local" : "canned") turn")
             }
             let type = params["type"].text ?? ""
-            if ["tool.", "approval.", "clarify."].contains(where: type.hasPrefix) || type.hasSuffix(".request") {
-                throw Failure("the canned turn emitted \(type); the fixture must not contain tool or request traffic")
+            let refused = mode.local ? ["clarify."] : ["tool.", "approval.", "clarify."]
+            if refused.contains(where: type.hasPrefix) || type.hasSuffix(".request") {
+                throw Failure("the \(mode.local ? "local" : "canned") turn emitted \(type); the fixture must not contain it")
             }
             kept.append(frame)
             if type == "message.complete" { completed = true }
-            if completed, type == "session.info", params["payload"]["running"].flag == false { return kept }
+            if completed, type == "session.info", params["payload"]["running"].flag == false {
+                guard !mode.local || approvals == 1 else { throw Failure("the local turn sent \(approvals) approval requests, not one") }
+                return kept
+            }
         }
         throw Failure("the capture never settled")
     }
 
     /// Applies the allow-list. `transcript` also keeps `text`, which only the
     /// disposable session's canned prompt and reply carry.
-    static func clean(_ value: JSON, key: String? = nil, transcript: Bool) -> JSON {
+    static func clean(_ value: JSON, key: String? = nil, transcript: Bool, mode: Mode) -> JSON {
         if let key, emptied.contains(key) {
             if value.list != nil { return .array([]) }
             if value.fields != nil { return .object([:]) }
         }
         switch value {
         case .object(let fields):
-            return .object(fields.reduce(into: [:]) { $0[$1.key] = clean($1.value, key: $1.key, transcript: transcript) })
+            return .object(fields.reduce(into: [:]) { $0[$1.key] = clean($1.value, key: $1.key, transcript: transcript, mode: mode) })
         case .array(let items):
-            return .array(items.map { clean($0, key: key, transcript: transcript) })
+            return .array(items.map { clean($0, key: key, transcript: transcript, mode: mode) })
         case .string(let text):
             guard let key else { return .string(placeholder) }
             if identities.contains(key) { return .string("fixture-install") }
             if paths.contains(key) { return .string("/fixture/\(key)") }
-            if text == HermesFixtureCapture.profile || keptStrings.contains(key) || (transcript && key == "text")
+            if text == mode.profile || mode.keptStrings.contains(key) || (transcript && key == "text")
                 || (key == "auth_providers") { return .string(text) }
             return .string(placeholder)
         default:
@@ -468,19 +512,24 @@ enum Sanitizer {
 /// The last gate before disk: the serialized fixtures must not contain the host,
 /// the account, the ticket, a home path, the raw install id, or another Profile.
 enum LeakCheck {
-    static func verify(_ files: [String: Data], raw: JSON, secrets: Secrets) throws {
+    static func verify(_ files: [String: Data], raw: JSON, secrets: Secrets, mode: Mode) throws {
         let output = files.values.map { String(decoding: $0, as: UTF8.self) }.joined(separator: "\n")
         var forbidden = [secrets.host, secrets.username, secrets.password, "/Users/"]
         if let ticket = secrets.ticket { forbidden.append(ticket) }
         for key in Sanitizer.identities { forbidden += values(of: key, in: raw) }
+        // Each Profile's home: for scripts/local-hermes, its temporary HERMES_HOME. A session's
+        // cwd can report it under /private/var, which contains the /var form checked here.
+        for path in (raw["profiles"]["profiles"].list ?? []).compactMap({ $0["path"].text }) {
+            forbidden.append(path.hasPrefix("/private/") ? String(path.dropFirst("/private".count)) : path)
+        }
         for value in forbidden where !value.isEmpty && output.range(of: value, options: .caseInsensitive) != nil {
             throw Failure("a sanitized fixture still contains a secret value; nothing was written")
         }
-        let others = (raw["status"]["profiles"].list ?? []).compactMap(\.text).filter { $0 != HermesFixtureCapture.profile }
+        let others = (raw["status"]["profiles"].list ?? []).compactMap(\.text).filter { $0 != mode.profile }
         for name in others {
             let word = "(?<![A-Za-z0-9_.-])" + NSRegularExpression.escapedPattern(for: name) + "(?![A-Za-z0-9_-])"
             if output.range(of: word, options: .regularExpression) != nil {
-                throw Failure("a sanitized fixture names a Profile other than \(HermesFixtureCapture.profile); nothing was written")
+                throw Failure("a sanitized fixture names a Profile other than \(mode.profile); nothing was written")
             }
         }
     }

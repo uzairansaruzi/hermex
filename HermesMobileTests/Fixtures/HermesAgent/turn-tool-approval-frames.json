@@ -1,0 +1,340 @@
+{
+  "captured_at" : "2026-09-30T05:19:36Z",
+  "frames" : [
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "approval_mode" : "fixture-redacted",
+          "branch" : "fixture-redacted",
+          "cwd" : "/fixture/cwd",
+          "desktop_contract" : 8,
+          "fast" : false,
+          "mcp_servers" : [],
+          "model" : "fixture-redacted",
+          "personality" : "fixture-redacted",
+          "profile_name" : "default",
+          "project" : null,
+          "provider" : "fixture-redacted",
+          "reasoning_effort" : "fixture-redacted",
+          "reasoning_effort_wire" : "fixture-redacted",
+          "release_date" : "fixture-redacted",
+          "running" : true,
+          "service_tier" : "fixture-redacted",
+          "skills" : {},
+          "stored_session_id" : "20260930_011912_659032",
+          "system_prompt" : "fixture-redacted",
+          "terminal_backend" : "fixture-redacted",
+          "title" : "fixture-redacted",
+          "tools" : {},
+          "turn_started_at" : 1790745552.718498,
+          "update_behind" : null,
+          "update_command" : "fixture-redacted",
+          "usage" : {
+            "active_subagents" : 0,
+            "calls" : 0,
+            "completion" : 0,
+            "compressions" : 0,
+            "input" : 0,
+            "model" : "fixture-redacted",
+            "output" : 0,
+            "prompt" : 0,
+            "reasoning" : 0,
+            "total" : 0
+          },
+          "version" : "0.21.5",
+          "yolo" : false
+        },
+        "seq" : 1,
+        "session_id" : "7dd4dff2",
+        "type" : "session.info"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "seq" : 2,
+        "session_id" : "7dd4dff2",
+        "type" : "message.start"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "text" : "(´･_･`) formulating..."
+        },
+        "seq" : 3,
+        "session_id" : "7dd4dff2",
+        "type" : "thinking.delta"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "text" : ""
+        },
+        "seq" : 4,
+        "session_id" : "7dd4dff2",
+        "type" : "thinking.delta"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "usage" : {
+            "active_subagents" : 0,
+            "avg_latency_s" : 0.2,
+            "calls" : 1,
+            "completion" : 0,
+            "compressions" : 0,
+            "input" : 0,
+            "model" : "fixture-redacted",
+            "output" : 0,
+            "prompt" : 0,
+            "reasoning" : 0,
+            "total" : 0
+          }
+        },
+        "seq" : 5,
+        "session_id" : "7dd4dff2",
+        "type" : "session.usage"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "text" : "Let me run a quick check."
+        },
+        "seq" : 6,
+        "session_id" : "7dd4dff2",
+        "type" : "reasoning.available"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "already_streamed" : false,
+          "text" : "Let me run a quick check."
+        },
+        "seq" : 7,
+        "session_id" : "7dd4dff2",
+        "type" : "message.interim"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "args" : {
+            "command" : "python3 -c \"print(1)\""
+          },
+          "context" : "fixture-redacted",
+          "name" : "terminal",
+          "tool_id" : "fixture-redacted"
+        },
+        "seq" : 8,
+        "session_id" : "7dd4dff2",
+        "type" : "tool.start"
+      }
+    },
+    {
+      "id" : "srq-627297cd2bb0",
+      "jsonrpc" : "2.0",
+      "method" : "approval",
+      "params" : {
+        "allow_permanent" : true,
+        "allow_session" : true,
+        "choices" : [
+          "once",
+          "session",
+          "always",
+          "deny"
+        ],
+        "command" : "python3 -c \"print(1)\"",
+        "description" : "script execution via -e/-c flag",
+        "pattern_key" : "fixture-redacted",
+        "pattern_keys" : [
+          "fixture-redacted"
+        ],
+        "request_id" : "850a0a9d32c448c2b4b9bc34503f5812",
+        "session_id" : "7dd4dff2"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "id" : "srq-627297cd2bb0",
+          "method" : "approval",
+          "reason" : "fixture-redacted"
+        },
+        "seq" : 9,
+        "session_id" : "7dd4dff2",
+        "type" : "request.cancel"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "args" : {
+            "command" : "python3 -c \"print(1)\""
+          },
+          "duration_s" : 0.5338609218597412,
+          "name" : "terminal",
+          "result" : {
+            "approval" : "fixture-redacted",
+            "error" : null,
+            "exit_code" : 0,
+            "output" : "fixture-redacted"
+          },
+          "tool_id" : "fixture-redacted"
+        },
+        "seq" : 10,
+        "session_id" : "7dd4dff2",
+        "type" : "tool.complete"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "text" : "(｡•́︿•̀｡) pondering..."
+        },
+        "seq" : 11,
+        "session_id" : "7dd4dff2",
+        "type" : "thinking.delta"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "text" : ""
+        },
+        "seq" : 12,
+        "session_id" : "7dd4dff2",
+        "type" : "thinking.delta"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "text" : "The command returned: 1."
+        },
+        "seq" : 13,
+        "session_id" : "7dd4dff2",
+        "type" : "reasoning.available"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "persisted_turn" : {
+            "complete" : true,
+            "final_assistant_row_id" : 4,
+            "row_ids" : [
+              1,
+              2,
+              3,
+              4
+            ],
+            "user_row_id" : 1
+          },
+          "status" : "complete",
+          "text" : "The command returned: 1.",
+          "usage" : {
+            "active_subagents" : 0,
+            "avg_latency_s" : 0.1,
+            "calls" : 2,
+            "completion" : 0,
+            "compressions" : 0,
+            "input" : 0,
+            "model" : "fixture-redacted",
+            "output" : 0,
+            "prompt" : 0,
+            "reasoning" : 0,
+            "total" : 0
+          }
+        },
+        "seq" : 14,
+        "session_id" : "7dd4dff2",
+        "type" : "message.complete"
+      }
+    },
+    {
+      "jsonrpc" : "2.0",
+      "method" : "event",
+      "params" : {
+        "payload" : {
+          "approval_mode" : "fixture-redacted",
+          "branch" : "fixture-redacted",
+          "cwd" : "/fixture/cwd",
+          "desktop_contract" : 8,
+          "fast" : false,
+          "mcp_servers" : [],
+          "model" : "fixture-redacted",
+          "personality" : "fixture-redacted",
+          "profile_name" : "default",
+          "project" : null,
+          "provider" : "fixture-redacted",
+          "reasoning_effort" : "fixture-redacted",
+          "reasoning_effort_wire" : "fixture-redacted",
+          "release_date" : "fixture-redacted",
+          "running" : false,
+          "service_tier" : "fixture-redacted",
+          "skills" : {},
+          "stored_session_id" : "20260930_011912_659032",
+          "system_prompt" : "fixture-redacted",
+          "terminal_backend" : "fixture-redacted",
+          "title" : "fixture-redacted",
+          "tools" : {},
+          "turn_started_at" : null,
+          "update_behind" : null,
+          "update_command" : "fixture-redacted",
+          "usage" : {
+            "active_subagents" : 0,
+            "avg_latency_s" : 0.1,
+            "calls" : 2,
+            "completion" : 0,
+            "compressions" : 0,
+            "input" : 0,
+            "model" : "fixture-redacted",
+            "output" : 0,
+            "prompt" : 0,
+            "reasoning" : 0,
+            "total" : 0
+          },
+          "version" : "0.21.5",
+          "yolo" : false
+        },
+        "seq" : 15,
+        "session_id" : "7dd4dff2",
+        "type" : "session.info"
+      }
+    }
+  ],
+  "hermes_agent_sha" : "ca6782850432927f33df4775cb6dd45bb51460d2",
+  "version" : "0.21.5"
+}

@@ -13,8 +13,13 @@
 # and other Profile names before anything is written. Credentials come from the
 # Keychain exactly as in scripts/sim-login and are never printed.
 #
-# Usage: scripts/capture-hermes-fixtures [--keep-raw <file>]
-#        scripts/capture-hermes-fixtures --from-raw <file>
+# --local instead records the tool and approval turn from scripts/local-hermes on
+# this Mac (start it first): the scripted model asks to run `python3 -c "print(1)"`,
+# the capture approves it once, and only turn-tool-approval-frames.json is written.
+# It makes no model call and never touches the real host.
+#
+# Usage: scripts/capture-hermes-fixtures [--local] [--keep-raw <file>]
+#        scripts/capture-hermes-fixtures [--local] --from-raw <file>
 # --keep-raw also saves the unsanitized capture (mode 600) outside the repo;
 # --from-raw re-sanitizes such a file without calling the host.
 set -euo pipefail
@@ -26,12 +31,22 @@ attribute() {
   security find-generic-password -s "$1" 2>/dev/null | sed -n "s/^ *\"$2\"<blob>=\"\(.*\)\"$/\1/p" || true
 }
 
-export HERMEX_CAPTURE_USERNAME="$(attribute hermex-bot acct)"
-export HERMEX_CAPTURE_ADDRESS="$(attribute hermex-bot icmt)"
-[[ -n "$HERMEX_CAPTURE_USERNAME" && -n "$HERMEX_CAPTURE_ADDRESS" ]] || {
-  echo "No hermex-bot Keychain item; see the header of scripts/sim-login." >&2; exit 1
-}
-export HERMEX_CAPTURE_PASSWORD="$(security find-generic-password -s hermex-bot -w)"
+if (( ${argv[(Ie)--local]} )); then
+  # scripts/local-hermes's fixed loopback address and dev credentials.
+  export HERMEX_CAPTURE_ADDRESS="http://127.0.0.1:9199"
+  export HERMEX_CAPTURE_USERNAME="hermex"
+  export HERMEX_CAPTURE_PASSWORD="hermex-local"
+  if (( ! ${argv[(Ie)--from-raw]} )) && ! curl -fsS --max-time 5 "$HERMEX_CAPTURE_ADDRESS/api/status" >/dev/null 2>&1; then
+    echo "Nothing answers $HERMEX_CAPTURE_ADDRESS/api/status; start scripts/local-hermes first." >&2; exit 1
+  fi
+else
+  export HERMEX_CAPTURE_USERNAME="$(attribute hermex-bot acct)"
+  export HERMEX_CAPTURE_ADDRESS="$(attribute hermex-bot icmt)"
+  [[ -n "$HERMEX_CAPTURE_USERNAME" && -n "$HERMEX_CAPTURE_ADDRESS" ]] || {
+    echo "No hermex-bot Keychain item; see the header of scripts/sim-login." >&2; exit 1
+  }
+  export HERMEX_CAPTURE_PASSWORD="$(security find-generic-password -s hermex-bot -w)"
+fi
 
 build_dir="$(mktemp -d "${TMPDIR:-/tmp}/hermex-fixture-capture.XXXXXX")"
 trap 'rm -f "$build_dir/capture"; rmdir "$build_dir"' EXIT
