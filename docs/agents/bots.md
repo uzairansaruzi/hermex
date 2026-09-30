@@ -148,7 +148,11 @@ The prompt discovers the existing backend and asks before changing setup.
 The same connection form serves Bots, Settings and push setup. A schemeless
 address defaults to HTTPS, except recognizable private/local IPs (including
 Tailscale ranges), local names and single-label hosts use HTTP. Explicit schemes
-and ports are preserved; TLS failures never trigger an HTTP downgrade. Invalid
+and ports are preserved; TLS failures never trigger an HTTP downgrade. A pasted
+link is reduced to its root: `ws`/`wss` become `http`/`https`, the query and
+fragment are dropped, and a path starting with `login`, `auth`, `api`, `chat` or
+`sessions` is removed; any other path (a proxy prefix) and credentials are refused.
+While the text parses, the form shows the root it will connect to. Invalid
 addresses display errors even before a transport exists. Cancellation invalidates
 the attempt before late replies can save credentials or dismiss the screen.
 The synchronous Keychain write is the commit point. Saved state changes with it;

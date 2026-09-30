@@ -35,30 +35,52 @@ struct BotConnection: Codable, Equatable, Identifiable {
         if let installID, let live, installID != live { throw BotFailure.differentHost }
     }
 
+    /// First path segments a browser, config file or curl command adds to the dashboard's
+    /// root: the pages the root redirects to, sign-in, and the API and gateway socket.
+    private static let dashboardPaths: Set<String> = ["login", "auth", "api", "chat", "sessions"]
+
+    /// Parses the connection form's text into the dashboard root every request is built
+    /// from, so a saved address never has a path, query or fragment. A pasted link is
+    /// reduced to its root: `ws`/`wss` become `http`/`https`, the query and fragment are
+    /// dropped, and a path starting with a `dashboardPaths` segment is cleared. Any other
+    /// path throws `BotAddressError.path`; credentials, other schemes and bad hosts or
+    /// ports throw `.invalid`. A missing scheme becomes HTTPS, or HTTP for private and
+    /// local hosts. The form's preview and dev auto-login parse through here too.
     static func address(_ text: String) throws -> URL {
         var value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty, !value.contains(where: \.isWhitespace) else { throw BotFailure.invalidAddress }
+        guard !value.isEmpty, !value.contains(where: \.isWhitespace) else { throw BotAddressError.invalid }
         let hasScheme = value.contains("://")
         if !hasScheme {
             // A bare IPv6 literal needs brackets; bracketed literals may include a port.
             if IPv6Address(value) != nil { value = "[\(value)]" }
             value = "https://" + value
         }
-        guard var parts = URLComponents(string: value),
-              ["http", "https"].contains(parts.scheme?.lowercased() ?? ""),
+        guard var parts = URLComponents(string: value) else { throw BotAddressError.invalid }
+        switch parts.scheme?.lowercased() {
+        case "ws": parts.scheme = "http"
+        case "wss": parts.scheme = "https"
+        default: break
+        }
+        parts.query = nil
+        parts.fragment = nil
+        var path = parts.path
+        while path.hasSuffix("/") { path.removeLast() }
+        guard ["http", "https"].contains(parts.scheme?.lowercased() ?? ""),
               let host = parts.host, !host.isEmpty,
-              parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
-              parts.path.isEmpty || parts.path == "/",
-              parts.port.map({ (1...65535).contains($0) }) ?? true else { throw BotFailure.invalidAddress }
+              parts.user == nil, parts.password == nil,
+              parts.port.map({ (1...65535).contains($0) }) ?? true else { throw BotAddressError.invalid }
         let plainHost = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
         guard !plainHost.allSatisfy({ $0.isNumber || $0 == "." }) || IPv4Address(plainHost) != nil else {
-            throw BotFailure.invalidAddress
+            throw BotAddressError.invalid
+        }
+        if let first = path.split(separator: "/").first, !dashboardPaths.contains(first.lowercased()) {
+            throw BotAddressError.path(path)
         }
         if !hasScheme && defaultsToHTTP(plainHost.lowercased()) { parts.scheme = "http" }
         parts.scheme = parts.scheme?.lowercased()
         parts.host = host.lowercased()
         parts.path = ""
-        guard let url = parts.url else { throw BotFailure.invalidAddress }
+        guard let url = parts.url else { throw BotAddressError.invalid }
         return url
     }
 
@@ -83,6 +105,26 @@ struct BotConnection: Codable, Equatable, Identifiable {
             || (octets[0] == 192 && octets[1] == 168)
             || (octets[0] == 169 && octets[1] == 254)
             || (octets[0] == 100 && (64...127).contains(octets[1]))
+    }
+}
+
+/// Why the connection form's address can't be used. Thrown only by
+/// `BotConnection.address(_:)`, so typing mistakes stay apart from `BotFailure`
+/// connection failures and never reach the inbox's retry rules.
+enum BotAddressError: LocalizedError, Equatable {
+    /// A path that isn't a dashboard page, as typed without trailing slashes. Usually a
+    /// reverse-proxy prefix, which Hermex can't use yet.
+    case path(String)
+    /// No usable HTTP or HTTPS host, or the address carries a username or password.
+    case invalid
+
+    var errorDescription: String? {
+        switch self {
+        case .path(let path):
+            return String(localized: "Remove “\(path)” from the address. Hermex needs the dashboard's main address, like https://example.com:9119, and can't use a dashboard served under a path yet.")
+        case .invalid:
+            return String(localized: "Enter the dashboard's HTTP or HTTPS address, like https://example.com:9119, without a username or password.")
+        }
     }
 }
 

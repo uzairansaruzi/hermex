@@ -155,10 +155,14 @@ import XCTest
     }
 
     func testAddressValidationAndOptionalRosterMetadata() throws {
-        for text in ["https://user:password@host", "https://host/path", "https://host?ticket=x", "file:///tmp/host", "https://host#x"] {
-            XCTAssertThrowsError(try BotConnection.address(text))
+        let refused: [String: BotAddressError] = ["https://user:password@host": .invalid,
+                                                  "https://host/path": .path("/path"), "file:///tmp/host": .invalid]
+        for (text, expected) in refused {
+            XCTAssertThrowsError(try BotConnection.address(text), text) { XCTAssertEqual($0 as? BotAddressError, expected, text) }
         }
         XCTAssertEqual(try BotConnection.address(" HTTP://HERMES.LOCAL:9120/ ").absoluteString, "http://hermes.local:9120")
+        XCTAssertEqual(try BotConnection.address("https://host?ticket=x").absoluteString, "https://host")
+        XCTAssertEqual(try BotConnection.address("https://host#x").absoluteString, "https://host")
         let profile = try XCTUnwrap(BotProfile(.object(["name": .string("same"), "future": .array([])])))
         XCTAssertEqual(profile.name, "same")
         XCTAssertNil(profile.preview)

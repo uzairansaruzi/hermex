@@ -38,7 +38,15 @@ import Observation
                 SecureField("Password", text: $setup.password).textContentType(.password)
                     .focused($passwordFocused)
             } footer: {
-                Text("Domains, Tailscale names and IP addresses work. You can include http:// or https://.")
+                VStack(alignment: .leading, spacing: 4) {
+                    // The trailing mark keeps a URL ending in a neutral character, such as an
+                    // IPv6 literal's "]", in one left-to-right run inside right-to-left text.
+                    if let preview = setup.addressPreview {
+                        Text("Will connect to \(preview.absoluteString + "\u{200E}")")
+                            .accessibilityIdentifier("hermes-connection-address-preview")
+                    }
+                    Text("Domains, Tailscale names and IP addresses work. You can include http:// or https://.")
+                }
             }
             .disabled(setup.isConnecting)
             Section {
@@ -266,6 +274,10 @@ extension BotHostStatus {
         }
     }
 
+    /// The root `connect()` would use for the typed text, or nil while it doesn't parse.
+    /// Parse errors wait for Connect so they never nag mid-word.
+    var addressPreview: URL? { try? BotConnection.address(address) }
+
     var canConnect: Bool {
         !isConnecting && !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
@@ -357,9 +369,9 @@ extension BotHostStatus {
         } catch {
             guard attempt == id, !Task.isCancelled else { return false }
             if error as? BotFailure == .differentHost { differentHostAddress = attempted }
-            // Only the address parse throws before `attempted` is set.
+            // Only the address parse throws before `attempted` is set, with a `BotAddressError`.
             errorMessage = attempted.map { BotConnectionAdvice.message(for: error, address: $0) }
-                ?? (error as? BotFailure ?? .invalidAddress).localizedDescription
+                ?? error.localizedDescription
             return false
         }
     }
