@@ -24,8 +24,8 @@ see [Push provisioning](bots.md#push-provisioning) and
   to APNs. It sees device tokens, the notification kind, a coarse source (bot,
   webui, other), a subagent flag, thread and collapse ids, the raw agent
   session id, and timestamps. Progress events add a status, the tool's name,
-  and a call count. Title, subtitle, body, profile name, and request id stay
-  inside the sealed blob, which the relay cannot open.
+  and a call count. Title, subtitle, body, profile name, the bot's name, and
+  request id stay inside the sealed blob, which the relay cannot open.
 - **App.** `HermesMobile/Push/` provisions the host, stores the pairing,
   registers the device token with every paired relay, and routes taps. The
   app target carries the Time Sensitive entitlement, so the relay's

@@ -108,6 +108,25 @@ final class LocalizationCatalogTests: XCTestCase {
         }
     }
 
+    /// #887: the notification service titles relay banners "<bot name> · <label>". Every
+    /// translation keeps the one placeholder, or the banner would lose the bot's name.
+    func testPushBannerLabelsAreLocalizedInEveryShippedLanguage() throws {
+        let data = try Data(contentsOf: catalogURL())
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let strings = try XCTUnwrap(root["strings"] as? [String: Any])
+
+        for key in ["%@ · Approval needed", "%@ · Question", "%@ · Turn failed"] {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], key)
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], key)
+            for language in Self.shippedLanguages {
+                let localization = try XCTUnwrap(localizations[language] as? [String: Any], "[\(language)] \(key)")
+                let value = try XCTUnwrap((localization["stringUnit"] as? [String: Any])?["value"] as? String,
+                                          "[\(language)] \(key)")
+                XCTAssertEqual(value.components(separatedBy: "%@").count, 2, "[\(language)] \(key): \(value)")
+            }
+        }
+    }
+
     func testKanbanCardDetailCopyIsLocalizedInEveryShippedLanguage() throws {
         let data = try Data(contentsOf: catalogURL())
         let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])

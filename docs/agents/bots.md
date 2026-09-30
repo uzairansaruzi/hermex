@@ -1589,10 +1589,15 @@ content-free ("Hermex / New activity") with `mutable-content`, and outside `aps`
 `v`, `kind`, `event_id`, `install_hash`, `session_id`, `source`, `is_subagent` and
 `sealed`. The extension finds the pairing whose `sha256(install_key)` equals
 `install_hash`, opens `sealed` (base64 of `nonce(12) || AES-256-GCM ciphertext ||
-tag(16)`, AAD `hermex-preview-v1:<that hash>`) and rewrites title, subtitle and body. On
-any failure — a null `sealed`, no pairing, a wrong key, a tampered blob, running out of
-time — the banner stays content-free, with only `New activity` localized. Format and test
-vector: `hermex-push` `plugin/hermex_push_tests/fixtures/sealed_preview.json`.
+tag(16)`, AAD `hermex-preview-v1:<that hash>`) and rewrites title, subtitle and body.
+Plugin 0.3.0 also seals `bot_name`, the name the bot roster shows (#887). With it, the
+extension builds the title in the phone's language from `bot_name` and the cleartext
+`kind`: `<name> · Approval needed`, `· Question` or `· Turn failed`, and the name alone
+for a reply. Without it, or for a kind this build has no label for, the sealed title (the
+plugin's English `<name> · <label>`) stays. On any failure — a null `sealed`, no pairing, a
+wrong key, a tampered blob, running out of time — the banner stays content-free, with only
+`New activity` localized. Format and test vector: `hermex-push`
+`plugin/hermex_push_tests/fixtures/sealed_preview.json`.
 
 Target membership is deliberate. The extension compiles `NotificationService.swift` and
 `HermesMobile/Push/PushPreview.swift` and bundles `Localizable.xcstrings`; that shared

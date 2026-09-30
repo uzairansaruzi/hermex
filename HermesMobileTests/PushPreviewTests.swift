@@ -78,6 +78,40 @@ import XCTest
         XCTAssertEqual(unpaired.body, "New activity")
     }
 
+    /// #887: the title names the bot and what it wants in the phone's language, built from
+    /// the cleartext `kind` and the sealed `bot_name`. The sealed English title is only for
+    /// app builds that predate `bot_name`.
+    func testRewriteNamesTheBotWithTheKindsLabel() throws {
+        let titles = [
+            "approval": "Inbox Triage · Approval needed",
+            "clarify": "Inbox Triage · Question",
+            "turn_error": "Inbox Triage · Turn failed",
+            "reply": "Inbox Triage"
+        ]
+        for (kind, title) in titles {
+            let content = try namedBanner(kind: kind, botName: "Inbox Triage")
+            PushPreview.rewrite(content, candidates: [keys])
+            XCTAssertEqual(content.title, title, kind)
+            XCTAssertEqual(content.subtitle, "Sealed subtitle", kind)
+            XCTAssertEqual(content.body, "Sealed body", kind)
+            XCTAssertEqual(PushPayload(userInfo: content.userInfo).profile, "inbox-triage", kind)
+        }
+    }
+
+    /// An older plugin seals no `bot_name`, and a kind this build has no label for keeps
+    /// the plugin's title: both banners look exactly as they did before #887.
+    func testRewriteKeepsTheSealedTitleWithoutABotName() throws {
+        let cases: [(kind: String?, botName: String?)] = [
+            ("approval", nil), ("approval", ""), ("input", "Inbox Triage"), (nil, "Inbox Triage")
+        ]
+        for (kind, botName) in cases {
+            let content = try namedBanner(kind: kind, botName: botName)
+            PushPreview.rewrite(content, candidates: [keys])
+            XCTAssertEqual(content.title, "Sealed title", "\(kind ?? "no kind"), \(botName ?? "no bot_name")")
+            XCTAssertEqual(content.body, "Sealed body")
+        }
+    }
+
     func testTapOpensTheBotOnThePairedServer() {
         let connection = UUID()
         let other = URL(string: "https://other.example")!
@@ -254,6 +288,20 @@ import XCTest
         XCTAssertEqual(presence.viewer, chat)
         presence.leave(owner: replacement)
         XCTAssertNil(presence.viewer)
+    }
+
+    /// A relay banner of `kind` whose preview is sealed from the plugin's JSON, so
+    /// `bot_name` goes through the same decode the extension runs.
+    private func namedBanner(kind: String?, botName: String?) throws -> UNMutableNotificationContent {
+        var json: [String: Any] = [
+            "title": "Sealed title", "subtitle": "Sealed subtitle", "body": "Sealed body",
+            "profile": "inbox-triage", "request_id": "r1"
+        ]
+        json["bot_name"] = botName
+        let preview = try JSONDecoder().decode(PushPreview.self, from: JSONSerialization.data(withJSONObject: json))
+        let content = banner(sealed: try XCTUnwrap(PushPreview.seal(preview, keys: keys)))
+        content.userInfo["kind"] = kind
+        return content
     }
 
     /// A banner as the relay's `bannerPush` builds it.
