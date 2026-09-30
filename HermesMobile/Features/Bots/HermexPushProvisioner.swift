@@ -417,17 +417,22 @@ import UserNotifications
         let client = dashboard(connection)
         do { try await client.signIn() } catch { return failSignIn(error, remedy: .retryUpdate) }
         do {
+            var turnedOff = false
             do {
                 try await client.setPlugin(HermexPushPlugin.name, enabled: false)
+                turnedOff = true
                 try await client.installPlugin(identifier: HermexPushPlugin.installIdentifier)
             } catch {
                 // Turning a plugin off only edits the host's config, so the running gateway keeps
                 // it; turning it back on keeps the next restart from dropping push. A disable that
-                // failed changed nothing, so enabling it again is harmless.
+                // failed may still have landed, so it is undone too; enabling an enabled plugin is a
+                // no-op. Only a confirmed disable is reported as left off.
+                let failure = error
                 do { try await client.setPlugin(HermexPushPlugin.name, enabled: true) } catch {
-                    throw HermexPushFailure.pluginLeftOff
+                    if turnedOff { throw HermexPushFailure.pluginLeftOff }
+                    throw failure
                 }
-                throw error
+                throw failure
             }
             step = .restart
             phase = .updatingPlugin(step)

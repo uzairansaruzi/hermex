@@ -848,10 +848,12 @@ import XCTest
 
     func testATurnOffThatFailsIsUndoneBeforeAnythingIsInstalled() async throws {
         let registrar = try await pairedRegistrar(serverA)
+        var enableFails = false
         PushHTTPFixture.handler = { request in
             switch request.url?.path {
             // The host may have applied the change before the answer was lost.
             case "/api/dashboard/agent-plugins/hermex-push/disable": return (504, .null)
+            case "/api/dashboard/agent-plugins/hermex-push/enable": return enableFails ? (502, .null) : nil
             case "/api/plugins/hermex-push/pairing": return (200, PushHTTPFixture.pairingBody(version: nil))
             default: return nil
             }
@@ -869,6 +871,13 @@ import XCTest
         guard case .failed(let failure)? = provisioner.pluginCard else { return XCTFail("Expected the failed card") }
         XCTAssertEqual(failure.title, "Couldn’t reinstall the plugin")
         XCTAssertEqual(failure.remedy, .retryUpdate)
+
+        // Neither call confirmed a change, so the card names the failure, not a plugin left off.
+        enableFails = true
+        await provisioner.updatePlugin()
+        guard case .failed(let unconfirmed)? = provisioner.pluginCard else { return XCTFail("Expected the failed card") }
+        XCTAssertNotEqual(unconfirmed.message, HermexPushFailure.pluginLeftOff.errorDescription)
+        XCTAssertEqual(unconfirmed.message, failure.message, "The turn-off's own failure")
     }
 
     func testTheOldPluginPairingFailureOffersTheUpdateWhichDoesNotPairByItself() async throws {
