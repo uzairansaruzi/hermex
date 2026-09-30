@@ -138,8 +138,9 @@ private extension UIResponder {
     }
 }
 
-/// The lock window's content: the lock, the "can't lock" note, or, when the scene is only
-/// covered, the app icon alone in the same spot, so switching between them needs no motion.
+/// The lock window's content: the lock or the "can't lock" note while the scene is active, and
+/// the app icon alone whenever it's covered, locked or not, so the app switcher never shows the
+/// Unlock button. The icon stays in the same spot, so switching needs no motion.
 /// Static: nothing animates or repaints.
 struct AppLockView: View {
     let lock: AppLock
@@ -154,10 +155,13 @@ struct AppLockView: View {
                 VStack(spacing: 0) {
                     AppLockIcon(choice: icon)
 
-                    if lock.isPasscodeMissing {
-                        passcodeMissing
-                    } else if lock.isLocked {
-                        locked
+                    // Covered, it's the icon alone.
+                    if !lock.isCovered {
+                        if lock.isPasscodeMissing {
+                            passcodeMissing
+                        } else if lock.isLocked {
+                            locked
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity)

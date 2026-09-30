@@ -61,6 +61,16 @@ final class AppLockTests: XCTestCase {
         lock.sceneDidBecomeActive()
         XCTAssertFalse(lock.isCovered)
         XCTAssertFalse(lock.showsLockWindow)
+
+        // Locked too: the lock window shows the icon alone, not the Unlock button.
+        lock.sceneWillResignActive()
+        lock.sceneDidEnterBackground()
+        clock.advance(by: .seconds(61))
+        await lock.sceneDidBecomeActive()?.value
+        XCTAssertTrue(lock.isLocked, "The automatic prompt was cancelled")
+        XCTAssertFalse(lock.isCovered)
+        lock.sceneWillResignActive()
+        XCTAssertTrue(lock.isCovered)
     }
 
     func testItsOwnPromptNeverShowsTheCover() async {
