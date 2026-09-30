@@ -10941,6 +10941,10 @@ private actor RecordingSendDraftAttachmentStore: ChatDraftAttachmentStoring {
         Data()
     }
 
+    func fileURL(named fileName: String) async throws -> URL {
+        throw CocoaError(.fileNoSuchFile)
+    }
+
     func delete(named fileName: String) async {
         deletedFileNames.append(fileName)
     }

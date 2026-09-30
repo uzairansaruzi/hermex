@@ -1,6 +1,10 @@
 import SwiftUI
 import UIKit
 
+/// A staged document's badge slot in the strip. Its Quick Look preview is made
+/// at this size, and the pill's smaller tile draws the same image scaled down.
+private let documentBadgeSize = CGSize(width: 58, height: 68)
+
 struct ComposerAttachmentStripView: View {
     let attachments: [PendingAttachment]
     let onRemove: (UUID) -> Void
@@ -77,16 +81,57 @@ struct ComposerAttachmentPillPreview: View {
                 Image(uiImage: uiImage)
                     .resizable()
                     .scaledToFill()
+            } else if attachment.isImage {
+                placeholderTile(systemName: "photo")
             } else {
-                Image(systemName: attachment.isImage ? "photo" : "doc")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color(.secondaryLabel))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(.tertiarySystemFill))
+                ComposerDocumentThumbnail(attachment: attachment) { thumbnail in
+                    if let thumbnail {
+                        Image(uiImage: thumbnail)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        placeholderTile(systemName: "doc")
+                    }
+                }
             }
         }
         .frame(width: tileSize, height: tileSize)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func placeholderTile(systemName: String) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Color(.secondaryLabel))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.tertiarySystemFill))
+    }
+}
+
+/// Loads a staged document's Quick Look preview and hands it to `content`:
+/// nil until it arrives, and for good when Quick Look can't draw one, so the
+/// tile keeps its icon. A preview made earlier, by this tile or the other
+/// composer state, draws in the first frame. The swap never animates.
+private struct ComposerDocumentThumbnail<Content: View>: View {
+    let attachment: PendingAttachment
+    @ViewBuilder let content: (UIImage?) -> Content
+
+    @Environment(\.displayScale) private var displayScale
+    @State private var loaded: UIImage?
+
+    var body: some View {
+        content(loaded ?? ComposerDocumentThumbnails.shared.cachedThumbnail(for: attachment.id))
+            .task(id: attachment.id) {
+                let image = await ComposerDocumentThumbnails.shared.thumbnail(
+                    for: attachment,
+                    size: documentBadgeSize,
+                    scale: displayScale
+                )
+                guard !Task.isCancelled, image !== loaded else { return }
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { loaded = image }
+            }
     }
 }
 
@@ -166,20 +211,20 @@ private struct ComposerAttachmentThumbnailView: View {
 
     private var filePreview: some View {
         HStack(alignment: .center, spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(fileBadgeColor.opacity(0.15))
-
-                VStack(spacing: 3) {
-                    Image(systemName: fileIconName)
-                        .font(.system(size: 24, weight: .semibold))
-                    Text(fileExtensionLabel)
-                        .font(.system(size: 9, weight: .bold))
-                        .lineLimit(1)
+            ComposerDocumentThumbnail(attachment: attachment) { thumbnail in
+                if let thumbnail {
+                    Image(uiImage: thumbnail)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: documentBadgeSize.width, height: documentBadgeSize.height)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        // Keeps a white page from dissolving into a light
+                        // tile, and gives it an edge in dark mode.
+                        .overlay(previewBorder(cornerRadius: 10))
+                } else {
+                    fileBadge
                 }
-                .foregroundStyle(fileBadgeColor)
             }
-            .frame(width: 58, height: 68)
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(attachment.name)
@@ -207,6 +252,25 @@ private struct ComposerAttachmentThumbnailView: View {
         .overlay(previewBorder(cornerRadius: 14))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("File attachment \(attachment.name), \(fileDetailText)")
+    }
+
+    /// The document's icon and extension, until (or unless) Quick Look draws
+    /// a preview in the same slot.
+    private var fileBadge: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(fileBadgeColor.opacity(0.15))
+
+            VStack(spacing: 3) {
+                Image(systemName: fileIconName)
+                    .font(.system(size: 24, weight: .semibold))
+                Text(fileExtensionLabel)
+                    .font(.system(size: 9, weight: .bold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(fileBadgeColor)
+        }
+        .frame(width: documentBadgeSize.width, height: documentBadgeSize.height)
     }
 
     private func previewBorder(cornerRadius: CGFloat) -> some View {

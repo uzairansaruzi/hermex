@@ -222,6 +222,7 @@ actor BotAttachmentCopies: ChatDraftAttachmentStoring {
         guard let data = values[fileName] else { throw BotAttachmentFailure.unreadable }; return data
     }
     func delete(named fileName: String) { values[fileName] = nil }
+    func fileURL(named fileName: String) throws -> URL { throw CocoaError(.fileNoSuchFile) }
     func sweep(keepingReferenced fileNames: Set<String>, olderThan maxAge: TimeInterval) {}
 }
 

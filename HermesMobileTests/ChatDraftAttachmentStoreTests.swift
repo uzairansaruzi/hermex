@@ -68,6 +68,21 @@ final class ChatDraftAttachmentStoreTests: XCTestCase {
         await XCTAssertThrowsErrorAsync(try await store.data(named: "nested/\(outside)"))
     }
 
+    /// Quick Look reads a file, not bytes; the URL obeys the same name rules.
+    func testFileURLPointsAtTheSavedCopyAndRejectsTraversalNames() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ChatDraftAttachmentStore(directoryURL: directory)
+        let fileName = try await store.save(data: Data("%PDF-1.7".utf8), suggestedFilename: "report.pdf")
+
+        let url = try await store.fileURL(named: fileName)
+
+        XCTAssertEqual(url.lastPathComponent, fileName)
+        XCTAssertEqual(try Data(contentsOf: url), Data("%PDF-1.7".utf8))
+        await XCTAssertThrowsErrorAsync(try await store.fileURL(named: "../\(fileName)"))
+        await XCTAssertThrowsErrorAsync(try await store.fileURL(named: "nested/\(fileName)"))
+    }
+
     func testDeleteRemovesFilesAndToleratesMissingOnes() async throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

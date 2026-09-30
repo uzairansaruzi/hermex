@@ -10,6 +10,10 @@ protocol ChatDraftAttachmentStoring: Sendable {
     /// the caller stores in the draft record.
     func save(data: Data, suggestedFilename: String) async throws -> String
     func data(named fileName: String) async throws -> Data
+    /// Where the copy lives, for readers that need a file rather than its
+    /// bytes (Quick Look thumbnails). Rejects the names `data(named:)` rejects;
+    /// the file itself may be gone.
+    func fileURL(named fileName: String) async throws -> URL
     func delete(named fileName: String) async
     /// Deletes files not referenced by any draft and older than `maxAge`. The
     /// age grace keeps copies whose owning upload/record write is still in
@@ -85,6 +89,10 @@ actor ChatDraftAttachmentStore: ChatDraftAttachmentStoring {
 
     func data(named fileName: String) async throws -> Data {
         try Data(contentsOf: fileURL(for: fileName))
+    }
+
+    func fileURL(named fileName: String) async throws -> URL {
+        try fileURL(for: fileName)
     }
 
     func delete(named fileName: String) async {
