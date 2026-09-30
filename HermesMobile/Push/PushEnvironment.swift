@@ -6,11 +6,14 @@ import Foundation
 /// wrong environment and the relay then revokes the device, which looks like
 /// "push silently stopped working". The value is *not* derived from the bundle
 /// suffix — Branch TestFlight is a production build — but from `APS_ENVIRONMENT`,
-/// the one build setting that also writes the `aps-environment` entitlement
-/// (`Config/Shared.xcconfig`, `HermesMobile.entitlements`, `Info.plist`). Because
-/// both come from the same setting, what we report and what we signed cannot
-/// disagree with each other; only an export signed against a mismatched
-/// provisioning profile can, which is a signing-time check (see the PR checklist).
+/// the one build setting that writes both the `aps-environment` entitlement
+/// (`HermesMobile.entitlements`) and the `HermesAPSEnvironment` key read below
+/// (`Info.plist`). It is a project-level build setting in `HermesMobile.xcodeproj`:
+/// `development` for Debug, `production` for Release, so at build time the two
+/// always agree. Only export re-signing could make them differ, and nothing
+/// checks the uploaded app: both upload paths archive Release
+/// (`release-candidate-testflight.yml`, `scripts/branch-testflight`) and export
+/// straight to App Store Connect.
 enum PushEnvironment: String, Codable, Equatable, Sendable {
     case sandbox
     case production

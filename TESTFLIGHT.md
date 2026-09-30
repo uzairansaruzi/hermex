@@ -47,11 +47,11 @@ Before external distribution, all of these must hold:
 
 ## Signing and workflow setup
 
-Use Xcode automatic signing for the app, share extension, and Live Activity
-widget. Confirm their bundle identifiers, entitlements, App Group capabilities,
-and provisioning in the Apple Developer account before the first upload or
-after a signing change. Inspect the current settings rather than copying identities
-from a previous release:
+Use Xcode automatic signing for the app, share extension, Live Activity widget,
+and notification service extension. Confirm their bundle identifiers,
+entitlements, App Group capabilities, and provisioning in the Apple Developer
+account before the first upload or after a signing change. Inspect the current
+settings rather than copying identities from a previous release:
 
 ```zsh
 xcodebuild -showBuildSettings -project HermesMobile.xcodeproj -scheme HermesMobile -configuration Release | rg "PRODUCT_BUNDLE_IDENTIFIER|DEVELOPMENT_TEAM|CODE_SIGN_ENTITLEMENTS|CODE_SIGN_STYLE"
