@@ -1,0 +1,310 @@
+#!/usr/bin/env python3
+"""Run the pinned hermes-agent on this Mac with a scripted stub model.
+
+A deterministic Hermes host for the simulator and for
+`scripts/capture-hermes-fixtures --local`. It makes no model calls and never
+touches a real host. Every turn goes: "Let me run a quick check.", then a
+`terminal` call for `python3 -c "print(1)"` that waits for manual approval, then
+"The command returned: <first line of the result>." Approving really runs that
+command on this Mac.
+
+The first run clones the commit on line 1 of HERMES_AGENT_TESTED_SHA into
+~/Library/Caches/hermex-local-hermes/<sha>/ and installs it with uv; later runs
+reuse it. Each run gets a temporary HERMES_HOME, deleted on exit unless
+--keep-home, with a fixed install_id so a saved Hermes connection survives
+restarts. The server binds loopback only, so only the simulator can reach it.
+
+Usage: scripts/local-hermes [--port 9199] [--keep-home]
+Stop it with Ctrl-C. It stops only the process group it started, never a
+process found by name (so never `hermes dashboard --stop`).
+"""
+
+import argparse
+from contextlib import suppress
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.error
+import urllib.request
+
+
+REPO = Path(__file__).resolve().parents[1]
+UPSTREAM = "https://github.com/NousResearch/hermes-agent"
+CACHE = Path.home() / "Library" / "Caches" / "hermex-local-hermes"
+# Fixed dev credentials and identity (#890, Decision 2): only loopback peers can
+# connect, and a fixed install_id keeps Hermex's pinned identity valid across runs.
+USERNAME = "hermex"
+PASSWORD = "hermex-local"
+INSTALL_ID = "4865726d65784c6f63616c486f737431"
+# A non-loopback public URL turns the basic-auth gate on for a loopback bind;
+# Hermex refuses a host whose /api/status reports no gate.
+PUBLIC_URL = "http://hermex-local.invalid"
+MODEL = "hermex-stub"
+COMMAND = 'python3 -c "print(1)"'
+READY_TIMEOUT = 120
+
+
+def completion(text, tool_call_id=None):
+    """One non-streaming chat completion; a tool_call_id adds the terminal call."""
+    message = {"role": "assistant", "content": text}
+    if tool_call_id:
+        message["tool_calls"] = [{"id": tool_call_id, "type": "function", "function": {
+            "name": "terminal", "arguments": json.dumps({"command": COMMAND})}}]
+    return {
+        "id": "chatcmpl-" + MODEL, "object": "chat.completion", "created": 0, "model": MODEL,
+        "choices": [{"index": 0, "message": message, "finish_reason": "tool_calls" if tool_call_id else "stop"}],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+    }
+
+
+def first_line(text):
+    return next((line.strip() for line in str(text).splitlines() if line.strip()), "")
+
+
+def tool_summary(content):
+    """The first line of a terminal result's `output`, else of its `error` (a denial)."""
+    if isinstance(content, list):
+        content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
+    try:
+        result = json.loads(content)
+    except (TypeError, ValueError):
+        result = None
+    if isinstance(result, dict):
+        return first_line(result.get("output") or "") or first_line(result.get("error") or "")
+    return first_line(content or "")
+
+
+def stub_reply(body):
+    """The scripted model: a pure function of one /v1/chat/completions request body.
+
+    Returns (HTTP status, JSON body). Background calls (no tools) get a plain reply,
+    a user message gets the terminal call, and a tool result gets the closing text.
+    """
+    if body.get("stream"):
+        return 400, {"error": {"message": MODEL + " answers only non-streaming requests; set model.streaming: false"}}
+    messages = body.get("messages") or []
+    last = messages[-1] if messages and isinstance(messages[-1], dict) else {}
+    if not body.get("tools"):
+        return 200, completion("OK.")
+    if last.get("role") == "user":
+        # Unique per request within a conversation, and still a pure function of it.
+        return 200, completion("Let me run a quick check.", tool_call_id="call_%d" % len(messages))
+    if last.get("role") == "tool":
+        return 200, completion("The command returned: %s." % tool_summary(last.get("content")).rstrip("."))
+    return 200, completion("OK.")
+
+
+class StubHandler(BaseHTTPRequestHandler):
+    """Serves stub_reply on POST /v1/chat/completions and one model on GET /v1/models."""
+
+    def do_GET(self):
+        if self.path.rstrip("/") == "/v1/models":
+            self.send_json(200, {"object": "list", "data": [{"id": MODEL, "object": "model", "owned_by": "hermex"}]})
+        else:
+            self.send_json(404, {"error": {"message": "not found"}})
+
+    def do_POST(self):
+        if self.path.rstrip("/") != "/v1/chat/completions":
+            return self.send_json(404, {"error": {"message": "not found"}})
+        try:
+            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        except ValueError:
+            return self.send_json(400, {"error": {"message": "the request body is not JSON"}})
+        self.send_json(*stub_reply(body if isinstance(body, dict) else {}))
+
+    def send_json(self, status, body):
+        data = json.dumps(body).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def log_message(self, format, *args):
+        pass
+
+
+def make_home(stub_port):
+    """A fresh temporary HERMES_HOME wired to the stub. config.yaml is written as
+    JSON, which is valid YAML, so no YAML library is needed."""
+    home = Path(tempfile.mkdtemp(prefix="hermex-local-hermes-"))
+    (home / "workspace").mkdir()
+    config = {
+        "model": {"provider": "custom", "base_url": "http://127.0.0.1:%d/v1" % stub_port, "default": MODEL,
+                  "streaming": False, "context_length": 256000},
+        "approvals": {"mode": "manual"},
+        "auxiliary": {"title_generation": {"enabled": False}},
+        "terminal": {"backend": "local", "cwd": "."},
+        # Otherwise the first command downloads the tirith scanner into the home and
+        # leaves a background updater. The approval comes from Hermes's own detector.
+        "security": {"tirith_enabled": False},
+    }
+    (home / "config.yaml").write_text(json.dumps(config, indent=2) + "\n")
+    (home / "install_id").write_text(INSTALL_ID + "\n")
+    return home
+
+
+def server_env(home, base):
+    """The server's environment: `base` without any inherited HERMES_* variable
+    (HERMES_DESKTOP would change the auth gate), plus the home, the host-record
+    directory inside it, and the basic-auth gate."""
+    env = {key: value for key, value in base.items() if not key.startswith("HERMES_")}
+    env.update({
+        "HERMES_HOME": str(home),
+        "HERMES_GATEWAY_LOCK_DIR": str(home / "locks"),
+        "HERMES_DASHBOARD_BASIC_AUTH_USERNAME": USERNAME,
+        "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD": PASSWORD,
+        "HERMES_DASHBOARD_PUBLIC_URL": PUBLIC_URL,
+    })
+    return env
+
+
+def stop(process):
+    """Stops the process group started for `process`, and nothing else.
+
+    start_new_session made the captured PID the group ID. SIGKILL follows even a
+    clean exit, because a child can outlive the leader.
+    """
+    with suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGTERM)
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
+    finally:
+        with suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
+
+
+def pinned_commit():
+    sha = (REPO / "HERMES_AGENT_TESTED_SHA").read_text().splitlines()[0].strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", sha):
+        sys.exit("HERMES_AGENT_TESTED_SHA line 1 is not a commit: %r" % sha)
+    return sha
+
+
+def run(command):
+    print("+ " + " ".join(command), flush=True)
+    subprocess.run(command, check=True, stdin=subprocess.DEVNULL)
+
+
+def ensure_install(sha):
+    """Returns the pinned `hermes` executable, cloning and installing it once per pin."""
+    root = CACHE / sha
+    venv = root / ".venv"
+    hermes = venv / "bin" / "hermes"
+    if hermes.exists():
+        return hermes
+    for tool in ("git", "uv"):
+        if not shutil.which(tool):
+            sys.exit("%s is required for the first run: it clones and installs hermes-agent." % tool)
+    root.mkdir(parents=True, exist_ok=True)
+    source = root / "src"
+    if not (source / "pyproject.toml").exists():
+        partial = Path(tempfile.mkdtemp(prefix="src-", dir=root))
+        try:
+            run(["git", "-C", str(partial), "init", "--quiet"])
+            run(["git", "-C", str(partial), "fetch", "--quiet", "--depth", "1", UPSTREAM, sha])
+            run(["git", "-C", str(partial), "checkout", "--quiet", "--detach", "FETCH_HEAD"])
+            partial.rename(source)
+        except BaseException:
+            shutil.rmtree(partial, ignore_errors=True)
+            raise
+    # hermes-agent needs Python >=3.11,<3.14; uv fetches 3.13 if it is missing.
+    # --system-certs trusts the macOS store, as git does, so a TLS-inspecting proxy works.
+    run(["uv", "venv", "--quiet", "--system-certs", "--clear", "--python", "3.13", str(venv)])
+    run(["uv", "pip", "install", "--quiet", "--system-certs", "--python", str(venv / "bin" / "python"), "-e", str(source)])
+    return hermes
+
+
+def require_free(port):
+    with socket.socket() as probe:
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError:
+            sys.exit("Port %d is in use. Stop whatever holds it, or pass --port." % port)
+
+
+def wait_until_ready(process, port):
+    """Polls /api/status until it answers, then checks the gate Hermex requires."""
+    deadline = time.monotonic() + READY_TIMEOUT
+    while True:
+        if process.poll() is not None:
+            sys.exit("hermes serve exited with status %d before it was ready." % process.returncode)
+        try:
+            with urllib.request.urlopen("http://127.0.0.1:%d/api/status" % port, timeout=2) as response:
+                status = json.load(response)
+            break
+        except (OSError, ValueError):
+            if time.monotonic() > deadline:
+                sys.exit("hermes serve did not answer /api/status within %d s." % READY_TIMEOUT)
+            time.sleep(0.5)
+    if status.get("auth_required") is not True or "basic" not in (status.get("auth_providers") or []):
+        sys.exit("The server has no basic auth gate, so Hermex would refuse it: %r" % {
+            key: status.get(key) for key in ("auth_required", "auth_providers")})
+    if status.get("install_id") != INSTALL_ID:
+        sys.exit("The server on port %d is not this one: install_id %r." % (port, status.get("install_id")))
+    return status
+
+
+def interrupt(signum, frame):
+    raise KeyboardInterrupt
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--port", type=int, default=9199, help="loopback port for Hermes (default 9199)")
+    parser.add_argument("--keep-home", action="store_true", help="keep the temporary HERMES_HOME on exit")
+    args = parser.parse_args(argv)
+
+    sha = pinned_commit()
+    hermes = ensure_install(sha)
+    require_free(args.port)
+    # Terminal hang-up and a plain kill stop the server just like Ctrl-C.
+    signal.signal(signal.SIGTERM, interrupt)
+    signal.signal(signal.SIGHUP, interrupt)
+
+    stub = ThreadingHTTPServer(("127.0.0.1", 0), StubHandler)
+    threading.Thread(target=stub.serve_forever, daemon=True).start()
+    home = make_home(stub.server_address[1])
+    process = None
+    try:
+        process = subprocess.Popen(
+            [str(hermes), "serve", "--host", "127.0.0.1", "--port", str(args.port)],
+            cwd=home / "workspace", env=server_env(home, os.environ),
+            stdin=subprocess.DEVNULL, start_new_session=True,
+        )
+        status = wait_until_ready(process, args.port)
+        print("\nHermes %s (%s) is running with the scripted model; process group %d." % (
+            status.get("version"), sha[:8], process.pid))
+        print("  Address:  http://127.0.0.1:%d\n  Username: %s\n  Password: %s" % (args.port, USERNAME, PASSWORD))
+        print("Approving its command runs %s on this Mac. Ctrl-C stops the server.\n" % COMMAND, flush=True)
+        return process.wait()
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        # A second Ctrl-C must not abandon the server halfway through stopping it.
+        for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            signal.signal(signum, signal.SIG_IGN)
+        if process is not None:
+            stop(process)
+        stub.shutdown()
+        if args.keep_home:
+            print("Kept the Hermes home at %s." % home)
+        else:
+            shutil.rmtree(home, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -202,6 +202,18 @@ security add-generic-password -s hermex-bot -a <bot-username> -j <bot-address> -
 
 `hermex-bot` is optional; with it the script also saves the Bot connection and turns Bot Mode on.
 
+### Local Hermes test server
+
+For tool and approval turns without a real model or the real host, run the pinned hermes-agent on this Mac:
+
+```zsh
+scripts/local-hermes
+```
+
+The first run clones the commit in `HERMES_AGENT_TESTED_SHA` into `~/Library/Caches/hermex-local-hermes/` and installs it with `uv` (network needed); later runs start in seconds. It serves `http://127.0.0.1:9199` with the credentials it prints (`hermex` / `hermex-local`), backed by a scripted stub model: every turn says "Let me run a quick check.", asks to run `python3 -c "print(1)"` behind a manual approval, then replies "The command returned: …" with the result or the denial. **Approving really runs that command on this Mac.** Each run uses a temporary Hermes home, deleted on exit, with a fixed install id, so a saved connection keeps working across restarts. Ctrl-C stops only the process group the script started.
+
+It listens on loopback, so only the simulator can reach it. To point the app at it, sign in to your webui server as usual (Bot connections are saved per webui server), then open Settings → your server → **Hermes connection**, enter `http://127.0.0.1:9199` and the printed credentials, and save. This replaces that server's saved Hermes connection until you enter the real one again. `scripts/sim-login` never replaces an existing connection, so it won't switch back for you.
+
 ## Launch arguments and profiling
 
 Debug builds read these launch arguments; Release builds compile none of them in.
