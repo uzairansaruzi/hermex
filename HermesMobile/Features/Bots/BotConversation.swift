@@ -176,8 +176,9 @@ import Observation
     /// `message.start`, an accepted send, or a gap in the stream that could hide a
     /// newer turn. Never cached.
     private(set) var turnNotice: HermesTurnOutcome?
-    /// The failed turn's prompt as the host holds it (`inflight.user`, any mention
-    /// note included), which Retry resends.
+    /// The failed turn's prompt exactly as the host received it (`inflight.user`: a
+    /// skill's expansion, attachment references and mention note included), which
+    /// Retry resends.
     @ObservationIgnored private var failedPrompt: String?
     /// The failed prompt's row the host refused to cut (4018), for example after an
     /// agent that never started. Retry hides for it, since the same cut fails on
@@ -350,12 +351,12 @@ import Observation
     var mayRetry: Bool { maySend && retryTarget != nil }
 
     /// The failed prompt's durable row and the text a retry resends: the host's raw
-    /// prompt, or a `/skill` row's invocation, which the host expands again on a cut.
+    /// prompt, so a `/skill` turn keeps the attachments and mention note its displayed
+    /// invocation leaves out.
     private var retryTarget: (rowID: Int, text: String)? {
         guard turnFailure?.offersRetry == true, let id = activePromptMessageID,
               let row = messages.last(where: { $0.id == id }), row.role == "user", let rowID = row.rowID,
-              rowID != uncuttableRowID else { return nil }
-        guard let text = row.displayKind == "skill_invocation" ? row.content : failedPrompt,
+              rowID != uncuttableRowID, let text = failedPrompt,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return (rowID, text)
     }

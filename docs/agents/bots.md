@@ -226,15 +226,17 @@ snapshot's retained `inflight` (`error`, `error_surface {layer, code,
 retryable, resets_at?, message?}`, `recoverable`). The host keeps that until the
 next turn starts or the session closes, so reopening, backgrounding and a push
 tap all rebuild it. The row shows a Hermex title (the surface's own `message`
-first, then the code, then the layer, else "The turn failed"), the raw `error`
+first, then the `endpoint` layer so a local endpoint's timeout points at that
+endpoint, then the code, then the layer, else "The turn failed"), the raw `error`
 capped at four selectable lines, "Limit resets at …" while `resets_at` is in
 the future (no timer; a passed time drops on the next redraw), and Retry when
 `retryable` is true, or `recoverable` is true without a surface. Retry is
 `HermesCall.promptRewind`: one `prompt.submit` that cuts at the failed prompt's
-saved `row_id` and resends the raw `inflight.user` (a `/skill` row resends its
-invocation), with both confirmations and never `queued`; 4009 says to wait and
-changes nothing, 4018 says the message can't be changed, hides Retry for that
-row and rereads. The host resolves the cut against its in-memory history, so a
+saved `row_id` and resends the raw `inflight.user` (for a `/skill` turn, the
+expansion with its attachment references and mention note, which the displayed
+invocation leaves out), with both confirmations and never `queued`; 4009 says
+to wait and changes nothing, 4018 says the message can't be changed, hides
+Retry for that row and rereads. The host resolves the cut against its in-memory history, so a
 turn whose agent never started (`runtime`/`agent_init_failed`) always gets 4018:
 its prompt row is saved at submit but never reaches that history.
 `turnNotice` holds what only `message.complete` carries: an `https`

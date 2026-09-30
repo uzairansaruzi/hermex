@@ -893,7 +893,10 @@ import Vision
         XCTAssertEqual(try title(.object(["layer": .string("provider"), "code": .string("free_tier_rate_limited"),
                                           "retryable": .bool(true), "message": .string("The free tier is busy.")])),
                        "The free tier is busy.")
-        XCTAssertEqual(try title(retryableSurface), String(localized: "The model provider did not answer in time"),
+        XCTAssertEqual(try title(retryableSurface), String(localized: "Your custom model endpoint did not answer"),
+                       "a custom endpoint's timeout points at that endpoint")
+        XCTAssertEqual(try title(.object(["layer": .string("provider"), "code": .string("timeout"), "retryable": .bool(true)])),
+                       String(localized: "The model provider did not answer in time"),
                        "the code names the fix before the layer does")
         XCTAssertEqual(try title(.object(["layer": .string("streaming"), "code": .string("stream_drop"), "retryable": .bool(true)])),
                        String(localized: "The connection to the model provider dropped mid-reply"))
@@ -1031,14 +1034,16 @@ import Vision
         XCTAssertNotNil(waiting.turnFailure)
         waiting.suspend()
 
-        // A `/skill` prompt resends its invocation; the host expands it again.
+        // A `/skill` prompt resends what the host received, not its displayed invocation,
+        // which leaves out the attachment the user sent with it.
+        let expanded = "[IMPORTANT: The user has invoked the \"work\" skill.]\n\nfix the leak\n\n@file:/tmp/leak.log"
         let skill = BotFixtureWire(); skill.turnStartedAt = 200
         skill.history = [.object(["role": .string("user"), "text": .string("/work fix the leak"),
                                   "display_kind": .string("skill_invocation"), "timestamp": .number(210), "row_id": .number(7)])]
-        skill.inflight = failedInflight(user: "Expanded skill body", surface: retryableSurface)
+        skill.inflight = failedInflight(user: expanded, surface: retryableSurface)
         let skilled = make(skill); await skilled.recover()
         await skilled.retryFailedTurn()
-        XCTAssertEqual(skill.calls.last { $0.0 == "prompt.submit" }?.1["text"], .string("/work fix the leak"))
+        XCTAssertEqual(skill.calls.last { $0.0 == "prompt.submit" }?.1["text"], .string(expanded))
         skilled.suspend()
     }
 

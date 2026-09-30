@@ -35,10 +35,14 @@ struct BotTurnOutcomeRow: View {
     }
 
     /// Hermex's title for a failure: the host's own sentence when it sends one, then
-    /// a title for the code where the fix differs, then one for the layer that
-    /// failed. The host's wording without its slash commands (`user_messages.py`).
+    /// the custom endpoint when that is what failed, then a title for the code where
+    /// the fix differs, then one for the layer that failed. The host's wording
+    /// without its slash commands (`user_messages.py`).
     static func title(for failure: HermesTurnOutcome) -> String {
         if let message = failure.surface?.message { return message }
+        // The host files a custom or local endpoint's timeout under `endpoint` so the
+        // user checks that endpoint on the Mac, not the provider.
+        if failure.surface?.layer == "endpoint" { return String(localized: "Your custom model endpoint did not answer") }
         switch failure.surface?.code ?? failure.failureReason {
         case "rate_limit", "upstream_rate_limit": return String(localized: "The model provider is rate-limiting requests")
         case "context_overflow": return String(localized: "The conversation is too long for this model")
@@ -53,7 +57,6 @@ struct BotTurnOutcomeRow: View {
         switch failure.surface?.layer {
         case "auth": return String(localized: "The model provider rejected the API key")
         case "billing": return String(localized: "The model provider reports no credit left")
-        case "endpoint": return String(localized: "Your custom model endpoint did not answer")
         case "streaming": return String(localized: "The connection to the model provider dropped mid-reply")
         case "disk": return String(localized: "The disk is full, so Hermes could not save the turn")
         case "gateway": return String(localized: "Hermes hit an internal error while running this turn")
