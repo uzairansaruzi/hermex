@@ -389,6 +389,21 @@ answer it. Request payloads and credential values are never cached.
 A disconnect drops the requests and reconnect restores the host's current list,
 independently of replay-ring truncation. The phone never retries an answer.
 
+When the withdrawn envelope is the card on screen, Bot Chat leaves one caption
+line in its slot (`BotRequestWithdrawal`): `timeout`, `interrupted` or
+`session_closed` (the work stopped), `shutdown`, or any other wording as a
+generic "withdrawn" line, worded per family (approval, question, other).
+`resolved` (answered on another surface) and a cancel without a reason stay
+silent; other requests answered elsewhere send no cancel at all. The renderer's
+own tasks (`tour`, `terminal.read`, `window.read`, `preview.read`,
+`preview.act`) and a request queued behind the card are silent too. A stopped
+run is silent when this phone stopped it: a Stop or an Interrupt send
+(`session.redirect`) in flight, an acknowledged Stop, or an accepted Interrupt
+or voice stop for the card it stopped. A cancel that arrives while the phone is away is matched in the
+reconnect replay against the envelope (id and method only) on screen when it
+left; a truncated replay stays silent. The note clears on the next accepted
+prompt, a new request, or leaving the connection, and is never cached.
+
 Connection operations (`manage_connections`) are an event plus an RPC, not a
 server request: nothing reaches `open_requests` and `request.answer` does not
 apply. `connection.request` opens an operation, every `connection.update`

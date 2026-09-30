@@ -143,6 +143,9 @@ import SwiftUI
                                 onConnection: answerConnection
                             )
                             .id(BotChatView.requestAnchor)
+                        } else if let withdrawal = model.withdrawnRequest {
+                            // A withdrawn card leaves the reason in its slot until the next send or request.
+                            BotRequestWithdrawalNote(withdrawal: withdrawal)
                         }
                         if let startedAt = model.workingRowStartedAt {
                             ChatWorkingRowView(startedAt: startedAt)

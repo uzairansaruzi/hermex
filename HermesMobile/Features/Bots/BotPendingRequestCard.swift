@@ -783,3 +783,22 @@ private struct BotRequestHeader: View {
         }
     }
 }
+
+/// The line left in the card's slot when the host withdrew the request on screen
+/// (#892), in the room system line's style. Static: it appears and goes without
+/// a transition, and VoiceOver hears it once.
+struct BotRequestWithdrawalNote: View {
+    let withdrawal: BotRequestWithdrawal
+
+    var body: some View {
+        Label(withdrawal.message, systemImage: withdrawal.systemImage)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .onChange(of: withdrawal, initial: true) {
+                guard UIAccessibility.isVoiceOverRunning else { return }
+                AccessibilityNotification.Announcement(withdrawal.message).post()
+            }
+    }
+}

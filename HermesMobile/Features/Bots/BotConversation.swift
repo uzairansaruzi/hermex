@@ -139,6 +139,17 @@ import Observation
     private(set) var answeringRequestID: String?
     /// The verdict on the request currently on screen, if it has one.
     private(set) var requestResolution: BotRequestResolution?
+    /// The note left where a card stood when the host withdrew it (#892): a
+    /// timeout or a stopped run, never an answer given elsewhere or this phone's
+    /// own stop. Cleared by the next accepted prompt, a new request, or leaving
+    /// the connection; never cached.
+    private(set) var withdrawnRequest: BotRequestWithdrawal?
+    /// The envelope on screen when the phone last left a live connection, so a
+    /// `request.cancel` replayed on return still names it. The next replay consumes it.
+    @ObservationIgnored private var envelopeShownWhenLeft: BotRequestWithdrawal.Envelope?
+    /// The envelope on screen when this phone's Interrupt send or voice stop was
+    /// accepted: the host withdrawing it is the user's own doing.
+    @ObservationIgnored private var envelopeStoppedHere: BotRequestWithdrawal.Envelope?
     /// The last action the host confirmed, for the chat view's haptic.
     private(set) var feedback: BotFeedback?
     /// Rows with a `message.react` in flight. Their footer controls stay inert
@@ -396,6 +407,24 @@ import Observation
             ?? current.first { if case .approval = $0 { return true }; return false }
             ?? current.first
             ?? connectionOperation.map(BotPendingRequest.connection)
+    }
+
+    /// The request on screen by its envelope. Nil for a connection operation,
+    /// and for an approval the snapshot shows without one.
+    private var envelopeOnScreen: BotRequestWithdrawal.Envelope? {
+        guard let shown = pendingRequest?.requestID else { return nil }
+        return serverRequests.first { $0.pending?.requestID == shown }
+            .map { BotRequestWithdrawal.Envelope(id: $0.id, method: $0.method) }
+    }
+
+    /// The note for the host withdrawing `envelope`, or nil when it stays
+    /// silent. A stop this phone sent (Stop, an Interrupt send or a voice stop, in
+    /// flight or acknowledged) is the user's own doing.
+    private func withdrawal(of envelope: BotRequestWithdrawal.Envelope, reason: String?) -> BotRequestWithdrawal? {
+        guard let note = BotRequestWithdrawal(method: envelope.method, reason: reason) else { return nil }
+        let stoppedHere = uncertainStop || stopAcknowledged || submittingPrompt == .redirect
+            || envelope == envelopeStoppedHere
+        return note.reason == .stopped && stoppedHere ? nil : note
     }
 
     /// True when the user may answer the request on screen.
@@ -695,6 +724,17 @@ import Observation
         }
         if cursor < latest { replayWasReset = true }
         epoch = receivedEpoch; sequence = latest
+        // A card withdrawn while the phone was away leaves its note, but only from
+        // a complete replay: a truncated one may have lost what came after.
+        if let left = envelopeShownWhenLeft {
+            envelopeShownWhenLeft = nil
+            let cancel = missed.last { event in
+                event["type"].text == "request.cancel"
+                    && BotRequestWithdrawal.Envelope(id: event["payload"]["id"].text ?? "",
+                                                     method: event["payload"]["method"].text ?? "") == left
+            }
+            if !replayWasReset, let cancel { withdrawnRequest = withdrawal(of: left, reason: cancel["payload"]["reason"].text) }
+        }
         // Replay never appends text; the full snapshot below owns it. It does rebuild
         // the current turn's activity: every missed event when the sequence was
         // continuous, otherwise only the events after the last `message.start` the
@@ -837,6 +877,8 @@ import Observation
             restoreServerRequests(snapshot)
             applyPendingRequest(snapshot)
             restoreConnectionOperation(snapshot)
+            // A request on screen takes the withdrawn card's slot.
+            if withdrawnRequest != nil, pendingRequest != nil { withdrawnRequest = nil }
         }
         // A request the phone cannot address still blocks the bot. Claiming the
         // turn is running would be the lie; attention without a card is the truth.
@@ -987,6 +1029,7 @@ import Observation
             try await drafts.flush()
             try check(owner)
             uncertainSend = true
+            let shown = envelopeOnScreen
             let reply = try await request(action.mode.call(runtime: action.runtime, text: text + mentionNote), owner: owner) { [weak self] in
                 guard let self else { throw BotFailure.stale }
                 try self.check(owner)
@@ -1003,8 +1046,10 @@ import Observation
                 return
             }
             guard outcome != .unknown else { throw BotFailure.unsupported }
+            // An Interrupt send (Stop & send) and a voice stop stop the work behind the card on screen.
+            if action.mode == .redirect || outcome == .voiceStopped, let shown { envelopeStoppedHere = shown }
             // A voice-stop phrase is taken but starts no turn, so it is not a send.
-            if outcome != .voiceStopped { emit(.sent); clearTurnOutcome() }
+            if outcome != .voiceStopped { emit(.sent); clearTurnOutcome(); withdrawnRequest = nil }
             drafts.setDraft("", for: draftKey)
             drafts.setQuotes([], for: draftKey)
             drafts.setAttachments([], for: draftKey)
@@ -1450,6 +1495,7 @@ import Observation
             if let index = serverRequests.firstIndex(where: { $0.id == request.id }) {
                 serverRequests[index] = request
             } else { serverRequests.append(request) }
+            if withdrawnRequest != nil { withdrawnRequest = nil }
             requestRevision += 1
             turnRevision += 1
             if !localOperation { turn = .needsAttention }
@@ -1512,14 +1558,19 @@ import Observation
     }
 
     /// Applies `request.cancel`, which withdraws only the matching envelope.
-    /// Returns true when it was one.
+    /// Only the card on screen leaves a note, and only in an empty slot: one
+    /// queued behind it or never seen was never read, and the next card takes
+    /// the slot. Returns true when it was one.
     private func applyRequestCancel(type: String, payload: BotJSON) -> Bool {
         guard type == "request.cancel", let id = payload["id"].text, !id.isEmpty,
               let method = payload["method"].text, !method.isEmpty else { return false }
+        let envelope = BotRequestWithdrawal.Envelope(id: id, method: method)
+        let shown = envelope == envelopeOnScreen
         if let request = serverRequests.first(where: { $0.id == id && $0.method == method }) {
             serverRequests.removeAll { $0.id == id }
             if blockingRequest?.requestID == request.pending?.requestID { blockingRequest = nil }
         }
+        if shown { withdrawnRequest = pendingRequest == nil ? withdrawal(of: envelope, reason: payload["reason"].text) : nil }
         // Even an unseen request may be present in an older in-flight snapshot.
         requestRevision += 1
         return true
@@ -1558,6 +1609,7 @@ import Observation
     }
 
     private func disconnected(_ error: Error) {
+        rememberEnvelopeOnScreen()
         saveRecentTranscript()
         chatControls.disconnect()
         delegatedWork.disconnect()
@@ -1566,6 +1618,7 @@ import Observation
         // Reconnecting restores the host's current requests from open_requests
         // and pending_connection.
         serverRequests = []; connectionOperation = nil; answeringRequestID = nil
+        withdrawnRequest = nil
         connectionState = .disconnected
         turn = uncertainSend || uncertainStop ? .uncertain : .unknown
         turnRevision += 1
@@ -1604,6 +1657,7 @@ import Observation
     }
 
     func suspend() {
+        rememberEnvelopeOnScreen()
         completionArmed = false
         saveRecentTranscript()
         historyCacheTask?.cancel(); historyCacheTask = nil
@@ -1613,8 +1667,17 @@ import Observation
         Task { try? await drafts.flush() }
     }
 
+    /// Keeps the card's envelope while leaving a live connection, so the replay
+    /// on return can tell whether the host withdrew it. Leaving again before that
+    /// replay keeps the one already held.
+    private func rememberEnvelopeOnScreen() {
+        guard connectionState == .connected else { return }
+        envelopeShownWhenLeft = envelopeOnScreen
+    }
+
     private func resetConnection() {
         confirmedWorkingStart = nil
+        withdrawnRequest = nil
         chatControls.disconnect()
         delegatedWork.disconnect()
         attachmentUploadTask?.cancel(); attachmentUploadTask = nil; isUploadingAttachments = false

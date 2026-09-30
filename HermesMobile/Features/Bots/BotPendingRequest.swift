@@ -633,3 +633,92 @@ struct BotRequestResolution: Equatable {
         }
     }
 }
+
+/// A request the host withdrew while it was on screen, and why (#892). Bot Chat
+/// leaves `message` where the card stood, so the bot's next words make sense.
+///
+/// Only the family and the host's reason are kept: nothing the request carried
+/// outlives its card, and the note is never cached.
+struct BotRequestWithdrawal: Equatable {
+    /// A server request by the identity `request.cancel` names (#530): the
+    /// envelope id and method, never its params.
+    struct Envelope: Equatable {
+        let id: String
+        let method: String
+    }
+
+    /// Which card was withdrawn, told apart by its server-request method.
+    enum Family: Equatable {
+        case approval, question
+        /// sudo, secret and the password-manager prompts.
+        case other
+
+        /// Nil for the Desktop renderer's own tasks: their card already says the
+        /// bot carries on without them, so their withdrawal is silent.
+        init?(method: String) {
+            switch method {
+            case "approval": self = .approval
+            case "clarify": self = .question
+            case "tour", "terminal.read", "window.read", "preview.read", "preview.act": return nil
+            default: self = .other
+            }
+        }
+    }
+
+    /// Why the host withdrew it, from `request.cancel`'s `reason`.
+    enum Reason: Equatable {
+        case timeout
+        /// `interrupted` or `session_closed`: the work stopped.
+        case stopped
+        case shutdown
+        /// Any other wording; approval callers may pass their own.
+        case other
+
+        /// Nil for `resolved`, an answer given on another surface, and for a
+        /// cancel that gives no reason: either way silence is the honest note.
+        init?(_ wire: String?) {
+            switch wire?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" {
+            case "", "resolved": return nil
+            case "timeout": self = .timeout
+            case "interrupted", "session_closed": self = .stopped
+            case "shutdown": self = .shutdown
+            default: self = .other
+            }
+        }
+    }
+
+    let family: Family
+    let reason: Reason
+
+    init(family: Family, reason: Reason) {
+        self.family = family
+        self.reason = reason
+    }
+
+    /// Nil when this withdrawal leaves no note.
+    init?(method: String, reason: String?) {
+        guard let family = Family(method: method), let reason = Reason(reason) else { return nil }
+        self.init(family: family, reason: reason)
+    }
+
+    /// One whole sentence per family and reason, so every language translates it
+    /// intact. A timed-out approval says the one fact that matters: nothing ran.
+    var message: String {
+        switch (family, reason) {
+        case (.approval, .timeout): return String(localized: "Approval timed out, so it didn't run.")
+        case (.approval, .stopped): return String(localized: "Approval withdrawn because the work stopped.")
+        case (.approval, .shutdown): return String(localized: "Approval withdrawn because Hermes shut down.")
+        case (.approval, .other): return String(localized: "Approval withdrawn.")
+        case (.question, .timeout): return String(localized: "Question timed out. The bot carried on without an answer.")
+        case (.question, .stopped): return String(localized: "Question withdrawn because the work stopped.")
+        case (.question, .shutdown): return String(localized: "Question withdrawn because Hermes shut down.")
+        case (.question, .other): return String(localized: "Question withdrawn.")
+        case (.other, .timeout): return String(localized: "Request timed out. The bot carried on without it.")
+        case (.other, .stopped): return String(localized: "Request withdrawn because the work stopped.")
+        case (.other, .shutdown): return String(localized: "Request withdrawn because Hermes shut down.")
+        case (.other, .other): return String(localized: "Request withdrawn.")
+        }
+    }
+
+    var systemImage: String { reason == .timeout ? "clock" : "stop.circle" }
+}

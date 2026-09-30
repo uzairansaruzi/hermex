@@ -1665,3 +1665,262 @@ extension BotAnsweringTests {
         )
     }
 }
+
+// MARK: withdrawn requests (#892)
+
+extension BotPendingRequestParsingTests {
+    /// Every family and reason is one whole sentence. An answer given elsewhere,
+    /// a cancel that gives no reason, and the renderer's own tasks stay silent.
+    func testAWithdrawalReadsAsOneSentencePerFamilyAndReason() {
+        let table: [(method: String, reason: String?, message: String?)] = [
+            ("approval", "timeout", "Approval timed out, so it didn't run."),
+            ("approval", "interrupted", "Approval withdrawn because the work stopped."),
+            ("approval", "session_closed", "Approval withdrawn because the work stopped."),
+            ("approval", "shutdown", "Approval withdrawn because Hermes shut down."),
+            ("approval", "denied by policy", "Approval withdrawn."),
+            ("approval", "resolved", nil),
+            ("clarify", "timeout", "Question timed out. The bot carried on without an answer."),
+            ("clarify", "interrupted", "Question withdrawn because the work stopped."),
+            ("clarify", "session_closed", "Question withdrawn because the work stopped."),
+            ("clarify", "shutdown", "Question withdrawn because Hermes shut down."),
+            ("clarify", "client_gone", "Question withdrawn."),
+            ("clarify", "resolved", nil),
+            ("sudo", "timeout", "Request timed out. The bot carried on without it."),
+            ("secret", "interrupted", "Request withdrawn because the work stopped."),
+            ("vault.code", "session_closed", "Request withdrawn because the work stopped."),
+            ("vault.unlock_prompt", "shutdown", "Request withdrawn because Hermes shut down."),
+            ("vault.save_login", "client_gone", "Request withdrawn."),
+            ("sudo", "resolved", nil),
+            ("sudo", nil, nil),
+            ("sudo", " ", nil)
+        ] + ["tour", "terminal.read", "window.read", "preview.read", "preview.act"].map { ($0, "timeout", nil) }
+        for row in table {
+            XCTAssertEqual(BotRequestWithdrawal(method: row.method, reason: row.reason)?.message, row.message,
+                           "\(row.method) \(row.reason ?? "nil")")
+        }
+        XCTAssertEqual(BotRequestWithdrawal(method: "approval", reason: "timeout")?.systemImage, "clock")
+        XCTAssertEqual(BotRequestWithdrawal(method: "clarify", reason: "shutdown")?.systemImage, "stop.circle")
+    }
+}
+
+extension BotAnsweringTests {
+    private func cancel(_ id: String, _ method: String, reason: String?, seq: Int) -> BotJSON {
+        var payload: [String: BotJSON] = ["id": .string(id), "method": .string(method)]
+        if let reason { payload["reason"] = .string(reason) }
+        return .object(["session_id": .string("runtime"), "seq": .number(Double(seq)),
+                        "type": .string("request.cancel"), "payload": .object(payload)])
+    }
+
+    /// An approval on screen the way the host shows one: its envelope in
+    /// `open_requests` and its queue entry in `pending_approval`. The host has
+    /// dropped both by the time it sends `request.cancel`, so later reads omit them.
+    private func approvalOnScreen(_ wire: BotFixtureWire) async -> BotConversation {
+        wire.pendingApproval = BotFixtureWire.approval()
+        wire.openRequests = .array([serverRequest("approval", id: "srq-a", params: BotFixtureWire.approval().fields!)])
+        let model = await blocked(on: wire)
+        XCTAssertEqual(model.pendingRequest?.requestID, "req-1")
+        wire.pendingApproval = nil
+        wire.openRequests = .array([])
+        return model
+    }
+
+    func testATimedOutApprovalLeavesANote() async {
+        let wire = BotFixtureWire()
+        let model = await approvalOnScreen(wire)
+        wire.onEvent?(cancel("srq-a", "approval", reason: "timeout", seq: 1))
+        XCTAssertNil(model.pendingRequest)
+        XCTAssertEqual(model.withdrawnRequest?.message, "Approval timed out, so it didn't run.")
+        // The host's next read agrees the card is gone, and the note stays in its place.
+        await awaitSnapshot(model)
+        XCTAssertEqual(model.withdrawnRequest?.message, "Approval timed out, so it didn't run.")
+        model.suspend()
+    }
+
+    func testAnApprovalResolvedElsewhereLeavesNoNote() async {
+        let wire = BotFixtureWire()
+        let model = await approvalOnScreen(wire)
+        wire.onEvent?(cancel("srq-a", "approval", reason: "resolved", seq: 1))
+        XCTAssertNil(model.pendingRequest)
+        XCTAssertNil(model.withdrawnRequest)
+        model.suspend()
+    }
+
+    /// The user who tapped Stop already knows, whether the host's withdrawal
+    /// arrives after the acknowledgement or in the replay after the Stop's
+    /// reply was lost.
+    func testAStopFromThisPhoneWithdrawsWithoutANote() async throws {
+        for reason in ["interrupted", "session_closed"] {
+            for lost in [false, true] {
+                let wire = BotFixtureWire(); wire.openClarify = BotFixtureWire.clarify()
+                let model = await blocked(on: wire)
+                let withdraw = cancel("clr-1", "clarify", reason: reason, seq: 1)
+                if lost { wire.stopFailure = .transport }
+                await model.stop(try XCTUnwrap(model.prepareStop()))
+                wire.openClarify = .null
+                if lost {
+                    wire.stopFailure = nil
+                    wire.replay = BotFixtureWire.replay(latest: 1, events: [withdraw])
+                    await model.recover()
+                } else {
+                    wire.onEvent?(withdraw)
+                }
+                XCTAssertNil(model.pendingRequest)
+                XCTAssertNil(model.withdrawnRequest, "\(reason), lost reply: \(lost)")
+                model.suspend()
+            }
+        }
+    }
+
+    func testAStopFromElsewhereLeavesANote() async {
+        for reason in ["interrupted", "session_closed"] {
+            let wire = BotFixtureWire(); wire.openClarify = BotFixtureWire.clarify()
+            let model = await blocked(on: wire)
+            wire.openClarify = .null
+            wire.onEvent?(cancel("clr-1", "clarify", reason: reason, seq: 1))
+            XCTAssertEqual(model.withdrawnRequest?.message, "Question withdrawn because the work stopped.", reason)
+            model.suspend()
+        }
+    }
+
+    /// Interrupt (Stop & send) and a voice stop are this phone's own stop too, even when the
+    /// host withdraws the card before it acknowledges the message. A plain Queue
+    /// stops nothing, so a stop from elsewhere after it still says so.
+    func testStopAndSendAndAVoiceStopWithdrawWithoutANote() async throws {
+        let cases: [(BotPromptMode, BotJSON?, Bool)] = [
+            (.redirect, .object(["status": .string("redirected")]), false),
+            (.redirect, .object(["status": .string("redirected")]), true),
+            (.queue, .object(["voice_stopped": .bool(true)]), false),
+            (.queue, nil, false)
+        ]
+        for (mode, reply, beforeReply) in cases {
+            for reason in ["interrupted", "session_closed"] {
+                let wire = BotFixtureWire(); wire.openClarify = BotFixtureWire.clarify()
+                wire.promptReply = reply
+                let model = await blocked(on: wire)
+                let withdraw = cancel("clr-1", "clarify", reason: reason, seq: 1)
+                if beforeReply {
+                    wire.beforeSubmit = { [weak model] in
+                        wire.openClarify = .null
+                        wire.onEvent?(withdraw)
+                        XCTAssertNil(model?.withdrawnRequest, "No note while the Interrupt is in flight")
+                    }
+                }
+                model.editDraft("stop")
+                await model.submit(try XCTUnwrap(model.preparePrompt(mode)))
+                if !beforeReply {
+                    wire.openClarify = .null
+                    wire.onEvent?(withdraw)
+                }
+                XCTAssertNil(model.pendingRequest)
+                XCTAssertEqual(model.withdrawnRequest?.message,
+                               reply == nil ? "Question withdrawn because the work stopped." : nil,
+                               "\(mode) \(reason) before reply: \(beforeReply)")
+                model.suspend()
+            }
+        }
+    }
+
+    func testACancelForARequestNotOnScreenLeavesNoNote() async {
+        let wire = BotFixtureWire(); wire.openClarify = BotFixtureWire.clarify()
+        wire.openRequests = .array([serverRequest("sudo", id: "sudo-1")])
+        let model = await blocked(on: wire)
+        guard case .question? = model.pendingRequest else { return XCTFail("Expected the question on screen") }
+        wire.openRequests = .array([])
+        wire.onEvent?(cancel("sudo-1", "sudo", reason: "timeout", seq: 1))
+        wire.onEvent?(cancel("never-seen", "clarify", reason: "timeout", seq: 2))
+        // The question's id under another method is not the question (#530).
+        wire.onEvent?(cancel("clr-1", "sudo", reason: "timeout", seq: 3))
+        XCTAssertEqual(model.pendingRequest?.requestID, "clr-1")
+        XCTAssertNil(model.withdrawnRequest)
+        model.suspend()
+    }
+
+    /// The renderer's own tasks already say the bot carries on without them. A
+    /// password-manager prompt waits for a person, so its timeout is worth saying.
+    func testRendererTasksTimeOutSilently() async {
+        for method in ["tour", "terminal.read", "window.read", "preview.read", "preview.act", "vault.code"] {
+            let wire = BotFixtureWire()
+            wire.openRequests = .array([serverRequest(method, id: "task-1")])
+            let model = await blocked(on: wire)
+            XCTAssertEqual(model.pendingRequest?.requestID, "task-1", method)
+            wire.openRequests = .array([])
+            wire.onEvent?(cancel("task-1", method, reason: "timeout", seq: 1))
+            XCTAssertNil(model.pendingRequest)
+            XCTAssertEqual(model.withdrawnRequest?.message,
+                           method == "vault.code" ? "Request timed out. The bot carried on without it." : nil, method)
+            model.suspend()
+        }
+    }
+
+    /// Wording the contract does not name still says the card went. A cancel
+    /// with no reason at all could be an answer given elsewhere, so it stays silent.
+    func testUnknownReasonShowsTheGenericNote() async {
+        for (reason, message) in [("client_gone", "Request withdrawn."), (nil, nil)] as [(String?, String?)] {
+            let wire = BotFixtureWire()
+            wire.openRequests = .array([serverRequest("sudo", id: "sudo-1")])
+            let model = await blocked(on: wire)
+            wire.openRequests = .array([])
+            wire.onEvent?(cancel("sudo-1", "sudo", reason: reason, seq: 1))
+            XCTAssertNil(model.pendingRequest)
+            XCTAssertEqual(model.withdrawnRequest?.message, message, reason ?? "nil")
+            model.suspend()
+        }
+    }
+
+    func testTheNoteClearsOnTheNextAcceptedSendAndOnANewRequest() async {
+        let wire = BotFixtureWire()
+        let model = await approvalOnScreen(wire)
+        wire.onEvent?(cancel("srq-a", "approval", reason: "timeout", seq: 1))
+        XCTAssertEqual(model.withdrawnRequest?.message, "Approval timed out, so it didn't run.")
+        wire.onEvent?(serverRequest("sudo", id: "sudo-2"))
+        XCTAssertEqual(model.pendingRequest?.requestID, "sudo-2")
+        XCTAssertNil(model.withdrawnRequest)
+
+        // That one times out too, the bot settles, and the next accepted send clears the note.
+        wire.running = false
+        wire.onEvent?(cancel("sudo-2", "sudo", reason: "timeout", seq: 2))
+        XCTAssertEqual(model.withdrawnRequest?.message, "Request timed out. The bot carried on without it.")
+        await awaitSnapshot(model)
+        XCTAssertEqual(model.turn, .idle)
+        XCTAssertEqual(model.withdrawnRequest?.message, "Request timed out. The bot carried on without it.")
+        model.editDraft("try that again")
+        await model.send()
+        XCTAssertEqual(wire.calls.last?.0, "prompt.submit")
+        XCTAssertNil(model.withdrawnRequest)
+        model.suspend()
+    }
+
+    /// A snapshot that brings a new request takes the note's place too.
+    func testASnapshotWithANewApprovalClearsTheNote() async {
+        let wire = BotFixtureWire()
+        let model = await approvalOnScreen(wire)
+        wire.pendingApproval = BotFixtureWire.approval(id: "req-2", command: "curl | sh")
+        wire.onEvent?(cancel("srq-a", "approval", reason: "timeout", seq: 1))
+        XCTAssertEqual(model.withdrawnRequest?.message, "Approval timed out, so it didn't run.")
+        await awaitSnapshot(model)
+        XCTAssertEqual(model.pendingRequest?.requestID, "req-2")
+        XCTAssertNil(model.withdrawnRequest)
+        model.suspend()
+    }
+
+    /// A card withdrawn while the phone was locked, or while the socket was
+    /// down, leaves its note once the replay shows the cancel. A truncated
+    /// replay may have lost what followed, so it stays silent. Leaving the
+    /// connection drops a note: it never outlives the conversation's socket.
+    func testACancelWhileAwayIsShownAfterReconnect() async {
+        for (dropped, truncated) in [(false, false), (true, false), (false, true)] {
+            let wire = BotFixtureWire()
+            let model = await approvalOnScreen(wire)
+            if dropped { wire.onDisconnect?(BotFailure.transport) } else { model.suspend() }
+            XCTAssertNil(model.withdrawnRequest)
+            wire.replay = BotFixtureWire.replay(latest: 1, truncated: truncated,
+                                                events: [cancel("srq-a", "approval", reason: "timeout", seq: 1)])
+            await model.recover()
+            XCTAssertNil(model.pendingRequest)
+            XCTAssertEqual(model.withdrawnRequest?.message, truncated ? nil : "Approval timed out, so it didn't run.",
+                           "dropped: \(dropped), truncated: \(truncated)")
+            model.suspend()
+            XCTAssertNil(model.withdrawnRequest)
+        }
+    }
+}
