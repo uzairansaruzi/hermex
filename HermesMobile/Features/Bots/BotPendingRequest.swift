@@ -99,6 +99,22 @@ struct BotApprovalRequest: Equatable {
     let consequence: String?
     /// Server order, `once` first and `deny` last. Never empty.
     let choices: [Choice]
+    /// What Allow session and Always allow would allowlist: `pattern_keys`, else
+    /// `[pattern_key]`. Empty when the host sent neither.
+    let patternKeys: [String]
+    /// The gated tool, when the host names it. Absent at the pin, where a plugin
+    /// rule carries its tool in the key or the command instead.
+    let toolName: String?
+
+    /// What Allow session and Always allow cover on this bot's Profile, or nil
+    /// when Allow session isn't offered (a smart-denied prompt, or a room
+    /// approval's once and deny).
+    var scopeLine: AttributedString? {
+        ApprovalScope.line(
+            keys: patternKeys, description: consequence, command: command, toolName: toolName,
+            host: .hermes(offersSession: choices.contains(.session), offersAlways: choices.contains(.always))
+        )
+    }
 
     /// Nil when the payload carries no usable request id: without one the phone
     /// cannot address `approval.respond` and must not guess FIFO order.
@@ -107,6 +123,9 @@ struct BotApprovalRequest: Equatable {
         requestID = id
         command = Self.trimmed(json["command"])
         consequence = Self.trimmed(json["description"])
+        let keys = (json["pattern_keys"].list ?? []).compactMap { Self.trimmed($0) }
+        patternKeys = keys.isEmpty ? Self.trimmed(json["pattern_key"]).map { [$0] } ?? [] : keys
+        toolName = Self.trimmed(json["tool_name"])
         // A present `choices` is the host speaking, and nothing may be added to
         // what it offered. If a newer host renames the lot so none of it parses,
         // Deny is the only thing left that is safe to offer: rebuilding here

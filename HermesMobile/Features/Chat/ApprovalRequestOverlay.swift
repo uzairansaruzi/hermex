@@ -67,22 +67,11 @@ struct ApprovalRequestOverlay: View {
                 .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
             }
 
-            if !prompt.patternKeys.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Pattern keys")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(prompt.patternKeys, id: \.self) { key in
-                            Text(key)
-                                .font(.caption2.monospaced())
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(Color(uiColor: .tertiarySystemBackground), in: Capsule())
-                        }
-                    }
-                }
+            if let scope = prompt.scopeLine {
+                Text(scope)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if prompt.pendingCount > 1 {

@@ -153,6 +153,14 @@ struct ApprovalPromptState: Equatable, Identifiable {
     var patternKeys: [String] {
         pending.displayPatternKeys
     }
+
+    /// What Allow session and Always allow cover on this webui server. The
+    /// overlay always offers both.
+    var scopeLine: AttributedString? {
+        ApprovalScope.line(
+            keys: patternKeys, description: pending.description, command: pending.command, toolName: nil, host: .webui
+        )
+    }
 }
 
 struct ClarificationPromptState: Equatable, Identifiable {

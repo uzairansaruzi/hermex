@@ -101,6 +101,8 @@ struct BotPendingRequestCard: View {
 
 /// A command approval. Only the choices the host actually offered are shown:
 /// a smart-denied or permanent-allow-blocked request legitimately has fewer.
+/// The scope line under the command says what Allow session and Always allow
+/// cover, and is absent when neither is offered.
 private struct BotApprovalRequestBody: View {
     let approval: BotApprovalRequest
     let identity: String
@@ -128,6 +130,12 @@ private struct BotApprovalRequestBody: View {
                     .textSelection(.enabled)
             }
             .pendingRequestBlockSurface()
+        }
+        if let scope = approval.scopeLine {
+            Text(scope)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         VStack(spacing: 8) {
             ForEach(Array(rows.enumerated()), id: \.offset) { _, row in

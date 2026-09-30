@@ -155,6 +155,168 @@ struct PendingApproval: Decodable, Equatable, Identifiable {
     }
 }
 
+/// The one line an approval card shows above its buttons, saying what Allow
+/// session and Always allow will cover. Bot Chat and the Sessions overlay both
+/// build it from the request on screen.
+///
+/// A raw pattern key never reaches the screen. A shell key is the host's own
+/// danger description (`detect_dangerous_command` returns it as the key), so it
+/// is quoted as sent; the other shapes hermes-agent `ca678285` writes get a
+/// plain label, and anything else is "every action like this one". Each case is
+/// one whole-sentence catalog string, so only host text is interpolated, and a
+/// tool or action identifier is marked as code so it renders monospaced.
+enum ApprovalScope {
+    /// Whose allowlist the choices write, which fixes the nouns and whether
+    /// Always keeps a security finding session-only.
+    enum Host: Equatable {
+        /// Bot Chat on Hermes. Session means this chat; Always writes the
+        /// Profile's `command_allowlist` and downgrades Tirith findings to the
+        /// session. Only the choices the host offered are described.
+        case hermes(offersSession: Bool, offersAlways: Bool)
+        /// The Sessions overlay on webui, which always offers both. Always
+        /// writes the server's allowlist, Tirith findings included.
+        case webui
+    }
+
+    /// What one set of keys allowlists, in the terms the line can name.
+    private enum Subject: Equatable {
+        case shell(String)
+        case pluginTool(String)
+        case pythonScript
+        case sshConfig
+        case computerUse(action: String, mode: String)
+        case securityFinding
+        case shellAndSecurityFinding(String)
+        case other
+    }
+
+    /// Nil when Allow session isn't offered (a smart-denied prompt, or a room
+    /// approval's once and deny) or the host sent no keys to allowlist.
+    static func line(
+        keys: [String], description: String?, command: String?, toolName: String?, host: Host
+    ) -> AttributedString? {
+        guard !keys.isEmpty else { return nil }
+        let subject = subject(of: keys, description: description, command: command, toolName: toolName)
+        switch host {
+        case .webui:
+            return serverSentence(subject)
+        case .hermes(let offersSession, let offersAlways):
+            guard offersSession else { return nil }
+            return offersAlways ? profileSentence(subject) : chatSentence(subject)
+        }
+    }
+
+    /// A command prompt carries at most one Tirith finding and one shell key
+    /// (`check_all_command_guards`); every other gate sends a single key.
+    private static func subject(
+        of keys: [String], description: String?, command: String?, toolName: String?
+    ) -> Subject {
+        let findings = keys.filter { $0.hasPrefix("tirith:") }
+        let others = keys.filter { !$0.hasPrefix("tirith:") }
+        switch (findings.count, others.count) {
+        case (1, 0):
+            return .securityFinding
+        case (0, 1):
+            return subject(of: others[0], description: description, command: command, toolName: toolName)
+        case (1, 1):
+            if case .shell(let label) = subject(of: others[0], description: description, command: nil, toolName: nil) {
+                return .shellAndSecurityFinding(label)
+            }
+            return .other
+        default:
+            return .other
+        }
+    }
+
+    private static func subject(of key: String, description: String?, command: String?, toolName: String?) -> Subject {
+        if key == "execute_code" { return .pythonScript }
+        if key == "ssh_config_write" { return .sshConfig }
+        if key.hasPrefix("plugin_rule:") {
+            let rule = key.dropFirst("plugin_rule:".count)
+            return pluginTool(rule: rule, command: command, toolName: toolName).map(Subject.pluginTool) ?? .other
+        }
+        if let match = key.wholeMatch(of: /cua:([^:]+):([^:]+)/) {
+            return .computerUse(action: String(match.1), mode: String(match.2))
+        }
+        // A shell key is one `; `-joined part of the description. Checked last:
+        // the `execute_code` description also mentions its key.
+        let parts = description?.components(separatedBy: "; ").map { $0.trimmingCharacters(in: .whitespaces) }
+        return parts?.contains(key) == true ? .shell(key) : .other
+    }
+
+    /// The tool from the default `<tool>:<sha12>` rule key, else the host's
+    /// `tool_name`, else the `<tool>` the command shows. A custom rule key
+    /// names no tool, and the rule key itself is never a label.
+    private static func pluginTool(rule: Substring, command: String?, toolName: String?) -> String? {
+        if let match = rule.wholeMatch(of: /(.+):[0-9a-f]{12}/) { return String(match.1) }
+        if let toolName = toolName?.trimmingCharacters(in: .whitespacesAndNewlines), !toolName.isEmpty {
+            return toolName
+        }
+        return command.flatMap { $0.prefixMatch(of: /<([^<>\s]+)>/) }.map { String($0.1) }
+    }
+
+    /// Hermes with both choices offered.
+    private static func profileSentence(_ subject: Subject) -> AttributedString {
+        switch subject {
+        case .shell(let label):
+            return AttributedString(localized: "Allow session covers every “\(label)” in this chat; Always allow covers it for this Profile from now on.")
+        case .pluginTool(let tool):
+            return AttributedString(localized: "Allow session covers every \(code(tool)) call for this reason in this chat; Always allow covers it for this Profile from now on.")
+        case .pythonScript:
+            return AttributedString(localized: "Allow session covers every Python script in this chat; Always allow covers every Python script for this Profile from now on.")
+        case .sshConfig:
+            return AttributedString(localized: "Allow session covers writes to SSH config in this chat; Always allow covers them for this Profile from now on.")
+        case .computerUse(let action, let mode):
+            return AttributedString(localized: "Allow session covers computer use: \(code(action)) (\(mode)) in this chat; Always allow covers it for this Profile from now on.")
+        case .shellAndSecurityFinding(let label):
+            return AttributedString(localized: "Allow session covers “\(label)” and this security finding in this chat; Always allow covers “\(label)” for this Profile from now on. The security finding stays allowed for this chat only.")
+        case .securityFinding:
+            // Hermes keeps a finding session-only under Always too.
+            return chatSentence(subject)
+        case .other:
+            return AttributedString(localized: "Allow session covers every action like this one in this chat; Always allow covers it for this Profile from now on.")
+        }
+    }
+
+    /// Hermes with Allow session but no Always: at the pin, only a prompt whose
+    /// keys are all Tirith findings (`permanent_capable` is false).
+    private static func chatSentence(_ subject: Subject) -> AttributedString {
+        if subject == .securityFinding {
+            return AttributedString(localized: "Allow session covers this security finding in this chat.")
+        }
+        return AttributedString(localized: "Allow session covers every action like this one in this chat.")
+    }
+
+    /// webui, where both choices are always offered and Always persists every key.
+    private static func serverSentence(_ subject: Subject) -> AttributedString {
+        switch subject {
+        case .shell(let label):
+            return AttributedString(localized: "Allow session covers every “\(label)” in this session; Always allow covers it on this server from now on.")
+        case .pluginTool(let tool):
+            return AttributedString(localized: "Allow session covers every \(code(tool)) call for this reason in this session; Always allow covers it on this server from now on.")
+        case .pythonScript:
+            return AttributedString(localized: "Allow session covers every Python script in this session; Always allow covers every Python script on this server from now on.")
+        case .sshConfig:
+            return AttributedString(localized: "Allow session covers writes to SSH config in this session; Always allow covers them on this server from now on.")
+        case .computerUse(let action, let mode):
+            return AttributedString(localized: "Allow session covers computer use: \(code(action)) (\(mode)) in this session; Always allow covers it on this server from now on.")
+        case .securityFinding:
+            return AttributedString(localized: "Allow session covers this security finding in this session; Always allow covers it on this server from now on.")
+        case .shellAndSecurityFinding(let label):
+            return AttributedString(localized: "Allow session covers “\(label)” and this security finding in this session; Always allow covers both on this server from now on.")
+        case .other:
+            return AttributedString(localized: "Allow session covers every action like this one in this session; Always allow covers it on this server from now on.")
+        }
+    }
+
+    /// A host identifier, shown raw and monospaced.
+    private static func code(_ identifier: String) -> AttributedString {
+        var text = AttributedString(identifier)
+        text.inlinePresentationIntent = .code
+        return text
+    }
+}
+
 struct ApprovalRespondResponse: Decodable, Equatable {
     let ok: Bool?
     let choice: ApprovalChoice?

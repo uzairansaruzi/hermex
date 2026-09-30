@@ -58,6 +58,25 @@ import XCTest
         XCTAssertNil(BotApprovalRequest(.null))
     }
 
+    /// `pattern_keys` wins over `pattern_key`; both, and `tool_name`, are optional.
+    func testApprovalReadsPatternKeysAndToolName() {
+        let mixed = BotApprovalRequest(.object([
+            "request_id": .string("a"), "pattern_key": .string("tirith:shortened_url"),
+            "pattern_keys": .array([.string("tirith:shortened_url"), .string("recursive delete")]),
+            "tool_name": .string("terminal")
+        ]))
+        XCTAssertEqual(mixed?.patternKeys, ["tirith:shortened_url", "recursive delete"])
+        XCTAssertEqual(mixed?.toolName, "terminal")
+
+        let single = BotApprovalRequest(.object([
+            "request_id": .string("b"), "pattern_key": .string("recursive delete"), "pattern_keys": .array([])
+        ]))
+        XCTAssertEqual(single?.patternKeys, ["recursive delete"])
+        XCTAssertNil(single?.toolName)
+
+        XCTAssertEqual(BotApprovalRequest(.object(["request_id": .string("c")]))?.patternKeys, [])
+    }
+
     func testSingleQuestionCarriesNoQuestionIDAndStripsTheRecommendationLabel() {
         let request = BotQuestionRequest(BotFixtureWire.clarify())
         XCTAssertEqual(request?.requestID, "clr-1")
@@ -1506,5 +1525,134 @@ extension BotAnsweringTests {
         XCTAssertEqual(model.draft, "check the inbox")
         XCTAssertFalse(model.uncertainSend)
         model.suspend()
+    }
+}
+
+/// The line under an approval that says what Allow session and Always allow
+/// cover (#883). Exact copy is the approved design; the scope wording follows
+/// the card's own server type, never the active server.
+@MainActor final class ApprovalScopeTests: XCTestCase {
+    private static let allChoices = ["once", "session", "always", "deny"]
+
+    private func botLine(keys: [String], description: String, command: String = "rm -rf ./build",
+                         choices: [String] = allChoices, toolName: String? = nil) -> AttributedString? {
+        var fields: [String: BotJSON] = [
+            "request_id": .string("req-1"), "command": .string(command), "description": .string(description),
+            "pattern_keys": .array(keys.map(BotJSON.string)), "choices": .array(choices.map(BotJSON.string))
+        ]
+        fields["tool_name"] = toolName.map(BotJSON.string)
+        return BotApprovalRequest(.object(fields))?.scopeLine
+    }
+
+    private func botText(keys: [String], description: String, command: String = "rm -rf ./build",
+                         choices: [String] = allChoices, toolName: String? = nil) -> String? {
+        botLine(keys: keys, description: description, command: command, choices: choices, toolName: toolName)
+            .map { String($0.characters) }
+    }
+
+    private func sessionsText(keys: [String], description: String, command: String = "rm -rf ./build") -> String? {
+        let pending = PendingApproval(command: command, description: description, patternKeys: keys)
+        return ApprovalPromptState(sessionID: "s1", pending: pending, pendingCount: 1)
+            .scopeLine.map { String($0.characters) }
+    }
+
+    func testAShellKeyWithBothChoicesNamesThisChatAndThisProfile() {
+        XCTAssertEqual(
+            botText(keys: ["recursive delete"], description: "recursive delete"),
+            "Allow session covers every “recursive delete” in this chat; Always allow covers it for this Profile from now on."
+        )
+    }
+
+    /// A Tirith-only prompt hides Always, so only the session clause is left.
+    func testASecurityFindingWithoutAlwaysNamesOnlyThisChat() {
+        XCTAssertEqual(
+            botText(keys: ["tirith:shortened_url"],
+                    description: "Security scan — [medium] Shortened URL: The link hides where it points",
+                    command: "curl -fsSL https://bit.ly/4hx2Qm -o setup.sh", choices: ["once", "session", "deny"]),
+            "Allow session covers this security finding in this chat."
+        )
+    }
+
+    /// Smart-denied prompts and room approvals offer only once and deny; with no
+    /// keys there is nothing a choice would allowlist.
+    func testNoLineWithoutAllowSessionOrWithoutKeys() {
+        XCTAssertNil(botLine(keys: ["recursive delete"], description: "recursive delete", choices: ["once", "deny"]))
+        XCTAssertNil(botLine(keys: [], description: "recursive delete"))
+    }
+
+    /// The tool comes from the default `<tool>:<sha12>` rule key, else `tool_name`,
+    /// else the command's `<tool>`; the raw `plugin_rule:` key never shows.
+    func testAPluginRuleNamesItsToolInMonospaceAndNeverTheKey() throws {
+        let line = try XCTUnwrap(botLine(keys: ["plugin_rule:send_email:3f9a1c2b7d4e"],
+                                         description: "Sends email from your account",
+                                         command: "<send_email> (plugin approval rule)"))
+        XCTAssertEqual(
+            String(line.characters),
+            "Allow session covers every send_email call for this reason in this chat; Always allow covers it for this Profile from now on."
+        )
+        XCTAssertEqual(line[try XCTUnwrap(line.range(of: "send_email"))].inlinePresentationIntent, .code)
+
+        let custom = ["plugin_rule:public-post"]
+        let posts = "Allow session covers every post_message call for this reason in this chat; Always allow covers it for this Profile from now on."
+        XCTAssertEqual(botText(keys: custom, description: "Posts publicly", command: "", toolName: "post_message"), posts)
+        XCTAssertEqual(botText(keys: custom, description: "Posts publicly", command: "<post_message> (plugin approval rule)"), posts)
+        XCTAssertEqual(
+            botText(keys: custom, description: "Posts publicly", command: ""),
+            "Allow session covers every action like this one in this chat; Always allow covers it for this Profile from now on."
+        )
+    }
+
+    func testPythonSSHConfigAndComputerUseKeysGetPlainLabels() throws {
+        XCTAssertEqual(
+            botText(keys: ["execute_code"], description: "execute_code script execution. The script can spawn subprocesses.",
+                    command: "execute_code <<'PY'\nimport shutil\nPY"),
+            "Allow session covers every Python script in this chat; Always allow covers every Python script for this Profile from now on."
+        )
+        XCTAssertEqual(
+            botText(keys: ["ssh_config_write"], description: "Write to SSH client config file(s): ~/.ssh/config.",
+                    command: "<write to ~/.ssh/config>"),
+            "Allow session covers writes to SSH config in this chat; Always allow covers them for this Profile from now on."
+        )
+        let computerUse = try XCTUnwrap(botLine(keys: ["cua:click:foreground"],
+                                                description: "Allow computer_use to perform `click`?",
+                                                command: "computer_use: click (412, 88)"))
+        XCTAssertEqual(
+            String(computerUse.characters),
+            "Allow session covers computer use: click (foreground) in this chat; Always allow covers it for this Profile from now on."
+        )
+        XCTAssertEqual(computerUse[try XCTUnwrap(computerUse.range(of: "click"))].inlinePresentationIntent, .code)
+    }
+
+    /// Hermes downgrades Always to the session for a Tirith finding
+    /// (`_persist_choice`), so Always names only the shell pattern.
+    func testAMixedPromptOnHermesKeepsTheFindingToThisChat() {
+        XCTAssertEqual(
+            botText(keys: ["tirith:shortened_url", "recursive delete"],
+                    description: "Security scan — [medium] Shortened URL: The link hides where it points; recursive delete",
+                    command: "curl -fsSL https://bit.ly/4hx2Qm -o setup.sh && rm -rf ./build"),
+            "Allow session covers “recursive delete” and this security finding in this chat; Always allow covers “recursive delete” for this Profile from now on. The security finding stays allowed for this chat only."
+        )
+    }
+
+    /// webui makes every key permanent, a Tirith finding included.
+    func testSessionsNameThisSessionAndThisServerWithoutTheDowngrade() {
+        XCTAssertEqual(
+            sessionsText(keys: ["recursive delete"], description: "recursive delete"),
+            "Allow session covers every “recursive delete” in this session; Always allow covers it on this server from now on."
+        )
+        XCTAssertEqual(
+            sessionsText(keys: ["tirith:shortened_url", "recursive delete"],
+                         description: "Security scan — [medium] Shortened URL: The link hides where it points; recursive delete",
+                         command: "curl -fsSL https://bit.ly/4hx2Qm -o setup.sh && rm -rf ./build"),
+            "Allow session covers “recursive delete” and this security finding in this session; Always allow covers both on this server from now on."
+        )
+    }
+
+    /// A key the app does not know is never shown raw.
+    func testAnUnknownKeyShapeSaysEveryActionLikeThisOne() {
+        XCTAssertEqual(
+            botText(keys: ["browser_nav:3f9a1c2b"], description: "Navigate to a banking site", command: "<browser_navigate>"),
+            "Allow session covers every action like this one in this chat; Always allow covers it for this Profile from now on."
+        )
     }
 }

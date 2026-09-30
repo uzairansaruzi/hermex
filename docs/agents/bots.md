@@ -426,6 +426,21 @@ use `approval.respond` with the underlying queue `request_id`, which differs
 from the server-request envelope id. `resolved: 0` means already resolved.
 `approval.received` is deliberately never called.
 
+It also reads `pattern_keys` (else `[pattern_key]`) and `tool_name`, all
+optional, for the one scope line under the command. `ApprovalScope` (in
+`Models/Approval.swift`, shared with the Sessions overlay) turns the keys into a
+sentence saying what Allow session covers in this chat and what Always allow
+covers for this Profile; a raw key never reaches the screen. A shell key is the
+host's danger description, quoted as sent. A `plugin_rule:` key names its tool,
+raw and monospaced, from the default `<tool>:<sha12>` rule key, else
+`tool_name`, else the `<tool>` in the command. `execute_code`,
+`ssh_config_write`, `cua:` and `tirith:` keys get plain labels, and anything
+else is "every action like this one". Hermes keeps a Tirith finding
+session-only even under Always, so a mixed prompt says so and a Tirith-only
+prompt (no Always offered) names only the chat. No Allow session offered (a
+smart-denied prompt, a room approval) means no line. The key shapes are
+verified against `tools/approval.py` at `ca678285`.
+
 `BotQuestionRequest` reads single and batch clarification from `clarify`
 server requests (there is no `pending_clarify` snapshot field), including locked
 `answers` restored on reconnect. A question outranks an approval or credential
