@@ -41,6 +41,7 @@
 		C0DE512E0000000000000202 /* InsightsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E0000000000000201 /* InsightsModels.swift */; };
 		C0DE512E0000000000000204 /* SectionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E0000000000000203 /* SectionCard.swift */; };
 		C08650000000000000000002 /* ActionToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08650000000000000000001 /* ActionToast.swift */; };
+		879A00000000000000000002 /* QuickLookFilePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 879A00000000000000000001 /* QuickLookFilePreview.swift */; };
 		C0DE512E00000000000002206 /* UsageChartData.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E00000000000002205 /* UsageChartData.swift */; };
 		C0DE512E00000000000002208 /* UsageChartCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E00000000000002207 /* UsageChartCard.swift */; };
 		C0DE512E0000000000000220A /* UsageTotalsGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E00000000000002209 /* UsageTotalsGrid.swift */; };
@@ -262,6 +263,7 @@
 		1A2B3C4D5E6F7000000000E4 /* FileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E5 /* FileBrowserView.swift */; };
 		1A2B3C4D5E6F7000000000E6 /* FileBrowserViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E7 /* FileBrowserViewModel.swift */; };
 		1F16000000000000000000B3 /* FileBrowserViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F16000000000000000000F3 /* FileBrowserViewModelTests.swift */; };
+		879A00000000000000000004 /* ChatAttachmentPreviewViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 879A00000000000000000003 /* ChatAttachmentPreviewViewModelTests.swift */; };
 		1F16000000000000000000B2 /* FileTreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F16000000000000000000F2 /* FileTreeTests.swift */; };
 		1F16000000000000000000B1 /* FileTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F16000000000000000000F1 /* FileTree.swift */; };
 		1F16000000000000000000B4 /* FileReference.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F16000000000000000000F4 /* FileReference.swift */; };
@@ -871,6 +873,7 @@
 		1A2B3C4D5E6F7000000000E5 /* FileBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E7 /* FileBrowserViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserViewModel.swift; sourceTree = "<group>"; };
 		1F16000000000000000000F3 /* FileBrowserViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserViewModelTests.swift; sourceTree = "<group>"; };
+		879A00000000000000000003 /* ChatAttachmentPreviewViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatAttachmentPreviewViewModelTests.swift; sourceTree = "<group>"; };
 		1F16000000000000000000F2 /* FileTreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTreeTests.swift; sourceTree = "<group>"; };
 		1F16000000000000000000F1 /* FileTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTree.swift; sourceTree = "<group>"; };
 		1F16000000000000000000F4 /* FileReference.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileReference.swift; sourceTree = "<group>"; };
@@ -1015,6 +1018,7 @@
 		C0DE512E0000000000000201 /* InsightsModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InsightsModels.swift; sourceTree = "<group>"; };
 		C0DE512E0000000000000203 /* SectionCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SectionCard.swift; sourceTree = "<group>"; };
 		C08650000000000000000001 /* ActionToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionToast.swift; sourceTree = "<group>"; };
+		879A00000000000000000001 /* QuickLookFilePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookFilePreview.swift; sourceTree = "<group>"; };
 		C0DE512E00000000000002205 /* UsageChartData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageChartData.swift; sourceTree = "<group>"; };
 		C0DE512E00000000000002207 /* UsageChartCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageChartCard.swift; sourceTree = "<group>"; };
 		C0DE512E00000000000002209 /* UsageTotalsGrid.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageTotalsGrid.swift; sourceTree = "<group>"; };
@@ -1429,6 +1433,7 @@
 				1F18000000000000000000A3 /* TranscriptMarkdownImageTests.swift */,
 				1F16000000000000000000F7 /* FileIconTests.swift */,
 				1F16000000000000000000F3 /* FileBrowserViewModelTests.swift */,
+				879A00000000000000000003 /* ChatAttachmentPreviewViewModelTests.swift */,
 				1D1FF0000000000000000F35 /* SourceHighlighterTests.swift */,
 				1D1FF0000000000000000F36 /* SourceFileViewModelTests.swift */,
 				C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */,
@@ -1706,6 +1711,7 @@
 				C0366000000000000000004 /* ModelPickerConfiguration.swift */,
 				C0DE512E0000000000000203 /* SectionCard.swift */,
 				C08650000000000000000001 /* ActionToast.swift */,
+				879A00000000000000000001 /* QuickLookFilePreview.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -2645,6 +2651,7 @@
 				C0DE512E0000000000000202 /* InsightsModels.swift in Sources */,
 				C0DE512E0000000000000204 /* SectionCard.swift in Sources */,
 				C08650000000000000000002 /* ActionToast.swift in Sources */,
+				879A00000000000000000002 /* QuickLookFilePreview.swift in Sources */,
 				C0DE512E00000000000002206 /* UsageChartData.swift in Sources */,
 				C0DE512E00000000000002208 /* UsageChartCard.swift in Sources */,
 				C0DE512E0000000000000220A /* UsageTotalsGrid.swift in Sources */,
@@ -2788,6 +2795,7 @@
 				1F18000000000000000000B3 /* TranscriptMarkdownImageTests.swift in Sources */,
 				1F16000000000000000000B7 /* FileIconTests.swift in Sources */,
 				1F16000000000000000000B3 /* FileBrowserViewModelTests.swift in Sources */,
+				879A00000000000000000004 /* ChatAttachmentPreviewViewModelTests.swift in Sources */,
 				1D1FF0000000000000000B35 /* SourceHighlighterTests.swift in Sources */,
 				1D1FF0000000000000000B36 /* SourceFileViewModelTests.swift in Sources */,
 				C03120000000000000B008 /* TurnFileChangeAggregatorTests.swift in Sources */,

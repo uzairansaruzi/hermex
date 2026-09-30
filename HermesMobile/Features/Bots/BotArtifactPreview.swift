@@ -1,12 +1,11 @@
 import Foundation
 import Observation
-import QuickLook
 import SwiftUI
 
 /// The preview owns its temporary file. Dismissal invalidates late completions
 /// and removes only the directory this presentation created.
 @MainActor @Observable final class BotArtifactPreviewModel {
-    private var file: BotArtifactTemporaryFile?
+    private var file: QuickLookTemporaryFile?
     var fileURL: URL? { file?.url }
     private(set) var errorMessage: String?
     private var generation = 0
@@ -19,24 +18,10 @@ import SwiftUI
             let data = try await download()
             try Task.checkCancellation()
             guard owner == generation else { return }
-            let url = try await Task.detached {
-                let directory = FileManager.default.temporaryDirectory.appendingPathComponent("bot-artifact-\(UUID().uuidString)", isDirectory: true)
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                let filename = URL(fileURLWithPath: name).lastPathComponent
-                let url = directory.appendingPathComponent(filename.isEmpty || filename == "." || filename == ".." ? "File" : filename)
-                do {
-                    try data.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
-                    return url
-                } catch {
-                    try? FileManager.default.removeItem(at: directory)
-                    throw error
-                }
-            }.value
-            guard !Task.isCancelled, owner == generation else {
-                try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
-                return
-            }
-            file = BotArtifactTemporaryFile(url: url)
+            let written = try await QuickLookTemporaryFile.write(data: data, name: name)
+            // Returning drops a late write, which deletes its directory.
+            guard !Task.isCancelled, owner == generation else { return }
+            file = written
         } catch {
             guard !Task.isCancelled, owner == generation else { return }
             errorMessage = error.localizedDescription
@@ -50,12 +35,6 @@ import SwiftUI
 
 }
 
-private final class BotArtifactTemporaryFile {
-    let url: URL
-    init(url: URL) { self.url = url }
-    deinit { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
-}
-
 struct BotArtifactPreview: View {
     let reference: TranscriptMediaReference
     let download: () async throws -> Data
@@ -67,7 +46,7 @@ struct BotArtifactPreview: View {
         NavigationStack {
             Group {
                 if let url = model.fileURL {
-                    BotNativeFilePreview(url: url)
+                    QuickLookFileView(url: url)
                 } else if let error = model.errorMessage {
                     ContentUnavailableView {
                         Label("Could Not Load File", systemImage: "exclamationmark.triangle")
@@ -86,27 +65,5 @@ struct BotArtifactPreview: View {
         }
         .task(id: attempt) { await model.load(name: reference.displayName, download: download) }
         .onDisappear { model.cleanup() }
-    }
-}
-
-/// Quick Look provides native PDF, image, audio and document viewers and export.
-private struct BotNativeFilePreview: UIViewControllerRepresentable {
-    let url: URL
-    func makeCoordinator() -> Coordinator { Coordinator(url: url) }
-    func makeUIViewController(context: Context) -> QLPreviewController {
-        let controller = QLPreviewController()
-        controller.dataSource = context.coordinator
-        return controller
-    }
-    func updateUIViewController(_ controller: QLPreviewController, context: Context) {
-        guard context.coordinator.url != url else { return }
-        context.coordinator.url = url
-        controller.reloadData()
-    }
-    final class Coordinator: NSObject, QLPreviewControllerDataSource {
-        var url: URL
-        init(url: URL) { self.url = url }
-        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
-        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> any QLPreviewItem { url as NSURL }
     }
 }

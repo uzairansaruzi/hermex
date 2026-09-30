@@ -614,6 +614,160 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
         XCTAssertEqual(requestedPaths, ["/api/file/raw"])
     }
 
+    // MARK: - Quick Look
+
+    @MainActor
+    func testFilePreviewOpensPDFInQuickLook() async throws {
+        let pdf = Data("%PDF-fixture".utf8)
+        var requestedPaths: [String] = []
+        let client = makeClient { request in
+            requestedPaths.append(request.url?.path ?? "nil")
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertEqual(components?.queryItems?.first { $0.name == "path" }?.value, "Docs/report.pdf")
+            return (try Self.rawResponse(for: request, headers: ["Content-Type": "application/pdf"]), pdf)
+        }
+        let viewModel = try makeQuickLookViewModel(path: "Docs/report.pdf", client: client)
+
+        await viewModel.load()
+
+        guard case let .quickLook(file) = viewModel.preview else {
+            return XCTFail("A PDF opens in Quick Look, got \(String(describing: viewModel.preview))")
+        }
+        XCTAssertEqual(file.url.lastPathComponent, "report.pdf")
+        XCTAssertEqual(try Data(contentsOf: file.url), pdf)
+
+        let payload = try await viewModel.exportPayload()
+        XCTAssertEqual(payload.data, pdf)
+        XCTAssertEqual(payload.contentType, UTType.pdf)
+        XCTAssertEqual(requestedPaths, ["/api/file/raw"], "Export reuses the bytes Quick Look downloaded")
+    }
+
+    @MainActor
+    func testFilePreviewRefusesAFileOverTheCap() async throws {
+        var requestedPaths: [String] = []
+        let client = makeClient { request in
+            requestedPaths.append(request.url?.path ?? "nil")
+            let headers = ["Content-Length": "\(BotArtifactBuffer.maximumBytes + 1)"]
+            return (try Self.rawResponse(for: request, headers: headers), Data("mp4".utf8))
+        }
+        let viewModel = try makeQuickLookViewModel(path: "Media/talk.mp4", client: client)
+        let directoriesBefore = try Self.quickLookDirectories()
+
+        await viewModel.load()
+
+        guard case let .unavailable(message) = viewModel.preview else {
+            return XCTFail("Expected the too-large state, got \(String(describing: viewModel.preview))")
+        }
+        XCTAssertEqual(message, "This file is too large to preview on this device (25 MB maximum).")
+        XCTAssertEqual(try Self.quickLookDirectories(), directoriesBefore, "A refused download writes no file")
+
+        let payload = try await viewModel.exportPayload()
+        XCTAssertEqual(payload.data, Data("mp4".utf8))
+        XCTAssertEqual(requestedPaths, ["/api/file/raw", "/api/file/raw"], "Export still downloads the file")
+    }
+
+    @MainActor
+    func testFilePreviewSkipsTheRequestWhenTheKnownSizeIsOverTheCap() async throws {
+        let client = makeClient { request in
+            XCTFail("A known size over the cap must not download: \(request.url?.path ?? "")")
+            return apiTestJSONResponse("{}", for: request, status: 500)
+        }
+        let viewModel = try makeQuickLookViewModel(
+            path: "Media/talk.mp4",
+            knownSize: BotArtifactBuffer.maximumBytes + 1,
+            client: client
+        )
+
+        await viewModel.load()
+
+        guard case let .unavailable(message) = viewModel.preview else {
+            return XCTFail("Expected the too-large state, got \(String(describing: viewModel.preview))")
+        }
+        XCTAssertEqual(message, "This file is too large to preview on this device (25 MB maximum).")
+    }
+
+    @MainActor
+    func testQuickLookFileIsDeletedWhenThePreviewIsReleased() async throws {
+        let client = makeClient { request in
+            (try Self.rawResponse(for: request, headers: [:]), Data("%PDF-fixture".utf8))
+        }
+        var viewModel: FilePreviewViewModel? = try makeQuickLookViewModel(path: "Docs/report.pdf", client: client)
+
+        // Only URLs leave the preview: holding the file here would keep it alive.
+        func quickLookURL() -> URL? {
+            guard case let .quickLook(file) = viewModel?.preview else { return nil }
+            return file.url
+        }
+
+        await viewModel?.load()
+        let first = try XCTUnwrap(quickLookURL())
+        await viewModel?.load()
+        let second = try XCTUnwrap(quickLookURL())
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: first.deletingLastPathComponent().path), "A refresh deletes the previous file")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: second.path))
+        viewModel = nil
+        XCTAssertFalse(FileManager.default.fileExists(atPath: second.deletingLastPathComponent().path), "Releasing the preview deletes its file")
+    }
+
+    func testBoundedDownloadStopsABodyWithoutLengthAndMapsErrorsLikeSendData() async throws {
+        let endpoint = Endpoint.rawFile(sessionID: "session-abc", path: "big.bin")
+        var status = 200
+        let client = makeClient { request in
+            (try Self.rawResponse(for: request, status: status, headers: [:]), Data("12345".utf8))
+        }
+
+        do {
+            _ = try await client.sendBoundedData(endpoint: endpoint, limit: 4)
+            XCTFail("A body past the limit must be refused")
+        } catch BotArtifactFailure.tooLarge {}
+        let fits = try await client.sendBoundedData(endpoint: endpoint, limit: 5)
+        XCTAssertEqual(fits, Data("12345".utf8))
+
+        status = 401
+        do {
+            _ = try await client.sendBoundedData(endpoint: endpoint, limit: 5)
+            XCTFail("401 must throw")
+        } catch APIError.unauthorized {}
+
+        status = 403
+        do {
+            _ = try await client.sendBoundedData(endpoint: endpoint, limit: 5)
+            XCTFail("403 must throw")
+        } catch let APIError.http(statusCode, body) {
+            XCTAssertEqual(statusCode, 403)
+            XCTAssertEqual(body, "12345")
+        }
+    }
+
+    @MainActor
+    private func makeQuickLookViewModel(
+        path: String,
+        knownSize: Int? = nil,
+        client: APIClient
+    ) throws -> FilePreviewViewModel {
+        try FilePreviewViewModel(
+            session: makeFilePreviewSession(),
+            server: XCTUnwrap(URL(string: "https://example.test")),
+            path: path,
+            knownSize: knownSize,
+            apiClient: client
+        )
+    }
+
+    private static func rawResponse(
+        for request: URLRequest,
+        status: Int = 200,
+        headers: [String: String]
+    ) throws -> HTTPURLResponse {
+        try XCTUnwrap(HTTPURLResponse(url: XCTUnwrap(request.url), statusCode: status, httpVersion: nil, headerFields: headers))
+    }
+
+    private static func quickLookDirectories() throws -> Set<String> {
+        Set(try FileManager.default.contentsOfDirectory(atPath: FileManager.default.temporaryDirectory.path)
+            .filter { $0.hasPrefix("quick-look-") })
+    }
+
     // MARK: - Prefetch
 
     @MainActor

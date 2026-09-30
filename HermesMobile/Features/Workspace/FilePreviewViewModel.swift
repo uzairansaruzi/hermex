@@ -5,6 +5,8 @@ import UniformTypeIdentifiers
 final class FilePreviewViewModel {
     private let session: SessionSummary
     private let path: String
+    /// The listing's byte count, when known; a file over the Quick Look cap skips the download.
+    private let knownSize: Int?
     private let apiClient: APIClient
 
     private(set) var preview: FilePreviewContent?
@@ -24,11 +26,13 @@ final class FilePreviewViewModel {
         session: SessionSummary,
         server: URL,
         path: String,
+        knownSize: Int? = nil,
         apiClient: APIClient? = nil,
         prefetchedFile: Task<FileResponse, Error>? = nil
     ) {
         self.session = session
         self.path = path
+        self.knownSize = knownSize
         self.apiClient = apiClient ?? APIClient(baseURL: server)
         self.prefetchedFile = prefetchedFile
     }
@@ -40,8 +44,7 @@ final class FilePreviewViewModel {
 
     /// True for paths that load through `/api/file` as text rather than as image or raw bytes.
     static func loadsTextPreview(forPath path: String) -> Bool {
-        let pathExtension = pathExtension(of: path)
-        return !rasterImageExtensions.contains(pathExtension) && !unsupportedBinaryExtensions.contains(pathExtension)
+        !rasterImageExtensions.contains(pathExtension(of: path)) && BinaryFilePreview(path: path) == nil
     }
 
     var canExportFile: Bool {
@@ -81,7 +84,14 @@ final class FilePreviewViewModel {
                 } else {
                     preview = .unavailable(String(localized: "Could not decode this image."))
                 }
-            } else if isKnownUnsupportedBinaryPath {
+            } else if binaryPreview == .quickLook {
+                let apiClient = apiClient
+                let loaded = try await FilePreviewContent.loadQuickLook(name: exportFilename, knownSize: knownSize) {
+                    try await apiClient.rawFilePreviewData(sessionID: sessionID, path: path)
+                }
+                exportData = loaded.data
+                preview = loaded.content
+            } else if binaryPreview == .unavailable {
                 preview = .unavailable(String(localized: "Preview is not available for this file type."))
             } else {
                 let prefetched = prefetchedFile
@@ -140,13 +150,6 @@ final class FilePreviewViewModel {
 
     private static let rasterImageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp", "ico", "bmp"]
 
-    private static let unsupportedBinaryExtensions: Set<String> = [
-        "7z", "a", "aiff", "avi", "bin", "bz2", "class", "db", "dmg", "doc",
-        "docx", "dylib", "exe", "flac", "gz", "jar", "m4a", "mov", "mp3",
-        "mp4", "o", "pdf", "pkg", "ppt", "pptx", "pyc", "rar", "sqlite",
-        "svg", "tar", "tgz", "wav", "xls", "xlsx", "xz", "zip"
-    ]
-
     private static func pathExtension(of path: String) -> String {
         URL(fileURLWithPath: path).pathExtension.lowercased()
     }
@@ -159,8 +162,8 @@ final class FilePreviewViewModel {
         Self.rasterImageExtensions.contains(pathExtension)
     }
 
-    private var isKnownUnsupportedBinaryPath: Bool {
-        Self.unsupportedBinaryExtensions.contains(pathExtension)
+    private var binaryPreview: BinaryFilePreview? {
+        BinaryFilePreview(path: path)
     }
 
     private func payload(with data: Data) -> FileExportPayload {
@@ -264,6 +267,8 @@ enum FilePreviewContent {
     case text(FileResponse)
     case image(ImageFilePreview)
     case audio(Data)
+    /// Shown by Quick Look; releasing the content deletes the file.
+    case quickLook(QuickLookTemporaryFile)
     case unavailable(String)
 }
 

@@ -329,6 +329,10 @@ final class FileBrowserViewModelTests: APIClientTestCase {
 
         viewModel.prefetchFile(at: "logo.png")
         XCTAssertNil(viewModel.prefetchedFile(at: "logo.png"), "Images are not fetched as text")
+        for path in ["report.pdf", "notes.rtf", "archive.zip"] {
+            viewModel.prefetchFile(at: path)
+            XCTAssertNil(viewModel.prefetchedFile(at: path), "\(path) opens in Quick Look or No Preview, never as text")
+        }
 
         viewModel.prefetchFile(at: "notes.txt")
         let stale = try XCTUnwrap(viewModel.prefetchedFile(at: "notes.txt"))

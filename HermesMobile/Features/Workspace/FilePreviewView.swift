@@ -4,7 +4,8 @@ import UniformTypeIdentifiers
 
 /// One workspace file. Markdown keeps the chat renderer; every other text file
 /// draws on the source surface with a gutter, syntax colour, and an optional
-/// starting line. Images and binaries keep their own previews.
+/// starting line. Images keep their own preview; documents and media open in
+/// Quick Look, and archives and other binaries show No Preview with Export.
 struct FilePreviewView: View {
     let onAPIError: (Error) -> Void
 
@@ -39,6 +40,7 @@ struct FilePreviewView: View {
             session: session,
             server: server,
             path: entry.path ?? "",
+            knownSize: entry.size,
             prefetchedFile: prefetchedFile
         ))
     }
@@ -185,6 +187,8 @@ struct FilePreviewView: View {
             sourceContent(file)
         case let .image(file):
             imageContent(file.data)
+        case let .quickLook(file):
+            QuickLookFileView(url: file.url)
         case .audio:
             // The workspace file browser never produces audio previews; this
             // arm only keeps the shared `FilePreviewContent` switch exhaustive.

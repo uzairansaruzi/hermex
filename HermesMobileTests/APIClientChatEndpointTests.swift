@@ -203,7 +203,7 @@ final class APIClientChatEndpointTests: APIClientTestCase {
         XCTAssertEqual(item.displayName, "photo.PNG")
         XCTAssertEqual(item.displayPath, "/tmp/workspace/photo.PNG")
         XCTAssertTrue(item.inferredIsImage)
-        XCTAssertFalse(item.isKnownUnsupportedBinary)
+        XCTAssertNil(item.binaryPreview)
     }
 
     func testChatAttachmentPreviewItemUsesPendingFileMetadata() {
@@ -221,7 +221,7 @@ final class APIClientChatEndpointTests: APIClientTestCase {
         XCTAssertEqual(item.displayName, "report.pdf")
         XCTAssertEqual(item.displayPath, "/tmp/workspace/report.pdf")
         XCTAssertFalse(item.inferredIsImage)
-        XCTAssertTrue(item.isKnownUnsupportedBinary)
+        XCTAssertEqual(item.binaryPreview, .quickLook)
     }
 
     func testCancelChatBuildsExpectedQuery() async throws {

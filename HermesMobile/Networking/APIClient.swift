@@ -161,6 +161,53 @@ actor APIClient {
         return try await sendPreparedRequest(request)
     }
 
+    /// A file GET that reads at most `limit` bytes, with `sendData`'s custom headers,
+    /// redirect guard and `APIError` mapping. A 2xx `Content-Length` over the limit
+    /// throws `BotArtifactFailure.tooLarge` before the body is read, and a body
+    /// without one throws it at the limit. Cancelling the task stops the read.
+    func sendBoundedData(endpoint: Endpoint, limit: Int) async throws -> Data {
+        var request = URLRequest(url: endpoint.url(relativeTo: baseURL))
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        customHeaderProvider().apply(to: &request)
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+
+        let bytes: URLSession.AsyncBytes
+        let response: URLResponse
+        do {
+            (bytes, response) = try await session.bytes(for: request, delegate: redirectHeaderStripper)
+        } catch {
+            throw APIError.network(underlying: error)
+        }
+        defer { bytes.task.cancel() }
+
+        if let httpResponse = response as? HTTPURLResponse,
+           (200..<300).contains(httpResponse.statusCode),
+           httpResponse.expectedContentLength > Int64(limit) {
+            throw BotArtifactFailure.tooLarge
+        }
+
+        var buffer = BotArtifactBuffer(limit: limit)
+        var chunk = Data()
+        chunk.reserveCapacity(64 * 1024)
+        do {
+            for try await byte in bytes {
+                chunk.append(byte)
+                if chunk.count == 64 * 1024 {
+                    try Task.checkCancellation()
+                    try buffer.append(chunk)
+                    chunk.removeAll(keepingCapacity: true)
+                }
+            }
+        } catch let error where !(error is BotArtifactFailure || error is CancellationError) {
+            throw APIError.network(underlying: error)
+        }
+        try buffer.append(chunk)
+
+        // Error bodies are read too: they carry the server's message, as with `sendData`.
+        return try Self.mappedHTTPResponse(data: buffer.data, response: response, requireSuccess: true).0
+    }
+
     /// Multipart POST using the same URLSession + `APIError` mapping as `sendData`.
     /// Custom headers first, then the multipart Content-Type so it always wins
     /// over a caller-supplied `Content-Type` (#61).

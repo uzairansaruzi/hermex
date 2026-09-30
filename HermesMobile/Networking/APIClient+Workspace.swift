@@ -56,6 +56,15 @@ extension APIClient {
         try await sendData(endpoint: .rawFile(sessionID: sessionID, path: path), method: "GET")
     }
 
+    /// `rawFileData` for Quick Look: stops at 25 MB, and refuses a larger
+    /// `Content-Length` before reading the body.
+    func rawFilePreviewData(sessionID: String, path: String) async throws -> Data {
+        try await sendBoundedData(
+            endpoint: .rawFile(sessionID: sessionID, path: path),
+            limit: BotArtifactBuffer.maximumBytes
+        )
+    }
+
     func mediaData(sessionID: String, path: String) async throws -> Data {
         try await sendData(endpoint: .media(sessionID: sessionID, path: path), method: "GET")
     }
