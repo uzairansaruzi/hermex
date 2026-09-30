@@ -959,7 +959,11 @@ those values into manager calls.
   device token. The gateway's short-lived RPC `session_id` and the canonical chat
   root are different IDs; plugin progress hooks use neither of them. After registration succeeds,
   suspension leaves freshness to push; the relay sets a fifteen-minute stale date
-  and the widget uses ActivityKit's stale flag. Unpaired or failed registrations
+  and the widget uses ActivityKit's stale flag. For a session no phone watches (the
+  relay answers its progress `no_activity`), the plugin sends routine progress about
+  once a minute after the turn's first 30 seconds, so an activity started mid-turn
+  catches up within a minute, or at the next status change if that comes sooner.
+  Unpaired or failed registrations
   still show "Not connected" / "Open to reconnect" on suspend. A webui run on a
   paired server takes the same handoff (#566): its attributes carry the configured
   server, it requests a token, and it registers under its webui session ID, which
