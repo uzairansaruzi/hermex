@@ -1561,7 +1561,8 @@ code only when it starts, and no route restarts it, so the usual end is a card a
 user to restart `hermes dashboard`, with "Check again" (#934 tracks restarting from the
 phone). A failure whose copy says "Update the hermex-push plugin." (keys this build cannot
 use, at setup or from the test notification) offers the same update. An update started there
-never pairs by itself; "Turn on notifications…" stays the way to pair. Bump the constant in
+never pairs by itself; "Turn on notifications…" stays the way to pair. Turning notifications
+off drops the offer, because its install would enable the plugin again. Bump the constant in
 the release that follows a plugin release (TESTFLIGHT.md's release gates).
 
 Every way out removes this phone at the relay and wipes the keys.

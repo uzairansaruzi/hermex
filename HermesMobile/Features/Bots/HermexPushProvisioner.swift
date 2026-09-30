@@ -85,6 +85,9 @@ import UserNotifications
     private(set) var phase: Phase = .idle
     /// Steps that finished in the current enable run, so the view can show what is done.
     private(set) var completed: Set<Step> = []
+    /// Whether setup, rather than the plugin update or its check, made the last host run,
+    /// so a failure lists setup's steps only when setup is what stopped.
+    private var setupRanLast = false
     /// iOS notification permission for Hermex is denied, so nothing this server sends can
     /// show. Raised when setup finds it (before any host call) and, on a paired server,
     /// whenever the section checks; cleared once the user allows notifications again.
@@ -166,12 +169,14 @@ import UserNotifications
 
     func isRunning(_ step: Step) -> Bool { phase == .enabling(step) }
 
-    /// Whether the step list belongs on screen: while a host step runs, after a failure, and
-    /// after a run that changed the host before stopping (permission revoked mid-run), so
+    /// Whether the step list belongs on screen: while a host step runs, after setup fails,
+    /// and after a run that changed the host before stopping (permission revoked mid-run), so
     /// those changes stay visible. Hidden while iOS asks for permission: nothing ran yet.
+    /// The plugin update's failures leave it hidden; its card and the red row name them.
     var showsSteps: Bool {
         switch phase {
-        case .enabling, .failed: return true
+        case .enabling: return true
+        case .failed: return setupRanLast
         case .checkingPermission: return false
         case .idle, .disabling, .savingPreferences, .refreshing, .sendingTest, .tested,
              .updatingPlugin, .checkingPlugin: return !completed.isEmpty
@@ -186,6 +191,8 @@ import UserNotifications
         guard !Task.isCancelled else { return }
         connection = try? BotConnectionStore().load(server: server)
         pairing = registrar?.pairing(for: server)
+        // A removed connection leaves no host to update.
+        if connection == nil { pluginUpdate = nil }
         phase = .idle
         if let pairing, pairing.preferencesNeedSync == true {
             await updatePreferences(pairing.effectivePreferences)
@@ -264,6 +271,7 @@ import UserNotifications
     /// could not show what it sends.
     func enable() async {
         guard !isWorking else { return }
+        setupRanLast = true
         guard let connection else { return fail(Step.relayURL.title, HermexPushFailure.noConnection) }
         completed = []
         phase = .checkingPermission
@@ -348,6 +356,8 @@ import UserNotifications
             step = String(localized: "Remove this iPhone from the relay")
             try await registrar?.disable(for: server)
             pairing = registrar?.pairing(for: server)
+            // Its install enables the plugin again, so the update goes with the pairing.
+            pluginUpdate = nil
             phase = .idle
         } catch { fail(step, error) }
     }
@@ -366,6 +376,7 @@ import UserNotifications
     /// "Check again" once the host has been restarted: one read, whose answer replaces the card.
     func checkPluginAgain() async {
         guard !isWorking, let connection else { return }
+        setupRanLast = false
         phase = .checkingPlugin
         do {
             pluginUpdate = try await pluginStanding(dashboard(connection))
@@ -381,6 +392,7 @@ import UserNotifications
     /// when it starts, and no route restarts it, so "restart needed" is the usual end.
     func updatePlugin() async {
         guard !isWorking else { return }
+        setupRanLast = false
         guard let connection else {
             phase = .failed(Failure(title: PluginUpdateStep.reinstall.failureTitle,
                                     message: Self.message(for: HermexPushFailure.noConnection), remedy: .retryUpdate))
@@ -469,6 +481,7 @@ import UserNotifications
     private func abandon() async {
         await registrar?.forget(for: server)
         pairing = nil
+        pluginUpdate = nil
         phase = .idle
     }
 

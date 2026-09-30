@@ -850,6 +850,64 @@ import XCTest
         XCTAssertEqual(registrar.actions, [])
     }
 
+    func testAnUpdateThatStopsAfterThePairingFailureLeavesTheSetupStepsHidden() async throws {
+        let registrar = FakePushRegistrar()
+        let newest = newest
+        var installFails = true
+        var pairingFails = false
+        PushHTTPFixture.isSetUp = true
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/dashboard/agent-plugins/install": return installFails ? (500, .null) : nil
+            // A plugin too old for this build: no version, and keys the relay would refuse.
+            case "/api/plugins/hermex-push/pairing":
+                return pairingFails ? (500, .null)
+                    : (200, .object(["relay_url": .string(HermexPushPlugin.defaultRelayURL.absoluteString),
+                                     "install_key": .string("abc"), "preview_key": .string(PushHTTPFixture.previewKey)]))
+            case "/api/dashboard/plugins/hub": return (200, PushHTTPFixture.hubBody(version: newest))
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+        await provisioner.enable()
+        XCTAssertEqual(provisioner.failure?.remedy, .updatePlugin)
+        XCTAssertTrue(provisioner.showsSteps, "Setup stopped, so its steps stay listed")
+
+        await provisioner.updatePlugin()
+
+        XCTAssertEqual(provisioner.pluginCard, .failed(HermexPushProvisioner.Failure(
+            title: "Couldn’t reinstall the plugin",
+            message: "This Hermes host refused the step (HTTP 500). Check the host’s logs, then try again.",
+            remedy: .retryUpdate)))
+        XCTAssertFalse(provisioner.showsSteps, "The update stopped, not setup, and its card says so")
+
+        installFails = false
+        await provisioner.updatePlugin()
+        XCTAssertEqual(provisioner.pluginCard, .status(.restartNeeded))
+        pairingFails = true
+        await provisioner.checkPluginAgain()
+
+        XCTAssertEqual(provisioner.failure?.title, "Couldn’t check the plugin version")
+        XCTAssertEqual(provisioner.pluginCard, .status(.restartNeeded), "A failed read leaves the restart step standing")
+        XCTAssertFalse(provisioner.showsSteps)
+        XCTAssertNil(provisioner.pairing)
+    }
+
+    func testTurningNotificationsOffDropsThePluginUpdate() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        PushHTTPFixture.handler = { request in
+            request.url?.path == "/api/plugins/hermex-push/pairing" ? (200, PushHTTPFixture.pairingBody(version: nil)) : nil
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+        await provisioner.checkPlugin()
+        XCTAssertEqual(provisioner.pluginCard, .status(.available(loaded: nil)))
+
+        await provisioner.disable()
+
+        XCTAssertNil(provisioner.pairing)
+        XCTAssertNil(provisioner.pluginCard, "Its install would enable the plugin Disable just turned off")
+    }
+
     /// A server already paired with the fixture host's keys, with its setup call cleared.
     private func pairedRegistrar(_ server: URL) async throws -> FakePushRegistrar {
         let registrar = FakePushRegistrar()
