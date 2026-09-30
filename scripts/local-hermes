@@ -52,6 +52,8 @@ PUBLIC_URL = "http://hermex-local.invalid"
 MODEL = "hermex-stub"
 COMMAND = 'python3 -c "print(1)"'
 READY_TIMEOUT = 120
+# Loopback requests never go through a configured HTTP proxy.
+LOOPBACK = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def completion(text, tool_call_id=None):
@@ -157,9 +159,12 @@ def make_home(stub_port):
 def server_env(home, base):
     """The server's environment: `base` without any inherited HERMES_* variable
     (HERMES_DESKTOP would change the auth gate), plus the home, the host-record
-    directory inside it, and the basic-auth gate."""
+    directory inside it, the basic-auth gate, and a proxy bypass for the stub."""
     env = {key: value for key, value in base.items() if not key.startswith("HERMES_")}
+    no_proxy = ",".join(filter(None, [base.get("no_proxy") or base.get("NO_PROXY"), "127.0.0.1"]))
     env.update({
+        "no_proxy": no_proxy,
+        "NO_PROXY": no_proxy,
         "HERMES_HOME": str(home),
         "HERMES_GATEWAY_LOCK_DIR": str(home / "locks"),
         "HERMES_DASHBOARD_BASIC_AUTH_USERNAME": USERNAME,
@@ -200,11 +205,15 @@ def run(command):
 
 
 def ensure_install(sha):
-    """Returns the pinned `hermes` executable, cloning and installing it once per pin."""
+    """Returns the pinned `hermes` executable, cloning and installing it once per pin.
+
+    The `installed` stamp is written last, so an interrupted install is redone.
+    """
     root = CACHE / sha
     venv = root / ".venv"
     hermes = venv / "bin" / "hermes"
-    if hermes.exists():
+    installed = root / "installed"
+    if installed.exists():
         return hermes
     for tool in ("git", "uv"):
         if not shutil.which(tool):
@@ -225,11 +234,15 @@ def ensure_install(sha):
     # --system-certs trusts the macOS store, as git does, so a TLS-inspecting proxy works.
     run(["uv", "venv", "--quiet", "--system-certs", "--clear", "--python", "3.13", str(venv)])
     run(["uv", "pip", "install", "--quiet", "--system-certs", "--python", str(venv / "bin" / "python"), "-e", str(source)])
+    installed.touch()
     return hermes
 
 
 def require_free(port):
+    """Exits unless `hermes serve` can bind the port. The probe uses the server's own
+    SO_REUSEADDR, so a port the previous run left in TIME_WAIT counts as free."""
     with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind(("127.0.0.1", port))
         except OSError:
@@ -243,7 +256,7 @@ def wait_until_ready(process, port):
         if process.poll() is not None:
             sys.exit("hermes serve exited with status %d before it was ready." % process.returncode)
         try:
-            with urllib.request.urlopen("http://127.0.0.1:%d/api/status" % port, timeout=2) as response:
+            with LOOPBACK.open("http://127.0.0.1:%d/api/status" % port, timeout=2) as response:
                 status = json.load(response)
             break
         except (OSError, ValueError):

@@ -1,12 +1,16 @@
 """Run with: python3 -m unittest discover -s scripts/tests -v"""
 
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.machinery
 import importlib.util
 import json
 from pathlib import Path
 import shutil
 import signal
+import socket
 import subprocess
+import tempfile
+import threading
 import unittest
 from unittest.mock import Mock, call, patch
 
@@ -96,6 +100,84 @@ class HomeTests(unittest.TestCase):
         self.assertEqual(env["HERMES_DASHBOARD_BASIC_AUTH_USERNAME"], "hermex")
         self.assertEqual(env["HERMES_DASHBOARD_BASIC_AUTH_PASSWORD"], "hermex-local")
         self.assertEqual(env["HERMES_DASHBOARD_PUBLIC_URL"], "http://hermex-local.invalid")
+
+    def test_the_server_reaches_the_stub_past_a_proxy(self):
+        env = local.server_env(self.make_home(), {"http_proxy": "http://proxy.example:3128", "no_proxy": "corp.example"})
+        self.assertEqual(env["no_proxy"], "corp.example,127.0.0.1")
+        self.assertEqual(env["NO_PROXY"], "corp.example,127.0.0.1")
+
+
+class StatusHandler(BaseHTTPRequestHandler):
+    """A gated /api/status carrying the script's install_id."""
+
+    def do_GET(self):
+        data = json.dumps({"auth_required": True, "auth_providers": ["basic"], "install_id": local.INSTALL_ID}).encode()
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def log_message(self, format, *args):
+        pass
+
+
+class ReadinessTests(unittest.TestCase):
+    def test_readiness_skips_a_configured_proxy(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), StatusHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        # Port 9 on loopback refuses connections, so a proxied request never answers.
+        with patch.dict(local.os.environ, {"http_proxy": "http://127.0.0.1:9"}), patch.object(local, "READY_TIMEOUT", 1):
+            status = local.wait_until_ready(Mock(**{"poll.return_value": None}), server.server_address[1])
+        self.assertEqual(status["install_id"], local.INSTALL_ID)
+
+
+class PortTests(unittest.TestCase):
+    def listener(self):
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        return listener
+
+    def test_a_port_the_last_run_left_in_time_wait_is_free(self):
+        listener = self.listener()
+        port = listener.getsockname()[1]
+        client = socket.create_connection(("127.0.0.1", port))
+        accepted, _ = listener.accept()
+        accepted.close()  # The server side closes first, so its end enters TIME_WAIT.
+        self.assertEqual(client.recv(1), b"")
+        client.close()
+        listener.close()
+        local.require_free(port)
+
+    def test_a_listening_port_is_in_use(self):
+        listener = self.listener()
+        self.addCleanup(listener.close)
+        with self.assertRaises(SystemExit):
+            local.require_free(listener.getsockname()[1])
+
+
+class InstallTests(unittest.TestCase):
+    SHA = "0" * 40
+
+    def test_an_interrupted_install_is_redone_and_a_finished_one_reused(self):
+        cache = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, cache)
+        root = cache / self.SHA
+        (root / "src").mkdir(parents=True)
+        (root / "src" / "pyproject.toml").write_text("")
+        # An install stopped after uv wrote the entry point.
+        (root / ".venv" / "bin").mkdir(parents=True)
+        (root / ".venv" / "bin" / "hermes").write_text("")
+        with patch.object(local, "CACHE", cache), patch.object(local, "run") as run, \
+                patch.object(local.shutil, "which", return_value="/usr/bin/tool"):
+            self.assertEqual(local.ensure_install(self.SHA), root / ".venv" / "bin" / "hermes")
+            self.assertEqual([made.args[0][:3] for made in run.call_args_list],
+                             [["uv", "venv", "--quiet"], ["uv", "pip", "install"]])
+            run.reset_mock()
+            local.ensure_install(self.SHA)
+            self.assertEqual(run.call_args_list, [])
 
 
 class StopTests(unittest.TestCase):
