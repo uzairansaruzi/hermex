@@ -136,7 +136,8 @@ final class BotConnectionVersionTests: XCTestCase {
         let succeeded = await model.connect()
         XCTAssertFalse(succeeded)
         XCTAssertEqual(model.errorMessage, BotAddressError.path("/not-supported").localizedDescription)
-        XCTAssertTrue(model.errorMessage?.contains("“/not-supported”") == true, "The error names the refused path")
+        XCTAssertTrue(model.errorMessage?.contains("“\u{2068}/not-supported\u{2069}”") == true,
+                      "The error names the refused path, isolated so its slash stays in front in right-to-left text")
         XCTAssertFalse(model.isConnecting)
     }
 
