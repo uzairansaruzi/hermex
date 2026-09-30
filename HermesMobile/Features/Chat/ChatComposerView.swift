@@ -590,9 +590,11 @@ struct MessageComposerView: View {
         .task(id: slashAutocompleteLoadKey) {
             await loadSlashAutocompleteSubArgsIfNeeded()
         }
-        .task {
+        .task(id: AppLock.shared.isLocked) {
             // Cold path: the composer appears already active (the usual case for the
             // "New Chat with Voice" intent once its session is created) — start here.
+            // Runs again when the app lock changes, since dictation waits for it (#885);
+            // one modifier keeps this chain inside CI Xcode's type-checking budget.
             autoStartVoiceInputIfNeeded()
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -606,10 +608,6 @@ struct MessageComposerView: View {
                 // a beat after it appeared; auto-start once we're active (#338).
                 autoStartVoiceInputIfNeeded()
             }
-        }
-        .onChange(of: AppLock.shared.isLocked) { _, isLocked in
-            // The intent's dictation waits for the app lock (#885).
-            if !isLocked { autoStartVoiceInputIfNeeded() }
         }
         .onChange(of: voiceNoteRecorder.elapsed) { _, elapsed in
             // Enforce the max-duration cap: auto-stop and send (not cancel) once
