@@ -354,14 +354,17 @@ import XCTest
         XCTAssertEqual(PushHTTPFixture.calls, ["GET https://a.example.com/api/status"])
     }
 
-    /// An access proxy's refusal and a host with browser sign-in only stop setup at sign-in
-    /// with words the user can act on, before the password goes out.
-    func testSignInStopsWithTheAccessProxyOrBrowserSignInCopy() async throws {
+    /// An access proxy's refusal, a host with browser sign-in only and a release older than
+    /// the minimum stop setup at sign-in with words the user can act on, before the password
+    /// goes out.
+    func testSignInStopsBeforeThePasswordWithCopyTheUserCanActOn() async throws {
         let rows: [((Int, BotJSON), String)] = [
             // A proxy's 401 page: not the webui's JSON object.
             ((401, .null), "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Hermex can't do that yet. Use an address that skips it, such as the dashboard's local network address."),
             ((200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("nous")])])),
-             "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.")
+             "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host."),
+            ((200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]), "version": .string("0.21.2")])),
+             "This Hermes host runs 0.21.2. Hermex needs Hermes 0.21.3 or later. Update Hermes on the host, then try again.")
         ]
         for (status, message) in rows {
             PushHTTPFixture.reset()

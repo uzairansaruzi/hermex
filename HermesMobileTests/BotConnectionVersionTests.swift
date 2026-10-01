@@ -1,7 +1,7 @@
 import XCTest
 @testable import HermesMobile
 
-/// The pin file is the maintainer-facing record; `BotConnection.testedHermesVersion`
+/// The pin file is the maintainer-facing record; `HermesCompatibility.testedVersion`
 /// is the runtime mirror. Reading the file via `#filePath` keeps it out of the bundle.
 final class BotConnectionVersionTests: XCTestCase {
     private var pinFile: URL {
@@ -18,7 +18,21 @@ final class BotConnectionVersionTests: XCTestCase {
         let lines = contents.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         XCTAssertEqual(lines.count, 3, "commit, release, trailing newline")
         XCTAssertNotNil(lines[0].wholeMatch(of: /[0-9a-f]{40}/), "line 1 is the hermes-agent commit")
-        XCTAssertEqual(lines[1], BotConnection.testedHermesVersion, "line 2 is the release /api/status reports")
+        XCTAssertEqual(lines[1], HermesCompatibility.testedVersion, "line 2 is the release /api/status reports")
+        XCTAssertTrue(HermesCompatibility.isSupported(HermesCompatibility.testedVersion), "the minimum is at or below the tested release")
+    }
+
+    /// Releases compare by number, part by part, on the leading `MAJOR.MINOR.PATCH` only.
+    /// Anything without one is a proxy or a fork, so it is not refused on a guess.
+    func testOnlyAReadableReleaseOlderThanTheMinimumIsUnsupported() {
+        let rows: [(String?, Bool)] = [
+            ("0.21.2", false), ("0.21.2+canary.20260928T071354Z", false), ("0.9.99", false), ("0.20.10", false),
+            ("0.21.3", true), ("0.21.10", true), ("0.22.0", true), ("1.0.0", true), ("0.21.3.1", true),
+            (nil, true), ("", true), ("dev", true), ("0.21", true)
+        ]
+        for (version, supported) in rows {
+            XCTAssertEqual(HermesCompatibility.isSupported(version), supported, version ?? "missing")
+        }
     }
 
     func testRecordsSavedBeforeThePinDecodeWithoutAVersion() throws {
@@ -426,7 +440,7 @@ private struct ConnectionSetupFailingKeychain: KeychainStoring {
     func delete(_ key: KeychainStore.Key, scope: String) throws {}
 }
 
-/// One assertion per row of #751's and #880's copy tables. Tests run in English, so the copy is literal.
+/// One assertion per row of #751's, #880's and #897's copy tables. Tests run in English, so the copy is literal.
 final class BotConnectionAdviceTests: XCTestCase {
     func testEachConnectionFailureNamesWhatToCheck() {
         let address = URL(string: "https://hermes.example:8443")!
@@ -457,6 +471,7 @@ final class BotConnectionAdviceTests: XCTestCase {
             (BotFailure.blocked, "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Hermex can't do that yet. Use an address that skips it, such as the dashboard's local network address."),
             (BotFailure.browserSignIn, "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host."),
             (BotFailure.upgradeRefused(403), "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through."),
+            (BotFailure.outdated("0.21.2"), "This Hermes host runs 0.21.2. Hermex needs Hermes 0.21.3 or later. Update Hermes on the host, then try again."),
             (URLError(.networkConnectionLost), "Couldn't reach hermes.example. Check the address and network.")
         ]
         for (error, expected) in rows {

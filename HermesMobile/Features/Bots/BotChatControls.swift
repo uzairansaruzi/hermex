@@ -37,7 +37,9 @@ import Observation
     private(set) var isApplying = false
     private(set) var isLoading = false
     private(set) var context: Context?
-    private(set) var unavailable: Set<String> = []
+    /// Methods this chat stopped calling after a 403 or an unusable reply. A method the
+    /// host lacks (-32601) is the connection's to remember, for every chat on it.
+    private var refused: Set<String> = []
     private var readTask: Task<Void, Never>?
     private var readAgain = false
     private var readRevision = 0
@@ -57,6 +59,8 @@ import Observation
         guard let active = catalog.active else { return false }
         return catalog.capabilities[active.favoriteKey]?["reasoning"].flag != false
     }
+    /// Methods this chat won't call: its own refusals and the connection's missing methods.
+    private var unavailable: Set<String> { refused.union(wire?.unavailableMethods ?? []) }
     var mayChangeEffort: Bool { mayChangeModel && supportsEffort }
     var mayChangeFast: Bool { mayChangeModel && showsFast }
 
@@ -67,7 +71,7 @@ import Observation
     func connect(_ context: Context, wire: any BotTransport) async {
         disconnect()
         if lastContext?.connectionID != context.connectionID || lastContext?.profile != context.profile {
-            pendingModel = nil; unavailable = []; errorMessage = nil
+            pendingModel = nil; refused = []; errorMessage = nil
         }
         if lastContext?.runtime != context.runtime { pendingModel = nil }
         lastContext = context
@@ -139,8 +143,9 @@ import Observation
                 }
             } catch {
                 guard context == owner, revision == readRevision, !Task.isCancelled else { return }
-                if isUnsupported(error) { unavailable.insert(call.method) }
-                else { errorMessage = error.localizedDescription }
+                // A -32601 needs nothing here: the connection has recorded it.
+                if isRefused(error) { refused.insert(call.method) }
+                else if !isUnsupported(error) { errorMessage = error.localizedDescription }
             }
         }
     }
@@ -224,7 +229,7 @@ import Observation
             }
         } catch {
             guard context == action.context, activeAction == action.id, !Task.isCancelled else { return }
-            if isUnsupported(error) { unavailable.insert(call.method) }
+            if isRefused(error) { refused.insert(call.method) }
             if case BotSettingFailure.rejected = error { errorMessage = error.localizedDescription }
             else if !dispatched || isUnsupported(error) { errorMessage = error.localizedDescription }
             else { errorMessage = BotSettingFailure.unknownOutcome.localizedDescription }
@@ -240,9 +245,15 @@ import Observation
         case .control(let control): return mayControl && controls.contains(control) && control.action != nil
         }
     }
+    /// The host can't do this here: it refused (`isRefused`) or lacks the method (-32601).
     private func isUnsupported(_ error: Error) -> Bool {
-        if let failure = error as? BotFailure { return failure == .unsupported || failure == .rejected(-32601) }
-        if case BotSettingFailure.rejected(let code, _) = error { return code == -32601 || code == 403 }
+        if isRefused(error) || error as? BotFailure == .rejected(-32601) { return true }
+        if case BotSettingFailure.rejected(-32601, _) = error { return true }
         return false
+    }
+    /// A 403 or an unusable reply, which turns the method off for this chat alone.
+    private func isRefused(_ error: Error) -> Bool {
+        if case BotSettingFailure.rejected(403, _) = error { return true }
+        return error as? BotFailure == .unsupported
     }
 }

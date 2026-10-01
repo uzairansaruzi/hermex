@@ -52,6 +52,9 @@ enum BotFailure: Error, Equatable, LocalizedError {
     /// by a proxy that drops the ticket header or has no WebSocket support. Permanent;
     /// 408, 429 and 5xx arrive as `.rejected` instead (`init(upgradeStatus:)`).
     case upgradeRefused(Int)
+    /// `/api/status` reported this release, older than `HermesCompatibility.minimumVersion`,
+    /// so sign-in stopped before the password. Permanent.
+    case outdated(String)
     var errorDescription: String? {
         switch self {
         case .stale: return String(localized: "This action is no longer current. Refresh the conversation.")
@@ -74,6 +77,8 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .blocked: return String(localized: "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Hermex can't do that yet. Use an address that skips it, such as the dashboard's local network address.")
         case .browserSignIn: return String(localized: "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.")
         case .upgradeRefused: return String(localized: "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through.")
+        case .outdated(let version):
+            return String(localized: "This Hermes host runs \(version). Hermex needs Hermes \(HermesCompatibility.minimumVersion) or later. Update Hermes on the host, then try again.")
         default: return String(localized: "Connection lost. The bot may still be working. Reconnect to check its current conversation.")
         }
     }
@@ -128,6 +133,9 @@ enum BotConnectionAdvice {
     var serverVersion: String? { get }
     /// `install_id` from `/api/status` at the last connect; nil when the host omits it.
     var serverInstallID: String? { get }
+    /// Gateway methods the host answered -32601 (method not found) on this connection,
+    /// shared by every screen on it; a new connection starts empty.
+    var unavailableMethods: Set<String> { get }
     /// Sequenced event params or a complete string-id server-request envelope. The socket
     /// is shared, so this sees other screens' sessions too: admit only your own.
     var onEvent: ((BotJSON) -> Void)? { get set }
@@ -149,6 +157,7 @@ enum BotConnectionAdvice {
 extension BotTransport {
     var serverVersion: String? { nil }
     var serverInstallID: String? { nil }
+    var unavailableMethods: Set<String> { [] }
 
     func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String {
         throw BotFailure.unsupported

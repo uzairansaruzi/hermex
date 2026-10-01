@@ -26,6 +26,7 @@ final class HermesConnectionLogTests: XCTestCase {
         XCTAssertEqual(HermesConnectionLog.reason(BotFailure.rejected(403)), "rejected(403)")
         XCTAssertEqual(HermesConnectionLog.reason(BotFailure.upgradeRefused(403)), "upgradeRefused(403)")
         XCTAssertEqual(HermesConnectionLog.reason(BotFailure.transport), "transport")
+        XCTAssertEqual(HermesConnectionLog.reason(BotFailure.outdated("0.21.2")), #"outdated("0.21.2")"#, "The public release, nothing else")
     }
 
     func testADecodingErrorAndACancellationAreNamedByKind() {

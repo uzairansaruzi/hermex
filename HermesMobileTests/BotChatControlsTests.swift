@@ -135,6 +135,29 @@ import XCTest
         XCTAssertEqual(wire.writes.last?.0, "session.cwd.set")
     }
 
+    /// A method the host lacks is the connection's to remember: a second chat on it never
+    /// sends the call, and a new connection starts with the control on.
+    func testAMissingMethodStaysOffForEveryChatOnTheConnection() async throws {
+        let wire = SettingsWire(), connection = UUID()
+        let first = BotChatControls(), second = BotChatControls()
+        await first.connect(context(connection), wire: wire)
+        first.snapshot(.object([:]), idle: true)
+        wire.failure = BotSettingFailure.rejected(-32601, "unknown method")
+        await first.apply(try XCTUnwrap(first.prepare(.workspace("/new"))))
+        XCTAssertFalse(first.mayChangeWorkspace)
+
+        await second.connect(.init(connectionID: connection, profile: "same-profile", runtime: "second", generation: 1), wire: wire)
+        second.snapshot(.object([:]), idle: true)
+        XCTAssertFalse(second.mayChangeWorkspace)
+        XCTAssertNil(second.prepare(.workspace("/new")))
+        XCTAssertEqual(wire.writes.map(\.0), ["session.cwd.set"])
+
+        let fresh = BotChatControls()
+        await fresh.connect(context(), wire: SettingsWire())
+        fresh.snapshot(.object([:]), idle: true)
+        XCTAssertTrue(fresh.mayChangeWorkspace)
+    }
+
     func testSessionControlsUseKnownStatesAndOfferReverseAction() async throws {
         let wire = SettingsWire(); let settings = BotChatControls()
         wire.control = .object(["goal": .object(["title": .string("Finish"), "status": .string("active")]),
@@ -241,6 +264,8 @@ import XCTest
     var afterDispatch: (() async -> Void)?
     var afterControlRead: (() async -> Void)?
     var writes: [(String, [String: BotJSON])] = []
+    /// The connection's missing methods: like the gateway, a -32601 adds its method.
+    var unavailableMethods: Set<String> = []
     func connect() async throws {}
     func close() {}
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
@@ -257,6 +282,7 @@ import XCTest
         beforeDispatch?(); try validateDispatch?()
         writes.append((method, params))
         await afterDispatch?()
+        if case BotSettingFailure.rejected(-32601, _)? = failure { unavailableMethods.insert(method) }
         if let failure { throw failure }
         return response
     }

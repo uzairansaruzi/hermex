@@ -248,6 +248,64 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.requests.count, sent, "Nothing more reaches the host")
     }
 
+    /// The release gate reads the public status before any password goes out. Only a
+    /// readable release older than the minimum is refused; a canary reads as its base
+    /// release, and a missing or unreadable version proceeds.
+    func testOnlyAReleaseOlderThanTheMinimumIsRefusedAndBeforeThePassword() async throws {
+        let releases: [(version: String?, refused: Bool)] = [
+            ("0.21.2", true), ("0.21.3", false), ("0.21.5", false),
+            ("0.21.4+canary.20260928T071354Z", false), (nil, false), ("dev", false)
+        ]
+        for release in releases {
+            let label = release.version ?? "missing"
+            var status: [String: BotJSON] = ["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]
+            status["version"] = release.version.map(BotJSON.string)
+            HermesHostFixture.reset()
+            let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
+                request.url?.path == "/api/status" ? .json(200, .object(status)) : nil
+            })
+            do {
+                try await http.signIn()
+                XCTAssertFalse(release.refused, "\(label) must be refused")
+            } catch {
+                XCTAssertTrue(release.refused, "\(label) must sign in, not \(error)")
+                XCTAssertEqual(error as? BotFailure, .outdated(label))
+            }
+            XCTAssertEqual(HermesHostFixture.requests.map { $0.url?.path },
+                           release.refused ? ["/api/status"] : ["/api/status", "/auth/password-login", "/api/auth/me"], label)
+        }
+    }
+
+    /// A -32601 (method not found) to one screen's call is the connection's to remember, past
+    /// the socket that carried it. The handshake's own `client.capabilities` and an ordinary
+    /// rejection are not recorded.
+    func testAMissingMethodIsRememberedForEveryScreenOnTheConnection() async throws {
+        let socket = BotScriptedSocket()
+        let error: (BotJSON, Int) -> BotJSON = { request, code in
+            .object(["id": request["id"], "error": .object(["code": .number(Double(code)), "message": .string("refused")])])
+        }
+        socket.capabilitiesReply = { error($0, -32601) }
+        socket.reply = { request in
+            switch request["method"].text {
+            case "session.cwd.set": return error(request, -32601)
+            case "model.options": return error(request, 4000)
+            default: return .object(["id": request["id"], "result": .object([:])])
+            }
+        }
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil },
+                                    gateway: .init { _ in socket })
+        let chat = BotClient(http: http), inbox = BotClient(http: http)
+        try await chat.connect()
+        try await inbox.connect()
+        for call in [HermesCall.sessionCwdSet(sessionID: "runtime", profile: "bot", cwd: "/new"),
+                     .modelOptions(sessionID: "runtime", profile: "bot")] {
+            do { _ = try await chat.call(call); XCTFail("\(call.method) is refused") } catch {}
+        }
+        XCTAssertEqual(inbox.unavailableMethods, ["session.cwd.set"])
+        chat.close(); inbox.close()
+        XCTAssertEqual(BotClient(http: http).unavailableMethods, ["session.cwd.set"], "A later socket on the connection keeps it")
+    }
+
     func testHeaderPolicyRefusesTransportNamesAndBearerAndKeepsTheCloudflareJSONForm() throws {
         XCTAssertEqual(try HermesHeaders([cloudflare, access]).values, [cloudflare, access])
         let refused: [(CustomHeader, HermesHeaders.Rejection)] = [

@@ -8,8 +8,9 @@ import OSLog
 /// `BotDashboardClient`) the same instance, so they sign in once and share one socket.
 /// Setup and dev auto-login probe unsaved credentials on their own.
 ///
-/// Sign-in is single-flight: it reads the public `/api/status` and checks the install
-/// identity before the password goes out, then verifies the identity the host returns.
+/// Sign-in is single-flight: it reads the public `/api/status`, refuses a release older
+/// than `HermesCompatibility.minimumVersion` and checks the install identity before the
+/// password goes out, then verifies the identity the host returns.
 /// Cancelling one waiting consumer never cancels it. A signed-in request the host answers
 /// with 401 signs in again once, sharing that sign-in with any other consumer's 401, and
 /// is resent: the auth gate refuses before any handler runs, so the resend cannot repeat
@@ -31,6 +32,10 @@ import OSLog
     private(set) var serverVersion: String?
     /// `install_id` from the same read; nil when omitted.
     private(set) var serverInstallID: String?
+    /// Gateway methods the host answered -32601 (method not found) on this connection, so
+    /// a control one chat found missing stays off in every chat on it. Recorded by
+    /// `gateway`; a new connection starts empty.
+    private(set) var unavailableMethods: Set<String> = []
     /// The standard-deadline session. The gateway socket opens on it, with its cookies.
     let session: URLSession
     /// Shares `session`'s cookie jar; only its deadlines differ.
@@ -80,6 +85,11 @@ import OSLog
         return fresh
     }
 
+    /// The gateway's report that the host answered `method` with -32601.
+    func noteUnavailable(_ method: String) {
+        unavailableMethods.insert(method)
+    }
+
     /// Signs in unless this connection already is. Concurrent callers share one attempt,
     /// which runs on the session for the `deadline` of the caller that started it.
     func signIn(deadline: Deadline = .standard) async throws {
@@ -100,6 +110,7 @@ import OSLog
                 try checkCurrent()
                 serverVersion = status["version"].text
                 serverInstallID = BotConnection.installID(in: status)
+                if let version = serverVersion, !HermesCompatibility.isSupported(version) { throw BotFailure.outdated(version) }
                 try connection.requireSameInstall(serverInstallID)
                 guard status["auth_required"].flag == true else { throw BotFailure.unsupported }
                 // #708 replaces this branch with the browser sign-in flow.
@@ -371,7 +382,8 @@ enum HermesConnectionLog {
 
     /// Names `error` for a log line without its description or user info: a `URLError`'s
     /// user info holds the failing URL, and so the host, and a rejection can carry the
-    /// host's own text. `BotFailure`'s payloads are status and error codes only.
+    /// host's own text. `BotFailure`'s payloads are status and error codes, and the
+    /// release `/api/status` reported for `.outdated`.
     static func reason(_ error: Error) -> String {
         switch error {
         case let failure as BotFailure: return "\(failure)"

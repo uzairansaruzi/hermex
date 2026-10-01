@@ -121,8 +121,25 @@ silence deadline; a socket quiet for longer is dropped and reconnects.
 (line 1) and the release `/api/status` reports as `version` (line 2), the Bot
 counterpart of `UPSTREAM_TESTED_SHA`. The pin is 0.21.5 (`ca678285`); sections
 below that name an older commit record what was verified at the time. `BotClient.connect()` captures `version`
-and the connection screen stores it on the `BotConnection` record. Successful
-sign-in saves and dismisses regardless of version; no version warning is shown.
+and the connection screen stores it on the `BotConnection` record.
+`HermesCompatibility` holds the tested release and the minimum, 0.21.3: 0.21.2
+publishes no gateway contract. `HermesConnection` compares the leading
+`MAJOR.MINOR.PATCH` (a canary reads as its base release) right after the
+`/api/status` read and refuses an older host with `BotFailure.outdated` before the
+install check and the password, so the form, inbox, chats, rooms and push setup all
+show the "update Hermes" copy. A missing or unreadable version proceeds: the pin
+always reports one, so its absence means a proxy or a fork. At or above the
+minimum, sign-in saves and dismisses whatever the release; no version warning is
+shown (#626).
+A host that answers a call with -32601 (method not found) lacks that method:
+`HermesGateway` records it on the connection (`unavailableMethods`, never for the
+handshake's own `client.capabilities`), and `BotChatControls` reads it, so a chat
+control the host lacks stays off in every chat on that connection until a new
+connection starts empty.
+An ordinary 4000 (invalid params) is not that signal. To learn whether a method
+exists before calling it, the first consumer that needs to (#701 onward) sends a
+deliberately invalid-parameter probe, `{"__hermex_probe": true}`: 4000 means
+present, -32601 absent. Nothing sends one yet.
 With a saved connection, the screen's Status section reads the public `/api/status`
 once per appearance or "Check again" (no credentials, no retries) and shows the live
 version (or the stored one), gateway state and platform counts; scheduled Tasks need

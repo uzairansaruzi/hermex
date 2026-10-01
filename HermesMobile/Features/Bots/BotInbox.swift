@@ -410,7 +410,7 @@ import UIKit
     private static func isRetryable(_ error: Error) -> Bool {
         switch error as? BotFailure {
         case .unsupported, .wrongIdentity, .differentHost, .invalidAddress, .notDashboard,
-             .blocked, .browserSignIn, .upgradeRefused: return false
+             .blocked, .browserSignIn, .upgradeRefused, .outdated: return false
         case .rejected(-32601), .rejected(4090), .rejected(4130): return false
         case .rejected(408), .rejected(429): return true
         case .rejected(let code): return !(400..<500).contains(code)

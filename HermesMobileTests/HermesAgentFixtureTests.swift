@@ -38,7 +38,7 @@ import XCTest
 
     func testFixturesWereCapturedAtThePin() throws {
         let manifest = try fixture("manifest")
-        XCTAssertEqual(manifest["version"].text, BotConnection.testedHermesVersion)
+        XCTAssertEqual(manifest["version"].text, HermesCompatibility.testedVersion)
         let pin = try String(contentsOf: Self.tests.deletingLastPathComponent().appendingPathComponent("HERMES_AGENT_TESTED_SHA"), encoding: .utf8)
         XCTAssertEqual(manifest["hermes_agent_sha"].text, pin.split(separator: "\n").first.map(String.init),
                        "Re-run scripts/capture-hermes-fixtures after advancing the pin")
@@ -63,7 +63,7 @@ import XCTest
         } catch {
             XCTAssertEqual(error as? BotFailure, .rejected(404), "Anything else means the auth gate refused the captured status")
         }
-        XCTAssertEqual(client.serverVersion, BotConnection.testedHermesVersion)
+        XCTAssertEqual(client.serverVersion, HermesCompatibility.testedVersion)
     }
 
     func testEveryRosterRowBuildsAProfileWithItsChatAndLook() throws {
@@ -143,7 +143,7 @@ import XCTest
             return XCTFail("Missing turn-tool-approval-frames.json; run scripts/capture-hermes-fixtures --local against scripts/local-hermes")
         }
         let capture = try JSONDecoder().decode(BotJSON.self, from: data)
-        XCTAssertEqual(capture["version"].text, BotConnection.testedHermesVersion)
+        XCTAssertEqual(capture["version"].text, HermesCompatibility.testedVersion)
         let pin = try String(contentsOf: Self.tests.deletingLastPathComponent().appendingPathComponent("HERMES_AGENT_TESTED_SHA"), encoding: .utf8)
         XCTAssertEqual(capture["hermes_agent_sha"].text, pin.split(separator: "\n").first.map(String.init))
         let frames = try XCTUnwrap(capture["frames"].list)

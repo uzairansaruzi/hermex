@@ -19,6 +19,7 @@ import Foundation
     var serverVersion: String? { http.serverVersion }
     /// `install_id` from the same read; nil when omitted.
     var serverInstallID: String? { http.serverInstallID }
+    var unavailableMethods: Set<String> { http.unavailableMethods }
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
 

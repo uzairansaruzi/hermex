@@ -61,7 +61,7 @@ import OSLog
         let continuation: CheckedContinuation<BotJSON, Error>
         /// The screen that sent it; nil for the handshake's own call.
         let consumer: Int?
-        /// `HermesCall.method`, for the log.
+        /// `HermesCall.method`, for the log and the connection's missing methods.
         let method: String
         let deadline: Task<Void, Never>
         let rejection: HermesCall.Rejection
@@ -345,6 +345,9 @@ import OSLog
         }
         entry.deadline.cancel()
         if let code = frame["error"]["code"].integer {
+            // The host lacks this method, so every screen on the connection leaves it off.
+            // The handshake's own `client.capabilities` is exempt: an older host connects as before.
+            if code == -32601, entry.consumer != nil { http.noteUnavailable(entry.method) }
             switch entry.rejection {
             case .room:
                 entry.continuation.resume(throwing: BotRoomFailure(code: code, reason: frame["error"]["data"]["reason"].text))
