@@ -1736,8 +1736,10 @@ action is "Restart Hermes…", behind a destructive confirmation because running
 route whenever it answers, until the newest plugin is loaded; the old process can still answer
 just after the 202, so an old version keeps it waiting. A connection dropped on the restart
 request counts as the restart; an HTTP error before it ran is "Couldn't restart Hermes" with
-"Try again". Past the wait, the last answer stands: the old plugin (restart offered again), or
-"Hermes didn't come back" with "Check again". Without a configured signing secret the
+"Try again". Past the wait, the last answer stands: the old plugin (restart offered again), a
+host that answers but fails the plugin read (a new plugin that failed to import has no routes
+mounted) as a failed read, or silence as "Hermes didn't come back" with "Check again", which
+turns into a failed read once the host answers with an error. Without a configured signing secret the
 dashboard's basic-auth session key is per process, so the first read after a restart signs in
 again. A version read that fails after the reinstall and restart also offers "Check again",
 never a second reinstall and restart. A failure whose copy says "Update the hermex-push plugin." (keys this build cannot

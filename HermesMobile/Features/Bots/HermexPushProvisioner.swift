@@ -69,8 +69,8 @@ import UserNotifications
         case restartTimedOut
         /// An update or check just brought it to the newest. Shown until Settings closes.
         case upToDate(HermexPushPluginVersion)
-        /// The update changed the host, but reading its version failed; the card offers
-        /// the read again, never a second reinstall and restart.
+        /// The update or the restart changed the host, but reading its version failed; the
+        /// card offers the read again, never a second reinstall and restart.
         case checkFailed(Failure)
     }
 
@@ -395,9 +395,10 @@ import UserNotifications
 
     /// "Check again" once the host has been restarted, after a failed read, or after a
     /// restart Hermes didn't come back from: one read, whose answer replaces the card. A
-    /// failure goes to the red row and leaves the card standing, except a card that is itself
-    /// a failed read, which takes the newer answer, and the restart's, which already says a
-    /// host that is still coming back hasn't answered.
+    /// failure goes to the red row and leaves the card standing, except on a card that is
+    /// itself a failed read, which takes the newer failure, and on "Hermes didn't come back":
+    /// a host that still doesn't answer leaves it as it is, and one that answers with an
+    /// error is a failed read.
     func checkPluginAgain() async {
         guard !isWorking, let connection else { return }
         setupRanLast = false
@@ -406,8 +407,8 @@ import UserNotifications
             pluginUpdate = try await pluginStanding(dashboard(connection))
         } catch {
             switch pluginUpdate {
-            case .checkFailed?: pluginUpdate = .checkFailed(Self.checkFailure(error))
-            case .restartTimedOut? where Self.isRestarting(error): break
+            case .restartTimedOut? where Self.isUnreachable(error): break
+            case .checkFailed?, .restartTimedOut?: pluginUpdate = .checkFailed(Self.checkFailure(error))
             default: return fail(PluginUpdateStep.check.failureTitle, error)
             }
         }
@@ -478,8 +479,9 @@ import UserNotifications
     /// is probed on `restartDelays`, and whenever it answers the pairing route is read, until
     /// the newest plugin is loaded. The old process can still answer just after the 202, so an
     /// answer with the old plugin keeps waiting. When the schedule runs out the last answer
-    /// stands: the old plugin, offered the restart again, or "Hermes didn't come back". Like
-    /// the update, the run outlives Settings.
+    /// stands: the old plugin, offered the restart again; a host that answers but whose read
+    /// fails (a new plugin that didn't load leaves its routes unmounted), a failed read; or
+    /// silence, "Hermes didn't come back". Like the update, the run outlives Settings.
     func restartHermes() async {
         guard !isWorking, let connection, case .restartNeeded(let loaded)? = pluginUpdate,
               HermexPushPlugin.canRestart(loaded) else { return }
@@ -495,14 +497,21 @@ import UserNotifications
                                     remedy: .retryRestart))
             return
         }
-        var answer: PluginUpdate?
+        var answer: Result<PluginUpdate, Error>?
         for delay in restartDelays {
             do { try await sleep(delay) } catch { break }
-            guard await client.answersStatus() else { answer = nil; continue }
-            answer = try? await pluginStanding(client)
-            if case .upToDate? = answer { break }
+            answer = nil
+            guard await client.answersStatus() else { continue }
+            do { answer = .success(try await pluginStanding(client)) } catch where !Self.isUnreachable(error) {
+                answer = .failure(error)
+            } catch {}
+            if case .success(.upToDate)? = answer { break }
         }
-        pluginUpdate = answer ?? .restartTimedOut
+        switch answer {
+        case .success(let standing)?: pluginUpdate = standing
+        case .failure(let error)?: pluginUpdate = .checkFailed(Self.checkFailure(error))
+        case nil: pluginUpdate = .restartTimedOut
+        }
         phase = .idle
     }
 
@@ -597,10 +606,19 @@ import UserNotifications
         }
     }
 
+    /// A host coming back from a restart: unreachable, or up without the plugin's routes yet.
     private static func isRestarting(_ error: Error) -> Bool {
         switch error {
-        case BotFailure.rejected(404), BotFailure.rejected(409), BotFailure.rejected(502),
-             BotFailure.rejected(503), BotFailure.transport: return true
+        case BotFailure.rejected(404), BotFailure.rejected(409): return true
+        default: return isUnreachable(error)
+        }
+    }
+
+    /// No answer from Hermes itself: a dropped or refused connection, or a proxy in front of
+    /// a host that is down.
+    private static func isUnreachable(_ error: Error) -> Bool {
+        switch error {
+        case BotFailure.rejected(502), BotFailure.rejected(503), BotFailure.transport: return true
         default: return error is URLError
         }
     }

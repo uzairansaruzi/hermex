@@ -1135,6 +1135,43 @@ import XCTest
                        "Back with the old plugin: the restart is offered again")
     }
 
+    func testAHostBackWithoutThePluginsRoutesEndsOnAFailedReadNotOnSilence() async throws {
+        // A new plugin that fails to import leaves Hermes up with none of its routes mounted.
+        let unmounted = HermexPushProvisioner.PluginUpdate.checkFailed(HermexPushProvisioner.Failure(
+            title: "Couldn’t check the plugin version",
+            message: "This Hermes host refused the step (HTTP 404). Check the host’s logs, then try again."))
+        for backDuringTheWait in [true, false] {
+            PushHTTPFixture.reset()
+            let registrar = try await pairedRegistrar(serverA)
+            var restarted = false, back = backDuringTheWait
+            PushHTTPFixture.handler = { request in
+                switch request.url?.path {
+                case "/api/plugins/hermex-push/restart": restarted = true; return (202, .null)
+                case "/api/status" where restarted && !back: return (PushHTTPFixture.dropped, .null)
+                case "/api/plugins/hermex-push/pairing":
+                    return restarted ? (404, .null) : (200, PushHTTPFixture.pairingBody(version: "0.4.0"))
+                case "/api/dashboard/plugins/hub": return (200, PushHTTPFixture.hubBody(version: "0.5.0"))
+                default: return nil
+                }
+            }
+            let provisioner = makeProvisioner(server: serverA, registrar: registrar, newest: future)
+            await provisioner.checkPlugin()
+
+            await provisioner.restartHermes()
+
+            if backDuringTheWait {
+                XCTAssertEqual(provisioner.pluginCard, .status(unmounted), "Hermes answered, so it came back")
+            } else {
+                XCTAssertEqual(provisioner.pluginCard, .status(.restartTimedOut))
+                back = true
+                await provisioner.checkPluginAgain()
+                XCTAssertEqual(provisioner.pluginCard, .status(unmounted), "Answering now, so no longer silent")
+            }
+            XCTAssertNil(provisioner.failure, "The card itself says what failed")
+            XCTAssertFalse(provisioner.isWorking)
+        }
+    }
+
     func testARefusedRestartSaysWhatTheHostAnsweredAndCanBeTriedAgain() async throws {
         let registrar = try await pairedRegistrar(serverA)
         var refused = true
