@@ -202,6 +202,8 @@ security add-generic-password -s hermex-bot -a <bot-username> -j <bot-address> -
 
 `hermex-bot` is optional; with it the script also saves the Bot connection and turns Bot Mode on.
 
+`scripts/sim-login <simulator-udid> --hermes` also adds a Hermes server at the `hermex-bot` address, signed in with the same username and password, and opens it once per launch; switching away afterwards sticks until the next run. It needs `hermex-bot`, or all three of `HERMEX_BOT_ADDRESS`, `HERMEX_BOT_USERNAME` and `HERMEX_BOT_PASSWORD` in the environment, which replace the Keychain item for that run. Without `--hermes` the script behaves as before.
+
 ### Local Hermes test server
 
 For tool and approval turns without a real model or the real host, run the pinned hermes-agent on this Mac:
@@ -212,7 +214,14 @@ scripts/local-hermes
 
 The first run clones the commit in `HERMES_AGENT_TESTED_SHA` into `~/Library/Caches/hermex-local-hermes/` and installs it with `uv` (network needed); later runs start in seconds. It serves `http://127.0.0.1:9199` with the credentials it prints (`hermex` / `hermex-local`), backed by a scripted stub model: every turn says "Let me run a quick check.", asks to run `python3 -c "print(1)"` behind a manual approval, then replies "The command returned: …" with the result or the denial. **Approving really runs that command on this Mac.** Each run uses a temporary Hermes home, deleted on exit, with a fixed install id, so a saved connection keeps working across restarts. Ctrl-C stops only the process group the script started.
 
-It listens on loopback, so only the simulator can reach it. To point the app at it, sign in to your webui server as usual (Bot connections are saved per webui server), then open Settings → your server → **Hermes connection**, enter `http://127.0.0.1:9199` and the printed credentials, and save. This replaces that server's saved Hermes connection until you enter the real one again. `scripts/sim-login` never replaces an existing connection, so it won't switch back for you.
+It listens on loopback, so only the simulator can reach it. To open it as a Hermes server, run:
+
+```zsh
+HERMEX_BOT_ADDRESS=http://127.0.0.1:9199 HERMEX_BOT_USERNAME=hermex HERMEX_BOT_PASSWORD=hermex-local \
+  scripts/sim-login <simulator-udid> --hermes
+```
+
+That also saves it as your webui server's own Hermes connection if that server has none yet. To point an existing webui server's connection at it instead, open Settings → your server → **Hermes connection**, enter `http://127.0.0.1:9199` and the printed credentials, and save. This replaces that server's saved Hermes connection until you enter the real one again. `scripts/sim-login` never replaces an existing connection, so it won't switch back for you.
 
 ## Launch arguments and profiling
 
@@ -228,7 +237,7 @@ Debug builds read these launch arguments; Release builds compile none of them in
 xcrun simctl launch <simulator-udid> com.uzairansar.hermesmobile --hitch-meter
 ```
 
-The `HERMEX_DEV_*` environment variables (`HERMEX_DEV_SERVER_URL`, `HERMEX_DEV_PASSWORD`, and `HERMEX_DEV_BOT_ADDRESS`/`_USERNAME`/`_PASSWORD`) sign a Debug build in; `scripts/sim-login` sets them from the macOS Keychain (§ Signing a simulator in).
+The `HERMEX_DEV_*` environment variables (`HERMEX_DEV_SERVER_URL`, `HERMEX_DEV_PASSWORD`, `HERMEX_DEV_BOT_ADDRESS`/`_USERNAME`/`_PASSWORD`, and `HERMEX_DEV_HERMES_SERVER=1` for a Hermes server) sign a Debug build in; `scripts/sim-login` sets them from the macOS Keychain (§ Signing a simulator in).
 
 ### Recording signposts
 

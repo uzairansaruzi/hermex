@@ -1,6 +1,7 @@
 # Bot Mode
 
-Bots use the selected configured Hermex server's optional direct-Hermes connection.
+Bots use the selected configured Hermex server's direct-Hermes connection: optional on
+a webui server, and on a Hermes server the server's own sign-in (below).
 The connection is a separate Hermes Desktop HTTP/WebSocket backend, not webui.
 The connection record, credentials and stable UUID live in server-scoped Keychain
 storage. The host's identity is the `install_id` public `/api/status` reports (one
@@ -18,6 +19,29 @@ and discards the old connection's local data. The id is public: it catches an
 address that now reaches another host, not an impostor. Removing the connection
 deletes its drafts; removing the configured server deletes both its connection and
 all its drafts.
+
+A configured server is a webui server or a Hermes server (`ServerAccount.kind`, #899).
+A Hermes server's id is its dashboard address as `BotConnection.address(_:)` parses it,
+and its sign-in record is the same `BotConnection` JSON under `bot_connection::<its
+URL>`, so every Bot store, draft, cache, section order and bot link keys by it as they
+do by a webui server. `AuthManager.addHermesServer` saves a sign-in the form already
+verified and activates the server; it needs Bot Mode on and refuses an address already
+in the registry. Turning Bot Mode off later never locks a user out: an existing Hermes
+server still opens, and so do its bot links. Its home is the Bots inbox, with the
+server's avatar for Settings (tap) and switching (hold) where the gear was. Without a
+record (after Sign Out, which deletes the record and Bot data but keeps the server) or
+after the host refuses its saved password at the login step, including the one silent
+re-login a signed-in 401 starts (`HermesConnections.onSignInRejected`), the server is
+`.loggedOut` and shows its connection form as the root: the address locked, the
+password focused, no Remove, the avatar as the way out. No Bot screen exists in that
+state, so nothing sends the refused password again; saving a sign-in signs the server
+back in. A webui server's own connection keeps #884's per-screen flag instead. A
+Hermes server sends no webui request: Settings skips its webui loads and hides their
+rows, a webui 401 never signs it out, and new chats, session links and shares switch
+to the first webui server (or say there is none). It has no push pairing until #706,
+so removing it never calls the relay. Its connection form is reached through Settings
+→ Active Server → Hermes connection. Moving a webui server's connection into a Hermes
+server is #707's; a copy gets a fresh UUID.
 
 The saved connection's HTTP side is one `HermesConnection` (`Networking/Hermes/`):
 an ephemeral cookie jar, a single-flight password sign-in, and the only path Bot HTTP

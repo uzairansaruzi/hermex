@@ -4,7 +4,12 @@
 # Keychain and reach the app through SIMCTL_CHILD_* environment variables
 # (read by DevAutoLogin.swift, DEBUG builds only); they are never printed.
 #
-# Usage: scripts/sim-login <simulator-udid>
+# Usage: scripts/sim-login <simulator-udid> [--hermes]
+#
+# --hermes also adds a Hermes server at the hermex-bot address, with the same
+# sign-in, and opens it. HERMEX_BOT_ADDRESS, HERMEX_BOT_USERNAME and
+# HERMEX_BOT_PASSWORD, when all three are set, replace the hermex-bot item, for
+# example to target scripts/local-hermes.
 #
 # One-time Keychain setup (the account of hermex-webui is the server host):
 #   security add-generic-password -s hermex-webui -a <server-host> -w
@@ -12,7 +17,9 @@
 # hermex-bot is optional; without it only the server login runs.
 set -euo pipefail
 
-udid="${1:?usage: scripts/sim-login <simulator-udid>}"
+udid="${1:?usage: scripts/sim-login <simulator-udid> [--hermes]}"
+hermes_server="${2:-}"
+[[ -z "$hermes_server" || "$hermes_server" == "--hermes" ]] || { echo "usage: scripts/sim-login <simulator-udid> [--hermes]" >&2; exit 1 }
 bundle_id="${HERMEX_BUNDLE_ID:-com.uzairansar.hermesmobile}"
 
 # Prints one attribute ("acct" or "icmt") of a generic-password Keychain item,
@@ -27,13 +34,24 @@ host="$(attribute hermex-webui acct)"
 export SIMCTL_CHILD_HERMEX_DEV_SERVER_URL="$host"
 export SIMCTL_CHILD_HERMEX_DEV_PASSWORD="$(security find-generic-password -s hermex-webui -w)"
 
-bot_username="$(attribute hermex-bot acct)"
-bot_address="$(attribute hermex-bot icmt)"
-if [[ -n "$bot_username" && -n "$bot_address" ]]; then
-  export SIMCTL_CHILD_HERMEX_DEV_BOT_ADDRESS="$bot_address"
-  export SIMCTL_CHILD_HERMEX_DEV_BOT_USERNAME="$bot_username"
-  export SIMCTL_CHILD_HERMEX_DEV_BOT_PASSWORD="$(security find-generic-password -s hermex-bot -w)"
+if [[ -n "${HERMEX_BOT_ADDRESS:-}" && -n "${HERMEX_BOT_USERNAME:-}" && -n "${HERMEX_BOT_PASSWORD:-}" ]]; then
+  export SIMCTL_CHILD_HERMEX_DEV_BOT_ADDRESS="$HERMEX_BOT_ADDRESS"
+  export SIMCTL_CHILD_HERMEX_DEV_BOT_USERNAME="$HERMEX_BOT_USERNAME"
+  export SIMCTL_CHILD_HERMEX_DEV_BOT_PASSWORD="$HERMEX_BOT_PASSWORD"
+else
+  bot_username="$(attribute hermex-bot acct)"
+  bot_address="$(attribute hermex-bot icmt)"
+  if [[ -n "$bot_username" && -n "$bot_address" ]]; then
+    export SIMCTL_CHILD_HERMEX_DEV_BOT_ADDRESS="$bot_address"
+    export SIMCTL_CHILD_HERMEX_DEV_BOT_USERNAME="$bot_username"
+    export SIMCTL_CHILD_HERMEX_DEV_BOT_PASSWORD="$(security find-generic-password -s hermex-bot -w)"
+  fi
+fi
+
+if [[ -n "$hermes_server" ]]; then
+  [[ -n "${SIMCTL_CHILD_HERMEX_DEV_BOT_ADDRESS:-}" ]] || { echo "--hermes needs the hermex-bot Keychain item or HERMEX_BOT_*; see the header of this script." >&2; exit 1 }
+  export SIMCTL_CHILD_HERMEX_DEV_HERMES_SERVER=1
 fi
 
 xcrun simctl launch --terminate-running-process "$udid" "$bundle_id" >/dev/null
-echo "Launched $bundle_id on $udid with dev sign-in."
+echo "Launched $bundle_id on $udid with dev sign-in${hermes_server:+ and a Hermes server}."

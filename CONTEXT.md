@@ -2,6 +2,16 @@
 
 Canonical language for Hermex concepts that need consistent names across the product, planning, and support.
 
+## Servers
+
+**Webui server**:
+A configured `hermes-webui` server. Hermex signs in to it with its password and cookie, and it opens on the session list.
+_Avoid_: server (alone, when the kind matters), WebUI
+
+**Hermes server**:
+A configured Hermes dashboard that Hermex reaches directly. Its sign-in is its own Hermes connection, and it opens on the Bots inbox.
+_Avoid_: Hermes connection (that is the sign-in), bot server
+
 ## Kanban
 
 **Kanban**:
