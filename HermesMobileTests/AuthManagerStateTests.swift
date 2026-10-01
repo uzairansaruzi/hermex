@@ -331,19 +331,25 @@ final class AuthManagerStateTests: XCTestCase {
     func testServerAndBotCredentialChangesRetireTheSharedBotConnectionAtOnce() async throws {
         let serverA = try XCTUnwrap(URL(string: "https://a.test"))
         let saved = BotConnection(id: UUID(), name: "Host", address: try XCTUnwrap(URL(string: "https://hermes.example")),
-                                  username: "u", password: "p")
+                                  username: "u", password: "p", headers: [CustomHeader(name: "X-Access", value: "token")])
         var renamed = saved
         renamed.name = "Renamed"
         renamed.installID = String(repeating: "a", count: 32)
         var rotated = saved
         rotated.password = "rotated"
+        var reheadered = saved
+        reheadered.headers = [CustomHeader(name: "X-Access", value: "rotated")]
+        var headerless = saved
+        headerless.headers = nil
         let changes: [(String, Bool, (AuthManager, ServerAccount, ServerAccount, BotConnectionStore) async throws -> Void)] = [
             ("server switch", true, { manager, _, b, _ in manager.switchActiveServer(to: b) }),
             ("sign-out", true, { manager, _, _, _ in await manager.signOut() }),
             ("server removal", true, { manager, a, _, _ in await manager.removeServer(a) }),
             ("replaced credentials", true, { _, _, _, store in try store.save(rotated, server: serverA) }),
             ("removed credentials", true, { _, _, _, store in try store.remove(server: serverA) }),
-            ("rename and install id backfill", false, { _, _, _, store in try store.save(renamed, server: serverA) })
+            ("changed headers", true, { _, _, _, store in try store.save(reheadered, server: serverA) }),
+            ("removed headers", true, { _, _, _, store in try store.save(headerless, server: serverA) }),
+            ("rename and install id backfill, same headers", false, { _, _, _, store in try store.save(renamed, server: serverA) })
         ]
         for (change, retires, apply) in changes {
             let keychain = InMemoryKeychainStore()

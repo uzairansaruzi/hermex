@@ -9,6 +9,10 @@ import Observation
     @State private var copiedPrompt = false
     @State private var copiedAddress = false
     @State private var statusCheck: Task<Void, Never>?
+    /// The form loads the saved record once: coming back from the pushed headers editor
+    /// reruns `.task`, which must not replace the edits in progress, and checks the
+    /// status again only if leaving cancelled that check.
+    @State private var loaded = false
     @FocusState private var passwordFocused: Bool
     /// Set when the host refused the saved password: the field opens focused with the
     /// stored password kept, so typing replaces it and Connect alone retries as is.
@@ -49,6 +53,7 @@ import Observation
                 }
             }
             .disabled(setup.isConnecting)
+            headersSection
             Section {
                 if let error = setup.errorMessage {
                     Text(error).foregroundStyle(.red).accessibilityIdentifier("hermes-connection-error")
@@ -103,9 +108,12 @@ import Observation
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         .task {
-            setup.load()
-            if focusesPassword { passwordFocused = true }
-            await setup.checkStatus()
+            if !loaded {
+                loaded = true
+                setup.load()
+                if focusesPassword { passwordFocused = true }
+            }
+            if setup.hostStatus == nil || setup.hostStatus == .checking { await setup.checkStatus() }
         }
         .onDisappear { operation?.cancel(); statusCheck?.cancel(); setup.cancel() }
         .confirmationDialog("Remove this connection from Hermex?", isPresented: $confirmingRemoval, titleVisibility: .visible) {
@@ -115,6 +123,48 @@ import Observation
         } message: {
             Text("Saved sign-in details, this connection’s drafts and its notification keys will be deleted. This iPhone stops receiving this host’s notifications. Bots and their work remain on the host.")
         }
+    }
+
+    /// The Connection Headers row, which pushes the shared editor, and a footer that puts
+    /// a rejected header or a half Cloudflare Access pair above what headers are for.
+    private var headersSection: some View {
+        Section {
+            NavigationLink {
+                ScrollView {
+                    CustomHeadersEditor(headers: $setup.headers)
+                        .padding(20)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .navigationTitle("Connection Headers")
+                .navigationBarTitleDisplayMode(.inline)
+            } label: {
+                let count = setup.headers.sanitizedForStorage().count
+                LabeledContent("Connection Headers", value: count == 0 ? String(localized: "None") : count.formatted())
+            }
+            .accessibilityIdentifier("hermes-connection-headers")
+        } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                if let rejection = setup.headerRejection {
+                    Label {
+                        Text(rejection)
+                    } icon: {
+                        Image(systemName: "exclamationmark.circle.fill")
+                    }
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("hermes-connection-headers-rejection")
+                }
+                if let warning = setup.accessPairWarning {
+                    Label {
+                        Text(warning)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    }
+                    .accessibilityIdentifier("hermes-connection-headers-warning")
+                }
+                Text("Sent with every request to this Hermes host, for a proxy such as Cloudflare Access.")
+            }
+        }
+        .disabled(setup.isConnecting)
     }
 
     /// Read-only rows from the host's public status. Gateway rows appear only after
@@ -230,6 +280,9 @@ extension BotHostStatus {
     var address = ""
     var username = ""
     var password = ""
+    /// The Connection Headers being edited. Saved with the connection by `connect()`,
+    /// without blank rows.
+    var headers: [CustomHeader] = []
     private(set) var saved: BotConnection?
     private(set) var errorMessage: String?
     private(set) var isConnecting = false
@@ -243,7 +296,7 @@ extension BotHostStatus {
     @ObservationIgnored private let makeWire: (BotConnection) -> any BotTransport
     @ObservationIgnored private let discard: (BotConnection) async -> Void
     @ObservationIgnored private var client: (any BotTransport)?
-    @ObservationIgnored private let probe: (URL) async -> Result<BotHostStatus, BotHostProbeFailure>
+    @ObservationIgnored private let probe: (URL, HermesHeaders) async -> Result<BotHostStatus, BotHostProbeFailure>
     @ObservationIgnored private let relay: (URL) -> URL?
     @ObservationIgnored private var attempt: UUID?
     @ObservationIgnored private var statusCheck: UUID?
@@ -255,13 +308,13 @@ extension BotHostStatus {
     init(server: URL, store: BotConnectionStore? = nil,
          makeWire: ((BotConnection) -> any BotTransport)? = nil,
          discard: ((BotConnection) async -> Void)? = nil,
-         probe: ((URL) async -> Result<BotHostStatus, BotHostProbeFailure>)? = nil,
+         probe: ((URL, HermesHeaders) async -> Result<BotHostStatus, BotHostProbeFailure>)? = nil,
          relay: ((URL) -> URL?)? = nil) {
         self.server = server; self.store = store ?? BotConnectionStore()
         // The candidate is not saved yet, so it signs in on its own cookie jar, never the
         // server's shared one.
         self.makeWire = makeWire ?? { BotClient(connection: $0) }
-        self.probe = probe ?? { await BotHostStatusProbe().check($0) }
+        self.probe = probe ?? { await BotHostStatusProbe().check($0, headers: $1) }
         self.relay = relay ?? { PushRegistrar.shared?.pairing(for: $0)?.relayURL }
         self.discard = discard ?? { old in
             await PushRegistrar.shared?.forget(for: server)
@@ -281,6 +334,22 @@ extension BotHostStatus {
     var canConnect: Bool {
         !isConnecting && !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
+            && headerRejection == nil
+    }
+
+    /// Why the edited headers can't be sent to Hermes (`HermesHeaders`), shown under the
+    /// Connection Headers row; Connect stays off until it is fixed. Nil when they can.
+    var headerRejection: String? {
+        do { _ = try HermesHeaders(headers.sanitizedForStorage()); return nil } catch { return error.localizedDescription }
+    }
+
+    /// Shown under the Connection Headers row when only one of Cloudflare Access's two
+    /// service-token headers has a value. Access treats such a request as signed out,
+    /// but Connect stays on and sends what was entered.
+    var accessPairWarning: String? {
+        let filled = Set(headers.filter { !$0.sanitizedValue.isEmpty }.map { $0.sanitizedName.lowercased() })
+        guard filled.contains("cf-access-client-id") != filled.contains("cf-access-client-secret") else { return nil }
+        return String(localized: "Cloudflare Access needs both CF-Access-Client-Id and CF-Access-Client-Secret.")
     }
 
     /// The replace action is offered only for the address that was refused, so editing
@@ -294,6 +363,7 @@ extension BotHostStatus {
             saved = try store.load(server: server)
             name = saved?.name ?? ""; address = saved?.address.absoluteString ?? ""
             username = saved?.username ?? ""; password = saved?.password ?? ""
+            headers = saved?.headers ?? []
         } catch { errorMessage = String(localized: "Could not read saved sign-in details.") }
         notificationRelay = relay(server)
     }
@@ -303,13 +373,13 @@ extension BotHostStatus {
         statusCheck = nil
     }
 
-    /// Reads the saved host's public status once. Nothing retries; a newer check,
-    /// `cancel()` or a changed saved address drops a late reply.
+    /// Reads the saved host's public status once, with its saved headers. Nothing retries;
+    /// a newer check, `cancel()` or a changed saved address drops a late reply.
     func checkStatus() async {
-        guard let address = saved?.address else { hostStatus = nil; return }
+        guard let checked = saved else { hostStatus = nil; return }
         let id = UUID(); statusCheck = id; hostStatus = .checking
-        let result = await probe(address)
-        guard statusCheck == id, !Task.isCancelled, saved?.address == address else { return }
+        let result = await probe(checked.address, HermesHeaders(saved: checked))
+        guard statusCheck == id, !Task.isCancelled, saved?.address == checked.address else { return }
         statusCheck = nil
         switch result {
         case .success(let status): hostStatus = .reachable(status)
@@ -317,24 +387,26 @@ extension BotHostStatus {
         }
     }
 
-    /// Signs in and saves the connection. The UUID, and with it drafts, cache and push
-    /// pairing, is kept when the host reports the saved `install_id` or when address and
-    /// username are unchanged; otherwise the old connection's data is discarded. An
-    /// unchanged address must still reach the saved install before the password is sent.
-    /// `replacingHost` is the user's answer to `.differentHost`: it drops that expectation
-    /// and always starts a new connection.
+    /// Signs in with the form's headers and saves the connection with them. The UUID, and
+    /// with it drafts, cache and push pairing, is kept when the host reports the saved
+    /// `install_id` or when address and username are unchanged, whatever the headers;
+    /// otherwise the old connection's data is discarded. An unchanged address must still
+    /// reach the saved install before the password is sent. `replacingHost` is the user's
+    /// answer to `.differentHost`: it drops that expectation and always starts a new connection.
     func connect(replacingHost: Bool = false) async -> Bool {
         guard !isConnecting, !Task.isCancelled else { return false }
         let id = UUID(); attempt = id; isConnecting = true; errorMessage = nil; differentHostAddress = nil
         defer { if attempt == id { isConnecting = false; client = nil; attempt = nil } }
         var attempted: URL?
         do {
+            let admitted = try HermesHeaders(headers.sanitizedForStorage()).values
+            let sent = admitted.isEmpty ? nil : admitted
             let url = try BotConnection.address(address); attempted = url
             let account = username.trimmingCharacters(in: .whitespacesAndNewlines)
             let label = name.isEmpty ? (url.host ?? "Hermes") : name
             let expected = replacingHost || saved?.address != url ? nil : saved?.installID
             let wire = makeWire(BotConnection(id: UUID(), name: label, address: url, username: account,
-                                              password: password, installID: expected))
+                                              password: password, installID: expected, headers: sent))
             client = wire
             defer { wire.close() }
             try await wire.connect()
@@ -344,7 +416,7 @@ extension BotHostStatus {
             let sameAccount = saved?.address == url && saved?.username == account
             let kept = replacingHost ? nil : (sameInstall || sameAccount ? saved : nil)
             let candidate = BotConnection(id: kept?.id ?? UUID(), name: label, address: url, username: account,
-                password: password, hermesVersion: wire.serverVersion, installID: live ?? kept?.installID)
+                password: password, hermesVersion: wire.serverVersion, installID: live ?? kept?.installID, headers: sent)
             let result = try await wire.call(.profilesList(includeSessions: true))
             guard attempt == id, !Task.isCancelled else { return false }
             guard result["profiles"].list != nil else { throw BotFailure.unsupported }
@@ -369,7 +441,8 @@ extension BotHostStatus {
         } catch {
             guard attempt == id, !Task.isCancelled else { return false }
             if error as? BotFailure == .differentHost { differentHostAddress = attempted }
-            // Only the address parse throws before `attempted` is set, with a `BotAddressError`.
+            // Only the header policy and the address parse throw before `attempted` is set,
+            // with a `HermesHeaders.Rejection` or a `BotAddressError`.
             errorMessage = attempted.map { BotConnectionAdvice.message(for: error, address: $0) }
                 ?? error.localizedDescription
             return false

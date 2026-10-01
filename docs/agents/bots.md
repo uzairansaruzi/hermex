@@ -26,11 +26,11 @@ consumer of the active server's saved connection (inbox, chats, rooms, creator,
 editor and push provisioning's `BotDashboardClient`) the same instance, so they sign
 in once; a reconnect only mints a new ticket. The registry holds its one entry weakly
 and keys it by configured server and connection UUID. A request for another server
-or UUID, or for the same UUID with a new address, account or password, retires the
-old connection first: its sign-in in flight stops and its late replies throw
-`.stale`. Switching away from, signing out of or removing the configured server, and
-saving other credentials or removing them, retire it at once rather than at the next
-lookup, so a sign-in finishing afterwards stores nothing and resends nothing; a
+or UUID, or for the same UUID with a new address, account, password or headers,
+retires the old connection first: its sign-in in flight stops and its late replies
+throw `.stale`. Switching away from, signing out of or removing the configured server,
+and saving other credentials or headers or removing them, retire it at once rather than
+at the next lookup, so a sign-in finishing afterwards stores nothing and resends nothing; a
 rename or an install id backfill keeps it. Nothing is pooled by hostname, so the same host and account under two
 configured servers get two jars. The connection form and dev auto-login probe
 unsaved credentials on their own `HermesConnection`, never the shared one.
@@ -44,14 +44,24 @@ the connection signed out; the next request signs in again. A transport failure,
 proxy status or 5xx fails only its request and leaves the sign-in as it was, and
 is never resent. Provisioning keeps its 120/180-second deadlines, for its steps and
 for a sign-in it starts, on a second session that shares the jar; everything else
-keeps 15/30. `HermesConnection`
-accepts origin-bound `HermesHeaders` for tests and a later editor: they reach only
-its own origin, a cross-origin redirect drops them before the push relay or any
-other host, and the policy refuses transport names (`Host`, `Cookie`,
-`Sec-WebSocket-*` and similar), the names Hermes reads for its own checks (`Origin`,
-`X-Forwarded-Prefix`, `X-Hermes-Session-Token`) and `Bearer` authorization while allowing
-Cloudflare Access's JSON `Authorization` form. Production passes none, and the
-webui's custom headers are never a source.
+keeps 15/30.
+
+Connection Headers, for a proxy such as Cloudflare Access, are saved in the
+connection's own Keychain record (`BotConnection.headers`) and edited from the
+connection form with the shared `CustomHeadersEditor`. `HermesConnection` sends them,
+as `HermesHeaders`, on every request to its own origin: the public `/api/status`,
+sign-in, identity, ticket, REST and plugin calls, uploads, downloads and the `/api/ws`
+upgrade. The status probe sends them too, and the form signs its unsaved candidate in
+with the form's set. A cross-origin redirect drops them before the push relay or any
+other host, and `PushRelayClient` never sees them. The policy refuses transport names
+(`Host`, `Cookie`, `Sec-WebSocket-*` and similar), the names Hermes reads for its own
+checks (`Origin`, `X-Forwarded-Prefix`, `X-Hermes-Session-Token`) and `Bearer`
+authorization while allowing Cloudflare Access's JSON `Authorization` form; the form
+says why under the row and keeps Connect off. Only one of `CF-Access-Client-Id` and
+`CF-Access-Client-Secret` warns but still connects. A header change keeps the UUID,
+and with it drafts, cache and push pairing; it only retires the live connection. A
+saved list the policy later refuses sends none. The webui's custom headers are never
+a source, and headers are never logged.
 
 Each `HermesConnection` also owns the one gateway WebSocket its Bot screens share,
 `HermesGateway`. Every screen holds its own `BotClient` handle on it: the inbox, each
@@ -141,7 +151,8 @@ exists before calling it, the first consumer that needs to (#701 onward) sends a
 deliberately invalid-parameter probe, `{"__hermex_probe": true}`: 4000 means
 present, -32601 absent. Nothing sends one yet.
 With a saved connection, the screen's Status section reads the public `/api/status`
-once per appearance or "Check again" (no credentials, no retries) and shows the live
+once when the form opens or on "Check again" (no credentials or cookies, only the
+saved Connection Headers; no retries) and shows the live
 version (or the stored one), gateway state and platform counts; scheduled Tasks need
 the gateway, Bot chat notifications do not.
 Each RPC validates the contract just in time. Advancing the pin is described in AGENTS.md

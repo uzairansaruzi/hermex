@@ -202,7 +202,8 @@ import XCTest
             ("account on the same install", { $0 = BotConnection(id: $0.id, name: $0.name, address: $0.address, username: "other",
                                                                  password: $0.password, installID: $0.installID) }),
             ("address on the same install", { $0 = BotConnection(id: $0.id, name: $0.name, address: URL(string: "https://tunnel.example")!,
-                                                                 username: $0.username, password: $0.password, installID: $0.installID) })
+                                                                 username: $0.username, password: $0.password, installID: $0.installID) }),
+            ("headers", { $0.headers = [self.access] })
         ]
         for (edit, apply) in edits {
             apply(&saved)
@@ -334,14 +335,17 @@ import XCTest
         }
     }
 
-    /// The active webui server's custom headers are loaded too, and never reach Hermes.
-    func testHeadersReachEveryRequestToTheOriginAndTheGatewayUpgradeUnderItsBuiltIns() async throws {
+    /// The saved record's headers, as `HermesConnections` and the connection form's
+    /// candidate pass it. The active webui server's custom headers are loaded too, and
+    /// never reach Hermes.
+    func testSavedHeadersReachEveryRequestToTheOriginAndTheGatewayUpgradeUnderItsBuiltIns() async throws {
         let previous = CustomHeaderStore.shared.snapshot()
         defer { CustomHeaderStore.shared.replace(with: previous) }
         CustomHeaderStore.shared.replace(with: [CustomHeader(name: "X-Webui-Token", value: "webui")])
-        let headers = try HermesHeaders([cloudflare, access, CustomHeader(name: "Content-Type", value: "text/plain")])
+        var saved = record
+        saved.headers = [cloudflare, access, CustomHeader(name: "Content-Type", value: "text/plain")]
         var upgrade: URLRequest?
-        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil }, headers: headers,
+        let http = HermesConnection(connection: saved, configuration: HermesHostFixture.configuration { _ in nil },
                                     gateway: .init { request in upgrade = request; return BotScriptedSocket() })
         let client = BotClient(http: http)
         try await client.connect()
@@ -349,12 +353,18 @@ import XCTest
         let context = BotArtifactContext(connectionID: record.id, profile: "inbox-triage", sessionID: "tip", generation: 1)
         _ = try await client.artifactData(path: "report.pdf", context: context)
         _ = try await client.uploadImage(data: Data([1, 2, 3]), filename: "a.png", context: context)
-        try await BotDashboardClient(http: http).setPlugin("hermex-push", enabled: true)
+        try await client.deleteProfile("old-bot")
+        let dashboard = BotDashboardClient(http: http)
+        try await dashboard.installPlugin(identifier: "hermex-push")
+        try await dashboard.setPlugin("hermex-push", enabled: true)
+        _ = try await dashboard.loadedPluginVersion()
 
         let requests = HermesHostFixture.requests
         XCTAssertEqual(requests.map { $0.url?.path }, ["/api/status", "/auth/password-login", "/api/auth/me", "/api/auth/ws-ticket",
-                                                       "/api/fs/download", "/api/chat/image-upload",
-                                                       "/api/dashboard/agent-plugins/hermex-push/enable"])
+                                                       "/api/fs/download", "/api/chat/image-upload", "/api/profiles/old-bot",
+                                                       "/api/dashboard/agent-plugins/install",
+                                                       "/api/dashboard/agent-plugins/hermex-push/enable",
+                                                       "/api/plugins/hermex-push/pairing"])
         for request in requests {
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), cloudflare.value, request.url?.path ?? "")
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-Access"), "token", request.url?.path ?? "")
@@ -374,9 +384,11 @@ import XCTest
     /// host then ends the sign-in as `.blocked` before the password goes out.
     func testACrossOriginRedirectDropsTheHeadersBeforeTheRelay() async throws {
         let relay = HermexPushPlugin.defaultRelayURL.appendingPathComponent("api/status")
-        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
+        var saved = record
+        saved.headers = [cloudflare, access]
+        let http = HermesConnection(connection: saved, configuration: HermesHostFixture.configuration { request in
             request.url?.host == "hermes.example" && request.url?.path == "/api/status" ? .redirect(relay) : nil
-        }, headers: try HermesHeaders([cloudflare, access]))
+        })
         do { try await http.signIn(); XCTFail("Expected a reply from another host to be blocked") }
         catch { XCTAssertEqual(error as? BotFailure, .blocked) }
         let hop = try XCTUnwrap(HermesHostFixture.requests.first { $0.url?.host == relay.host })

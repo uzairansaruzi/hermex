@@ -631,7 +631,7 @@ import XCTest
     /// says what and stops retrying.
     func testSignInFailuresTheUserMustFixShowTheirMessageInsteadOfRetrying() async throws {
         let rows: [(BotFailure, String)] = [
-            (.blocked, "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Hermex can't do that yet. Use an address that skips it, such as the dashboard's local network address."),
+            (.blocked, "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address."),
             (.browserSignIn, "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host."),
             (.upgradeRefused(403), "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through."),
             (.outdated("0.21.2"), "This Hermes host runs 0.21.2. Hermex needs Hermes 0.21.3 or later. Update Hermes on the host, then try again.")

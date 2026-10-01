@@ -15,6 +15,11 @@ struct BotConnection: Codable, Equatable, Identifiable {
     /// or while the host has never reported one. Only a connect that saves a new UUID
     /// replaces it; a response that omits it never clears it.
     var installID: String?
+    /// Connection Headers for a proxy in front of this host, such as a Cloudflare Access
+    /// service token, sent with every request to `address` and nowhere else
+    /// (`HermesHeaders`). Saved as the form admitted them; nil when there are none,
+    /// including records saved before they existed. Never the webui's custom headers.
+    var headers: [CustomHeader]?
 
     /// The `install_id` a `/api/status` reply reports, or nil when it is omitted. The host
     /// omits it, rather than sending null, whenever it cannot read or persist the id.
@@ -130,7 +135,7 @@ enum BotAddressError: LocalizedError, Equatable {
 /// One credential record per configured webui server. Replacing an endpoint or
 /// account mints a new identity even when Profile names happen to match, unless the
 /// host reports the record's stored `install_id` (`BotConnectionSetup.connect`).
-/// Saving other credentials, or removing them, retires the server's shared
+/// Saving other credentials or headers, or removing them, retires the server's shared
 /// `HermesConnection` at once; a rename or an install id backfill keeps it.
 @MainActor struct BotConnectionStore {
     var keychain: any KeychainStoring = KeychainStore()

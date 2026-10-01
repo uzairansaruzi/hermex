@@ -360,7 +360,7 @@ import XCTest
     func testSignInStopsBeforeThePasswordWithCopyTheUserCanActOn() async throws {
         let rows: [((Int, BotJSON), String)] = [
             // A proxy's 401 page: not the webui's JSON object.
-            ((401, .null), "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Hermex can't do that yet. Use an address that skips it, such as the dashboard's local network address."),
+            ((401, .null), "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address."),
             ((200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("nous")])])),
              "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host."),
             ((200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]), "version": .string("0.21.2")])),

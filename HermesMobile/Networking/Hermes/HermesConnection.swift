@@ -54,17 +54,16 @@ import OSLog
     let serial: Int
     private static var connectionCount = 0
 
-    /// `headers` are sent to this connection's origin only; production passes none.
+    /// Sends `connection`'s saved headers to its origin only (`HermesHeaders(saved:)`).
     /// `gateway` configures the shared socket; tests script it.
-    init(connection: BotConnection, configuration: URLSessionConfiguration = .ephemeral, headers: HermesHeaders = .none,
+    init(connection: BotConnection, configuration: URLSessionConfiguration = .ephemeral,
          gateway: HermesGateway.Options = HermesGateway.Options()) {
         self.connection = connection
-        self.headers = headers
+        headers = HermesHeaders(saved: connection)
         gatewayOptions = gateway
         Self.connectionCount += 1
         serial = Self.connectionCount
-        let admitted = headers.values
-        redirectGuard = CrossOriginHeaderStripper(baseURL: connection.address, customHeaderProvider: { admitted })
+        redirectGuard = headers.redirectGuard(for: connection.address)
         let standard = configuration.copy() as? URLSessionConfiguration ?? .ephemeral
         standard.timeoutIntervalForRequest = 15
         standard.timeoutIntervalForResource = 30
@@ -199,11 +198,13 @@ import OSLog
         }
     }
 
-    /// Whether `saved` is still this connection: the same UUID, address, account and
-    /// password, and no conflicting install id. A newly backfilled install id is taken.
+    /// Whether `saved` is still this connection: the same UUID, address, account,
+    /// password and headers, and no conflicting install id. A newly backfilled install id
+    /// is taken.
     func adopt(_ saved: BotConnection) -> Bool {
         guard !isRetired, saved.id == connection.id, saved.address == connection.address,
-              saved.username == connection.username, saved.password == connection.password else { return false }
+              saved.username == connection.username, saved.password == connection.password,
+              (saved.headers ?? []) == (connection.headers ?? []) else { return false }
         if let live = connection.installID, let stored = saved.installID, live != stored { return false }
         if connection.installID == nil { connection.installID = saved.installID }
         return true
@@ -269,16 +270,8 @@ import OSLog
         return (data, response)
     }
 
-    /// Adds this connection's headers to a request for its own origin. A header the request
-    /// already carries, such as the JSON content type or the gateway subprotocols, keeps
-    /// its built-in value.
     private func prepared(_ request: URLRequest) -> URLRequest {
-        guard !headers.values.isEmpty, let url = request.url, HermesHeaders.isSameOrigin(url, as: connection.address) else { return request }
-        var request = request
-        for header in headers.values where request.value(forHTTPHeaderField: header.sanitizedName) == nil {
-            request.setValue(header.sanitizedValue, forHTTPHeaderField: header.sanitizedName)
-        }
-        return request
+        headers.applied(to: request, origin: connection.address)
     }
 
     private func checkCurrent() throws {
@@ -290,10 +283,10 @@ import OSLog
 /// `HermesConnection`, and with it the same gateway socket. It keeps one entry, keyed by
 /// configured server and connection UUID, and holds it weakly, so the connection lives
 /// only while a consumer does. A request for another server or UUID, or for the same UUID
-/// with a new address, account or password (the connection form can keep a UUID across
-/// those), retires the old connection first, so no cookie, sign-in, socket or late reply
-/// crosses servers, accounts or credentials.
-/// Credentials are compared on the live connection and never kept in a key.
+/// with a new address, account, password or headers (the connection form can keep a UUID
+/// across those), retires the old connection first, so no cookie, sign-in, socket or late
+/// reply crosses servers, accounts, credentials or headers.
+/// Credentials and headers are compared on the live connection and never kept in a key.
 @MainActor final class HermesConnections {
     static let shared = HermesConnections()
     private var server: String?
@@ -327,10 +320,28 @@ import OSLog
 /// gateway upgrade, `X-Forwarded-Prefix` for the session cookie's path,
 /// `X-Hermes-Session-Token`), and no `Bearer` authorization, which Hermes also reads as
 /// its session token. Any other `Authorization` value passes, such as Cloudflare Access's
-/// single-header JSON service token. Hermex has no editor or storage for these yet:
-/// production passes `.none`, and the webui's custom headers are never a source.
+/// single-header JSON service token. The only source is the Hermes connection's own
+/// record (`BotConnection.headers`, edited as Connection Headers in its form), never the
+/// webui's custom headers.
 struct HermesHeaders: Sendable {
-    enum Rejection: Error, Equatable { case malformed(String), reserved(String), bearer }
+    enum Rejection: Error, Equatable, LocalizedError {
+        case malformed(String), reserved(String), bearer
+
+        /// Shown under the connection form's Connection Headers row.
+        var errorDescription: String? {
+            switch self {
+            case .bearer:
+                return String(localized: "Hermes reads Authorization: Bearer as its own sign-in and refuses it. Remove this header to connect.")
+            case .reserved(let name):
+                // First-strong isolates keep the name in one left-to-right run in right-to-left text.
+                let shown = "\u{2068}\(name)\u{2069}"
+                return String(localized: "\(shown) is reserved for Hermex and Hermes, so it can't be a connection header. Remove this header to connect.")
+            case .malformed(let name):
+                let shown = "\u{2068}\(name)\u{2069}"
+                return String(localized: "\(shown) isn't a valid header: names can't contain spaces or colons, and values must fit on one line. Fix or remove it to connect.")
+            }
+        }
+    }
 
     static let none = HermesHeaders(admitted: [])
     private static let reserved: Set<String> = [
@@ -355,6 +366,31 @@ struct HermesHeaders: Sendable {
     }
 
     private init(admitted: [CustomHeader]) { values = admitted }
+
+    /// The headers `saved`'s requests carry. A saved list the policy now refuses sends
+    /// none: the connection form shows why under its Connection Headers row and keeps
+    /// Connect off until it is fixed.
+    init(saved: BotConnection) {
+        self = (try? HermesHeaders(saved.headers ?? [])) ?? .none
+    }
+
+    /// `request` with these headers added when it is for `origin`. A header the request
+    /// already carries, such as the JSON content type or the gateway subprotocols, keeps
+    /// its built-in value.
+    func applied(to request: URLRequest, origin: URL) -> URLRequest {
+        guard !values.isEmpty, let url = request.url, Self.isSameOrigin(url, as: origin) else { return request }
+        var request = request
+        for header in values where request.value(forHTTPHeaderField: header.sanitizedName) == nil {
+            request.setValue(header.sanitizedValue, forHTTPHeaderField: header.sanitizedName)
+        }
+        return request
+    }
+
+    /// The task delegate that drops these headers from a redirect that leaves `origin`.
+    func redirectGuard(for origin: URL) -> CrossOriginHeaderStripper {
+        let admitted = values
+        return CrossOriginHeaderStripper(baseURL: origin, customHeaderProvider: { admitted })
+    }
 
     /// Same scheme, host and port as `address`, reading the gateway's `ws`/`wss` as `http`/`https`.
     static func isSameOrigin(_ url: URL, as address: URL) -> Bool {

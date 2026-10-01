@@ -40,6 +40,18 @@ final class BotConnectionVersionTests: XCTestCase {
         let connection = try JSONDecoder().decode(BotConnection.self, from: Data(stored.utf8))
         XCTAssertNil(connection.hermesVersion)
         XCTAssertNil(connection.installID)
+        XCTAssertNil(connection.headers)
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(connection), as: UTF8.self).contains("headers"),
+                       "A record without headers saves as it did before they existed")
+    }
+
+    func testSavedHeadersRoundTripInTheConnectionRecord() throws {
+        var saved = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
+                                  username: "user", password: "secret")
+        saved.headers = [CustomHeader(name: "CF-Access-Client-Id", value: "id.access"),
+                         CustomHeader(name: "CF-Access-Client-Secret", value: "secret")]
+        let decoded = try JSONDecoder().decode(BotConnection.self, from: try JSONEncoder().encode(saved))
+        XCTAssertEqual(decoded.headers, saved.headers)
     }
 }
 
@@ -327,22 +339,94 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertEqual(wire.calls, 0, "A dismissed attempt cannot load the roster or save credentials")
     }
 
+    /// The candidate signs in with the form's headers, so a host behind an access proxy
+    /// can be reached before anything is saved. A header change keeps the connection's
+    /// UUID (Decision 2), and blank rows are dropped.
+    func testTheCandidateSignsInAndSavesWithTheFormsHeaders() async throws {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        let old = BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!, username: "me", password: "pw")
+        try store.save(old, server: server)
+        let wire = ConnectionSetupWire()
+        let model = BotConnectionSetup(server: server, store: store, makeWire: { wire.connection = $0; return wire },
+                                       discard: { _ in XCTFail("New headers keep drafts, cache and pairing") })
+        let id = CustomHeader(name: "CF-Access-Client-Id", value: "id.access")
+        let secret = CustomHeader(name: "CF-Access-Client-Secret", value: "secret")
+        model.load()
+        XCTAssertEqual(model.headers, [], "A record saved before headers existed opens with none")
+        model.headers = [id, CustomHeader(name: "  ", value: "typing"), secret]
+        let succeeded = await model.connect()
+        XCTAssertTrue(succeeded)
+        XCTAssertEqual(wire.connection?.headers, [id, secret])
+        let stored = try XCTUnwrap(store.load(server: server))
+        XCTAssertEqual(stored.id, old.id)
+        XCTAssertEqual(stored.headers, [id, secret])
+
+        model.load()
+        XCTAssertEqual(model.headers, [id, secret], "The form opens with the saved headers")
+        model.headers = []
+        _ = await model.connect()
+        XCTAssertNil(try store.load(server: server)?.headers, "Removing them saves the record without headers")
+    }
+
+    /// A header the policy refuses keeps Connect off and says why under the row. A half
+    /// Cloudflare Access pair only warns (Decision 3). Tests run in English, so the copy is literal.
+    func testHeaderRejectionsBlockConnectAndAHalfAccessPairOnlyWarns() async {
+        let wire = ConnectionSetupWire()
+        let model = BotConnectionSetup(server: server, store: BotConnectionStore(keychain: InMemoryKeychainStore()),
+            makeWire: { _ in XCTFail("A refused header must not sign in"); return wire }, discard: { _ in })
+        model.address = "hermes.example"; model.username = "me"; model.password = "pw"
+        let rejected: [(CustomHeader, String)] = [
+            (CustomHeader(name: "Authorization", value: "Bearer abc"),
+             "Hermes reads Authorization: Bearer as its own sign-in and refuses it. Remove this header to connect."),
+            (CustomHeader(name: "Cookie", value: "hermes_session=x"),
+             "\u{2068}Cookie\u{2069} is reserved for Hermex and Hermes, so it can't be a connection header. Remove this header to connect."),
+            (CustomHeader(name: "Bad Name", value: "x"),
+             "\u{2068}Bad Name\u{2069} isn't a valid header: names can't contain spaces or colons, and values must fit on one line. Fix or remove it to connect.")
+        ]
+        for (header, message) in rejected {
+            model.headers = [CustomHeader(name: "X-Access", value: "token"), header]
+            XCTAssertEqual(model.headerRejection, message, header.name)
+            XCTAssertFalse(model.canConnect, header.name)
+            let connected = await model.connect()
+            XCTAssertFalse(connected, header.name)
+        }
+
+        let pairs: [([String], Bool)] = [
+            (["CF-Access-Client-Id"], true), (["cf-access-client-secret"], true),
+            (["CF-Access-Client-Id", "CF-Access-Client-Secret"], false), (["X-Access"], false), ([], false)
+        ]
+        for (names, warns) in pairs {
+            model.headers = names.map { CustomHeader(name: $0, value: "value") }
+            XCTAssertEqual(model.accessPairWarning != nil, warns, "\(names)")
+            XCTAssertNil(model.headerRejection, "\(names)")
+            XCTAssertTrue(model.canConnect, "A half pair still connects: \(names)")
+        }
+        model.headers = [CustomHeader(name: "CF-Access-Client-Id", value: "id")]
+        XCTAssertEqual(model.accessPairWarning, "Cloudflare Access needs both CF-Access-Client-Id and CF-Access-Client-Secret.")
+    }
+
     func testStatusCheckReadsOnlyThisServersSavedHost() async throws {
         let store = BotConnectionStore(keychain: InMemoryKeychainStore())
         var probed: [URL] = []
+        var probedHeaders: [[CustomHeader]] = []
         var relayServers: [URL] = []
         let reply = BotHostStatus(.object(["version": .string("0.21.5")]))
         let model = BotConnectionSetup(server: server, store: store, makeWire: { _ in ConnectionSetupWire() }, discard: { _ in },
-                                       probe: { probed.append($0); return .success(reply) },
+                                       probe: { probed.append($0); probedHeaders.append($1.values); return .success(reply) },
                                        relay: { relayServers.append($0); return URL(string: "https://push.example")! })
         model.load(); await model.checkStatus()
         XCTAssertTrue(probed.isEmpty, "No saved connection means no probe")
         XCTAssertNil(model.hostStatus)
 
-        let saved = BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!, username: "me", password: "pw")
+        let access = CustomHeader(name: "X-Access", value: "token")
+        let saved = BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!, username: "me",
+                                  password: "pw", headers: [access])
         try store.save(saved, server: server)
-        model.load(); await model.checkStatus()
+        model.load()
+        model.headers = []
+        await model.checkStatus()
         XCTAssertEqual(probed, [saved.address])
+        XCTAssertEqual(probedHeaders, [[access]], "The saved headers, not the form's unsaved edit")
         XCTAssertEqual(model.hostStatus, .reachable(reply))
         XCTAssertEqual(relayServers, [server, server], "Notification state is read for this server only")
         XCTAssertEqual(model.notificationRelay?.host, "push.example")
@@ -355,7 +439,7 @@ final class BotConnectionVersionTests: XCTestCase {
         var pending: [CheckedContinuation<Result<BotHostStatus, BotHostProbeFailure>, Never>] = []
         var parked = expectation(description: "First probe in flight")
         let model = BotConnectionSetup(server: server, store: store, makeWire: { _ in ConnectionSetupWire() }, discard: { _ in },
-                                       probe: { _ in await withCheckedContinuation { pending.append($0); parked.fulfill() } },
+                                       probe: { _, _ in await withCheckedContinuation { pending.append($0); parked.fulfill() } },
                                        relay: { _ in nil })
         model.load()
         let first = Task { await model.checkStatus() }
@@ -388,7 +472,7 @@ final class BotConnectionVersionTests: XCTestCase {
         let parked = expectation(description: "Old host probe in flight")
         let model = BotConnectionSetup(server: server, store: store, makeWire: { _ in ConnectionSetupWire() },
                                        discard: { _ in paired = false },
-                                       probe: { _ in await withCheckedContinuation { pending = $0; parked.fulfill() } },
+                                       probe: { _, _ in await withCheckedContinuation { pending = $0; parked.fulfill() } },
                                        relay: { _ in paired ? URL(string: "https://push.example")! : nil })
         model.load()
         let check = Task { await model.checkStatus() }
@@ -468,7 +552,7 @@ final class BotConnectionAdviceTests: XCTestCase {
             (BotFailure.rejected(520), tunnel),
             (BotFailure.rejected(530), tunnel),
             (BotFailure.rejected(401), "Hermes didn't accept the username or password."),
-            (BotFailure.blocked, "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Hermex can't do that yet. Use an address that skips it, such as the dashboard's local network address."),
+            (BotFailure.blocked, "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address."),
             (BotFailure.browserSignIn, "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host."),
             (BotFailure.upgradeRefused(403), "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through."),
             (BotFailure.outdated("0.21.2"), "This Hermes host runs 0.21.2. Hermex needs Hermes 0.21.3 or later. Update Hermes on the host, then try again."),
@@ -484,6 +568,7 @@ final class BotConnectionAdviceTests: XCTestCase {
 /// states. Transport faults use a raw-body fixture so non-JSON replies are testable.
 @MainActor final class BotHostStatusTests: XCTestCase {
     private let host = URL(string: "https://hermes.example")!
+    private let access = CustomHeader(name: "X-Access", value: "token")
 
     override func tearDown() {
         BotStatusHTTPFixture.handler = nil
@@ -547,7 +632,9 @@ final class BotConnectionAdviceTests: XCTestCase {
         XCTAssertEqual(stopped.gatewayNote, String(localized: "Scheduled Tasks won’t run until it starts."))
     }
 
-    func testProbeSendsNoCredentialsOrCookies() async throws {
+    /// Only the saved Connection Headers go out: behind Cloudflare Access even this public
+    /// route needs the service token.
+    func testProbeSendsTheSavedHeadersButNoCredentialsOrCookies() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         var seen: URLRequest?
         BotStatusHTTPFixture.handler = { request in seen = request; return (200, Data("{}".utf8)) }
@@ -557,10 +644,11 @@ final class BotConnectionAdviceTests: XCTestCase {
         XCTAssertFalse(probe.configuration.httpShouldSetCookies)
         XCTAssertNil(probe.configuration.urlCredentialStorage)
         XCTAssertEqual(probe.configuration.timeoutIntervalForRequest, 15)
-        _ = try await probe.check(host).get()
+        _ = try await probe.check(host, headers: try HermesHeaders([access])).get()
         let request = try XCTUnwrap(seen)
         XCTAssertEqual(request.httpMethod, "GET")
         XCTAssertEqual(request.url?.absoluteString, "https://hermes.example/api/status")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Access"), "token")
         XCTAssertNil(request.value(forHTTPHeaderField: "Cookie"))
         XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
         XCTAssertNil(request.httpBody)
@@ -591,6 +679,21 @@ final class BotConnectionAdviceTests: XCTestCase {
         let result = await check(200, "<html>Sign in</html>")
         XCTAssertEqual(result, .failure(.blocked))
     }
+
+    /// The fixture carries the headers onto the redirected request, as a server's redirect
+    /// would, so only the probe's redirect guard can keep them from the other host.
+    func testARedirectToAnotherHostCarriesNoneOfTheSavedHeaders() async throws {
+        BotStatusHTTPFixture.redirect = URL(string: "https://team.cloudflareaccess.com/cdn-cgi/access/login")!
+        var hop: URLRequest?
+        BotStatusHTTPFixture.handler = { request in hop = request; return (200, Data("<html>Sign in</html>".utf8)) }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotStatusHTTPFixture.self]
+        let result = await BotHostStatusProbe(configuration: configuration).check(host, headers: try HermesHeaders([access]))
+        XCTAssertEqual(result, .failure(.blocked))
+        let request = try XCTUnwrap(hop)
+        XCTAssertEqual(request.url?.host, "team.cloudflareaccess.com")
+        XCTAssertNil(request.value(forHTTPHeaderField: "X-Access"))
+    }
 }
 
 private final class BotStatusHTTPFixture: URLProtocol {
@@ -603,7 +706,9 @@ private final class BotStatusHTTPFixture: URLProtocol {
         if let target = Self.redirect, let url = request.url, url.host != target.host {
             let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: nil,
                                            headerFields: ["Location": target.absoluteString])!
-            client?.urlProtocol(self, wasRedirectedTo: URLRequest(url: target), redirectResponse: response)
+            var followUp = URLRequest(url: target)
+            followUp.allHTTPHeaderFields = request.allHTTPHeaderFields
+            client?.urlProtocol(self, wasRedirectedTo: followUp, redirectResponse: response)
             return
         }
         do {
