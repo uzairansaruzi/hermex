@@ -798,6 +798,149 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertTrue(headers.snapshot().isEmpty)
     }
 
+    // MARK: - Adding a Hermes server from the connect form (#900)
+
+    /// A manager with Bot Mode on whose webui double answers without auth.
+    private func makeFormManager(keychain: InMemoryKeychainStore, headerStore: CustomHeaderStore = CustomHeaderStore()) -> AuthManager {
+        let preferences = UserDefaults.ephemeral()
+        preferences.set(true, forKey: BotModeGate.isEnabledKey)
+        let webui = MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: false))
+        return AuthManager(keychain: keychain, clientFactory: { _ in webui }, probeClientFactory: { _, _ in webui },
+                           headerStore: headerStore, serverRegistry: ServerRegistry.inMemory(keychain: keychain),
+                           hermesConnections: HermesConnections(), preferences: preferences)
+    }
+
+    /// The connect form for `entry` with Bot Mode on, against the scripted Hermes host.
+    private func makeForm(entry: OnboardingViewModel.Entry,
+                          host script: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> OnboardingViewModel {
+        let preferences = UserDefaults.ephemeral()
+        preferences.set(true, forKey: BotModeGate.isEnabledKey)
+        return OnboardingViewModel(entry: entry, preferences: preferences,
+                                   hermesConfiguration: { HermesHostFixture.configuration(script) })
+    }
+
+    func testTheConnectFormAddsAHermesServerFromOnboardingAndFromAddServer() async throws {
+        defer { HermesHostFixture.reset() }
+        for entry in [OnboardingViewModel.Entry.onboarding, .addServer] {
+            HermesHostFixture.reset()
+            let keychain = InMemoryKeychainStore()
+            let headers = CustomHeaderStore()
+            let manager = makeFormManager(keychain: keychain, headerStore: headers)
+            let form = makeForm(entry: entry)
+            if entry == .addServer {
+                await manager.configure(serverURLString: webuiServer.absoluteString, password: "",
+                                        customHeaders: [CustomHeader(name: "X-Webui", value: "token")])
+            }
+            form.serverURLString = "hermes.example"
+            let found = await form.connect(authManager: manager)
+            XCTAssertNil(found, "\(entry): the first Connect only finds the dashboard")
+            form.username = " me "
+            form.password = "secret"
+
+            let added = await form.connect(authManager: manager)
+
+            XCTAssertEqual(added, hermesServer, "\(entry)")
+            XCTAssertEqual(manager.state, .loggedIn(server: hermesServer), "\(entry)")
+            XCTAssertEqual(manager.kind(of: hermesServer), .hermes, "\(entry)")
+            XCTAssertEqual(manager.activeServer?.serverVersion, "0.21.5", "\(entry)")
+            let saved = try XCTUnwrap(BotConnectionStore(keychain: keychain).load(server: hermesServer), "\(entry)")
+            XCTAssertEqual(saved.username, "me", "\(entry)")
+            XCTAssertEqual(saved.password, "secret", "\(entry)")
+            XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 1, "\(entry): one sign-in")
+            XCTAssertTrue(headers.snapshot().isEmpty, "\(entry): the webui's headers never go to a Hermes server")
+        }
+    }
+
+    func testASavedSignInIsOfferedOnlyAtExactlyTheSameAddress() async throws {
+        defer { HermesHostFixture.reset() }
+        // Every host reports the side connection's install id, as any host can.
+        let status = BotJSON.object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                     "version": .string("0.21.5"), "install_id": .string("install-1")])
+        let keychain = InMemoryKeychainStore()
+        let manager = makeFormManager(keychain: keychain)
+        await manager.configure(serverURLString: webuiServer.absoluteString, password: "")
+        let webui = try XCTUnwrap(manager.activeServer)
+        manager.updateServerIdentity(webui, displayName: "Studio Mac", initials: "SM", headerLogoColorHex: webui.headerLogoColorHex)
+        let side = BotConnection(id: UUID(), name: "Side", address: hermesServer, username: "me", password: "saved",
+                                 installID: "install-1", headers: [CustomHeader(name: "CF-Access-Client-Id", value: "id.access")])
+        try BotConnectionStore(keychain: keychain).save(side, server: webuiServer)
+        func form() -> OnboardingViewModel {
+            makeForm(entry: .addServer) { $0.url?.path == "/api/status" ? .json(200, status) : nil }
+        }
+
+        let elsewhere = form()
+        elsewhere.serverURLString = "https://other.example"
+        await elsewhere.connect(authManager: manager)
+        XCTAssertEqual(elsewhere.detectedKind, .hermes)
+        XCTAssertTrue(elsewhere.savedSignIns.isEmpty, "The same install id at another address is never offered")
+
+        let same = form()
+        same.serverURLString = "HERMES.example/"
+        await same.connect(authManager: manager)
+        XCTAssertEqual(same.savedSignIns.map(\.serverName), ["Studio Mac"])
+        same.useSavedSignIn(try XCTUnwrap(same.savedSignIns.first))
+        XCTAssertEqual(same.username, "me")
+        XCTAssertEqual(same.password, "saved")
+        XCTAssertEqual(same.customHeaders, side.headers)
+        XCTAssertTrue(same.showsHermesSignIn, "Filling in the saved headers keeps the dashboard found")
+
+        let added = await same.connect(authManager: manager)
+
+        XCTAssertEqual(added, hermesServer)
+        let copy = try XCTUnwrap(BotConnectionStore(keychain: keychain).load(server: hermesServer))
+        XCTAssertNotEqual(copy.id, side.id, "The new server's record gets its own UUID")
+        XCTAssertEqual(copy.password, "saved")
+        XCTAssertEqual(copy.headers, side.headers)
+        XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: webuiServer), side,
+                       "The webui server's side connection is untouched")
+        let login = try XCTUnwrap(HermesHostFixture.requests.first { $0.url?.path == "/auth/password-login" })
+        XCTAssertEqual(login.value(forHTTPHeaderField: "CF-Access-Client-Id"), "id.access")
+        XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 1)
+    }
+
+    func testASavedPasswordLeavesTheFormWhenTheAddressChanges() async throws {
+        defer { HermesHostFixture.reset() }
+        let keychain = InMemoryKeychainStore()
+        let manager = makeFormManager(keychain: keychain)
+        await manager.configure(serverURLString: webuiServer.absoluteString, password: "")
+        let side = BotConnection(id: UUID(), name: "Side", address: hermesServer, username: "me", password: "saved")
+        try BotConnectionStore(keychain: keychain).save(side, server: webuiServer)
+        let form = makeForm(entry: .addServer)
+        form.serverURLString = "hermes.example"
+        await form.connect(authManager: manager)
+        form.useSavedSignIn(try XCTUnwrap(form.savedSignIns.first))
+
+        form.serverURLString = "other.example"
+
+        XCTAssertEqual(form.password, "", "A saved password only goes to the address it was saved for")
+        XCTAssertEqual(form.username, "")
+        XCTAssertNil(form.reusedSignIn)
+        XCTAssertNil(form.detectedKind)
+    }
+
+    func testAReusedSignInStillChecksTheSavedInstallBeforeThePassword() async throws {
+        defer { HermesHostFixture.reset() }
+        let status = BotJSON.object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                     "version": .string("0.21.5"), "install_id": .string("another-install")])
+        let keychain = InMemoryKeychainStore()
+        let manager = makeFormManager(keychain: keychain)
+        let form = makeForm(entry: .addServer) { $0.url?.path == "/api/status" ? .json(200, status) : nil }
+        await manager.configure(serverURLString: webuiServer.absoluteString, password: "")
+        let side = BotConnection(id: UUID(), name: "Side", address: hermesServer, username: "me", password: "saved",
+                                 installID: "install-1")
+        try BotConnectionStore(keychain: keychain).save(side, server: webuiServer)
+        form.serverURLString = "hermes.example"
+        await form.connect(authManager: manager)
+        form.useSavedSignIn(try XCTUnwrap(form.savedSignIns.first))
+
+        let added = await form.connect(authManager: manager)
+
+        XCTAssertNil(added)
+        XCTAssertEqual(form.errorMessage, "The Hermes host at this address reports a different identity than the one you connected to. Check the address in the Hermes connection.")
+        XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
+        XCTAssertEqual(manager.servers.map(\.id), [webuiServer.absoluteString])
+    }
+
     private func makeLoggedInManager(
         keychain: InMemoryKeychainStore,
         serverURLString: String,

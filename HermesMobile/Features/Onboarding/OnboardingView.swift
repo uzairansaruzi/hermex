@@ -32,7 +32,7 @@ struct OnboardingView: View {
         currentPage == OnboardingFlowPolicy.connectPageIndex && focusedField != nil
     }
 
-    private var canSubmitConnection: Bool {
+    private var hasServerURL: Bool {
         !viewModel.serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -173,7 +173,7 @@ struct OnboardingView: View {
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(OnboardingSecondaryButtonStyle())
-        .disabled(viewModel.isWorking || !canSubmitConnection)
+        .disabled(viewModel.isWorking || !hasServerURL)
     }
 
     private var connectButton: some View {
@@ -184,7 +184,7 @@ struct OnboardingView: View {
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(OnboardingPrimaryButtonStyle())
-        .disabled(viewModel.isWorking || !canSubmitConnection)
+        .disabled(viewModel.isWorking || !viewModel.canSubmit)
     }
 
     private func handlePrimaryAction() {

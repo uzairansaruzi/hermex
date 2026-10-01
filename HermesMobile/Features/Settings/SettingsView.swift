@@ -1519,11 +1519,14 @@ private struct SettingsTextFieldRow: View {
     var autocapitalization: TextInputAutocapitalization = .words
     var isSecure = false
     var submitLabel: SubmitLabel = .return
+    /// Title above a full-width field at every text size, for values too long for the
+    /// trailing field, such as a server address.
+    var isStacked = false
     var onSubmit: (() -> Void)? = nil
 
     var body: some View {
         Group {
-            if dynamicTypeSize.isAccessibilitySize {
+            if dynamicTypeSize.isAccessibilitySize || isStacked {
                 VStack(alignment: .leading, spacing: 6) {
                     titleLabel
                     textField
@@ -2437,79 +2440,60 @@ private struct ServerDetailView: View {
     }
 }
 
-/// Secondary onboarding/auth flow to add another server, collecting URL/password
-/// (existing validation + login), custom headers, and per-server identity. Routes
-/// through `AuthManager.addServer`, which never disturbs the active server on
-/// failure (#17). Presented from Settings and from the session-list avatar
-/// long-press switcher (#283).
+/// Add Server: onboarding's connect form (`OnboardingViewModel`, #900) in a sheet, plus
+/// the new server's identity. A webui address goes through `AuthManager.addServer`, which
+/// never disturbs the active server on failure (#17); a Hermes dashboard gets username
+/// and password and becomes a Hermes server. Presented from Settings and from the
+/// avatar's long-press switcher on every home (#283, #899).
 struct AddServerView: View {
     @Bindable var authManager: AuthManager
     @Environment(\.dismiss) private var dismiss
 
-    @State private var serverURLString = ""
-    @State private var password = ""
-    @State private var customHeaders: [CustomHeader] = []
-    @State private var needsPassword = false
-    @State private var isWorking = false
-    @State private var errorMessage: String?
+    @State private var form = OnboardingViewModel(entry: .addServer)
+    /// The Add in flight; closing the sheet cancels it before a Hermes server is added.
+    @State private var operation: Task<Void, Never>?
     @State private var displayName = ""
     @State private var initials = ""
     @State private var colorHex = HeaderLogoColor.defaultHex
 
-    private var trimmedURL: String {
-        serverURLString.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var canSubmit: Bool { !trimmedURL.isEmpty && !isWorking }
-
-    private var derivedHost: String {
-        (try? AuthManager.normalizedServerURL(from: serverURLString))?.host ?? ""
-    }
+    private var canSubmit: Bool { form.canSubmit && !form.isWorking }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    SettingsCard(title: String(localized: "Server")) {
-                        SettingsTextFieldRow(
-                            title: String(localized: "URL"),
-                            text: $serverURLString,
-                            placeholder: "100.64.0.1:8787",
-                            keyboardType: .URL,
-                            autocapitalization: .never,
-                            submitLabel: .go,
-                            onSubmit: { Task { await submit() } }
-                        )
+                    SettingsCard(title: String(localized: "Network")) {
+                        ConnectionModePicker(selection: $form.connectionMode)
+                        SettingsFootnote(form.connectionMode.help)
+                    }
+                    .disabled(form.isConnectionLocked)
 
-                        if needsPassword {
-                            SettingsDivider()
-
-                            SettingsTextFieldRow(
-                                title: String(localized: "Password"),
-                                text: $password,
-                                placeholder: String(localized: "Server password"),
-                                autocapitalization: .never,
-                                isSecure: true,
-                                submitLabel: .go,
-                                onSubmit: { Task { await submit() } }
-                            )
+                    VStack(alignment: .leading, spacing: 10) {
+                        SettingsCard(title: String(localized: "Server")) {
+                            serverFields
                         }
+                        .disabled(form.isConnectionLocked)
+
+                        statusBanner
+                            .padding(.horizontal, 4)
                     }
 
                     SettingsCard(title: String(localized: "Connection Headers")) {
-                        CustomHeadersEditor(headers: $customHeaders)
+                        if form.connectionMode == .cloudflareTunnel {
+                            SettingsFootnote(String(localized: "Cloudflare Access: paste your service token’s Client ID and Client Secret as the values. Leave both empty if Access is off."))
+                        }
+                        CustomHeadersEditor(headers: $form.customHeaders)
                     }
+                    .disabled(form.isConnectionLocked)
 
                     SettingsCard(title: String(localized: "Identity")) {
                         ServerIdentityEditor(
                             displayName: $displayName,
                             initials: $initials,
                             colorHex: $colorHex,
-                            fallbackName: derivedHost
+                            fallbackName: form.addressPreview?.host ?? ""
                         )
                     }
-
-                    statusBanner
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 18)
@@ -2523,23 +2507,139 @@ struct AddServerView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") { Task { await submit() } }
+                    Button("Add", action: submit)
                         .disabled(!canSubmit)
                 }
             }
         }
         .adaptiveFormPresentation()
+        .onDisappear { operation?.cancel() }
     }
 
     @ViewBuilder
+    private var serverFields: some View {
+        SettingsTextFieldRow(
+            title: String(localized: "URL"),
+            text: $form.serverURLString,
+            placeholder: form.connectionMode.placeholder,
+            keyboardType: .URL,
+            autocapitalization: .never,
+            submitLabel: .go,
+            isStacked: true,
+            onSubmit: submit
+        )
+
+        // The trailing mark keeps a URL ending in a neutral character, such as an
+        // IPv6 literal's "]", in one left-to-right run inside right-to-left text.
+        if let preview = form.addressPreview {
+            Text("Will connect to \(preview.absoluteString + "\u{200E}")")
+                .font(AppFont.caption())
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        if form.showsHermesSignIn {
+            savedSignInRows
+
+            SettingsDivider()
+
+            SettingsTextFieldRow(
+                title: String(localized: "Username"),
+                text: $form.username,
+                placeholder: String(localized: "Dashboard username"),
+                autocapitalization: .never,
+                submitLabel: .next
+            )
+        }
+
+        if form.showsPasswordField {
+            SettingsDivider()
+
+            SettingsTextFieldRow(
+                title: String(localized: "Password"),
+                text: $form.password,
+                placeholder: form.detectedKind == .hermes
+                    ? String(localized: "Dashboard password") : String(localized: "Server password"),
+                autocapitalization: .never,
+                isSecure: true,
+                submitLabel: .go,
+                onSubmit: submit
+            )
+        }
+    }
+
+    /// One row per webui server whose Hermes connection uses exactly this address, or the
+    /// note that the fields came from one.
+    @ViewBuilder
+    private var savedSignInRows: some View {
+        if let reused = form.reusedSignIn {
+            Label("Filled in from \(reused.serverName)’s Hermes connection.", systemImage: "checkmark.circle")
+                .font(AppFont.footnote())
+                .foregroundStyle(.secondary)
+        } else {
+            ForEach(form.savedSignIns, id: \.connection.id) { saved in
+                Button {
+                    form.useSavedSignIn(saved)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "person.badge.key.fill")
+                            .font(AppFont.subheadline(weight: .medium))
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Use the sign-in saved on \(saved.serverName)")
+                                .font(AppFont.subheadline(weight: .medium))
+                                .foregroundStyle(Color.accentColor)
+                            Text("Fills in the username, password and headers.")
+                                .font(AppFont.caption())
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Use the sign-in saved on \(saved.serverName)"))
+                .accessibilityHint(Text("Fills in the username, password and headers."))
+            }
+        }
+    }
+
+    /// What the last Add found, under the address it is about.
+    @ViewBuilder
     private var statusBanner: some View {
-        if isWorking {
+        if form.isWorking {
             SettingsFootnote(String(localized: "Checking server…"))
-        } else if needsPassword, errorMessage == nil {
+        } else if form.showsHermesSignIn, form.errorMessage == nil {
+            SettingsFootnote(String(localized: "Hermes dashboard found. Sign in with your dashboard username and password."))
+        } else if form.showsPasswordField, form.detectedKind != .hermes, form.errorMessage == nil {
             SettingsFootnote(String(localized: "This server requires a password."))
         }
 
-        if let errorMessage {
+        if form.needsBotModeOptIn {
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Hermes dashboard found")
+                        .font(AppFont.subheadline(weight: .semibold))
+                    Text("Adding one needs Bot Mode (beta), which is off. Bot Mode is unfinished, and you can turn it off again in Settings.")
+                        .font(AppFont.footnote())
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+
+                SettingsButton(String(localized: "Turn on Bot Mode (beta) and continue")) {
+                    form.enableBotMode()
+                }
+                .disabled(form.isConnectionLocked)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+
+        if let errorMessage = form.errorMessage {
             Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                 .font(AppFont.footnote())
                 .foregroundStyle(.orange)
@@ -2547,23 +2647,10 @@ struct AddServerView: View {
         }
     }
 
-    private func submit() async {
-        guard canSubmit else { return }
-        errorMessage = nil
-        isWorking = true
-        let outcome = await authManager.addServer(
-            serverURLString: serverURLString,
-            password: password,
-            customHeaders: customHeaders
-        )
-        isWorking = false
-
-        switch outcome {
-        case .needsPassword:
-            needsPassword = true
-        case .failed:
-            errorMessage = authManager.lastErrorMessage
-        case let .added(url):
+    private func submit() {
+        guard canSubmit, !form.isConnectionLocked else { return }
+        operation = Task {
+            guard let url = await form.connect(authManager: authManager), !Task.isCancelled else { return }
             applyIdentity(to: url)
             dismiss()
         }

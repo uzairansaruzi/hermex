@@ -329,6 +329,29 @@ final class AuthManager {
         return true
     }
 
+    /// A Hermes sign-in a webui server keeps for its Bots, which the connect form offers
+    /// to copy into a new Hermes server at the same address (#900).
+    struct SavedHermesSignIn: Equatable {
+        /// The webui server that keeps it, named as Settings → Servers names it.
+        let serverName: String
+        let connection: BotConnection
+    }
+
+    /// The sign-ins configured webui servers keep for exactly `address`, each saved address
+    /// parsed by `BotConnection.address(_:)` as the typed one was. Never matched by
+    /// `install_id`: it comes from the public `/api/status`, so any host could report
+    /// another's and be offered its saved password.
+    func savedHermesSignIns(at address: URL) -> [SavedHermesSignIn] {
+        let store = BotConnectionStore(keychain: keychain)
+        return servers.compactMap { account in
+            guard account.kind == .webui, let server = URL(string: account.urlString),
+                  let saved = try? store.load(server: server),
+                  (try? BotConnection.address(saved.address.absoluteString)) == address else { return nil }
+            let name = account.displayName.isEmpty ? (server.host ?? account.urlString) : account.displayName
+            return SavedHermesSignIn(serverName: name, connection: saved)
+        }
+    }
+
     /// The host refused the active Hermes server's saved username or password at the
     /// login step (`HermesConnections.onSignInRejected`), including the one silent
     /// re-login a signed-in 401 starts. Shows that server's sign-in form, where no Bot

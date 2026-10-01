@@ -145,6 +145,14 @@ import OSLog
         return attempt
     }
 
+    /// Reads the public `/api/status` once, with this connection's headers and no
+    /// credentials, classified as sign-in classifies it: `.notDashboard`, `.blocked` or
+    /// `.rejected`. The connect form reads it to tell a Hermes dashboard from a webui (#900).
+    func status() async throws -> BotJSON {
+        try checkCurrent()
+        return try await publicStatus(on: session)
+    }
+
     /// Sends one signed-in request built from `rest` and returns the body of a reply whose
     /// status is in `accepted`. Any other status throws `BotFailure.rejected`.
     /// `validateDispatch` is as in `authorized`.

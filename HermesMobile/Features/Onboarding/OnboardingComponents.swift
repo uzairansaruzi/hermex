@@ -313,3 +313,51 @@ struct OnboardingSecondaryButtonStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.72 : 1)
     }
 }
+
+/// The connect form's connection modes as three choice rows, shared by onboarding and
+/// Add Server (#900). Each row says what its mode means and wraps at any text size; the
+/// selected one has a checkmark. Choosing changes only the form's help, placeholder and
+/// header rows.
+struct ConnectionModePicker: View {
+    @Binding var selection: OnboardingViewModel.ConnectionMode
+    var style: CustomHeadersEditor.Style = .standard
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(OnboardingViewModel.ConnectionMode.allCases) { mode in
+                if mode != OnboardingViewModel.ConnectionMode.allCases.first {
+                    Rectangle().fill(style.fieldStroke).frame(height: 0.5)
+                }
+                Button { selection = mode } label: { row(mode) }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selection == mode ? .isSelected : [])
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Network"))
+    }
+
+    private func row(_ mode: OnboardingViewModel.ConnectionMode) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(mode.title)
+                    .font(AppFont.subheadline(weight: .semibold))
+                    .foregroundStyle(style.primaryText)
+                Text(mode.subtitle)
+                    .font(AppFont.caption())
+                    .foregroundStyle(style.secondaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+
+            Image(systemName: "checkmark")
+                .font(AppFont.subheadline(weight: .semibold))
+                .foregroundStyle(style.accent)
+                .opacity(selection == mode ? 1 : 0)
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+}

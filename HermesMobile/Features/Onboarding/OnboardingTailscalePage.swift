@@ -9,14 +9,14 @@ struct OnboardingTailscalePage: View {
                 OnboardingStepHeader(
                     stepNumber: 2,
                     icon: "iphone.and.arrow.forward",
-                    title: String(localized: "Install Tailscale on iPhone"),
-                    description: String(localized: "Install Tailscale on your iPhone and sign into the same tailnet as your server. Your agent will reply with the exact URL to use on the next screen.")
+                    title: String(localized: "Join your private network"),
+                    description: String(localized: "Put your iPhone on the same private network as your server, such as Tailscale or NetBird. Your agent will reply with the exact URL to use on the next screen.")
                 )
 
                 VStack(alignment: .leading, spacing: 14) {
-                    tailscaleStep(number: "1", text: String(localized: "Install Tailscale from the App Store."))
+                    tailscaleStep(number: "1", text: String(localized: "Install your network’s app, such as Tailscale or NetBird, from the App Store."))
                     tailscaleStep(number: "2", text: String(localized: "Sign in with the same account you used on your server."))
-                    tailscaleStep(number: "3", text: String(localized: "Keep Tailscale connected while using Hermex."))
+                    tailscaleStep(number: "3", text: String(localized: "Keep it connected while using Hermex."))
 
                     Button(action: openTailscaleInAppStore) {
                         Label("Get Tailscale on the App Store", systemImage: "arrow.up.forward.square")

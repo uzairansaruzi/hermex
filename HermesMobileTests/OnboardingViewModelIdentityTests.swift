@@ -228,7 +228,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
             gatekeeper: gatekeeper,
             outcome: .succeed(AuthStatusResponse(authEnabled: false, loggedIn: true))
         ))
-        let viewModel = OnboardingViewModel()
+        let viewModel = makeWebuiFormViewModel()
         viewModel.serverURLString = "https://first.example.com"
 
         let probeTask = Task { await viewModel.testConnection(authManager: manager) }
@@ -250,7 +250,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
             gatekeeper: gatekeeper,
             outcome: .fail("old server unreachable")
         ))
-        let viewModel = OnboardingViewModel()
+        let viewModel = makeWebuiFormViewModel()
         viewModel.serverURLString = "https://first.example.com"
 
         let probeTask = Task { await viewModel.testConnection(authManager: manager) }
@@ -275,7 +275,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
             gatekeeper: gatekeeper,
             outcome: .succeed(AuthStatusResponse(authEnabled: true, loggedIn: false))
         ))
-        let viewModel = OnboardingViewModel()
+        let viewModel = makeWebuiFormViewModel()
         viewModel.serverURLString = "https://example.com"
 
         let owner = Task { await viewModel.testConnection(authManager: manager) }
@@ -310,7 +310,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
             outcome: .succeed(AuthStatusResponse(authEnabled: false, loggedIn: true))
         )
         let manager = makeGatedManager(client)
-        let viewModel = OnboardingViewModel()
+        let viewModel = makeWebuiFormViewModel()
         viewModel.serverURLString = "https://example.com"
 
         let connectTask = Task { await viewModel.connect(authManager: manager) }
@@ -335,7 +335,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         }
         gatekeeper.releaseNext()
 
-        await connectTask.value
+        _ = await connectTask.value
 
         XCTAssertEqual(client.configuredPasswords.count, loginsBefore, "passwordless configure must not attempt login")
         XCTAssertFalse(viewModel.isConnectionLocked, "lock released after settle")
@@ -357,7 +357,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         )
         let keychain = InMemoryKeychainStore()
         let manager = makeGatedManager(client, keychain: keychain)
-        let viewModel = OnboardingViewModel()
+        let viewModel = makeWebuiFormViewModel()
         viewModel.serverURLString = "https://example.com"
 
         await runConnectToCompletion(viewModel, authManager: manager, gatekeeper: gatekeeper)
@@ -382,7 +382,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         )
         let keychain = InMemoryKeychainStore()
         let manager = makeGatedManager(client, keychain: keychain)
-        let viewModel = OnboardingViewModel()
+        let viewModel = makeWebuiFormViewModel()
         viewModel.serverURLString = "https://example.com"
         viewModel.password = "typed-secret"
 
@@ -437,9 +437,201 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         await AcceptedConnectDriver(gatekeeper: gatekeeper)
             .runAndSettle { await viewModel.connect(authManager: authManager) }
     }
+
+    // MARK: - Server kind (#900)
+
+    nonisolated override func tearDown() {
+        HermesHostFixture.reset()
+        super.tearDown()
+    }
+
+    /// The webui double with every gate open, so `recordedPhases` lists the webui probe's calls.
+    private func makeOpenWebui(authEnabled: Bool = true) -> (OnboardingGateKeeper, AuthManager) {
+        let gatekeeper = OnboardingGateKeeper()
+        gatekeeper.drainEverything()
+        let client = GatedAuthAPIClient(gatekeeper: gatekeeper,
+                                        outcome: .succeed(AuthStatusResponse(authEnabled: authEnabled, loggedIn: false)))
+        return (gatekeeper, makeGatedManager(client))
+    }
+
+    /// The connect form against the scripted Hermes host; nil from `script` is a 0.21.5 dashboard.
+    private func makeHermesForm(
+        entry: OnboardingViewModel.Entry = .onboarding,
+        botMode: Bool = true,
+        _ script: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }
+    ) -> (OnboardingViewModel, UserDefaults) {
+        let preferences = UserDefaults.ephemeral()
+        preferences.set(botMode, forKey: BotModeGate.isEnabledKey)
+        let form = OnboardingViewModel(entry: entry, preferences: preferences,
+                                       hermesConfiguration: { HermesHostFixture.configuration(script) })
+        return (form, preferences)
+    }
+
+    func testAHermesStatusRevealsTheDashboardSignInAndNeverReachesTheWebui() async throws {
+        let (gatekeeper, manager) = makeOpenWebui()
+        let (form, _) = makeHermesForm()
+        form.serverURLString = "hermes.example"
+        form.customHeaders = [CustomHeader(name: "CF-Access-Client-Id", value: "id.access"),
+                              CustomHeader(name: "CF-Access-Client-Secret", value: " ")]
+
+        await form.testConnection(authManager: manager)
+
+        XCTAssertEqual(form.detectedKind, .hermes)
+        XCTAssertTrue(form.showsHermesSignIn)
+        XCTAssertTrue(gatekeeper.recordedPhases.isEmpty, "A Hermes dashboard never gets the webui probe")
+        XCTAssertEqual(manager.state, .unconfigured)
+        let status = try XCTUnwrap(HermesHostFixture.requests.first { $0.url?.path == "/api/status" })
+        XCTAssertEqual(status.url?.absoluteString, "https://hermes.example/api/status")
+        XCTAssertEqual(status.value(forHTTPHeaderField: "CF-Access-Client-Id"), "id.access")
+        XCTAssertNil(status.value(forHTTPHeaderField: "CF-Access-Client-Secret"), "A header row without a value is never sent")
+    }
+
+    func testAWebuiAnswerOnTheStatusRouteFallsThroughToHealth() async {
+        let replies: [HermesHostFixture.Reply] = [
+            .json(401, .object(["error": .string("Authentication required")])),
+            .json(404, .object(["error": .string("Not found")]))
+        ]
+        for reply in replies {
+            let (gatekeeper, manager) = makeOpenWebui()
+            let (form, _) = makeHermesForm { $0.url?.path == "/api/status" ? reply : nil }
+            form.serverURLString = "192.168.1.5:8787"
+            XCTAssertEqual(form.addressPreview?.absoluteString, "http://192.168.1.5:8787", "Before anything answers")
+
+            await form.testConnection(authManager: manager)
+
+            XCTAssertEqual(gatekeeper.recordedPhases, [.health, .authStatus], "\(reply)")
+            XCTAssertEqual(form.detectedKind, .webui, "\(reply)")
+            XCTAssertEqual(form.connectionMessage, "Connection ok. Password required.", "\(reply)")
+            XCTAssertFalse(form.showsHermesSignIn, "\(reply)")
+            XCTAssertEqual(form.addressPreview?.absoluteString, "https://192.168.1.5:8787",
+                           "Once a webui answers, the line shows the URL the webui path saves")
+        }
+    }
+
+    func testAHostHeaderRefusalOrAnAccessSignInShowsItsAdviceWithoutFallingThrough() async {
+        let rows: [(HermesHostFixture.Reply, String)] = [
+            (.json(400, .string("Invalid Host header")),
+             "Hermes doesn't accept hermes.example as its address. On the host, set dashboard.public_url to https://hermes.example, then restart the dashboard."),
+            (.json(401, .string("Sign in to Access")),
+             "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address.")
+        ]
+        for (reply, advice) in rows {
+            let (gatekeeper, manager) = makeOpenWebui()
+            let (form, _) = makeHermesForm { $0.url?.path == "/api/status" ? reply : nil }
+            form.serverURLString = "hermes.example"
+
+            await form.connect(authManager: manager)
+
+            XCTAssertEqual(form.errorMessage, advice)
+            XCTAssertNil(form.detectedKind)
+            XCTAssertTrue(gatekeeper.recordedPhases.isEmpty, "\(reply) never falls through to the webui")
+        }
+    }
+
+    func testHermesSignInFailuresShowTheirCopyAndAreNeverRetried() async {
+        let oldStatus = BotJSON.object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]),
+                                        "version": .string("0.20.0")])
+        let browserOnly = BotJSON.object(["auth_required": .bool(true), "auth_providers": .array([.string("nous")]),
+                                          "version": .string("0.21.5")])
+        let rows: [(String, HermesHostFixture.Reply, String, Int)] = [
+            ("/auth/password-login", .json(429, .object([:])), "Too many sign-in attempts. Wait a minute, then try again.", 1),
+            ("/auth/password-login", .json(401, .object(["error": .string("invalid_credentials")])),
+             "Hermes didn't accept the username or password.", 1),
+            ("/api/status", .json(200, oldStatus),
+             "This Hermes host runs 0.20.0. Hermex needs Hermes 0.21.3 or later. Update Hermes on the host, then try again.", 0),
+            ("/api/status", .json(200, browserOnly),
+             "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.", 0)
+        ]
+        for (path, reply, copy, logins) in rows {
+            HermesHostFixture.reset()
+            let (_, manager) = makeOpenWebui()
+            let (form, _) = makeHermesForm { $0.url?.path == path ? reply : nil }
+            form.serverURLString = "hermes.example"
+            await form.connect(authManager: manager)
+            XCTAssertEqual(form.detectedKind, .hermes, copy)
+            form.username = "me"
+            form.password = "secret"
+
+            let added = await form.connect(authManager: manager)
+
+            XCTAssertNil(added, copy)
+            XCTAssertEqual(form.errorMessage, copy)
+            XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), logins, copy)
+            XCTAssertTrue(manager.servers.isEmpty, copy)
+        }
+    }
+
+    func testWithBotModeOffADetectedDashboardOffersTheOptInFirst() async {
+        let (_, manager) = makeOpenWebui()
+        let (form, preferences) = makeHermesForm(botMode: false)
+        form.serverURLString = "hermes.example"
+        await form.connect(authManager: manager)
+
+        XCTAssertTrue(form.needsBotModeOptIn)
+        XCTAssertFalse(form.showsHermesSignIn)
+        XCTAssertFalse(form.canSubmit)
+        form.username = "me"
+        form.password = "secret"
+        await form.connect(authManager: manager)
+        XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0, "Nothing signs in before the opt-in")
+
+        form.enableBotMode()
+
+        XCTAssertTrue(BotModeGate.isEnabled(in: preferences))
+        XCTAssertFalse(form.needsBotModeOptIn)
+        XCTAssertTrue(form.showsHermesSignIn)
+        XCTAssertTrue(form.canSubmit)
+    }
+
+    func testCloudflareModeOpensTheAccessHeadersAndLeavingDropsOnlyTheEmptyOnes() {
+        let form = OnboardingViewModel()
+        XCTAssertEqual(form.connectionMode, .privateNetwork)
+        form.customHeaders = [CustomHeader(name: "X-Proxy", value: "1")]
+        let identity = form.probeConnectionIdentityForTesting()
+
+        form.connectionMode = .cloudflareTunnel
+        XCTAssertEqual(form.customHeaders.map(\.name), ["X-Proxy", "CF-Access-Client-Id", "CF-Access-Client-Secret"])
+        XCTAssertEqual(form.probeConnectionIdentityForTesting(), identity, "Empty rows change nothing that is sent")
+
+        form.connectionMode = .sameWiFi
+        XCTAssertEqual(form.customHeaders.map(\.name), ["X-Proxy"])
+
+        form.connectionMode = .cloudflareTunnel
+        form.customHeaders[1].value = "id.access"
+        form.connectionMode = .privateNetwork
+        XCTAssertEqual(form.customHeaders.map(\.name), ["X-Proxy", "CF-Access-Client-Id"])
+    }
+
+    func testAddServerKeepsTodaysWebuiPasswordStep() async {
+        let client = MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: true, loggedIn: false))
+        let manager = AuthManager(keychain: InMemoryKeychainStore(), clientFactory: { _ in client },
+                                  probeClientFactory: { _, _ in client }, headerStore: CustomHeaderStore(),
+                                  serverRegistry: ServerRegistry.inMemory())
+        let (form, _) = makeHermesForm(entry: .addServer) { $0.url?.path == "/api/status" ? .json(404, .object([:])) : nil }
+        form.serverURLString = "b.test"
+        XCTAssertFalse(form.showsPasswordField)
+
+        let first = await form.connect(authManager: manager)
+        XCTAssertNil(first)
+        XCTAssertTrue(form.showsPasswordField)
+        XCTAssertNil(form.errorMessage)
+
+        form.password = "pw"
+        let added = await form.connect(authManager: manager)
+        XCTAssertEqual(added, URL(string: "https://b.test"))
+        XCTAssertEqual(client.loginPasswords, ["pw"])
+        XCTAssertEqual(HermesHostFixture.count("/api/status"), 1, "A webui that answered is not probed again")
+    }
 }
 
 extension OnboardingViewModelIdentityTests {
+    /// The connect form against a host whose `/api/status` answers 404, as a webui's does
+    /// with its auth off, so every Connect goes on to the webui path (#900).
+    @MainActor
+    func makeWebuiFormViewModel() -> OnboardingViewModel {
+        OnboardingViewModel(hermesConfiguration: { HermesHostFixture.configuration { _ in .json(404, .object([:])) } })
+    }
+
     @MainActor
     func makeGatedManager(_ client: GatedAuthAPIClient, keychain: InMemoryKeychainStore = InMemoryKeychainStore()) -> AuthManager {
         AuthManager(
