@@ -104,6 +104,7 @@ final class OnboardingViewModel {
     // Identity + generation of the probe that produced `authStatus` or `detectedKind`.
     @ObservationIgnored private var probedConnectionIdentity: String?
     @ObservationIgnored private var operationGeneration = 0
+    @ObservationIgnored private var isSyncingAccessRows = false
 
     init(
         entry: Entry = .onboarding,
@@ -179,6 +180,8 @@ final class OnboardingViewModel {
     func useSavedSignIn(_ signIn: AuthManager.SavedHermesSignIn) {
         guard !isConnectionLocked, detectedKind == .hermes else { return }
         let offers = savedSignIns
+        // Drops another saved sign-in's copies first, so none of them outlives its offer.
+        forgetProbe()
         customHeaders = signIn.connection.headers ?? []
         // The saved headers are the ones that reach this address, so it stays a found dashboard.
         detectedKind = .hermes
@@ -217,12 +220,18 @@ final class OnboardingViewModel {
     }
 
     private func currentConnectionIdentity() -> String {
-        let urlPart: String
+        var urlPart: String
         do {
             let url = try AuthManager.normalizedServerURL(from: serverURLString)
             urlPart = url.absoluteString.lowercased()
         } catch {
             urlPart = serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+        // A found dashboard signs in at the Hermes parser's URL, whose scheme can differ from
+        // the webui's for the same text (`mac.local:9119` is http there and https here), so
+        // while one is held that URL is part of the identity too (#900).
+        if detectedKind == .hermes {
+            urlPart += " hermes:" + ((try? BotConnection.address(serverURLString))?.absoluteString ?? "")
         }
         // Escape delimiters so distinct header sets cannot collide, then sort
         // canonical keys for stable serialization.
@@ -243,6 +252,9 @@ final class OnboardingViewModel {
     }
 
     private func invalidateProbedAuthStatusIfNeeded() {
+        // A mode switch only opens or drops empty Access rows, which send nothing, so it
+        // keeps the probe and any banner, such as the advice that suggested the switch.
+        guard !isSyncingAccessRows else { return }
         guard let probed = probedConnectionIdentity else {
             // No probe yet, but an inherited banner (re-login error) still has no
             // owner — clear it on any edit so stale copy can't survive.
@@ -261,34 +273,45 @@ final class OnboardingViewModel {
     }
 
     /// Drops what the last probe found, which no longer describes the typed address. A
-    /// saved sign-in's username and password, unless edited, go with it: they belong to
-    /// the address they were offered for.
+    /// saved sign-in's username, password and header rows, unless edited, go with it: they
+    /// belong to the address they were offered for.
     private func forgetProbe() {
-        if let reused = reusedSignIn {
-            if username == reused.connection.username { username = "" }
-            if password == reused.connection.password { password = "" }
-        }
+        let reused = reusedSignIn
         authStatus = nil
         detectedKind = nil
         savedSignIns = []
         reusedSignIn = nil
         probedConnectionIdentity = nil
+        guard let reused else { return }
+        if username == reused.connection.username { username = "" }
+        if password == reused.connection.password { password = "" }
+        let copied = reused.connection.headers ?? []
+        let kept = customHeaders.filter { row in !copied.contains { $0.name == row.name && $0.value == row.value } }
+        if kept.count != customHeaders.count {
+            customHeaders = connectionMode == .cloudflareTunnel ? Self.withAccessRows(kept) : kept
+        }
+    }
+
+    /// `headers` plus an empty row for each Access header it lacks.
+    private static func withAccessRows(_ headers: [CustomHeader]) -> [CustomHeader] {
+        headers + accessHeaderNames
+            .filter { name in !headers.contains { $0.sanitizedName.caseInsensitiveCompare(name) == .orderedSame } }
+            .map { CustomHeader(name: $0) }
     }
 
     /// Cloudflare Tunnel opens Access's two header rows, empty; leaving it removes those
     /// rows that are still empty. Neither changes what is sent (`sentHeaders`).
     private func syncAccessHeaders(leaving old: ConnectionMode) {
         guard old != connectionMode else { return }
-        func isAccessRow(_ header: CustomHeader) -> Bool {
-            Self.accessHeaderNames.contains { $0.caseInsensitiveCompare(header.sanitizedName) == .orderedSame }
-        }
+        isSyncingAccessRows = true
+        defer { isSyncingAccessRows = false }
         if connectionMode == .cloudflareTunnel {
-            for name in Self.accessHeaderNames
-            where !customHeaders.contains(where: { $0.sanitizedName.caseInsensitiveCompare(name) == .orderedSame }) {
-                customHeaders.append(CustomHeader(name: name))
-            }
+            customHeaders = Self.withAccessRows(customHeaders)
         } else if old == .cloudflareTunnel {
-            customHeaders.removeAll { isAccessRow($0) && $0.sanitizedValue.isEmpty }
+            customHeaders.removeAll { header in
+                header.sanitizedValue.isEmpty
+                    && Self.accessHeaderNames.contains { $0.caseInsensitiveCompare(header.sanitizedName) == .orderedSame }
+            }
         }
     }
 
@@ -328,10 +351,11 @@ final class OnboardingViewModel {
         }
     }
 
-    private func foundHermes(at address: URL, identity: String, authManager: AuthManager) {
+    /// Callers have just checked that the inputs are the ones probed.
+    private func foundHermes(at address: URL, authManager: AuthManager) {
         authStatus = nil
         detectedKind = .hermes
-        probedConnectionIdentity = identity
+        probedConnectionIdentity = currentConnectionIdentity()
         savedSignIns = authManager.savedHermesSignIns(at: address)
         isBotModeEnabled = BotModeGate.isEnabled(in: preferences)
     }
@@ -355,7 +379,7 @@ final class OnboardingViewModel {
         guard token == operationGeneration, identityAtStart == currentConnectionIdentity() else { return }
         switch detection {
         case .hermes(let address):
-            foundHermes(at: address, identity: identityAtStart, authManager: authManager)
+            foundHermes(at: address, authManager: authManager)
             return
         case .refused(let advice):
             forgetProbe()
@@ -431,7 +455,7 @@ final class OnboardingViewModel {
             switch detection {
             case .hermes(let address):
                 // Its username and password appear now; the next Connect signs in.
-                foundHermes(at: address, identity: identityAtStart, authManager: authManager)
+                foundHermes(at: address, authManager: authManager)
                 return nil
             case .refused(let advice):
                 forgetProbe()

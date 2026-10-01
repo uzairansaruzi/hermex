@@ -489,7 +489,9 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
     func testAWebuiAnswerOnTheStatusRouteFallsThroughToHealth() async {
         let replies: [HermesHostFixture.Reply] = [
             .json(401, .object(["error": .string("Authentication required")])),
-            .json(404, .object(["error": .string("Not found")]))
+            .json(404, .object(["error": .string("Not found")])),
+            // The probe's plain HTTP reached a webui's TLS port, which the webui path reads over https.
+            .json(400, .string("The plain HTTP request was sent to HTTPS port"))
         ]
         for reply in replies {
             let (gatekeeper, manager) = makeOpenWebui()
@@ -510,7 +512,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
 
     func testAHostHeaderRefusalOrAnAccessSignInShowsItsAdviceWithoutFallingThrough() async {
         let rows: [(HermesHostFixture.Reply, String)] = [
-            (.json(400, .string("Invalid Host header")),
+            (.json(400, .object(["detail": .string("Invalid Host header. Dashboard requests must use the bound hostname or the configured public hostname.")])),
              "Hermes doesn't accept hermes.example as its address. On the host, set dashboard.public_url to https://hermes.example, then restart the dashboard."),
             (.json(401, .string("Sign in to Access")),
              "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address.")
@@ -525,6 +527,9 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
             XCTAssertEqual(form.errorMessage, advice)
             XCTAssertNil(form.detectedKind)
             XCTAssertTrue(gatekeeper.recordedPhases.isEmpty, "\(reply) never falls through to the webui")
+
+            form.connectionMode = .cloudflareTunnel
+            XCTAssertEqual(form.errorMessage, advice, "Switching the mode, as the Access advice suggests, keeps the advice")
         }
     }
 

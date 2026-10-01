@@ -900,22 +900,36 @@ final class AuthManagerStateTests: XCTestCase {
 
     func testASavedPasswordLeavesTheFormWhenTheAddressChanges() async throws {
         defer { HermesHostFixture.reset() }
-        let keychain = InMemoryKeychainStore()
-        let manager = makeFormManager(keychain: keychain)
-        await manager.configure(serverURLString: webuiServer.absoluteString, password: "")
-        let side = BotConnection(id: UUID(), name: "Side", address: hermesServer, username: "me", password: "saved")
-        try BotConnectionStore(keychain: keychain).save(side, server: webuiServer)
-        let form = makeForm(entry: .addServer)
-        form.serverURLString = "hermes.example"
-        await form.connect(authManager: manager)
-        form.useSavedSignIn(try XCTUnwrap(form.savedSignIns.first))
+        // The second row changes only the scheme the dashboard is reached at: the webui path
+        // reads both texts as https://hermes.local:9119, the Hermes parser does not.
+        let rows: [(saved: String, typed: String, edited: String, mode: OnboardingViewModel.ConnectionMode, rowsLeft: [String])] = [
+            ("https://hermes.example", "hermes.example", "other.example", .privateNetwork, []),
+            ("http://hermes.local:9119", "hermes.local:9119", "https://hermes.local:9119", .cloudflareTunnel,
+             ["CF-Access-Client-Id", "CF-Access-Client-Secret"])
+        ]
+        for row in rows {
+            HermesHostFixture.reset()
+            let keychain = InMemoryKeychainStore()
+            let manager = makeFormManager(keychain: keychain)
+            await manager.configure(serverURLString: webuiServer.absoluteString, password: "")
+            let side = BotConnection(id: UUID(), name: "Side", address: URL(string: row.saved)!, username: "me", password: "saved",
+                                     headers: [CustomHeader(name: "CF-Access-Client-Secret", value: "secret.access")])
+            try BotConnectionStore(keychain: keychain).save(side, server: webuiServer)
+            let form = makeForm(entry: .addServer)
+            form.connectionMode = row.mode
+            form.serverURLString = row.typed
+            await form.connect(authManager: manager)
+            form.useSavedSignIn(try XCTUnwrap(form.savedSignIns.first, row.typed))
 
-        form.serverURLString = "other.example"
+            form.serverURLString = row.edited
 
-        XCTAssertEqual(form.password, "", "A saved password only goes to the address it was saved for")
-        XCTAssertEqual(form.username, "")
-        XCTAssertNil(form.reusedSignIn)
-        XCTAssertNil(form.detectedKind)
+            XCTAssertEqual(form.password, "", "\(row.edited): a saved password only goes to the address it was saved for")
+            XCTAssertEqual(form.username, "", row.edited)
+            XCTAssertEqual(form.customHeaders.map(\.name), row.rowsLeft, "\(row.edited): so does its Access secret")
+            XCTAssertEqual(form.customHeaders.map(\.value), row.rowsLeft.map { _ in "" }, row.edited)
+            XCTAssertNil(form.reusedSignIn, row.edited)
+            XCTAssertNil(form.detectedKind, row.edited)
+        }
     }
 
     func testAReusedSignInStillChecksTheSavedInstallBeforeThePassword() async throws {

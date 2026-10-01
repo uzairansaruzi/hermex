@@ -148,9 +148,12 @@ import OSLog
     /// Reads the public `/api/status` once, with this connection's headers and no
     /// credentials, classified as sign-in classifies it: `.notDashboard`, `.blocked` or
     /// `.rejected`. The connect form reads it to tell a Hermes dashboard from a webui (#900).
+    /// Its probe can reach a port the webui path never would, such as plain HTTP on a TLS
+    /// port, so here only the dashboard's own Host-header refusal is `.rejected(400)`, and
+    /// any other 400 is `.notDashboard`.
     func status() async throws -> BotJSON {
         try checkCurrent()
-        return try await publicStatus(on: session)
+        return try await publicStatus(on: session, onlyHostRefusalIs400: true)
     }
 
     /// Sends one signed-in request built from `rest` and returns the body of a reply whose
@@ -245,8 +248,8 @@ import OSLog
     /// The first sign-in read. `/api/status` is public on every dashboard, so a 404, a body
     /// that is not JSON, or a 401 whose body is a JSON object (the webui's auth gate) means
     /// the address is something else, such as the webui. Any other 401 comes from something
-    /// in front of Hermes, such as Cloudflare Access.
-    private func publicStatus(on session: URLSession) async throws -> BotJSON {
+    /// in front of Hermes, such as Cloudflare Access. `onlyHostRefusalIs400` is `status()`'s.
+    private func publicStatus(on session: URLSession, onlyHostRefusalIs400: Bool = false) async throws -> BotJSON {
         let request = prepared(try HermesREST.status.request(base: connection.address))
         let (data, response) = try await Self.exchange(request, on: session, redirectGuard: redirectGuard)
         let body = try? JSONDecoder().decode(BotJSON.self, from: data)
@@ -256,6 +259,9 @@ import OSLog
             return body
         case 401: throw body?.fields != nil ? BotFailure.notDashboard : BotFailure.blocked
         case 404: throw BotFailure.notDashboard
+        // The dashboard's Host-header middleware answers `{"detail": "Invalid Host header. …"}`.
+        case 400 where onlyHostRefusalIs400 && body?["detail"].text?.hasPrefix("Invalid Host header") != true:
+            throw BotFailure.notDashboard
         case let code: throw BotFailure.rejected(code)
         }
     }
