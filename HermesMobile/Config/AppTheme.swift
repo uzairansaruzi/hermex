@@ -69,15 +69,15 @@ struct HeaderLogoColorPreset: Identifiable, Equatable {
 
 enum HeaderLogoColor {
     static let storageKey = "headerLogoColorHex"
-    static let defaultHex = "#FFD700"
+    static let defaultHex = HermesProductPalette.headerAccentYellow
 
     static let presets: [HeaderLogoColorPreset] = [
-        HeaderLogoColorPreset(name: String(localized: "Yellow"), hex: "#FFD700"),
-        HeaderLogoColorPreset(name: String(localized: "Blue"), hex: "#5B7CFF"),
-        HeaderLogoColorPreset(name: String(localized: "Purple"), hex: "#AF52DE"),
-        HeaderLogoColorPreset(name: String(localized: "Red"), hex: "#FF3B30"),
-        HeaderLogoColorPreset(name: String(localized: "Green"), hex: "#34C759"),
-        HeaderLogoColorPreset(name: String(localized: "White"), hex: "#FFFFFF")
+        HeaderLogoColorPreset(name: String(localized: "Yellow"), hex: HermesProductPalette.headerAccentYellow),
+        HeaderLogoColorPreset(name: String(localized: "Blue"), hex: HermesProductPalette.headerAccentBlue),
+        HeaderLogoColorPreset(name: String(localized: "Purple"), hex: HermesProductPalette.headerAccentPurple),
+        HeaderLogoColorPreset(name: String(localized: "Red"), hex: HermesProductPalette.headerAccentRed),
+        HeaderLogoColorPreset(name: String(localized: "Green"), hex: HermesProductPalette.headerAccentGreen),
+        HeaderLogoColorPreset(name: String(localized: "White"), hex: HermesProductPalette.headerAccentWhite)
     ]
 
     static func normalizedHex(_ rawValue: String) -> String? {

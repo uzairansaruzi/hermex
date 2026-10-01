@@ -1,0 +1,408 @@
+#!/usr/bin/env python3
+"""Deterministic, dependency-free lookup/exact-select/decision-receipt CLI over the checked-in
+`design-system-catalog/hermex-manifest.json` — the generated snapshot of the live Hermex catalog
+(see `design-system-catalog/scripts/generate-hermex-manifest.mjs`).
+
+No fuzzy matching, no model/network call: every mode here reads only the manifest file on disk and
+scores/selects against its own structured fields with one small, documented, field-weighted integer
+scoring function (see `FIELD_WEIGHTS`/`score_entry` below).
+
+Usage:
+  design-system-guide "<query>"                         Ranked human-readable lookup
+  design-system-guide --json "<query>"                   Ranked lookup, JSON array on stdout
+  design-system-guide --select "<id or display name>"    Exact selection, human-readable
+  design-system-guide --select "<id or display name>" --json
+                                                          Exact selection, JSON object on stdout
+  design-system-guide receipt --query "<query>" --select "<id or display name>" \\
+      --reject "<alternative name>::<reason>" [--reject ... repeatable] \\
+      --new-component yes|no --new-component-reason "<reason>" [--json]
+                                                          Structured agent decision receipt
+
+Before introducing a new frontend literal/component/lookalike, run this tool and include its
+receipt output in the owning issue/PR/handoff (see AGENTS.md). The receipt is evidence that a
+decision was checked against the catalog — it is not an automatic approval gate.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+
+REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+DEFAULT_MANIFEST_PATH = os.path.join(REPO_ROOT, "design-system-catalog", "hermex-manifest.json")
+SUPPORTED_SCHEMA_VERSION = 1
+
+TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+
+
+def tokenize(text):
+    """Lowercases and splits on runs of non-alphanumeric characters — the one tokenizer every
+    scoring/matching path below shares, so "mutually-exclusive" and "multi-selection" tokenize to
+    ["mutually", "exclusive"] / ["multi", "selection"] the same way a query does."""
+    return TOKEN_PATTERN.findall(text.lower())
+
+
+def manifest_path():
+    return os.environ.get("HERMEX_MANIFEST_PATH", DEFAULT_MANIFEST_PATH)
+
+
+class GuideError(Exception):
+    """Raised for any user-facing failure — caught once in main() and printed to stderr."""
+
+
+def load_manifest(path):
+    if not os.path.exists(path):
+        raise GuideError(
+            f"hermex-manifest.json not found at {path}. "
+            "Generate it with: node design-system-catalog/scripts/generate-hermex-manifest.mjs"
+        )
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            manifest = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise GuideError(f"could not read manifest at {path}: {exc}") from exc
+
+    if not isinstance(manifest, dict) or "schemaVersion" not in manifest or "entries" not in manifest:
+        raise GuideError(f"manifest at {path} has an unrecognized schema (missing schemaVersion/entries)")
+    if manifest["schemaVersion"] != SUPPORTED_SCHEMA_VERSION:
+        raise GuideError(
+            f"manifest schemaVersion {manifest['schemaVersion']!r} is not supported by this guide "
+            f"(expected {SUPPORTED_SCHEMA_VERSION}); regenerate hermex-manifest.json or update design-system-guide"
+        )
+    if not isinstance(manifest["entries"], list):
+        raise GuideError(f"manifest at {path} has a non-list entries field")
+    return manifest
+
+
+# ─── Scoring ──────────────────────────────────────────────────────────────────────────────────────
+# One small, documented, field-weighted integer score: for every query token, add `weight` for each
+# occurrence of that token among the field's own tokens. Fields that most directly state *this*
+# entry's own purpose (id/displayName, whenToUse, hermesReference.useWhen, canonicalSymbols) are
+# weighted highest; fields that mostly describe *other* entries (alternatives' own useWhen text) or
+# are low-signal boilerplate (props) are weighted lowest. No fuzzy matching, no synonyms, no network.
+FIELD_WEIGHT_ID = 6
+FIELD_WEIGHT_DISPLAY_NAME = 6
+FIELD_WEIGHT_CATEGORY = 1
+FIELD_WEIGHT_DESCRIPTION = 2
+FIELD_WEIGHT_WHEN_TO_USE = 4
+FIELD_WEIGHT_USE_WHEN = 5
+FIELD_WEIGHT_AVOID_WHEN = 1
+FIELD_WEIGHT_ALTERNATIVE_NAME = 2
+FIELD_WEIGHT_ALTERNATIVE_USE_WHEN = 1
+FIELD_WEIGHT_PROP = 1
+FIELD_WEIGHT_CANONICAL_SYMBOL = 3
+FIELD_WEIGHT_USAGE_EXAMPLE = 1
+FIELD_WEIGHT_COMPOSITION = 1
+FIELD_WEIGHT_TOKEN_FACT = 1
+
+
+def _field_score(query_tokens, text, weight, matched_fields, field_label):
+    if not text:
+        return 0
+    field_tokens = tokenize(text)
+    if not field_tokens:
+        return 0
+    count = sum(field_tokens.count(token) for token in query_tokens)
+    if count > 0:
+        matched_fields.add(field_label)
+    return count * weight
+
+
+def score_entry(entry, query_tokens):
+    """Returns (score, sorted matched-field labels) for one manifest entry against `query_tokens`.
+
+    The raw field-weighted sum is multiplied by the count of *distinct* query tokens the entry
+    contains anywhere at all. The omitted division by total query-token count is constant for every
+    entry in one lookup, so it cannot alter ranking and keeping it out preserves an integer score.
+    Without this coordination factor, an entry that
+    repeats just one common query word across many fields (e.g. an entry literally named "Selection
+    Sheet" for the query "exclusive selection") can outscore an entry that genuinely addresses every
+    word of the query but mentions each only once (e.g. Radio's "exclusive, one-of-many selection").
+    This is the classic IR "coordination factor": matching more of the distinct query terms is
+    itself evidence of relevance, independent of how many times any single term repeats."""
+    matched_fields = set()
+    score = 0
+    score += _field_score(query_tokens, entry.get("id", ""), FIELD_WEIGHT_ID, matched_fields, "id")
+    score += _field_score(query_tokens, entry.get("displayName", ""), FIELD_WEIGHT_DISPLAY_NAME, matched_fields, "displayName")
+    score += _field_score(query_tokens, entry.get("category", ""), FIELD_WEIGHT_CATEGORY, matched_fields, "category")
+    score += _field_score(query_tokens, entry.get("description", ""), FIELD_WEIGHT_DESCRIPTION, matched_fields, "description")
+    score += _field_score(query_tokens, entry.get("whenToUse", "") or "", FIELD_WEIGHT_WHEN_TO_USE, matched_fields, "whenToUse")
+
+    ref = entry.get("hermesReference") or {}
+    score += _field_score(query_tokens, ref.get("useWhen", "") or "", FIELD_WEIGHT_USE_WHEN, matched_fields, "useWhen")
+    score += _field_score(query_tokens, ref.get("avoidWhen", "") or "", FIELD_WEIGHT_AVOID_WHEN, matched_fields, "avoidWhen")
+
+    for alt in ref.get("alternatives") or []:
+        score += _field_score(query_tokens, alt.get("name", ""), FIELD_WEIGHT_ALTERNATIVE_NAME, matched_fields, "alternatives")
+        score += _field_score(query_tokens, alt.get("useWhen", ""), FIELD_WEIGHT_ALTERNATIVE_USE_WHEN, matched_fields, "alternatives")
+
+    for prop in entry.get("props") or []:
+        score += _field_score(query_tokens, prop.get("name", ""), FIELD_WEIGHT_PROP, matched_fields, "props")
+        score += _field_score(query_tokens, prop.get("desc", ""), FIELD_WEIGHT_PROP, matched_fields, "props")
+
+    for symbol in ref.get("canonicalSymbols") or []:
+        score += _field_score(query_tokens, symbol, FIELD_WEIGHT_CANONICAL_SYMBOL, matched_fields, "canonicalSymbols")
+
+    for example in ref.get("usageExamples") or []:
+        score += _field_score(query_tokens, example.get("name", ""), FIELD_WEIGHT_USAGE_EXAMPLE, matched_fields, "usageExamples")
+        score += _field_score(query_tokens, example.get("code", ""), FIELD_WEIGHT_USAGE_EXAMPLE, matched_fields, "usageExamples")
+
+    for slot in ref.get("compositionSlots") or []:
+        score += _field_score(query_tokens, slot.get("name", ""), FIELD_WEIGHT_COMPOSITION, matched_fields, "compositionSlots")
+        score += _field_score(query_tokens, slot.get("description", ""), FIELD_WEIGHT_COMPOSITION, matched_fields, "compositionSlots")
+        score += _field_score(query_tokens, slot.get("role", ""), FIELD_WEIGHT_COMPOSITION, matched_fields, "compositionSlots")
+
+    for constraint in ref.get("compositionConstraints") or []:
+        score += _field_score(query_tokens, constraint.get("detail", ""), FIELD_WEIGHT_COMPOSITION, matched_fields, "compositionConstraints")
+
+    for fact in ref.get("tokenFacts") or []:
+        score += _field_score(query_tokens, fact.get("name", ""), FIELD_WEIGHT_TOKEN_FACT, matched_fields, "tokenFacts")
+        score += _field_score(query_tokens, fact.get("purpose", "") or "", FIELD_WEIGHT_TOKEN_FACT, matched_fields, "tokenFacts")
+
+    distinct_query_tokens = set(query_tokens)
+    entry_tokens = set(tokenize(json.dumps(entry)))
+    matched_distinct_tokens = distinct_query_tokens & entry_tokens
+    score = score * len(matched_distinct_tokens)
+
+    return score, sorted(matched_fields)
+
+
+def _sort_key(entry):
+    # Stable tie break: canonical key is (displayName, id), both ascending — see module docstring.
+    return (entry.get("displayName") or entry.get("id") or "", entry.get("id") or "")
+
+
+def rank_entries(manifest, query):
+    query_tokens = tokenize(query)
+    if not query_tokens:
+        raise GuideError("query is empty after tokenizing — pass at least one alphanumeric search term")
+
+    scored = []
+    for entry in manifest["entries"]:
+        score, matched_fields = score_entry(entry, query_tokens)
+        if score > 0:
+            scored.append((score, entry, matched_fields))
+
+    scored.sort(key=lambda item: (-item[0], _sort_key(item[1])))
+    return [
+        {
+            "id": entry["id"],
+            "displayName": entry.get("displayName", entry["id"]),
+            "category": entry.get("category", ""),
+            "score": score,
+            "matchedFields": matched_fields,
+        }
+        for score, entry, matched_fields in scored
+    ]
+
+
+def find_exact(manifest, name):
+    for entry in manifest["entries"]:
+        if entry.get("id") == name or entry.get("displayName") == name:
+            return entry
+    return None
+
+
+# ─── Human-readable rendering ────────────────────────────────────────────────────────────────────
+
+def render_ranked_human(results):
+    if not results:
+        return "No catalog entry matched this query."
+    lines = []
+    for i, result in enumerate(results, start=1):
+        matched = ", ".join(result["matchedFields"]) or "none"
+        lines.append(
+            f"{i}. {result['displayName']} ({result['id']}) — {result['category']} "
+            f"[score {result['score']}; matched: {matched}]"
+        )
+    return "\n".join(lines)
+
+
+def render_entry_human(entry):
+    ref = entry.get("hermesReference") or {}
+    adoption = ref.get("adoptionStatus") or {}
+    lines = [
+        f"{entry.get('displayName', entry['id'])} ({entry['id']}) — {entry.get('category', '')}",
+        f"useWhen: {ref.get('useWhen', '(none)')}",
+        f"avoidWhen: {ref.get('avoidWhen', '(none)')}",
+        f"adoptionStatus: {adoption.get('state', '(none)')} — {adoption.get('detail', '')}",
+        f"canonicalSymbols: {', '.join(ref.get('canonicalSymbols') or [])}",
+    ]
+    source_paths = (ref.get("implementationNotes") or {}).get("sourcePaths") or []
+    lines.append(f"sourcePaths: {', '.join(source_paths)}")
+    return "\n".join(lines)
+
+
+def render_receipt_human(receipt):
+    lines = [
+        f"query: {receipt['query']}",
+        f"selected: {receipt['selected']['displayName']} ({receipt['selected']['id']}) — {receipt['selected']['category']}",
+        f"adoptionStatus: {receipt['selected']['adoptionStatus'].get('state', '(none)')} — {receipt['selected']['adoptionStatus'].get('detail', '')}",
+        f"canonicalSymbols: {', '.join(receipt['selected']['canonicalSymbols'])}",
+        f"sourcePaths: {', '.join(receipt['selected']['sourcePaths'])}",
+        "rejectedAlternatives:",
+    ]
+    for rejected in receipt["rejectedAlternatives"]:
+        lines.append(f"  - {rejected['name']}: {rejected['reason']}")
+    lines.append(f"newComponentNeeded: {receipt['newComponentNeeded']} — {receipt['newComponentReason']}")
+    lines.append(f"manifestSchemaVersion: {receipt['manifestSchemaVersion']}")
+    return "\n".join(lines)
+
+
+def entry_to_select_json(entry):
+    ref = entry.get("hermesReference") or {}
+    return {
+        "id": entry["id"],
+        "displayName": entry.get("displayName", entry["id"]),
+        "category": entry.get("category", ""),
+        "useWhen": ref.get("useWhen"),
+        "avoidWhen": ref.get("avoidWhen"),
+        "adoptionStatus": ref.get("adoptionStatus"),
+        "canonicalSymbols": ref.get("canonicalSymbols") or [],
+        "sourcePaths": (ref.get("implementationNotes") or {}).get("sourcePaths") or [],
+    }
+
+
+# ─── Argument parsing ────────────────────────────────────────────────────────────────────────────
+
+def parse_lookup_args(argv):
+    json_mode = False
+    select_value = None
+    query_parts = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--json":
+            json_mode = True
+            i += 1
+        elif arg == "--select":
+            i += 1
+            if i >= len(argv):
+                raise GuideError("--select requires a value (an exact entry id or display name)")
+            select_value = argv[i]
+            i += 1
+        else:
+            query_parts.append(arg)
+            i += 1
+    return json_mode, select_value, " ".join(query_parts).strip()
+
+
+def parse_receipt_args(argv):
+    options = {"reject": []}
+    i = 0
+    flag_to_key = {
+        "--query": "query",
+        "--select": "select",
+        "--new-component": "new-component",
+        "--new-component-reason": "new-component-reason",
+    }
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--reject":
+            i += 1
+            if i >= len(argv):
+                raise GuideError("--reject requires a value in the form '<alternative name>::<reason>'")
+            options["reject"].append(argv[i])
+            i += 1
+        elif arg in flag_to_key:
+            i += 1
+            if i >= len(argv):
+                raise GuideError(f"{arg} requires a value")
+            options[flag_to_key[arg]] = argv[i]
+            i += 1
+        elif arg == "--json":
+            options["json"] = True
+            i += 1
+        else:
+            raise GuideError(f"unrecognized receipt argument: {arg}")
+    return options
+
+
+def build_receipt(manifest, options):
+    query = (options.get("query") or "").strip()
+    if not query:
+        raise GuideError("receipt requires a non-empty --query")
+
+    select_value = options.get("select")
+    if not select_value:
+        raise GuideError("receipt requires --select '<exact id or display name>'")
+    selected_entry = find_exact(manifest, select_value)
+    if selected_entry is None:
+        raise GuideError(f"--select value {select_value!r} does not match any catalog entry id or display name")
+
+    reject_specs = options.get("reject") or []
+    if not reject_specs:
+        raise GuideError("receipt requires at least one --reject '<alternative name>::<reason>' entry")
+    rejected = []
+    for spec in reject_specs:
+        if "::" not in spec:
+            raise GuideError(f"--reject value {spec!r} must be in the form '<alternative name>::<reason>'")
+        name, reason = spec.split("::", 1)
+        name = name.strip()
+        reason = reason.strip()
+        if not name or not reason:
+            raise GuideError(f"--reject value {spec!r} must have a non-empty alternative name and a non-empty reason")
+        rejected.append({"name": name, "reason": reason})
+
+    new_component = options.get("new-component")
+    if new_component not in ("yes", "no"):
+        raise GuideError("--new-component must be exactly 'yes' or 'no'")
+    new_component_reason = (options.get("new-component-reason") or "").strip()
+    if not new_component_reason:
+        raise GuideError("--new-component-reason must be a non-empty reason")
+
+    return {
+        "query": query,
+        "selected": entry_to_select_json(selected_entry),
+        "rejectedAlternatives": rejected,
+        "newComponentNeeded": new_component,
+        "newComponentReason": new_component_reason,
+        "manifestSchemaVersion": manifest["schemaVersion"],
+    }
+
+
+def main(argv):
+    if not argv:
+        raise GuideError(f"usage: design-system-guide \"<query>\" — see --help text in the script header for every mode\n{__doc__}")
+
+    manifest = load_manifest(manifest_path())
+
+    if argv[0] == "receipt":
+        options = parse_receipt_args(argv[1:])
+        receipt = build_receipt(manifest, options)
+        if options.get("json"):
+            print(json.dumps(receipt, indent=2, sort_keys=False))
+        else:
+            print(render_receipt_human(receipt))
+        return 0
+
+    json_mode, select_value, query = parse_lookup_args(argv)
+
+    if select_value is not None:
+        entry = find_exact(manifest, select_value)
+        if entry is None:
+            raise GuideError(f"--select value {select_value!r} does not match any catalog entry id or display name")
+        if json_mode:
+            print(json.dumps(entry_to_select_json(entry), indent=2, sort_keys=False))
+        else:
+            print(render_entry_human(entry))
+        return 0
+
+    if not query:
+        raise GuideError("query is empty — pass a search phrase, e.g. design-system-guide \"exclusive selection\"")
+
+    results = rank_entries(manifest, query)
+    if json_mode:
+        print(json.dumps(results, indent=2, sort_keys=False))
+    else:
+        print(render_ranked_human(results))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except GuideError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)

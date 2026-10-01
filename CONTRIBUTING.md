@@ -77,6 +77,52 @@ architecture overhauls will be closed without detailed review.
 Keep each PR to **one logical change** with a reviewable diff. If a change is
 independently useful, it deserves its own PR.
 
+## Hermex Design System
+
+Hermex has one versioned design-system implementation in this repository. Shared
+foundations live in `HermesMobile/Config/`; reusable components and patterns live
+in `HermesMobile/Features/Shared/`. Feature screens consume those APIs instead of
+recreating their visual treatment locally.
+
+For frontend contributions:
+
+- Use the existing Hermex typography, color, spacing, radius, motion, shadow, and
+  component APIs before introducing a literal or feature-local lookalike.
+- Keep native platform behavior where it owns the interaction — for example
+  `.searchable`, navigation/toolbars, system lists, menus, and alerts — and layer
+  Hermex styling around those semantics rather than replacing them.
+- Use `Tag` only for display-only metadata. Tappable choices use Button,
+  Segmented Control, Checkbox, or another semantic control.
+- Update `design-system-catalog/` in the same PR whenever a shared token,
+  component, variant, state, or ownership classification changes — it is
+  versioned in this repository, not maintained separately. See
+  [`DEVELOPMENT.md`](DEVELOPMENT.md#design-system-catalog) for install/test/
+  typecheck/launch commands.
+- Before adding a new frontend literal, a new/customized component, or a
+  lookalike of an existing one, run `scripts/design-system-guide "<query>"`
+  against the checked-in `design-system-catalog/hermex-manifest.json` and
+  include its `receipt` subcommand output (query, selected entry, rejected
+  alternatives with reasons, and whether a new component is actually needed)
+  in the PR description. `design-system-catalog/hermex-manifest.json` is a
+  **generated** artifact — regenerate it with `node
+  design-system-catalog/scripts/generate-hermex-manifest.mjs` in the same PR
+  as any `hermesSections.tsx`/`types.ts`/`manifest.ts` change; PR CI's Design
+  System Contract job fails closed if it drifts (`--check`). Never hand-edit
+  the JSON file directly.
+- `scripts/hermex_design_system_adoption_audit.py` (PR CI's Design System
+  Contract job) protects the foundation layer: it fails closed if a required
+  foundation file or one of its load-bearing API snippets goes missing, if the
+  approved icon-size or avatar/icon-pairing scale drifts, or if a frozen
+  legacy-baseline count (native segmented controls, direct
+  `ContentUnavailableView` calls) grows or gains a new call site. It does not
+  rewrite code, and it does not require or prove that any production screen has
+  migrated onto a Design System component — an automatic check only enforces
+  the specific contracts encoded above, nothing broader. If your PR
+  legitimately adds, removes, or migrates one of the frozen baseline's call
+  sites, update that baseline dict in the same PR with a comment explaining
+  why — the script's own module docstring names the owner/removal-condition
+  rule for each baseline.
+
 ## App bug or server bug?
 
 Hermex is a thin client over [hermes-webui](https://github.com/nesquena/hermes-webui),

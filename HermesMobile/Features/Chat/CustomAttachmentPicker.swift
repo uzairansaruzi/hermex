@@ -388,8 +388,7 @@ enum HermexAttachmentPickerPresentation {
     static let overlayHostAccessibilityIdentifier = "HermexAttachmentPickerOverlay"
 }
 
-struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresentable {
-    @Environment(\.scenePhase) private var scenePhase
+struct HermexKeyboardRetainingOverlay<Overlay: View>: View {
     let isPresented: Bool
     private let overlay: () -> Overlay
 
@@ -398,100 +397,13 @@ struct HermexKeyboardRetainingOverlay<Overlay: View>: UIViewControllerRepresenta
         self.overlay = overlay
     }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeUIViewController(context: Context) -> UIViewController {
-        let controller = UIViewController()
-        controller.view.backgroundColor = .clear
-        controller.view.isUserInteractionEnabled = false
-        return controller
-    }
-
-    func updateUIViewController(_ controller: UIViewController, context: Context) {
-        context.coordinator.update(
+    var body: some View {
+        HermexSameWindowOverlay(
             isPresented: isPresented,
-            anchor: controller,
-            // This sibling host does not inherit SwiftUI's scene environment.
-            // Forward it so camera/media work starts and stops with its owner.
-            overlay: AnyView(overlay().environment(\.scenePhase, scenePhase))
+            bounds: .aboveKeyboard,
+            accessibilityIdentifier: HermexAttachmentPickerPresentation.overlayHostAccessibilityIdentifier,
+            overlay: overlay
         )
-    }
-
-    static func dismantleUIViewController(_ controller: UIViewController, coordinator: Coordinator) {
-        coordinator.stop()
-    }
-
-    @MainActor final class Coordinator {
-        private var host: UIHostingController<AnyView>?
-        private var wantsPresentation = false
-        private var latestOverlay = AnyView(EmptyView())
-
-        func update(isPresented: Bool, anchor: UIViewController, overlay: AnyView) {
-            wantsPresentation = isPresented
-            latestOverlay = overlay
-
-            guard isPresented else {
-                removeOverlay()
-                return
-            }
-
-            if let host {
-                host.rootView = overlay
-                return
-            }
-
-            guard let root = anchor.view.window?.rootViewController else {
-                DispatchQueue.main.async { [weak self, weak anchor] in
-                    guard let self, let anchor, self.wantsPresentation else { return }
-                    self.attachIfPossible(to: anchor)
-                }
-                return
-            }
-            attach(to: root)
-        }
-
-        private func attachIfPossible(to anchor: UIViewController) {
-            guard host == nil,
-                  wantsPresentation,
-                  let root = anchor.view.window?.rootViewController
-            else { return }
-            attach(to: root)
-        }
-
-        private func attach(to root: UIViewController) {
-            guard let container = root.view.superview ?? root.view.window else { return }
-
-            let host = UIHostingController(rootView: latestOverlay)
-            host.view.backgroundColor = .clear
-            host.view.translatesAutoresizingMaskIntoConstraints = false
-            host.view.accessibilityViewIsModal = true
-            host.view.accessibilityIdentifier = HermexAttachmentPickerPresentation.overlayHostAccessibilityIdentifier
-
-            // UIHostingController's root view does not support UIKit subviews.
-            // Install the overlay beside it in their common container instead.
-            container.addSubview(host.view)
-            root.view.keyboardLayoutGuide.followsUndockedKeyboard = true
-            NSLayoutConstraint.activate([
-                host.view.topAnchor.constraint(equalTo: root.view.topAnchor),
-                host.view.leadingAnchor.constraint(equalTo: root.view.leadingAnchor),
-                host.view.trailingAnchor.constraint(equalTo: root.view.trailingAnchor),
-                host.view.bottomAnchor.constraint(equalTo: root.view.keyboardLayoutGuide.topAnchor)
-            ])
-            self.host = host
-        }
-
-        func removeOverlay() {
-            guard let host else { return }
-            host.view.removeFromSuperview()
-            self.host = nil
-        }
-
-        func stop() {
-            wantsPresentation = false
-            removeOverlay()
-        }
     }
 }
 

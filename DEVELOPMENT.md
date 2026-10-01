@@ -133,6 +133,78 @@ and leaves other jobs and the simulator itself alone.
 
 Runner checks: `python3 -m unittest discover -s scripts/tests -v`.
 
+## Design System Catalog
+
+`design-system-catalog/` is the canonical, versioned Hermex Design System catalog — a React
+Native/Expo token layer, component tree, and browsable catalog documenting the SwiftUI design
+system `HermesMobile/Config/` and `HermesMobile/Features/Shared/` implement. It is not maintained
+outside this repository; see `CONTRIBUTING.md` § Hermex Design System for when a PR must update it,
+and `design-system-catalog/README.md` for the catalog's own structure and conventions.
+
+```zsh
+# Install dependencies
+npm ci --prefix design-system-catalog/native-preview
+
+# Node contract test for the Hermex catalog (no extra test dependency)
+node --test design-system-catalog/test/hermes-catalog.test.mjs
+
+# Typecheck (needs a runtime-only node_modules symlink at the catalog root — gitignored,
+# never committed, recreated on demand; see the README's "node_modules symlink" note)
+ln -s native-preview/node_modules design-system-catalog/node_modules
+(cd design-system-catalog/native-preview && npx tsc --noEmit)
+
+# Launch the catalog at http://localhost:8096
+cd design-system-catalog/native-preview && npm run web
+
+# Regenerate the machine-readable manifest after a hermesSections.tsx/types.ts/manifest.ts change
+node design-system-catalog/scripts/generate-hermex-manifest.mjs
+# Check it's fresh without rewriting it (what CI runs)
+node design-system-catalog/scripts/generate-hermex-manifest.mjs --check
+
+# Deterministic lookup/exact-select/decision-receipt over that generated manifest — no network,
+# no fuzzy matching; see AGENTS.md § Design System for when to run this
+scripts/design-system-guide "exclusive selection"
+scripts/design-system-guide --json "exclusive selection"
+scripts/design-system-guide --select "Hermes Radio"
+scripts/design-system-guide receipt --query "exclusive selection" --select "Hermes Radio" \
+  --reject "Segmented Control::Use for compact two-to-five option switching, not a longer form group." \
+  --new-component no --new-component-reason "Hermes Radio already models one choice from a mutually exclusive group."
+```
+
+`design-system-catalog/hermex-manifest.json` is a **generated** artifact — it is the canonical
+`hermesSections`/`hermesNav` catalog data (the same data `buildHermesManifestEnvelope()` in
+`native/catalog/manifest.ts` serializes for the catalog's own in-browser "Machine-readable manifest"
+disclosure) run through `design-system-catalog/scripts/generate-hermex-manifest.mjs` and written to
+disk with stable ordering, two-space indentation, and no timestamp, so it is byte-identical for a
+given catalog source. Regenerate it in the same PR as any `hermesSections.tsx`/`types.ts`/
+`manifest.ts` change; never hand-edit the JSON directly, since the generator will overwrite it and
+PR CI's `--check` run will fail if it ever drifts from the live source.
+
+PR CI's `Design System Contract` job runs these Node/TypeScript checks, the manifest freshness
+check, the `design-system-guide` contract tests
+(`python3 -m unittest scripts.tests.test_design_system_guide -v`), and the catalog's
+repository-location contract (`scripts/tests/test_design_system_catalog_repository.py`) on every
+PR; a catalog-only change (`design-system-catalog/**`) skips the macOS XCTest job but never skips
+this one.
+
+That job also runs `scripts/hermex_design_system_adoption_audit.py` (plus its fixture suite,
+`scripts/tests/test_hermex_design_system_adoption_audit.py`) — a foundation-only contract check, not
+a production-adoption gate. It fails closed when a required Swift foundation file or a small,
+load-bearing API snippet inside it goes missing, when the approved icon-size (12/16/20/24/32pt) or
+avatar/icon-pairing (32→16, 40→20, 48→24) scale drifts, or when either of its two frozen legacy
+baselines (native `.pickerStyle(.segmented)` call sites, direct `ContentUnavailableView` call sites)
+gains a new file or an increased count. This check does not rewrite code, and it does not require or
+prove that any production screen has migrated onto a Design System component — see the script's own
+module docstring for the exact contract and the baseline owner/removal-condition rule.
+
+```zsh
+# Fixture tests for the audit script itself
+python3 -m unittest scripts.tests.test_hermex_design_system_adoption_audit -v
+
+# The audit itself, against this repository
+python3 scripts/hermex_design_system_adoption_audit.py
+```
+
 ## PR CI
 
 `.github/workflows/pr-ci.yml` pins the hosted Xcode path, iOS runtime, and phone
@@ -169,7 +241,10 @@ and `python3 -m unittest discover -s ci -p 'test_*.py'`.
 A separate Linux job, Tooling Tests, runs the `scripts/tests` and `ci/` Python
 suites and the TestFlight build-number selector test on every PR and master
 push, including docs- and scripts-only PRs that skip the macOS runner. CI Gate
-fails when it fails.
+fails when it fails. A second Linux job, Design System Contract (see § Design
+System Catalog above), runs the catalog's Node/TypeScript checks and its
+repository-location contract on every PR and master push, including
+catalog-only PRs that skip the macOS runner; CI Gate fails when it fails too.
 
 ## Build and Launch With XcodeBuildMCP
 

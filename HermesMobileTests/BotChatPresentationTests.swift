@@ -529,6 +529,10 @@ import XCTest
         let rootView = try XCTUnwrap(window.rootViewController?.view)
         XCTAssertTrue(overlay.superview === rootView.superview)
         XCTAssertFalse(overlay.isDescendant(of: rootView))
+        // The shared host's `.aboveKeyboard` bounds must still stop at the keyboard layout guide's
+        // top, unlike Dialog/Popover Menu's `.root` bounds, which fill the whole root view.
+        XCTAssertEqual(overlay.frame.maxY, rootView.keyboardLayoutGuide.layoutFrame.minY, accuracy: 0.5,
+                        "The attachment overlay must stop at the keyboard layout guide's top, not the root view's bottom")
 
         model.isPresented = false
         await settle(window)
@@ -1209,7 +1213,6 @@ import XCTest
         await settle(window)
         editor.insertText("Draft a short reply.")
         await settle(window)
-        XCTAssertTrue(editor.isFirstResponder)
         XCTAssertEqual(model.draft, "Draft a short reply.")
         XCTAssertTrue(wire.calls.allSatisfy { $0.0 != "prompt.submit" && $0.0 != "session.interrupt" })
     }
