@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 
 @MainActor @Observable final class BotConversation {
     enum ConnectionState { case disconnected, recovering, connected }
@@ -198,11 +199,27 @@ import Observation
     private var snapshotIsBusy: Bool?
     private var snapshotDirty = false
     private var fullSnapshotNeeded = false
+    /// This runtime's frames that arrived while recovering, applied once the replay and the
+    /// snapshot are in, so a live frame never moves `sequence` past events the replay is
+    /// about to apply. At most the host's replay ring (`heldFrameLimit`); frames past it are
+    /// only counted in `framesPastHold`, and any of those makes the release a gap.
+    @ObservationIgnored private var heldFrames: [BotJSON] = []
+    @ObservationIgnored private var framesPastHold = 0
+    /// The host's replay ring per session: 512 events.
+    static let heldFrameLimit = 512
+    /// When `session.resume` first refused this run of reconnects with 4007 or 4009; nil
+    /// once a reconnect succeeds, fails another way, or the screen leaves.
+    @ObservationIgnored private var resumeRefusedSince: ContinuousClock.Instant?
+    /// How long those refusals are retried on the reconnect backoff before the advice shows.
+    private static let resumeRefusalWindow = Duration.seconds(60)
+    /// Automatic reconnect attempts since the chat was last connected, for the log.
+    @ObservationIgnored private var reconnectRetries = 0
     private var refreshTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
     private var isActive = false
     private var shouldRetryConnection = false
     private let reconnectDelay: (Duration) async throws -> Void
+    private let now: () -> ContinuousClock.Instant
     private(set) var isReconnecting = false
     private var stopAcknowledged = false
     private var localOperation = false
@@ -220,12 +237,14 @@ import Observation
          historyCache: BotHistoryCache? = nil, wire: (any BotTransport)? = nil, drafts: ChatDraftStore? = nil,
          attachmentCopies: any ChatDraftAttachmentStoring = ChatDraftAttachmentStore.shared,
          liveActivityFeed: BotLiveActivityFeed? = nil,
-         reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+         reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+         now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now }) {
         let resolvedWire = wire ?? BotClient(saved: connection, server: server)
         self.server = server; self.connection = connection; self.profile = profile
         self.linkedRoot = conversation; self.root = conversation
         self.mentions = BotMentions(roster: roster, excluding: profile.id)
         self.reconnectDelay = reconnectDelay
+        self.now = now
         self.wire = resolvedWire
         self.delegatedWork = BotDelegatedWork(wire: resolvedWire)
         self.historyCache = historyCache
@@ -648,7 +667,8 @@ import Observation
                 discardRecentTranscript()
                 recentOwner = historyCache?.recent.begin(recentKey)
             }
-            let first = try await request(resume(), owner: owner)
+            // Identity only: the snapshot below is the one read that carries the transcript.
+            let first = try await resume(full: false, owner: owner)
             guard first["session_key"].text == foundTip, let foundRuntime = first["session_id"].text,
                   !foundRuntime.isEmpty, let foundEpoch = wire.replayEpoch else { throw BotFailure.wrongIdentity }
             replayWasReset = epoch != foundEpoch || runtime != foundRuntime
@@ -662,7 +682,10 @@ import Observation
             let requestsRevision = requestRevision
             let clockRevision = clockRevision
             let reactionRevision = reactionRevision
-            let current = try await request(resume(), owner: owner)
+            // This full read covers whatever asked for one before it, including a refresh
+            // the disconnect cancelled; only what arrives after it schedules another.
+            snapshotDirty = false; fullSnapshotNeeded = false
+            let current = try await resume(full: true, owner: owner)
             try applySnapshot(current, full: true, requestsRevision: requestsRevision, clockRevision: clockRevision,
                               reactionRevision: reactionRevision)
             try check(owner)
@@ -673,6 +696,10 @@ import Observation
             guard connectionState == .recovering, chatControls.context == controlsContext else { throw BotFailure.transport }
             chatControls.snapshot(current["info"], idle: [.idle, .interrupted].contains(turn))
             connectionState = .connected
+            let frames = releaseHeldFrames()
+            let retries = reconnectRetries
+            HermesConnectionLog.logger.notice("Bot Chat reattached after \(retries, privacy: .public) retries: frames held \(frames.held, privacy: .public), applied \(frames.applied, privacy: .public), dropped \(frames.dropped, privacy: .public)")
+            reconnectRetries = 0; resumeRefusedSince = nil
             hasRecentTranscript = false; recentRoot = nil
             saveRecentTranscript()
             shouldRetryConnection = false
@@ -691,9 +718,21 @@ import Observation
         }
     }
 
-    private func resume(full: Bool = true) -> HermesCall {
-        .sessionResume(profile: profile.id, sessionID: tip ?? "", omitMessages: !full)
+    /// Reads this chat's live session; `full` asks for the transcript as well. The host
+    /// answers 4007 while it swaps in a replacement runtime and 4009 while a client-gone
+    /// interrupt settles, and both clear on their own, so they come back as
+    /// `ResumeRefusal` for the reconnect window. Matched by code alone: a real "session
+    /// not found" also says 4007, and only the host's wording, which can change, differs.
+    private func resume(full: Bool, owner: Int) async throws -> BotJSON {
+        do {
+            return try await request(.sessionResume(profile: profile.id, sessionID: tip ?? "", omitMessages: !full), owner: owner)
+        } catch BotFailure.rejected(let code) where [4007, 4009].contains(code) {
+            throw ResumeRefusal(code: code)
+        }
     }
+
+    /// A `session.resume` the host refused for now (see `resume(full:owner:)`).
+    private struct ResumeRefusal: Error { let code: Int }
 
     private func check(_ owner: Int) throws {
         guard generation == owner, !Task.isCancelled else { throw BotFailure.stale }
@@ -1505,26 +1544,22 @@ import Observation
             return
         }
         guard event["session_id"].text == runtime else { return }
+        guard connectionState == .connected else {
+            if heldFrames.count < Self.heldFrameLimit { heldFrames.append(event) } else { framesPastHold += 1 }
+            return
+        }
+        applyFrame(event)
+    }
+
+    /// Applies one of this runtime's sequenced frames to the connected chat.
+    private func applyFrame(_ event: BotJSON) {
         guard let next = event["seq"].integer, next > 0 else {
-            clockRevision += 1; confirmedWorkingStart = nil
-            replayWasReset = true; snapshotDirty = true; fullSnapshotNeeded = true
-            turnRevision += 1
-            liveActivity = BotTurnActivity(); turnNotice = nil
-            serverRequests.removeAll(); requestRevision += 1
-            if !localOperation { turn = .unknown }
+            streamGap(); snapshotDirty = true
             scheduleRefresh(); return
         }
         guard next != sequence else { return }
         let discontinuity = next != sequence + 1
-        if discontinuity {
-            clockRevision += 1; confirmedWorkingStart = nil
-            replayWasReset = true; fullSnapshotNeeded = true; turnRevision += 1
-            // Missed events may hold tool rows, a notice's clear, a newer turn's
-            // start or a request's cancellation; partial or stale state is worse than none.
-            liveActivity = BotTurnActivity(); turnNotice = nil
-            serverRequests.removeAll(); requestRevision += 1
-            if !localOperation { turn = .unknown }
-        }
+        if discontinuity { streamGap() }
         sequence = next
         let type = event["type"].text ?? ""
         // A newer frame than any snapshot already in flight, like a live request.
@@ -1557,6 +1592,38 @@ import Observation
         if type == "message.delta", !discontinuity, !localOperation, !uncertainSend, !uncertainStop { turn = .running }
         snapshotDirty = true
         scheduleRefresh()
+    }
+
+    /// A break in this runtime's stream. Missed events may hold tool rows, a notice's
+    /// clear, a newer turn's start or a request's cancellation; partial or stale state is
+    /// worse than none, so it all goes and the next read is a full one.
+    private func streamGap() {
+        clockRevision += 1; confirmedWorkingStart = nil
+        replayWasReset = true; fullSnapshotNeeded = true; turnRevision += 1
+        liveActivity = BotTurnActivity(); turnNotice = nil
+        serverRequests.removeAll(); requestRevision += 1
+        if !localOperation { turn = .unknown }
+    }
+
+    /// Applies the frames held while recovering, now that the replay and the snapshot are
+    /// in: one the replay already covered (or for a runtime this chat left) is dropped, and
+    /// each later one takes the live path, where a gap schedules the coalesced refresh.
+    /// Frames past the hold limit are lost, so the stream is a gap and rebuilt from a full
+    /// snapshot, as after a truncated replay.
+    private func releaseHeldFrames() -> (held: Int, applied: Int, dropped: Int) {
+        let frames = heldFrames, lost = framesPastHold
+        heldFrames = []; framesPastHold = 0
+        guard lost == 0 else {
+            streamGap(); snapshotDirty = true; scheduleRefresh()
+            return (frames.count + lost, 0, frames.count + lost)
+        }
+        var applied = 0
+        for event in frames where event["session_id"].text == runtime {
+            if let seq = event["seq"].integer, seq > 0, seq <= sequence { continue }
+            applyFrame(event)
+            applied += 1
+        }
+        return (frames.count, applied, frames.count - applied)
     }
 
     /// Applies `request.cancel`, which withdraws only the matching envelope.
@@ -1595,7 +1662,7 @@ import Observation
                     let requestsRevision = self.requestRevision
                     let clockRevision = self.clockRevision
                     let reactionRevision = self.reactionRevision
-                    let reply = try await self.request(self.resume(full: full), owner: owner)
+                    let reply = try await self.resume(full: full, owner: owner)
                     try self.applySnapshot(reply, full: full, settingsRevision: settingsRevision,
                                            requestsRevision: requestsRevision, clockRevision: clockRevision,
                                            reactionRevision: reactionRevision)
@@ -1621,14 +1688,26 @@ import Observation
         // and pending_connection.
         serverRequests = []; connectionOperation = nil; answeringRequestID = nil
         withdrawnRequest = nil
+        heldFrames = []; framesPastHold = 0
         connectionState = .disconnected
         turn = uncertainSend || uncertainStop ? .uncertain : .unknown
         turnRevision += 1
-        let failure = error as? BotFailure ?? .transport
-        switch failure {
-        case .transport: shouldRetryConnection = true
-        case .rejected(let code): shouldRetryConnection = [408, 429].contains(code) || (500...599).contains(code)
-        default: shouldRetryConnection = false
+        let refusal = error as? ResumeRefusal
+        let failure = refusal.map { BotFailure.rejected($0.code) } ?? error as? BotFailure ?? .transport
+        if let refusal {
+            // Retried on the backoff until a minute after the first refusal in a row.
+            let since = resumeRefusedSince ?? now()
+            resumeRefusedSince = since
+            shouldRetryConnection = since.duration(to: now()) < Self.resumeRefusalWindow
+            let code = refusal.code, retrying = shouldRetryConnection
+            HermesConnectionLog.logger.notice("Bot Chat: session.resume refused with \(code, privacy: .public); \(retrying ? "within" : "past", privacy: .public) the retry window")
+        } else {
+            resumeRefusedSince = nil
+            switch failure {
+            case .transport: shouldRetryConnection = true
+            case .rejected(let code): shouldRetryConnection = [408, 429].contains(code) || (500...599).contains(code)
+            default: shouldRetryConnection = false
+            }
         }
         errorMessage = shouldRetryConnection ? nil : BotConnectionAdvice.message(for: failure, address: connection.address)
         needsSignIn = failure == .rejected(401)
@@ -1647,6 +1726,7 @@ import Observation
             while !Task.isCancelled {
                 do { try await delay(.seconds(seconds)) } catch { return }
                 guard let self, self.isActive, self.shouldRetryConnection, !Task.isCancelled else { return }
+                self.reconnectRetries += 1
                 await self.recoverConnection()
                 guard !Task.isCancelled else { return }
                 if !self.shouldRetryConnection || self.connectionState == .connected {
@@ -1665,6 +1745,7 @@ import Observation
         historyCacheTask?.cancel(); historyCacheTask = nil
         isActive = false; shouldRetryConnection = false; isReconnecting = false
         reconnectTask?.cancel(); reconnectTask = nil
+        resumeRefusedSince = nil; reconnectRetries = 0
         resetConnection()
         Task { try? await drafts.flush() }
     }
@@ -1690,6 +1771,7 @@ import Observation
         localOperation = false; submittingPrompt = nil
         serverRequests = []; connectionOperation = nil; answeringRequestID = nil
         reactingRowIDs = []; reactionPatches = [:]
+        heldFrames = []; framesPastHold = 0
         connectionState = .disconnected; turn = .unknown
         syncLiveActivity()
     }

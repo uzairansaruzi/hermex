@@ -145,7 +145,9 @@ connection's sockets `s0`, `s1`, …, never the server: interpolate only numbers
 case and method names, the release `/api/status` reports (upstream's package version) and
 `HermesConnectionLog.reason(_:)`, each `.public`, and never a host, address, URL,
 session or runtime id, Profile name, title, message text, ticket, replay epoch or
-install id. Events, deltas and keepalive pongs are never logged.
+install id. Events, deltas and keepalive pongs are never logged. `BotConversation` logs
+through the same logger, counts and codes only: each reattach (automatic retries before
+it, and frames held, applied and dropped) and each `session.resume` refusal it retries.
 
 Requests are typed in `Networking/Hermes/`: every HTTP request (method, path, query, JSON body) is a
 `HermesREST` case, and every JSON-RPC request is a `HermesCall` case, one per
@@ -258,13 +260,28 @@ to be read-only.
 
 Live history is rebuilt from a full resume snapshot on open/recovery. A separate
 read-only local cache supports message search; see Local search below.
+Recovery reads in order: `session.list` for the chat, an identity `session.resume`
+with `omit_messages`, `session.events.since` from the last `seq`, then one full
+`session.resume`, the reconnect's only transcript download. That read covers any
+full read asked for before it, including a refresh the disconnect cancelled.
+While recovering, this runtime's live frames are held (#901), up to the 512 events
+the host's replay ring keeps, and applied once the snapshot is in: a frame at or
+below the replay's `latest_seq` is dropped, and a later one takes the live path,
+where a gap clears the live rows and schedules a full read. Past 512 the held
+frames are dropped and the chat is rebuilt from a full read, as after a
+truncated replay. Host requests (string ids) are never held.
 Replay detects discontinuity but never appends text to an overlapping snapshot.
 Live events coalesce inflight snapshot reads using `omit_messages`; that installed
 handler path avoids history database reads. Completion and session-state events
 request full history. Live recovery never reads the local search cache and has
 no speculative REST adapter.
 Transient socket loss reconnects silently while the chat is active, with delays
-of 1, 2, 4, 8, 16 and then at most 30 seconds. Leaving the screen or backgrounding
+of 1, 2, 4, 8, 16 and then at most 30 seconds. `session.resume` answering 4007
+(swapping in a replacement runtime) or 4009 (a client-gone interrupt settling)
+is retried the same way for 60 seconds from the first refusal in a row, then
+shows the usual advice. It is matched by code alone: a real "session not found"
+is also 4007, and costs at most that minute. The same codes from other calls
+are not retried. Leaving the screen or backgrounding
 cancels recovery. Foreground/recovery reloads canonical identity, history and
 current state before enabling commands. Authentication, identity and unsupported
 host errors still surface actionable messages; commands are never retried.
