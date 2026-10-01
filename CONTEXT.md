@@ -12,6 +12,10 @@ _Avoid_: server (alone, when the kind matters), WebUI
 A configured Hermes dashboard that Hermex reaches directly. Its sign-in is its own Hermes connection, and it opens on the Bots inbox.
 _Avoid_: Hermes connection (that is the sign-in), bot server
 
+**Connection mode**:
+How this iPhone reaches the server, chosen in the connect form: Same Wi-Fi, Private network or Cloudflare Tunnel. It changes only the form's placeholder, help and header rows, and is not saved.
+_Avoid_: network type, connection type
+
 ## Kanban
 
 **Kanban**:

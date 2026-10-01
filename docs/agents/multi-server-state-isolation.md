@@ -147,7 +147,10 @@ Its Connection Headers belong to the Hermes connection's own record, never the w
 `custom_headers::<server>`: it never reads, copies or falls back to the webui's
 custom headers (`HermesConnectionTests`).
 Its stored `install_id` is only compared with the same record's host, never matched
-across configured servers.
+across configured servers. The connect form offers a webui server's saved Hermes sign-in
+to a new Hermes server only at exactly the same parsed address, never by `install_id`;
+accepting copies it into the new server's own record with a new UUID and leaves the
+webui server's record as it was (`AuthManagerStateTests.testASavedSignInIsOfferedOnlyAtExactlyTheSameAddress`).
 Bot drafts use configured server + connection UUID + Profile, independently of
 webui session IDs. Recent Bot/room transcript value snapshots stay in a bounded memory cache keyed by
 configured server hash + connection UUID + bot/room. New screens can display them

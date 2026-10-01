@@ -45,6 +45,26 @@ from either signs the server back in. That server screen's button is Remove Serv
 even while the server is active, because Sign Out keeps a Hermes server. Moving a webui server's connection into a Hermes
 server is #707's; a copy gets a fresh UUID.
 
+Onboarding's Connect page and Settings → Add Server are one connect form
+(`OnboardingViewModel`, #900). Its first Connect for an address reads the public
+`/api/status` there, parsed by `BotConnection.address(_:)` and sent with the form's
+headers on a `HermesConnection` of its own. A JSON object carrying `auth_required` is a
+Hermes dashboard: username and password appear, and the next Connect signs in once
+(`HermesConnection.signIn()`, so the version gate, install check and #880's copy apply),
+then calls `addHermesServer`. A Host-header 400 and `.blocked` show their advice and
+stop. Anything else, including an address or headers only the webui path accepts, goes
+on to the webui path unchanged: onboarding's `configure`, Add Server's `addServer`. Once
+a webui answered, the "Will connect to" line shows `AuthManager.normalizedServerURL`'s
+URL instead of the Hermes parser's. Header rows without a value are never sent or saved.
+With Bot Mode off, a found dashboard shows a one-tap opt-in instead of its fields. When a
+webui server's own Hermes connection uses exactly the same parsed address, the form
+offers "Use the sign-in saved on <server>": it fills username, password and headers, and
+the sign-in still expects that record's `install_id`; editing the address afterwards
+clears the copied username and password. It is never matched by `install_id`, which
+any host can report. The connection mode (Same Wi-Fi, Private
+network, Cloudflare Tunnel) changes only the placeholder, the help and, for Cloudflare
+Tunnel, two empty `CF-Access-Client-*` rows; it is not saved.
+
 The saved connection's HTTP side is one `HermesConnection` (`Networking/Hermes/`):
 an ephemeral cookie jar, a single-flight password sign-in, and the only path Bot HTTP
 requests and gateway upgrades are sent through. `HermesConnections` gives every
