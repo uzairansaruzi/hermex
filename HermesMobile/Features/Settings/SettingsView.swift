@@ -2297,15 +2297,20 @@ private struct ServerDetailView: View {
                 }
 
                 // Not behind the Bot Mode preview gate (#557): this login is what push
-                // pairing needs, and push serves this server's webui sessions too.
+                // pairing needs, and push serves this server's webui sessions too. On a
+                // Hermes server it is the server's own sign-in, and saving it signs a
+                // signed-out server back in (#899).
                 if let server = URL(string: account.urlString) {
                     SettingsCard(title: String(localized: "Hermes connection")) {
-                        SettingsFootnote(String(localized: "Sign in to this server’s Hermes backend to turn on notifications for it, and to use Bots."))
+                        SettingsFootnote(account.kind == .hermes
+                            ? String(localized: "Sign-in and connection headers for this Hermes host.")
+                            : String(localized: "Sign in to this server’s Hermes backend to turn on notifications for it, and to use Bots."))
 
                         NavigationLink {
-                            BotConnectionView(server: server)
+                            BotConnectionView(server: server) { authManager.hermesSignInSaved(server: server) }
                         } label: {
-                            SettingsAccessoryRow(title: String(localized: "Hermes connection"), systemImage: "bell.badge")
+                            SettingsAccessoryRow(title: String(localized: "Hermes connection"),
+                                                 systemImage: account.kind == .hermes ? "person.badge.key" : "bell.badge")
                         }
                         .buttonStyle(.plain)
                     }
@@ -2330,7 +2335,7 @@ private struct ServerDetailView: View {
                     }
                 }
 
-                SettingsCard(title: isActive ? String(localized: "Account") : String(localized: "Remove Server")) {
+                SettingsCard(title: signsOut ? String(localized: "Account") : String(localized: "Remove Server")) {
                     SettingsFootnote(removeFootnote)
 
                     SettingsButton(removeButtonTitle, role: .destructive, isLoading: isRemoving) {
@@ -2391,30 +2396,44 @@ private struct ServerDetailView: View {
         )
     }
 
+    /// Whether this screen's button signs out of the active webui server, which also
+    /// removes it. An active Hermes server is removed here under that name instead,
+    /// because Settings → Account → Sign Out keeps a Hermes server and shows its
+    /// sign-in form (#899).
+    private var signsOut: Bool { isActive && account.kind == .webui }
+
     private var removeButtonTitle: String {
-        isActive ? String(localized: "Sign Out of This Server") : String(localized: "Remove Server")
+        signsOut ? String(localized: "Sign Out of This Server") : String(localized: "Remove Server")
     }
 
     private var removeAlertTitle: String {
-        isActive ? String(localized: "Sign out of this server?") : String(localized: "Remove this server?")
+        signsOut ? String(localized: "Sign out of this server?") : String(localized: "Remove this server?")
     }
 
     private var removeFootnote: String {
-        if isActive {
+        if signsOut {
             return hasOtherServers
                 ? String(localized: "Signs out and switches to another configured server.")
                 : String(localized: "Signs out and returns to onboarding.")
         }
+        if isActive { return activeHermesRemovalText }
         return String(localized: "Removes this server and its saved settings on this device. Your active server is unaffected.")
     }
 
     private var removeAlertMessage: String {
-        if isActive {
+        if signsOut {
             return hasOtherServers
                 ? String(localized: "You'll switch to another configured server. Sign in again to use this one.")
                 : String(localized: "You'll return to onboarding and need the server URL and password to sign back in.")
         }
+        if isActive { return activeHermesRemovalText }
         return String(localized: "This removes the server and its saved settings on this device. Your active server is unaffected.")
+    }
+
+    private var activeHermesRemovalText: String {
+        hasOtherServers
+            ? String(localized: "Removes this server, its saved sign-in and its Bot data on this device, then switches to another configured server.")
+            : String(localized: "Removes this server, its saved sign-in and its Bot data on this device, then returns to onboarding.")
     }
 }
 
