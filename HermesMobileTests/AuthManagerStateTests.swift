@@ -920,12 +920,14 @@ final class AuthManagerStateTests: XCTestCase {
             form.serverURLString = row.typed
             await form.connect(authManager: manager)
             form.useSavedSignIn(try XCTUnwrap(form.savedSignIns.first, row.typed))
+            form.customHeaders[0].name = "X-Renamed"
+            XCTAssertEqual(form.password, "saved", "\(row.typed): editing a header keeps the sign-in at the same address")
 
             form.serverURLString = row.edited
 
             XCTAssertEqual(form.password, "", "\(row.edited): a saved password only goes to the address it was saved for")
             XCTAssertEqual(form.username, "", row.edited)
-            XCTAssertEqual(form.customHeaders.map(\.name), row.rowsLeft, "\(row.edited): so does its Access secret")
+            XCTAssertEqual(form.customHeaders.map(\.name), row.rowsLeft, "\(row.edited): so does its Access secret, renamed or not")
             XCTAssertEqual(form.customHeaders.map(\.value), row.rowsLeft.map { _ in "" }, row.edited)
             XCTAssertNil(form.reusedSignIn, row.edited)
             XCTAssertNil(form.detectedKind, row.edited)
@@ -953,6 +955,43 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(form.errorMessage, "The Hermes host at this address reports a different identity than the one you connected to. Check the address in the Hermes connection.")
         XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
         XCTAssertEqual(manager.servers.map(\.id), [webuiServer.absoluteString])
+    }
+
+    func testASavedSignInNeverGoesDownTheWebuiPath() async throws {
+        defer { HermesHostFixture.reset() }
+        let keychain = InMemoryKeychainStore()
+        let preferences = UserDefaults.ephemeral()
+        preferences.set(true, forKey: BotModeGate.isEnabledKey)
+        let webui = MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: true, loggedIn: false))
+        let manager = AuthManager(keychain: keychain, clientFactory: { _ in webui }, probeClientFactory: { _, _ in webui },
+                                  headerStore: CustomHeaderStore(), serverRegistry: ServerRegistry.inMemory(keychain: keychain),
+                                  hermesConnections: HermesConnections(), preferences: preferences)
+        await manager.configure(serverURLString: webuiServer.absoluteString, password: "webui-pw")
+        let side = BotConnection(id: UUID(), name: "Side", address: hermesServer, username: "me", password: "saved",
+                                 headers: [CustomHeader(name: "CF-Access-Client-Secret", value: "secret.access")])
+        try BotConnectionStore(keychain: keychain).save(side, server: webuiServer)
+        // Only the first status read finds the dashboard; a webui answers the next one.
+        var statusReads = 0
+        let form = makeForm(entry: .addServer) { request in
+            guard request.url?.path == "/api/status" else { return nil }
+            statusReads += 1
+            return statusReads == 1 ? nil : .json(404, .object([:]))
+        }
+        form.serverURLString = "hermes.example"
+        await form.connect(authManager: manager)
+        form.useSavedSignIn(try XCTUnwrap(form.savedSignIns.first))
+        // A header edit makes the next Add read the status again.
+        form.customHeaders.append(CustomHeader(name: "X-Extra", value: "1"))
+        let webuiLogins = webui.loginPasswords
+
+        let added = await form.connect(authManager: manager)
+
+        XCTAssertNil(added)
+        XCTAssertEqual(webui.loginPasswords, webuiLogins, "The saved Hermes password never reaches the webui")
+        XCTAssertTrue(form.showsPasswordField, "The webui asks for its own password")
+        XCTAssertEqual(form.password, "")
+        XCTAssertEqual(form.customHeaders.map(\.name), ["X-Extra"], "Nor does its Access secret")
+        XCTAssertNil(form.reusedSignIn)
     }
 
     private func makeLoggedInManager(

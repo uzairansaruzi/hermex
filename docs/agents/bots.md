@@ -60,11 +60,12 @@ parser's. Header rows without a value are never sent or saved. With Bot Mode off
 found dashboard shows a one-tap opt-in instead of its fields. When a webui server's own
 Hermes connection uses exactly the same parsed address, the form offers "Use the sign-in
 saved on <server>": it fills username, password and headers, and the sign-in still
-expects that record's `install_id`; editing the address afterwards, even only its
-scheme, clears the copied username, password and headers. It is never matched by
-`install_id`, which any host can report. The connection mode (Same Wi-Fi, Private
-network, Cloudflare Tunnel) changes only the placeholder, the help and, for Cloudflare
-Tunnel, two empty `CF-Access-Client-*` rows; it is not saved.
+expects that record's `install_id`. The copies stay until the address parses to another
+URL, even one differing only in scheme, or a webui answers there; then the unedited
+username and password and every header row still carrying a copied value leave the form.
+It is never matched by `install_id`, which any host can report. The connection mode
+(Same Wi-Fi, Private network, Cloudflare Tunnel) changes only the placeholder, the help
+and, for Cloudflare Tunnel, two empty `CF-Access-Client-*` rows; it is not saved.
 
 The saved connection's HTTP side is one `HermesConnection` (`Networking/Hermes/`):
 an ephemeral cookie jar, a single-flight password sign-in, and the only path Bot HTTP

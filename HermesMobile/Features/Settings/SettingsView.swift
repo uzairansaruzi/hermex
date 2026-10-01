@@ -2650,7 +2650,9 @@ struct AddServerView: View {
     private func submit() {
         guard canSubmit, !form.isConnectionLocked else { return }
         operation = Task {
-            guard let url = await form.connect(authManager: authManager), !Task.isCancelled else { return }
+            // A URL means the server is already saved, so its chosen identity applies even
+            // when the sheet closed meanwhile.
+            guard let url = await form.connect(authManager: authManager) else { return }
             applyIdentity(to: url)
             dismiss()
         }

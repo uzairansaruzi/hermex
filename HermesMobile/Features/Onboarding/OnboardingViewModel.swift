@@ -64,7 +64,10 @@ final class OnboardingViewModel {
 
     let entry: Entry
     var serverURLString = "" {
-        didSet { invalidateProbedAuthStatusIfNeeded() }
+        didSet {
+            invalidateProbedAuthStatusIfNeeded()
+            dropReusedSignInIfMoved()
+        }
     }
     /// A Hermes dashboard's username; only a detected dashboard shows it.
     var username = ""
@@ -83,7 +86,8 @@ final class OnboardingViewModel {
     /// The sign-ins webui servers keep for exactly the detected dashboard's address.
     private(set) var savedSignIns: [AuthManager.SavedHermesSignIn] = []
     /// The saved sign-in the fields were filled from. Its `install_id` is still checked
-    /// before the password goes out (#777).
+    /// before the password goes out (#777). Its copies stay while the address still parses
+    /// to the one it was offered for and no webui answers there (`dropReusedSignIn`).
     private(set) var reusedSignIn: AuthManager.SavedHermesSignIn?
     /// Add Server's webui answered that it needs a password, so its field shows.
     private(set) var webuiNeedsPassword = false
@@ -180,8 +184,8 @@ final class OnboardingViewModel {
     func useSavedSignIn(_ signIn: AuthManager.SavedHermesSignIn) {
         guard !isConnectionLocked, detectedKind == .hermes else { return }
         let offers = savedSignIns
-        // Drops another saved sign-in's copies first, so none of them outlives its offer.
-        forgetProbe()
+        // Another saved sign-in's copies go first, so none of them outlives its offer.
+        dropReusedSignIn()
         customHeaders = signIn.connection.headers ?? []
         // The saved headers are the ones that reach this address, so it stays a found dashboard.
         detectedKind = .hermes
@@ -272,24 +276,34 @@ final class OnboardingViewModel {
         }
     }
 
-    /// Drops what the last probe found, which no longer describes the typed address. A
-    /// saved sign-in's username, password and header rows, unless edited, go with it: they
-    /// belong to the address they were offered for.
+    /// Drops what the last probe found, which no longer describes the typed address.
     private func forgetProbe() {
-        let reused = reusedSignIn
         authStatus = nil
         detectedKind = nil
         savedSignIns = []
-        reusedSignIn = nil
         probedConnectionIdentity = nil
-        guard let reused else { return }
+    }
+
+    /// A saved sign-in belongs to the address it was offered for: an edit that makes the
+    /// text parse to any other, even one differing only in scheme, takes its copies out.
+    private func dropReusedSignInIfMoved() {
+        guard let reused = reusedSignIn,
+              (try? BotConnection.address(serverURLString))
+                != (try? BotConnection.address(reused.connection.address.absoluteString)) else { return }
+        dropReusedSignIn()
+    }
+
+    /// Takes a saved sign-in's copies out of the form: its username and password unless
+    /// edited, and every header row still carrying one of its values, renamed or not.
+    private func dropReusedSignIn() {
+        guard let reused = reusedSignIn else { return }
+        reusedSignIn = nil
         if username == reused.connection.username { username = "" }
         if password == reused.connection.password { password = "" }
-        let copied = reused.connection.headers ?? []
-        let kept = customHeaders.filter { row in !copied.contains { $0.name == row.name && $0.value == row.value } }
-        if kept.count != customHeaders.count {
-            customHeaders = connectionMode == .cloudflareTunnel ? Self.withAccessRows(kept) : kept
-        }
+        let secrets = Set((reused.connection.headers ?? []).map(\.sanitizedValue).filter { !$0.isEmpty })
+        let kept = customHeaders.filter { !secrets.contains($0.sanitizedValue) }
+        guard kept.count != customHeaders.count else { return }
+        customHeaders = connectionMode == .cloudflareTunnel ? Self.withAccessRows(kept) : kept
     }
 
     /// `headers` plus an empty row for each Access header it lacks.
@@ -367,7 +381,7 @@ final class OnboardingViewModel {
         isWorking = true
         isConnectionLocked = true
         let token = beginOperation()
-        let identityAtStart = currentConnectionIdentity()
+        var identityAtStart = currentConnectionIdentity()
         defer {
             if token == operationGeneration {
                 isWorking = false
@@ -386,7 +400,9 @@ final class OnboardingViewModel {
             errorMessage = advice
             return
         case .notHermes:
-            break
+            // A saved Hermes sign-in never goes down the webui path.
+            dropReusedSignIn()
+            identityAtStart = currentConnectionIdentity()
         }
 
         do {
@@ -462,7 +478,8 @@ final class OnboardingViewModel {
                 errorMessage = advice
                 return nil
             case .notHermes:
-                break
+                // A saved Hermes sign-in never goes down the webui path.
+                dropReusedSignIn()
             }
         }
 
