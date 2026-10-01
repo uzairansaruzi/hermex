@@ -71,6 +71,13 @@ struct BotsInboxHome {
         _inbox = State(initialValue: BotInbox(server: server))
     }
 
+    /// An inbox the caller built, such as one on scripted wires.
+    init(server: URL, inbox: BotInbox) {
+        self.server = server
+        _pendingDestination = .constant(nil)
+        _inbox = State(initialValue: inbox)
+    }
+
     var body: some View {
         let toasted = list
             .overlay(alignment: .bottom) {
@@ -571,16 +578,21 @@ extension BotsInboxView {
             .navigationDestination(item: $editSelection) { selection in
                 editProfile(selection)
             }
-            // The subscription lives while the inbox is on screen and the app is active;
-            // returning, refreshing and reconnecting all go through the same open().
+            // The subscription lives while the inbox is on screen and the app is not in the
+            // background; returning, refreshing and reconnecting all go through the same open().
             .task(id: revision) { await inbox.open(); hasSettled = true; openPendingDestination() }
             .onChange(of: inbox.link) { openPendingDestination() }
             .onChange(of: pendingDestination) { openPendingDestination() }
             .onChange(of: selection.profile) { if selection.profile == nil { selection.conversation = nil } }
             .refreshable { await inbox.open() }
             .onChange(of: scenePhase) {
-                if scenePhase == .active { revision = UUID() }
-                else { inbox.close() }
+                // Control Center and banners (`.inactive`) keep the socket (#902); only an
+                // inbox the background closed reopens.
+                switch scenePhase {
+                case .background: inbox.close()
+                case .active where inbox.link == .idle: revision = UUID()
+                default: break
+                }
             }
             .onDisappear { inbox.close() }
     }

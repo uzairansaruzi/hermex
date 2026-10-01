@@ -289,8 +289,13 @@ import SwiftUI
             if scenePhase == .active && !model.needsSignIn { await model.recover() }
         }
         .onChange(of: scenePhase) {
-            if scenePhase == .active { recoveryID = UUID(); workingBeat.rearm() }
-            else { stopAction = nil; model.suspend() }
+            // Control Center and banners (`.inactive`) keep the connection (#902); only a
+            // chat the background suspended, or one opened while inactive, recovers.
+            switch scenePhase {
+            case .background: stopAction = nil; model.suspend()
+            case .active where !model.isActive: recoveryID = UUID(); workingBeat.rearm()
+            default: break
+            }
         }
         .onChange(of: model.turn) { workingBeat.observe(model.turn, at: Date()) }
         .onDisappear { stopAction = nil; model.suspend() }

@@ -4,8 +4,9 @@ import OSLog
 /// The one gateway WebSocket a `HermesConnection` shares among its Bot screens. The inbox,
 /// each open chat, a room, the creator and the editor hold their own `BotClient` on it.
 /// The socket opens when the first of them connects and closes when the last one leaves,
-/// so it lives exactly while some Bot screen is connected, and backgrounding (every screen
-/// leaves) still closes it.
+/// so it lives exactly while some Bot screen is connected. An `.inactive` scene (Control
+/// Center, a notification banner) keeps it; `.background` closes it once, silently
+/// (`closeForBackground()`), and each screen reconnects on `.active`.
 ///
 /// Every socket mints a fresh ticket and runs one handshake before anything else:
 /// `gateway.ready` (recording `replay_epoch`), then `client.capabilities` as the first
@@ -115,6 +116,17 @@ import OSLog
             let label = socketLabel(generation)
             HermesConnectionLog.logger.notice("\(label, privacy: .public) closed, last screen left")
         }
+        end(nil)
+    }
+
+    /// Closes the socket because the app went to the background, so the host sees a clean
+    /// close rather than a half-open socket the tunnel notices only at its idle cutoff.
+    /// Silent: no attached screen hears it, because each suspends on `.background` itself
+    /// and reconnects on `.active` onto a fresh socket, ticket and handshake.
+    func closeForBackground() {
+        guard socket != nil || opening != nil else { return }
+        let label = socketLabel(generation)
+        HermesConnectionLog.logger.notice("\(label, privacy: .public) closed, app in background")
         end(nil)
     }
 
@@ -378,8 +390,8 @@ import OSLog
 
     /// Closes the socket, fails every call on it with `.transport` and drops every screen.
     /// The attached ones hear `error` once, and the log records it; nil ends it silently
-    /// (the last screen left, or opening failed and its waiters get the error from `join`),
-    /// and the caller logs why.
+    /// (the last screen left, the app went to the background, or opening failed and its
+    /// waiters get the error from `join`), and the caller logs why.
     private func end(_ error: Error?) {
         let label = socketLabel(generation), wasLive = socket != nil || opening != nil
         generation += 1

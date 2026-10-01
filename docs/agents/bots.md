@@ -115,8 +115,15 @@ Each `HermesConnection` also owns the one gateway WebSocket its Bot screens shar
 `HermesGateway`. Every screen holds its own `BotClient` handle on it: the inbox, each
 open chat (its controls and delegated work use the chat's), a room, the creator and
 the editor. The socket opens when the first screen connects and closes when the last
-one leaves, so it lives while any Bot screen is connected and backgrounding still
-closes it. Screens that connect while it opens wait for that one attempt, so screens
+one leaves, so it lives while any Bot screen is connected. Each screen leaves on
+`.background` only, not on `.inactive`: Control Center or a notification banner keeps
+the socket and its frames, which is cheaper than a reconnect and keeps a running turn's
+tool rows in place. On `.background`, `ContentView` also has `HermesConnections` close
+the socket once, silently (`closeForBackground()`), so the host sees a clean close
+rather than a half-open socket the tunnel notices only at its idle cutoff. The screens
+the background closed reconnect on `.active`, onto one fresh socket with a new ticket
+and one handshake (#902).
+Screens that connect while it opens wait for that one attempt, so screens
 reconnecting after the same drop make one socket, one ticket and one handshake. A
 reply settles only the call that sent it; every event and server request goes to
 every attached screen, which admits only its own (a chat by its runtime ID, the inbox
@@ -139,7 +146,7 @@ log (`HermesConnectionLog`), under the bundle ID and the category `HermesConnect
 each sign-in with its release, or the step that failed (`status`, `login`, `identity`,
 `ticket`) and why; the socket opening or failing to open (a refused upgrade with its
 status); a drop with its reason and any close code the other end sent; 45 seconds of
-silence; the last screen leaving; retirement; a reply that matched no open call; and a
+silence; the last screen leaving; the app going to the background; retirement; a reply that matched no open call; and a
 call past its deadline, by method. Lines name connections `c1`, `c2`, … and each
 connection's sockets `s0`, `s1`, …, never the server: interpolate only numbers, step,
 case and method names, the release `/api/status` reports (upstream's package version) and

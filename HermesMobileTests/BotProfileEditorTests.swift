@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import HermesMobile
 
 @MainActor final class BotProfileEditorTests: XCTestCase {
@@ -38,6 +39,34 @@ import XCTest
         XCTAssertEqual(params["description"], .string("New role"))
         XCTAssertEqual(params["soul"], .string("New instructions"))
         XCTAssertEqual(params["disabled_skills"], .array([.string("research")]))
+    }
+
+    /// Control Center and banners (`.inactive`) keep the editor's connection; only the
+    /// background drops it, and the return reloads once (#902).
+    func testOnlyTheBackgroundDropsTheEditorAndTheReturnReloadsOnce() async throws {
+        let (editor, wire, _) = try makeEditor(details: details())
+        await editor.load()
+        let scene = ScenePhaseDriver(.active)
+        let window = try host(BotProfileEditorView(editor: editor), phase: scene)
+        defer { editor.close(); window.isHidden = true; window.rootViewController = nil }
+        await settle(window)
+        for phase in [ScenePhase.inactive, .active] {
+            scene.phase = phase
+            await settle(window)
+        }
+        XCTAssertTrue(editor.holdsConnection, "Control Center keeps the editor connected")
+        XCTAssertEqual(wire.describes, 1, "and nothing reloads")
+
+        scene.phase = .background
+        await settle(window)
+        XCTAssertFalse(editor.holdsConnection, "The background drops the editor's connection")
+        let reloaded = expectation(description: "the return reloads once")
+        wire.onDescribe = { reloaded.fulfill() }
+        scene.phase = .inactive
+        await settle(window)
+        scene.phase = .active
+        await fulfillment(of: [reloaded], timeout: 5)
+        XCTAssertEqual(wire.describes, 2)
     }
 
     func testDeclinedModelConfirmationLeavesTheSelectionDirty() async throws {
@@ -379,6 +408,8 @@ import XCTest
     var roster: BotJSON = .object(["profiles": .array([])])
     var configure: (([String: BotJSON]) throws -> BotJSON)?
     var calls: [(String, [String: BotJSON])] = []
+    var describes: Int { calls.filter { $0.0 == "profiles.describe" }.count }
+    var onDescribe: (() -> Void)?
 
     init(details: BotJSON) { self.details = details }
     func connect() async throws {}
@@ -388,7 +419,7 @@ import XCTest
         try validateDispatch?()
         calls.append((method, params))
         switch method {
-        case "profiles.describe": return details
+        case "profiles.describe": onDescribe?(); return details
         case "profiles.list": return roster
         case "model.options":
             return .object(["model": .string("model-a"), "provider": .string("provider"), "providers": .array([

@@ -216,7 +216,9 @@ import OSLog
     @ObservationIgnored private var reconnectRetries = 0
     private var refreshTask: Task<Void, Never>?
     private var reconnectTask: Task<Void, Never>?
-    private var isActive = false
+    /// True from `recover()` until `suspend()`: the screen wants this chat connected,
+    /// whether it is, is reconnecting, or failed and shows why.
+    private(set) var isActive = false
     private var shouldRetryConnection = false
     private let reconnectDelay: (Duration) async throws -> Void
     private let now: () -> ContinuousClock.Instant

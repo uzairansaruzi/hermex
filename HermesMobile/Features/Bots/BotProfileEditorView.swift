@@ -52,9 +52,12 @@ import SwiftUI
         .task { if editor.state == .idle { await editor.load() } }
         .onDisappear { editor.close() }
         .onChange(of: scenePhase) {
-            if scenePhase != .active {
+            // Control Center and banners (`.inactive`) keep the connection (#902); only an
+            // editor without one reloads, and never over unsaved edits.
+            if scenePhase == .background {
                 editor.suspend()
-            } else if editor.state == .idle || editor.state == .loading
+            } else if scenePhase == .active, !editor.holdsConnection,
+                      editor.state == .idle || editor.state == .loading
                         || (editor.state == .loaded && editor.dirtyFields.isEmpty) {
                 Task { await editor.load() }
             }

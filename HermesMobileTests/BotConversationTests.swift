@@ -1511,6 +1511,36 @@ import Vision
         }
     }
 
+    /// Control Center and banners (`.inactive`) keep a chat on the shared socket; only the
+    /// background suspends it, and the return recovers it once (#902).
+    func testOnlyTheBackgroundSuspendsTheChatAndTheReturnRecoversItOnce() async throws {
+        let wire = BotFixtureWire()
+        let model = make(wire)
+        // Shown while inactive, so the screen leaves the first recovery to the test.
+        let scene = ScenePhaseDriver(.inactive)
+        let window = try host(BotChatView(model: model), phase: scene)
+        defer { model.suspend(); window.isHidden = true; window.rootViewController = nil }
+        await settle(window)
+        await model.recover()
+        for phase in [ScenePhase.active, .inactive, .active] {
+            scene.phase = phase
+            await settle(window)
+        }
+        XCTAssertEqual(model.connectionState, .connected, "Control Center keeps the chat connected")
+        XCTAssertEqual(wire.connectCount, 1, "and nothing reconnects")
+
+        scene.phase = .background
+        await settle(window)
+        XCTAssertEqual(model.connectionState, .disconnected, "The background suspends the chat")
+        let recovered = expectation(description: "the return recovers the chat once")
+        wire.onConnect = { recovered.fulfill() }
+        scene.phase = .inactive
+        await settle(window)
+        scene.phase = .active
+        await fulfillment(of: [recovered], timeout: 5)
+        XCTAssertEqual(wire.connectCount, 2)
+    }
+
     /// Each snapshot replaces the live reply with a longer string. On the settled
     /// path every one of them would be parsed whole and stored in the shared
     /// layout cache, evicting the settled rows it exists for.
@@ -2044,6 +2074,30 @@ extension XCTestCase {
     }
 
     @MainActor private static var softwareKeyboardIsWarm = false
+
+    /// Hosts `content` in a window whose scene phase `driver` sets.
+    @MainActor func host(_ content: some View, phase driver: ScenePhaseDriver) throws -> UIWindow {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = UIHostingController(rootView: ScenePhased(driver: driver, content: content))
+        window.makeKeyAndVisible()
+        return window
+    }
+}
+
+/// Stands in for the system's scene phase under a hosted screen, so a test can pull down
+/// Control Center (`.inactive`) or go home (`.background`). Settle the window after each
+/// change, so the screen sees every phase rather than only the last.
+@MainActor @Observable final class ScenePhaseDriver {
+    var phase: ScenePhase
+    init(_ phase: ScenePhase) { self.phase = phase }
+}
+
+private struct ScenePhased<Content: View>: View {
+    let driver: ScenePhaseDriver
+    let content: Content
+    var body: some View { content.environment(\.scenePhase, driver.phase) }
 }
 
 actor BotMemoryDrafts: ChatDraftPersisting {
@@ -2117,7 +2171,8 @@ actor BotMemoryDrafts: ChatDraftPersisting {
         return try await downloadArtifact(path, context)
     }
     var connectCount = 0
-    func connect() async throws { connectCount += 1 }
+    var onConnect: (() -> Void)?
+    func connect() async throws { connectCount += 1; onConnect?() }
     func close() {}
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         let method = call.method, params = try call.params()

@@ -43,7 +43,8 @@ import OSLog
     private let headers: HermesHeaders
     private let redirectGuard: CrossOriginHeaderStripper
     private let gatewayOptions: HermesGateway.Options
-    private weak var liveGateway: HermesGateway?
+    /// The gateway while some screen's `BotClient` holds it; nil while none does.
+    private(set) weak var liveGateway: HermesGateway?
     private var isSignedIn = false
     /// Counts sign-ins, so a 401 can tell whether another consumer has already recovered.
     private var epoch = 0
@@ -330,6 +331,13 @@ import OSLog
         current = fresh
         self.server = server.absoluteString
         return fresh
+    }
+
+    /// Closes the current connection's gateway socket, silently, because the app went to
+    /// the background (#902). `ContentView` calls it on `.background` only, so Control
+    /// Center and banners (`.inactive`) keep the socket.
+    func closeForBackground() {
+        current?.liveGateway?.closeForBackground()
     }
 
     /// Retires `server`'s connection now unless `saved`, its newly saved record, is still

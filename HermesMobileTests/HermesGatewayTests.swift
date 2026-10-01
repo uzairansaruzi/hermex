@@ -250,8 +250,8 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.count("/api/auth/ws-ticket"), 1)
     }
 
-    /// Screens leave on backgrounding; the socket closes with the last one, and the next
-    /// screen opens a fresh one on the same sign-in.
+    /// The socket closes with the last screen to leave, and the next screen opens a fresh
+    /// one on the same sign-in.
     func testTheSocketLivesWhileAConsumerHoldsItAndReopensFresh() async throws {
         let http = connection()
         let chat = BotClient(http: http), inbox = BotClient(http: http)
@@ -265,6 +265,41 @@ import XCTest
 
         try await inbox.connect()
         defer { inbox.close() }
+        XCTAssertEqual(sockets.count, 2)
+        XCTAssertEqual(["/auth/password-login", "/api/auth/ws-ticket"].map(HermesHostFixture.count), [1, 2])
+        XCTAssertEqual(sockets[1].outbound.map { $0["method"].text }, ["client.capabilities"])
+    }
+
+    /// The app going to the background closes the socket once and tells no screen (#902):
+    /// each screen suspends on `.background` itself, and its return opens one fresh socket
+    /// with a new ticket and one handshake.
+    func testTheBackgroundClosesTheSocketOnceAndSilently() async throws {
+        let http = connection()
+        let chat = BotClient(http: http), inbox = BotClient(http: http)
+        try await chat.connect()
+        try await inbox.connect()
+        var lost = 0
+        chat.onDisconnect = { _ in lost += 1 }
+        inbox.onDisconnect = { _ in lost += 1 }
+        let first = try XCTUnwrap(sockets.first)
+        let sent = expectation(description: "read on the wire")
+        first.withholdReply = { _ in sent.fulfill(); return true }
+        let read = Task { try await chat.call(.profilesList(includeSessions: false)) }
+        await fulfillment(of: [sent], timeout: 2)
+
+        http.gateway.closeForBackground()
+        XCTAssertTrue(first.isClosed)
+        XCTAssertEqual(lost, 0, "The background close is silent")
+        do { _ = try await read.value; XCTFail("A closed socket answers nothing") }
+        catch { XCTAssertEqual(error as? BotFailure, .transport) }
+        // Then each screen suspends, which leaves nothing more to close.
+        chat.close(); inbox.close()
+        XCTAssertEqual(lost, 0)
+
+        async let chatBack: Void = chat.connect()
+        async let inboxBack: Void = inbox.connect()
+        _ = try await (chatBack, inboxBack)
+        defer { chat.close(); inbox.close() }
         XCTAssertEqual(sockets.count, 2)
         XCTAssertEqual(["/auth/password-login", "/api/auth/ws-ticket"].map(HermesHostFixture.count), [1, 2])
         XCTAssertEqual(sockets[1].outbound.map { $0["method"].text }, ["client.capabilities"])

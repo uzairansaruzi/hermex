@@ -137,6 +137,9 @@ struct BotProfileDetails: Equatable, Sendable {
         return fields
     }
     var canSave: Bool { state == .loaded && !isSaving && !dirtyFields.isEmpty }
+    /// True while the editor holds its client: from a load or Save until `close()`,
+    /// `suspend()`, a failed load or a lost socket.
+    var holdsConnection: Bool { wire != nil }
 
     func load() async {
         generation += 1

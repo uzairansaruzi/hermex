@@ -37,7 +37,7 @@ import SwiftUI
             .onChange(of: creator.created) {
                 if let room = creator.created { onCreated(room); dismiss() }
             }
-            .onChange(of: scenePhase) { if scenePhase != .active { creator.suspend() } }
+            .onChange(of: scenePhase) { if scenePhase == .background { creator.suspend() } }
             .onDisappear { creator.suspend() }
         }
         .interactiveDismissDisabled(creator.busy)

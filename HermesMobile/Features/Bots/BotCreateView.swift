@@ -110,7 +110,7 @@ import SwiftUI
         .sheet(isPresented: $showsModels) { modelPicker }
         .task { await creator.load() }
         .onDisappear { creator.close() }
-        .onChange(of: scenePhase) { if scenePhase != .active { creator.close() } }
+        .onChange(of: scenePhase) { if scenePhase == .background { creator.close() } }
         // A clean create closes on its own; one with leftovers stays up so the
         // results and the note are read before Done.
         .onChange(of: creator.phase) { if creator.phase == .created, !creator.needsAttention { dismiss() } }

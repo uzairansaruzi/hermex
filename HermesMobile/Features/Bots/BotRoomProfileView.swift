@@ -84,8 +84,14 @@ import SwiftUI
         }
         .onChange(of: reader.room.name) { if !editingName { name = reader.room.name } }
         .onChange(of: scenePhase) {
-            if scenePhase == .active && visible { revision = UUID() }
-            else if visible { reader.leave(owner: owner) }
+            // Control Center and banners (`.inactive`) keep the room live (#902); the
+            // background stops it (#533), and only a stopped room reopens.
+            guard visible else { return }
+            switch scenePhase {
+            case .background: reader.leave(owner: owner)
+            case .active where reader.link == .idle: revision = UUID()
+            default: break
+            }
         }
         .onDisappear { visible = false; reader.leave(owner: owner) }
     }

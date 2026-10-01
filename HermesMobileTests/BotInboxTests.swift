@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import HermesMobile
 
 @MainActor final class BotInboxTests: XCTestCase {
@@ -579,6 +580,38 @@ import XCTest
         await settle(inbox) { $0.link == .live }
         XCTAssertEqual(inbox.profiles.map(\.preview), ["back"])
         XCTAssertNil(inbox.errorMessage)
+    }
+
+    /// Control Center and banners (`.inactive`) keep the inbox on the shared socket; only
+    /// the background closes it, and the return reopens it once (#902).
+    func testOnlyTheBackgroundClosesTheInboxAndTheReturnReopensItOnce() async throws {
+        let first = BotInboxFixtureWire(roster: [row("triage")])
+        let second = BotInboxFixtureWire(roster: [row("triage", preview: "back")])
+        let spare = BotInboxFixtureWire(roster: [row("triage")])
+        let inbox = try makeInbox(wires: [first, second, spare, spare, spare])
+        let scene = ScenePhaseDriver(.active)
+        let window = try host(BotsInboxView(server: server, inbox: inbox), phase: scene)
+        defer { inbox.close(); window.isHidden = true; window.rootViewController = nil }
+        await settle(inbox) { $0.link == .live }
+        for phase in [ScenePhase.inactive, .active, .inactive, .active] {
+            scene.phase = phase
+            await settle(window)
+        }
+        XCTAssertEqual(inbox.link, .live, "Control Center keeps the inbox open")
+        XCTAssertEqual(first.closed, 0)
+        XCTAssertEqual(second.listCalls, 0, "and nothing reconnects")
+
+        scene.phase = .background
+        await settle(window)
+        XCTAssertEqual(first.closed, 1, "The background closes the inbox")
+        XCTAssertEqual(inbox.link, .idle)
+        scene.phase = .inactive
+        await settle(window)
+        scene.phase = .active
+        await settle(inbox) { $0.link == .live }
+        XCTAssertEqual(inbox.profiles.map(\.preview), ["back"])
+        XCTAssertEqual(second.listCalls, 1)
+        XCTAssertEqual(spare.listCalls, 0, "The return reopens once")
     }
 
     func testTransientServerErrorRetriesQuietlyBehindTheSkeleton() async throws {
