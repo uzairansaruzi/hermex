@@ -57,7 +57,8 @@ struct ContentView: View {
             .onChange(of: scenePhase) {
                 // Closes the shared Bot socket cleanly on background; Control Center and
                 // banners (`.inactive`) keep it. Each Bot screen also suspends on
-                // background and reconnects on `.active` (#902).
+                // background; the chat, inbox, rooms and editor reconnect on `.active`,
+                // and the creators on their next Create (#902).
                 if scenePhase == .background { HermesConnections.shared.closeForBackground() }
                 guard scenePhase == .active else { return }
                 importPendingSharedDraftIfAvailable()

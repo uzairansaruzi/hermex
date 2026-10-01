@@ -120,9 +120,9 @@ one leaves, so it lives while any Bot screen is connected. Each screen leaves on
 the socket and its frames, which is cheaper than a reconnect and keeps a running turn's
 tool rows in place. On `.background`, `ContentView` also has `HermesConnections` close
 the socket once, silently (`closeForBackground()`), so the host sees a clean close
-rather than a half-open socket the tunnel notices only at its idle cutoff. The screens
-the background closed reconnect on `.active`, onto one fresh socket with a new ticket
-and one handshake (#902).
+rather than a half-open socket the tunnel notices only at its idle cutoff. The chat,
+inbox, rooms and editor reconnect on `.active`, onto one fresh socket with a new ticket
+and one handshake; the creators reconnect on their next Create (#902).
 Screens that connect while it opens wait for that one attempt, so screens
 reconnecting after the same drop make one socket, one ticket and one handshake. A
 reply settles only the call that sent it; every event and server request goes to

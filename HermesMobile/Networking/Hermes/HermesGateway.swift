@@ -6,7 +6,8 @@ import OSLog
 /// The socket opens when the first of them connects and closes when the last one leaves,
 /// so it lives exactly while some Bot screen is connected. An `.inactive` scene (Control
 /// Center, a notification banner) keeps it; `.background` closes it once, silently
-/// (`closeForBackground()`), and each screen reconnects on `.active`.
+/// (`closeForBackground()`). The chat, inbox, rooms and editor reconnect on `.active`;
+/// the creators reconnect on their next Create.
 ///
 /// Every socket mints a fresh ticket and runs one handshake before anything else:
 /// `gateway.ready` (recording `replay_epoch`), then `client.capabilities` as the first
@@ -121,8 +122,9 @@ import OSLog
 
     /// Closes the socket because the app went to the background, so the host sees a clean
     /// close rather than a half-open socket the tunnel notices only at its idle cutoff.
-    /// Silent: no attached screen hears it, because each suspends on `.background` itself
-    /// and reconnects on `.active` onto a fresh socket, ticket and handshake.
+    /// Silent: no attached screen hears it, because each suspends on `.background` itself.
+    /// The chat, inbox, rooms and editor reconnect on `.active` onto a fresh socket, ticket
+    /// and handshake; the creators reconnect on their next Create.
     func closeForBackground() {
         guard socket != nil || opening != nil else { return }
         let label = socketLabel(generation)
