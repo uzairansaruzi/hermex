@@ -269,7 +269,9 @@ the host's replay ring keeps, and applied once the snapshot is in: a frame at or
 below the replay's `latest_seq` is dropped, and a later one takes the live path,
 where a gap clears the live rows and schedules a full read. Past 512 the held
 frames are dropped and the chat is rebuilt from a full read, as after a
-truncated replay. Host requests (string ids) are never held.
+truncated replay. Host requests (string ids) are never held. A held
+`request.cancel` or `connection.*` frame keeps the snapshot from replacing the
+cards, as a live one does, so a card withdrawn mid-recovery keeps its note.
 Replay detects discontinuity but never appends text to an overlapping snapshot.
 Live events coalesce inflight snapshot reads using `omit_messages`; that installed
 handler path avoids history database reads. Completion and session-state events

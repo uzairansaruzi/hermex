@@ -1546,6 +1546,12 @@ import OSLog
         guard event["session_id"].text == runtime else { return }
         guard connectionState == .connected else {
             if heldFrames.count < Self.heldFrameLimit { heldFrames.append(event) } else { framesPastHold += 1 }
+            // As when live, a request frame is newer than the snapshot in flight, which then
+            // leaves the cards on screen for this frame to settle (a withdrawn one keeps its
+            // note); the read after it restores the rest.
+            if ["request.cancel", "connection.request", "connection.update"].contains(event["type"].text) {
+                requestRevision += 1; snapshotDirty = true
+            }
             return
         }
         applyFrame(event)

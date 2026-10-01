@@ -1040,30 +1040,35 @@ extension BotAnsweringTests {
     }
 
     /// A reattach holds this runtime's frames until the snapshot is in (#901). A
-    /// `request.cancel` the host wrote while that snapshot, which still lists the
-    /// request, was on its way withdraws the card after it, with its note.
-    func testAHeldCancelWithdrawsTheCardTheReattachSnapshotRestored() async {
-        let wire = BotFixtureWire()
-        let open = serverRequest("sudo")
-        var replay = BotFixtureWire.replay().fields!
-        replay["open_requests"] = .array([open])
-        wire.replay = .object(replay)
-        wire.openRequests = .array([open])
-        let model = await blocked(on: wire)
-        XCTAssertEqual(model.pendingRequest?.requestID, "srq-1")
-        wire.transformResume = { snapshot in
-            guard wire.calls.suffix(2).map(\.0) == ["session.events.since", "session.resume"] else { return snapshot }
-            wire.transformResume = nil
-            wire.openRequests = .array([])
-            wire.onEvent?(.object(["session_id": .string("runtime"), "seq": .number(1), "type": .string("request.cancel"),
-                                   "payload": .object(["id": .string("srq-1"), "method": .string("sudo"), "reason": .string("timeout")])]))
-            return snapshot
+    /// `request.cancel` the host wrote while that snapshot was on its way withdraws
+    /// the card the replay restored, with its note, whether the snapshot was read
+    /// before the cancel (still listing the request) or after it.
+    func testAHeldCancelWithdrawsTheReattachedCardWithItsNote() async {
+        for snapshotListsIt in [true, false] {
+            let wire = BotFixtureWire()
+            let open = serverRequest("sudo")
+            var replay = BotFixtureWire.replay().fields!
+            replay["open_requests"] = .array([open])
+            wire.replay = .object(replay)
+            wire.openRequests = .array([open])
+            let model = await blocked(on: wire)
+            XCTAssertEqual(model.pendingRequest?.requestID, "srq-1")
+            wire.transformResume = { snapshot in
+                guard wire.calls.suffix(2).map(\.0) == ["session.events.since", "session.resume"] else { return snapshot }
+                wire.transformResume = nil
+                wire.openRequests = .array([])
+                wire.onEvent?(.object(["session_id": .string("runtime"), "seq": .number(1), "type": .string("request.cancel"),
+                                       "payload": .object(["id": .string("srq-1"), "method": .string("sudo"), "reason": .string("timeout")])]))
+                guard !snapshotListsIt, var fields = snapshot.fields else { return snapshot }
+                fields["open_requests"] = .array([])
+                return .object(fields)
+            }
+            await model.recover()
+            XCTAssertEqual(model.connectionState, .connected, "\(snapshotListsIt)")
+            XCTAssertNil(model.pendingRequest, "\(snapshotListsIt)")
+            XCTAssertEqual(model.withdrawnRequest, BotRequestWithdrawal(family: .other, reason: .timeout), "\(snapshotListsIt)")
+            model.suspend()
         }
-        await model.recover()
-        XCTAssertEqual(model.connectionState, .connected)
-        XCTAssertNil(model.pendingRequest)
-        XCTAssertEqual(model.withdrawnRequest, BotRequestWithdrawal(family: .other, reason: .timeout))
-        model.suspend()
     }
 
     func testSnapshotCannotOverwriteANewerLiveRequestOrCancellation() async {
