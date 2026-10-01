@@ -78,8 +78,9 @@ extension HermesDeepLink {
 /// What the app should do with one bot deep link, decided before any navigation so
 /// every outcome is testable without a view (#554).
 enum BotDeepLinkOutcome: Equatable {
-    /// Nothing to route: Bot Mode is off, the named server is gone, or its Bot
-    /// connection was removed or replaced. The app opens normally, with no error.
+    /// Nothing to route: Bot Mode is off and the named server is a webui server, the
+    /// named server is gone, or its Bot connection was removed or replaced. The app
+    /// opens normally, with no error.
     case ignore
     /// Hold the destination until the user is signed in, then resolve it again.
     case waitForSignIn(BotDestination)
@@ -106,11 +107,12 @@ enum BotDeepLinkOutcome: Equatable {
             (try? BotConnectionStore().load(server: url))?.id
         }
     ) -> BotDeepLinkOutcome {
-        // Bot Mode off: the session list opens and no Bot UI leaks through a link.
-        guard isBotModeEnabled else { return .ignore }
         guard let account = servers.first(where: { $0.id == destination.server.absoluteString }) else {
             return .ignore
         }
+        // Bot Mode off: a webui server's session list opens and no Bot UI leaks through a
+        // link. A Hermes server is Bot UI throughout and opens either way (#899).
+        guard isBotModeEnabled || account.kind == .hermes else { return .ignore }
         // A replaced endpoint or account mints a new connection UUID, so this also
         // covers "the link names a bot on a connection this server no longer has".
         guard botConnectionID(destination.server) == destination.connectionID else { return .ignore }

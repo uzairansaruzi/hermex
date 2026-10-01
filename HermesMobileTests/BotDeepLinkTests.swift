@@ -19,21 +19,40 @@ import XCTest
                        profile: profile, conversation: conversation)
     }
 
-    private func account(_ server: URL) -> ServerAccount {
+    private func account(_ server: URL, kind: ServerKind = .webui) -> ServerAccount {
         ServerAccount(id: server.absoluteString, urlString: server.absoluteString, displayName: "",
                       initials: "", headerLogoColorHex: HeaderLogoColor.defaultHex,
-                      createdAt: Date(timeIntervalSince1970: 0), updatedAt: Date(timeIntervalSince1970: 0))
+                      createdAt: Date(timeIntervalSince1970: 0), updatedAt: Date(timeIntervalSince1970: 0), kind: kind)
     }
 
     private func resolve(
         _ destination: BotDestination,
         state: AuthManager.State,
         servers: [URL] = [],
+        hermesServers: [URL] = [],
         isBotModeEnabled: Bool = true,
         connectionID: UUID?
     ) -> BotDeepLinkOutcome {
-        BotDeepLinkRouter.resolve(destination, state: state, servers: servers.map(account),
+        BotDeepLinkRouter.resolve(destination, state: state,
+                                  servers: servers.map { account($0) } + hermesServers.map { account($0, kind: .hermes) },
                                   isBotModeEnabled: isBotModeEnabled, botConnectionID: { _ in connectionID })
+    }
+
+    /// A Hermes server is Bot UI throughout, so its links open with Bot Mode off; a webui
+    /// server's stay dropped (#899).
+    func testAHermesServersLinkOpensItEvenWithBotModeOff() throws {
+        let hermes = try XCTUnwrap(URL(string: "http://127.0.0.1:9199"))
+        let link = destination(server: hermes)
+        let parsed = try XCTUnwrap(HermesDeepLink.botURL(for: link).flatMap(HermesDeepLink.botDestination(from:)))
+        XCTAssertEqual(parsed.server.absoluteString, "http://127.0.0.1:9199", "The link names the Hermes server by its id")
+
+        XCTAssertEqual(resolve(parsed, state: .loggedIn(server: serverA), servers: [serverA], hermesServers: [hermes],
+                               isBotModeEnabled: false, connectionID: connectionID),
+                       .switchServer(account(hermes, kind: .hermes), parsed))
+        XCTAssertEqual(resolve(parsed, state: .loggedIn(server: hermes), servers: [serverA], hermesServers: [hermes],
+                               isBotModeEnabled: false, connectionID: connectionID), .open(parsed))
+        XCTAssertEqual(resolve(destination(), state: .loggedIn(server: hermes), servers: [serverA], hermesServers: [hermes],
+                               isBotModeEnabled: false, connectionID: connectionID), .ignore)
     }
 
     func testLinkRoundTripsTheIdentityItRoutesBy() throws {

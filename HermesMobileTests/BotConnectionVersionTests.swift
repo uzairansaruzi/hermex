@@ -211,6 +211,31 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertEqual(try store.load(server: other), old)
     }
 
+    /// A Hermes server's own sign-in (#899): its address is the server's, even after a
+    /// sign-out deleted the record, and the record is removed only with the server.
+    func testAHermesServersSignInKeepsItsAddressAndOffersNoRemove() async throws {
+        let hermes = URL(string: "https://hermes.example:9119")!
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        let model = BotConnectionSetup(server: hermes, isServerSignIn: true,
+                                       error: "Hermes didn't accept the username or password.", store: store,
+                                       makeWire: { _ in ConnectionSetupWire() }, discard: { _ in })
+        model.load()
+        XCTAssertEqual(model.address, "https://hermes.example:9119")
+        XCTAssertEqual(model.errorMessage, "Hermes didn't accept the username or password.")
+
+        model.address = "https://elsewhere.example"; model.username = "me"; model.password = "secret"
+        let saved = await model.connect()
+        XCTAssertTrue(saved)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(try store.load(server: hermes)?.address, hermes)
+        XCTAssertFalse(model.offersRemoval)
+
+        let side = BotConnectionSetup(server: server, isServerSignIn: false, store: store)
+        try store.save(BotConnection(id: UUID(), name: "Side", address: hermes, username: "me", password: "secret"), server: server)
+        side.load()
+        XCTAssertTrue(side.offersRemoval)
+    }
+
     func testFailedLoginAndSaveNeverReportSuccess() async throws {
         let wire = ConnectionSetupWire(); wire.failure = BotFailure.rejected(401)
         let model = BotConnectionSetup(server: server, store: BotConnectionStore(keychain: InMemoryKeychainStore()),

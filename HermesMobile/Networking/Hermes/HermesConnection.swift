@@ -49,6 +49,10 @@ import OSLog
     private var epoch = 0
     private var signInTask: Task<Void, Error>?
     private(set) var isRetired = false
+    /// Called when the login step answers 401, before the failure reaches any consumer,
+    /// including the re-login a signed-in 401 starts. `HermesConnections` sets it so
+    /// `AuthManager` can sign a Hermes server out (#899); nothing here remembers it.
+    var onLoginRejected: (() -> Void)?
     /// Numbers connections in this process (`c1`, `c2`, …), so log lines from two servers
     /// can be told apart without naming either.
     let serial: Int
@@ -132,6 +136,7 @@ import OSLog
                 if !isRetired {
                     let reason = HermesConnectionLog.reason(error), failedStep = step
                     HermesConnectionLog.logger.error("c\(self.serial, privacy: .public): sign-in failed at \(failedStep, privacy: .public): \(reason, privacy: .public)")
+                    if step == "login", error as? BotFailure == .rejected(401) { onLoginRejected?() }
                 }
                 throw error
             }
@@ -289,13 +294,25 @@ import OSLog
 /// Credentials and headers are compared on the live connection and never kept in a key.
 @MainActor final class HermesConnections {
     static let shared = HermesConnections()
+    /// Told which configured server's saved username or password the host refused at the
+    /// login step. `AuthManager` sets it and signs that server out when it is the active
+    /// Hermes server (#899).
+    var onSignInRejected: ((URL) -> Void)?
+    private let configuration: () -> URLSessionConfiguration
     private var server: String?
     private weak var current: HermesConnection?
+
+    /// `configuration` makes each new connection's URL session setup, with a cookie jar of
+    /// its own; tests script the host with it.
+    init(configuration: @escaping () -> URLSessionConfiguration = { .ephemeral }) {
+        self.configuration = configuration
+    }
 
     func connection(for saved: BotConnection, server: URL) -> HermesConnection {
         if let current, self.server == server.absoluteString, current.adopt(saved) { return current }
         current?.retire()
-        let fresh = HermesConnection(connection: saved)
+        let fresh = HermesConnection(connection: saved, configuration: configuration())
+        fresh.onLoginRejected = { [weak self] in self?.onSignInRejected?(server) }
         current = fresh
         self.server = server.absoluteString
         return fresh

@@ -35,6 +35,53 @@ import XCTest
         XCTAssertTrue(http.provisioningSession.configuration.httpCookieStorage === jar)
     }
 
+    /// Only a 401 from the login step reports a refused sign-in, the re-login a signed-in 401
+    /// starts included, naming the configured server whose record it was (#899). A rate
+    /// limit, a server error, a dropped request and a proxy's own 401 leave the sign-in to
+    /// the screens' retry rules.
+    func testOnlyALoginRefusalReportsARejectedSignIn() async throws {
+        let server = URL(string: "https://webui-or-hermes.example")!
+        let rows: [(path: String, reply: HermesHostFixture.Reply, reports: Int)] = [
+            ("/auth/password-login", .json(401, .object(["error": .string("invalid_credentials")])), 1),
+            ("/auth/password-login", .json(429, .object([:])), 0),
+            ("/auth/password-login", .json(503, .object([:])), 0),
+            ("/auth/password-login", .fail(URLError(.timedOut)), 0),
+            ("/api/status", .json(401, .string("Access denied")), 0)
+        ]
+        for row in rows {
+            HermesHostFixture.reset()
+            let connections = HermesConnections(configuration: { HermesHostFixture.configuration { request in
+                request.url?.path == row.path ? row.reply : nil
+            } })
+            var rejected: [URL] = []
+            connections.onSignInRejected = { rejected.append($0) }
+            do { try await connections.connection(for: record, server: server).signIn(); XCTFail("\(row.reply)") } catch {}
+            XCTAssertEqual(rejected, Array(repeating: server, count: row.reports), "\(row.path) \(row.reply)")
+        }
+
+        HermesHostFixture.reset()
+        var logins = 0
+        let connections = HermesConnections(configuration: { HermesHostFixture.configuration { request in
+            switch request.url?.path {
+            case "/auth/password-login":
+                logins += 1
+                return logins == 1 ? nil : .json(401, .object(["error": .string("invalid_credentials")]))
+            case "/api/plugins/hermex-push/pairing": return .json(401, .object(["error": .string("session_expired")]))
+            default: return nil
+            }
+        } })
+        var rejected: [URL] = []
+        connections.onSignInRejected = { rejected.append($0) }
+        let http = connections.connection(for: record, server: server)
+        try await http.signIn()
+        XCTAssertEqual(rejected, [])
+        do { _ = try await http.data(.pushPairing); XCTFail("The re-login was refused") } catch {
+            XCTAssertEqual(error as? BotFailure, .rejected(401))
+        }
+        XCTAssertEqual(rejected, [server])
+        XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 2)
+    }
+
     /// Each step runs on a fresh connection, and its request is held at the host while the
     /// sessions' in-flight tasks are read, so the test sees the session it went out on.
     func testOnlyProvisioningAndItsSignInGoOutOnTheLongDeadlineSession() async throws {

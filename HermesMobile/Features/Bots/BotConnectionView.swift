@@ -17,12 +17,17 @@ import Observation
     /// Set when the host refused the saved password: the field opens focused with the
     /// stored password kept, so typing replaces it and Connect alone retries as is.
     private let focusesPassword: Bool
+    /// True when the form is the whole screen, a signed-out Hermes server's sign-in, so
+    /// there is nothing for Done to close.
+    private let isRoot: Bool
     /// Runs once a sign-in is saved, even if the form closed while it connected.
     private let onSaved: () -> Void
 
-    init(server: URL, focusesPassword: Bool = false, onSaved: @escaping () -> Void = {}) {
-        _setup = State(initialValue: BotConnectionSetup(server: server))
-        self.focusesPassword = focusesPassword; self.onSaved = onSaved
+    /// `error` opens the form showing why it is needed, such as the host refusing the password.
+    init(server: URL, focusesPassword: Bool = false, isRoot: Bool = false, error: String? = nil,
+         onSaved: @escaping () -> Void = {}) {
+        _setup = State(initialValue: BotConnectionSetup(server: server, error: error))
+        self.focusesPassword = focusesPassword; self.isRoot = isRoot; self.onSaved = onSaved
     }
 
     var body: some View {
@@ -34,30 +39,47 @@ import Observation
             }
             .listRowBackground(Color.clear)
             Section {
-                TextField("Hermes address", text: $setup.address)
-                    .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    .accessibilityIdentifier("hermes-connection-address")
+                if setup.isServerSignIn {
+                    // A Hermes server's address is its identity: removing the server is how
+                    // it changes, through Settings → Servers.
+                    Text(verbatim: setup.address).foregroundStyle(.secondary).textSelection(.enabled)
+                        .accessibilityLabel(Text("Hermes address")).accessibilityValue(setup.address)
+                        .accessibilityIdentifier("hermes-connection-address")
+                } else {
+                    TextField("Hermes address", text: $setup.address)
+                        .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .accessibilityIdentifier("hermes-connection-address")
+                }
                 TextField("Username", text: $setup.username).textContentType(.username)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 SecureField("Password", text: $setup.password).textContentType(.password)
                     .focused($passwordFocused)
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
-                    // The trailing mark keeps a URL ending in a neutral character, such as an
-                    // IPv6 literal's "]", in one left-to-right run inside right-to-left text.
-                    if let preview = setup.addressPreview {
-                        Text("Will connect to \(preview.absoluteString + "\u{200E}")")
-                            .accessibilityIdentifier("hermes-connection-address-preview")
+                    // Under the password, so the focused field's keyboard never covers it.
+                    if let error = setup.errorMessage {
+                        Label {
+                            Text(error)
+                        } icon: {
+                            Image(systemName: "exclamationmark.circle.fill")
+                        }
+                        .foregroundStyle(.red)
+                        .accessibilityIdentifier("hermes-connection-error")
                     }
-                    Text("Domains, Tailscale names and IP addresses work. You can include http:// or https://.")
+                    if !setup.isServerSignIn {
+                        // The trailing mark keeps a URL ending in a neutral character, such as an
+                        // IPv6 literal's "]", in one left-to-right run inside right-to-left text.
+                        if let preview = setup.addressPreview {
+                            Text("Will connect to \(preview.absoluteString + "\u{200E}")")
+                                .accessibilityIdentifier("hermes-connection-address-preview")
+                        }
+                        Text("Domains, Tailscale names and IP addresses work. You can include http:// or https://.")
+                    }
                 }
             }
             .disabled(setup.isConnecting)
             headersSection
             Section {
-                if let error = setup.errorMessage {
-                    Text(error).foregroundStyle(.red).accessibilityIdentifier("hermes-connection-error")
-                }
                 Button(setup.isConnecting ? String(localized: "Connecting…") : String(localized: "Connect")) {
                     operation = Task { if await setup.connect() { onSaved(); if !Task.isCancelled { dismiss() } } }
                 }
@@ -97,7 +119,7 @@ import Observation
                     TextField("Name", text: $setup.name).disabled(setup.isConnecting)
                 }
             }
-            if setup.saved != nil {
+            if setup.offersRemoval {
                 Section {
                     Button("Remove Hermes connection…", role: .destructive) { confirmingRemoval = true }
                         .disabled(setup.isConnecting)
@@ -106,7 +128,9 @@ import Observation
         }
         .navigationTitle("Hermes connection")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
+        .toolbar {
+            if !isRoot { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
+        }
         .task {
             if !loaded {
                 loaded = true
@@ -276,6 +300,10 @@ extension BotHostStatus {
 /// same lifetime, including attempts cancelled before a client was constructed.
 @MainActor @Observable final class BotConnectionSetup {
     let server: URL
+    /// True when `server` is a Hermes server and this record is its own sign-in (#899): the
+    /// address is the server's and can't change, and the record can't be removed here, only
+    /// with the server in Settings → Servers.
+    let isServerSignIn: Bool
     var name = ""
     var address = ""
     var username = ""
@@ -305,12 +333,16 @@ extension BotHostStatus {
         case checking, reachable(BotHostStatus), unreachable(BotHostProbeFailure)
     }
 
-    init(server: URL, store: BotConnectionStore? = nil,
+    /// `isServerSignIn` defaults to whether the registry lists `server` as a Hermes server.
+    /// `error` is shown until the first Connect.
+    init(server: URL, isServerSignIn: Bool? = nil, error: String? = nil, store: BotConnectionStore? = nil,
          makeWire: ((BotConnection) -> any BotTransport)? = nil,
          discard: ((BotConnection) async -> Void)? = nil,
          probe: ((URL, HermesHeaders) async -> Result<BotHostStatus, BotHostProbeFailure>)? = nil,
          relay: ((URL) -> URL?)? = nil) {
         self.server = server; self.store = store ?? BotConnectionStore()
+        self.isServerSignIn = isServerSignIn
+            ?? ServerRegistry.shared.servers.contains { $0.id == server.absoluteString && $0.kind == .hermes }
         // The candidate is not saved yet, so it signs in on its own cookie jar, never the
         // server's shared one.
         self.makeWire = makeWire ?? { BotClient(connection: $0) }
@@ -325,6 +357,7 @@ extension BotHostStatus {
             BotRoomOrganizeStore().remove(connectionID: old.id)
             BotSectionOrderStore().remove(server: server, connectionID: old.id)
         }
+        errorMessage = error
     }
 
     /// The root `connect()` would use for the typed text, or nil while it doesn't parse.
@@ -352,6 +385,9 @@ extension BotHostStatus {
         return String(localized: "Cloudflare Access needs both CF-Access-Client-Id and CF-Access-Client-Secret.")
     }
 
+    /// Remove is offered for a saved side connection, never for a Hermes server's own sign-in.
+    var offersRemoval: Bool { saved != nil && !isServerSignIn }
+
     /// The replace action is offered only for the address that was refused, so editing
     /// the address to the right one never leaves a data-clearing button behind.
     var offersHostReplacement: Bool {
@@ -361,7 +397,8 @@ extension BotHostStatus {
     func load() {
         do {
             saved = try store.load(server: server)
-            name = saved?.name ?? ""; address = saved?.address.absoluteString ?? ""
+            // A Hermes server signed out has no record, but its address is still its own.
+            name = saved?.name ?? ""; address = isServerSignIn ? server.absoluteString : saved?.address.absoluteString ?? ""
             username = saved?.username ?? ""; password = saved?.password ?? ""
             headers = saved?.headers ?? []
         } catch { errorMessage = String(localized: "Could not read saved sign-in details.") }
@@ -401,7 +438,7 @@ extension BotHostStatus {
         do {
             let admitted = try HermesHeaders(headers.sanitizedForStorage()).values
             let sent = admitted.isEmpty ? nil : admitted
-            let url = try BotConnection.address(address); attempted = url
+            let url = isServerSignIn ? server : try BotConnection.address(address); attempted = url
             let account = username.trimmingCharacters(in: .whitespacesAndNewlines)
             let label = name.isEmpty ? (url.host ?? "Hermes") : name
             let expected = replacingHost || saved?.address != url ? nil : saved?.installID

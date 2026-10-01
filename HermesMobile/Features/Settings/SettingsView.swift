@@ -67,6 +67,8 @@ struct SettingsView: View {
     @State private var showDefaultProfilePicker = false
     @State private var notificationPermissionStatus: UNAuthorizationStatus?
     @State private var notificationStatusMessage: String?
+    /// The Hermes server's sign-in username, read once Settings appears (#899).
+    @State private var hermesUsername: String?
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(AppHaptics.streamingPulseIsEnabledKey) private var isStreamingPulseEnabled = false
@@ -122,13 +124,15 @@ struct SettingsView: View {
                     )
                 }
 
-                SettingsCard(title: String(localized: "Archived Sessions")) {
-                    NavigationLink {
-                        ArchivedSessionsView(server: server, onAPIError: authManager.handleAPIError)
-                    } label: {
-                        SettingsAccessoryRow(title: String(localized: "Archived Sessions"), systemImage: "archivebox")
+                if !isHermesServer {
+                    SettingsCard(title: String(localized: "Archived Sessions")) {
+                        NavigationLink {
+                            ArchivedSessionsView(server: server, onAPIError: authManager.handleAPIError)
+                        } label: {
+                            SettingsAccessoryRow(title: String(localized: "Archived Sessions"), systemImage: "archivebox")
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
 
                 SettingsCard(title: String(localized: "Preview")) {
@@ -195,31 +199,34 @@ struct SettingsView: View {
 
                     SettingsDivider()
 
-                    // A wrapper carries the scroll anchor: the section's own id is its server.
-                    VStack(alignment: .leading, spacing: 0) {
-                        HermexPushSectionView(server: server, startsExpanded: initialScrollTarget == .notifications) {
-                            SettingsToggleRow(
-                                title: String(localized: "Response Complete Alerts"),
-                                systemImage: "bell",
-                                isOn: responseCompletionNotificationBinding
-                            )
-                            SettingsFootnote(String(localized: "Alerts when a reply finishes or fails, for servers without push notifications."))
-                            if let notificationStatusText {
-                                SettingsFootnote(notificationStatusText)
+                    // Push on a Hermes server waits for #706.
+                    if !isHermesServer {
+                        // A wrapper carries the scroll anchor: the section's own id is its server.
+                        VStack(alignment: .leading, spacing: 0) {
+                            HermexPushSectionView(server: server, startsExpanded: initialScrollTarget == .notifications) {
+                                SettingsToggleRow(
+                                    title: String(localized: "Response Complete Alerts"),
+                                    systemImage: "bell",
+                                    isOn: responseCompletionNotificationBinding
+                                )
+                                SettingsFootnote(String(localized: "Alerts when a reply finishes or fails, for servers without push notifications."))
+                                if let notificationStatusText {
+                                    SettingsFootnote(notificationStatusText)
+                                }
+                                SettingsDivider()
+                                SettingsToggleRow(
+                                    title: String(localized: "Live Activity Excerpts"),
+                                    systemImage: "lock",
+                                    isOn: $showsLiveActivityResponseExcerpts
+                                )
+                                SettingsFootnote(String(localized: "Shows short response text on the Lock Screen and Dynamic Island."))
                             }
-                            SettingsDivider()
-                            SettingsToggleRow(
-                                title: String(localized: "Live Activity Excerpts"),
-                                systemImage: "lock",
-                                isOn: $showsLiveActivityResponseExcerpts
-                            )
-                            SettingsFootnote(String(localized: "Shows short response text on the Lock Screen and Dynamic Island."))
+                            .id(server)
                         }
-                        .id(server)
-                    }
-                    .id(SettingsScrollAnchor.notifications)
+                        .id(SettingsScrollAnchor.notifications)
 
-                    SettingsDivider()
+                        SettingsDivider()
+                    }
 
                     SettingsPickerRow(
                         title: String(localized: "Send While Responding"),
@@ -379,124 +386,127 @@ struct SettingsView: View {
                     SettingsFootnote(String(localized: "Hides the git menu, branch picker, and commit controls."))
                 }
 
-                SettingsCard(title: String(localized: "Main Page")) {
-                    SettingsToggleRow(
-                        title: String(localized: "Tasks"),
-                        systemImage: "calendar.badge.clock",
-                        isOn: $showsTasksSection
-                    )
-
-                    SettingsDivider()
-
-                    SettingsToggleRow(
-                        title: String(localized: "Kanban"),
-                        systemImage: "rectangle.split.3x1",
-                        isOn: $showsKanbanSection
-                    )
-
-                    SettingsDivider()
-
-                    SettingsToggleRow(
-                        title: String(localized: "Skills"),
-                        systemImage: "hammer",
-                        isOn: $showsSkillsSection
-                    )
-
-                    SettingsDivider()
-
-                    SettingsToggleRow(
-                        title: String(localized: "Memory"),
-                        systemImage: "brain",
-                        isOn: $showsMemorySection
-                    )
-
-                    SettingsDivider()
-
-                    SettingsToggleRow(
-                        title: String(localized: "Usage"),
-                        systemImage: "chart.bar",
-                        isOn: $showsInsightsSection
-                    )
-
-                    SettingsDivider()
-
-                    SettingsToggleRow(
-                        title: String(localized: "Active Profile"),
-                        systemImage: "person.crop.circle",
-                        isOn: $showsActiveProfileSection
-                    )
-
-                    SettingsDivider()
-
-                    SettingsToggleRow(
-                        title: String(localized: "Projects"),
-                        systemImage: "folder.badge.gearshape",
-                        isOn: $showsProjectsSection
-                    )
-
-                    SettingsFootnote(String(localized: "Turn off the entries you never use to shorten the top of the session list. Each one is the only way into its screen, so turn it back on here when you need it again."))
-                }
-
-                SettingsCard(title: String(localized: "Sessions")) {
-                    SettingsToggleRow(
-                        title: String(localized: "Message Count"),
-                        systemImage: "number",
-                        isOn: $showsSessionMessageCount
-                    )
-
-                    SettingsDivider()
-
-                    SettingsToggleRow(
-                        title: String(localized: "Workspace"),
-                        systemImage: "folder",
-                        isOn: $showsSessionWorkspace
-                    )
-
-                    SettingsDivider()
-
-                    SettingsToggleRow(
-                        title: String(localized: "Cron Sessions"),
-                        systemImage: "clock.arrow.2.circlepath",
-                        isOn: $showsCronSessions
-                    )
-
-                    SettingsDivider()
-
-                    SettingsToggleRow(
-                        title: String(localized: "CLI Sessions"),
-                        systemImage: "terminal",
-                        isOn: Binding(
-                            get: { cliSessionsSync.showsCliSessions },
-                            set: { cliSessionsSync.setShowsCliSessions($0) }
+                // Main Page and Sessions configure only a webui server's home.
+                if !isHermesServer {
+                    SettingsCard(title: String(localized: "Main Page")) {
+                        SettingsToggleRow(
+                            title: String(localized: "Tasks"),
+                            systemImage: "calendar.badge.clock",
+                            isOn: $showsTasksSection
                         )
-                    )
 
-                    SettingsDivider()
+                        SettingsDivider()
 
-                    SettingsToggleRow(
-                        title: String(localized: "Claude Code Sessions"),
-                        systemImage: "chevron.left.forwardslash.chevron.right",
-                        isOn: Binding(
-                            get: { cliSessionsSync.showsClaudeCodeSessions },
-                            set: { cliSessionsSync.setShowsClaudeCodeSessions($0) }
+                        SettingsToggleRow(
+                            title: String(localized: "Kanban"),
+                            systemImage: "rectangle.split.3x1",
+                            isOn: $showsKanbanSection
                         )
-                    )
-                    .disabled(!cliSessionsSync.showsCliSessions)
 
-                    SettingsDivider()
+                        SettingsDivider()
 
-                    SettingsToggleRow(
-                        title: String(localized: "Subagent Sessions"),
-                        systemImage: "arrow.triangle.branch",
-                        isOn: $showsSubagentSessions
-                    )
+                        SettingsToggleRow(
+                            title: String(localized: "Skills"),
+                            systemImage: "hammer",
+                            isOn: $showsSkillsSection
+                        )
 
-                    if let syncError = cliSessionsSync.syncErrorMessage
-                        ?? cliSessionsSync.claudeCodeSyncErrorMessage {
-                        SettingsErrorFootnote(syncError)
-                    } else if cliSessionsSync.serverSyncsCliSessions
-                        || cliSessionsSync.serverSyncsClaudeCodeSessions {
-                        SettingsFootnote(String(localized: "Session visibility is synced with this server, so the WebUI follows it too."))
+                        SettingsDivider()
+
+                        SettingsToggleRow(
+                            title: String(localized: "Memory"),
+                            systemImage: "brain",
+                            isOn: $showsMemorySection
+                        )
+
+                        SettingsDivider()
+
+                        SettingsToggleRow(
+                            title: String(localized: "Usage"),
+                            systemImage: "chart.bar",
+                            isOn: $showsInsightsSection
+                        )
+
+                        SettingsDivider()
+
+                        SettingsToggleRow(
+                            title: String(localized: "Active Profile"),
+                            systemImage: "person.crop.circle",
+                            isOn: $showsActiveProfileSection
+                        )
+
+                        SettingsDivider()
+
+                        SettingsToggleRow(
+                            title: String(localized: "Projects"),
+                            systemImage: "folder.badge.gearshape",
+                            isOn: $showsProjectsSection
+                        )
+
+                        SettingsFootnote(String(localized: "Turn off the entries you never use to shorten the top of the session list. Each one is the only way into its screen, so turn it back on here when you need it again."))
+                    }
+
+                    SettingsCard(title: String(localized: "Sessions")) {
+                        SettingsToggleRow(
+                            title: String(localized: "Message Count"),
+                            systemImage: "number",
+                            isOn: $showsSessionMessageCount
+                        )
+
+                        SettingsDivider()
+
+                        SettingsToggleRow(
+                            title: String(localized: "Workspace"),
+                            systemImage: "folder",
+                            isOn: $showsSessionWorkspace
+                        )
+
+                        SettingsDivider()
+
+                        SettingsToggleRow(
+                            title: String(localized: "Cron Sessions"),
+                            systemImage: "clock.arrow.2.circlepath",
+                            isOn: $showsCronSessions
+                        )
+
+                        SettingsDivider()
+
+                        SettingsToggleRow(
+                            title: String(localized: "CLI Sessions"),
+                            systemImage: "terminal",
+                            isOn: Binding(
+                                get: { cliSessionsSync.showsCliSessions },
+                                set: { cliSessionsSync.setShowsCliSessions($0) }
+                            )
+                        )
+
+                        SettingsDivider()
+
+                        SettingsToggleRow(
+                            title: String(localized: "Claude Code Sessions"),
+                            systemImage: "chevron.left.forwardslash.chevron.right",
+                            isOn: Binding(
+                                get: { cliSessionsSync.showsClaudeCodeSessions },
+                                set: { cliSessionsSync.setShowsClaudeCodeSessions($0) }
+                            )
+                        )
+                        .disabled(!cliSessionsSync.showsCliSessions)
+
+                        SettingsDivider()
+
+                        SettingsToggleRow(
+                            title: String(localized: "Subagent Sessions"),
+                            systemImage: "arrow.triangle.branch",
+                            isOn: $showsSubagentSessions
+                        )
+
+                        if let syncError = cliSessionsSync.syncErrorMessage
+                            ?? cliSessionsSync.claudeCodeSyncErrorMessage {
+                            SettingsErrorFootnote(syncError)
+                        } else if cliSessionsSync.serverSyncsCliSessions
+                            || cliSessionsSync.serverSyncsClaudeCodeSessions {
+                            SettingsFootnote(String(localized: "Session visibility is synced with this server, so the WebUI follows it too."))
+                        }
                     }
                 }
 
@@ -519,72 +529,76 @@ struct SettingsView: View {
                 serversCard
                     .id(SettingsScrollAnchor.servers)
 
-                SettingsCard(title: String(localized: "Active Server")) {
-                    HapticButton {
-                        showDefaultModelPicker = true
-                    } label: {
-                        SettingsAccessoryRow(
-                            title: String(localized: "Default Model"),
-                            value: defaultModelLabel,
-                            systemImage: "cpu"
-                        )
+                if isHermesServer {
+                    hermesServerCard
+                } else {
+                    SettingsCard(title: String(localized: "Active Server")) {
+                        HapticButton {
+                            showDefaultModelPicker = true
+                        } label: {
+                            SettingsAccessoryRow(
+                                title: String(localized: "Default Model"),
+                                value: defaultModelLabel,
+                                systemImage: "cpu"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens the default model picker.")
+
+                        SettingsDivider()
+
+                        HapticButton {
+                            showDefaultProfilePicker = true
+                        } label: {
+                            SettingsAccessoryRow(
+                                title: String(localized: "Default Profile"),
+                                value: defaultProfileLabel,
+                                systemImage: "person.crop.circle"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens the default profile picker.")
+
+                        SettingsDivider()
+
+                        SettingsValueRow(title: String(localized: "Status")) {
+                            serverStatusPill
+                        }
+
+                        SettingsDivider()
+
+                        NavigationLink {
+                            ProvidersView(server: server)
+                        } label: {
+                            SettingsAccessoryRow(
+                                title: String(localized: "Providers"),
+                                systemImage: "key.horizontal"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens the provider status screen.")
+
+                        SettingsDivider()
+
+                        NavigationLink {
+                            CustomHeadersSettingsView(authManager: authManager)
+                        } label: {
+                            SettingsAccessoryRow(
+                                title: String(localized: "Connection Headers"),
+                                systemImage: "list.bullet.rectangle"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens the custom request headers editor.")
+
+                        SettingsValueRow(title: String(localized: "Version")) {
+                            serverVersionContent
+                        }
+
+                        serverUpdateCheckAction
+                        serverUpdateNote
+                        serverUpdateAction
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens the default model picker.")
-
-                    SettingsDivider()
-
-                    HapticButton {
-                        showDefaultProfilePicker = true
-                    } label: {
-                        SettingsAccessoryRow(
-                            title: String(localized: "Default Profile"),
-                            value: defaultProfileLabel,
-                            systemImage: "person.crop.circle"
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens the default profile picker.")
-
-                    SettingsDivider()
-
-                    SettingsValueRow(title: String(localized: "Status")) {
-                        serverStatusPill
-                    }
-
-                    SettingsDivider()
-
-                    NavigationLink {
-                        ProvidersView(server: server)
-                    } label: {
-                        SettingsAccessoryRow(
-                            title: String(localized: "Providers"),
-                            systemImage: "key.horizontal"
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens the provider status screen.")
-
-                    SettingsDivider()
-
-                    NavigationLink {
-                        CustomHeadersSettingsView(authManager: authManager)
-                    } label: {
-                        SettingsAccessoryRow(
-                            title: String(localized: "Connection Headers"),
-                            systemImage: "list.bullet.rectangle"
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Opens the custom request headers editor.")
-
-                    SettingsValueRow(title: String(localized: "Version")) {
-                        serverVersionContent
-                    }
-
-                    serverUpdateCheckAction
-                    serverUpdateNote
-                    serverUpdateAction
                 }
 
                 SettingsCard(title: String(localized: "Privacy")) {
@@ -698,13 +712,15 @@ struct SettingsView: View {
                 }
                 #endif
 
-                SettingsCard(title: String(localized: "Offline Data")) {
-                    SettingsFootnote(cacheStatusMessage ?? String(localized: "Cached sessions and messages are kept for offline viewing. Clearing removes this server's cache only — other servers and the Hermes server are not affected."))
+                if !isHermesServer {
+                    SettingsCard(title: String(localized: "Offline Data")) {
+                        SettingsFootnote(cacheStatusMessage ?? String(localized: "Cached sessions and messages are kept for offline viewing. Clearing removes this server's cache only — other servers and the Hermes server are not affected."))
 
-                    SettingsButton(String(localized: "Clear Offline Cache"), role: .destructive, isLoading: isClearingCache) {
-                        isConfirmingClearCache = true
+                        SettingsButton(String(localized: "Clear Offline Cache"), role: .destructive, isLoading: isClearingCache) {
+                            isConfirmingClearCache = true
+                        }
+                        .disabled(isClearingCache)
                     }
-                    .disabled(isClearingCache)
                 }
 
                 SettingsCard(title: String(localized: "Account")) {
@@ -723,7 +739,12 @@ struct SettingsView: View {
         .background(Color(.systemBackground))
         .navigationTitle("Settings")
         .task {
-            await loadServerSettings()
+            // A Hermes server has no webui to load from, so no webui 401 can sign it out (#899).
+            if isHermesServer {
+                hermesUsername = (try? BotConnectionStore().load(server: server))?.username
+            } else {
+                await loadServerSettings()
+            }
             await refreshNotificationPermissionStatus()
         }
         .alert("Clear this server's cache?", isPresented: $isConfirmingClearCache) {
@@ -868,6 +889,34 @@ struct SettingsView: View {
         authManager.servers.first { $0.id == authManager.activeServerID }
     }
 
+    /// On a Hermes server Settings loads nothing from a webui and hides every row that
+    /// configures or reads one (#899).
+    private var isHermesServer: Bool { authManager.kind(of: server) == .hermes }
+
+    /// A Hermes server's Active Server card: its sign-in, with its headers, and the
+    /// release saved at that sign-in.
+    private var hermesServerCard: some View {
+        SettingsCard(title: String(localized: "Active Server")) {
+            NavigationLink {
+                BotConnectionView(server: server) { authManager.hermesSignInSaved(server: server) }
+            } label: {
+                SettingsAccessoryRow(
+                    title: String(localized: "Hermes connection"),
+                    value: hermesUsername,
+                    systemImage: "person.badge.key"
+                )
+            }
+            .buttonStyle(.plain)
+
+            if let version = activeAccount?.serverVersion {
+                SettingsDivider()
+                SettingsInfoRow(title: String(localized: "Version"), value: version)
+            }
+
+            SettingsFootnote(String(localized: "Sign-in and connection headers for this Hermes host."))
+        }
+    }
+
     /// Pushes the current global identity values (which the Identity + Header Logo
     /// Color controls edit) into the active server's registry entry, so per-server
     /// identity follows the active server (#17). Single-server users see no change.
@@ -882,13 +931,15 @@ struct SettingsView: View {
     }
 
     private var signOutFootnote: String {
-        authManager.servers.count > 1
+        if isHermesServer { return String(localized: "Deletes this server's saved sign-in and shows its sign-in form.") }
+        return authManager.servers.count > 1
             ? String(localized: "Signs out of the active server and switches to another configured server.")
             : String(localized: "Signs out of the active server and returns to onboarding.")
     }
 
     private var signOutMessage: String {
-        authManager.servers.count > 1
+        if isHermesServer { return String(localized: "Deletes this server's saved sign-in and shows its sign-in form.") }
+        return authManager.servers.count > 1
             ? String(localized: "You'll switch to another configured server. Sign in again to use this one.")
             : String(localized: "You'll return to onboarding and need the server URL and password to sign back in.")
     }

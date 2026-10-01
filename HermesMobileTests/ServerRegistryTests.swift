@@ -321,6 +321,42 @@ final class ServerRegistryTests: XCTestCase {
         XCTAssertNil(registry.activeServer)
     }
 
+    func testOneUnreadableEntryLeavesTheRestOfTheListLoaded() throws {
+        let keychain = InMemoryKeychainStore()
+        try keychain.save(#"{"servers":[{"displayName":"no id"},{"id":"https://a.test"}],"activeServerID":"https://a.test"}"#,
+                          forKey: .servers)
+
+        let registry = ServerRegistry(keychain: keychain)
+
+        XCTAssertEqual(registry.servers.map(\.id), ["https://a.test"])
+        XCTAssertEqual(registry.activeServerID, "https://a.test")
+    }
+
+    func testAMissingOrUnknownKindLoadsAsAWebuiServer() throws {
+        let keychain = InMemoryKeychainStore()
+        try keychain.save(#"{"servers":[{"id":"https://a.test"},{"id":"https://b.test","kind":"satellite"},{"id":"https://c.test","kind":7},{"id":"https://d.test","kind":"hermes"}]}"#,
+                          forKey: .servers)
+
+        let registry = ServerRegistry(keychain: keychain)
+
+        XCTAssertEqual(registry.servers.map(\.kind), [.webui, .webui, .webui, .hermes])
+    }
+
+    func testAHermesServersKindAndVersionSurviveARelaunch() throws {
+        let keychain = InMemoryKeychainStore()
+        let registry = makeRegistry(keychain: keychain)
+        registry.activate(url: try url("https://webui.test"))
+
+        registry.activate(url: try url("http://127.0.0.1:9199"), kind: .hermes, serverVersion: "0.21.5")
+        // Re-activating never changes what a server is.
+        registry.activate(url: try url("http://127.0.0.1:9199"))
+
+        let relaunched = ServerRegistry(keychain: keychain)
+        XCTAssertEqual(relaunched.servers.map(\.kind), [.webui, .hermes])
+        XCTAssertEqual(relaunched.servers.map(\.serverVersion), [nil, "0.21.5"])
+        XCTAssertEqual(relaunched.activeServerID, "http://127.0.0.1:9199")
+    }
+
     func testServerAccountDecodesWithOnlyAnIdPresent() throws {
         // A minimal blob must still decode, defaulting the rest (CLAUDE.md rule 3).
         // Legacy blobs may still carry `customHeadersRef`; ignore it on decode

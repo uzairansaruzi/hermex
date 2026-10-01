@@ -1,7 +1,16 @@
 import Foundation
 import os
 
-/// Non-secret-shaped metadata for one configured Hermes Web UI server.
+/// What a configured server is (#899). A webui server is a `hermes-webui` instance, signed in
+/// through `AuthManager` with its own cookie; a Hermes server is a Hermes dashboard Hermex reaches
+/// directly, whose sign-in is the `BotConnection` saved under its own URL and whose home is the
+/// Bots inbox. A missing or unknown value reads as `webui`, the only kind before #899.
+enum ServerKind: String, Codable, Sendable {
+    case webui
+    case hermes
+}
+
+/// Non-secret-shaped metadata for one configured server.
 ///
 /// This is the persisted account model introduced by I-039a (#15) — the
 /// foundation the rest of the multi-server epic (#16/#17/#18) builds on. The
@@ -16,7 +25,9 @@ import os
 struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
     /// Stable per-server identity. We reuse the normalized base-URL string so it
     /// matches the offline cache's `serverURLString` key (`CachedSession` /
-    /// `CachedMessage`) — no separate id↔URL mapping to keep in sync.
+    /// `CachedMessage`) — no separate id↔URL mapping to keep in sync. A Hermes
+    /// server's is its address as `BotConnection.address(_:)` normalizes it, never
+    /// `AuthManager.normalizedServerURL`, whose rules differ.
     let id: String
     /// Normalized base URL (scheme + host [+ port]); equal to `id` in this slice.
     var urlString: String
@@ -30,6 +41,12 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
     var headerLogoColorHex: String
     var createdAt: Date
     var updatedAt: Date
+    /// Set when the server is added and never changed: a webui server and a Hermes
+    /// server can't share a URL (`AuthManager.addHermesServer`).
+    var kind: ServerKind
+    /// A Hermes server's release, as `/api/status` reported it at the last saved
+    /// sign-in. Nil for webui servers, whose version Settings reads live.
+    var serverVersion: String?
 
     init(
         id: String,
@@ -38,7 +55,9 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         initials: String,
         headerLogoColorHex: String,
         createdAt: Date,
-        updatedAt: Date
+        updatedAt: Date,
+        kind: ServerKind = .webui,
+        serverVersion: String? = nil
     ) {
         self.id = id
         self.urlString = urlString
@@ -47,6 +66,8 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         self.headerLogoColorHex = headerLogoColorHex
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.kind = kind
+        self.serverVersion = serverVersion
     }
 
     enum CodingKeys: String, CodingKey {
@@ -57,6 +78,8 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         case headerLogoColorHex
         case createdAt
         case updatedAt
+        case kind
+        case serverVersion
     }
 
     init(from decoder: Decoder) throws {
@@ -80,6 +103,10 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
             ?? HeaderLogoColor.defaultHex
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date(timeIntervalSince1970: 0)
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
+        // Read as text so a kind from a newer build, or a value of the wrong type,
+        // falls back to webui instead of failing the entry.
+        kind = (try? container.decodeIfPresent(String.self, forKey: .kind)).flatMap(ServerKind.init(rawValue:)) ?? .webui
+        serverVersion = try? container.decodeIfPresent(String.self, forKey: .serverVersion)
     }
 }
 
@@ -139,8 +166,15 @@ final class ServerRegistry: @unchecked Sendable {
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
-            servers = (try? container.decodeIfPresent([ServerAccount].self, forKey: .servers)) ?? []
+            // One unreadable entry is dropped on its own, never the whole list.
+            servers = ((try? container.decodeIfPresent([Entry].self, forKey: .servers)) ?? [])
+                .compactMap(\.account)
             activeServerID = try? container.decodeIfPresent(String.self, forKey: .activeServerID)
+        }
+
+        private struct Entry: Decodable {
+            let account: ServerAccount?
+            init(from decoder: Decoder) throws { account = try? ServerAccount(from: decoder) }
         }
     }
 
@@ -162,12 +196,13 @@ final class ServerRegistry: @unchecked Sendable {
     /// Ensures `url` is registered and marked active, returning the active entry.
     ///
     /// Dedupes by id (the normalized URL string): a URL already present is just
-    /// re-activated, never duplicated, and its identity is left untouched so any
-    /// per-server edits from #17 survive. A new URL is inserted with its identity
-    /// seeded from the current global identity defaults. Callers pass an
-    /// already-normalized URL (`AuthManager.normalizedServerURL`).
+    /// re-activated, never duplicated, and its identity and kind are left untouched
+    /// so any per-server edits from #17 survive. A new URL is inserted as `kind`, with
+    /// `serverVersion` and its identity seeded from the current global identity
+    /// defaults. Callers pass an already-normalized URL
+    /// (`AuthManager.normalizedServerURL`, or `BotConnection.address(_:)` for a Hermes server).
     @discardableResult
-    func activate(url: URL) -> ServerAccount {
+    func activate(url: URL, kind: ServerKind = .webui, serverVersion: String? = nil) -> ServerAccount {
         let id = url.absoluteString
         // When re-activating an already-registered server we mirror its (possibly
         // per-server-edited, #17) identity into the global identity defaults so the
@@ -189,7 +224,9 @@ final class ServerRegistry: @unchecked Sendable {
                 return existing
             }
 
-            let account = makeSeededAccount(id: id, url: url)
+            var account = makeSeededAccount(id: id, url: url)
+            account.kind = kind
+            account.serverVersion = serverVersion
             snapshot.servers.append(account)
             snapshot.activeServerID = id
             persist(snapshot)

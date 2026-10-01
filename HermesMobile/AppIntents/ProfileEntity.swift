@@ -91,10 +91,20 @@ enum ProfileEntityProvider {
     /// so a cookie-auth server still falls back to the cache — this just stops the ad-hoc client
     /// from silently dropping the headers every other client in the app carries.)
     private static func fetchLiveProfiles() async throws -> [ProfileSummary] {
-        guard let server = savedServerURL() else { return [] }
+        guard let server = profileServer(active: savedServerURL(), servers: ServerRegistry.shared.servers) else { return [] }
         let headers = customHeaders(for: server)
         let response = try await APIClient(baseURL: server, customHeaderProvider: { headers }).profiles()
         return response.profiles ?? []
+    }
+
+    /// The webui server whose Profiles Shortcuts lists: the active one, or while a Hermes
+    /// server is active the first webui server, which New Chat in Profile switches to.
+    /// Hermes servers' Profiles stay out of the list until #706. Nil when no webui server
+    /// is configured.
+    static func profileServer(active: URL?, servers: [ServerAccount]) -> URL? {
+        guard let active else { return nil }
+        guard servers.first(where: { $0.id == active.absoluteString })?.kind == .hermes else { return active }
+        return servers.first { $0.kind == .webui }.flatMap { URL(string: $0.urlString) }
     }
 
     /// Loads the server's stored custom headers (scoped key first, then the pre-#16 global

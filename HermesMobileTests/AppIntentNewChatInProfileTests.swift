@@ -17,6 +17,38 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         try await super.tearDown()
     }
 
+    // MARK: - With a Hermes server active (#899)
+
+    private func account(_ id: String, _ kind: ServerKind) -> ServerAccount {
+        ServerAccount(id: id, urlString: id, displayName: "", initials: "", headerLogoColorHex: HeaderLogoColor.defaultHex,
+                      createdAt: Date(timeIntervalSince1970: 0), updatedAt: Date(timeIntervalSince1970: 0), kind: kind)
+    }
+
+    func testTheProfileListComesOnlyFromAWebuiServer() throws {
+        let hermes = account("https://hermes.example", .hermes)
+        let first = account("https://a.test", .webui), second = account("https://b.test", .webui)
+        let profileServer = { (active: String?, servers: [ServerAccount]) in
+            ProfileEntityProvider.profileServer(active: active.flatMap { URL(string: $0) }, servers: servers)?.absoluteString
+        }
+
+        XCTAssertEqual(profileServer("https://b.test", [hermes, first, second]), "https://b.test")
+        XCTAssertEqual(profileServer("https://hermes.example", [hermes, first, second]), "https://a.test",
+                       "The webui server New Chat in Profile switches to")
+        XCTAssertNil(profileServer("https://hermes.example", [hermes]))
+        XCTAssertNil(profileServer(nil, [first]))
+    }
+
+    func testWebuiEntryPointsLeaveAHermesServerForTheFirstWebuiServer() {
+        let hermes = account("https://hermes.example", .hermes)
+        let first = account("https://a.test", .webui), second = account("https://b.test", .webui)
+
+        XCTAssertEqual(WebuiEntryRoute.resolve(active: URL(string: "https://hermes.example"), servers: [hermes, first, second]),
+                       .switchServer(first))
+        XCTAssertEqual(WebuiEntryRoute.resolve(active: URL(string: "https://hermes.example"), servers: [hermes]), .unavailable)
+        XCTAssertEqual(WebuiEntryRoute.resolve(active: URL(string: "https://b.test"), servers: [hermes, first, second]), .stay)
+        XCTAssertEqual(WebuiEntryRoute.resolve(active: nil, servers: [hermes]), .stay)
+    }
+
     // MARK: - Deep link shape
 
     func testNewChatInProfileURLUsesProfileHostAndCarriesName() throws {

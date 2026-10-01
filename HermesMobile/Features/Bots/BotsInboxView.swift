@@ -1,8 +1,20 @@
 import SwiftUI
 
-@MainActor struct BotsInboxView: View {
+/// What titles the Bots inbox as a Hermes server's home: the server's name, and its host
+/// when that differs from the name.
+struct BotsInboxHome {
+    let title: String
+    let subtitle: String?
+}
+
+/// The Bots inbox: pushed from a webui server's session list, or the root of a Hermes
+/// server's home (`HermesServerHome`), where `home` titles it and `HomeControl` replaces
+/// the Bot connection gear.
+@MainActor struct BotsInboxView<HomeControl: View>: View {
     @Environment(\.scenePhase) private var scenePhase
     let server: URL
+    private let home: BotsInboxHome?
+    private let homeControl: HomeControl
     /// The bot a deep link named, resolved here because this is where the live roster
     /// is. Cleared once this inbox has settled, whether or not it matched (#554).
     @Binding private var pendingDestination: BotDestination?
@@ -40,8 +52,21 @@ import SwiftUI
     init(
         server: URL,
         pendingDestination: Binding<BotDestination?> = .constant(nil)
+    ) where HomeControl == EmptyView {
+        self.init(server: server, pendingDestination: pendingDestination, home: nil) { EmptyView() }
+    }
+
+    /// A Hermes server's home. Its sign-in form is reached through Settings there, so
+    /// `homeControl`, the server's avatar, takes the gear's place.
+    init(
+        server: URL,
+        pendingDestination: Binding<BotDestination?>,
+        home: BotsInboxHome?,
+        @ViewBuilder homeControl: () -> HomeControl
     ) {
         self.server = server
+        self.home = home
+        self.homeControl = homeControl()
         _pendingDestination = pendingDestination
         _inbox = State(initialValue: BotInbox(server: server))
     }
@@ -147,13 +172,7 @@ import SwiftUI
                 }
             }
         }
-        // Pushed from the session list's Bots row: the back button and the
-        // toolbar are the whole header, so the pinned tiles sit at the top. The
-        // title still names the screen for VoiceOver and for a pushed chat's
-        // back button; only its visible text is removed.
-        .navigationTitle("Bots")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(removing: .title)
+        .modifier(BotsInboxTitle(home: home))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Search bots and messages", systemImage: "magnifyingglass") { showingSearch = true }
@@ -177,7 +196,11 @@ import SwiftUI
             }
             if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
             ToolbarItem(placement: .topBarTrailing) {
-                Button("Bot connection", systemImage: "gearshape") { showingSetup = true }
+                if home == nil {
+                    Button("Bot connection", systemImage: "gearshape") { showingSetup = true }
+                } else {
+                    homeControl
+                }
             }
         }
     }
@@ -560,6 +583,41 @@ extension BotsInboxView {
                 else { inbox.close() }
             }
             .onDisappear { inbox.close() }
+    }
+}
+
+/// The inbox's title. Pushed from the session list's Bots row, the back button and the
+/// toolbar are the whole header, so the pinned tiles sit at the top; the title still
+/// names the screen for VoiceOver and for a pushed chat's back button, with only its
+/// visible text removed. As a Hermes server's home, the server's name titles it, leading,
+/// with its host under it on iOS 26.
+private struct BotsInboxTitle: ViewModifier {
+    let home: BotsInboxHome?
+
+    func body(content: Content) -> some View {
+        if let home {
+            content
+                .navigationTitle(home.title)
+                .toolbarTitleDisplayMode(.inlineLarge)
+                .modifier(BotsInboxSubtitle(subtitle: home.subtitle))
+        } else {
+            content
+                .navigationTitle("Bots")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar(removing: .title)
+        }
+    }
+}
+
+private struct BotsInboxSubtitle: ViewModifier {
+    let subtitle: String?
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *), let subtitle {
+            content.navigationSubtitle(subtitle)
+        } else {
+            content
+        }
     }
 }
 

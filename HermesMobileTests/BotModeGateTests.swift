@@ -19,6 +19,29 @@ final class BotModeGateTests: XCTestCase {
         super.tearDown()
     }
 
+    /// Adding a Hermes server needs the gate; turning it off later never locks the user
+    /// out of one they have (#899).
+    @MainActor func testOnlyAddingAHermesServerNeedsTheGate() throws {
+        let keychain = InMemoryKeychainStore()
+        let registry = ServerRegistry.inMemory(keychain: keychain)
+        let hermes = try XCTUnwrap(URL(string: "https://hermes.example"))
+        let record = BotConnection(id: UUID(), name: "Studio", address: hermes, username: "me", password: "secret")
+        let manager = AuthManager(keychain: keychain, headerStore: CustomHeaderStore(), serverRegistry: registry,
+                                  hermesConnections: HermesConnections(), preferences: defaults)
+
+        XCTAssertFalse(manager.addHermesServer(record))
+        XCTAssertTrue(registry.servers.isEmpty)
+        XCTAssertNil(try BotConnectionStore(keychain: keychain).load(server: hermes))
+
+        defaults.set(true, forKey: BotModeGate.isEnabledKey)
+        XCTAssertTrue(manager.addHermesServer(record))
+
+        defaults.set(false, forKey: BotModeGate.isEnabledKey)
+        let relaunched = AuthManager(keychain: keychain, headerStore: CustomHeaderStore(), serverRegistry: registry,
+                                     hermesConnections: HermesConnections(), preferences: defaults)
+        XCTAssertEqual(relaunched.state, .loggedIn(server: hermes))
+    }
+
     func testGateDefaultsOffAndPersistsWhenTurnedOn() {
         XCTAssertFalse(BotModeGate.isEnabled(in: defaults))
         defaults.set(true, forKey: BotModeGate.isEnabledKey)
