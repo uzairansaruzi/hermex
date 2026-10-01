@@ -142,8 +142,11 @@ def reboot(device, run_dir, locks_dir, owner, lock_fds, timeout):
 
 def terminate_app(device, run_dir, lock_fds, timeout):
     """An app left running by a build-and-run (with log capture attached) makes
-    the test runner hang before connecting. Exit status is ignored: simctl
-    fails when the app is not running or not installed, which is the goal."""
+    the test runner hang before connecting. Skip absent apps: terminating one
+    can hang on iOS 27. Ignore a not-running exit status, but propagate timeouts."""
+    if run(["xcrun", "simctl", "get_app_container", device["udid"], APP_BUNDLE_ID],
+           run_dir / "app-container.log", min(timeout, TERMINATE_TIMEOUT), lock_fds):
+        return
     run(["xcrun", "simctl", "terminate", device["udid"], APP_BUNDLE_ID],
         run_dir / "terminate.log", min(timeout, TERMINATE_TIMEOUT), lock_fds)
 

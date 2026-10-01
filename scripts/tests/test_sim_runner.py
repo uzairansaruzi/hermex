@@ -37,10 +37,15 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.hung_runs = 0
         self.xcodebuild_runs = 0
         self.timeouts = []
+        self.app_installed = True
+        self.terminate_status = 3
+        self.timeout_operation = None
 
     def fake_run(self, command, output, timeout, lock_fds=()):
         self.commands.append(command)
         self.timeouts.append(timeout)
+        if command[:3] == ["xcrun", "simctl", self.timeout_operation]:
+            raise subprocess.TimeoutExpired(command, timeout)
         if command[:4] == ["xcrun", "simctl", "list", "devices"]:
             output.write_text(json.dumps({"devices": {self.device["runtime"]: [self.device]}}))
         elif command[:3] == ["xcrun", "simctl", "bootstatus"]:
@@ -49,8 +54,12 @@ class SimulatorRunnerTests(unittest.TestCase):
             self.device["state"] = "Shutdown"
         elif command[:3] == ["xcrun", "simctl", "boot"]:
             self.device["state"] = "Booted"
+        elif command[:3] == ["xcrun", "simctl", "get_app_container"]:
+            return 0 if self.app_installed else 1
         elif command[:3] == ["xcrun", "simctl", "terminate"]:
-            return 3  # simctl's status when the app is not running.
+            if not self.app_installed:
+                raise subprocess.TimeoutExpired(command, timeout)
+            return self.terminate_status
         elif command[0] == "xcodebuild":
             Path(command[command.index("-resultBundlePath") + 1]).mkdir()
             output.write_text("test log\n")
@@ -96,6 +105,44 @@ class SimulatorRunnerTests(unittest.TestCase):
         terminate = ["xcrun", "simctl", "terminate", "SIM-A", runner.APP_BUNDLE_ID]
         self.assertLess(self.commands.index(terminate),
                         next(i for i, c in enumerate(self.commands) if c[0] == "xcodebuild"))
+
+    def test_absent_app_skips_termination_and_runs_tests(self):
+        self.app_installed = False
+        self.assertEqual(self.invoke(), 0, "An absent app must not prevent XCTest from running")
+        self.assertFalse(any(c[:3] == ["xcrun", "simctl", "terminate"] for c in self.commands))
+        self.assertEqual(self.xcodebuild_runs, 1)
+
+    def test_installed_app_is_checked_then_terminated_on_the_assigned_device(self):
+        self.terminate_status = 0
+        with patch.object(runner, "APP_BUNDLE_ID", "com.example.hermex.local"):
+            self.assertEqual(self.invoke(), 0)
+        check = ["xcrun", "simctl", "get_app_container", "SIM-A", "com.example.hermex.local"]
+        terminate = ["xcrun", "simctl", "terminate", "SIM-A", "com.example.hermex.local"]
+        self.assertLess(self.commands.index(check), self.commands.index(terminate))
+        self.assertLess(self.commands.index(terminate),
+                        next(i for i, c in enumerate(self.commands) if c[0] == "xcodebuild"))
+
+    def test_installation_check_and_termination_are_bounded(self):
+        for boot_timeout, expected in ((120, 25), (10, 10)):
+            with self.subTest(boot_timeout=boot_timeout):
+                self.commands.clear()
+                self.timeouts.clear()
+                self.assertEqual(self.invoke(extra=("--boot-timeout", str(boot_timeout))), 0)
+                for operation in ("get_app_container", "terminate"):
+                    index = next(i for i, c in enumerate(self.commands)
+                                 if c[:3] == ["xcrun", "simctl", operation])
+                    self.assertEqual(self.timeouts[index], expected)
+
+    def test_installation_check_timeout_stops_without_termination_or_tests(self):
+        self.timeout_operation = "get_app_container"
+        self.assertEqual(self.invoke(), 124)
+        self.assertFalse(any(c[:3] == ["xcrun", "simctl", "terminate"] for c in self.commands))
+        self.assertEqual(self.xcodebuild_runs, 0)
+
+    def test_installed_app_termination_timeout_stops_without_tests(self):
+        self.timeout_operation = "terminate"
+        self.assertEqual(self.invoke(), 124)
+        self.assertEqual(self.xcodebuild_runs, 0)
 
     def test_same_basename_worktrees_have_distinct_build_directories(self):
         self.assertEqual(self.invoke("one/hermex"), 0)

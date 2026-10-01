@@ -97,6 +97,11 @@ owner immediately; different checkout/device pairs run independently. These
 locks coordinate this runner only: keep other build/install tools on their
 session's assigned device, and do not run them during its test run.
 
+Before each test attempt, a bounded `get_app_container` check skips termination
+if Hermex is not installed (terminating an absent app can hang on iOS 27).
+Both the check and termination have a 25-second limit, or `--boot-timeout` if
+shorter. A not-running exit status is ignored; a timeout still stops the run.
+
 Build products live in the checkout's gitignored `.build/DerivedData/`, which
 XcodeBuildMCP also uses (`.xcodebuildmcp/config.yaml`), so launching the app
 after a test run reuses that build instead of compiling a second copy, and
