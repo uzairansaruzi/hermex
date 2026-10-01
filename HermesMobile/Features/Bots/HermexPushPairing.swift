@@ -17,7 +17,16 @@ enum HermexPushPlugin {
     /// The newest plugin this build knows (#851). A host that has anything older loaded is
     /// offered an update in Settings → Notifications. Bump it in the app release that
     /// follows a plugin release (TESTFLIGHT.md's release gates).
-    static let newestVersion = HermexPushPluginVersion("0.3.0")!
+    static let newestVersion = HermexPushPluginVersion("0.4.0")!
+    /// The first plugin with `POST /api/plugins/hermex-push/restart` (#934). Settings offers
+    /// "Restart Hermes…" only while a plugin this new is loaded: an older one has no route to
+    /// call, so its card keeps asking for a restart on the host.
+    static let restartVersion = HermexPushPluginVersion("0.4.0")!
+
+    /// Whether the dashboard running `loaded` can be restarted from the phone.
+    static func canRestart(_ loaded: HermexPushPluginVersion?) -> Bool {
+        loaded.map { $0 >= restartVersion } ?? false
+    }
 
     /// `plugin_version` from the pairing route: the code the dashboard process has loaded,
     /// which lags the files on disk until that process restarts. Nil for a plugin older than

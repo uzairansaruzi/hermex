@@ -10,6 +10,7 @@ import SwiftUI
     @State private var isConfirmingEnable = false
     @State private var isConfirmingDisable = false
     @State private var isConfirmingUpdate = false
+    @State private var isConfirmingRestart = false
     @State private var preferenceTask: Task<Void, Never>?
     private let sharedSettings: SharedSettings
 
@@ -86,6 +87,12 @@ import SwiftUI
                  ? String(localized: "Your Hermes host downloads hermex-push again from GitHub and restarts its gateway, interrupting work running there. To finish, you’ll likely need to restart Hermes on the host yourself.")
                  : String(localized: "Your Hermes host downloads hermex-push again from GitHub and restarts its gateway, interrupting work running there. This iPhone stays paired. To finish, you’ll likely need to restart Hermes on the host yourself."))
         }
+        .confirmationDialog("Restart Hermes?", isPresented: $isConfirmingRestart, titleVisibility: .visible) {
+            // Like the update, the run outlives the screen: the host has already been asked to restart.
+            Button("Restart", role: .destructive) { Task { await provisioner.restartHermes() } }
+        } message: {
+            Text("Bot turns running on this host stop. Hermex reconnects when Hermes is back.")
+        }
     }
 
     @ViewBuilder private var pushSettings: some View {
@@ -159,7 +166,7 @@ import SwiftUI
             switch failure.remedy {
             case .none: failureRow(failure)
             case .updatePlugin: failureCallout(failure, action: String(localized: "Update plugin…"))
-            case .retryUpdate: EmptyView() // The plugin card at the top shows it.
+            case .retryUpdate, .retryRestart: EmptyView() // The plugin card at the top shows it.
             }
         }
     }
@@ -243,9 +250,9 @@ import SwiftUI
         }
     }
 
-    /// The plugin update (#851) as design C's card at the top of the section: one card for
-    /// every state, in the notifications-off row's style. No spinner: a dashed circle and
-    /// the running step's name carry progress.
+    /// The plugin update (#851) and the restart that finishes it (#934) as design C's card at
+    /// the top of the section: one card for every state, in the notifications-off row's style.
+    /// No spinner: a dashed circle and the running step's name carry progress.
     @ViewBuilder private func pluginCallout(_ card: HermexPushProvisioner.PluginCard) -> some View {
         let newest = HermexPushPlugin.newestVersion.description
         switch card {
@@ -256,9 +263,23 @@ import SwiftUI
                     action: String(localized: "Update plugin…")) { isConfirmingUpdate = true }
         case .updating(let step):
             callout("circle.dashed", tint: .secondary, title: Text("Updating the plugin…"), message: Text(step.progress))
+        case .status(.restartNeeded(let loaded)) where HermexPushPlugin.canRestart(loaded):
+            // The loaded plugin has the restart route, so restarting is the card's one action.
+            callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
+                    message: Text("The new plugin is installed, but Hermes loads plugins only when it starts."),
+                    action: String(localized: "Restart Hermes…")) { isConfirmingRestart = true }
         case .status(.restartNeeded):
             callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
                     message: Text("The new plugin is installed, but Hermes loads plugins only when it starts. Restart `hermes dashboard` on your host, then check again. Hermex can’t restart it from this iPhone."),
+                    action: provisioner.phase == .checkingPlugin ? String(localized: "Checking…") : String(localized: "Check again")) {
+                Task { await provisioner.checkPluginAgain() }
+            }
+        case .restarting:
+            callout("circle.dashed", tint: .secondary, title: Text("Restarting Hermes…"),
+                    message: Text("Waiting for Hermes to come back"))
+        case .status(.restartTimedOut):
+            callout("exclamationmark.triangle.fill", tint: .red, title: Text("Hermes didn’t come back"),
+                    message: Text("Hermes hasn’t answered since it restarted. If it stopped, start `hermes dashboard` on your host, then check again."),
                     action: provisioner.phase == .checkingPlugin ? String(localized: "Checking…") : String(localized: "Check again")) {
                 Task { await provisioner.checkPluginAgain() }
             }
@@ -275,11 +296,14 @@ import SwiftUI
         }
     }
 
-    /// A failure the plugin update answers: the update's own, or keys an old plugin sent.
-    /// Either way the action asks for the same confirmation before the host changes.
+    /// A failure the plugin update answers (the update's own, or keys an old plugin sent) or
+    /// a restart that never ran. The action asks for that step's confirmation again before
+    /// the host changes.
     private func failureCallout(_ failure: HermexPushProvisioner.Failure, action: String) -> some View {
         callout("exclamationmark.triangle.fill", tint: .red, title: Text(failure.title), message: Text(failure.message),
-                action: action) { isConfirmingUpdate = true }
+                action: action) {
+            if failure.remedy == .retryRestart { isConfirmingRestart = true } else { isConfirmingUpdate = true }
+        }
     }
 
     /// The card itself. With an action, the whole card is the button, so it stays a
@@ -311,12 +335,20 @@ import SwiftUI
     /// asks for an action shows without opening the section. "Up to date" needs no line.
     @ViewBuilder private func pluginLine(_ card: HermexPushProvisioner.PluginCard) -> some View {
         switch card {
+        case .failed(let failure) where failure.remedy == .retryRestart:
+            captionLine("arrow.clockwise.circle.fill", tint: .orange, text: String(localized: "Restart Hermes to finish"),
+                        textTint: .secondary)
         case .status(.available), .failed:
             captionLine("arrow.up.circle.fill", tint: .blue, text: String(localized: "Plugin update available"), textTint: .blue)
         case .updating:
             captionLine("circle.dashed", tint: .secondary, text: String(localized: "Updating plugin…"), textTint: .secondary)
+        case .restarting:
+            captionLine("circle.dashed", tint: .secondary, text: String(localized: "Restarting Hermes…"), textTint: .secondary)
         case .status(.restartNeeded):
             captionLine("arrow.clockwise.circle.fill", tint: .orange, text: String(localized: "Restart Hermes to finish"),
+                        textTint: .secondary)
+        case .status(.restartTimedOut):
+            captionLine("exclamationmark.triangle.fill", tint: .red, text: String(localized: "Hermes didn’t come back"),
                         textTint: .secondary)
         case .status(.checkFailed(let failure)):
             captionLine("exclamationmark.triangle.fill", tint: .red, text: failure.title, textTint: .secondary)

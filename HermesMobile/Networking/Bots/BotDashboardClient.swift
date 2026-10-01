@@ -4,7 +4,8 @@ import Foundation
 /// provisioning needs no gateway socket: it mutates the host's plugins and environment
 /// and reads the pairing keys, over the sign-in and cookie jar the server's Bot screens
 /// share. Its writes change the user's server, so only confirmed actions (Enable, Disable,
-/// the plugin update) make them; the plugin version reads alone run on their own.
+/// the plugin update, the restart) make them; the plugin version and status reads alone run
+/// on their own.
 @MainActor final class BotDashboardClient {
     private let http: HermesConnection
 
@@ -48,6 +49,18 @@ import Foundation
     /// the user's running work, so only a confirmed Enable or plugin update reaches it.
     func restartGateway() async throws {
         _ = try await send(.restartGateway)
+    }
+
+    /// Asks hermex-push 0.4.0 or newer to restart the dashboard process it runs in (#934). It
+    /// answers 202 and re-execs about a second later, stopping Bot turns running there, so
+    /// only a confirmed "Restart Hermes…" reaches it.
+    func restartHermes() async throws {
+        _ = try await send(.restartDashboard)
+    }
+
+    /// Whether the host answers its public status route, read without signing in.
+    func answersStatus() async -> Bool {
+        await http.answersStatus()
     }
 
     /// Reads the plugin's pairing keys. The route answers 409 until the relay URL is set

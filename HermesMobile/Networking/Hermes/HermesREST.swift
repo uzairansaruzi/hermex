@@ -11,6 +11,9 @@ import Foundation
 /// restart take an optional `profile` Hermex leaves unset so every Profile inherits.
 /// The plugins hub (#851) is read at the pin ca678285: `{plugins: [{name, version, …}]}`,
 /// cached for 5 s and cleared by an install, so an update needs no rescan first.
+/// The restart route (#934) is hermex-push's own, checked at the same pin with plugin 0.4.0:
+/// 202 `{ok: true}`, 401 without a sign-in, then the dashboard back on its PID about 2 s later
+/// with a new per-process session key, so the next signed-in read signs in again.
 enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
@@ -32,6 +35,8 @@ enum HermesREST: Equatable, Sendable {
     case setPlugin(name: String, enabled: Bool)
     case restartGateway
     case pushPairing
+    /// hermex-push 0.4.0's restart: 202, then the dashboard re-execs itself.
+    case restartDashboard
     /// Every agent plugin with its on-disk version.
     case pluginsHub
 
@@ -77,6 +82,7 @@ enum HermesREST: Equatable, Sendable {
             return try Self.send("POST", url, [:])
         case .restartGateway: return try Self.send("POST", base.appendingPathComponent("api/gateway/restart"), [:])
         case .pushPairing: return Self.get(base.appendingPathComponent("api/plugins/hermex-push/pairing"))
+        case .restartDashboard: return try Self.send("POST", base.appendingPathComponent("api/plugins/hermex-push/restart"), [:])
         case .pluginsHub: return Self.get(base.appendingPathComponent("api/dashboard/plugins/hub"))
         }
     }

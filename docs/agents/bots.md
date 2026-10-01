@@ -1725,9 +1725,21 @@ question, and enabling runs Hermes's own dependency admission. Turning a plugin 
 config, so the running gateway keeps it; a failed install turns it back on so the next
 restart keeps push. The hub caches for 5 s and an install clears it, so no rescan is
 needed. The dashboard process that serves the pairing route and runs Bot turns loads plugin
-code only when it starts, and no route restarts it, so the usual end is a card asking the
-user to restart `hermes dashboard`, with "Check again" (#934 tracks restarting from the
-phone). A version read that fails after the reinstall and restart also offers "Check again",
+code only when it starts, so the usual end is "Restart Hermes to finish". A plugin older than
+0.4.0 has no way to restart it: its card asks the user to restart `hermes dashboard` on the
+host, with "Check again", so the first update to 0.4.0 still costs one manual restart. From
+0.4.0 the plugin mounts `POST /api/plugins/hermex-push/restart` (#934): 202, then about a
+second later it re-execs the dashboard with its own command line (same PID, so a supervisor
+keeps tracking it). With 0.4.0 or newer loaded (`HermexPushPlugin.canRestart`), the card's one
+action is "Restart Hermes…", behind a destructive confirmation because running Bot turns stop.
+`restartHermes()` then probes the public `/api/status` for about 60 s and reads the pairing
+route whenever it answers, until the newest plugin is loaded; the old process can still answer
+just after the 202, so an old version keeps it waiting. A connection dropped on the restart
+request counts as the restart; an HTTP error before it ran is "Couldn't restart Hermes" with
+"Try again". Past the wait, the last answer stands: the old plugin (restart offered again), or
+"Hermes didn't come back" with "Check again". Without a configured signing secret the
+dashboard's basic-auth session key is per process, so the first read after a restart signs in
+again. A version read that fails after the reinstall and restart also offers "Check again",
 never a second reinstall and restart. A failure whose copy says "Update the hermex-push plugin." (keys this build cannot
 use, at setup or from the test notification) offers the same update. An update started there
 never pairs by itself; "Turn on notifications…" stays the way to pair. Turning notifications

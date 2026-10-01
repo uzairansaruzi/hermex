@@ -31,8 +31,9 @@ import UserNotifications
 
         /// What the section offers beside a failure (#851). `updatePlugin`: keys an old
         /// plugin sent, which updating it fixes. `retryUpdate`: the update itself stopped,
-        /// so the plugin card shows it instead of the red row.
-        enum Remedy { case none, updatePlugin, retryUpdate }
+        /// so the plugin card shows it instead of the red row. `retryRestart`: the restart
+        /// stopped before it ran (#934), so the card offers it again the same way.
+        enum Remedy { case none, updatePlugin, retryUpdate, retryRestart }
     }
 
     /// The plugin update's host steps (#851), in order, and how the card names them.
@@ -60,8 +61,12 @@ import UserNotifications
     enum PluginUpdate: Equatable {
         /// Behind the newest; `loaded` is nil for a plugin too old to report its version.
         case available(loaded: HermexPushPluginVersion?)
-        /// The newest is on disk, but the dashboard runs the old code until it restarts.
-        case restartNeeded
+        /// The newest is on disk, but the dashboard runs the old code, `loaded`, until it
+        /// restarts. With 0.4.0 or newer loaded, the phone can restart it (#934).
+        case restartNeeded(loaded: HermexPushPluginVersion?)
+        /// Hermes didn't answer in time after a restart from the phone (#934). "Check again"
+        /// reads once; a restart is offered again only once the host answers.
+        case restartTimedOut
         /// An update or check just brought it to the newest. Shown until Settings closes.
         case upToDate(HermexPushPluginVersion)
         /// The update changed the host, but reading its version failed; the card offers
@@ -69,16 +74,16 @@ import UserNotifications
         case checkFailed(Failure)
     }
 
-    /// The card at the top of the section: the plugin's standing, the update's progress,
-    /// or the step where the update stopped.
-    enum PluginCard: Equatable { case status(PluginUpdate), updating(PluginUpdateStep), failed(Failure) }
+    /// The card at the top of the section: the plugin's standing, the update's or the
+    /// restart's progress, or where either stopped.
+    enum PluginCard: Equatable { case status(PluginUpdate), updating(PluginUpdateStep), restarting, failed(Failure) }
 
     /// `checkingPermission` covers the iOS prompt at the start of setup: it blocks re-entry
     /// but names no host step, since none has run yet. `tested` holds the relay's answer to
     /// the Settings test notification until the next action replaces it.
     enum Phase: Equatable {
         case idle, checkingPermission, enabling(Step), disabling, savingPreferences, refreshing, sendingTest
-        case updatingPlugin(PluginUpdateStep), checkingPlugin
+        case updatingPlugin(PluginUpdateStep), checkingPlugin, restartingHermes
         case tested(PushRelayTestOutcome)
         case failed(Failure)
     }
@@ -112,6 +117,12 @@ import UserNotifications
     private let testSender: @MainActor (PushPairing) async -> PushRelayTestOutcome
     /// Retries while the host is coming back from its restart; injected so tests never sleep.
     private let retryDelays: [Duration]
+    /// The wait for Hermes after a restart from the phone (#934): about 60 s in all, since a
+    /// whole dashboard starts, not just the gateway.
+    private let restartDelays: [Duration]
+    /// The newest plugin this build knows, injectable so tests can load a plugin that has the
+    /// restart route and is still behind, which this build's own constants never pair.
+    private let newestPlugin: HermexPushPluginVersion
     private let sleep: @Sendable (Duration) async throws -> Void
 
     /// The main-actor collaborators are built here rather than in default arguments,
@@ -123,6 +134,9 @@ import UserNotifications
          connectionID: (@MainActor () -> UUID?)? = nil,
          testSender: (@MainActor (PushPairing) async -> PushRelayTestOutcome)? = nil,
          retryDelays: [Duration] = [.seconds(2), .seconds(3), .seconds(5), .seconds(5), .seconds(5), .seconds(10)],
+         restartDelays: [Duration] = [.seconds(2), .seconds(2), .seconds(3), .seconds(3), .seconds(5), .seconds(5),
+                                      .seconds(10), .seconds(10), .seconds(10), .seconds(10)],
+         newestPlugin: HermexPushPluginVersion = HermexPushPlugin.newestVersion,
          sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.server = server
         self.connection = connection
@@ -132,6 +146,8 @@ import UserNotifications
         self.connectionID = connectionID ?? { (try? BotConnectionStore().load(server: server))?.id }
         self.testSender = testSender ?? { await PushRelayClient().sendTestNotification(pairing: $0) }
         self.retryDelays = retryDelays
+        self.restartDelays = restartDelays
+        self.newestPlugin = newestPlugin
         self.sleep = sleep
         pairing = self.registrar?.pairing(for: server)
     }
@@ -139,7 +155,7 @@ import UserNotifications
     var isWorking: Bool {
         switch phase {
         case .checkingPermission, .enabling, .disabling, .savingPreferences, .refreshing, .sendingTest,
-             .updatingPlugin, .checkingPlugin: return true
+             .updatingPlugin, .checkingPlugin, .restartingHermes: return true
         case .idle, .tested, .failed: return false
         }
     }
@@ -157,7 +173,8 @@ import UserNotifications
     var pluginCard: PluginCard? {
         switch phase {
         case .updatingPlugin(let step): return .updating(step)
-        case .failed(let failure) where failure.remedy == .retryUpdate: return .failed(failure)
+        case .restartingHermes: return .restarting
+        case .failed(let failure) where failure.remedy == .retryUpdate || failure.remedy == .retryRestart: return .failed(failure)
         default: return pluginUpdate.map(PluginCard.status)
         }
     }
@@ -182,7 +199,7 @@ import UserNotifications
         case .failed: return setupRanLast
         case .checkingPermission: return false
         case .idle, .disabling, .savingPreferences, .refreshing, .sendingTest, .tested,
-             .updatingPlugin, .checkingPlugin: return !completed.isEmpty
+             .updatingPlugin, .checkingPlugin, .restartingHermes: return !completed.isEmpty
         }
     }
 
@@ -376,21 +393,25 @@ import UserNotifications
         if case .upToDate = standing { pluginUpdate = nil } else { pluginUpdate = standing }
     }
 
-    /// "Check again" once the host has been restarted, or after a failed read: one read,
-    /// whose answer replaces the card. A failure goes to the red row and leaves the card
-    /// standing, except a card that is itself a failed read, which takes the newer answer.
+    /// "Check again" once the host has been restarted, after a failed read, or after a
+    /// restart Hermes didn't come back from: one read, whose answer replaces the card. A
+    /// failure goes to the red row and leaves the card standing, except a card that is itself
+    /// a failed read, which takes the newer answer, and the restart's, which already says a
+    /// host that is still coming back hasn't answered.
     func checkPluginAgain() async {
         guard !isWorking, let connection else { return }
         setupRanLast = false
         phase = .checkingPlugin
         do {
             pluginUpdate = try await pluginStanding(dashboard(connection))
-            phase = .idle
         } catch {
-            guard case .checkFailed = pluginUpdate else { return fail(PluginUpdateStep.check.failureTitle, error) }
-            pluginUpdate = .checkFailed(Self.checkFailure(error))
-            phase = .idle
+            switch pluginUpdate {
+            case .checkFailed?: pluginUpdate = .checkFailed(Self.checkFailure(error))
+            case .restartTimedOut? where Self.isRestarting(error): break
+            default: return fail(PluginUpdateStep.check.failureTitle, error)
+            }
         }
+        phase = .idle
     }
 
     /// Settings' plugin update (#851), from a confirmed tap only: turn hermex-push off,
@@ -402,7 +423,8 @@ import UserNotifications
     /// stays paired; an update started from a pairing failure ends here too, since pairing
     /// waits for its own tap.
     /// The dashboard that serves the pairing route and runs Bot turns loads plugins only
-    /// when it starts, and no route restarts it, so "restart needed" is the usual end.
+    /// when it starts, so "restart needed" is the usual end. Only a plugin that is already
+    /// 0.4.0 or newer can then restart it from the phone (`restartHermes`).
     func updatePlugin() async {
         guard !isWorking else { return }
         setupRanLast = false
@@ -450,13 +472,47 @@ import UserNotifications
         }
     }
 
+    /// "Restart Hermes…" (#934), from a confirmed tap on a host whose loaded plugin has the
+    /// restart route: hermex-push answers 202 and re-execs the dashboard about a second later.
+    /// A connection dropped on that request counts as the restart. Then the public `/api/status`
+    /// is probed on `restartDelays`, and whenever it answers the pairing route is read, until
+    /// the newest plugin is loaded. The old process can still answer just after the 202, so an
+    /// answer with the old plugin keeps waiting. When the schedule runs out the last answer
+    /// stands: the old plugin, offered the restart again, or "Hermes didn't come back". Like
+    /// the update, the run outlives Settings.
+    func restartHermes() async {
+        guard !isWorking, let connection, case .restartNeeded(let loaded)? = pluginUpdate,
+              HermexPushPlugin.canRestart(loaded) else { return }
+        setupRanLast = false
+        completed = []
+        phase = .restartingHermes
+        let client = dashboard(connection)
+        do { try await client.signIn() } catch { return failSignIn(error, remedy: .retryRestart) }
+        do { try await client.restartHermes() } catch BotFailure.transport, is URLError {
+            // The host can go down before its answer arrives; that is the restart.
+        } catch {
+            phase = .failed(Failure(title: String(localized: "Couldn’t restart Hermes"), message: Self.message(for: error),
+                                    remedy: .retryRestart))
+            return
+        }
+        var answer: PluginUpdate?
+        for delay in restartDelays {
+            do { try await sleep(delay) } catch { break }
+            guard await client.answersStatus() else { answer = nil; continue }
+            answer = try? await pluginStanding(client)
+            if case .upToDate? = answer { break }
+        }
+        pluginUpdate = answer ?? .restartTimedOut
+        phase = .idle
+    }
+
     private static func checkFailure(_ error: Error) -> Failure {
         Failure(title: PluginUpdateStep.check.failureTitle, message: message(for: error))
     }
 
     private var isUpdatingPlugin: Bool {
         switch phase {
-        case .updatingPlugin, .checkingPlugin: return true
+        case .updatingPlugin, .checkingPlugin, .restartingHermes: return true
         default: return false
         }
     }
@@ -466,9 +522,9 @@ import UserNotifications
     /// needs updating. A host without the hub, or one that fails it, reads as the latter.
     private func pluginStanding(_ client: BotDashboardClient) async throws -> PluginUpdate {
         let loaded = try await client.loadedPluginVersion()
-        if let loaded, loaded >= HermexPushPlugin.newestVersion { return .upToDate(loaded) }
-        if let installed = try? await client.installedPluginVersion(), installed >= HermexPushPlugin.newestVersion {
-            return .restartNeeded
+        if let loaded, loaded >= newestPlugin { return .upToDate(loaded) }
+        if let installed = try? await client.installedPluginVersion(), installed >= newestPlugin {
+            return .restartNeeded(loaded: loaded)
         }
         return .available(loaded: loaded)
     }

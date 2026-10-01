@@ -157,6 +157,13 @@ import OSLog
         return try await publicStatus(on: session, onlyHostRefusalIs400: true)
     }
 
+    /// One public `/api/status` read, without signing in: whether the host answers at all, as
+    /// push provisioning asks while Hermes restarts. Any failure is a no.
+    func answersStatus() async -> Bool {
+        guard !isRetired else { return false }
+        return (try? await publicStatus(on: session)) != nil
+    }
+
     /// Sends one signed-in request built from `rest` and returns the body of a reply whose
     /// status is in `accepted`. Any other status throws `BotFailure.rejected`.
     /// `validateDispatch` is as in `authorized`.
