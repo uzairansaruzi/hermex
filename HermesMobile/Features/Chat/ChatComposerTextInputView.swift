@@ -521,7 +521,10 @@ private struct ComposerTextView: UIViewRepresentable {
                 if target {
                     guard self.isFocused, textView.isEditable, textView.window != nil else { return }
                     textView.becomeFirstResponder()
-                } else if textView.isFirstResponder {
+                } else if !self.isFocused, textView.isFirstResponder {
+                    // UIKit can begin a new editing session while this blur is
+                    // queued. Recheck the binding, just as the focus path does,
+                    // so an older request cannot dismiss the new session.
                     textView.resignFirstResponder()
                 }
             }
