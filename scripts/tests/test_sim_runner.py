@@ -38,6 +38,7 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.xcodebuild_runs = 0
         self.timeouts = []
         self.app_installed = True
+        self.lookup_status = 0
         self.terminate_status = 3
         self.timeout_operation = None
 
@@ -55,7 +56,7 @@ class SimulatorRunnerTests(unittest.TestCase):
         elif command[:3] == ["xcrun", "simctl", "boot"]:
             self.device["state"] = "Booted"
         elif command[:3] == ["xcrun", "simctl", "get_app_container"]:
-            return 0 if self.app_installed else 1
+            return self.lookup_status if self.app_installed else 2
         elif command[:3] == ["xcrun", "simctl", "terminate"]:
             if not self.app_installed:
                 raise subprocess.TimeoutExpired(command, timeout)
@@ -112,6 +113,34 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.assertFalse(any(c[:3] == ["xcrun", "simctl", "terminate"] for c in self.commands))
         self.assertEqual(self.xcodebuild_runs, 1)
 
+    def test_lookup_error_stops_without_termination_or_tests(self):
+        self.lookup_status = 1
+        self.assertEqual(self.invoke(), 2)
+        self.assertFalse(any(c[:3] == ["xcrun", "simctl", "terminate"] for c in self.commands))
+        self.assertEqual(self.xcodebuild_runs, 0)
+
+    def test_preparation_uses_remaining_test_budget_after_lookup(self):
+        now = [100.0]
+        fake_run = self.fake_run
+
+        def elapsed_lookup(command, output, timeout, lock_fds=()):
+            status = fake_run(command, output, timeout, lock_fds)
+            if command[:3] == ["xcrun", "simctl", "get_app_container"]:
+                now[0] += 4
+            return status
+
+        with patch.object(runner.time, "monotonic", side_effect=lambda: now[0]), \
+                patch.object(self, "fake_run", side_effect=elapsed_lookup):
+            self.assertEqual(self.invoke(extra=("--test-timeout", "10")), 0)
+        lookup = next(i for i, c in enumerate(self.commands)
+                      if c[:3] == ["xcrun", "simctl", "get_app_container"])
+        terminate = next(i for i, c in enumerate(self.commands)
+                         if c[:3] == ["xcrun", "simctl", "terminate"])
+        build = next(i for i, c in enumerate(self.commands) if c[0] == "xcodebuild")
+        self.assertEqual(self.timeouts[lookup], 10)
+        self.assertEqual(self.timeouts[terminate], 6)
+        self.assertEqual(self.timeouts[build], 6)
+
     def test_installed_app_is_checked_then_terminated_on_the_assigned_device(self):
         self.terminate_status = 0
         with patch.object(runner, "APP_BUNDLE_ID", "com.example.hermex.local"):
@@ -121,6 +150,27 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.assertLess(self.commands.index(check), self.commands.index(terminate))
         self.assertLess(self.commands.index(terminate),
                         next(i for i, c in enumerate(self.commands) if c[0] == "xcodebuild"))
+
+    def test_exhausted_lookup_budget_stops_before_termination_or_tests(self):
+        for installed in (True, False):
+            with self.subTest(installed=installed):
+                self.app_installed = installed
+                self.commands.clear()
+                now = [100.0]
+                fake_run = self.fake_run
+
+                def exhausted_lookup(command, output, timeout, lock_fds=()):
+                    status = fake_run(command, output, timeout, lock_fds)
+                    if command[:3] == ["xcrun", "simctl", "get_app_container"]:
+                        now[0] += 10
+                    return status
+
+                with patch.object(runner.time, "monotonic", side_effect=lambda: now[0]), \
+                        patch.object(self, "fake_run", side_effect=exhausted_lookup):
+                    self.assertEqual(self.invoke(extra=("--test-timeout", "10")), 124)
+                self.assertFalse(any(c[:3] == ["xcrun", "simctl", "terminate"]
+                                     for c in self.commands))
+                self.assertEqual(self.xcodebuild_runs, 0)
 
     def test_installation_check_and_termination_are_bounded(self):
         for boot_timeout, expected in ((120, 25), (10, 10)):

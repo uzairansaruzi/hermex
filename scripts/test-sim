@@ -2,6 +2,7 @@
 """Run local XCTest on one assigned simulator, without model-side polling."""
 
 import argparse
+import errno
 from collections import deque
 from contextlib import ExitStack, contextmanager, suppress
 from datetime import datetime
@@ -140,15 +141,26 @@ def reboot(device, run_dir, locks_dir, owner, lock_fds, timeout):
         raise RunnerError("Simulator did not become ready after reboot; see bootstatus-retry.log.")
 
 
-def terminate_app(device, run_dir, lock_fds, timeout):
+def terminate_app(device, run_dir, lock_fds, timeout, deadline):
     """An app left running by a build-and-run (with log capture attached) makes
     the test runner hang before connecting. Skip absent apps: terminating one
     can hang on iOS 27. Ignore a not-running exit status, but propagate timeouts."""
-    if run(["xcrun", "simctl", "get_app_container", device["udid"], APP_BUNDLE_ID],
-           run_dir / "app-container.log", min(timeout, TERMINATE_TIMEOUT), lock_fds):
+    def remaining_timeout():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired("simulator preparation", 0)
+        return min(timeout, TERMINATE_TIMEOUT, remaining)
+
+    output = run_dir / "app-container.log"
+    status = run(["xcrun", "simctl", "get_app_container", device["udid"], APP_BUNDLE_ID],
+                 output, remaining_timeout(), lock_fds)
+    # iOS 27 reports ENOENT for an absent bundle; other failures are not absence.
+    if status == errno.ENOENT:
         return
+    if status:
+        raise RunnerError("Cannot check app installation; see " + str(output))
     run(["xcrun", "simctl", "terminate", device["udid"], APP_BUNDLE_ID],
-        run_dir / "terminate.log", min(timeout, TERMINATE_TIMEOUT), lock_fds)
+        run_dir / "terminate.log", remaining_timeout(), lock_fds)
 
 
 def runner_hung(summary):
@@ -231,7 +243,7 @@ def main():
             # One deadline covers the first attempt and any retry.
             deadline = time.monotonic() + args.test_timeout
             for attempt in ("", "-retry"):
-                terminate_app(device, run_dir, lock_fds, args.boot_timeout)
+                terminate_app(device, run_dir, lock_fds, args.boot_timeout, deadline)
                 log = run_dir / ("test" + attempt + ".log")
                 result = run_dir / ("Tests" + attempt + ".xcresult")
                 command = [
@@ -246,7 +258,10 @@ def main():
                 if args.repeat:
                     command += ["-test-iterations", str(args.repeat), "-run-tests-until-failure"]
                 (run_dir / ("command" + attempt + ".json")).write_text(json.dumps(command, indent=2) + "\n")
-                code = run(command, log, max(1, deadline - time.monotonic()), lock_fds)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(command, 0)
+                code = run(command, log, remaining, lock_fds)
                 summary = print_summary(result, run_dir / ("summary" + attempt + ".json"))
                 if not (code and not attempt and runner_hung(summary)):
                     break
