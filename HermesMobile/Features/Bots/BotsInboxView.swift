@@ -72,8 +72,10 @@ struct BotsInboxHome {
     }
 
     /// An inbox the caller built, such as one on scripted wires.
-    init(server: URL, inbox: BotInbox) {
+    init(server: URL, inbox: BotInbox) where HomeControl == EmptyView {
         self.server = server
+        home = nil
+        homeControl = EmptyView()
         _pendingDestination = .constant(nil)
         _inbox = State(initialValue: inbox)
     }
