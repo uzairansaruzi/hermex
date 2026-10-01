@@ -403,8 +403,8 @@ import UIKit
     /// (Update sign-in for a rejected password): sign-in, an unsupported host or
     /// address, an address that now reaches a different host or is not a dashboard,
     /// an access proxy's own sign-in, a host with browser sign-in only, a refused
-    /// gateway upgrade, and any other permanent HTTP client error (a 404 is not a
-    /// Hermes host). Server errors, rate limits and JSON-RPC faults other than
+    /// gateway upgrade, a Hermes release older than the minimum, and any other
+    /// permanent HTTP client error (a 404 is not a Hermes host). Server errors, rate limits and JSON-RPC faults other than
     /// "method missing" are the retry loop's problem; an empty inbox shows
     /// `routeAdvice` if the host stays unreachable.
     private static func isRetryable(_ error: Error) -> Bool {
