@@ -1,4 +1,5 @@
 import XCTest
+import UniformTypeIdentifiers
 @testable import HermesMobile
 
 @MainActor final class BotArtifactTests: XCTestCase {
@@ -106,12 +107,47 @@ import XCTest
         await fulfillment(of: [stopped], timeout: 2)
     }
 
+    func testPreviewExportReusesTheOneDownloadUnderItsSanitizedFilename() async throws {
+        let model = BotArtifactPreviewModel()
+        let pdf = Data("%PDF-fixture".utf8)
+        var downloads = 0
+        await model.load(name: "Quarter One.pdf") { downloads += 1; return pdf }
+        let export = try XCTUnwrap(model.export)
+        XCTAssertEqual(downloads, 1)
+        XCTAssertEqual(export.data, pdf)
+        XCTAssertEqual(export.filename, "Quarter One.pdf")
+        XCTAssertEqual(export.contentType, .pdf)
+        XCTAssertEqual(model.fileURL?.lastPathComponent, "Quarter One.pdf")
+
+        await model.load(name: "README") { Data("notes".utf8) }
+        XCTAssertEqual(model.export?.filename, "README")
+        XCTAssertEqual(model.export?.contentType, .data)
+        await model.load(name: "..") { Data("dots".utf8) }
+        XCTAssertEqual(model.export?.filename, "File")
+        XCTAssertEqual(model.export?.contentType, .data)
+    }
+
+    func testPreviewHasNothingToExportAfterAFailedOrOversizedDownload() async throws {
+        let model = BotArtifactPreviewModel()
+        await model.load(name: "report.pdf") { Data("%PDF-fixture".utf8) }
+        XCTAssertEqual(model.export?.filename, "report.pdf")
+        await model.load(name: "report.pdf") { throw BotArtifactFailure.tooLarge }
+        XCTAssertNil(model.export)
+        XCTAssertNil(model.fileURL)
+        XCTAssertEqual(model.errorMessage, BotArtifactFailure.tooLarge.localizedDescription)
+        await model.load(name: "report.pdf") { throw URLError(.notConnectedToInternet) }
+        XCTAssertNil(model.export)
+        XCTAssertEqual(model.errorMessage, URLError(.notConnectedToInternet).localizedDescription)
+    }
+
     func testPreviewCleanupAndLateDownloadCannotRecreateDismissedPreview() async throws {
         let model = BotArtifactPreviewModel()
         await model.load(name: "report.pdf") { Data("%PDF-fixture".utf8) }
         let url = try XCTUnwrap(model.fileURL)
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertEqual(model.export?.filename, "report.pdf")
         model.cleanup()
+        XCTAssertNil(model.export)
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path))
         let started = expectation(description: "download started")
         var finish: CheckedContinuation<Data, Never>?
@@ -125,6 +161,7 @@ import XCTest
         finish?.resume(returning: Data("late".utf8))
         await pending.value
         XCTAssertNil(model.fileURL)
+        XCTAssertNil(model.export)
         XCTAssertNil(model.errorMessage)
     }
 

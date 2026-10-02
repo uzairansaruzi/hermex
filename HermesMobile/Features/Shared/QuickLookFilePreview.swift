@@ -50,12 +50,15 @@ final class QuickLookTemporaryFile: Sendable {
     }
 
     /// Writes `data` as the last path component of `name`, off the main actor.
+    /// An empty or dot name is written as `File`.
     static func write(data: Data, name: String) async throws -> QuickLookTemporaryFile {
         try await Task.detached {
             let directory = FileManager.default.temporaryDirectory
                 .appendingPathComponent("quick-look-\(UUID().uuidString)", isDirectory: true)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let filename = URL(fileURLWithPath: name).lastPathComponent
+            // Split rather than `URL(fileURLWithPath:)`, which resolves dot names
+            // against the working directory instead of leaving them to the fallback.
+            let filename = name.split(separator: "/").last.map(String.init) ?? ""
             // Owned before the write, so a failed write still removes the directory.
             let file = QuickLookTemporaryFile(url: directory.appendingPathComponent(
                 filename.isEmpty || filename == "." || filename == ".." ? "File" : filename
