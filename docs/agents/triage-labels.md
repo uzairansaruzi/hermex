@@ -30,6 +30,12 @@ Apply `needs-manual-validation` sparingly: only when automated tests genuinely c
 | --- | --- | --- |
 | `upstream-change` | any triage role | The root cause is in hermes-webui/hermes-agent, not this app. Link the upstream issue on the ticket. As a client repo, a chunk of incoming bugs are really server bugs. |
 
+| Label | Combines with | Meaning |
+| --- | --- | --- |
+| `release-blocker` | any triage role | Must be fixed before the next release ships. The release gate in `TESTFLIGHT.md` checks for it. |
+
+Apply `release-blocker` at triage when a daily workflow is broken: sign-in, sending, streaming, a crash, or data loss. A bug report whose Impact is "Blocks work completely" is a prompt to check, not an automatic blocker.
+
 > **Why no `needs-response` label?** It was considered ("maintainer replied, waiting on reporter") and judged redundant: `needs-info` already means the ball is in the reporter's court. Keep `needs-info` as the single waiting-on-reporter label.
 
 ## Other labels

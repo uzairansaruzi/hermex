@@ -39,7 +39,7 @@ Before external distribution, all of these must hold:
   [Test the release candidate](#test-the-release-candidate).
 - The release's milestone has no open issues; the owner moved anything
   unfinished to the next milestone (`docs/agents/issue-tracker.md`).
-- No unresolved P0/P1 issue blocks normal use; accepted risks are recorded.
+- No open issue is labeled `release-blocker`; accepted risks are recorded.
 - `HermexPushPlugin.newestVersion` equals `version` in `plugin/plugin.yaml` on
   hermex-push `main`. If the plugin changed since the last release, bump the
   constant, or Settings will never offer paired hosts the update.
@@ -168,8 +168,8 @@ requirements, known limitations, install instructions, and a feedback contact. A
 Make server exposure and local cache behavior clear before testers connect sensitive
 workspaces.
 
-Review feedback and crashes daily during the first week. Resolve P0 issues
-immediately and P1 issues before widening access; pause expansion if either
+Review feedback and crashes daily during the first week. Resolve
+`release-blocker` issues before widening access; pause expansion if one
 appears. Track actionable reports in GitHub Issues and rerun validation for each RC.
 Upstream compatibility is recorded in `UPSTREAM_TESTED_SHA`; server availability
 and quiet-stream disconnections remain part of connection testing.

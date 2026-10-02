@@ -27,6 +27,18 @@ body:
       description: What actually happened.
     validations:
       required: true
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      description: How badly does this get in your way?
+      options:
+        - Blocks work completely
+        - Major degradation
+        - Minor bug
+        - Cosmetic
+    validations:
+      required: true
   - type: input
     id: app-version
     attributes:
