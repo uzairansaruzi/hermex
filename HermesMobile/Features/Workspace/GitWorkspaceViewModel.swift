@@ -356,9 +356,11 @@ final class GitWorkspaceAvailabilityViewModel {
 
 /// Maps server git errors to short, friendly copy shared by every git write surface
 /// (branch switching, remote sync, and the commit flow). Unknown codes fall back to the
-/// server's own message, then the generic localized description.
+/// server's own message, then the generic localized description. The stale-runtime
+/// 409 (commit-message generation) has no code and gets the app's restart copy.
 func gitWriteFriendlyMessage(for error: Error) -> String {
     guard let apiError = error as? APIError else { return error.localizedDescription }
+    if let stale = apiError.agentRuntimeStale { return stale.message }
     switch apiError.serverCode {
     case "destructive_git_disabled":
         return String(localized: "Writes disabled on server. Enable HERMES_WEBUI_WORKSPACE_GIT_DESTRUCTIVE=1 on the server to use this.")

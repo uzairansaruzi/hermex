@@ -1123,6 +1123,28 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertNil(viewModel.sendErrorRuntimeStale)
     }
 
+    /// Slash commands that send (`/queue` with nothing running, skill shortcuts)
+    /// hand the failed send's text back, and ChatView sets it again.
+    @MainActor
+    func testStaleAgentRuntimeSlashSendKeepsFixPrompt() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse(
+                #"{"error": "Hermes Agent was updated while Hermes WebUI was running.", "type": "agent_runtime_stale"}"#,
+                for: request,
+                status: 409
+            )
+        }
+        let copy = "Hermes was updated on your server. Restart Hermes WebUI there, then try again."
+
+        let result = await SlashCommandExecutor.execute(text: "/queue Keep working", viewModel: viewModel)
+        XCTAssertEqual(result, .unsupported(friendlyMessage: copy))
+        viewModel.setSendErrorMessage(copy)
+
+        XCTAssertEqual(viewModel.sendErrorMessage, copy)
+        XCTAssertEqual(viewModel.sendErrorRuntimeStale, .updated)
+    }
+
     @MainActor
     func testOtherConflictOnSendOffersNoFixPrompt() async throws {
         let viewModel = try makeViewModel { request in

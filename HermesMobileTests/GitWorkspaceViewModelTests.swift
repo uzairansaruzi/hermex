@@ -774,6 +774,32 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertFalse(vm.messageWasTruncated)
     }
 
+    /// Commit-message generation runs the Agent, so it hits the stale-runtime 409 (#955).
+    @MainActor
+    func testCommitSheetSuggestShowsRestartCopyForStaleAgentRuntime() async throws {
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/git/status":
+                return apiTestJSONResponse(Self.statusWithOneFile, for: request)
+            case "/api/git/commit-message":
+                return apiTestJSONResponse(
+                    #"{"error": "Hermes Agent was updated while Hermes WebUI was running. Restart Hermes WebUI manually before retrying this action.", "type": "agent_runtime_stale", "retryable": true, "restart_scheduled": false}"#,
+                    for: request,
+                    status: 409
+                )
+            default:
+                return apiTestJSONResponse("{}", for: request)
+            }
+        }
+        let vm = GitCommitViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: client)
+        await vm.load()
+
+        await vm.suggestMessage()
+
+        XCTAssertEqual(vm.actionErrorMessage, "Hermes was updated on your server. Restart Hermes WebUI there, then try again.")
+        XCTAssertTrue(vm.message.isEmpty)
+    }
+
     @MainActor
     func testCommitSheetCommitClearsMessageAndBumpsRevision() async throws {
         let vm = GitCommitViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: commitSheetClient())

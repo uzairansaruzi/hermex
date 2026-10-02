@@ -247,13 +247,14 @@ final class ChatViewModel {
     private(set) var sendErrorMessage: String? {
         didSet {
             sendErrorIsFromStreamRecovery = false
-            if sendErrorRuntimeStale != nil { sendErrorRuntimeStale = nil }
+            // Slash commands re-set the same text after a failed send; keep the kind then.
+            if sendErrorMessage != oldValue, sendErrorRuntimeStale != nil { sendErrorRuntimeStale = nil }
         }
     }
     @ObservationIgnored private var sendErrorIsFromStreamRecovery = false
     /// Set when the server refused a send because Hermes was updated under the
-    /// running WebUI (#955), so the composer can offer Copy fix prompt. Any new
-    /// `sendErrorMessage` clears it.
+    /// running WebUI (#955), so the composer can offer Copy fix prompt. A
+    /// different `sendErrorMessage` clears it.
     private(set) var sendErrorRuntimeStale: AgentRuntimeStale?
     private(set) var messageActionErrorMessage: String?
     private(set) var cacheErrorMessage: String?

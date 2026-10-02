@@ -18,10 +18,14 @@ private struct ComposerStatusView: View {
     let onDismiss: () -> Void
     @State private var didCopyFixPrompt = false
 
+    /// At accessibility sizes Copy fix prompt drops below the message,
+    /// like the transcript log rows' stacked labels.
+    private var stacksFixPrompt: Bool {
+        fixPrompt != nil && dynamicTypeSize.isAccessibilitySize
+    }
+
     var body: some View {
-        // At accessibility sizes Copy fix prompt drops below the message,
-        // like the transcript log rows' stacked labels.
-        let layout = fixPrompt != nil && dynamicTypeSize.isAccessibilitySize
+        let layout = stacksFixPrompt
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
             : AnyLayout(HStackLayout(alignment: .top, spacing: 8))
         layout {
@@ -82,7 +86,8 @@ private struct ComposerStatusView: View {
         }
         .font(AppFont.caption(weight: .semibold))
         .buttonStyle(.borderless)
-        .fixedSize()
+        // Stacked, it has the banner's full width and wraps rather than overflow.
+        .fixedSize(horizontal: !stacksFixPrompt, vertical: true)
         .accessibilityLabel(didCopyFixPrompt ? Text("Fix prompt copied") : Text("Copy fix prompt"))
         .accessibilityHint(Text("Copies a prompt that asks your Hermes agent to restart Hermes WebUI."))
     }
