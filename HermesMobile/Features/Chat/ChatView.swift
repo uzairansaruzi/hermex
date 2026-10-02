@@ -357,6 +357,9 @@ struct ChatView: View {
     /// Measured height of the run-status pill, which wraps at accessibility
     /// text sizes. Seeded with its one-line height at the default size.
     @State private var activeRunStatusHeight: CGFloat = 28
+    /// Measured height of the pinned notice stack, which grows with each
+    /// notice and with Dynamic Type.
+    @State private var pinnedNoticeStackHeight: CGFloat = 0
     @State private var composerIsFocused = false
     @State private var didHydrateDraft = false
     /// Whether this chat has already asked the server for its skills on the
@@ -1408,6 +1411,11 @@ struct ChatView: View {
             VStack(spacing: composerAccessoryVerticalSpacing) {
                 if !composerLocalNotices.isEmpty {
                     PinnedLocalNoticeStack(notices: composerLocalNotices)
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.height
+                        } action: { height in
+                            pinnedNoticeStackHeight = height
+                        }
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
 
@@ -1678,7 +1686,7 @@ struct ChatView: View {
     }
 
     private var pinnedNoticeSpacerHeight: CGFloat {
-        composerLocalNotices.isEmpty ? 0 : CGFloat(composerLocalNotices.count) * 60
+        composerLocalNotices.isEmpty ? 0 : pinnedNoticeStackHeight
     }
 
     private var composerLocalNotices: [String] {

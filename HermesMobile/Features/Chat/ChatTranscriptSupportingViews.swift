@@ -1170,6 +1170,10 @@ struct ChatOfflineCacheBanner: View {
     }
 }
 
+/// Notices pinned above the composer during a run, such as the goal-set
+/// confirmation. Each card stops at two lines so a long goal never hides the
+/// live transcript (#772); VoiceOver reads every notice in full, and the run's
+/// end flushes them whole into the transcript.
 struct PinnedLocalNoticeStack: View {
     let notices: [String]
 
@@ -1184,6 +1188,7 @@ struct PinnedLocalNoticeStack: View {
                     Text(notice)
                         .font(.footnote)
                         .foregroundStyle(.primary)
+                        .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
