@@ -245,9 +245,16 @@ final class ChatViewModel {
     var liveTokensPerSecond: Double? { streamCoordinator.liveTokensPerSecond }
     private(set) var errorMessage: String?
     private(set) var sendErrorMessage: String? {
-        didSet { sendErrorIsFromStreamRecovery = false }
+        didSet {
+            sendErrorIsFromStreamRecovery = false
+            if sendErrorRuntimeStale != nil { sendErrorRuntimeStale = nil }
+        }
     }
     @ObservationIgnored private var sendErrorIsFromStreamRecovery = false
+    /// Set when the server refused a send because Hermes was updated under the
+    /// running WebUI (#955), so the composer can offer Copy fix prompt. Any new
+    /// `sendErrorMessage` clears it.
+    private(set) var sendErrorRuntimeStale: AgentRuntimeStale?
     private(set) var messageActionErrorMessage: String?
     private(set) var cacheErrorMessage: String?
 
@@ -2655,6 +2662,9 @@ final class ChatViewModel {
         cacheCurrentMessages(sessionID: sessionID, modelContext: modelContext)
 
         do {
+            #if DEBUG
+            if let failure = APIError.takeLaunchArgumentStaleRuntimeFailure() { throw failure }
+            #endif
             let explicitModelPick = explicitModelPickForChatStart()
             let sentAt = Date()
             let response = try await client.startChat(
@@ -2703,6 +2713,7 @@ final class ChatViewModel {
             }
             lastError = error
             sendErrorMessage = error.localizedDescription
+            sendErrorRuntimeStale = (error as? APIError)?.agentRuntimeStale
             rollbackOptimisticMessage(id: localMessageID)
             cacheCurrentMessages(sessionID: sessionID, modelContext: modelContext)
             restorePendingAttachments(attachmentsToRestoreOnFailure)

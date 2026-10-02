@@ -14,6 +14,9 @@ enum APIError: LocalizedError {
         case .network(let underlying):
             return Self.networkMessage(for: underlying)
         case .http(let statusCode, let body):
+            if let stale = Self.agentRuntimeStale(statusCode: statusCode, body: body) {
+                return stale.message
+            }
             if Self.isVanishedSession(statusCode: statusCode, body: body) {
                 return String(localized: "That session no longer exists on the server. Reopen another session or create a new one.")
             }
@@ -94,6 +97,13 @@ enum APIError: LocalizedError {
         return Self.serverErrorMessage(from: body)?.localizedCaseInsensitiveContains("stream not found") == true
     }
 
+    /// Set for hermes-webui's stale-runtime 409 (#955); `errorDescription`
+    /// already shows its copy, and chat uses it to offer Copy fix prompt.
+    var agentRuntimeStale: AgentRuntimeStale? {
+        guard case .http(let statusCode, let body) = self else { return nil }
+        return Self.agentRuntimeStale(statusCode: statusCode, body: body)
+    }
+
     /// True for the documented "prompt already expired" respond rejection:
     /// HTTP 409 with `{"stale": true, …}` in the body (issue #25). Used to show
     /// a friendly expired state instead of a generic failure.
@@ -127,11 +137,21 @@ private extension APIError {
         let code: String?
         let stale: Bool?
         let activeStreamId: String?
+        let type: String?
+        let agentUpdateState: String?
 
         enum CodingKeys: String, CodingKey {
-            case error, message, detail, code, stale
+            case error, message, detail, code, stale, type
             case activeStreamId = "active_stream_id"
+            case agentUpdateState = "agent_update_state"
         }
+    }
+
+    static func agentRuntimeStale(statusCode: Int, body: String?) -> AgentRuntimeStale? {
+        guard statusCode == 409,
+              let payload = serverErrorPayload(from: body),
+              payload.type == "agent_runtime_stale" else { return nil }
+        return AgentRuntimeStale(agentUpdateState: payload.agentUpdateState)
     }
 
     static func networkMessage(for error: Error) -> String {
@@ -197,6 +217,74 @@ private extension APIError {
         return try? JSONDecoder().decode(ErrorPayload.self, from: data)
     }
 }
+
+/// hermes-webui's `agent_runtime_stale` 409 (`api/agent_runtime.py`,
+/// `agent_runtime_stale_payload`): Hermes Agent was updated under the running
+/// WebUI, which refuses every local Agent action until someone restarts it on
+/// the server. The app cannot restart it, so the copy says what to do there.
+enum AgentRuntimeStale: Equatable {
+    /// The update finished, or the server can't tell (`stale`, `unverified`,
+    /// `unknown`, absent, or a state added later).
+    case updated
+    /// `agent_update_state: "active"`: the update is still running.
+    case updating
+    /// `agent_update_state: "incomplete"`: the update stopped partway.
+    case incomplete
+
+    init(agentUpdateState: String?) {
+        switch agentUpdateState {
+        case "active": self = .updating
+        case "incomplete": self = .incomplete
+        default: self = .updated
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .updated:
+            return String(localized: "Hermes was updated on your server. Restart Hermes WebUI there, then try again.")
+        case .updating:
+            return String(localized: "Hermes is still updating on your server. Wait for it to finish, restart Hermes WebUI, then try again.")
+        case .incomplete:
+            return String(localized: "A Hermes update on your server didn't finish. Check it, restart Hermes WebUI, then try again.")
+        }
+    }
+
+    /// What the chat composer's Copy fix prompt puts on the pasteboard, for the
+    /// user to send their agent over a messaging gateway (which `hermes update`
+    /// restarts, so it still works). Nil while the update is running: the fix
+    /// then is to wait, not restart.
+    var fixPrompt: String? {
+        guard self != .updating else { return nil }
+        return String(localized: """
+        My Hermes WebUI is refusing chats with "Hermes Agent was updated while Hermes WebUI was running." Please do only this:
+        1. Check that no Hermes update is still running and the last one finished without errors. If it didn't, stop and tell me.
+        2. Restart the Hermes WebUI server the same way it was started (systemd, launchd, ctl.sh, Docker, or whatever runs it). Don't update, reinstall, or reconfigure anything.
+        3. Confirm it's back: its `/health` endpoint should return 200.
+
+        If it doesn't come back up, show me the last lines of its error log and suggest a fix, but don't change config, environment variables, or Hermes source until I say so.
+        """)
+    }
+}
+
+#if DEBUG
+extension APIError {
+    /// `--stale-runtime-send` (`DEVELOPMENT.md`): the first chat send of this
+    /// launch fails with the stale-runtime 409 instead of reaching the server,
+    /// so its banner and Copy fix prompt can be checked without updating Hermes.
+    @MainActor static func takeLaunchArgumentStaleRuntimeFailure() -> APIError? {
+        guard !didTakeLaunchArgumentStaleRuntimeFailure,
+              ProcessInfo.processInfo.arguments.contains("--stale-runtime-send") else { return nil }
+        didTakeLaunchArgumentStaleRuntimeFailure = true
+        return .http(
+            statusCode: 409,
+            body: #"{"error": "Hermes Agent was updated while Hermes WebUI was running. Restart Hermes WebUI manually before retrying this action.", "type": "agent_runtime_stale", "retryable": true, "restart_scheduled": false}"#
+        )
+    }
+
+    @MainActor private static var didTakeLaunchArgumentStaleRuntimeFailure = false
+}
+#endif
 
 private extension String {
     var nilIfEmpty: String? {

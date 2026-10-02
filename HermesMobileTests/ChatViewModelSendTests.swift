@@ -1092,6 +1092,52 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.sendErrorMessage, "Could not start chat")
     }
 
+    /// After a Hermes update the server refuses every send until WebUI restarts (#955).
+    @MainActor
+    func testStaleAgentRuntimeSendFailureExplainsRestartAndRollsBack() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse("""
+            {
+              "error": "Hermes Agent was updated while Hermes WebUI was running. Restart Hermes WebUI manually before retrying this action.",
+              "type": "agent_runtime_stale",
+              "retryable": true,
+              "restart_scheduled": false
+            }
+            """, for: request, status: 409)
+        }
+
+        let didStart = await viewModel.sendMessage("Keep working")
+
+        // `false` is what keeps the draft in the composer (ChatView restores it).
+        XCTAssertFalse(didStart)
+        XCTAssertTrue(viewModel.messages.isEmpty)
+        XCTAssertEqual(
+            viewModel.sendErrorMessage,
+            "Hermes was updated on your server. Restart Hermes WebUI there, then try again."
+        )
+        XCTAssertEqual(viewModel.sendErrorRuntimeStale, .updated)
+
+        // The next error replaces it, so Copy fix prompt never outlives its banner.
+        viewModel.setSendErrorMessage("Choose a slash command or continue typing.")
+        XCTAssertNil(viewModel.sendErrorRuntimeStale)
+    }
+
+    @MainActor
+    func testOtherConflictOnSendOffersNoFixPrompt() async throws {
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse("""
+            {"error": "Session belongs to a different profile", "code": "session_profile_mismatch", "profile": "work"}
+            """, for: request, status: 409)
+        }
+
+        let didStart = await viewModel.sendMessage("Keep working")
+
+        XCTAssertFalse(didStart)
+        XCTAssertEqual(viewModel.sendErrorMessage, "Server returned HTTP 409: Session belongs to a different profile")
+        XCTAssertNil(viewModel.sendErrorRuntimeStale)
+    }
+
     @MainActor
     func testSendMessageAddsSingleOptimisticUserMessageWhenStartSucceeds() async throws {
         let streamClient = SpySSEStreamingClient()

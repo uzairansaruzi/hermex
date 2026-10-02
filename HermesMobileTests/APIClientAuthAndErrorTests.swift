@@ -283,6 +283,59 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
         XCTAssertEqual(APIError.http(statusCode: 403, body: body).serverMessage, long)
     }
 
+    // MARK: - HTTP 409 agent_runtime_stale (issue #955)
+
+    /// hermes-webui's `agent_runtime_stale_payload`, plus a field it might add later.
+    private func staleRuntimeBody(updateState: String?) -> String {
+        let state = updateState.map { #", "agent_update_state": "\#($0)""# } ?? ""
+        return #"{"error": "Hermes Agent was updated while Hermes WebUI was running. WebUI cannot verify that the Agent update completed safely. Check the Agent update outcome and environment first. Restart Hermes WebUI manually before retrying this action.", "type": "agent_runtime_stale", "retryable": true, "restart_scheduled": false, "future_field": {"nested": [1]}\#(state)}"#
+    }
+
+    func testStaleAgentRuntimeConflictUsesRestartCopy() {
+        let updated = "Hermes was updated on your server. Restart Hermes WebUI there, then try again."
+        for state in [nil, "stale", "unverified", "unknown", "some_future_state"] {
+            let error = APIError.http(statusCode: 409, body: staleRuntimeBody(updateState: state))
+            XCTAssertEqual(error.localizedDescription, updated, "agent_update_state: \(String(describing: state))")
+            XCTAssertEqual(error.agentRuntimeStale, .updated, "agent_update_state: \(String(describing: state))")
+        }
+
+        let updating = APIError.http(statusCode: 409, body: staleRuntimeBody(updateState: "active"))
+        XCTAssertEqual(
+            updating.localizedDescription,
+            "Hermes is still updating on your server. Wait for it to finish, restart Hermes WebUI, then try again."
+        )
+        // While the update runs the fix is to wait, so chat offers no prompt.
+        XCTAssertEqual(updating.agentRuntimeStale, .updating)
+        XCTAssertNil(AgentRuntimeStale.updating.fixPrompt)
+
+        let incomplete = APIError.http(statusCode: 409, body: staleRuntimeBody(updateState: "incomplete"))
+        XCTAssertEqual(
+            incomplete.localizedDescription,
+            "A Hermes update on your server didn't finish. Check it, restart Hermes WebUI, then try again."
+        )
+        XCTAssertEqual(incomplete.agentRuntimeStale, .incomplete)
+    }
+
+    func testOtherConflictsKeepServerCopy() {
+        XCTAssertEqual(
+            APIError.http(
+                statusCode: 409,
+                body: #"{"ok": false, "error": "Approval prompt expired or not found.", "stale": true}"#
+            ).localizedDescription,
+            "Server returned HTTP 409: Approval prompt expired or not found."
+        )
+        XCTAssertEqual(
+            APIError.http(
+                statusCode: 409,
+                body: #"{"error": "Session belongs to a different profile", "code": "session_profile_mismatch", "profile": "work"}"#
+            ).localizedDescription,
+            "Server returned HTTP 409: Session belongs to a different profile"
+        )
+        XCTAssertNil(APIError.http(statusCode: 409, body: #"{"stale": true}"#).agentRuntimeStale)
+        // The type only means a stale runtime on the 409 the server sends it with.
+        XCTAssertNil(APIError.http(statusCode: 400, body: staleRuntimeBody(updateState: nil)).agentRuntimeStale)
+    }
+
     func testHTTPErrorPrivacySafeLogCategoryDoesNotExposeServerBody() {
         let error = APIError.http(
             statusCode: 400,
