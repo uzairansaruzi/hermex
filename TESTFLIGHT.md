@@ -169,8 +169,8 @@ Make server exposure and local cache behavior clear before testers connect sensi
 workspaces.
 
 Review feedback and crashes daily during the first week. Resolve
-`release-blocker` issues before widening access; pause expansion if one
-appears. Track actionable reports in GitHub Issues and rerun validation for each RC.
+`release-blocker` issues immediately, and never widen access while one is
+open; pause expansion if one appears. Track actionable reports in GitHub Issues and rerun validation for each RC.
 Upstream compatibility is recorded in `UPSTREAM_TESTED_SHA`; server availability
 and quiet-stream disconnections remain part of connection testing.
 
