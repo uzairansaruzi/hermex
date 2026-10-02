@@ -332,6 +332,14 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
             "Server returned HTTP 409: Session belongs to a different profile"
         )
         XCTAssertNil(APIError.http(statusCode: 409, body: #"{"stale": true}"#).agentRuntimeStale)
+        // A `type` of another shape never hides the fields read before #955.
+        let oddType = APIError.http(
+            statusCode: 409,
+            body: #"{"error": "A response is already running", "active_stream_id": "stream-1", "type": {"kind": 1}}"#
+        )
+        XCTAssertEqual(oddType.localizedDescription, "Server returned HTTP 409: A response is already running")
+        XCTAssertEqual(oddType.activeStreamID, "stream-1")
+        XCTAssertNil(oddType.agentRuntimeStale)
         // The type only means a stale runtime on the 409 the server sends it with.
         XCTAssertNil(APIError.http(statusCode: 400, body: staleRuntimeBody(updateState: nil)).agentRuntimeStale)
     }

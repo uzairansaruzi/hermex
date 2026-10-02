@@ -137,19 +137,29 @@ private extension APIError {
         let code: String?
         let stale: Bool?
         let activeStreamId: String?
+
+        enum CodingKeys: String, CodingKey {
+            case error, message, detail, code, stale
+            case activeStreamId = "active_stream_id"
+        }
+    }
+
+    /// Decoded apart from `ErrorPayload`, so a `type` of another shape in some
+    /// other error can't hide that error's message or `active_stream_id`.
+    struct AgentRuntimeStalePayload: Decodable {
         let type: String?
         let agentUpdateState: String?
 
         enum CodingKeys: String, CodingKey {
-            case error, message, detail, code, stale, type
-            case activeStreamId = "active_stream_id"
+            case type
             case agentUpdateState = "agent_update_state"
         }
     }
 
     static func agentRuntimeStale(statusCode: Int, body: String?) -> AgentRuntimeStale? {
         guard statusCode == 409,
-              let payload = serverErrorPayload(from: body),
+              let data = body?.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(AgentRuntimeStalePayload.self, from: data),
               payload.type == "agent_runtime_stale" else { return nil }
         return AgentRuntimeStale(agentUpdateState: payload.agentUpdateState)
     }
