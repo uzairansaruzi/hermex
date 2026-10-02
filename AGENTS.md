@@ -56,7 +56,7 @@ We need to be on the same page with terminology. When communicating, use this la
 ## Start with the current state
 
 1. Inspect `git status` and preserve changes you did not create.
-2. The selected GitHub issue is the scope and the handoff. Read it with its comments (`gh issue view <n> --comments`) before anything else. Implement only the issue the maintainer selected or one labeled `ready-for-agent`; an open issue list is not an instruction to implement everything.
+2. The selected GitHub issue is the scope and the handoff. Read it with its comments (`gh issue view <n> --comments`) before anything else. Implement only the issue the maintainer selected or one in the open release milestone labeled `ready-for-agent`; an open issue list is not an instruction to implement everything.
 3. Read only the docs the issue and this file point at. There is no product spec; the issue, the code, and the server contract are the spec.
 4. On "wrap up": verify the build and tests, commit the validated code, and leave the resumable state (what landed, how it was validated, what is next) as a comment on the issue or in the PR body. A push still needs approval.
 

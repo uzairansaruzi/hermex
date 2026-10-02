@@ -37,6 +37,8 @@ Before external distribution, all of these must hold:
 
 - The owner tested this exact build on a physical iPhone as described in
   [Test the release candidate](#test-the-release-candidate).
+- The release's milestone has no open issues; the owner moved anything
+  unfinished to the next milestone (`docs/agents/issue-tracker.md`).
 - No unresolved P0/P1 issue blocks normal use; accepted risks are recorded.
 - `HermexPushPlugin.newestVersion` equals `version` in `plugin/plugin.yaml` on
   hermex-push `main`. If the plugin changed since the last release, bump the
