@@ -90,9 +90,10 @@ create an obligation to review or merge it.
 - **Who writes it.** Triage replies may be drafted by the maintainer's coding
   agent. Each one says so, naming the model and harness, and the maintainer
   approves it before it is posted.
-- **How things get closed.** A closure names the rule in this document that
-  applies, the evidence for it, and what would get it reconsidered. Closed
-  work can be reopened.
+- **How things get closed.** A closure names its reason: the rule in this
+  document that applies, or that the maintainer has decided not to take the
+  work on (`wontfix`). It gives the evidence and says what would get it
+  reconsidered. Closed work can be reopened.
 - **The 30-day rule.** A draft PR with no activity from its author for 30
   days is closed with a "reopen when ready" note. So is an issue where the
   maintainer asked a public question and the reporter has not answered for
@@ -114,11 +115,11 @@ bug here, reproduce it in the hermes-webui **web UI** against the same server:
 
 1. **Start from an issue.** Every change should trace to a GitHub issue; open
    one first if none exists (bug/feature templates are provided).
-   - **Small fixes** (a bug fix, test coverage, a docs correction) need the
-     linked issue and nothing more.
-   - **Anything larger** needs a go-ahead: comment on the issue asking to
-     take it, and wait until the maintainer assigns it to you on GitHub. The
-     assignment is the go-ahead.
+   - **Small fixes** (a small bug fix, added test coverage, a docs
+     correction) need the linked issue and nothing more.
+   - **Anything larger**, bug fix or not, needs a go-ahead: comment on the
+     issue asking to take it, and wait until the maintainer assigns it to you
+     on GitHub. The assignment is the go-ahead.
    - An issue that is not assigned to a contributor is not reserved. The
      maintainer's coding agents may build it at any time, including
      overnight.
