@@ -71,11 +71,32 @@ testing breaks Keychain entitlements — use a normally-signed build for that
 Bug fixes, test coverage, and focused improvements are always welcome. For
 anything larger than a small fix, **open an issue first and wait for a
 maintainer nod before writing code** — it protects your time as much as the
-review queue. Drive-by rewrites, reformat-the-world diffs, and unannounced
-architecture overhauls will be closed without detailed review.
+review queue ([PR workflow](#pr-workflow) says what the nod looks like).
+Drive-by rewrites, reformat-the-world diffs, and unannounced architecture
+overhauls will be closed without detailed review.
 
 Keep each PR to **one logical change** with a reviewable diff. If a change is
 independently useful, it deserves its own PR.
+
+Hermex has one maintainer and limited review time. Opening a PR does not
+create an obligation to review or merge it.
+
+## What to expect
+
+- **A first answer within 7 days.** Every issue, and every PR once it is
+  marked ready for review, gets a public first answer within 7 days. An
+  answer is a review, a question, a label with a short reply, or a closure.
+  It is not a promise to merge.
+- **Who writes it.** Triage replies may be drafted by the maintainer's coding
+  agent. Each one says so, naming the model and harness, and the maintainer
+  approves it before it is posted.
+- **How things get closed.** A closure names the rule in this document that
+  applies, the evidence for it, and what would get it reconsidered. Closed
+  work can be reopened.
+- **The 30-day rule.** A draft PR with no activity from its author for 30
+  days is closed with a "reopen when ready" note. So is an issue where the
+  maintainer asked a public question and the reporter has not answered for
+  30 days. The clock starts at the question, not at a label.
 
 ## App bug or server bug?
 
@@ -91,9 +112,16 @@ bug here, reproduce it in the hermes-webui **web UI** against the same server:
 
 ## PR workflow
 
-1. **Start from an issue.** Every change should trace to a GitHub issue —
-   comment on it so work isn't duplicated, or open one first (bug/feature
-   templates are provided).
+1. **Start from an issue.** Every change should trace to a GitHub issue; open
+   one first if none exists (bug/feature templates are provided).
+   - **Small fixes** (a bug fix, test coverage, a docs correction) need the
+     linked issue and nothing more.
+   - **Anything larger** needs a go-ahead: comment on the issue asking to
+     take it, and wait until the maintainer assigns it to you on GitHub. The
+     assignment is the go-ahead.
+   - An issue that is not assigned to a contributor is not reserved. The
+     maintainer's coding agents may build it at any time, including
+     overnight.
 2. **Branch** from `master` as `issue/<number>-<short-slug>` (e.g.
    `issue/42-fix-session-search`).
 3. **Make the change**, keeping these repo hard rules (full list in

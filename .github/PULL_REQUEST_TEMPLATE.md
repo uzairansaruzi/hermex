@@ -2,7 +2,8 @@
 
 ## Linked issue
 
-<!-- Every PR should close an issue, e.g. "Fixes #123". If there is no issue yet, open one first. -->
+<!-- Every PR should close an issue, e.g. "Fixes #123". If there is no issue yet, open one first.
+     For anything larger than a small fix, the issue must be assigned to you first: see CONTRIBUTING.md#pr-workflow. -->
 
 Fixes #
 
