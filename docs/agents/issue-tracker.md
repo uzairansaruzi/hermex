@@ -43,7 +43,7 @@ Every issue opens with a plain header written for the owner, above the spec:
 
 GitHub Issues are the work queue; pull requests are the review and merge record.
 
-- Pick implementation work from the open release milestone (see Release Milestones), unless the human selects another issue. The triage label says how an issue runs; the milestone says when.
+- Pick implementation work from issues in the open release milestone (see Release Milestones) that are labeled `ready-for-agent`, unless the human selects another issue. The triage label says whether and how an agent runs an issue; the milestone says when.
 - Skip an issue assigned to someone other than the owner: that contributor has the go-ahead to build it (`CONTRIBUTING.md` § PR workflow).
 - `ready-for-agent` issues default to express mode (autonomous from approved plan to review-addressed PR). An issue also labeled `needs-manual-validation` forces staged mode, where the owner manually tests before the PR publishes. See `docs/agents/triage-labels.md`.
 - Create a short `issue/<n>-slug` branch for one issue or narrow slice (no-issue branches use `chore/`/`fix/`).
