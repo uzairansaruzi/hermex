@@ -7,6 +7,53 @@ Security sections per release.
 
 ## [Unreleased]
 
+## [1.9.0] - Unreleased
+
+### Added
+- Lock Hermex with Face ID or the device passcode. The lock is off until
+  enabled, and the app switcher hides chats while it is on.
+- Files Hermex can't preview, such as PDFs, Office and iWork documents, audio,
+  and video, open in Quick Look from Files, chat links, and attachments.
+- Chat settings to dismiss the keyboard after sending and to start reading a
+  completed response from its beginning.
+- Press ↑ on a hardware keyboard to recall your last message; staged documents
+  show a preview instead of a generic icon.
+- Approval cards say what Allow session and Always allow cover.
+- Push: Settings offers hermex-push plugin updates and can restart Hermes from
+  the phone after one. Banners name the bot and use the phone's language.
+- Bot Mode: answer password-vault, save-login, and 2FA prompts on the phone;
+  open and reply inside room threads; see who is in a new group chat; copy a
+  reply from its footer; and save or share a previewed attachment.
+- Bot Mode: add a Hermes host as its own server from onboarding or Settings,
+  with custom headers for hosts behind Cloudflare Access or another proxy.
+
+### Changed
+- Tapping a finished Live Activity removes it.
+- Listen uses the server's saved text-to-speech voice and provider.
+- Retained draft attachments share a 200 MB storage budget, reclaiming the
+  oldest unused copies first.
+- Bot Mode keeps its connection through Control Center and banners, and closes
+  it when Hermex moves to the background.
+
+### Fixed
+- After a Hermes Agent update, sends refused until Hermes WebUI restarts
+  explain the problem and offer a fix prompt instead of a raw HTTP 409.
+- A long /goal notice no longer hides the newest tool calls and replies.
+- Long transcript text stays behind the navigation bar instead of overlapping
+  the title.
+- Inline LaTeX renders sub- and superscripts and tuples accurately.
+- Dictation keeps the screen awake and its orientation while recording.
+- A queued keyboard dismissal no longer interrupts newer typing.
+- Live Activity taps open the session on the server that owns it. A stale Bot
+  activity that is waiting on you says so instead of "Not connected".
+- Bot Mode: failed turns say why, a rejected password opens the sign-in form,
+  sign-in errors name the real problem, withdrawn requests say why, and a
+  pasted dashboard link is accepted. Reattaching mid-turn keeps the running
+  turn's tool rows and reasoning. Hosts older than Hermes 0.21.3 are refused
+  with an explanation.
+- Push plugin updates work on current Hermes without a terminal prompt, and a
+  slow plugin check no longer overwrites an update's result.
+
 ## [1.8.0] - 2026-10-01
 
 ### Added
