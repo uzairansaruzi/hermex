@@ -12,8 +12,8 @@ Security sections per release.
 ### Added
 - Lock Hermex with Face ID or the device passcode. The lock is off until
   enabled, and the app switcher hides chats while it is on.
-- Files Hermex can't preview, such as PDFs, Office and iWork documents, audio,
-  and video, open in Quick Look from Files, chat links, and attachments.
+- PDFs, Office and iWork documents, and other files Hermex can't preview open
+  in Quick Look, up to 25 MB, from Files, chat file links, and attachments.
 - Chat settings to dismiss the keyboard after sending and to start reading a
   completed response from its beginning.
 - Press ↑ on a hardware keyboard to recall your last message; staged documents
@@ -29,7 +29,8 @@ Security sections per release.
 
 ### Changed
 - Tapping a finished Live Activity removes it.
-- Listen uses the server's saved text-to-speech voice and provider.
+- Listen uses the server's saved text-to-speech voice and provider. Very long
+  responses, or a failed server request, still fall back to on-device speech.
 - Retained draft attachments share a 200 MB storage budget, reclaiming the
   oldest unused copies first.
 - Bot Mode keeps its connection through Control Center and banners, and closes
