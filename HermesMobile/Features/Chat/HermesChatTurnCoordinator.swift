@@ -89,6 +89,9 @@ struct HermesChatTranscript: Equatable {
     @ObservationIgnored private var needsRebuild = false
     /// This runtime's frames the engine held during the attach, in arrival order.
     @ObservationIgnored private var heldFrames: [BotJSON] = []
+    /// The running reply's text a rebuilding attach's replay carried, up to its
+    /// `latest_seq`: the snapshot's reply holds it, just before any deltas that raced it.
+    @ObservationIgnored private var replayedReply = ""
     /// The `seq`s of held deltas a rebuilt reply already holds: dropped on release.
     @ObservationIgnored private var deltasInRebuild: Set<Int> = []
     /// The host accepted a prompt on this chat; until then a new session's draft keeps the
@@ -420,7 +423,7 @@ struct HermesChatTranscript: Equatable {
         if let text = inflight["assistant"].text, !text.isEmpty {
             let row = ChatMessage(role: "assistant", content: text, timestamp: nil, messageId: "\(root)/live-\(UUID().uuidString)")
             if running { reply = row } else { messages.append(row) }
-            deltasInRebuild = Self.heldDeltas(heldFrames, after: engine.sequence, alreadyIn: text)
+            deltasInRebuild = Self.heldDeltas(heldFrames, after: engine.sequence, alreadyIn: text, following: replayedReply)
         }
         let title = snapshot["info"]["title"].text.flatMap { $0.isEmpty ? nil : $0 }
         delegate?.hermesReplaceTranscript(HermesChatTranscript(
@@ -457,12 +460,15 @@ struct HermesChatTranscript: Equatable {
     // MARK: Mapping
 
     /// The held deltas, after the replay's `sequence`, that a snapshot's reply text already
-    /// ends with. The host appends each delta to the in-flight reply before it emits the
-    /// frame, so deltas emitted while the snapshot was read are in its text and held too.
-    /// They are the turn's first held deltas, before any `message.start`, and match whole:
-    /// the longest run of them whose joined text ends the reply.
-    private static func heldDeltas(_ held: [BotJSON], after sequence: Int, alreadyIn reply: String) -> Set<Int> {
-        var cursor = sequence, joined = "", run: [Int] = [], matched: [Int] = []
+    /// holds. The host appends each delta to the in-flight reply before it emits the frame,
+    /// so deltas emitted while the snapshot was read are in its text and held too. They are
+    /// the turn's first held deltas, before any `message.start`, and match whole: the
+    /// longest run of them that, after `replayed` (the reply text the replay carried), ends
+    /// the reply. The snapshot has no `seq`, so only text that repeats itself across that
+    /// boundary stays ambiguous.
+    private static func heldDeltas(_ held: [BotJSON], after sequence: Int, alreadyIn reply: String,
+                                   following replayed: String) -> Set<Int> {
+        var cursor = sequence, joined = replayed, run: [Int] = [], matched: [Int] = []
         for frame in held {
             guard let seq = frame["seq"].integer, seq > cursor else { continue }
             cursor = seq
@@ -475,6 +481,14 @@ struct HermesChatTranscript: Equatable {
             if reply.utf8.suffix(joined.utf8.count).elementsEqual(joined.utf8) { matched = run }
         }
         return Set(matched)
+    }
+
+    /// The reply text a run of frames ends with: its deltas after the last `message.start`.
+    private static func replyText(_ frames: [BotJSON]) -> String {
+        let start = frames.lastIndex { $0["type"].text == "message.start" }.map { $0 + 1 } ?? frames.startIndex
+        return frames[start...].reduce(into: "") { text, frame in
+            if frame["type"].text == "message.delta" { text += frame["payload"]["text"].text ?? "" }
+        }
     }
 
     /// Whether the snapshot's saved rows already hold the in-flight prompt: the last turn
@@ -566,13 +580,17 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
 extension HermesChatTurnCoordinator: HermesConversationOwner {
     func conversationDidReset() {
         openRequestIDs = []
-        heldFrames = []; deltasInRebuild = []
+        heldFrames = []; deltasInRebuild = []; replayedReply = ""
     }
 
     func conversationDidReplay(_ reply: BotJSON, frames: [BotJSON]) {
         restoreOpenRequests(reply["open_requests"])
-        // After lost frames the snapshot that follows rebuilds instead.
-        guard !engine.replayWasReset, !needsRebuild else { return }
+        // After lost frames the snapshot that follows rebuilds instead, and what the replay
+        // carried of the running reply places the deltas that raced it.
+        guard !engine.replayWasReset, !needsRebuild else {
+            replayedReply = Self.replyText(frames)
+            return
+        }
         frames.forEach(apply)
     }
 
@@ -583,7 +601,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
 
     func conversationDidConnect(runtime: String, attempt: Int) async throws {
         // The engine released the held frames just before this.
-        heldFrames = []; deltasInRebuild = []
+        heldFrames = []; deltasInRebuild = []; replayedReply = ""
         refusedSignIn = false
         delegate?.hermesConnectionDidChange(failure: nil)
     }

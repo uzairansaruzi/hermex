@@ -348,6 +348,17 @@ import Observation
                             shows: "I checked the logs.\nI\nNext")
     }
 
+    /// The replay places the raced deltas: of two held " ha"s after a replayed ". ha", only
+    /// the first is in the reply "Hello there. ha ha", so the second still shows.
+    func testARebuildDropsOnlyTheDeltasAfterTheReplayedText() async {
+        await assertRebuild(after: event(5, "message.delta", ["text": .string("lost the middle")]),
+                            replayed: [event(6, "message.delta", ["text": .string(". ha")])],
+                            reply: "Hello there. ha ha",
+                            held: [event(7, "message.delta", ["text": .string(" ha")]),
+                                   event(8, "message.delta", ["text": .string(" ha")])],
+                            shows: "Hello there. ha ha ha")
+    }
+
     // MARK: Entry
 
     func testNewSessionIsOfferedOnlyOnAHermesHomeInDebugOrBranchBuilds() {
@@ -442,11 +453,11 @@ import Observation
         return Chat(model: model, turn: turn, host: host, client: client, liveActivity: liveActivity)
     }
 
-    /// Feeds a turn through seq 3, then `frame`, which breaks the order: the chat reattaches
-    /// and the snapshot, whose reply is `reply`, replaces the transcript. `held` lands while
-    /// that snapshot is read, after the replay's seq 6; the reply then reads `shows`, and a
-    /// live delta appends as it is.
-    private func assertRebuild(after frame: BotJSON, reply: String = "Hello there, friend",
+    /// Feeds a turn through seq 3, then `frame`, which breaks the order: the chat reattaches,
+    /// the replay carries `replayed` up to seq 6, and the snapshot, whose reply is `reply`,
+    /// replaces the transcript. `held` lands while that snapshot is read; the reply then
+    /// reads `shows`, and a live delta appends as it is.
+    private func assertRebuild(after frame: BotJSON, replayed: [BotJSON] = [], reply: String = "Hello there, friend",
                                held: [BotJSON]? = nil, shows: String = "Hello there, friend.",
                                file: StaticString = #filePath, line: UInt = #line) async {
         let chat = await openChat()
@@ -460,7 +471,7 @@ import Observation
                             event(9, "message.delta", ["text": .string(".")])]
         let snapshot = resume(running: true, history: [userRow("Hi")],
                               inflight: ["user": .string("Hi"), "assistant": .string(reply)])
-        chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 6)))
+        chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 6, events: replayed)))
         chat.host.next("session.resume", .init(result: snapshot))
         chat.host.next("session.resume", .init(result: snapshot, before: held))
         let leaving = chat.host.requests.count
