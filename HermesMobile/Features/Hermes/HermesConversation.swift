@@ -51,6 +51,22 @@ enum ConversationTarget: Hashable, Sendable {
     }
 }
 
+/// What an answer to a host request is checked against at the socket write: the attach and
+/// runtime it was tapped under, and the request it answers (the approval queue's
+/// `request_id`, or the envelope id of a question or credential prompt).
+struct HermesAnswerAction: Equatable { let generation: Int; let runtime: String; let requestID: String }
+
+/// One answer to a host request, as `HermesConversation.answer` sends it.
+enum HermesRequestAnswer: Equatable {
+    /// `approval.respond` with one of the choices the host offered.
+    case approval(BotApprovalRequest.Choice)
+    /// One `clarify.lock` per batch question id, in order, or one `request.answer {answer}`
+    /// for a single question's unkeyed answer.
+    case questions([BotQuestionAnswer])
+    /// A credential prompt's `request.answer {value}`; empty skips.
+    case value(String)
+}
+
 /// What a `HermesConversation` asks of the screen model that owns it. The engine calls
 /// these in order on the main actor; an async one that throws ends the attach as a failure.
 /// The owner renders: Bot Chat rebuilds its text from snapshots, a Hermes session reduces
@@ -280,6 +296,58 @@ extension HermesConversationOwner {
 
     /// A `session.resume` the host refused for now (see `resume(full:attempt:)`).
     private struct ResumeRefusal: Error { let code: Int }
+
+    /// Sends `answer` to the host request `action` names and reads the host's verdict:
+    /// `.answered`; `.alreadyResolved` when the host no longer held it (answered on another
+    /// surface, or expired); nil for a batch whose remaining questions the host still holds,
+    /// which the owner reconciles. Each call goes out once through `write`, and `stillCurrent`
+    /// is the owner's check, at every socket write, that the request is still the one on
+    /// screen. Bot Chat and a Hermes session's chat (#1011) both answer through here.
+    func answer(_ answer: HermesRequestAnswer, _ action: HermesAnswerAction,
+                stillCurrent: @escaping () throws -> Void) async throws -> BotRequestResolution.Outcome? {
+        func send(_ call: HermesCall) async throws -> BotJSON {
+            try await write(call, attempt: action.generation, runtime: action.runtime, stillCurrent: stillCurrent)
+        }
+        // The `request.answer` proxy gives a definitive ok/expired receipt for live and
+        // restored requests alike, unlike a bare JSON-RPC response frame.
+        func proxy(_ result: HermesCall.RequestAnswer) async throws -> BotJSON {
+            let reply = try await send(.requestAnswer(id: action.requestID, result: result))
+            guard ["ok", "expired"].contains(reply["status"].text ?? "") else { throw BotFailure.unsupported }
+            return reply
+        }
+        switch answer {
+        case .approval(let choice):
+            let reply = try await send(.approvalRespond(sessionID: action.runtime, requestID: action.requestID, choice: choice))
+            // `resolved` counts what the host actually unblocked. Zero means the queue no
+            // longer held this request: an action failure, not a delivery one.
+            return (reply["resolved"].integer ?? 0) > 0 ? .answered : .alreadyResolved
+        case .value(let value):
+            // The host tolerates a late answer to a prompt it already dropped and says so
+            // rather than erroring; nothing was applied.
+            return try await proxy(.value(value))["status"].text == "expired" ? .alreadyResolved : .answered
+        case .questions(let answers):
+            for answer in answers {
+                let reply: BotJSON
+                if let id = answer.questionID {
+                    reply = try await send(.clarifyLock(requestID: action.requestID, questionID: id, answer: answer.text))
+                } else {
+                    reply = try await proxy(.answer(answer.text))
+                }
+                // A late answer to a prompt the host already dropped comes back as
+                // `expired`; nothing was locked, so the rest have nothing to lock either.
+                if reply["status"].text == "expired" { return .alreadyResolved }
+                if answer.questionID != nil {
+                    guard reply["status"].text == "ok", let remaining = reply["remaining"].list else {
+                        throw BotFailure.unsupported
+                    }
+                    // Another client may have locked the tail already.
+                    if remaining.isEmpty { return .answered }
+                    if answer == answers.last { return nil }
+                }
+            }
+            return .answered
+        }
+    }
 
     /// The log's name for this kind of conversation: never an id or a Profile name.
     private var logName: String {

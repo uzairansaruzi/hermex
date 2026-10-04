@@ -42,7 +42,7 @@ import Observation
     /// The identity an answer is bound to, captured when the user taps and
     /// revalidated at the socket write so a stale card cannot answer a newer
     /// request or a replaced runtime.
-    struct AnswerAction: Equatable { let generation: Int; let runtime: String; let requestID: String }
+    typealias AnswerAction = HermesAnswerAction
 
     struct PromptAction: Equatable {
         let generation: Int; let revision: Int; let runtime: String
@@ -857,14 +857,6 @@ import Observation
         if connectionOperation?.opID == opID { connectionOperation = nil }
     }
 
-    /// The proxy gives a definitive ok/expired receipt for both live and restored
-    /// requests, unlike a bare JSON-RPC response which has no acknowledgment.
-    private func answerServerRequest(_ action: AnswerAction, result: HermesCall.RequestAnswer) async throws -> BotJSON {
-        let reply = try await answer(.requestAnswer(id: action.requestID, result: result), action)
-        guard ["ok", "expired"].contains(reply["status"].text ?? "") else { throw BotFailure.unsupported }
-        return reply
-    }
-
     func send() async {
         guard let action = preparePrompt(.send) else { return }
         await submit(action)
@@ -1190,13 +1182,7 @@ import Observation
     func respond(_ action: AnswerAction, choice: BotApprovalRequest.Choice) async {
         guard case .approval(let request)? = pendingRequest, request.requestID == action.requestID,
               request.choices.contains(choice), action == prepareAnswer() else { return }
-        await deliver(action, confirming: .approved(choice)) {
-            let reply = try await self.answer(.approvalRespond(sessionID: action.runtime, requestID: action.requestID,
-                                                               choice: choice), action)
-            // `resolved` counts what the host actually unblocked. Zero means the
-            // queue no longer held this request: an action failure, not a delivery one.
-            return (reply["resolved"].integer ?? 0) > 0 ? .answered : .alreadyResolved
-        }
+        await deliver(action, confirming: .approved(choice)) { try await self.dispatch(.approval(choice), action) }
     }
 
     /// Answers a clarify question. A batch sends one `clarify.lock` per question
@@ -1233,12 +1219,7 @@ import Observation
     func answerCredential(_ action: AnswerAction, value: String) async {
         guard case .credential(let request)? = pendingRequest, request.requestID == action.requestID,
               action == prepareAnswer() else { return }
-        await deliver(action, confirming: .answered) {
-            let reply = try await self.answerServerRequest(action, result: .value(value))
-            // The host tolerates a late answer to a prompt it already dropped and
-            // says so rather than erroring; nothing was applied.
-            return reply["status"].text == "expired" ? .alreadyResolved : .answered
-        }
+        await deliver(action, confirming: .answered) { try await self.dispatch(.value(value), action) }
     }
 
     /// Declines to supply the value. An empty string is the host's own skip: the
@@ -1250,28 +1231,7 @@ import Observation
     }
 
     private func dispatchAnswers(_ answers: [BotQuestionAnswer], for action: AnswerAction) async {
-        await deliver(action, confirming: .answered) {
-            for answer in answers {
-                let reply: BotJSON
-                if let id = answer.questionID {
-                    reply = try await self.answer(.clarifyLock(requestID: action.requestID, questionID: id, answer: answer.text), action)
-                } else {
-                    reply = try await self.answerServerRequest(action, result: .answer(answer.text))
-                }
-                // A late answer to a prompt the host already dropped comes back as
-                // `expired`; nothing was locked, so the rest have nothing to lock either.
-                if reply["status"].text == "expired" { return .alreadyResolved }
-                if answer.questionID != nil {
-                    guard reply["status"].text == "ok", let remaining = reply["remaining"].list else {
-                        throw BotFailure.unsupported
-                    }
-                    // Another client may have locked the tail already.
-                    if remaining.isEmpty { return .answered }
-                    if answer == answers.last { return nil }
-                }
-            }
-            return .answered
-        }
+        await deliver(action, confirming: .answered) { try await self.dispatch(.questions(answers), action) }
     }
 
     /// Answers one row of the connection card, or Continue. Captured like every
@@ -1321,12 +1281,26 @@ import Observation
         }
     }
 
-    /// Sends one answer, revalidated at the socket write, after any executor delay: the
+    /// Sends one answer through the engine's shared dispatch, which reads the host's verdict.
+    private func dispatch(_ answer: HermesRequestAnswer, _ action: AnswerAction) async throws -> BotRequestResolution.Outcome? {
+        try await engine.answer(answer, action) { [weak self] in
+            guard let self else { throw BotFailure.stale }
+            try self.checkOnScreen(action)
+        }
+    }
+
+    /// Sends one answer call, revalidated at the socket write, after any executor delay: the
     /// same connection, the same runtime, and still the same request on screen.
     private func answer(_ call: HermesCall, _ action: AnswerAction) async throws -> BotJSON {
         try await engine.write(call, attempt: action.generation, runtime: action.runtime) { [weak self] in
-            guard let self, self.pendingRequest?.requestID == action.requestID else { throw BotFailure.stale }
+            guard let self else { throw BotFailure.stale }
+            try self.checkOnScreen(action)
         }
+    }
+
+    /// Throws `.stale` once the request on screen is no longer the one `action` answers.
+    private func checkOnScreen(_ action: AnswerAction) throws {
+        guard pendingRequest?.requestID == action.requestID else { throw BotFailure.stale }
     }
 
     /// Runs one answer dispatch under the rules every request kind shares.
