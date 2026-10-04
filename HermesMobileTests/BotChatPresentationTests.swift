@@ -341,8 +341,13 @@ import XCTest
         let window = try show(BotSearchView(inbox: inbox, cache: cache, query: "Message 20") { _ in }
             .environment(\.scenePhase, .active))
         defer { close(window) }
-        // The view debounces its query before reading the cache, so wait for the results section.
-        let after = try await screenshot(window, name: "528-after-opening-room", awaiting: ["Messages saved on this iPhone"])
+        // The view debounces its query before reading the cache, so wait for the row itself:
+        // its trailing "Message" kind label draws below the section header only with a room hit.
+        let header = "Messages saved on this iPhone"
+        let after = try await screenshot(window, name: "528-after-opening-room") {
+            $0.components(separatedBy: header).dropFirst().joined().contains("Message")
+        }
+        XCTAssertTrue(after.components(separatedBy: header).dropFirst().joined().contains("Message"), after)
         XCTAssertFalse(after.contains("No saved messages found"), after)
     }
 
@@ -1655,11 +1660,17 @@ import XCTest
     /// pace, so this waits on the content under test instead of a pass count.
     private func screenshot(_ window: UIWindow, name: String,
                             awaiting expected: [String]) async throws -> String {
+        try await screenshot(window, name: name) { text in expected.allSatisfy(text.contains) }
+    }
+
+    /// OCR reads of `window`, settling between passes until `done` accepts one
+    /// or the bounded passes run out; returns the last read.
+    private func screenshot(_ window: UIWindow, name: String, until done: (String) -> Bool) async throws -> String {
         var text = ""
         for _ in 0..<8 {
             await settle(window)
             text = try screenshot(window, name: name)
-            if expected.allSatisfy(text.contains) { break }
+            if done(text) { break }
         }
         return text
     }
