@@ -277,8 +277,10 @@ own guard against a newer request on screen (see the blocking requests below). T
   in the reduced reply of a session that has not started).
 - `.new(profile)`: `session.create` with only `profile` (no Bot Chat title, not
   hidden), once; it then becomes `.session` on the `stored_session_id`, so a
-  reattach resumes it, and the owner moves the `.new` draft to the session's key in
-  `conversationDidIdentify`. Bot Chats are still created only by `BotCreator.ensureChat`.
+  reattach resumes it. The owner moves the `.new` draft to the session's key once the
+  host accepts the first prompt: until then the host keeps no row for the session and
+  reaps it, so a draft typed before leaving stays for the next new session. Bot Chats
+  are still created only by `BotCreator.ensureChat`.
 
 Each target has its own draft key (`ChatDraftKey.hermesSession` for sessions, which
 `discardBotDrafts` removes with its connection) and recent-transcript key; a Bot
@@ -289,24 +291,28 @@ runs a `.new` or `.session` target in the main chat. It conforms to
 `ChatTurnCoordinating`, the run surface `ChatViewModel` reads (`ChatStreamCoordinator` is
 the webui conformer), and reduces frames onto the shared `ChatStreamCoordinatorDelegate`,
 so message building, pacing and run endings are webui's. Text is delta-driven (unlike Bot
-Chat): `message.delta`, `message.interim`, `reasoning.delta` and `tool.start`/`tool.complete`
-(by `tool_id`) append; `thinking.delta` and `reasoning.available` are never reasoning;
-`session.title` sets the title with no rename call; `session.usage` feeds the context
-indicator; `message.complete`'s text is appended only when the deltas never carried it.
-A full snapshot replaces the transcript only on the rebuild signal (a gap, a backwards
-`seq`, a reset replay, a new runtime), by reattaching; a continuous reattach applies the
-replayed frames instead, so a return from the background repeats nothing. The turn
-identity is the stored key and the host's `turn_started_at`; a turn starts at
-`message.start` (prompted or not), an accepted send or a running snapshot, and ends once
-`message.complete` and `session.info {running: false}` have both arrived, or at a lone
-`error`. Busy sends map through `BotPromptMode`: Queue is `prompt.submit queued:true` (the
-host holds one merged slot and the composer shows only a receipt, restored from the
-snapshot's `queued`), Steer is `session.steer` (a refusal keeps the draft and the run), and
-Stop & send is `session.redirect`. Stop is `session.interrupt`, confirmed first only when a
-queued prompt or an open request would be lost. A Send shows no model or reasoning change:
-no `config.set` or `session.cwd.set` goes out. The temporary entry is the inbox's
-"New Session" (DEBUG and Hermex Branch), on the dashboard's `/api/profiles/active` `current`
-Profile, until #709's Sessions tab.
+Chat): `message.delta`, `message.interim`, `reasoning.delta` and
+`tool.start`/`tool.complete` (by `tool_id`) append; `thinking.delta` and
+`reasoning.available` are never reasoning; `session.title` sets the title with no rename
+call; `session.usage` feeds the context indicator; `message.complete`'s text is appended
+only when the deltas never carried it. A full snapshot replaces the transcript only on the
+rebuild signal (a gap, a backwards `seq`, a reset replay, a new runtime), by reattaching,
+and held deltas its in-flight reply already ends with are dropped (the host appends each
+delta there before emitting it); a continuous reattach applies the replayed frames
+instead, so a return from the background repeats nothing. The turn identity is the stored
+key and the host's `turn_started_at`; a turn starts at `message.start` (prompted or not),
+an accepted send or a running snapshot, and ends once `message.complete` and `session.info
+{running: false}` have both arrived. An `error` before the turn's `message.start` ends it
+at once; after it, one with no completion ends it failed when the host settles. Busy sends
+map through `BotPromptMode`: Queue is `prompt.submit queued:true` (the host holds one
+merged slot and the composer shows only a receipt, restored from the snapshot's `queued`),
+Steer is `session.steer` (a refusal keeps the draft and the run), and Stop & send is
+`session.redirect`. Stop is `session.interrupt`, confirmed first only when a queued prompt
+or an open request would be lost; any client's stop (an interrupted `message.complete`)
+clears the receipt. A Send shows no model or reasoning change: no `config.set` or
+`session.cwd.set` goes out. The temporary entry is the inbox's "New Session" (DEBUG and
+Hermex Branch), on the dashboard's `/api/profiles/active` `current` Profile, until #709's
+Sessions tab.
 
 `BotConversation` owns one server/connection/Profile view lifetime and is the engine's
 Bot Chat owner: it keeps the snapshot-driven transcript and the Bot features (mentions,

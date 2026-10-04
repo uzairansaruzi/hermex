@@ -18,7 +18,8 @@ import SwiftData
     func hermesApplyModel(_ model: String)
     /// Why the session cannot attach, or nil once it has.
     func hermesConnectionDidChange(failure: String?)
-    /// `session.create` named the new session's stored key: the draft under `from` moves to `to`.
+    /// The host accepted a new session's first prompt: the draft under `from` moves to the
+    /// session's key `to`.
     func hermesDraftKeyDidChange(from: ChatDraftKey, to: ChatDraftKey)
 }
 
@@ -49,12 +50,14 @@ struct HermesChatTranscript: Equatable {
 /// ordered frames onto the chat's `ChatStreamCoordinatorDelegate`, so message building,
 /// pacing and run endings are the webui path's. Text is delta-driven; a full snapshot
 /// replaces the transcript only on the engine's rebuild signal (a gap, a reset replay, a
-/// new runtime). Each prompt, steer, redirect and stop is one `write`, never resent.
+/// new runtime). The engine drops repeated frames by `seq`, so appends never deduplicate
+/// by text. Each prompt, steer, redirect and stop is one `write`, never resent.
 ///
 /// A turn's identity is the stored key and the host's `turn_started_at`, in place of a
 /// webui stream id. A turn starts at `message.start`, an accepted send or a running
 /// snapshot, and ends once `message.complete` and `session.info {running: false}` have
-/// both arrived; a lone `error` ends it at once.
+/// both arrived. An `error` before the turn's `message.start` ends it at once; after it,
+/// an `error` with no completion ends it failed when the host settles.
 @MainActor @Observable final class HermesChatTurnCoordinator {
     let engine: HermesConversation
     @ObservationIgnored private weak var delegate: (any HermesChatTurnDelegate)?
@@ -63,7 +66,6 @@ struct HermesChatTranscript: Equatable {
     private(set) var activeRunStartedAt: Date?
     private(set) var latestRunEnding: ChatRunEnding?
     private(set) var successfulResponseCompletion: ChatStreamCoordinator.SuccessfulResponseCompletion?
-    private(set) var isReplayConnection = false
     /// The prompt the host holds for its next turn: one slot, merged as the host merges
     /// text-only prompts. Restored from the snapshot's `queued`; a Stop discards it.
     private(set) var queuedPrompt: String?
@@ -85,6 +87,13 @@ struct HermesChatTranscript: Equatable {
     @ObservationIgnored private var turnsStarted = 0
     /// A live gap asked for a reattach whose snapshot replaces the transcript.
     @ObservationIgnored private var needsRebuild = false
+    /// This runtime's frames the engine held during the attach, in arrival order.
+    @ObservationIgnored private var heldFrames: [BotJSON] = []
+    /// The `seq`s of held deltas a rebuilt reply already holds: dropped on release.
+    @ObservationIgnored private var deltasInRebuild: Set<Int> = []
+    /// The host accepted a prompt on this chat; until then a new session's draft keeps the
+    /// new-session key.
+    @ObservationIgnored private var promptAccepted = false
     @ObservationIgnored private var attaching: Task<Void, Never>?
     @ObservationIgnored private var attachGeneration = 0
     /// The host refused the saved sign-in: nothing reattaches on its own until the chat
@@ -107,7 +116,8 @@ struct HermesChatTranscript: Equatable {
                                              wire: BotClient(saved: connection, server: server)))
     }
 
-    /// The composer draft's key: the new-session key until `session.create` names the session.
+    /// The composer draft's key: a new session's stays the new-session key until the host
+    /// accepts its first prompt.
     var currentDraftKey: ChatDraftKey { draftKey }
 
     /// Stop asks first only when it would lose something: the host's queued prompt, or a
@@ -179,10 +189,27 @@ struct HermesChatTranscript: Equatable {
             }
         case .followUpQueued, .redirectQueued:
             queuedPrompt = queuedPrompt.map { "\($0)\n\n\(text)" } ?? text
-        case .guidanceQueued, .redirected, .voiceStopped, .rejected, .unknown:
+        case .guidanceQueued, .redirected, .voiceStopped:
             break
+        case .rejected, .unknown:
+            return outcome
         }
+        acceptPrompt()
         return outcome
+    }
+
+    /// The host's first accepted prompt moves a new session's draft to the session's key.
+    /// Before that it keeps the new-session key: the host keeps no row for a session with
+    /// no prompt and reaps it, and nothing reopens it, so a draft typed before leaving
+    /// waits for the next New Session.
+    private func acceptPrompt() {
+        guard !promptAccepted else { return }
+        promptAccepted = true
+        let key = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id)
+        guard key != draftKey else { return }
+        let previous = draftKey
+        draftKey = key
+        delegate?.hermesDraftKeyDidChange(from: previous, to: key)
     }
 
     /// Stops the running turn (`session.interrupt`); false when there is none or a stop is
@@ -233,7 +260,6 @@ struct HermesChatTranscript: Equatable {
         }
         activeStreamID = nil; activeRunStartedAt = nil
         turnStartedAt = nil; pendingEnding = nil; awaitingStart = false; stopRequested = false
-        isReplayConnection = false
         delegate?.streamCoordinatorStreamingAssistantMessageID = nil
         if ending == .completed { delegate?.streamCoordinatorDidCompleteCurrentResponse(needsTranscriptRefresh: false) }
         delegate?.streamCoordinatorFlushPinnedLocalNoticesToTranscript()
@@ -262,6 +288,7 @@ struct HermesChatTranscript: Equatable {
             if !isSubmittingSend { prompt = queuedPrompt; queuedPrompt = nil }
             beginTurn(startedAt: hostTurnStartedAt, prompt: prompt)
         case "message.delta":
+            if let seq = frame["seq"].integer, deltasInRebuild.remove(seq) != nil { return }
             guard let text = payload["text"].text, !text.isEmpty else { return }
             ensureTurn()
             delegate?.streamCoordinatorAppendToken(text)
@@ -294,7 +321,15 @@ struct HermesChatTranscript: Equatable {
             if let message = payload["message"].text, !message.isEmpty {
                 delegate?.streamCoordinatorDidReceiveErrorMessage(message)
             }
-            finish(.failed)
+            // After the turn's own `message.start` an error can be a warning the turn goes on
+            // past, such as a model switch that failed, and the host always settles the turn
+            // with `session.info {running: false}`: it fails then unless a completion came.
+            // Before it, as when the host refuses the turn, nothing else follows.
+            if activeStreamID != nil, !awaitingStart {
+                pendingEnding = pendingEnding ?? .failed
+            } else {
+                finish(.failed)
+            }
         case "request.cancel":
             if let id = payload["id"].text { openRequestIDs.remove(id) }
         default:
@@ -337,6 +372,12 @@ struct HermesChatTranscript: Equatable {
             delegate?.streamCoordinatorDidReceiveErrorMessage(message)
         }
         if let usage = Self.contextWindow(payload["usage"]) { delegate?.hermesApplyUsage(usage) }
+        if ending == .cancelled {
+            // A stop from any client discards the host's queued prompt and withdraws its
+            // requests, so a receipt for this chat's queued prompt would never send.
+            queuedPrompt = nil
+            openRequestIDs = []
+        }
         pendingEnding = ending
         if !hostRunning { finish(ending) }
     }
@@ -362,8 +403,8 @@ struct HermesChatTranscript: Equatable {
     }
 
     /// The transcript from the snapshot's history plus its in-flight turn: the prompt until
-    /// the host saves it, and the reply so far, which the next deltas continue. Deltas that
-    /// raced the snapshot are deduplicated against that reply.
+    /// the host saves it, and the reply so far, which the next deltas continue. Held deltas
+    /// that reply already holds are dropped when the engine releases them.
     private func rebuild(from snapshot: BotJSON, running: Bool) {
         needsRebuild = false
         guard let history = snapshot["messages"].list, snapshot["messages_omitted"].flag != true else { return }
@@ -379,6 +420,7 @@ struct HermesChatTranscript: Equatable {
         if let text = inflight["assistant"].text, !text.isEmpty {
             let row = ChatMessage(role: "assistant", content: text, timestamp: nil, messageId: "\(root)/live-\(UUID().uuidString)")
             if running { reply = row } else { messages.append(row) }
+            deltasInRebuild = Self.heldDeltas(heldFrames, after: engine.sequence, alreadyIn: text)
         }
         let title = snapshot["info"]["title"].text.flatMap { $0.isEmpty ? nil : $0 }
         delegate?.hermesReplaceTranscript(HermesChatTranscript(
@@ -392,7 +434,6 @@ struct HermesChatTranscript: Equatable {
             streamingReply: reply,
             title: title
         ))
-        isReplayConnection = reply != nil
     }
 
     /// Reattaches so the next snapshot replaces the transcript: frames were lost mid-turn.
@@ -414,6 +455,27 @@ struct HermesChatTranscript: Equatable {
     }
 
     // MARK: Mapping
+
+    /// The held deltas, after the replay's `sequence`, that a snapshot's reply text already
+    /// ends with. The host appends each delta to the in-flight reply before it emits the
+    /// frame, so deltas emitted while the snapshot was read are in its text and held too.
+    /// They are the turn's first held deltas, before any `message.start`, and match whole:
+    /// the longest run of them whose joined text ends the reply.
+    private static func heldDeltas(_ held: [BotJSON], after sequence: Int, alreadyIn reply: String) -> Set<Int> {
+        var cursor = sequence, joined = "", run: [Int] = [], matched: [Int] = []
+        for frame in held {
+            guard let seq = frame["seq"].integer, seq > cursor else { continue }
+            cursor = seq
+            let type = frame["type"].text
+            if type == "message.start" { break }
+            guard type == "message.delta", let text = frame["payload"]["text"].text, !text.isEmpty else { continue }
+            joined += text
+            guard joined.utf8.count <= reply.utf8.count else { break }
+            run.append(seq)
+            if reply.utf8.suffix(joined.utf8.count).elementsEqual(joined.utf8) { matched = run }
+        }
+        return Set(matched)
+    }
 
     /// Whether the snapshot's saved rows already hold the in-flight prompt: the last turn
     /// boundary is dated at or after the turn began, or, undated, carries the same text.
@@ -465,6 +527,9 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
     var liveTokensPerSecond: Double? { nil }
     var hasCompletedCurrentResponse: Bool { false }
     var isConnectionSuspended: Bool { !engine.isActive }
+    /// Never: the engine drops repeated frames by `seq`, and a rebuild drops the held deltas
+    /// its snapshot holds, so the webui text matcher stays off.
+    var isReplayConnection: Bool { false }
 
     func attach(delegate: any ChatStreamCoordinatorDelegate) {
         self.delegate = delegate as? any HermesChatTurnDelegate
@@ -495,18 +560,13 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
     /// The gateway's ping and call deadlines find a dead socket; nothing to poll here.
     func recoverStaleStreamIfNeeded(now: Date, modelContext: ModelContext?) async {}
 
-    func clearReplayConnection() { isReplayConnection = false }
+    func clearReplayConnection() {}
 }
 
 extension HermesChatTurnCoordinator: HermesConversationOwner {
-    func conversationDidReset() { openRequestIDs = [] }
-
-    func conversationDidIdentify(root: String) {
-        let key = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id)
-        guard key != draftKey else { return }
-        let previous = draftKey
-        draftKey = key
-        delegate?.hermesDraftKeyDidChange(from: previous, to: key)
+    func conversationDidReset() {
+        openRequestIDs = []
+        heldFrames = []; deltasInRebuild = []
     }
 
     func conversationDidReplay(_ reply: BotJSON, frames: [BotJSON]) {
@@ -522,6 +582,8 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     }
 
     func conversationDidConnect(runtime: String, attempt: Int) async throws {
+        // The engine released the held frames just before this.
+        heldFrames = []; deltasInRebuild = []
         refusedSignIn = false
         delegate?.hermesConnectionDidChange(failure: nil)
     }
@@ -532,6 +594,11 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     }
 
     func conversationDidLoseFrames() { rebuildAfterGap() }
+
+    /// Frames past the engine's hold are lost, and the release rebuilds again.
+    func conversation(didHold frame: BotJSON) {
+        if heldFrames.count < HermesConversation.heldFrameLimit { heldFrames.append(frame) }
+    }
 
     func conversation(didReceiveRequest envelope: BotJSON) {
         if let id = envelope["id"].text { openRequestIDs.insert(id) }

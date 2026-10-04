@@ -79,15 +79,47 @@ import Observation
         XCTAssertEqual(chat.model.messages.map(\.content), ["Done."])
     }
 
-    func testALoneErrorEndsTheTurnAsFailed() async {
+    /// An error after the turn's `message.start` with no completion after it: the turn ends
+    /// failed when the host settles it.
+    func testALoneErrorEndsTheTurnAsFailedWhenTheHostSettles() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
         chat.receive(event(2, "message.delta", ["text": .string("Part")]))
         chat.receive(event(3, "error", ["message": .string("Provider unavailable")]))
-        XCTAssertNil(chat.model.activeStreamID)
         XCTAssertEqual(chat.model.sendErrorMessage, "Provider unavailable")
+        XCTAssertNotNil(chat.model.activeStreamID, "session.info settles the turn")
+
+        chat.receive(event(4, "session.info", ["running": .bool(false)]))
+        XCTAssertNil(chat.model.activeStreamID)
         XCTAssertEqual(chat.model.latestRunOutcome?.ending, .failed)
         XCTAssertEqual(chat.model.runEndOutcome, .failed)
+        XCTAssertEqual(chat.model.runEndTrigger, 1)
+    }
+
+    /// A warning the turn goes on past, such as a model switch that failed at its start, is
+    /// an `error` too: the reply stays one row, and the turn ends once, completed.
+    func testAnErrorTheTurnGoesOnPastKeepsOneTurn() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "message.delta", ["text": .string("Checking")]))
+        chat.receive(event(3, "error", ["message": .string("Could not switch model: unknown model")]))
+        chat.receive(event(4, "message.delta", ["text": .string(" done.")]))
+        chat.receive(event(5, "message.complete", ["status": .string("complete"), "text": .string("Checking done.")]))
+        chat.receive(event(6, "session.info", ["running": .bool(false)]))
+        XCTAssertEqual(chat.model.messages.map(\.content), ["Checking done."])
+        XCTAssertEqual(chat.model.latestRunOutcome?.ending, .completed)
+        XCTAssertEqual(chat.model.runEndTrigger, 1)
+    }
+
+    /// A turn the host refuses before starting it sends only an `error`: it ends at once.
+    func testAnErrorBeforeTheTurnStartsEndsItAtOnce() async {
+        let chat = await openChat()
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("Summarize the logs")
+        XCTAssertNotNil(chat.model.activeStreamID)
+        chat.receive(event(1, "error", ["message": .string("This session is active on another machine")]))
+        XCTAssertNil(chat.model.activeStreamID)
+        XCTAssertEqual(chat.model.latestRunOutcome?.ending, .failed)
         XCTAssertEqual(chat.model.runEndTrigger, 1)
     }
 
@@ -143,20 +175,35 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit").count, 1)
     }
 
-    /// A new session's draft moves to the session's own key once `session.create` names it.
-    func testANewSessionMovesItsDraftToTheSessionOnceCreated() async throws {
+    /// A new session's draft keeps the new-session key until the host accepts its first
+    /// prompt, so leaving before sending leaves it for the next New Session. Then it moves
+    /// to the session's own key.
+    func testANewSessionKeepsItsDraftUntilItsFirstPromptIsAccepted() async throws {
         let drafts = ChatDraftStore(persistence: InMemoryDraftPersistence(), debounceDuration: .seconds(60))
         let server = URL(string: "https://hermes.example")!
         let newKey = ChatDraftKey.hermesSession(server: server, connectionID: Self.connection.id, profile: "default", key: nil)
         drafts.setDraft("Plan the release", for: newKey)
         let chat = await openChat(key: "fresh", target: .new(profile: "default"), drafts: drafts)
+        XCTAssertEqual(chat.model.hermesDraftKey, newKey, "created, but nothing sent")
+        chat.model.suspendStreamForNavigation()
+        let kept = await drafts.draft(for: newKey)
+        XCTAssertEqual(kept?.text, "Plan the release", "leaving keeps it for the next New Session")
+
+        await chat.model.reconnectStreamIfNeeded()
+        chat.host.next("prompt.submit", .init(result: .object(["status": .string("something new")])))
+        _ = await chat.model.sendMessage("Plan the release")
+        XCTAssertEqual(chat.model.hermesDraftKey, newKey, "an unconfirmed prompt moves nothing")
+
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("Plan the release")
         let sessionKey = ChatDraftKey.hermesSession(server: server, connectionID: Self.connection.id, profile: "default", key: "fresh")
         XCTAssertEqual(chat.model.hermesDraftKey, sessionKey)
         let moved = await drafts.draft(for: sessionKey)
         XCTAssertEqual(moved?.text, "Plan the release")
         let left = await drafts.draft(for: newKey)
         XCTAssertNil(left)
-        XCTAssertEqual(chat.host.requests.filter { $0["method"].text == "session.create" }.count, 1)
+        XCTAssertEqual(chat.host.requests.filter { $0["method"].text == "session.create" }.count, 1,
+                       "returning resumed the created session")
     }
 
     func testAcceptedSteerShowsItsEchoAndARefusedOneKeepsTheDraftAndTheRun() async {
@@ -211,6 +258,24 @@ import Observation
         XCTAssertNil(chat.model.queuedMessagesReceipt)
     }
 
+    /// Another client's Stop discards the host's queue too: the receipt goes, Stop no longer
+    /// asks, and the next turn does not show the discarded prompt.
+    func testAStopFromAnotherClientClearsTheQueuedReceipt() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("queued")])))
+        _ = await chat.model.submitStreamingMessage("Then the tests", behavior: .queue)
+        XCTAssertTrue(chat.model.stopNeedsConfirmation)
+
+        chat.receive(event(2, "message.complete", ["status": .string("interrupted")]))
+        XCTAssertNil(chat.model.queuedMessagesReceipt)
+        XCTAssertFalse(chat.model.stopNeedsConfirmation)
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+        chat.receive(event(4, "message.start"))
+        XCTAssertEqual(chat.model.messages, [], "the next turn is not the discarded prompt")
+        XCTAssertEqual(chat.writes("session.interrupt"), [], "this chat sent no stop")
+    }
+
     /// Stop asks first only when it would lose something: a queued prompt or an open request.
     func testStopConfirmsOnlyWithAQueuedPromptOrAnOpenRequest() async throws {
         let chat = await openChat()
@@ -262,14 +327,25 @@ import Observation
         XCTAssertNotNil(chat.model.activeStreamID)
     }
 
-    /// A hole in the live stream rebuilds the transcript from a full snapshot, and the next
-    /// deltas continue its reply without repeating what it holds.
+    /// A hole in the live stream rebuilds the transcript from a full snapshot. The two deltas
+    /// emitted while it was read are in its reply already and are dropped; the next one
+    /// continues it.
     func testAGapRebuildsFromTheSnapshot() async {
         await assertRebuild(after: event(5, "message.delta", ["text": .string("lost the middle")]))
     }
 
     func testABackwardsSeqRebuildsFromTheSnapshot() async {
         await assertRebuild(after: event(1, "message.delta", ["text": .string("from before")]))
+    }
+
+    /// Only deltas the rebuilt reply holds are dropped: a new one that repeats the reply's
+    /// start, or its last character, is new text.
+    func testARebuildKeepsNewDeltasThatRepeatTheReply() async {
+        await assertRebuild(after: event(5, "message.delta", ["text": .string("lost the middle")]),
+                            reply: "I checked the logs.\n",
+                            held: [event(7, "message.delta", ["text": .string("I")]),
+                                   event(8, "message.delta", ["text": .string("\nNext")])],
+                            shows: "I checked the logs.\nI\nNext")
     }
 
     // MARK: Entry
@@ -367,25 +443,37 @@ import Observation
     }
 
     /// Feeds a turn through seq 3, then `frame`, which breaks the order: the chat reattaches
-    /// and the snapshot replaces the transcript, whose reply the next delta continues.
-    private func assertRebuild(after frame: BotJSON, file: StaticString = #filePath, line: UInt = #line) async {
+    /// and the snapshot, whose reply is `reply`, replaces the transcript. `held` lands while
+    /// that snapshot is read, after the replay's seq 6; the reply then reads `shows`, and a
+    /// live delta appends as it is.
+    private func assertRebuild(after frame: BotJSON, reply: String = "Hello there, friend",
+                               held: [BotJSON]? = nil, shows: String = "Hello there, friend.",
+                               file: StaticString = #filePath, line: UInt = #line) async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
         chat.receive(event(2, "message.delta", ["text": .string("Hello")]))
         chat.receive(event(3, "message.delta", ["text": .string(" there")]))
+        // Deltas 7 and 8 were emitted while the host read the snapshot, so its reply holds
+        // them; 9 came after.
+        let held = held ?? [event(7, "message.delta", ["text": .string(", fri")]),
+                            event(8, "message.delta", ["text": .string("end")]),
+                            event(9, "message.delta", ["text": .string(".")])]
+        let snapshot = resume(running: true, history: [userRow("Hi")],
+                              inflight: ["user": .string("Hi"), "assistant": .string(reply)])
         chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 6)))
-        chat.host.always("session.resume", .init(result: resume(running: true, history: [userRow("Hi")],
-                                                               inflight: ["user": .string("Hi"),
-                                                                          "assistant": .string("Hello there, friend")])))
+        chat.host.next("session.resume", .init(result: snapshot))
+        chat.host.next("session.resume", .init(result: snapshot, before: held))
         let leaving = chat.host.requests.count
         chat.receive(frame)
-        await waitUntil("rebuilt") {
-            chat.turn.engine.connectionState == .connected && chat.model.messages.map(\.content) == ["Hi", "Hello there, friend"]
-        }
-        XCTAssertEqual(chat.host.transcriptReads(since: leaving), [false, true], "one full read", file: file, line: line)
-        chat.receive(event(7, "message.delta", ["text": .string(", friend. Done")]))
+        await waitUntil("rebuilt") { chat.turn.engine.connectionState == .connected }
         chat.model.flushPendingStreamingContent()
-        XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello there, friend. Done"], file: file, line: line)
+        XCTAssertEqual(chat.host.transcriptReads(since: leaving), [false, true], "one full read", file: file, line: line)
+        XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", shows], file: file, line: line)
+
+        let next = (held.compactMap { $0["seq"].integer }.max() ?? 6) + 1
+        chat.receive(event(next, "message.delta", ["text": .string(" Done")]))
+        chat.model.flushPendingStreamingContent()
+        XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", shows + " Done"], file: file, line: line)
         XCTAssertNotNil(chat.model.activeStreamID, file: file, line: line)
     }
 
