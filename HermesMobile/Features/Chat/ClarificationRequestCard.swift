@@ -484,7 +484,8 @@ struct ClarificationRequestCard: View {
 /// card is the Bot request card, which already answers each of them: batch questions keyed
 /// by `qid`, masked credential fields, Skip. The card stays mounted while collapsed, so a
 /// half-typed answer survives, and slides through the bar's clip window like the webui card.
-/// Taller than the space above the composer, it scrolls.
+/// Taller than the space above the composer, it scrolls. With no room for even a line of it,
+/// it falls back to the bar like the webui card, and expanding then puts the keyboard away.
 struct HermesRequestInset: View {
     let request: BotPendingRequest
     let identity: String
@@ -505,6 +506,7 @@ struct HermesRequestInset: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .body) private var collapseButtonSize: CGFloat = 28
+    @ScaledMetric(relativeTo: .body) private var minimumScrollHeight: CGFloat = 44
     @State private var isExpanded = true
     @State private var contentHeight: CGFloat?
 
@@ -512,7 +514,10 @@ struct HermesRequestInset: View {
         ClarificationRequestBar(
             summary: summary,
             isStopping: isStopping,
-            onExpand: { setExpanded(true) },
+            onExpand: {
+                if !canFit { onDismissKeyboard() }
+                setExpanded(true)
+            },
             onStop: onStop
         )
         .accessibilityHidden(isExpanded)
@@ -530,7 +535,16 @@ struct HermesRequestInset: View {
             }
             .clipped()
         }
+        .onChange(of: canFit, initial: true) { _, canFit in
+            if !canFit { setExpanded(false) }
+        }
     }
+
+    /// The card's scroll viewport at most: the space under the collapse control.
+    private var availableScrollHeight: CGFloat { maximumExpandedHeight - collapseButtonSize - 8 }
+
+    /// Room for at least a line of the card, as the webui card requires.
+    private var canFit: Bool { availableScrollHeight >= minimumScrollHeight }
 
     /// The collapse control over the card, and the card, which scrolls once it is taller than
     /// the space left. Hidden until measured.
@@ -552,8 +566,7 @@ struct HermesRequestInset: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .scrollBounceBehavior(.basedOnSize)
-            .frame(height: max(0, min(contentHeight ?? maximumExpandedHeight,
-                                      maximumExpandedHeight - collapseButtonSize - 8)))
+            .frame(height: max(0, min(contentHeight ?? availableScrollHeight, availableScrollHeight)))
         }
         .frame(maxWidth: 560)
         .opacity(contentHeight == nil ? 0 : 1)

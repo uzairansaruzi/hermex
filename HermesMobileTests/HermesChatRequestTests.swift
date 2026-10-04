@@ -111,6 +111,23 @@ import XCTest
         XCTAssertFalse(chat.model.isSessionApprovalBypassEnabled)
     }
 
+    /// Skip all whose release the host refuses is not a skip: the bypass is on, but the card
+    /// stays answerable with the reason, and the release is not sent again.
+    func testSkipAllWhoseReleaseIsRefusedKeepsTheCard() async throws {
+        let chat = await openChat()
+        chat.host.next("config.set", .init(result: yoloReply("1")))
+        chat.host.always("approval.respond", .init(error: 4002))
+        chat.receive(approvalRequest(id: "srq-a1", requestID: "q-1"))
+
+        let skipped = await chat.requests.skipApprovals(try action(chat))
+        XCTAssertFalse(skipped)
+        XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
+        XCTAssertEqual(chat.requests.onScreen?.requestID, "q-1")
+        XCTAssertTrue(chat.requests.mayAnswer)
+        XCTAssertEqual(chat.requests.errorMessage, "The server did not accept that response. The request is still waiting.")
+        XCTAssertEqual(chat.writes("approval.respond").count, 1)
+    }
+
     /// Turn off clears only the session's flag. A bypass the host sets itself (a `--yolo`
     /// launch) stays on in the `session.info` written ahead of the reply, so the pill keeps
     /// reporting it and offers no second Turn off.

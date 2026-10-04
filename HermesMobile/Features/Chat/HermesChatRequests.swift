@@ -154,14 +154,17 @@ import Observation
 
     /// "Skip all this session": turns the session's approval bypass on, then releases the
     /// approval on screen with `once`. Two writes from one tap, each sent once. True once the
-    /// bypass is on.
+    /// bypass is on and the card has left; a refused release leaves the card answerable with
+    /// its reason, and the bypass on for the approvals after it.
     @discardableResult
     func skipApprovals(_ action: HermesAnswerAction) async -> Bool {
         guard case .approval(let approval)? = onScreen, approval.requestID == action.requestID,
               action == prepareAnswer() else { return false }
         guard await setApprovalBypass(true, for: action) else { return false }
-        if approval.choices.contains(.once) { await deliver(.approval(.once), action) }
-        return true
+        // The host lists `once` first in every choice set it computes; without it the card
+        // waits for one of its own choices.
+        guard approval.choices.contains(.once) else { return false }
+        return await deliver(.approval(.once), action) != nil
     }
 
     /// Turns the session's approval bypass off from its pill, so approvals ask again.

@@ -1165,6 +1165,29 @@ import XCTest
         XCTAssertTrue(field.isSecureTextEntry)
     }
 
+    /// With no room for a line of the card (a tall composer under the keyboard), a Hermes
+    /// request falls back to its bar, as the webui clarification card does, and the collapse
+    /// puts the keyboard away (#1011). With room it stays open.
+    func testHermesRequestInsetFallsBackToItsBarWhenTheCardCannotFit() async throws {
+        var collapses: [CGFloat: Int] = [:]
+        for height: CGFloat in [40, 600] {
+            let window = try show(VStack {
+                Spacer()
+                HermesRequestInset(
+                    request: .credential(BotCredentialRequest(kind: .sudo, requestID: "srq-s1", envVar: nil, prompt: nil)),
+                    identity: "default on Mac", maximumExpandedHeight: height, isEnabled: true, isAnswering: false,
+                    isStopping: false, isHapticsEnabled: false, onAnswer: { _ in }, onSkip: {}, onCredential: { _ in },
+                    onStop: {}, onDismissKeyboard: { collapses[height, default: 0] += 1 }, onFootprintChange: { _ in }
+                )
+                .padding(.horizontal, 16)
+                .padding(.bottom, 80)
+            })
+            await settle(window) { collapses[height] != nil }
+            close(window)
+        }
+        XCTAssertEqual(collapses, [40: 1], "only the card with no room collapses, once")
+    }
+
     /// A sudo prompt is answered here, not at the Mac: a masked field, a Skip,
     /// and the handling line stated before anything is typed.
     func testSudoCardOffersAMaskedFieldAndSaysWhereTheValueGoes() async throws {
