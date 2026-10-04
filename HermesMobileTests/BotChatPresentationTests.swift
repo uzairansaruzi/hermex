@@ -331,13 +331,18 @@ import XCTest
         let reader = BotRoomReader(key: BotRoomKey(server: server, connectionID: connection.id, roomID: room.id),
             connection: connection, room: room, cache: cache, makeWire: { _ in roomWire })
         await reader.open(); reader.close()
+        // The row's "room · sender" title is built from these two values. Assert them
+        // directly: OCR on the hosted CI simulator misreads that line ("chier-of-statt").
+        let hits = try await cache.search("Message 20", scope: .init(server: server, connectionID: connection.id),
+                                          profileIDs: nil, roomIDs: Set(inbox.rooms.map(\.id)))
+        let hit = try XCTUnwrap(hits.first)
+        XCTAssertEqual(inbox.roomForSearch(hit)?.name, "Comms")
+        XCTAssertEqual(hit.message.sender, "chief-of-staff")
         let window = try show(BotSearchView(inbox: inbox, cache: cache, query: "Message 20") { _ in }
             .environment(\.scenePhase, .active))
         defer { close(window) }
-        // The view debounces its query before reading the cache, so wait on the hit itself.
-        let after = try await screenshot(window, name: "528-after-opening-room", awaiting: ["Comms", "chief-of-staff"])
-        XCTAssertTrue(after.contains("Comms"), after)
-        XCTAssertTrue(after.contains("chief-of-staff"), after)
+        // The view debounces its query before reading the cache, so wait for the results section.
+        let after = try await screenshot(window, name: "528-after-opening-room", awaiting: ["Messages saved on this iPhone"])
         XCTAssertFalse(after.contains("No saved messages found"), after)
     }
 
