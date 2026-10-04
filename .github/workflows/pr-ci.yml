@@ -79,7 +79,7 @@ jobs:
     name: Build and Test
     needs: changes
     if: needs.changes.outputs.run_ios == 'true'
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 90
 
     env:
@@ -87,9 +87,11 @@ jobs:
       SCHEME: HermesMobile
       DERIVED_DATA_PATH: DerivedData
       RESULT_BUNDLE_PATH: TestResults.xcresult
-      # Match the last validated hosted toolchain; update these pins deliberately.
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-      SIMULATOR_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-5
+      # The Xcode used locally and for release builds (DEVELOPMENT.md
+      # § Xcode version); update these pins deliberately. iOS 27 is the
+      # image's only runtime: CI skips iOS 26 rather than download one.
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+      SIMULATOR_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-27-0
       SIMULATOR_NAME: iPhone 17
       CI_LOG_DIR: ci-logs
       TEST_WORKER_COUNT: 1

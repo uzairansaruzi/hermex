@@ -1,0 +1,5 @@
+# GitHub's preview Xcode 27 image (actions/runner-images#14404); actionlint
+# does not list its label yet.
+self-hosted-runner:
+  labels:
+    - xcode-27

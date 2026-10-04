@@ -59,6 +59,17 @@ launchctl unload ~/Library/LaunchAgents/com.hermes.webui.plist
 launchctl kickstart -k gui/$(id -u)/com.hermes.webui
 ```
 
+## Xcode version
+
+Local work, PR CI, and release builds all use **Xcode 27.0 (27A266a)**, so a
+change that compiles on this Mac compiles on CI. CI and release builds run on
+GitHub's `xcode-27` runner image with `DEVELOPER_DIR` pinned in
+`.github/workflows/pr-ci.yml` and `.github/workflows/release-candidate-testflight.yml`.
+Check yours with `xcodebuild -version`. With several Xcodes installed, select
+27.0 for one shell with `export DEVELOPER_DIR=<path to Xcode 27.0>.app/Contents/Developer`,
+or for the whole Mac with `sudo xcode-select -s <path to Xcode 27.0>.app`.
+Move the local Xcode and both workflow pins together.
+
 ## Local XCTest
 
 Use the repository runner for local tests, including when XcodeBuildMCP is
@@ -145,6 +156,10 @@ Runner checks: `python3 -m unittest discover -s scripts/tests -v`.
 `.github/workflows/pr-ci.yml` pins the hosted Xcode path, iOS runtime, and phone
 model. Update these together after checking the runner's installed software;
 a missing pin fails setup rather than selecting another toolchain or runtime.
+CI tests on the iOS 27 simulator only. The `xcode-27` image ships no iOS 26
+runtime, and downloading one would add minutes to every run, so iOS 26 is
+deliberately not covered on CI to keep it fast. Run the affected tests on a
+local iOS 26 simulator when a change depends on OS behavior.
 CI resolves the device UDID and runs the complete suite with one test worker.
 Xcode owns that worker's simulator clone and boot. Explicit preboot plus fully
 serial execution did not improve the hosted trial, so retain the one-worker
