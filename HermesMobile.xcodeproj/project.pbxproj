@@ -182,8 +182,10 @@
 		A02400000000000000000001 /* Goal.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02400000000000000000002 /* Goal.swift */; };
 		C04600000000000000000001 /* ChatStreamCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04600000000000000000002 /* ChatStreamCoordinator.swift */; };
 		E1010000000000000000A001 /* HermesChatTurnCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1010000000000000000A002 /* HermesChatTurnCoordinator.swift */; };
+		E1011000000000000000A001 /* HermesChatRequests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1011000000000000000A002 /* HermesChatRequests.swift */; };
 		C04600000000000000000003 /* ChatStreamCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */; };
 		E1010000000000000000A003 /* HermesChatTurnTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1010000000000000000A004 /* HermesChatTurnTests.swift */; };
+		E1011000000000000000A003 /* HermesChatRequestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1011000000000000000A004 /* HermesChatRequestTests.swift */; };
 		532000000000000000000003 /* RatingPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532000000000000000000004 /* RatingPromptTests.swift */; };
 		531000000000000000000201 /* TipJarPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000202 /* TipJarPromptTests.swift */; };
 		870000000000000000000201 /* HitchMeterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870000000000000000000202 /* HitchMeterTests.swift */; };
@@ -803,6 +805,8 @@
 		C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamCoordinatorTests.swift; sourceTree = "<group>"; };
 		E1010000000000000000A002 /* HermesChatTurnCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatTurnCoordinator.swift; sourceTree = "<group>"; };
 		E1010000000000000000A004 /* HermesChatTurnTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatTurnTests.swift; sourceTree = "<group>"; };
+		E1011000000000000000A002 /* HermesChatRequests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatRequests.swift; sourceTree = "<group>"; };
+		E1011000000000000000A004 /* HermesChatRequestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatRequestTests.swift; sourceTree = "<group>"; };
 		532000000000000000000004 /* RatingPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPromptTests.swift; sourceTree = "<group>"; };
 		531000000000000000000202 /* TipJarPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarPromptTests.swift; sourceTree = "<group>"; };
 		870000000000000000000202 /* HitchMeterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitchMeterTests.swift; sourceTree = "<group>"; };
@@ -1390,6 +1394,7 @@
 					C04100000000000000000004 /* ChatComposerConfigLoaderTests.swift */,
 					C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */,
 					E1010000000000000000A004 /* HermesChatTurnTests.swift */,
+					E1011000000000000000A004 /* HermesChatRequestTests.swift */,
 				532000000000000000000004 /* RatingPromptTests.swift */,
 				531000000000000000000202 /* TipJarPromptTests.swift */,
 				870000000000000000000202 /* HitchMeterTests.swift */,
@@ -1850,6 +1855,7 @@
 					C04100000000000000000002 /* ChatComposerConfigLoader.swift */,
 					C04600000000000000000002 /* ChatStreamCoordinator.swift */,
 					E1010000000000000000A002 /* HermesChatTurnCoordinator.swift */,
+					E1011000000000000000A002 /* HermesChatRequests.swift */,
 					C04700000000000000000002 /* ChatPendingActionCoordinator.swift */,
 					C04800000000000000000002 /* ChatAttachmentCoordinator.swift */,
 					1A2B3C4D5E6F7000000000D5 /* ChatViewModel.swift */,
@@ -2622,6 +2628,7 @@
 					C04100000000000000000001 /* ChatComposerConfigLoader.swift in Sources */,
 					C04600000000000000000001 /* ChatStreamCoordinator.swift in Sources */,
 					E1010000000000000000A001 /* HermesChatTurnCoordinator.swift in Sources */,
+					E1011000000000000000A001 /* HermesChatRequests.swift in Sources */,
 					C04700000000000000000001 /* ChatPendingActionCoordinator.swift in Sources */,
 					C04800000000000000000001 /* ChatAttachmentCoordinator.swift in Sources */,
 					1A2B3C4D5E6F7000000000D4 /* ChatViewModel.swift in Sources */,
@@ -2764,6 +2771,7 @@
 					C04100000000000000000003 /* ChatComposerConfigLoaderTests.swift in Sources */,
 					C04600000000000000000003 /* ChatStreamCoordinatorTests.swift in Sources */,
 					E1010000000000000000A003 /* HermesChatTurnTests.swift in Sources */,
+					E1011000000000000000A003 /* HermesChatRequestTests.swift in Sources */,
 				532000000000000000000003 /* RatingPromptTests.swift in Sources */,
 				531000000000000000000201 /* TipJarPromptTests.swift in Sources */,
 				870000000000000000000201 /* HitchMeterTests.swift in Sources */,

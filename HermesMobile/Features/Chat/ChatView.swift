@@ -751,7 +751,11 @@ struct ChatView: View {
     /// inside the compiler's type-checking budget.
     @ViewBuilder
     private var approvalOverlay: some View {
-        if let approvalPrompt = viewModel.approvalPrompt {
+        if let requests = viewModel.hermesRequests {
+            if case .approval(let approval)? = requests.onScreen {
+                hermesApprovalOverlay(approval, requests: requests)
+            }
+        } else if let approvalPrompt = viewModel.approvalPrompt {
             ApprovalRequestOverlay(
                 prompt: approvalPrompt,
                 isResponding: viewModel.isRespondingToApproval,
@@ -775,6 +779,34 @@ struct ChatView: View {
             )
             .zIndex(10)
         }
+    }
+
+    /// A Hermes session's approval (#1011): only the host's choices, each answered once, and
+    /// Skip all, which turns the session's bypass on and releases this approval.
+    private func hermesApprovalOverlay(_ approval: BotApprovalRequest, requests: HermesChatRequests) -> some View {
+        ApprovalRequestOverlay(
+            content: approval.overlayContent(pendingCount: requests.approvalCount),
+            isResponding: !requests.mayAnswer,
+            errorMessage: requests.errorMessage,
+            onChoice: { choice in
+                guard let action = requests.prepareAnswer(),
+                      let answer = BotApprovalRequest.Choice(rawValue: choice.rawValue) else { return }
+                Task {
+                    if await requests.respond(action, choice: answer) {
+                        ChatHaptics.approvalSubmitted(choice, isEnabled: isHapticsEnabled)
+                    }
+                }
+            },
+            onSkipAll: {
+                guard let action = requests.prepareAnswer() else { return }
+                Task {
+                    if await requests.skipApprovals(action) {
+                        ChatHaptics.approvalBypassEnabled(isEnabled: isHapticsEnabled)
+                    }
+                }
+            }
+        )
+        .zIndex(10)
     }
 
     /// The chat scaffold: layout, title, and push presence. `body` is built in
@@ -1396,7 +1428,11 @@ struct ChatView: View {
     /// bottom stack as the composer so it rides the keyboard with it.
     private func clarificationInset(maximumExpandedHeight: CGFloat) -> some View {
         ZStack(alignment: .bottom) {
-            if let clarificationPrompt = viewModel.clarificationPrompt {
+            if let requests = viewModel.hermesRequests {
+                if let request = hermesInsetRequest {
+                    hermesRequestInset(request, requests: requests, maximumExpandedHeight: maximumExpandedHeight)
+                }
+            } else if let clarificationPrompt = viewModel.clarificationPrompt {
                 ClarificationRequestInset(
                     prompt: clarificationPrompt,
                     maximumExpandedHeight: maximumExpandedHeight,
@@ -1427,7 +1463,65 @@ struct ChatView: View {
             }
         }
         .zIndex(9)
-        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.clarificationPrompt?.id)
+        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: requestInsetID)
+    }
+
+    /// A Hermes session's question, or sudo or secret prompt, in the clarification's slot (#1011).
+    private func hermesRequestInset(
+        _ request: BotPendingRequest,
+        requests: HermesChatRequests,
+        maximumExpandedHeight: CGFloat
+    ) -> some View {
+        HermesRequestInset(
+            request: request,
+            identity: viewModel.hermesRequestIdentity ?? "",
+            maximumExpandedHeight: maximumExpandedHeight,
+            isEnabled: requests.mayAnswer,
+            isAnswering: requests.answeringRequestID != nil,
+            isStopping: viewModel.isCancellingStream,
+            isHapticsEnabled: isHapticsEnabled,
+            onAnswer: { answers in
+                guard let action = requests.prepareAnswer() else { return }
+                Task {
+                    if await requests.answerQuestion(action, answers) {
+                        ChatHaptics.clarificationSubmitted(isEnabled: isHapticsEnabled)
+                    }
+                }
+            },
+            onSkip: {
+                guard let action = requests.prepareAnswer() else { return }
+                Task { await requests.skipQuestion(action) }
+            },
+            onCredential: { value in
+                // The typed value goes straight from the field to the dispatch.
+                guard let action = requests.prepareAnswer() else { return }
+                Task { await requests.answerCredential(action, value: value) }
+            },
+            onStop: {
+                Task { await cancelStream() }
+            },
+            onDismissKeyboard: dismissKeyboard,
+            onFootprintChange: { height in
+                clarificationBarHeight = height
+            }
+        )
+        .id(request.requestID)
+        .padding(.horizontal, 16)
+        .padding(.bottom, composerHeight + 8)
+        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+    }
+
+    /// The Hermes request the clarification slot shows: a question, or a sudo or secret
+    /// prompt. An approval takes the overlay instead.
+    private var hermesInsetRequest: BotPendingRequest? {
+        guard let request = viewModel.hermesRequests?.onScreen else { return nil }
+        if case .approval = request { return nil }
+        return request
+    }
+
+    /// The request in the clarification slot: a webui clarification, or a Hermes inset request.
+    private var requestInsetID: String? {
+        hermesInsetRequest?.requestID ?? viewModel.clarificationPrompt?.id
     }
 
     @ViewBuilder
@@ -1436,6 +1530,7 @@ struct ChatView: View {
             VStack(spacing: composerAccessoryVerticalSpacing) {
                 if !composerLocalNotices.isEmpty {
                     PinnedLocalNoticeStack(notices: composerLocalNotices)
+                        .allowsHitTesting(false)
                         .onGeometryChange(for: CGFloat.self) { proxy in
                             proxy.size.height
                         } action: { height in
@@ -1446,6 +1541,7 @@ struct ChatView: View {
 
                 if let activeRunStatusPresentation {
                     ChatActiveRunStatusView(presentation: activeRunStatusPresentation)
+                        .allowsHitTesting(false)
                         .onGeometryChange(for: CGFloat.self) { proxy in
                             proxy.size.height
                         } action: { height in
@@ -1455,19 +1551,32 @@ struct ChatView: View {
                 }
 
                 if showsApprovalBypassStatus {
-                    ApprovalBypassStatusPill()
+                    approvalBypassStatusPill
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
             }
             .padding(.horizontal)
             .frame(maxWidth: composerMaximumWidth)
             .padding(.bottom, composerHeight + 8 + clarificationFootprintHeight)
-            .allowsHitTesting(false)
             .zIndex(8)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerAccessoryVisibleItemCount)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: activeRunStatusPresentation)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerLocalNotices)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsApprovalBypassStatus)
+        }
+    }
+
+    /// Reports the bypass; on a Hermes session it also turns it off (#1011).
+    @ViewBuilder
+    private var approvalBypassStatusPill: some View {
+        if let requests = viewModel.hermesRequests {
+            ApprovalBypassStatusPill(onTurnOff: {
+                Task { await requests.turnOffApprovalBypass() }
+            })
+            .disabled(requests.isChangingApprovalBypass)
+        } else {
+            ApprovalBypassStatusPill()
+                .allowsHitTesting(false)
         }
     }
 
@@ -1491,10 +1600,11 @@ struct ChatView: View {
             streamingAssistantMessageID: viewModel.streamingAssistantMessageID,
             liveTokensPerSecond: viewModel.liveTokensPerSecond,
             activeStreamRecoveryState: viewModel.activeStreamRecoveryState,
-            clarificationPromptID: viewModel.clarificationPrompt?.id,
+            clarificationPromptID: requestInsetID,
             hidesRunStatusAccessibility: activeRunStatusPresentation != nil,
             showsThinkingAndToolCards: showsThinkingAndToolCards,
             workingRowStartedAt: workingRowStartedAt,
+            requestWithdrawal: viewModel.hermesRequests?.withdrawal,
             showsScrollToBottomButton: showsScrollToBottomButton,
             shouldFollowLatestMessage: shouldFollowLatestMessage,
             isDisclosureSettling: isDisclosureSettling,
@@ -1691,7 +1801,7 @@ struct ChatView: View {
         ChatWorkingRowPolicy.startedAt(
             activeRunStartedAt: viewModel.activeRunStartedAt,
             isCancellingStream: viewModel.isCancellingStream,
-            hasPendingClarificationPrompt: viewModel.clarificationPrompt != nil
+            hasPendingClarificationPrompt: viewModel.clarificationPrompt != nil || viewModel.isWaitingForUser
         )
     }
 
@@ -1707,7 +1817,7 @@ struct ChatView: View {
     /// pending. Constant across expand and collapse, so the transcript never
     /// moves while the card animates.
     private var clarificationFootprintHeight: CGFloat {
-        viewModel.clarificationPrompt == nil ? 0 : clarificationBarHeight + 8
+        requestInsetID == nil ? 0 : clarificationBarHeight + 8
     }
 
     private var pinnedNoticeSpacerHeight: CGFloat {
@@ -1732,12 +1842,15 @@ struct ChatView: View {
             activeStreamRecoveryState: viewModel.activeStreamRecoveryState,
             isCancellingStream: viewModel.isCancellingStream,
             isScrolledNearBottom: isScrolledNearBottom,
-            activeRunStartedAt: workingRowStartedAt
+            activeRunStartedAt: workingRowStartedAt,
+            isWaitingForUser: viewModel.isWaitingForUser
         )
     }
 
     private var showsApprovalBypassStatus: Bool {
-        viewModel.isSessionApprovalBypassEnabled && viewModel.approvalPrompt == nil
+        guard viewModel.isSessionApprovalBypassEnabled, viewModel.approvalPrompt == nil else { return false }
+        if case .approval? = viewModel.hermesRequests?.onScreen { return false }
+        return true
     }
 
     private var composerAccessorySpacerHeight: CGFloat {

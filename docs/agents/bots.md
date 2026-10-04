@@ -267,7 +267,9 @@ session's frames in `seq` order, with a rebuild signal when some were lost
 drafts and caches, apart from the runtime id, which keys session-scoped calls and
 `seq`, changes after a reap, and is never kept. The Profile goes on every call.
 Recovery only reads; deliberate writes go through its `write`, which revalidates the
-attach and runtime at the socket write, and nothing is resent. The owner gets the
+attach and runtime at the socket write, and nothing is resent. Answers to host requests
+go through its `answer`, which Bot Chat and Sessions share: one `write` per call, and the
+host's verdict (answered, already resolved, or a batch still open). The owner gets the
 replay reply and the snapshot whole and restores open requests from them, with its
 own guard against a newer request on screen (see the blocking requests below). Targets:
 - `.canonicalChat(profile)`: the Bot Chat, found by exact title on every attach. Only
@@ -313,6 +315,22 @@ lost; any client's stop (an interrupted `message.complete`) clears the receipt. 
 shows no model or reasoning change: no `config.set` or `session.cwd.set` goes out. The
 temporary entry is the inbox's "New Session" (DEBUG and Hermex Branch), on the dashboard's
 `/api/profiles/active` `current` Profile, until #709's Sessions tab.
+
+Its host requests are `HermesChatRequests` (#1011), on the Bot request model below and the
+engine's `answer`. An approval takes the Sessions overlay with only the host's choices
+(`ApprovalScope.Host.hermes`); a question or a sudo or secret prompt takes the
+clarification's slot above the composer as the Bot request card. Vault prompts, Desktop's
+own tasks and unknown methods get no card and are never answered. A batch question never
+gets a bare answer: Skip locks each outstanding `qid` empty. Skip all is `config.set {key:
+"yolo", value: "on", scope: "session"}`, then `approval.respond once` for the card on
+screen; the bypass pill reads `session.info`'s `yolo` and turns it off with `value: "off"`.
+`request.cancel` leaves the withdrawal note at the transcript's end, silent for this
+phone's Stop or Stop & send, and a reattach replaces the list from `open_requests`, one per
+envelope id. A question or credential prompt answered in Desktop sends no cancel, so its
+card stays until the next attach, or until an answer here comes back `expired` and it
+leaves quietly. Any open request shows "Waiting for you" in the run-status pill. The
+`config.set` yolo shape (`{key, value: "1"|"0", scope}` back) and `session.info`'s `yolo` are
+verified against `tui_gateway/methods_config_set.py` and `tui_gateway/server.py` at `ca678285`.
 
 `BotConversation` owns one server/connection/Profile view lifetime and is the engine's
 Bot Chat owner: it keeps the snapshot-driven transcript and the Bot features (mentions,
@@ -544,7 +562,8 @@ overwritten by an older in-flight snapshot. Unknown request methods remain
 needs-attention without an answerable card. The phone never replies to a
 request frame, not even with -32601 for a kind it cannot handle: the host treats
 that reply as the answer and would withdraw the request before Desktop could
-answer it. Request payloads and credential values are never cached.
+answer it. Request payloads and credential values are never cached. A Hermes session in
+the main chat shares this model and the answer dispatch (see `HermesChatRequests` above).
 
 `request.cancel {id, method, reason}` withdraws only the matching envelope.
 A disconnect drops the requests and reconnect restores the host's current list,

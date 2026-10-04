@@ -373,6 +373,8 @@ enum ChatActiveRunStatusKind: Equatable {
     case reconnecting
     case waitingForNetwork
     case stopping
+    /// A Hermes session is parked on one of its host's requests (#1011).
+    case waitingForUser
 
     var label: String {
         switch self {
@@ -388,6 +390,8 @@ enum ChatActiveRunStatusKind: Equatable {
             return String(localized: "Waiting for network")
         case .stopping:
             return String(localized: "Stopping response")
+        case .waitingForUser:
+            return String(localized: "Waiting for you")
         }
     }
 
@@ -405,6 +409,8 @@ enum ChatActiveRunStatusKind: Equatable {
             return String(localized: "Hermes is waiting for the network to return")
         case .stopping:
             return String(localized: "Hermes is stopping the response")
+        case .waitingForUser:
+            return String(localized: "Waiting for your answer")
         }
     }
 }
@@ -443,14 +449,16 @@ enum ChatActiveRunStatusPolicy {
     /// The pill's state while the transcript is scrolled away from its bottom,
     /// or nil when it hides. `activeRunStartedAt` is the tail row's start date
     /// (`ChatWorkingRowPolicy.startedAt`), so both count from the same start
-    /// and drop the time in the same cases.
+    /// and drop the time in the same cases. `isWaitingForUser` is a Hermes
+    /// session parked on a host request.
     static func presentation(
         isStartingChat: Bool,
         hasActiveStream: Bool,
         activeStreamRecoveryState: ActiveStreamRecoveryState,
         isCancellingStream: Bool,
         isScrolledNearBottom: Bool,
-        activeRunStartedAt: Date?
+        activeRunStartedAt: Date?,
+        isWaitingForUser: Bool = false
     ) -> ChatActiveRunStatusPresentation? {
         guard !isScrolledNearBottom else { return nil }
 
@@ -471,6 +479,10 @@ enum ChatActiveRunStatusPolicy {
             return ChatActiveRunStatusPresentation(kind: .waitingForNetwork)
         case .idle:
             break
+        }
+
+        if isWaitingForUser {
+            return ChatActiveRunStatusPresentation(kind: .waitingForUser)
         }
 
         guard hasActiveStream else { return nil }

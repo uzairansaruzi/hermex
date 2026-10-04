@@ -29,7 +29,7 @@ struct ClarificationRequestInset: View {
 
     var body: some View {
         ClarificationRequestBar(
-            prompt: prompt,
+            summary: ClarificationRequestBar.summary(for: prompt.question),
             isStopping: isStopping,
             onExpand: { setExpanded(true) },
             onStop: onStop
@@ -90,7 +90,8 @@ struct ClarificationRequestInset: View {
 /// One-line footprint of a pending clarification: what is being asked, a way
 /// back into the card, and Stop for when the run should end instead.
 struct ClarificationRequestBar: View {
-    let prompt: ClarificationPromptState
+    /// One line of what is asked (`summary(for:)`).
+    let summary: String
     let isStopping: Bool
     let onExpand: () -> Void
     let onStop: () -> Void
@@ -121,7 +122,7 @@ struct ClarificationRequestBar: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
 
-                        Text(Self.summary(for: prompt.question))
+                        Text(summary)
                             .font(.subheadline)
                             .foregroundStyle(.primary)
                             .lineLimit(1)
@@ -138,7 +139,7 @@ struct ClarificationRequestBar: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Expand clarification")
-            .accessibilityValue(Self.summary(for: prompt.question))
+            .accessibilityValue(summary)
 
             Button(action: onStop) {
                 Image(systemName: "stop.fill")
@@ -475,6 +476,119 @@ struct ClarificationRequestCard: View {
     private func nonEmpty(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed?.isEmpty == false ? trimmed : nil
+    }
+}
+
+/// A Hermes session's question, or sudo or secret prompt, pinned above the composer in the
+/// webui clarification's slot (#1011). The clarification bar is its footprint; the expanded
+/// card is the Bot request card, which already answers each of them: batch questions keyed
+/// by `qid`, masked credential fields, Skip. The card stays mounted while collapsed, so a
+/// half-typed answer survives, and slides through the bar's clip window like the webui card.
+/// Taller than the space above the composer, it scrolls.
+struct HermesRequestInset: View {
+    let request: BotPendingRequest
+    let identity: String
+    /// Height between the chat's top safe edge and this inset's bottom edge.
+    let maximumExpandedHeight: CGFloat
+    let isEnabled: Bool
+    let isAnswering: Bool
+    let isStopping: Bool
+    let isHapticsEnabled: Bool
+    let onAnswer: ([BotQuestionAnswer]) -> Void
+    let onSkip: () -> Void
+    /// Sends a credential prompt's typed value. Empty is the host's skip.
+    let onCredential: (String) -> Void
+    let onStop: () -> Void
+    let onDismissKeyboard: () -> Void
+    /// The bar's height, the only part of this view that takes layout space.
+    let onFootprintChange: (CGFloat) -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .body) private var collapseButtonSize: CGFloat = 28
+    @State private var isExpanded = true
+    @State private var contentHeight: CGFloat?
+
+    var body: some View {
+        ClarificationRequestBar(
+            summary: summary,
+            isStopping: isStopping,
+            onExpand: { setExpanded(true) },
+            onStop: onStop
+        )
+        .accessibilityHidden(isExpanded)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            onFootprintChange(height)
+        }
+        .overlay(alignment: .bottom) {
+            ZStack(alignment: .bottom) {
+                card
+                    .offset(y: isExpanded ? 0 : maximumExpandedHeight)
+                    .allowsHitTesting(isExpanded)
+                    .accessibilityHidden(!isExpanded)
+            }
+            .clipped()
+        }
+    }
+
+    /// The collapse control over the card, and the card, which scrolls once it is taller than
+    /// the space left. Hidden until measured.
+    private var card: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            collapseButton
+            ScrollView {
+                BotPendingRequestCard(
+                    request: request, identity: identity, isEnabled: isEnabled, canStop: false,
+                    isAnswering: isAnswering, resolution: nil,
+                    onApprove: { _ in }, onAnswer: onAnswer, onSkip: onSkip, onCredential: onCredential,
+                    onStop: {}, onConnection: { _ in }
+                )
+                .onGeometryChange(for: CGFloat.self) { proxy in
+                    proxy.size.height
+                } action: { height in
+                    contentHeight = height
+                }
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(height: max(0, min(contentHeight ?? maximumExpandedHeight,
+                                      maximumExpandedHeight - collapseButtonSize - 8)))
+        }
+        .frame(maxWidth: 560)
+        .opacity(contentHeight == nil ? 0 : 1)
+    }
+
+    private var collapseButton: some View {
+        Button { setExpanded(false) } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 12, weight: .semibold))
+                .frame(width: collapseButtonSize, height: collapseButtonSize)
+                .background(.regularMaterial, in: Circle())
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.chatTactile(.icon))
+        .accessibilityLabel("Collapse clarification")
+    }
+
+    /// What the bar says is asked: the first question, or the credential prompt's title.
+    private var summary: String {
+        switch request {
+        case .question(let question): return ClarificationRequestBar.summary(for: question.questions.first?.prompt ?? "")
+        case .credential(let credential): return credential.title
+        case .approval, .desktopTask, .connection: return ""
+        }
+    }
+
+    private func setExpanded(_ expanded: Bool) {
+        guard expanded != isExpanded else { return }
+        if !expanded {
+            onDismissKeyboard()
+        }
+        ChatHaptics.disclosureToggled(isEnabled: isHapticsEnabled)
+        withAnimation(ChatMotion.clarificationToggle(reduceMotion: reduceMotion)) {
+            isExpanded = expanded
+        }
     }
 }
 

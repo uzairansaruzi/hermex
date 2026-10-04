@@ -493,7 +493,10 @@ final class ChatViewModel {
     var approvalPrompt: ApprovalPromptState? { pendingActionCoordinator.approvalPrompt }
     var isRespondingToApproval: Bool { pendingActionCoordinator.isRespondingToApproval }
     var approvalErrorMessage: String? { pendingActionCoordinator.approvalErrorMessage }
-    var isSessionApprovalBypassEnabled: Bool { pendingActionCoordinator.isSessionApprovalBypassEnabled }
+    /// A Hermes session's reads `session.info`'s `yolo` (#1011); a webui session's, its yolo route.
+    var isSessionApprovalBypassEnabled: Bool {
+        hermesRequests?.approvalBypass ?? pendingActionCoordinator.isSessionApprovalBypassEnabled
+    }
     var clarificationPrompt: ClarificationPromptState? { pendingActionCoordinator.clarificationPrompt }
     var isRespondingToClarification: Bool { pendingActionCoordinator.isRespondingToClarification }
     var clarificationErrorMessage: String? { pendingActionCoordinator.clarificationErrorMessage }
@@ -2576,6 +2579,18 @@ final class ChatViewModel {
     /// Stop asks first on a Hermes session holding a queued prompt or an open request,
     /// which the stop would discard or deny.
     var stopNeedsConfirmation: Bool { hermesTurn?.stopNeedsConfirmation == true }
+
+    /// A Hermes session's host requests (#1011): its approvals, questions, and sudo and secret
+    /// prompts. Nil on a webui session, whose prompts are `approvalPrompt` and `clarificationPrompt`.
+    var hermesRequests: HermesChatRequests? { hermesTurn?.requests }
+
+    /// A Hermes session is parked on one of its host's requests.
+    var isWaitingForUser: Bool { hermesRequests?.isWaiting == true }
+
+    /// Who asks in a Hermes session's request card: its Profile on its saved connection.
+    var hermesRequestIdentity: String? {
+        hermesTurn.map { String(localized: "\($0.engine.target.profile) on \($0.engine.connection.name)") }
+    }
 
     /// Attaches the Hermes session; its snapshot fills the transcript.
     private func loadHermesSession(_ hermes: HermesChatTurnCoordinator) async {
@@ -6507,6 +6522,10 @@ extension ChatViewModel: HermesChatTurnDelegate {
 
     func hermesDraftKeyDidChange(from: ChatDraftKey, to: ChatDraftKey) {
         drafts.moveDraft(from: from, to: to)
+    }
+
+    func hermesRequestDidFail(_ message: String) {
+        sendErrorMessage = message
     }
 }
 

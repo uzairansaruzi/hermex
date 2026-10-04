@@ -159,6 +159,8 @@ enum HermesCall: Equatable, Sendable {
         case model(value: String, confirmExpensive: Bool)
         case reasoning(String)
         case fast(Bool)
+        /// The session's approval bypass: on auto-approves its dangerous commands, off asks again.
+        case yolo(Bool)
     }
 
     /// One immutable room creation. A deliberate retry resends the same value.
@@ -304,6 +306,8 @@ enum HermesCall: Equatable, Sendable {
                 params["key"] = .string("reasoning"); params["value"] = .string(value)
             case .fast(let enabled):
                 params["key"] = .string("fast"); params["value"] = .string(enabled ? "fast" : "normal")
+            case .yolo(let enabled):
+                params["key"] = .string("yolo"); params["value"] = .string(enabled ? "on" : "off")
             }
             return params
         case .sessionCwdSet(let sessionID, let profile, let cwd):
@@ -363,7 +367,7 @@ enum HermesCall: Equatable, Sendable {
             switch setting {
             case .model(let value, _): valid = !sessionID.isEmpty && value.hasSuffix(" --session")
             case .reasoning(let value): valid = !sessionID.isEmpty && BotModelCatalog.effortLevels.contains(value)
-            case .fast: valid = !sessionID.isEmpty
+            case .fast, .yolo: valid = !sessionID.isEmpty
             }
         case .commandDispatch(let name, _, let sessionID):
             // One bare name, so this never widens into the general slash runner:

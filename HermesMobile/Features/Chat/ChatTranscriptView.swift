@@ -49,6 +49,8 @@ struct ChatTranscriptView: View {
     let showsThinkingAndToolCards: Bool
     /// Start date for the "Working for" tail row; nil hides the row.
     let workingRowStartedAt: Date?
+    /// The note a Hermes session's withdrawn request leaves at the transcript's end (#1011).
+    let requestWithdrawal: BotRequestWithdrawal?
     let showsScrollToBottomButton: Bool
     let shouldFollowLatestMessage: Bool
     /// True while a disclosure toggle animates; suspends the bottom size-change
@@ -386,6 +388,9 @@ struct ChatTranscriptView: View {
             transcriptLooseBlocks
             liveResponseBlocks
             workingRow
+            if let requestWithdrawal {
+                BotRequestWithdrawalNote(withdrawal: requestWithdrawal)
+            }
             turnChangesCard
             inlineCommitButton
 

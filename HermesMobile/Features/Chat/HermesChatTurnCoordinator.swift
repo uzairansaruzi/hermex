@@ -21,6 +21,8 @@ import SwiftData
     /// The host accepted a new session's first prompt: the draft under `from` moves to the
     /// session's key `to`.
     func hermesDraftKeyDidChange(from: ChatDraftKey, to: ChatDraftKey)
+    /// The host refused an answer to one of its requests, or a bypass change (#1011).
+    func hermesRequestDidFail(_ message: String)
 }
 
 /// A Hermes session the main chat opens: the server, its saved connection and the target.
@@ -51,7 +53,8 @@ struct HermesChatTranscript: Equatable {
 /// pacing and run endings are the webui path's. Text is delta-driven; a full snapshot
 /// replaces the transcript only on the engine's rebuild signal (a gap, a reset replay, a
 /// new runtime). The engine drops repeated frames by `seq`, so appends never deduplicate
-/// by text. Each prompt, steer, redirect and stop is one `write`, never resent.
+/// by text. Each prompt, steer, redirect and stop is one `write`, never resent. The host's
+/// requests (approvals, questions, sudo and secret prompts) are `requests` (#1011).
 ///
 /// A turn's identity is the stored key and the host's `turn_started_at`, in place of a
 /// webui stream id. A turn starts at `message.start`, an accepted send or a running
@@ -69,8 +72,8 @@ struct HermesChatTranscript: Equatable {
     /// The prompt the host holds for its next turn: one slot, merged as the host merges
     /// text-only prompts. Restored from the snapshot's `queued`; a Stop discards it.
     private(set) var queuedPrompt: String?
-    /// Host requests open on this runtime: an approval, a question, a credential prompt.
-    private(set) var openRequestIDs: Set<String> = []
+    /// Host requests open on this runtime (#1011): an approval, a question, a credential prompt.
+    let requests: HermesChatRequests
 
     /// The host's `turn_started_at` for the running turn, once known.
     @ObservationIgnored private var turnStartedAt: Double?
@@ -109,8 +112,11 @@ struct HermesChatTranscript: Equatable {
          isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
         self.engine = engine
         self.isNetworkAvailable = isNetworkAvailable
+        requests = HermesChatRequests(engine: engine)
         draftKey = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id)
         engine.owner = self
+        requests.onFailure = { [weak self] in self?.delegate?.hermesRequestDidFail($0) }
+        requests.onNeedsReattach = { [weak self] in self?.reattach() }
     }
 
     /// A chat on `target` over the connection's shared gateway socket.
@@ -125,7 +131,7 @@ struct HermesChatTranscript: Equatable {
 
     /// Stop asks first only when it would lose something: the host's queued prompt, or a
     /// request (an approval the stop denies).
-    var stopNeedsConfirmation: Bool { queuedPrompt != nil || !openRequestIDs.isEmpty }
+    var stopNeedsConfirmation: Bool { queuedPrompt != nil || requests.isWaiting }
 
     /// Attaches the session, creating a new one on the first attach, or joins the attach
     /// already running so a new session is never created twice.
@@ -171,7 +177,12 @@ struct HermesChatTranscript: Equatable {
         }
         let startsBefore = turnsStarted
         if mode == .send { isSubmittingSend = true }
-        defer { if mode == .send { isSubmittingSend = false } }
+        // Stop & send interrupts the turn: the host withdrawing its cards is this phone's doing.
+        if mode == .redirect { requests.isStoppingHere = true }
+        defer {
+            if mode == .send { isSubmittingSend = false }
+            if mode == .redirect { requests.isStoppingHere = false }
+        }
         var dispatched = false
         let reply: BotJSON
         do {
@@ -192,11 +203,15 @@ struct HermesChatTranscript: Equatable {
             }
         case .followUpQueued, .redirectQueued:
             queuedPrompt = queuedPrompt.map { "\($0)\n\n\(text)" } ?? text
-        case .guidanceQueued, .redirected, .voiceStopped:
+        case .redirected, .voiceStopped:
+            // The host stopped the turn, which withdraws its requests.
+            requests.withdrawAll()
+        case .guidanceQueued:
             break
         case .rejected, .unknown:
             return outcome
         }
+        requests.promptAccepted()
         acceptPrompt()
         return outcome
     }
@@ -222,6 +237,8 @@ struct HermesChatTranscript: Equatable {
         guard activeStreamID != nil, !stopRequested else { return false }
         guard engine.connectionState == .connected, let runtime = engine.runtime else { throw BotFailure.transport }
         stopRequested = true
+        requests.isStoppingHere = true
+        defer { requests.isStoppingHere = false }
         do {
             _ = try await engine.write(.sessionInterrupt(sessionID: runtime), attempt: engine.generation, runtime: runtime)
         } catch {
@@ -229,7 +246,7 @@ struct HermesChatTranscript: Equatable {
             throw error
         }
         queuedPrompt = nil
-        openRequestIDs = []
+        requests.withdrawAll()
         return true
     }
 
@@ -334,7 +351,7 @@ struct HermesChatTranscript: Equatable {
                 finish(.failed)
             }
         case "request.cancel":
-            if let id = payload["id"].text { openRequestIDs.remove(id) }
+            requests.cancel(payload)
         default:
             // `thinking.delta` is spinner text and `reasoning.available` carries the answer
             // itself: neither is reasoning. The working row already says Hermes is working.
@@ -344,6 +361,7 @@ struct HermesChatTranscript: Equatable {
 
     private func applyInfo(_ info: BotJSON) {
         if let model = info["model"].text, !model.isEmpty { delegate?.hermesApplyModel(model) }
+        requests.applyBypass(info)
         guard let running = info["running"].flag else { return }
         hostRunning = running
         if running {
@@ -379,7 +397,7 @@ struct HermesChatTranscript: Equatable {
             // A stop from any client discards the host's queued prompt and withdraws its
             // requests, so a receipt for this chat's queued prompt would never send.
             queuedPrompt = nil
-            openRequestIDs = []
+            requests.withdrawAll()
         }
         pendingEnding = ending
         if !hostRunning { finish(ending) }
@@ -392,7 +410,7 @@ struct HermesChatTranscript: Equatable {
         let startedAt = snapshot["turn_started_at"].number ?? snapshot["inflight"]["started_at"].number
         hostRunning = running
         queuedPrompt = snapshot["queued"]["user"].text.flatMap { $0.isEmpty ? nil : $0 }
-        restoreOpenRequests(snapshot["open_requests"])
+        requests.didReadSnapshot(snapshot)
         if let model = snapshot["info"]["model"].text, !model.isEmpty { delegate?.hermesApplyModel(model) }
         if activeStreamID != nil, !running || (startedAt != nil && turnStartedAt != nil && startedAt != turnStartedAt) {
             // The turn this chat was following ended while it was away.
@@ -446,15 +464,10 @@ struct HermesChatTranscript: Equatable {
     }
 
     private func reattach() {
+        requests.willLeave()
         cancelAttach()
         engine.suspend()
         startAttach()
-    }
-
-    private func restoreOpenRequests(_ rows: BotJSON) {
-        // Resume omits an empty `open_requests`; replay always carries it.
-        openRequestIDs = Set((rows.list ?? []).compactMap(BotServerRequest.init)
-            .filter { $0.sessionID == engine.runtime }.map(\.id))
     }
 
     // MARK: Mapping
@@ -554,6 +567,7 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
 
     /// Leaving or backgrounding drops the socket (#902); the host session keeps running.
     func suspendActiveStreamConnection() {
+        requests.willLeave()
         cancelAttach()
         engine.suspend()
     }
@@ -579,12 +593,17 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
 
 extension HermesChatTurnCoordinator: HermesConversationOwner {
     func conversationDidReset() {
-        openRequestIDs = []
+        requests.reset()
         heldFrames = []; deltasInRebuild = []; replayedReply = ""
     }
 
+    func conversationWillReplay(newRuntime: Bool) {
+        requests.willReplay()
+    }
+
     func conversationDidReplay(_ reply: BotJSON, frames: [BotJSON]) {
-        restoreOpenRequests(reply["open_requests"])
+        requests.didReplay(reply, frames: frames)
+        defer { requests.willReadSnapshot() }
         // After lost frames the snapshot that follows rebuilds instead, and what the replay
         // carried of the running reply places the deltas that raced it.
         guard !engine.replayWasReset, !needsRebuild else {
@@ -613,13 +632,19 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
 
     func conversationDidLoseFrames() { rebuildAfterGap() }
 
-    /// Frames past the engine's hold are lost, and the release rebuilds again.
+    /// Frames past the engine's hold are lost, and the release rebuilds again. A held
+    /// `request.cancel` is newer than the `open_requests` the attach is reading.
     func conversation(didHold frame: BotJSON) {
         if heldFrames.count < HermesConversation.heldFrameLimit { heldFrames.append(frame) }
+        if frame["type"].text == "request.cancel" { requests.holdCancel() }
     }
 
     func conversation(didReceiveRequest envelope: BotJSON) {
-        if let id = envelope["id"].text { openRequestIDs.insert(id) }
+        requests.receive(envelope)
+    }
+
+    func conversationWillDisconnect() {
+        requests.willLeave()
     }
 
     func conversationDidDisconnect(_ failure: BotFailure, retrying: Bool) {
