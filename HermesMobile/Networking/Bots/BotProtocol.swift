@@ -150,6 +150,9 @@ enum BotConnectionAdvice {
     /// Removes a Profile on the host over the authenticated HTTP session. Only
     /// a 200 with `ok` counts as deleted; anything else leaves the bot in place.
     func deleteProfile(_ name: String) async throws
+    /// The Profile the host's dashboard is scoped to (`/api/profiles/active` `current`), the
+    /// one a new session runs under.
+    func currentProfile() async throws -> String
     /// Ends this screen's calls, uploads and downloads; the shared socket stays for others.
     func close()
 }
@@ -168,6 +171,10 @@ extension BotTransport {
     }
 
     func deleteProfile(_ name: String) async throws {
+        throw BotFailure.unsupported
+    }
+
+    func currentProfile() async throws -> String {
         throw BotFailure.unsupported
     }
 

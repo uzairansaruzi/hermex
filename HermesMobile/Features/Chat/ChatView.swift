@@ -294,6 +294,9 @@ struct ChatView: View {
     /// load their configuration from the server and never re-apply a snapshot.
     let restoresDraftSettings: Bool
     let onConversationStarted: () -> Void
+    /// A Hermes session's chat (#1010): webui-only controls are hidden and its turns run
+    /// on the gateway socket.
+    let isHermesSession: Bool
 
     /// The composer's draft. Never read it in `body` or wrap it in a get/set
     /// binding for the composer: either re-runs this whole screen on every
@@ -395,6 +398,7 @@ struct ChatView: View {
     @State private var appearanceTask: Task<Void, Never>?
     @State private var initialAttachments: [SharedAttachmentImport]
     @State private var didUploadInitialAttachments = false
+    @State private var showsStopConfirmation = false
 
     init(
         session: SessionSummary,
@@ -408,7 +412,8 @@ struct ChatView: View {
         draftStore: ChatDraftStore? = nil,
         draftAttachmentStore: (any ChatDraftAttachmentStoring)? = nil,
         restoresDraftSettings: Bool = false,
-        onConversationStarted: @escaping () -> Void = {}
+        onConversationStarted: @escaping () -> Void = {},
+        hermesSession: HermesSessionChat? = nil
     ) {
         self.session = session
         self.server = server
@@ -420,6 +425,7 @@ struct ChatView: View {
         self.draftAttachmentStore = resolvedDraftAttachmentStore
         self.restoresDraftSettings = restoresDraftSettings
         self.onConversationStarted = onConversationStarted
+        isHermesSession = hermesSession != nil
         _draftMessage = State(initialValue: initialDraft)
         _draftQuotes = State(initialValue: initialQuotes)
         _initialAttachments = State(initialValue: initialAttachments)
@@ -430,12 +436,26 @@ struct ChatView: View {
                 forKey: AgentRunLiveActivityPrivacy.showsResponseExcerptsKey
             ),
             draftAttachmentStore: resolvedDraftAttachmentStore,
-            draftStore: self.draftStore
+            draftStore: self.draftStore,
+            backend: hermesSession.map {
+                .hermes(HermesChatTurnCoordinator(server: $0.server, connection: $0.connection, target: $0.target))
+            } ?? .webui
         ))
         _gitAvailabilityViewModel = State(initialValue: GitWorkspaceAvailabilityViewModel(
             session: session,
             server: server
         ))
+    }
+
+    /// A Hermes session on its Profile (#1010). It has no webui session, so nothing here
+    /// reaches the webui API; connection errors show in the chat itself.
+    init(hermesSession: HermesSessionChat) {
+        self.init(
+            session: SessionSummary(profile: hermesSession.target.profile),
+            server: hermesSession.server,
+            onAPIError: { _ in },
+            hermesSession: hermesSession
+        )
     }
 
     // Extracted from `body` so the type-checker doesn't have to solve the whole composer
@@ -611,7 +631,8 @@ struct ChatView: View {
             },
             onRefreshGitBranches: {
                 Task { await gitAvailabilityViewModel.loadBranches() }
-            }
+            },
+            showsSessionControls: !isHermesSession
         )
         // The composer flips wholesale with the transcript under the RTL
         // toggle (#259): input, placeholder, and chrome mirror together.
@@ -911,7 +932,7 @@ struct ChatView: View {
                             }
                         }
 
-                        if showsFilesButton {
+                        if showsFilesButton, !isHermesSession {
                             ChatToolbarActionSlot {
                                 NavigationLink {
                                     FileBrowserView(session: session, server: server, onAPIError: onAPIError)
@@ -923,7 +944,7 @@ struct ChatView: View {
                             }
                         }
 
-                        if showsGitControls, gitAvailabilityViewModel.hasRepository {
+                        if showsGitControls, !isHermesSession, gitAvailabilityViewModel.hasRepository {
                             ChatToolbarActionSlot {
                                 gitActionsMenu
                             }
@@ -1054,6 +1075,9 @@ struct ChatView: View {
                 )
             )
             .notificationOfferAlert($pendingNotificationOffer)
+            .modifier(StopConfirmationModifier(isPresented: $showsStopConfirmation) {
+                Task { await stopStream() }
+            })
             .alert(
                 "Message Action Failed",
                 isPresented: Binding(
@@ -2012,7 +2036,8 @@ struct ChatView: View {
             }
         }
 
-        if submittedContent.quotes.isEmpty,
+        // A Hermes session sends `/` text as typed: its commands are not webui's (#1010).
+        if !isHermesSession, submittedContent.quotes.isEmpty,
            submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") {
             let parsedCommand = SlashCommandExecutor.parse(submittedDraft)?.command
             // `/clear` wipes the conversation on the server, so it always asks
@@ -2245,6 +2270,7 @@ struct ChatView: View {
     }
 
     private var draftKey: ChatDraftKey {
+        if let hermesDraftKey = viewModel.hermesDraftKey { return hermesDraftKey }
         let normalizedSessionID = session.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines)
         let sessionID = normalizedSessionID.flatMap { $0.isEmpty ? nil : $0 } ?? session.id
         return .session(
@@ -2505,7 +2531,17 @@ struct ChatView: View {
         }
     }
 
+    /// Stop. On a Hermes session holding a queued prompt or an open request it asks first,
+    /// since the stop discards the one and denies the other.
     private func cancelStream() async {
+        if viewModel.stopNeedsConfirmation {
+            showsStopConfirmation = true
+            return
+        }
+        await stopStream()
+    }
+
+    private func stopStream() async {
         let didCancel = await viewModel.cancelActiveStream()
         if didCancel {
             ChatHaptics.streamCancelled(isEnabled: isHapticsEnabled)
@@ -2623,6 +2659,7 @@ struct ChatView: View {
     }
 
     private func handlePhotoSelection(_ media: [HermexPickedMedia]) async {
+        guard !isHermesSession else { return }
         for item in media {
             guard !Task.isCancelled else { return }
             await viewModel.uploadAttachment(
@@ -2634,6 +2671,7 @@ struct ChatView: View {
     }
 
     private func handleSelectedFileURLs(_ urls: [URL]) async {
+        guard !isHermesSession else { return }
         let fileURLs = urls.filter(\.isFileURL)
 
         guard !fileURLs.isEmpty else {
@@ -2652,6 +2690,7 @@ struct ChatView: View {
     }
 
     private func handlePastedFileProviders(_ providers: [NSItemProvider]) async {
+        guard !isHermesSession else { return }
         let fileProviders = providers.filter {
             $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
         }
@@ -2672,6 +2711,7 @@ struct ChatView: View {
     }
 
     private func handlePastedImageProviders(_ providers: [NSItemProvider]) async {
+        guard !isHermesSession else { return }
         let imageProviders = providers.filter {
             $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
         }
@@ -2692,6 +2732,7 @@ struct ChatView: View {
     }
 
     private func handlePastedImages(_ images: [UIImage]) async {
+        guard !isHermesSession else { return }
         guard !images.isEmpty else {
             viewModel.setUploadAttachmentError(String(localized: "Paste a copied image to attach it."))
             return
@@ -2733,6 +2774,7 @@ struct ChatView: View {
     }
 
     private func handlePastedFileURLs(_ urls: [URL]) async {
+        guard !isHermesSession else { return }
         let fileURLs = urls.filter(\.isFileURL)
 
         guard !fileURLs.isEmpty else {
@@ -2840,7 +2882,11 @@ struct ChatView: View {
 
         switch phase {
         case .background:
-            if viewModel.activeStreamID != nil {
+            if isHermesSession {
+                // The app closes the gateway socket in the background (#902); the turn
+                // runs on, and returning reattaches to it.
+                viewModel.suspendStreamForBackground()
+            } else if viewModel.activeStreamID != nil {
                 beginResponseCompletionBackgroundTask()
             }
         case .active:
@@ -3467,6 +3513,22 @@ private struct ClearConversationAlertModifier: ViewModifier {
             }
         } message: {
             Text("This deletes every message in this conversation on the server. It cannot be undone.")
+        }
+    }
+}
+
+/// Asks before a Stop that would lose something: a Hermes session's queued prompt, which
+/// the host discards, or its open request, which it denies (#1010).
+private struct StopConfirmationModifier: ViewModifier {
+    @Binding var isPresented: Bool
+    let onStop: () -> Void
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog("Stop this response?", isPresented: $isPresented, titleVisibility: .visible) {
+            Button("Stop", role: .destructive, action: onStop)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Queued messages are discarded and the pending approval is denied.")
         }
     }
 }

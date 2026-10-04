@@ -103,3 +103,7 @@ _Avoid_: Branch (for the chat), child session
 **Conversation target**:
 Which Hermes session a conversation attaches to: a bot's canonical Bot Chat, found by its title; a stored session, by its stored key; or a new session, created on first attach. Each target has its own draft and recent transcript (`ConversationTarget`).
 _Avoid_: chat target, session kind
+
+**Turn identity**:
+Which run a chat is following: a webui stream id, or for a Hermes session its stored key and the host's `turn_started_at`. A Hermes turn ends once `message.complete` and `session.info {running: false}` have both arrived.
+_Avoid_: stream id (for a Hermes turn), run id

@@ -197,6 +197,13 @@ struct ChatPollingIntervals: Equatable {
     )
 }
 
+/// Which server runs a chat's turns: a webui session's SSE streams, or a Hermes session on
+/// the gateway socket (#1010).
+enum ChatBackend {
+    case webui
+    case hermes(HermesChatTurnCoordinator)
+}
+
 enum ActiveStreamRecoveryState: Equatable {
     case idle
     case checking
@@ -233,16 +240,16 @@ final class ChatViewModel {
     private(set) var isCompressingSession = false
     private(set) var isCancellingStream = false
     private(set) var isViewingCachedData = false
-    var activeStreamID: String? { streamCoordinator.activeStreamID }
+    var activeStreamID: String? { turn.activeStreamID }
     var successfulResponseCompletion: ChatStreamCoordinator.SuccessfulResponseCompletion? {
-        streamCoordinator.successfulResponseCompletion
+        turn.successfulResponseCompletion
     }
-    var activeRunStartedAt: Date? { streamCoordinator.activeRunStartedAt }
+    var activeRunStartedAt: Date? { turn.activeRunStartedAt }
     /// How the latest run ended, keyed to the turn it answered. Drives the
     /// settled-turn fold label and which turns start expanded.
     private(set) var latestRunOutcome: TranscriptTurnRunOutcome?
-    var activeStreamRecoveryState: ActiveStreamRecoveryState { streamCoordinator.recoveryState }
-    var liveTokensPerSecond: Double? { streamCoordinator.liveTokensPerSecond }
+    var activeStreamRecoveryState: ActiveStreamRecoveryState { turn.recoveryState }
+    var liveTokensPerSecond: Double? { turn.liveTokensPerSecond }
     private(set) var errorMessage: String?
     private(set) var sendErrorMessage: String? {
         didSet {
@@ -475,7 +482,8 @@ final class ChatViewModel {
     /// derived from the queue, so it goes away when the queue drains or is
     /// handed over, and it never enters a stream snapshot.
     var queuedMessagesReceipt: String? {
-        queuedSlashMessages.isEmpty ? nil : String(localized: "Queued, sends when this run finishes")
+        guard !queuedSlashMessages.isEmpty || hermesTurn?.queuedPrompt != nil else { return nil }
+        return String(localized: "Queued, sends when this run finishes")
     }
     private(set) var steeringConfirmationNotice: String?
     /// "Couldn't steer", plus the system's reason for a network or HTTP
@@ -514,7 +522,13 @@ final class ChatViewModel {
         sessionID.map { PushPresence.Viewer(server: server, sessionID: $0) }
     }
     let client: APIClient
+    /// Webui's streams. Its start, cancel and session-load calls run only on a webui chat.
     private let streamCoordinator: ChatStreamCoordinator
+    /// The run lifecycle of whichever backend runs this chat: `streamCoordinator`, or `hermesTurn`.
+    private let turn: any ChatTurnCoordinating
+    /// Set on a Hermes session: its turns run here, and webui-only paths stay off.
+    private let hermesTurn: HermesChatTurnCoordinator?
+    private let drafts: ChatDraftStore
     private let pendingActionCoordinator: ChatPendingActionCoordinator
     private let attachmentCoordinator: ChatAttachmentCoordinator
     private let btwStreamClient: SSEStreamingClient
@@ -568,9 +582,9 @@ final class ChatViewModel {
     private(set) var listenPlaybackSpeed: ListenPlaybackSpeed
     @ObservationIgnored private var listenPlaybackTicker: Timer?
     private var showsLiveActivityResponseExcerpts: Bool
-    private var hasCompletedCurrentResponse: Bool { streamCoordinator.hasCompletedCurrentResponse }
-    private var isStreamConnectionSuspended: Bool { streamCoordinator.isConnectionSuspended }
-    var isActiveStreamConnectionSuspended: Bool { streamCoordinator.isConnectionSuspended }
+    private var hasCompletedCurrentResponse: Bool { turn.hasCompletedCurrentResponse }
+    private var isStreamConnectionSuspended: Bool { turn.isConnectionSuspended }
+    var isActiveStreamConnectionSuspended: Bool { turn.isConnectionSuspended }
     private var hasLoadedPersonalitySuggestions = false
     /// The in-flight personality list request, shared by every caller of
     /// `loadPersonalitySuggestions()` so no view's cancellation can orphan it.
@@ -597,7 +611,7 @@ final class ChatViewModel {
     /// True while a reattached stream replays events the transcript may already
     /// hold. Clears once replayed text catches up; until then live tool rows
     /// skip their entrance.
-    var isActiveStreamReplayConnection: Bool { streamCoordinator.isReplayConnection }
+    var isActiveStreamReplayConnection: Bool { turn.isReplayConnection }
     private var activeStreamReplayMatchedPrefixLength = 0
     private var activeStreamReplayMatchedInterimLength = 0
     private var activeStreamReplayMatchedReasoningLength = 0
@@ -635,7 +649,8 @@ final class ChatViewModel {
         serverTTSAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil,
         draftAttachmentStore: any ChatDraftAttachmentStoring = ChatDraftAttachmentStore.shared,
         draftStore: ChatDraftStore? = nil,
-        userDefaults: UserDefaults = .standard
+        userDefaults: UserDefaults = .standard,
+        backend: ChatBackend = .webui
     ) {
         sessionID = session.sessionId
         currentWorkspace = session.workspace
@@ -648,12 +663,22 @@ final class ChatViewModel {
         let resolvedStreamClient = streamClient ?? SSEClient()
         let resolvedLiveActivityManager = liveActivityManager ?? AgentLiveActivityManager.shared
         self.client = resolvedClient
-        self.streamCoordinator = ChatStreamCoordinator(
+        let streamCoordinator = ChatStreamCoordinator(
             client: resolvedClient,
             streamClient: resolvedStreamClient,
             liveActivityManager: resolvedLiveActivityManager,
             showsLiveActivityResponseExcerpts: showsLiveActivityResponseExcerpts
         )
+        self.streamCoordinator = streamCoordinator
+        switch backend {
+        case .webui:
+            hermesTurn = nil
+            turn = streamCoordinator
+        case .hermes(let coordinator):
+            hermesTurn = coordinator
+            turn = coordinator
+        }
+        self.drafts = draftStore ?? .shared
         self.pendingActionCoordinator = ChatPendingActionCoordinator(
             client: resolvedClient,
             approvalStreamClient: approvalStreamClient ?? SSEClient(),
@@ -681,7 +706,7 @@ final class ChatViewModel {
         self.serverTTSAudioPlayerFactory = serverTTSAudioPlayerFactory
             ?? { try ServerTTSAudioPlayer(data: $0) }
         displayTitle = Self.displayTitle(from: session.title)
-        self.streamCoordinator.attach(delegate: self)
+        turn.attach(delegate: self)
         self.pendingActionCoordinator.delegate = self
         self.attachmentCoordinator.delegate = self
     }
@@ -700,7 +725,7 @@ final class ChatViewModel {
         guard showsLiveActivityResponseExcerpts != shows else { return }
 
         showsLiveActivityResponseExcerpts = shows
-        streamCoordinator.setShowsLiveActivityResponseExcerpts(shows)
+        turn.setShowsLiveActivityResponseExcerpts(shows)
     }
 
     var showsListenPlaybackBar: Bool {
@@ -890,6 +915,8 @@ final class ChatViewModel {
     }
 
     func loadComposerConfiguration() async {
+        // A Hermes session runs its Profile's own model and settings until #705 adds them.
+        guard hermesTurn == nil else { return }
         if isLoadingComposerConfiguration {
             needsComposerConfigurationReload = true
             return
@@ -1146,7 +1173,7 @@ final class ChatViewModel {
     /// of racing past an "already loading" flag and finding an empty list. A
     /// failed load clears the handle, so the next caller retries.
     func loadSkillSlashSuggestions() async {
-        guard !hasLoadedSkillSlashSuggestions else { return }
+        guard hermesTurn == nil, !hasLoadedSkillSlashSuggestions else { return }
 
         let load: Task<Void, Never>
         if let existing = skillSlashSuggestionsLoad {
@@ -1484,6 +1511,10 @@ final class ChatViewModel {
     /// is for the chat's first load only: it takes over the request
     /// `prepareInitialMessageLoad` already sent instead of sending another.
     func loadMessages(modelContext: ModelContext? = nil, usesInitialPrefetch: Bool = false) async {
+        if let hermesTurn {
+            await loadHermesSession(hermesTurn)
+            return
+        }
         guard let sessionID else {
             errorMessage = String(localized: "The server did not provide a session ID.")
             return
@@ -1823,6 +1854,7 @@ final class ChatViewModel {
 
     @discardableResult
     func loadOlderMessages(modelContext: ModelContext? = nil) async -> Bool {
+        guard hermesTurn == nil else { return false }
         guard let sessionID else {
             errorMessage = String(localized: "The server did not provide a session ID.")
             return false
@@ -1914,7 +1946,8 @@ final class ChatViewModel {
         return MessageActionContext(
             message: message,
             visibleIndex: visibleIndex,
-            messagesOffset: messagesOffset
+            messagesOffset: messagesOffset,
+            offersHistoryActions: hermesTurn == nil
         )
     }
 
@@ -2494,6 +2527,10 @@ final class ChatViewModel {
             return false
         }
 
+        if let hermesTurn {
+            return await submitHermesPrompt(draft, mode: .send, to: hermesTurn)
+        }
+
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         // Attachment-only sends (empty text, staged attachments) synthesize
         // their message text in `PendingAttachment.chatMessageText` below.
@@ -2530,6 +2567,113 @@ final class ChatViewModel {
         return didStart
     }
 
+    /// Whether this chat runs a Hermes session rather than a webui one (#1010).
+    var isHermesSession: Bool { hermesTurn != nil }
+
+    /// A Hermes session's draft key: the new-session key until the host names the session.
+    var hermesDraftKey: ChatDraftKey? { hermesTurn?.currentDraftKey }
+
+    /// Stop asks first on a Hermes session holding a queued prompt or an open request,
+    /// which the stop would discard or deny.
+    var stopNeedsConfirmation: Bool { hermesTurn?.stopNeedsConfirmation == true }
+
+    /// Attaches the Hermes session; its snapshot fills the transcript.
+    private func loadHermesSession(_ hermes: HermesChatTurnCoordinator) async {
+        isLoading = messages.isEmpty
+        errorMessage = nil
+        defer { isLoading = false }
+        await hermes.activate()
+    }
+
+    /// Sends one prompt to the Hermes session in `mode`, once (#1010). A Send shows the
+    /// prompt at once and a Stop & send once it takes over; a steer shows its echo once
+    /// accepted; a queued prompt shows only the composer receipt until the host runs it.
+    /// False keeps the draft: the host refused it, did not confirm it, or it was not sent.
+    private func submitHermesPrompt(
+        _ draft: String,
+        mode: BotPromptMode,
+        to hermes: HermesChatTurnCoordinator
+    ) async -> Bool {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return false }
+        sendErrorMessage = nil
+        lastError = nil
+        let promptID = "local-\(UUID().uuidString)"
+        let prompt = ChatMessage(role: "user", content: text, timestamp: Date().timeIntervalSince1970, messageId: promptID)
+        if mode == .send {
+            isStartingChat = true
+            archiveLiveActivityForNewTurn()
+            messages.append(prompt)
+        }
+        defer { if mode == .send { isStartingChat = false } }
+
+        do {
+            switch try await hermes.submit(text, mode: mode) {
+            case .started:
+                // A queued send that found the host idle ran at once.
+                if mode != .send { messages.append(prompt) }
+                return true
+            case .voiceStopped:
+                // The host took a stop phrase: it stopped the work and started no turn.
+                rollbackOptimisticMessage(id: promptID)
+                return true
+            case .followUpQueued, .redirectQueued:
+                // The host runs it as a later turn, whose start shows it.
+                rollbackOptimisticMessage(id: promptID)
+                return true
+            case .guidanceQueued:
+                appendLocalSteerEcho(text)
+                showSteeringConfirmation(String(localized: "Steering hint delivered."))
+                return true
+            case .redirected:
+                // The turn carries on from the new prompt, and the reply after it gets its own row.
+                flushPendingStreamingContent()
+                streamingAssistantMessageID = nil
+                messages.append(prompt)
+                return true
+            case .rejected:
+                rollbackOptimisticMessage(id: promptID)
+                // A refused steer leaves the run going (#856).
+                if mode == .steer {
+                    steerFailureMessage = String(localized: "Couldn't steer")
+                } else {
+                    sendErrorMessage = String(localized: "Hermes did not accept this message. Your draft is still here.")
+                }
+                return false
+            case .unknown:
+                rollbackOptimisticMessage(id: promptID)
+                sendErrorMessage = String(localized: "Hermes did not confirm this message. Your draft is still here.")
+                return false
+            }
+        } catch {
+            rollbackOptimisticMessage(id: promptID)
+            if error is HermesChatTurnCoordinator.NotSent {
+                sendErrorMessage = String(localized: "Reconnect to the server to send a message.")
+            } else if mode.definitelyRejected(error) {
+                sendErrorMessage = String(localized: "Hermes did not accept this message. Your draft is still here.")
+            } else {
+                sendErrorMessage = String(localized: "Hermes did not confirm this message. Your draft is still here.")
+            }
+            return false
+        }
+    }
+
+    /// A send while a Hermes turn runs: Steer is `session.steer`, Queue the host's queue,
+    /// and Stop & send `session.redirect` (#858). A turn that ended meanwhile takes a plain send.
+    private func submitHermesStreamingMessage(
+        _ draft: String,
+        behavior: StreamingSendBehavior,
+        to hermes: HermesChatTurnCoordinator
+    ) async -> SlashCommandExecutionResult {
+        let mode: BotPromptMode
+        switch behavior {
+        case .steer: mode = activeStreamID == nil ? .send : .steer
+        case .queue: mode = activeStreamID == nil ? .send : .queue
+        case .interrupt: mode = activeStreamID == nil ? .send : .redirect
+        }
+        return await submitHermesPrompt(draft, mode: mode, to: hermes) ? .executed(message: nil) : .notDelivered
+    }
+
     /// Records → transcribes → uploads → sends a server-transcribed voice note
     /// (Telegram-style). The sent message's text is the transcript and its sole
     /// attachment is the audio clip, rendered as a playable note by the inline
@@ -2537,6 +2681,8 @@ final class ChatViewModel {
     /// returns nothing. Returns true only if the chat send started.
     @discardableResult
     func sendVoiceNote(audioData: Data, filename: String, modelContext: ModelContext? = nil) async -> Bool {
+        // Voice notes ride on webui transcription and attachments; Hermes attachments are #701 slice 1.3.
+        guard hermesTurn == nil else { return false }
         // Reentrancy guard: bail if a voice note OR a regular chat send is already
         // in flight. `performChatSend` has no internal guard, so two overlapping
         // sends would both flip `isStartingChat`/`isSendingVoiceNote` and race their
@@ -2641,12 +2787,7 @@ final class ChatViewModel {
         isStartingChat = true
         sendErrorMessage = nil
         lastError = nil
-        archiveLiveReasoningIfNeeded()
-        archiveLiveToolCallsIfNeeded()
-        liveReasoningText = ""
-        liveToolCalls = []
-        reasoningAnchorMessageID = nil
-        toolCallAnchorMessageID = nil
+        archiveLiveActivityForNewTurn()
         streamCoordinator.prepareForNewResponse()
         responseCompletionNeedsTranscriptRefresh = false
         defer { isStartingChat = false }
@@ -2937,6 +3078,9 @@ final class ChatViewModel {
         _ draft: String,
         behavior: StreamingSendBehavior
     ) async -> SlashCommandExecutionResult {
+        if let hermesTurn {
+            return await submitHermesStreamingMessage(draft, behavior: behavior, to: hermesTurn)
+        }
         switch behavior {
         case .steer:
             return await steerResponseFromSlashCommand(draft)
@@ -4515,6 +4659,16 @@ final class ChatViewModel {
         lastError = nil
         defer { isCancellingStream = false }
 
+        if let hermesTurn {
+            // Accepted is not idle: the turn's own ending frames settle it.
+            do {
+                return try await hermesTurn.interrupt()
+            } catch {
+                sendErrorMessage = String(localized: "The server could not stop the current response.")
+                return false
+            }
+        }
+
         do {
             guard let response = try await streamCoordinator.cancelActiveStream() else { return false }
             if response.ok == false {
@@ -4561,7 +4715,8 @@ final class ChatViewModel {
         listeningMessageID = context.messageID
         beginListenPlaybackPreparation(for: context)
 
-        guard ServerTTSPolicy.shouldUseServerTTS(for: listenText) else {
+        // A Hermes host has no webui speech route, so Listen stays on device there.
+        guard hermesTurn == nil, ServerTTSPolicy.shouldUseServerTTS(for: listenText) else {
             // Over the server's 5000-char request cap: go straight to the on-device
             // path (chunking is a non-goal of #15).
             clearListenPlaybackState()
@@ -4688,17 +4843,17 @@ final class ChatViewModel {
     }
 
     private func suspendActiveStreamConnection() {
-        streamCoordinator.suspendActiveStreamConnection()
+        turn.suspendActiveStreamConnection()
     }
 
     func reconnectStreamIfNeeded(modelContext: ModelContext? = nil) async {
-        await streamCoordinator.reconnectIfNeeded(modelContext: modelContext)
+        await turn.reconnectIfNeeded(modelContext: modelContext)
     }
 
     /// Retries a suspended stream, or clears a stale "Waiting for network",
     /// when the device's network path changes (#869).
     func networkPathDidChange(modelContext: ModelContext? = nil) async {
-        await streamCoordinator.networkPathDidChange(modelContext: modelContext)
+        await turn.networkPathDidChange(modelContext: modelContext)
     }
 
     func refreshTranscriptIfActiveStreamCompleted(
@@ -4715,7 +4870,7 @@ final class ChatViewModel {
         now: Date = Date(),
         modelContext: ModelContext? = nil
     ) async {
-        await streamCoordinator.recoverStaleStreamIfNeeded(now: now, modelContext: modelContext)
+        await turn.recoverStaleStreamIfNeeded(now: now, modelContext: modelContext)
     }
 
     private var hasRunningLiveToolCall: Bool {
@@ -5115,6 +5270,17 @@ final class ChatViewModel {
 
         return TranscriptTurnClassifier.currentTurnAssistantAnchorIDs(in: messages, messageOffset: messagesOffset).first
             ?? Self.latestAssistantAnchorID(in: messages, messageOffset: messagesOffset)
+    }
+
+    /// Moves the last turn's live reasoning and tools into the transcript, so a new turn
+    /// starts with none.
+    private func archiveLiveActivityForNewTurn() {
+        archiveLiveReasoningIfNeeded()
+        archiveLiveToolCallsIfNeeded()
+        liveReasoningText = ""
+        liveToolCalls = []
+        reasoningAnchorMessageID = nil
+        toolCallAnchorMessageID = nil
     }
 
     private func archiveLiveReasoningIfNeeded() {
@@ -5582,7 +5748,7 @@ final class ChatViewModel {
     }
 
     private func resetActiveStreamReplayTokenState() {
-        streamCoordinator.clearReplayConnection()
+        turn.clearReplayConnection()
         activeStreamReplayMatchedPrefixLength = 0
     }
 
@@ -5691,6 +5857,8 @@ final class ChatViewModel {
 
     private func applyLiveActivitySessionTitle(_ title: String) {
         displayTitle = Self.displayTitle(from: title)
+        // A Hermes session runs no webui Live Activity; the one on screen may be another session's.
+        guard hermesTurn == nil else { return }
         liveActivityManager.update(.sessionTitle(displayTitle))
     }
 
@@ -6102,7 +6270,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
         dismissSteeringConfirmation()
         clearSteerFailure()
         responseCompletionNeedsTranscriptRefresh = false
-        if let ending = streamCoordinator.latestRunEnding {
+        if let ending = turn.latestRunEnding {
             // A `done` completion already counted when it completed, and a late
             // teardown can find an ending still on record, so each ending counts once.
             // This catches failures and a `stream_end` that arrives without `done`.
@@ -6123,7 +6291,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     private func recordRunEnd(_ outcome: ResponseCompletionOutcome) {
-        runEndRecordedAt = streamCoordinator.latestRunEnding?.endedAt
+        runEndRecordedAt = turn.latestRunEnding?.endedAt
         runEndOutcome = outcome
         runEndTrigger += 1
     }
@@ -6270,6 +6438,78 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 }
 
+extension ChatViewModel: HermesChatTurnDelegate {
+    func hermesTurnDidStart(prompt: String?) {
+        flushPendingStreamingContent()
+        archiveLiveActivityForNewTurn()
+        streamingAssistantMessageID = nil
+        responseCompletionNeedsTranscriptRefresh = false
+        if let prompt {
+            messages.append(ChatMessage(
+                role: "user", content: prompt, timestamp: Date().timeIntervalSince1970,
+                messageId: "local-\(UUID().uuidString)"
+            ))
+        }
+    }
+
+    func hermesTurnDidComplete(reply: String) {
+        flushPendingStreamingContent()
+        let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shown = streamingAssistantMessageID.flatMap { id in messages.first { $0.messageId == id }?.content } ?? ""
+        guard !text.isEmpty, !shown.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(text) else { return }
+        // A reply the deltas never carried, such as the answer after a tool call: it joins
+        // the turn's row the way an interim reply does.
+        appendInterimAssistant(InterimAssistantStreamEvent(text: text, alreadyStreamed: false))
+        flushPendingStreamingContent()
+    }
+
+    func hermesReplaceTranscript(_ transcript: HermesChatTranscript) {
+        resetPendingStreamingContentBuffers()
+        messages = transcript.messages + (transcript.streamingReply.map { [$0] } ?? [])
+        transcriptRevision &+= 1
+        messagesOffset = 0
+        hasOlderMessages = false
+        setCompletedToolCallGroups(transcript.toolCallGroups)
+        completedReasoningGroups = transcript.reasoningGroups
+        liveToolCalls = []
+        liveReasoningText = ""
+        toolCallAnchorMessageID = nil
+        reasoningAnchorMessageID = nil
+        streamingAssistantMessageID = transcript.streamingReply?.messageId
+        if let title = transcript.title { applyLiveActivitySessionTitle(title) }
+        if !messages.isEmpty { transcriptRelayoutScrollToken += 1 }
+    }
+
+    func hermesApplyUsage(_ usage: ContextWindowSnapshot) {
+        guard contextWindowSnapshot != usage else { return }
+        contextWindowSnapshot = usage
+    }
+
+    func hermesApplyModel(_ model: String) {
+        guard currentModel != model else { return }
+        currentModel = model
+    }
+
+    func hermesConnectionDidChange(failure: String?) {
+        guard let failure else {
+            if errorMessage != nil { errorMessage = nil }
+            if sendErrorIsFromStreamRecovery { sendErrorMessage = nil }
+            return
+        }
+        // With nothing on screen yet it is the chat's error, with its retry; otherwise the composer's.
+        if messages.isEmpty {
+            errorMessage = failure
+        } else {
+            sendErrorMessage = failure
+            sendErrorIsFromStreamRecovery = true
+        }
+    }
+
+    func hermesDraftKeyDidChange(from: ChatDraftKey, to: ChatDraftKey) {
+        drafts.moveDraft(from: from, to: to)
+    }
+}
+
 struct ActiveChatStreamSnapshot: Equatable {
     let messages: [ChatMessage]
     let messagesOffset: Int
@@ -6389,8 +6629,11 @@ struct MessageActionContext: Equatable, Identifiable {
     let messageID: String
     let copyText: String
     let listenText: String?
+    /// Regenerate, Edit and Fork rewrite the server's history; a Hermes session offers
+    /// them once #702 adds its history actions.
+    let offersHistoryActions: Bool
 
-    init?(message: ChatMessage, visibleIndex: Int, messagesOffset: Int?) {
+    init?(message: ChatMessage, visibleIndex: Int, messagesOffset: Int?, offersHistoryActions: Bool = true) {
         guard visibleIndex >= 0 else { return nil }
 
         switch message.role {
@@ -6411,6 +6654,7 @@ struct MessageActionContext: Equatable, Identifiable {
         messageID = message.id
         copyText = content
         listenText = role == .assistant ? SpeechTextNormalizer.normalizedAssistantText(content) : nil
+        self.offersHistoryActions = offersHistoryActions
     }
 }
 

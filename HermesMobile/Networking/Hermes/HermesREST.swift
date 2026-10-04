@@ -14,11 +14,16 @@ import Foundation
 /// The restart route (#934) is hermex-push's own, checked at the same pin with plugin 0.4.0:
 /// 202 `{ok: true}`, 401 without a sign-in, then the dashboard back on its PID about 2 s later
 /// with a new per-process session key, so the next signed-in read signs in again.
+/// `GET /api/profiles/active` (#1010) is read at the same pin: `{active, current}`, each
+/// falling back to `default`.
 enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
     case login(username: String, password: String)
     case identity
+    /// `{active, current}`: `current` is the Profile this dashboard is scoped to, which a new
+    /// session runs under (#1010); `active` is only the CLI's sticky default.
+    case profilesActive
     /// Mints the single-use ticket one gateway socket presents.
     case ticket
     /// `DELETE /api/profiles/{name}`, the only Profile removal the host exposes; the
@@ -48,6 +53,7 @@ enum HermesREST: Equatable, Sendable {
                 "provider": .string("basic"), "username": .string(username), "password": .string(password)
             ])
         case .identity: return Self.get(base.appendingPathComponent("api/auth/me"))
+        case .profilesActive: return Self.get(base.appendingPathComponent("api/profiles/active"))
         case .ticket: return try Self.send("POST", base.appendingPathComponent("api/auth/ws-ticket"), [:])
         case .deleteProfile(let name):
             var request = URLRequest(url: base.appendingPathComponent("api/profiles").appendingPathComponent(name))

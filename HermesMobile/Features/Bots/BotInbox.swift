@@ -461,6 +461,15 @@ import UIKit
         }
     }
 
+    /// The Profile a new session runs under: the one the host's dashboard is scoped to.
+    /// Throws `.stale` once the inbox's connection closed or was replaced meanwhile.
+    func currentProfile() async throws -> String {
+        guard link == .live, let client = wire else { throw BotFailure.transport }
+        let profile = try await client.currentProfile()
+        guard wire === client else { throw BotFailure.stale }
+        return profile
+    }
+
     /// Drops everything this phone kept for a bot that no longer exists on the host.
     private func forget(_ profile: String) async {
         guard let connection else { return }

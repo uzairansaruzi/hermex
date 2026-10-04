@@ -124,9 +124,11 @@ struct ChatMessageActionMenu: View {
     }
 
     /// The actions for this message in display order. Mutating actions are
-    /// disabled while the transcript is cached or a stream is active.
+    /// disabled while the transcript is cached or a stream is active, and absent
+    /// where the chat cannot rewrite its history.
     var items: [ChatMessageActionItem] {
         var items: [ChatMessageActionItem] = []
+        let offersHistoryActions = context.offersHistoryActions
 
         if context.role == .assistant {
             items.append(ChatMessageActionItem(
@@ -136,6 +138,9 @@ struct ChatMessageActionMenu: View {
                 isEnabled: true,
                 perform: { onToggleListening(context) }
             ))
+        }
+
+        if context.role == .assistant, offersHistoryActions {
             items.append(ChatMessageActionItem(
                 kind: .regenerate,
                 title: String(localized: "Regenerate Response"),
@@ -145,7 +150,7 @@ struct ChatMessageActionMenu: View {
             ))
         }
 
-        if context.role == .user {
+        if context.role == .user, offersHistoryActions {
             items.append(ChatMessageActionItem(
                 kind: .edit,
                 title: String(localized: "Edit Message"),
@@ -155,13 +160,15 @@ struct ChatMessageActionMenu: View {
             ))
         }
 
-        items.append(ChatMessageActionItem(
-            kind: .fork,
-            title: String(localized: "Fork From Here"),
-            systemImage: "arrow.triangle.branch",
-            isEnabled: !(isViewingCachedData || hasActiveStream || isForkingMessage),
-            perform: { onFork(context) }
-        ))
+        if offersHistoryActions {
+            items.append(ChatMessageActionItem(
+                kind: .fork,
+                title: String(localized: "Fork From Here"),
+                systemImage: "arrow.triangle.branch",
+                isEnabled: !(isViewingCachedData || hasActiveStream || isForkingMessage),
+                perform: { onFork(context) }
+            ))
+        }
         if context.role == .user {
             items.append(ChatMessageActionItem(
                 kind: .copy,

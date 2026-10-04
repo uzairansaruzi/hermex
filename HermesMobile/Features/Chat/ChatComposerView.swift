@@ -261,6 +261,10 @@ struct MessageComposerView: View {
     let onSelectGitBranch: (GitCheckoutTarget) -> Void
     let onCreateGitBranch: (GitCheckoutTarget) -> Void
     let onRefreshGitBranches: () -> Void
+    /// False on a Hermes session (#1010): the + menu, the model, workspace and Profile
+    /// selectors, the branch picker, voice notes and the `/` panel stay hidden until
+    /// their phases land. Dictation and the context indicator stay.
+    var showsSessionControls = true
 
     @State private var textFieldHeight: CGFloat = 0
     @State private var textInputHeight: CGFloat = 22
@@ -345,7 +349,7 @@ struct MessageComposerView: View {
     /// panel: a settled `/skills` invocation, a settled goal action, and a
     /// mid-sentence word no loaded skill matches.
     private var slashQuery: String? {
-        guard fileTrigger == nil, let query = slashTrigger?.text else { return nil }
+        guard showsSessionControls, fileTrigger == nil, let query = slashTrigger?.text else { return nil }
 
         let parsed = ParsedSlashQuery(query: query)
         if parsed.commandName.lowercased() == "skills",
@@ -903,15 +907,17 @@ struct MessageComposerView: View {
     private var toolbarRow: some View {
         HStack(alignment: .center, spacing: 8) {
             ComposerToolbarScroller {
-                composerPlusMenu
+                if showsSessionControls {
+                    composerPlusMenu
 
-                modelEffortControl
+                    modelEffortControl
 
-                workspaceSelector
+                    workspaceSelector
 
-                profileSelector
+                    profileSelector
 
-                gitBranchPicker
+                    gitBranchPicker
+                }
 
                 voiceControlButton
 
@@ -1326,7 +1332,8 @@ struct MessageComposerView: View {
     /// Recording mid-stream is fine (it queues like any send), so unlike dictation
     /// this does not block on `isWaitingForStream`.
     private var isVoiceNoteRecordingDisabled: Bool {
-        isReadOnly
+        !showsSessionControls
+            || isReadOnly
             || isSending
             || isSendingVoiceNote
             || isCompressingSession

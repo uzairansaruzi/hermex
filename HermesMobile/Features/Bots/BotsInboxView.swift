@@ -1,5 +1,23 @@
 import SwiftUI
 
+/// Whether the inbox's + menu offers "New Session" (#1010), which opens a Hermes session in
+/// the main chat: only as a Hermes server's home, and only in a DEBUG build or Hermex Branch
+/// (bundle id ending `.branch`). Temporary: #709's Sessions tab replaces it.
+enum HermesSessionEntry {
+    static func isOffered(isHermesHome: Bool, isDebugBuild: Bool = HermesSessionEntry.isDebugBuild,
+                          bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> Bool {
+        isHermesHome && (isDebugBuild || bundleIdentifier?.hasSuffix(".branch") == true)
+    }
+
+    static var isDebugBuild: Bool {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }
+}
+
 /// What titles the Bots inbox as a Hermes server's home: the server's name, and its host
 /// when that differs from the name.
 struct BotsInboxHome {
@@ -48,6 +66,9 @@ struct BotsInboxHome {
     /// True once `open()` has returned at least once, so "no Bot connection" is a
     /// settled answer to a held deep link rather than a not-loaded-yet one.
     @State private var hasSettled = false
+    /// The Hermes session "New Session" pushed, and whether its Profile is being read.
+    @State private var newSession: HermesSessionChat?
+    @State private var isOpeningSession = false
 
     init(
         server: URL,
@@ -196,6 +217,11 @@ struct BotsInboxHome {
                             onReconciled: { inbox.reconcileRooms($0, connectionID: connection.id) })
                     }
                     .disabled(!inbox.roomCapabilities.enabled || !inbox.roomCapabilities.methods.contains("groups.create"))
+                    if HermesSessionEntry.isOffered(isHermesHome: home != nil) {
+                        // Temporary entry until #709's Sessions tab replaces it.
+                        Button("New Session", systemImage: "square.and.pencil", action: openNewSession)
+                            .disabled(isOpeningSession)
+                    }
                     if inbox.reorderableSectionNames.count >= 2 {
                         Divider()
                         Button("Reorder Sections…", systemImage: "arrow.up.arrow.down") { showingSectionOrder = true }
@@ -314,6 +340,23 @@ struct BotsInboxHome {
         }
         .listRowSeparator(.hidden)
         .padding(.vertical, 12)
+    }
+
+    /// Pushes a new Hermes session on the Profile the host's dashboard runs (`current`).
+    /// The session is created when the chat attaches, not here.
+    private func openNewSession() {
+        guard let connection = inbox.connection, !isOpeningSession else { return }
+        isOpeningSession = true
+        Task {
+            defer { isOpeningSession = false }
+            do {
+                let profile = try await inbox.currentProfile()
+                guard inbox.connection?.id == connection.id else { return }
+                newSession = HermesSessionChat(server: server, connection: connection, target: .new(profile: profile))
+            } catch {
+                toast = BotConnectionAdvice.message(for: error, address: connection.address)
+            }
+        }
     }
 
     /// Opens the sign-in form for a password the host refused. A chat or room returns
@@ -546,6 +589,7 @@ extension BotsInboxView {
                 searchedProfile = nil
                 searchedRoom = nil; searchedSequence = nil; roomSequence = nil
                 selection.room = nil; selection.conversation = nil
+                newSession = nil
                 editSelection = nil
                 creation = nil
                 roomCreator?.suspend(); roomCreator = nil; createdRoom = nil
@@ -580,6 +624,7 @@ extension BotsInboxView {
             .navigationDestination(item: $editSelection) { selection in
                 editProfile(selection)
             }
+            .navigationDestination(item: $newSession) { ChatView(hermesSession: $0) }
             // The subscription lives while the inbox is on screen and the app is not in the
             // background; returning, refreshing and reconnecting all go through the same open().
             .task(id: revision) { await inbox.open(); hasSettled = true; openPendingDestination() }

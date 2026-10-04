@@ -11,13 +11,13 @@ import XCTest
     private static let knownTurnEvents: Set<String> = [
         "session.info", "message.start", "message.delta", "message.complete", // turn state
         "thinking.delta", "reasoning.available", // activity, `BotConversation.applyActivity`
-        "session.title" // unused; only schedules a snapshot read
+        "session.title" // Bot Chat only schedules a snapshot read; a Hermes session shows it
     ]
     /// The event types the local tool and approval turn adds to `knownTurnEvents`.
     private static let knownToolEvents: Set<String> = [
         "tool.start", "tool.complete", // tool rows, `BotTurnActivity`
         "request.cancel", // withdraws the answered approval card
-        "message.interim", "session.usage" // unused; only schedule a snapshot read
+        "message.interim", "session.usage" // Bot Chat only schedules a snapshot read; a Hermes session shows them
     ]
 
     private static let tests = URL(fileURLWithPath: #filePath).deletingLastPathComponent()

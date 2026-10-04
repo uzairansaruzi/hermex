@@ -110,6 +110,39 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorEnqueuePendingSteerLeftover(_ text: String) -> Bool
 }
 
+/// The run lifecycle `ChatViewModel` reads and drives whichever backend runs the chat's
+/// turns: a webui server's SSE streams (`ChatStreamCoordinator`) or a Hermes session on
+/// the gateway socket (`HermesChatTurnCoordinator`, #1010). Both feed the same
+/// `ChatStreamCoordinatorDelegate`, so transcript building, pacing and run endings stay
+/// shared. `activeStreamID` names the running turn: a webui stream id, or a Hermes turn
+/// identity. Starting, cancelling and reconciling a webui session load stay on
+/// `ChatStreamCoordinator`, since they speak its REST contract.
+@MainActor
+protocol ChatTurnCoordinating: AnyObject {
+    var activeStreamID: String? { get }
+    var activeRunStartedAt: Date? { get }
+    var recoveryState: ActiveStreamRecoveryState { get }
+    var latestRunEnding: ChatRunEnding? { get }
+    var successfulResponseCompletion: ChatStreamCoordinator.SuccessfulResponseCompletion? { get }
+    var liveTokensPerSecond: Double? { get }
+    var hasCompletedCurrentResponse: Bool { get }
+    /// The chat left or backgrounded mid-turn; `reconnectIfNeeded` resumes it.
+    var isConnectionSuspended: Bool { get }
+    /// Events may repeat text the transcript already holds, so appends deduplicate.
+    var isReplayConnection: Bool { get }
+
+    func attach(delegate: any ChatStreamCoordinatorDelegate)
+    func setShowsLiveActivityResponseExcerpts(_ shows: Bool)
+    func prepareForNewResponse()
+    func suspendActiveStreamConnection()
+    func reconnectIfNeeded(modelContext: ModelContext?) async
+    func networkPathDidChange(modelContext: ModelContext?) async
+    func recoverStaleStreamIfNeeded(now: Date, modelContext: ModelContext?) async
+    func clearReplayConnection()
+}
+
+extension ChatStreamCoordinator: ChatTurnCoordinating {}
+
 @MainActor
 @Observable
 final class ChatStreamCoordinator {
