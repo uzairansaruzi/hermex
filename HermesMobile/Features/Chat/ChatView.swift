@@ -1566,10 +1566,11 @@ struct ChatView: View {
         }
     }
 
-    /// Reports the bypass; on a Hermes session it also turns it off (#1011).
+    /// Reports the bypass; on a Hermes session it also turns off the session's own flag
+    /// (#1011). A bypass the host sets itself only reports.
     @ViewBuilder
     private var approvalBypassStatusPill: some View {
-        if let requests = viewModel.hermesRequests {
+        if let requests = viewModel.hermesRequests, requests.mayTurnOffApprovalBypass {
             ApprovalBypassStatusPill(onTurnOff: {
                 Task { await requests.turnOffApprovalBypass() }
             })

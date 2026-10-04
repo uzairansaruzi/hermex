@@ -111,6 +111,32 @@ import XCTest
         XCTAssertFalse(chat.model.isSessionApprovalBypassEnabled)
     }
 
+    /// Turn off clears only the session's flag. A bypass the host sets itself (a `--yolo`
+    /// launch) stays on in the `session.info` written ahead of the reply, so the pill keeps
+    /// reporting it and offers no second Turn off.
+    func testTurnOffNeverClaimsApprovalsAreBackWhileTheHostStillBypassesThem() async {
+        let chat = await openChat(info: ["yolo": .bool(true), "approval_mode": .string("manual")])
+        chat.host.next("config.set", .init(result: yoloReply("0"), before: [
+            event(1, "session.info", ["yolo": .bool(true), "approval_mode": .string("manual")])
+        ]))
+        await chat.requests.turnOffApprovalBypass()
+        XCTAssertEqual(chat.writes("config.set").map { $0["value"] }, [.string("off")])
+        XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled, "the host still bypasses approvals")
+
+        await chat.requests.turnOffApprovalBypass()
+        XCTAssertEqual(chat.writes("config.set").count, 1, "a session flag already off cannot clear the host's bypass")
+    }
+
+    /// A host that approves everything itself (`approvals.mode: off`) shows the bypass, and the
+    /// pill never sends a session-scoped off that cannot clear it.
+    func testAHostWideBypassIsReportedButNotTurnedOff() async {
+        let chat = await openChat(info: ["yolo": .bool(true), "approval_mode": .string("off")])
+        XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
+        await chat.requests.turnOffApprovalBypass()
+        XCTAssertEqual(chat.writes("config.set"), [])
+        XCTAssertTrue(chat.model.isSessionApprovalBypassEnabled)
+    }
+
     // MARK: Questions
 
     /// A batch locks each outstanding question by its `qid`, skipping the one the host already
@@ -260,6 +286,21 @@ import XCTest
         XCTAssertEqual(chat.requests.withdrawal?.message, "Question withdrawn because the work stopped.")
     }
 
+    /// Stop & send while a card is open only steers: a redirect while a tool waits on the
+    /// request cancels nothing, so the card stays answerable and the session still waits.
+    func testStopAndSendLeavesAnOpenCardAnswerable() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(request("clarify", id: "srq-c1", ["question": .string("Which file?")]))
+        chat.host.next("session.redirect", .init(result: .object(["status": .string("redirected"), "text": .string("Use main")])))
+        let outcome = try await chat.turn.submit("Use main", mode: .redirect)
+        XCTAssertEqual(outcome, .redirected)
+        XCTAssertEqual(chat.requests.onScreen?.requestID, "srq-c1")
+        XCTAssertTrue(chat.requests.mayAnswer)
+        XCTAssertTrue(chat.model.isWaitingForUser)
+        XCTAssertTrue(chat.model.stopNeedsConfirmation)
+    }
+
     // MARK: Restore
 
     /// Back from the background, the replay's `open_requests` replaces the cards, one per
@@ -273,7 +314,7 @@ import XCTest
         let question = request("clarify", id: "srq-c1", ["question": .string("Which file?")])
         let approval = approvalRequest(id: "srq-a2", requestID: "q-2")
         chat.host.always("session.events.since", .init(result: replay(openRequests: [question, question, approval])))
-        chat.host.always("session.resume", .init(result: resume(openRequests: [question, approval])))
+        chat.host.always("session.resume", .init(result: resume(openRequests: [question, question, approval])))
         await chat.model.reconnectStreamIfNeeded()
         XCTAssertEqual(chat.requests.open.map(\.id), ["srq-c1", "srq-a2"])
         XCTAssertEqual(chat.requests.onScreen?.requestID, "srq-c1", "a question comes first")
@@ -367,6 +408,11 @@ import XCTest
                                  choices: [String] = ["once", "session", "always", "deny"]) -> BotJSON {
         request("approval", id: id, ["request_id": .string(requestID), "command": .string("rm -rf build"),
                                      "description": .string("recursive delete"), "choices": .array(choices.map(BotJSON.string))])
+    }
+
+    /// The host's `config.set yolo` reply for the session scope.
+    private func yoloReply(_ value: String) -> BotJSON {
+        .object(["key": .string("yolo"), "value": .string(value), "scope": .string("session")])
     }
 
     private func question(_ qid: String, _ text: String) -> BotJSON {

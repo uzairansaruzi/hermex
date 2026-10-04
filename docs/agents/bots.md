@@ -323,14 +323,19 @@ clarification's slot above the composer as the Bot request card. Vault prompts, 
 own tasks and unknown methods get no card and are never answered. A batch question never
 gets a bare answer: Skip locks each outstanding `qid` empty. Skip all is `config.set {key:
 "yolo", value: "on", scope: "session"}`, then `approval.respond once` for the card on
-screen; the bypass pill reads `session.info`'s `yolo` and turns it off with `value: "off"`.
-`request.cancel` leaves the withdrawal note at the transcript's end, silent for this
-phone's Stop or Stop & send, and a reattach replaces the list from `open_requests`, one per
-envelope id. A question or credential prompt answered in Desktop sends no cancel, so its
-card stays until the next attach, or until an answer here comes back `expired` and it
-leaves quietly. Any open request shows "Waiting for you" in the run-status pill. The
-`config.set` yolo shape (`{key, value: "1"|"0", scope}` back) and `session.info`'s `yolo` are
-verified against `tui_gateway/methods_config_set.py` and `tui_gateway/server.py` at `ca678285`.
+screen. The bypass pill reads `session.info`'s `yolo`, which the host also sets for its own
+bypass (`approval_mode: off` or a `--yolo` launch), and the `session.info` written ahead of
+the `config.set` reply moves it, not the reply. Turn off sends `value: "off"` only for the
+session's own flag: a host-wide bypass only reports. `request.cancel` leaves the
+withdrawal note at the transcript's end, silent for this phone's Stop or Stop & send. Stop
+& send leaves the cards: a redirect while a tool waits on a request only steers. A
+reattach replaces the list from `open_requests`, one per envelope id. A question or
+credential prompt answered in Desktop sends no cancel, so its card stays until the next
+attach, or until an answer here comes back `expired` and it leaves quietly. Any open
+request shows "Waiting for you" in the run-status pill. The `config.set` yolo shape (`{key,
+value: "1"|"0", scope}` back), `session.info`'s `yolo` and `approval_mode`, and the
+redirect's steer during a tool are verified against `tui_gateway/methods_config_set.py`,
+`tui_gateway/server.py` and `agent/interrupt_control.py` at `ca678285`.
 
 `BotConversation` owns one server/connection/Profile view lifetime and is the engine's
 Bot Chat owner: it keeps the snapshot-driven transcript and the Bot features (mentions,

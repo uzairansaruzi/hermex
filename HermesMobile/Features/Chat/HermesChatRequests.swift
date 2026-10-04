@@ -32,8 +32,20 @@ import Observation
     /// answer given elsewhere or this phone's own stop. Cleared by a new request, an accepted
     /// prompt or leaving; never cached.
     private(set) var withdrawal: BotRequestWithdrawal?
-    /// The session's approval bypass, as `session.info` reports `yolo`.
+    /// The session's approval bypass, as `session.info` reports `yolo`: on while this
+    /// session's flag is set or the host approves everything itself (`approvals.mode: off`,
+    /// or a `--yolo` launch).
     private(set) var approvalBypass = false
+    /// `session.info`'s `approval_mode` is `off`: the host approves everything, whatever this
+    /// session sets.
+    private var hostApprovesAll = false
+    /// Turning this session's flag off left `session.info`'s `yolo` on, so the bypass is the
+    /// host's own (a `--yolo` launch, which `session.info` does not name). Cleared once the
+    /// bypass goes off.
+    private var bypassOutlivedTurnOff = false
+    /// Bumped by every `session.info` that reports `yolo`, so a bypass write knows whether
+    /// the host reported the result itself.
+    @ObservationIgnored private var bypassReports = 0
     /// A `config.set yolo` in flight.
     private(set) var isChangingApprovalBypass = false
     /// This phone's Stop or Stop & send is in flight: the host withdrawing the cards then is
@@ -61,6 +73,9 @@ import Observation
 
     /// The session waits on someone while any request is open, a card or not.
     var isWaiting: Bool { !open.isEmpty }
+
+    /// The pill may turn the bypass off: only this session's own flag can be.
+    var mayTurnOffApprovalBypass: Bool { approvalBypass && !hostApprovesAll && !bypassOutlivedTurnOff }
 
     /// The open approvals, for the overlay's count.
     var approvalCount: Int {
@@ -151,7 +166,7 @@ import Observation
 
     /// Turns the session's approval bypass off from its pill, so approvals ask again.
     func turnOffApprovalBypass() async {
-        guard approvalBypass else { return }
+        guard mayTurnOffApprovalBypass else { return }
         await setApprovalBypass(false, for: nil)
     }
 
@@ -195,11 +210,15 @@ import Observation
 
     /// Sends `config.set yolo` for this session, once; true when the host confirmed `enabled`.
     /// `action` is the approval Skip all answers, which must still be on screen at the write.
+    /// The reply confirms only the session's flag. The `session.info` the host sends ahead of
+    /// it says whether approvals are bypassed; only a session with no agent sends none, and
+    /// then the flag is the bypass.
     @discardableResult
     private func setApprovalBypass(_ enabled: Bool, for action: HermesAnswerAction?) async -> Bool {
         guard engine.connectionState == .connected, let runtime = engine.runtime, !isChangingApprovalBypass,
               answeringRequestID == nil else { return false }
         let attempt = engine.generation
+        let reportsBefore = bypassReports
         isChangingApprovalBypass = true
         errorMessage = nil
         var dispatched = false
@@ -214,8 +233,12 @@ import Observation
             guard reply["key"].text == "yolo", let value = reply["value"].text, ["0", "1"].contains(value) else {
                 throw BotSettingFailure.unknownOutcome
             }
-            approvalBypass = value == "1"
-            guard approvalBypass == enabled else { throw BotSettingFailure.unknownOutcome }
+            guard (value == "1") == enabled else { throw BotSettingFailure.unknownOutcome }
+            if bypassReports == reportsBefore {
+                approvalBypass = enabled
+            } else if !enabled, approvalBypass {
+                bypassOutlivedTurnOff = true
+            }
             return true
         } catch {
             guard attempt == engine.generation, !Task.isCancelled else { return false }
@@ -258,16 +281,21 @@ import Observation
     /// A `request.cancel` the engine held while attaching: newer than any `open_requests` in flight.
     func holdCancel() { revision += 1 }
 
-    /// The host withdrew every request: a stop, from any client, or this phone's accepted
-    /// Stop & send.
+    /// The host withdrew every request: a stop, from any client. Stop & send is not one: a
+    /// redirect while a tool waits on a request only steers.
     func withdrawAll() {
         revision += 1
         open = []
     }
 
-    /// `session.info`'s `yolo`, live or in a snapshot.
+    /// `session.info`'s `yolo` and `approval_mode`, live or in a snapshot.
     func applyBypass(_ info: BotJSON) {
-        if let yolo = info["yolo"].flag, yolo != approvalBypass { approvalBypass = yolo }
+        if let yolo = info["yolo"].flag {
+            bypassReports += 1
+            if yolo != approvalBypass { approvalBypass = yolo }
+            if !yolo, bypassOutlivedTurnOff { bypassOutlivedTurnOff = false }
+        }
+        if let mode = info["approval_mode"].text, (mode == "off") != hostApprovesAll { hostApprovesAll = mode == "off" }
     }
 
     /// The host accepted a prompt: the withdrawn card's note has served its turn.

@@ -177,7 +177,7 @@ struct HermesChatTranscript: Equatable {
         }
         let startsBefore = turnsStarted
         if mode == .send { isSubmittingSend = true }
-        // Stop & send interrupts the turn: the host withdrawing its cards is this phone's doing.
+        // As in Bot Chat, a stop withdrawal while Stop & send is in flight is this phone's doing.
         if mode == .redirect { requests.isStoppingHere = true }
         defer {
             if mode == .send { isSubmittingSend = false }
@@ -203,10 +203,10 @@ struct HermesChatTranscript: Equatable {
             }
         case .followUpQueued, .redirectQueued:
             queuedPrompt = queuedPrompt.map { "\($0)\n\n\(text)" } ?? text
-        case .redirected, .voiceStopped:
-            // The host stopped the turn, which withdraws its requests.
-            requests.withdrawAll()
-        case .guidanceQueued:
+        case .guidanceQueued, .redirected, .voiceStopped:
+            // None of these withdraws a request: a redirect while a tool waits on one only
+            // steers, and a stop phrase ends voice mode. The host's `request.cancel` says
+            // what it withdrew.
             break
         case .rejected, .unknown:
             return outcome
