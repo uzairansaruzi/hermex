@@ -183,7 +183,9 @@ five-minute boot deadline.
 
 The Actions summary records phase timings, the failed phase, assertion messages,
 and slow tests. Failure artifacts include setup/build/test logs and any result
-bundle. A missing bundle does not establish an infrastructure flake; inspect the
+bundle. Tests run with `-collect-test-diagnostics never`, as locally: on the
+`xcode-27` image a failure otherwise spends 10 minutes timing out a
+simulator sysdiagnose. A missing bundle does not establish an infrastructure flake; inspect the
 failed phase before rerunning. The reporter cannot turn a failed build or test
 green. Validate workflow changes with `actionlint .github/workflows/pr-ci.yml`
 and `python3 -m unittest discover -s ci -p 'test_*.py'`.

@@ -177,6 +177,7 @@ jobs:
             -disableAutomaticPackageResolution \
             -parallel-testing-enabled YES \
             -parallel-testing-worker-count "${TEST_WORKER_COUNT}" \
+            -collect-test-diagnostics never \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "${CI_LOG_DIR}/tests.log"
 
       - name: Check String Catalog coverage
