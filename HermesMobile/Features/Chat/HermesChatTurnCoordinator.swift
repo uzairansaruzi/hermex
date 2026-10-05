@@ -437,7 +437,9 @@ struct HermesChatTranscript: Equatable {
             if let seq = frame["seq"].integer, deltasInRebuild.remove(seq) != nil { return }
             guard let text = payload["text"].text, !text.isEmpty else { return }
             ensureTurn()
-            if showsLiveActivityExcerpts { drivenLiveActivity?.update(.token(text)) }
+            // With excerpts off the status still moves on to writing, off a wait the user
+            // answered, as in Bot Chat (#489).
+            drivenLiveActivity?.update(showsLiveActivityExcerpts ? .token(text) : .responding)
             delegate?.streamCoordinatorAppendToken(text)
         case "message.interim":
             ensureTurn()

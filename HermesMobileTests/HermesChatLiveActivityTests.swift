@@ -55,7 +55,8 @@ import XCTest
     // MARK: Updates
 
     /// Reasoning, tools, reply text and the title reach the activity; reply text only while
-    /// excerpts are on, and turning them off clears what it showed.
+    /// excerpts are on. Turning them off clears what it showed, and later text moves the
+    /// status on without its words.
     func testTheTurnsWorkUpdatesTheActivity() async {
         let chat = await openChat(excerpts: true)
         chat.receive(event(1, "message.start"))
@@ -70,8 +71,20 @@ import XCTest
         chat.receive(event(9, "message.delta", ["text": .string(" now")]))
         XCTAssertEqual(chat.spy.events, [
             .reasoning("Check the config first."), .toolStarted(name: "terminal"), .toolCompleted,
-            .interimAssistant("Let me look."), .token("Done"), .sessionTitle("Release plan"), .clearResponseExcerpt
+            .interimAssistant("Let me look."), .token("Done"), .sessionTitle("Release plan"), .clearResponseExcerpt,
+            .responding
         ])
+    }
+
+    /// With excerpts off (the default), the reply that follows an answered question moves the
+    /// activity off waiting, as in Bot Chat, instead of leaving the wait shown to the end.
+    func testTheReplyAfterAnAnsweredQuestionMovesTheActivityOffWaiting() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(request("clarify", id: "srq-c1", ["question": .string("Which file?")]))
+        chat.receive(event(2, "request.cancel", ["id": .string("srq-c1"), "method": .string("clarify")]))
+        chat.receive(event(3, "message.delta", ["text": .string("Using config.yml")]))
+        XCTAssertEqual(chat.spy.events, [.waitingForClarification, .responding])
     }
 
     /// An open approval shows as waiting for approval, and a question as needing an answer,

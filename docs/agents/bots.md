@@ -1261,8 +1261,9 @@ its turn does, with the webui layouts. The key is the interim
 reattach, or the session reopened mid-turn, adopts the turn's activity. Only a session's
 first turn after an attach is sure to learn `turn_started_at` live; a later one uses the
 chat's own turn id, so reopening the session during it replaces the activity. Reply text
-follows the excerpt setting; an open approval shows as waiting for approval and any other
-request as a question. Leaving or a dropped socket marks it stale, and it checks
+follows the excerpt setting; with it off, the reply still moves the status on to writing,
+as in the Bot feed. An open approval shows as waiting for approval and any other request
+as a question. Leaving or a dropped socket marks it stale, and it checks
 `drivenSessionID` like the Bot feed. It has no push, a tap opens the app as it is
 (`AgentRunTapTarget` builds no route for the key), and the orphan reconciler skips it, so a
 leftover one ages out by its stale date. #706 slice 6.2 replaces the key with
