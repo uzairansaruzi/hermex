@@ -462,9 +462,9 @@ final class ChatViewModel {
     /// Drops out-of-order `GET /api/reasoning` responses after rapid model switches
     /// so the gating never reflects a stale model (upstream #3750 class of bug).
     private var reasoningGatingFetchToken = 0
-    /// Hidden on a Hermes session until its reasoning control lands (#1016).
+    /// A Hermes session shows it unless the host marks the model `reasoning: false` (#1016).
     var showsReasoningEffortControl: Bool {
-        guard hermesTurn == nil else { return false }
+        if let hermesSettings { return hermesSettings.showsEffort }
         return ReasoningEffortOption.showsEffortControl(
             supportsReasoningEffort: supportsReasoningEffort,
             supportedEfforts: supportedReasoningEfforts
@@ -796,6 +796,19 @@ final class ChatViewModel {
 
     /// A Hermes session's model and Profile controls (#1015). Nil on a webui session.
     var hermesSettings: HermesChatSettings? { hermesTurn?.settings }
+
+    /// The effort chip's level: a Hermes session's `session.info` effort (#1016), else webui's.
+    var composerReasoningEffort: String? {
+        hermesSettings.map { $0.controls.effort } ?? selectedReasoningEffort
+    }
+
+    /// The effort ladder: a Hermes host's for the live model (#1016), else webui's vocabulary.
+    var composerSupportedReasoningEfforts: [String]? {
+        hermesSettings?.effortLevels ?? supportedReasoningEfforts
+    }
+
+    /// The level a Hermes host sends when the model takes less than the one picked (#1016).
+    var composerSentReasoningEffort: String? { hermesSettings?.sentEffort }
 
     var selectedWorkspacePath: String? {
         currentWorkspace
@@ -1382,6 +1395,12 @@ final class ChatViewModel {
         }
         let selectedEffort = effort.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !selectedEffort.isEmpty else { return false }
+
+        // A Hermes session sends it for this chat alone, as Bot Chat does (#1016).
+        if let hermesSettings {
+            guard selectedEffort != hermesSettings.controls.effort else { return false }
+            return await hermesSettings.select(effort: selectedEffort)
+        }
 
         guard selectedEffort != selectedReasoningEffort else {
             return false
@@ -3740,6 +3759,9 @@ final class ChatViewModel {
 
     private func switchReasoningFromSlashCommand(_ args: String) async -> SlashCommandExecutionResult {
         let reasoning = args.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if let hermesSettings {
+            return await switchHermesReasoningFromSlashCommand(reasoning, settings: hermesSettings)
+        }
         guard !reasoning.isEmpty else {
             return .unsupported(friendlyMessage: String(localized: "Usage: /reasoning show|hide|none|minimal|low|medium|high|xhigh"))
         }
@@ -3812,6 +3834,9 @@ final class ChatViewModel {
 
     private func setPersonalityFromSlashCommand(_ args: String) async -> SlashCommandExecutionResult {
         let requestedPersonality = args.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let hermesSettings {
+            return await askHermesPersonalityFromSlashCommand(requestedPersonality, settings: hermesSettings)
+        }
         guard !requestedPersonality.isEmpty else {
             return await personalityListMessage()
         }
@@ -3850,22 +3875,95 @@ final class ChatViewModel {
     private func personalityListMessage() async -> SlashCommandExecutionResult {
         do {
             let personalities = (try await client.personalities()).personalities ?? []
-            guard !personalities.isEmpty else {
-                return .executed(message: String(localized: "No personalities are configured on the server."))
-            }
-
-            let list = personalities.compactMap { personality -> String? in
+            return Self.personalityListMessage(personalities.compactMap { personality in
                 guard let name = personality.name, !name.isEmpty else { return nil }
-                if let description = personality.description, !description.isEmpty {
-                    return "- **\(name)** - \(description)"
-                }
-                return "- **\(name)**"
-            }
-            .joined(separator: "\n")
-
-            return .executed(message: String(localized: "Available personalities:\n\n\(list)\n\nUse `/personality <name>` or `/personality none`."))
+                return (name, personality.description ?? "")
+            })
         } catch {
             lastError = error
+            return .unsupported(friendlyMessage: error.localizedDescription)
+        }
+    }
+
+    /// The `/personality` list a webui server or Hermes host answered, with how to pick one.
+    private static func personalityListMessage(
+        _ personalities: [(name: String, description: String)]
+    ) -> SlashCommandExecutionResult {
+        guard !personalities.isEmpty else {
+            return .executed(message: String(localized: "No personalities are configured on the server."))
+        }
+        let list = personalities.map { personality in
+            personality.description.isEmpty
+                ? "- **\(personality.name)**"
+                : "- **\(personality.name)** - \(personality.description)"
+        }
+        .joined(separator: "\n")
+        return .executed(message: String(localized: "Available personalities:\n\n\(list)\n\nUse `/personality <name>` or `/personality none`."))
+    }
+
+    /// `/reasoning` in a Hermes session (#1016): a level goes through the effort chip's pick,
+    /// for this chat only. Display words are refused before anything is sent: on the host they
+    /// rewrite the display settings every client shares.
+    private func switchHermesReasoningFromSlashCommand(
+        _ level: String,
+        settings: HermesChatSettings
+    ) async -> SlashCommandExecutionResult {
+        let ladder = settings.effortLevels
+        guard !level.isEmpty else {
+            return .unsupported(friendlyMessage: String(localized: "Usage: /reasoning \(ladder.joined(separator: "|"))"))
+        }
+        guard HermesModelCatalog.effortLevels.contains(level) else {
+            if Self.hermesReasoningDisplayArgs.contains(level) {
+                return .unsupported(friendlyMessage: String(localized: "On a Hermes host, /reasoning \(level) changes display settings for every client, so Hermex doesn't send it."))
+            }
+            return .unsupported(friendlyMessage: String(localized: "Unknown reasoning level: \(level)."))
+        }
+        guard settings.showsEffort else {
+            return .unsupported(friendlyMessage: String(localized: "This model doesn't take a reasoning level."))
+        }
+        guard ladder.contains(level) else {
+            return .unsupported(friendlyMessage: String(localized: "This model can't turn reasoning off."))
+        }
+        guard level != settings.controls.effort else { return .executed(message: nil) }
+        if await settings.select(effort: level) { return .executed(message: nil) }
+        return .unsupported(friendlyMessage: settings.controls.errorMessage
+                            ?? String(localized: "Wait for this chat to connect before changing reasoning."))
+    }
+
+    /// `/personality` in a Hermes session (#1016). Bare, it lists the host's personalities. A
+    /// name waits for the user to confirm it (`HermesChatSettings.pendingPersonality`), because
+    /// the host writes it to the Profile's default; `none`, `default` and `clear` clear it.
+    private func askHermesPersonalityFromSlashCommand(
+        _ requested: String,
+        settings: HermesChatSettings
+    ) async -> SlashCommandExecutionResult {
+        guard !requested.isEmpty else {
+            do {
+                return Self.personalityListMessage(try await settings.personalities())
+            } catch {
+                return .unsupported(friendlyMessage: error.localizedDescription)
+            }
+        }
+        guard activeStreamID == nil else {
+            return .unsupported(friendlyMessage: String(localized: "Wait for the current response to finish before changing personality."))
+        }
+        settings.ask(personality: Self.personalityClearArgs.contains(requested.lowercased()) ? "none" : requested)
+        return .executed(message: nil)
+    }
+
+    /// Sends the `/personality` change the user confirmed. The notice names the Profile it changed.
+    func confirmHermesPersonality(_ name: String) async -> SlashCommandExecutionResult {
+        guard let settings = hermesSettings else { return .notDelivered }
+        guard activeStreamID == nil else {
+            return .unsupported(friendlyMessage: String(localized: "Wait for the current response to finish before changing personality."))
+        }
+        let profile = selectedProfileTitle
+        do {
+            try await settings.setPersonality(name)
+            return .executed(message: name == "none"
+                             ? String(localized: "Personality cleared for **\(profile)**.")
+                             : String(localized: "Personality for **\(profile)** set to **\(name)**."))
+        } catch {
             return .unsupported(friendlyMessage: error.localizedDescription)
         }
     }
@@ -6407,6 +6505,10 @@ final class ChatViewModel {
     private static let reasoningDisplayArgs: Set<String> = ["show", "hide", "on", "off"]
     private static let reasoningEffortArgs: Set<String> = ["none", "minimal", "low", "medium", "high", "xhigh"]
     private static let personalityClearArgs: Set<String> = ["none", "default", "clear"]
+    /// The host's `/reasoning` display words, which write its global display settings (#1016).
+    private static let hermesReasoningDisplayArgs: Set<String> = [
+        "show", "hide", "on", "off", "full", "all", "clamp", "collapse", "short"
+    ]
 
     private static func btwMessageText(question: String, answer: String?, isLoading: Bool) -> String {
         let trimmedAnswer = answer?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""

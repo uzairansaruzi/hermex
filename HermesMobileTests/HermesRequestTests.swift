@@ -84,6 +84,10 @@ final class HermesRequestTests: XCTestCase {
             (.configSet(sessionID: "runtime", profile: "triage", setting: .fast(false)), "config.set",
              ["session_id": .string("runtime"), "profile": .string("triage"), "scope": .string("session"),
               "key": .string("fast"), "value": .string("normal")]),
+            // The one Profile-wide write: no scope, which the host ignores for it.
+            (.configSet(sessionID: "runtime", profile: "triage", setting: .personality("pirate")), "config.set",
+             ["session_id": .string("runtime"), "profile": .string("triage"),
+              "key": .string("personality"), "value": .string("pirate")]),
             (.sessionCwdSet(sessionID: "runtime", profile: "triage", cwd: "/work"), "session.cwd.set",
              ["session_id": .string("runtime"), "profile": .string("triage"), "cwd": .string("/work")]),
             (.sessionControlRead(sessionID: "runtime", profile: "triage"), "session.control.read",
@@ -95,6 +99,7 @@ final class HermesRequestTests: XCTestCase {
              ["name": .string("work"), "arg": .string("fix it"), "session_id": .string("runtime")]),
             (.completePath(word: "src", sessionID: "runtime", profile: "triage"), "complete.path",
              ["word": .string("src"), "session_id": .string("runtime"), "profile": .string("triage")]),
+            (.personalityCompletions, "complete.slash", ["text": .string("/personality ")]),
             (.subagentList(sessionID: "runtime"), "subagent.list", ["session_id": .string("runtime")]),
             (.subagentTail(sessionID: "runtime", subagentID: "w1"), "subagent.tail",
              ["session_id": .string("runtime"), "subagent_id": .string("w1")]),

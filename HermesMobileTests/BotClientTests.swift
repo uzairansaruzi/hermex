@@ -796,7 +796,8 @@ import XCTest
         func set(_ setting: HermesCall.SessionSetting, session: String = "runtime") -> HermesCall {
             .configSet(sessionID: session, profile: "default", setting: setting)
         }
-        for setting: HermesCall.SessionSetting in [.reasoning("off"), .reasoning("show"), .model(value: "model --provider provider", confirmExpensive: false)] {
+        for setting: HermesCall.SessionSetting in [.reasoning("off"), .reasoning("show"), .reasoning("hide"), .personality(" "),
+                                                   .model(value: "model --provider provider", confirmExpensive: false)] {
             do {
                 _ = try await client.call(set(setting))
                 XCTFail("Unsupported setting was dispatched")

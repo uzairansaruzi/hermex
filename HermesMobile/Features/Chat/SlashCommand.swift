@@ -68,11 +68,11 @@ enum ServerSideAction: String, Equatable, Sendable {
     case background
     case goal
 
-    /// The commands a Hermes session runs itself (#1013, `/model` #1015); any other `/` text
-    /// goes to its host as typed.
+    /// The commands a Hermes session runs itself (#1013, `/model` #1015, `/reasoning` and
+    /// `/personality` #1016); any other `/` text goes to its host as typed.
     var runsInHermesSession: Bool {
         switch self {
-        case .goal, .btw, .background, .model: return true
+        case .goal, .btw, .background, .model, .reasoning, .personality: return true
         default: return false
         }
     }

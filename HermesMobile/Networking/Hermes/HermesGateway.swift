@@ -432,7 +432,7 @@ private extension HermesCall {
     /// because its outcome is unknown.
     var isCancellationSafe: Bool {
         switch self {
-        case .fileAttach, .completePath, .subagentList, .subagentTail, .sessionActiveList: return true
+        case .fileAttach, .completePath, .personalityCompletions, .subagentList, .subagentTail, .sessionActiveList: return true
         default: return false
         }
     }
@@ -441,7 +441,7 @@ private extension HermesCall {
     /// times out ends its screen's connection; the socket stays for the others.
     var timesOutLocally: Bool {
         switch self {
-        case .subagentList, .subagentTail, .sessionActiveList: return true
+        case .subagentList, .subagentTail, .sessionActiveList, .personalityCompletions: return true
         default: return false
         }
     }

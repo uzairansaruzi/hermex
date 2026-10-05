@@ -1500,6 +1500,17 @@ Reasoning and fast mode use `config.set` with `{profile, session_id, scope:
 acknowledge the selection; rejections preserve the old value. Both choices are
 bound to the captured runtime and active model, and are invalidated on disconnect.
 
+A Hermes session's composer (#1016) offers the same ladder, without `none` when
+`capabilities[model].can_disable_reasoning` is false, and hides it for
+`reasoning: false`. Effort is session-scoped: the next chat in the Profile keeps
+its own. `session.info.reasoning_effort_wire` names the level the model's route
+actually takes; the chip shows it when it differs ("XHigh · sent as High").
+`/reasoning` there refuses the display words. Personality is the opposite:
+`config.set {key: "personality"}` always writes the Profile's default (the host
+has no session-only personality) and also switches the session, so
+`/personality <name>` asks first and names the Profile. Its list is
+`complete.slash {text: "/personality "}`, which reads the host's launch Profile.
+
 **Accepted host limitation (#479):** in the compatibility pin's
 `tui_gateway/methods_config_set.py`, `_set_reasoning` and `_set_fast` fall back to
 writing Profile config if the runtime disappears, even with `scope: session`.

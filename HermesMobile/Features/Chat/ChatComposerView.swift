@@ -279,6 +279,8 @@ struct MessageComposerView: View {
     /// A configuration change that has not landed yet, such as a model the host applies
     /// after the running response. Shown below any configuration error.
     var configurationNotice: String?
+    /// The effort a Hermes host sends when the model takes less than the one picked (#1016).
+    var sentReasoningEffort: String?
     /// A Hermes session (#1012): staged files upload when they are sent, under Bot Chat's
     /// rules. Up to eight, and Steer drops out while a response runs.
     var uploadsAttachmentsOnSend = false
@@ -1199,7 +1201,8 @@ struct MessageComposerView: View {
             model: selectedModelOption,
             effort: selectedReasoningEffort,
             supportedEfforts: supportedReasoningEfforts,
-            supportsEffort: showsReasoningControl ? supportsReasoningEffort : false
+            supportsEffort: showsReasoningControl ? supportsReasoningEffort : false,
+            sentEffort: sentReasoningEffort
         )
     }
 

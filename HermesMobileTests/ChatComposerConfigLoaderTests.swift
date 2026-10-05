@@ -365,4 +365,26 @@ final class ReasoningEffortGatingTests: XCTestCase {
             supportedEfforts: nil
         ))
     }
+    /// A Hermes host's ladder (#1016) titles its top levels, which webui's fallback leaves out.
+    func testHermesLadderTitlesMaxAndUltra() {
+        let options = ReasoningEffortOption.options(forSupportedEfforts: HermesModelCatalog.effortLevels)
+        XCTAssertEqual(options.suffix(2).map(\.title), ["Max", "Ultra"])
+        XCTAssertFalse(ReasoningEffortOption.allCases.map(\.id).contains("max"))
+    }
+
+    /// The chip names the level a Hermes host sent when the model took less (#1016), and only then.
+    func testTheLabelNamesALoweredLevel() {
+        func selection(sent: String?) -> ComposerModelEffortSelection {
+            ComposerModelEffortSelection(
+                model: ModelCatalogOption(id: "gpt-6", displayName: "gpt-6", providerID: "openai"),
+                effort: "xhigh", supportedEfforts: HermesModelCatalog.effortLevels, supportsEffort: true, sentEffort: sent
+            )
+        }
+        XCTAssertEqual(selection(sent: "high").title, "gpt-6 · XHigh · sent as High")
+        XCTAssertEqual(selection(sent: "high").accessibilityTitle, "gpt-6, XHigh effort, sent as High")
+        for sent in [nil, "", "xhigh"] {
+            XCTAssertEqual(selection(sent: sent).title, "gpt-6 · XHigh")
+            XCTAssertEqual(selection(sent: sent).accessibilityTitle, "gpt-6 · XHigh")
+        }
+    }
 }

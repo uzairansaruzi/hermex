@@ -148,7 +148,7 @@ struct ComposerModelEffortMenu: View {
         }
         .tint(color)
         .disabled(isDisabled)
-        .accessibilityLabel(accessibilityLabel)
+        .accessibilityLabel(Text(verbatim: selection.accessibilityTitle))
     }
 
     private func makeMenu() -> UIMenu {
@@ -248,10 +248,6 @@ struct ComposerModelEffortMenu: View {
             favoriteKeys: favoriteModelKeys
         )
     }
-
-    private var accessibilityLabel: Text {
-        Text(verbatim: selection.title)
-    }
 }
 
 struct ComposerModelEffortSelection: Equatable, Sendable {
@@ -259,6 +255,8 @@ struct ComposerModelEffortSelection: Equatable, Sendable {
     let effort: String?
     let supportedEfforts: [String]?
     let supportsEffort: Bool?
+    /// The level a Hermes host sends when the model's route takes less than `effort` (#1016).
+    var sentEffort: String? = nil
 
     var modelProviderID: String? {
         model.providerID ?? model.id.modelIDProviderPrefix
@@ -287,12 +285,27 @@ struct ComposerModelEffortSelection: Equatable, Sendable {
     var effortTitle: String? {
         guard showsEffortControl else { return nil }
         guard let effort = committedEffort else { return String(localized: "Reasoning") }
-        return ReasoningEffortOption.title(for: effort)
+        let title = ReasoningEffortOption.title(for: effort)
+        guard let lowered = loweredEffort else { return title }
+        return String(localized: "\(title) · sent as \(ReasoningEffortOption.title(for: lowered))")
     }
 
     var title: String {
         guard let effortTitle else { return model.displayName }
         return "\(model.displayName) · \(effortTitle)"
+    }
+
+    /// `title` for VoiceOver, which reads a lowered level as a sentence rather than symbols.
+    var accessibilityTitle: String {
+        guard let effort = committedEffort, let lowered = loweredEffort else { return title }
+        let picked = ReasoningEffortOption.title(for: effort), sent = ReasoningEffortOption.title(for: lowered)
+        return String(localized: "\(model.displayName), \(picked) effort, sent as \(sent)")
+    }
+
+    /// `sentEffort` when it differs from the committed level.
+    private var loweredEffort: String? {
+        guard let effort = committedEffort, let sent = normalizedEffort(sentEffort), sent != effort else { return nil }
+        return sent
     }
 
     private func normalizedEffort(_ effort: String?) -> String? {
@@ -341,6 +354,7 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
     let id: String
     let title: String
 
+    /// webui's static ladder, and the fallback when a server sends no vocabulary (#18).
     static let allCases: [ReasoningEffortOption] = [
         ReasoningEffortOption(id: "none", title: String(localized: "None")),
         ReasoningEffortOption(id: "minimal", title: String(localized: "Minimal")),
@@ -350,8 +364,15 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
         ReasoningEffortOption(id: "xhigh", title: String(localized: "XHigh"))
     ]
 
+    /// Every level with a title: webui's ladder plus the levels only a Hermes host offers
+    /// (#1016), which stay out of webui's fallback.
+    private static let titled = allCases + [
+        ReasoningEffortOption(id: "max", title: String(localized: "Max")),
+        ReasoningEffortOption(id: "ultra", title: String(localized: "Ultra"))
+    ]
+
     static func title(for effort: String) -> String {
-        allCases.first(where: { $0.id == effort })?.title
+        titled.first(where: { $0.id == effort })?.title
             ?? effort.capitalized
     }
 
@@ -367,10 +388,7 @@ struct ReasoningEffortOption: Identifiable, CaseIterable {
         return supportedEfforts
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .filter { !$0.isEmpty && seen.insert($0).inserted }
-            .map { id in
-                allCases.first(where: { $0.id == id })
-                    ?? ReasoningEffortOption(id: id, title: id.capitalized)
-            }
+            .map { id in ReasoningEffortOption(id: id, title: title(for: id)) }
     }
 
     /// The lone effort when the server vocabulary leaves nothing to choose, so the

@@ -85,6 +85,11 @@ enum HermesCall: Equatable, Sendable {
     case commandsCatalog(sessionID: String)
     case commandDispatch(name: String, argument: String, sessionID: String)
     case completePath(word: String, sessionID: String, profile: String)
+    /// The host's personalities, from `complete.slash`'s `/personality ` stage (#1016). The text
+    /// is fixed here so no caller can widen this into the general slash completer. The host
+    /// reads its launch Profile's config for it, so a user-defined personality listed here may
+    /// not exist in the session's Profile.
+    case personalityCompletions
 
     // Delegated work
     case subagentList(sessionID: String)
@@ -159,8 +164,8 @@ enum HermesCall: Equatable, Sendable {
         case answer(String)
     }
 
-    /// The runtime-scoped writes `config.set` may carry. The host still has a
-    /// missing-runtime fallback for effort/fast; never send global or display writes.
+    /// The writes `config.set` may carry. All are runtime-scoped except `personality`. The
+    /// host still has a missing-runtime fallback for effort/fast; never send global or display writes.
     enum SessionSetting: Equatable, Sendable {
         /// `value` must end in `--session` so the host never writes the Profile's default.
         case model(value: String, confirmExpensive: Bool)
@@ -168,6 +173,10 @@ enum HermesCall: Equatable, Sendable {
         case fast(Bool)
         /// The session's approval bypass: on auto-approves its dangerous commands, off asks again.
         case yolo(Bool)
+        /// The one write that reaches the Profile, deliberately (#1016): the host has no
+        /// session-only personality, so it always writes the Profile's default and switches
+        /// this session too. `none` clears it. Sent without a scope, which the host ignores here.
+        case personality(String)
     }
 
     /// One immutable room creation. A deliberate retry resends the same value.
@@ -224,6 +233,7 @@ enum HermesCall: Equatable, Sendable {
         case .commandsCatalog: return "commands.catalog"
         case .commandDispatch: return "command.dispatch"
         case .completePath: return "complete.path"
+        case .personalityCompletions: return "complete.slash"
         case .subagentList: return "subagent.list"
         case .subagentTail: return "subagent.tail"
         case .subagentInterrupt: return "subagent.interrupt"
@@ -307,7 +317,8 @@ enum HermesCall: Equatable, Sendable {
             return ["session_id": .string(sessionID), "profile": .string(profile)]
         case .configuredModelOptions: return ["include_unconfigured": .bool(false)]
         case .configSet(let sessionID, let profile, let setting):
-            var params: [String: BotJSON] = ["session_id": .string(sessionID), "profile": .string(profile), "scope": .string("session")]
+            var params: [String: BotJSON] = ["session_id": .string(sessionID), "profile": .string(profile)]
+            if case .personality = setting {} else { params["scope"] = .string("session") }
             switch setting {
             case .model(let value, let confirmExpensive):
                 params["key"] = .string("model"); params["value"] = .string(value)
@@ -318,6 +329,8 @@ enum HermesCall: Equatable, Sendable {
                 params["key"] = .string("fast"); params["value"] = .string(enabled ? "fast" : "normal")
             case .yolo(let enabled):
                 params["key"] = .string("yolo"); params["value"] = .string(enabled ? "on" : "off")
+            case .personality(let name):
+                params["key"] = .string("personality"); params["value"] = .string(name)
             }
             return params
         case .sessionCwdSet(let sessionID, let profile, let cwd):
@@ -328,6 +341,7 @@ enum HermesCall: Equatable, Sendable {
             return ["name": .string(name), "arg": .string(argument), "session_id": .string(sessionID)]
         case .completePath(let word, let sessionID, let profile):
             return ["word": .string(word), "session_id": .string(sessionID), "profile": .string(profile)]
+        case .personalityCompletions: return ["text": .string("/personality ")]
         case .subagentTail(let sessionID, let subagentID), .subagentInterrupt(let sessionID, let subagentID):
             return ["session_id": .string(sessionID), "subagent_id": .string(subagentID)]
         case .groupsList(let offset):
@@ -378,6 +392,8 @@ enum HermesCall: Equatable, Sendable {
             case .model(let value, _): valid = !sessionID.isEmpty && value.hasSuffix(" --session")
             case .reasoning(let value): valid = !sessionID.isEmpty && HermesModelCatalog.effortLevels.contains(value)
             case .fast, .yolo: valid = !sessionID.isEmpty
+            case .personality(let name):
+                valid = !sessionID.isEmpty && !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
         case .commandDispatch(let name, _, let sessionID):
             // One bare name, so this never widens into the general slash runner:
@@ -421,7 +437,7 @@ enum HermesCall: Equatable, Sendable {
         case .profilesList, .profilesGetAsset, .sessionList, .sessionResume, .sessionEventsSince, .sessionActiveList,
              .promptSubmit, .sessionSteer, .sessionRedirect, .sessionInterrupt, .fileAttach, .approvalRespond,
              .requestAnswer, .clarifyLock, .modelOptions, .configuredModelOptions, .sessionCwdSet, .sessionControlRead,
-             .sessionControl, .groupsCapabilities, .clientCapabilities:
+             .sessionControl, .personalityCompletions, .groupsCapabilities, .clientCapabilities:
             valid = true
         }
         guard valid else { throw BotFailure.unsupported }

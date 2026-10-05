@@ -512,8 +512,8 @@ struct ChatView: View {
             isSingleProfileMode: viewModel.composerIsSingleProfileMode,
             selectedProfileName: viewModel.selectedProfileName,
             selectedProfileTitle: viewModel.selectedProfileTitle,
-            selectedReasoningEffort: viewModel.selectedReasoningEffort,
-            supportedReasoningEfforts: viewModel.supportedReasoningEfforts,
+            selectedReasoningEffort: viewModel.composerReasoningEffort,
+            supportedReasoningEfforts: viewModel.composerSupportedReasoningEfforts,
             supportsReasoningEffort: viewModel.supportsReasoningEffort,
             showsReasoningControl: viewModel.showsReasoningEffortControl,
             isUpdatingConfiguration: viewModel.isUpdatingComposerConfiguration
@@ -650,6 +650,7 @@ struct ChatView: View {
             showsSessionControls: !isHermesSession,
             showsModelAndProfileControls: isHermesSession,
             configurationNotice: viewModel.composerConfigurationNotice,
+            sentReasoningEffort: viewModel.composerSentReasoningEffort,
             uploadsAttachmentsOnSend: isHermesSession,
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil
         )
@@ -1138,6 +1139,10 @@ struct ChatView: View {
             )
             .notificationOfferAlert($pendingNotificationOffer)
             .modifier(HermesModelConfirmationModifier(controls: viewModel.hermesSettings?.controls))
+            .modifier(HermesPersonalityConfirmationModifier(
+                settings: viewModel.hermesSettings, profile: viewModel.selectedProfileTitle,
+                onConfirm: confirmHermesPersonality
+            ))
             .modifier(StopConfirmationModifier(isPresented: $showsStopConfirmation) {
                 Task { await stopStream() }
             })
@@ -2210,6 +2215,15 @@ struct ChatView: View {
 
     private func confirmClearConversation(_ pending: PendingClearConfirmation) {
         Task { await clearConversation(pending) }
+    }
+
+    /// Sends a confirmed `/personality` change (#1016). Its command already left the composer.
+    private func confirmHermesPersonality(_ name: String) {
+        Task {
+            let result = await viewModel.confirmHermesPersonality(name)
+            handleSlashExecutionResult(result, parsedCommand: SlashCommandCatalog.command(named: "personality"),
+                                       submittedDraft: "", submittedDraftRevision: draftRevision, consumesDraft: false)
+        }
     }
 
     private func clearConversation(_ pending: PendingClearConfirmation) async {
@@ -3864,6 +3878,41 @@ private struct HermesModelConfirmationModifier: ViewModifier {
             Button("Cancel", role: .cancel) { controls?.cancelConfirmation() }
         } message: {
             if let confirmation = controls?.confirmation { Text(confirmation.message) }
+        }
+    }
+}
+
+/// The Profile-wide question a Hermes session's `/personality <name>` asks first (#1016): the
+/// host has no session-only personality, so the change reaches every new chat in the Profile.
+private struct HermesPersonalityConfirmationModifier: ViewModifier {
+    let settings: HermesChatSettings?
+    let profile: String
+    let onConfirm: (String) -> Void
+
+    func body(content: Content) -> some View {
+        let clears = settings?.pendingPersonality == "none"
+        let title: LocalizedStringKey = clears ? "Clear the personality for \(profile)?" : "Change the personality for \(profile)?"
+        let confirm: LocalizedStringKey = clears ? "Clear" : "Change"
+        let message: LocalizedStringKey = clears
+            ? "New chats in \(profile) start without one on every device, and this chat switches now."
+            : "New chats in \(profile) use it on every device, and this chat switches now."
+        content.alert(
+            title,
+            isPresented: Binding(
+                get: { settings?.pendingPersonality != nil },
+                set: { if !$0 { settings?.cancelPersonality() } }
+            )
+        ) {
+            Button("Cancel", role: .cancel) { settings?.cancelPersonality() }
+            // Dismissing clears the pending name, so the button captures it first.
+            if let name = settings?.pendingPersonality {
+                Button(confirm) {
+                    settings?.cancelPersonality()
+                    onConfirm(name)
+                }
+            }
+        } message: {
+            Text(message)
         }
     }
 }
