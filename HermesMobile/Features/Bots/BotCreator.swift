@@ -166,7 +166,7 @@ enum BotProfileName {
             try ensureOwner(owner, client)
             if let options = try? await client.call(.configuredModelOptions, validateDispatch: validate(owner)) {
                 try ensureOwner(owner, client)
-                modelGroups = BotModelCatalog(options).groups
+                modelGroups = HermesModelCatalog(options).groups
             }
         } catch {
             guard generation == owner, wire === client else { return }

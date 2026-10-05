@@ -1487,6 +1487,12 @@ and `deferred` determine whether to request confirmation, show a next-turn pick,
 or re-read the active model. No pending pick gets an active checkmark. Reads are
 coalesced on session-info, turn-boundary and session-control events, never polled.
 
+The catalog projection is `HermesModelCatalog`, shared with a Hermes session's
+composer in the main chat (#1015). That composer reuses `BotChatControls` for its
+model chip without the `session.control.read` its side tasks already make
+(`HermesChatSettings`), and lists `profiles.list` in its Profile chip. Picking
+another Profile opens a new chat in it; the session's Profile never changes.
+
 Reasoning and fast mode use `config.set` with `{profile, session_id, scope:
 "session", key, value}`. Reasoning sends only `none`, `minimal`, `low`, `medium`,
 `high`, `xhigh`, `max` or `ultra` (never the host's display commands). Fast sends

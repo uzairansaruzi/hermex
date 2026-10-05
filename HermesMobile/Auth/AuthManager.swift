@@ -519,9 +519,9 @@ final class AuthManager {
     }
 
     /// Deletes one server's local auth artifacts — its scoped custom headers, its
-    /// Bot connection with that connection's cached avatars and shared sign-in, and its
-    /// cookies — without touching the registry or the global `server_url` key. Its push
-    /// pairing lives in the shared Keychain access group and is torn down by
+    /// Bot connection with that connection's cached avatars, shared sign-in and remembered
+    /// Hermes Profile, and its cookies — without touching the registry or the global
+    /// `server_url` key. Its push pairing lives in the shared Keychain access group and is torn down by
     /// `PushRegistrar.forget`, which the removal paths above await first. A Hermes
     /// server's sign-in never uses the shared cookie jar, so the cookies of a webui
     /// server on the same host stay.
@@ -532,8 +532,10 @@ final class AuthManager {
     }
 
     /// Deletes `server`'s Bot connection record with that connection's cached avatars,
-    /// which also retires its shared sign-in (`BotConnectionStore.remove`).
+    /// which also retires its shared sign-in (`BotConnectionStore.remove`), and the Profile
+    /// its New Session remembers (#1015).
     private func removeBotConnection(for server: URL) {
+        HermesProfilePreference.save(nil, for: server, in: preferences)
         let bots = BotConnectionStore(keychain: keychain)
         if let connection = try? bots.load(server: server) {
             BotAvatarStore.shared.removeAll(connectionID: connection.id)

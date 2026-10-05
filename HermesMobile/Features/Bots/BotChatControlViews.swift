@@ -17,7 +17,7 @@ struct BotComposerSettings: View {
                     allowsEffortChanges: settings.mayChangeEffort,
                     selection: ComposerModelEffortSelection(
                         model: active, effort: settings.effort,
-                        supportedEfforts: BotModelCatalog.effortLevels,
+                        supportedEfforts: HermesModelCatalog.effortLevels,
                         supportsEffort: settings.supportsEffort
                     ),
                     modelGroups: settings.catalog.groups, favoriteModelKeys: [], recentModelKeys: [],

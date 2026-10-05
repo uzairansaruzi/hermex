@@ -25,7 +25,7 @@ import Observation
         var id: UUID { action.id }
     }
 
-    private(set) var catalog = BotModelCatalog(.null)
+    private(set) var catalog = HermesModelCatalog(.null)
     private(set) var workspace: String?
     private(set) var effort: String?
     private(set) var fast: Bool?
@@ -49,6 +49,13 @@ import Observation
     private var lastContext: Context?
     private var idle = false
     private(set) var snapshotRevision = 0
+    /// False for a Hermes session's composer (#1015), which reads only the model catalog:
+    /// its goal and side work read `session.control` on their own (`HermesChatSideTasks`).
+    private let readsSessionControl: Bool
+
+    init(readsSessionControl: Bool = true) {
+        self.readsSessionControl = readsSessionControl
+    }
 
     var showsFast: Bool {
         guard fast != nil, let active = catalog.active else { return false }
@@ -75,7 +82,7 @@ import Observation
         }
         if lastContext?.runtime != context.runtime { pendingModel = nil }
         lastContext = context
-        catalog = BotModelCatalog(.null); controls = []
+        catalog = HermesModelCatalog(.null); controls = []
         workspace = nil; effort = nil; fast = nil; usage = BotChatUsage(.null); idle = false
         self.context = context; self.wire = wire
         await reload()
@@ -125,15 +132,15 @@ import Observation
         let revision = readRevision
         isLoading = true
         defer { if context == owner && revision == readRevision { isLoading = false } }
-        let reads: [HermesCall] = [.modelOptions(sessionID: owner.runtime, profile: owner.profile),
-                                   .sessionControlRead(sessionID: owner.runtime, profile: owner.profile)]
+        var reads: [HermesCall] = [.modelOptions(sessionID: owner.runtime, profile: owner.profile)]
+        if readsSessionControl { reads.append(.sessionControlRead(sessionID: owner.runtime, profile: owner.profile)) }
         for call in reads where !unavailable.contains(call.method) {
             do {
                 let result = try await wire.call(call)
                 guard context == owner, revision == readRevision, !Task.isCancelled else { return }
                 if case .modelOptions = call {
                     guard result["providers"].list != nil else { throw BotFailure.unsupported }
-                    catalog = BotModelCatalog(result)
+                    catalog = HermesModelCatalog(result)
                     if let pendingModel, catalog.active?.matchesSelection(modelID: pendingModel.id, providerID: pendingModel.providerID) == true {
                         self.pendingModel = nil
                     }
@@ -171,7 +178,7 @@ import Observation
             guard action.expectedModel == catalog.active else {
                 errorMessage = BotFailure.stale.localizedDescription; return
             }
-            guard let value = BotModelCatalog.sessionModelValue(option) else {
+            guard let value = HermesModelCatalog.sessionModelValue(option) else {
                 errorMessage = String(localized: "This model identifier cannot be safely sent to this host."); return
             }
             call = .configSet(sessionID: runtime, profile: profile, setting: .model(value: value, confirmExpensive: confirmed))
@@ -239,7 +246,7 @@ import Observation
     private func allowed(_ change: Change) -> Bool {
         switch change {
         case .model: return mayChangeModel
-        case .effort(let value): return mayChangeEffort && BotModelCatalog.effortLevels.contains(value)
+        case .effort(let value): return mayChangeEffort && HermesModelCatalog.effortLevels.contains(value)
         case .fast: return mayChangeFast
         case .workspace: return mayChangeWorkspace
         case .control(let control): return mayControl && controls.contains(control) && control.action != nil

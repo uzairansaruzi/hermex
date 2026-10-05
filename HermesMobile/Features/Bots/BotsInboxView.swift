@@ -342,7 +342,8 @@ struct BotsInboxHome {
         .padding(.vertical, 12)
     }
 
-    /// Pushes a new Hermes session on the Profile the host's dashboard runs (`current`).
+    /// Pushes a new Hermes session on the Profile last picked for this server, or the one the
+    /// host's dashboard runs (`current`) when none is, or the host no longer lists it (#1015).
     /// The session is created when the chat attaches, not here.
     private func openNewSession() {
         guard let connection = inbox.connection, !isOpeningSession else { return }
@@ -350,8 +351,10 @@ struct BotsInboxHome {
         Task {
             defer { isOpeningSession = false }
             do {
-                let profile = try await inbox.currentProfile()
+                let current = try await inbox.currentProfile()
                 guard inbox.connection?.id == connection.id else { return }
+                let profile = HermesProfilePreference.resolve(for: server, listed: inbox.profiles.map(\.id),
+                                                              current: current)
                 newSession = HermesSessionChat(server: server, connection: connection, target: .new(profile: profile))
             } catch {
                 toast = BotConnectionAdvice.message(for: error, address: connection.address)
@@ -624,7 +627,7 @@ extension BotsInboxView {
             .navigationDestination(item: $editSelection) { selection in
                 editProfile(selection)
             }
-            .navigationDestination(item: $newSession) { ChatView(hermesSession: $0) }
+            .navigationDestination(item: $newSession) { ChatView(hermesSession: $0) { newSession = $0 } }
             // The subscription lives while the inbox is on screen and the app is not in the
             // background; returning, refreshing and reconnecting all go through the same open().
             .task(id: revision) { await inbox.open(); hasSettled = true; openPendingDestination() }

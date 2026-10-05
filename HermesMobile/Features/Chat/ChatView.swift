@@ -297,6 +297,9 @@ struct ChatView: View {
     /// A Hermes session's chat (#1010): webui-only controls are hidden and its turns run
     /// on the gateway socket.
     let isHermesSession: Bool
+    /// Puts a new Hermes chat in this one's place: a Profile picked before anything was
+    /// sent (#1015). Nil pushes it on top instead.
+    let onReplaceHermesSession: ((HermesSessionChat) -> Void)?
 
     /// The composer's draft. Never read it in `body` or wrap it in a get/set
     /// binding for the composer: either re-runs this whole screen on every
@@ -324,6 +327,8 @@ struct ChatView: View {
     @State private var cacheFirstSnapUntil: Date?
     /// A chat pushed on top of this one: a new fork, or this fork's parent.
     @State private var pushedSession: SessionSummary?
+    /// A new Hermes chat in another Profile, pushed on top so Back returns here (#1015).
+    @State private var pushedHermesSession: HermesSessionChat?
     /// Set when this chat is a fork; draws the "Forked from" row.
     @State private var forkOrigin: ForkOrigin?
     @State private var isOpeningForkParent = false
@@ -417,7 +422,8 @@ struct ChatView: View {
         draftAttachmentStore: (any ChatDraftAttachmentStoring)? = nil,
         restoresDraftSettings: Bool = false,
         onConversationStarted: @escaping () -> Void = {},
-        hermesSession: HermesSessionChat? = nil
+        hermesSession: HermesSessionChat? = nil,
+        onReplaceHermesSession: ((HermesSessionChat) -> Void)? = nil
     ) {
         self.session = session
         self.server = server
@@ -430,6 +436,7 @@ struct ChatView: View {
         self.restoresDraftSettings = restoresDraftSettings
         self.onConversationStarted = onConversationStarted
         isHermesSession = hermesSession != nil
+        self.onReplaceHermesSession = onReplaceHermesSession
         _draftMessage = State(initialValue: initialDraft)
         _draftQuotes = State(initialValue: initialQuotes)
         _initialAttachments = State(initialValue: initialAttachments)
@@ -453,12 +460,13 @@ struct ChatView: View {
 
     /// A Hermes session on its Profile (#1010). It has no webui session, so nothing here
     /// reaches the webui API; connection errors show in the chat itself.
-    init(hermesSession: HermesSessionChat) {
+    init(hermesSession: HermesSessionChat, onReplace: ((HermesSessionChat) -> Void)? = nil) {
         self.init(
             session: SessionSummary(profile: hermesSession.target.profile),
             server: hermesSession.server,
             onAPIError: { _ in },
-            hermesSession: hermesSession
+            hermesSession: hermesSession,
+            onReplaceHermesSession: onReplace
         )
     }
 
@@ -484,10 +492,11 @@ struct ChatView: View {
             readOnlyMessage: composerReadOnlyMessage,
             errorMessage: viewModel.sendErrorMessage,
             errorFixPrompt: viewModel.sendErrorRuntimeStale?.fixPrompt,
-            configurationErrorMessage: viewModel.composerConfigurationErrorMessage,
+            configurationErrorMessage: viewModel.composerConfigurationErrorMessage
+                ?? viewModel.hermesSettings?.controls.errorMessage,
             contextWindowSnapshot: viewModel.contextWindowSnapshot,
             gitViewModel: gitAvailabilityViewModel,
-            modelGroups: viewModel.modelCatalogGroups,
+            modelGroups: viewModel.composerModelGroups,
             selectedModelID: viewModel.selectedModelID,
             selectedModelProviderID: viewModel.selectedModelProviderID,
             selectedModelTitle: viewModel.selectedModelTitle,
@@ -499,15 +508,16 @@ struct ChatView: View {
             skillSuggestions: viewModel.skillSlashSuggestions,
             hasLoadedSkillSuggestions: viewModel.hasLoadedSkillSlashSuggestions,
             agentCommands: viewModel.agentCommands,
-            profileOptions: viewModel.profileOptions,
-            isSingleProfileMode: viewModel.isSingleProfileMode,
+            profileOptions: viewModel.composerProfileOptions,
+            isSingleProfileMode: viewModel.composerIsSingleProfileMode,
             selectedProfileName: viewModel.selectedProfileName,
             selectedProfileTitle: viewModel.selectedProfileTitle,
             selectedReasoningEffort: viewModel.selectedReasoningEffort,
             supportedReasoningEfforts: viewModel.supportedReasoningEfforts,
             supportsReasoningEffort: viewModel.supportsReasoningEffort,
             showsReasoningControl: viewModel.showsReasoningEffortControl,
-            isUpdatingConfiguration: viewModel.isUpdatingComposerConfiguration,
+            isUpdatingConfiguration: viewModel.isUpdatingComposerConfiguration
+                || viewModel.hermesSettings?.controls.isApplying == true,
             pendingAttachments: viewModel.pendingAttachments,
             // An in-flight draft restore counts as an upload in progress: until
             // it finishes, the composer does not yet hold the attachments the
@@ -638,6 +648,8 @@ struct ChatView: View {
                 Task { await gitAvailabilityViewModel.loadBranches() }
             },
             showsSessionControls: !isHermesSession,
+            showsModelAndProfileControls: isHermesSession,
+            configurationNotice: viewModel.composerConfigurationNotice,
             uploadsAttachmentsOnSend: isHermesSession,
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil
         )
@@ -994,6 +1006,9 @@ struct ChatView: View {
             .navigationDestination(item: $pushedSession) { session in
                 ChatView(session: session, server: server, onAPIError: onAPIError)
             }
+            .navigationDestination(item: $pushedHermesSession) { chat in
+                ChatView(hermesSession: chat) { pushedHermesSession = $0 }
+            }
             .sheet(item: $attachmentPreviewItem) { item in
                 ChatAttachmentPreviewView(
                     session: session,
@@ -1104,7 +1119,11 @@ struct ChatView: View {
                 }
                 Button("Start New Session") {
                     if let profile = pendingProfileSelection {
-                        Task { await switchProfile(profile, startNewSession: true) }
+                        if isHermesSession {
+                            startHermesSession(in: profile, replacing: false)
+                        } else {
+                            Task { await switchProfile(profile, startNewSession: true) }
+                        }
                     }
                 }
             } message: {
@@ -2803,10 +2822,30 @@ struct ChatView: View {
         }
 
         if viewModel.messages.isEmpty {
-            Task { await switchProfile(profile, startNewSession: false) }
+            if isHermesSession {
+                startHermesSession(in: profile, replacing: true)
+            } else {
+                Task { await switchProfile(profile, startNewSession: false) }
+            }
         } else {
             pendingProfileSelection = profile
             showProfileNewSessionConfirmation = true
+        }
+    }
+
+    /// A new Hermes chat in `profile` (#1015), remembered for this server's next New Session.
+    /// A session's Profile never changes on the host. `replacing` a chat with nothing sent
+    /// carries its draft over; otherwise the new chat opens on top of this one.
+    private func startHermesSession(in profile: ProfileSummary, replacing: Bool) {
+        pendingProfileSelection = nil
+        guard let name = profile.normalizedName, let chat = viewModel.newHermesSessionChat(profile: name) else { return }
+        HermesProfilePreference.save(name, for: server)
+        ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
+        if replacing, let onReplaceHermesSession {
+            viewModel.handOffHermesDraft(to: chat)
+            onReplaceHermesSession(chat)
+        } else {
+            pushedHermesSession = chat
         }
     }
 

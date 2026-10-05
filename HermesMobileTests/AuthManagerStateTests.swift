@@ -598,9 +598,9 @@ final class AuthManagerStateTests: XCTestCase {
         keychain: InMemoryKeychainStore = InMemoryKeychainStore(),
         registry: ServerRegistry? = nil,
         connections: HermesConnections? = nil,
-        headerStore: CustomHeaderStore = CustomHeaderStore()
+        headerStore: CustomHeaderStore = CustomHeaderStore(),
+        preferences: UserDefaults = .ephemeral()
     ) async throws -> AuthManager {
-        let preferences = UserDefaults.ephemeral()
         preferences.set(true, forKey: BotModeGate.isEnabledKey)
         let manager = AuthManager(
             keychain: keychain,
@@ -740,7 +740,10 @@ final class AuthManagerStateTests: XCTestCase {
 
     func testSigningOutOfAHermesServerDeletesOnlyItsSignInAndShowsItsForm() async throws {
         let keychain = InMemoryKeychainStore()
-        let manager = try await makeHermesManager(keychain: keychain)
+        let preferences = UserDefaults.ephemeral()
+        let manager = try await makeHermesManager(keychain: keychain, preferences: preferences)
+        HermesProfilePreference.save("work", for: hermesServer, in: preferences)
+        HermesProfilePreference.save("work", for: webuiServer, in: preferences)
         let side = BotConnection(id: UUID(), name: "Side", address: hermesServer, username: "me", password: "secret")
         try BotConnectionStore(keychain: keychain).save(side, server: webuiServer)
         let cookies = HTTPCookieStorage.shared
@@ -753,6 +756,9 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertNil(try BotConnectionStore(keychain: keychain).load(server: hermesServer))
         XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: webuiServer), side)
         XCTAssertEqual(cookies.cookies(for: webuiServer)?.count, 1)
+        XCTAssertNil(preferences.string(forKey: HermesProfilePreference.key(for: hermesServer)),
+                     "the remembered Profile goes with the sign-in (#1015)")
+        XCTAssertEqual(preferences.string(forKey: HermesProfilePreference.key(for: webuiServer)), "work")
     }
 
     /// The Hermes server shares the webui server's host on another port, where cookies

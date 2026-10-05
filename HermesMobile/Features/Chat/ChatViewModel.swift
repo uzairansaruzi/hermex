@@ -462,8 +462,10 @@ final class ChatViewModel {
     /// Drops out-of-order `GET /api/reasoning` responses after rapid model switches
     /// so the gating never reflects a stale model (upstream #3750 class of bug).
     private var reasoningGatingFetchToken = 0
+    /// Hidden on a Hermes session until its reasoning control lands (#1016).
     var showsReasoningEffortControl: Bool {
-        ReasoningEffortOption.showsEffortControl(
+        guard hermesTurn == nil else { return false }
+        return ReasoningEffortOption.showsEffortControl(
             supportsReasoningEffort: supportsReasoningEffort,
             supportedEfforts: supportedReasoningEfforts
         )
@@ -682,6 +684,7 @@ final class ChatViewModel {
         case .hermes(let coordinator):
             hermesTurn = coordinator
             turn = coordinator
+            currentProfile = coordinator.settings.profile
             coordinator.setShowsLiveActivityResponseExcerpts(showsLiveActivityResponseExcerpts)
         }
         self.drafts = draftStore ?? .shared
@@ -760,13 +763,38 @@ final class ChatViewModel {
         let usedSnapshotMessagesOffset: Bool
     }
 
+    /// A Hermes session's model chip shows `model.options`' live model, or the pick
+    /// waiting on the running response (#1015); `session.info`'s model until it answers.
     var selectedModelID: String? {
-        currentModel
+        hermesSettings?.selectedModel?.id ?? currentModel
     }
 
     var selectedModelProviderID: String? {
-        currentModelProvider
+        hermesSettings.map { $0.selectedModel?.providerID } ?? currentModelProvider
     }
+
+    /// The model picker's groups: a Hermes session's `model.options` (#1015), else webui's catalog.
+    var composerModelGroups: [ModelCatalogGroup] {
+        hermesSettings?.controls.catalog.groups ?? modelCatalogGroups
+    }
+
+    /// The Profile chip's list: a Hermes host's `profiles.list` (#1015), else webui's Profiles.
+    var composerProfileOptions: [ProfileSummary] {
+        hermesSettings?.profileOptions ?? profileOptions
+    }
+
+    var composerIsSingleProfileMode: Bool {
+        hermesSettings.map { $0.profiles.count <= 1 } ?? isSingleProfileMode
+    }
+
+    /// A Hermes model pick the host applies after the running response (#1015).
+    var composerConfigurationNotice: String? {
+        guard let pending = hermesSettings?.controls.pendingModel else { return nil }
+        return String(localized: "Switches to \(pending.displayName) after this response.")
+    }
+
+    /// A Hermes session's model and Profile controls (#1015). Nil on a webui session.
+    var hermesSettings: HermesChatSettings? { hermesTurn?.settings }
 
     var selectedWorkspacePath: String? {
         currentWorkspace
@@ -778,7 +806,7 @@ final class ChatViewModel {
             return String(localized: "Profile")
         }
 
-        if let option = profileOptions.first(where: { $0.name == profileName }) {
+        if let option = composerProfileOptions.first(where: { $0.name == profileName }) {
             return option.displayName
         }
 
@@ -790,12 +818,12 @@ final class ChatViewModel {
             return String(localized: "Model")
         }
 
-        let catalogName = modelCatalogGroups
+        let catalogName = composerModelGroups
             .flatMap(\.allModels)
-            .firstMatchingSelection(modelID: currentModel, providerID: currentModelProvider)?
+            .firstMatchingSelection(modelID: selectedModelID, providerID: selectedModelProviderID)?
             .displayName
 
-        return catalogName ?? Self.compactModelTitle(currentModel)
+        return catalogName ?? Self.compactModelTitle(selectedModelID ?? currentModel)
     }
 
     func isSelectedProfile(_ profile: ProfileSummary) -> Bool {
@@ -922,7 +950,7 @@ final class ChatViewModel {
     }
 
     func loadComposerConfiguration() async {
-        // A Hermes session runs its Profile's own model and settings until #705 adds them.
+        // A Hermes session's chips read its gateway (`HermesChatSettings`), never webui's routes.
         guard hermesTurn == nil else { return }
         if isLoadingComposerConfiguration {
             needsComposerConfigurationReload = true
@@ -960,6 +988,10 @@ final class ChatViewModel {
     /// the active provider's live list from `/api/models/live`. Failures are
     /// silent by design — the picker keeps whatever it already shows.
     func refreshModelCatalogForPickerOpen() async {
+        if let hermesSettings {
+            await hermesSettings.controls.reload()
+            return
+        }
         if let response = try? await client.models() {
             let groups = response.catalogGroups
             if !groups.isEmpty {
@@ -1019,6 +1051,9 @@ final class ChatViewModel {
     ) async -> Bool {
         if recordsInteraction {
             composerConfigurationInteractionGeneration &+= 1
+        }
+        if let hermesSettings {
+            return await hermesSettings.select(option)
         }
         guard !option.matchesSelection(modelID: currentModel, providerID: currentModelProvider) else {
             return false
@@ -2604,6 +2639,18 @@ final class ChatViewModel {
     /// webui session.
     var hermesSideTasks: HermesChatSideTasks? { hermesTurn?.sideTasks }
 
+    /// A new chat in `profile` on this Hermes session's server and connection (#1015).
+    func newHermesSessionChat(profile: String) -> HermesSessionChat? {
+        hermesTurn.map { HermesSessionChat(server: $0.engine.server, connection: $0.engine.connection,
+                                           target: .new(profile: profile)) }
+    }
+
+    /// Moves this new Hermes chat's draft, files included, to `chat`, which replaces it.
+    func handOffHermesDraft(to chat: HermesSessionChat) {
+        guard let key = hermesDraftKey else { return }
+        drafts.moveDraft(from: key, to: chat.target.draftKey(server: chat.server, connectionID: chat.connection.id))
+    }
+
     /// Who asks in a Hermes session's request card: its Profile on its saved connection.
     var hermesRequestIdentity: String? {
         hermesTurn.map { String(localized: "\($0.engine.target.profile) on \($0.engine.connection.name)") }
@@ -3588,6 +3635,10 @@ final class ChatViewModel {
             return .unsupported(friendlyMessage: String(localized: "Usage: /model <id>"))
         }
 
+        if let hermesSettings {
+            return await switchHermesModelFromSlashCommand(requestedModel, settings: hermesSettings)
+        }
+
         guard let sessionID else {
             return .unsupported(friendlyMessage: String(localized: "The server did not provide a session ID."))
         }
@@ -3623,6 +3674,22 @@ final class ChatViewModel {
             composerConfigurationErrorMessage = error.localizedDescription
             return .unsupported(friendlyMessage: error.localizedDescription)
         }
+    }
+
+    /// `/model` in a Hermes session (#1015): the name resolves against `model.options` and
+    /// goes through the chip's pick, its expensive-model confirm included. A name the
+    /// catalog lacks is refused here rather than sent to the host as a guess.
+    private func switchHermesModelFromSlashCommand(_ requestedModel: String,
+                                                   settings: HermesChatSettings) async -> SlashCommandExecutionResult {
+        guard let option = settings.model(matching: requestedModel) else {
+            return .unsupported(friendlyMessage: String(localized: "This host doesn't offer a model named \(requestedModel)."))
+        }
+        guard !option.matchesSelection(modelID: selectedModelID, providerID: selectedModelProviderID) else {
+            return .executed(message: nil)
+        }
+        if await settings.select(option) || settings.controls.confirmation != nil { return .executed(message: nil) }
+        return .unsupported(friendlyMessage: settings.controls.errorMessage
+                            ?? String(localized: "Wait for this chat to connect before changing models."))
     }
 
     private func switchWorkspaceFromSlashCommand(_ args: String) async -> SlashCommandExecutionResult {

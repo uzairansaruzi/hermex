@@ -158,7 +158,7 @@ struct BotProfileDetails: Equatable, Sendable {
             guard details.name == profile.id else { throw BotFailure.wrongIdentity }
             if let options = try? await client.call(.configuredModelOptions, validateDispatch: validate(owner)) {
                 try ensureOwner(owner, client)
-                modelGroups = BotModelCatalog(options).groups
+                modelGroups = HermesModelCatalog(options).groups
             } else {
                 try ensureOwner(owner, client)
                 modelGroups = []

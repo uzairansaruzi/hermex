@@ -118,9 +118,10 @@ import Observation
         XCTAssertEqual(chat.model.goalErrorMessage, "Reconnect to the server to manage goals.")
         // Joins the reattach the 4001 started.
         await chat.turn.activate()
-        // The first attach's goal read can land anywhere in this; it is not the reattach.
+        // The first attach's goal, model-catalog and Profile reads (#1015) can land anywhere in
+        // this; they are not the reattach.
         let methods = chat.host.requests.dropFirst(attached).compactMap { $0["method"].text }
-        XCTAssertEqual(methods.filter { $0 != "session.control.read" },
+        XCTAssertEqual(methods.filter { !["session.control.read", "model.options", "profiles.list"].contains($0) },
                        ["command.dispatch", "session.resume", "session.events.since", "session.resume"],
                        "reattaching only reads")
     }
@@ -231,11 +232,11 @@ import Observation
         XCTAssertEqual(chat.sideTasks.btw?.state, .unavailable)
     }
 
-    /// Only the goal, btw and background commands run in a Hermes session; the rest go to
-    /// its host as typed.
+    /// Only the goal, btw, background and model (#1015) commands run in a Hermes session;
+    /// the rest go to its host as typed.
     func testAHermesSessionRunsOnlyItsSideCommands() {
         XCTAssertEqual(["goal", "btw", "background", "bg", "model", "steer", "queue", "status", "clear"]
-            .filter { Self.command($0).runsInHermesSession }, ["goal", "btw", "background", "bg"])
+            .filter { Self.command($0).runsInHermesSession }, ["goal", "btw", "background", "bg", "model"])
     }
 
     // MARK: Background

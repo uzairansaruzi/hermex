@@ -60,7 +60,7 @@ struct HermesChatTranscript: Equatable {
 /// by text. Each prompt, steer, redirect and stop is one `write`, never resent; a Send or
 /// Queue uploads its staged files first (#1012). The host's requests (approvals,
 /// questions, sudo and secret prompts) are `requests` (#1011); the goal, `/btw` and
-/// `/background` are `sideTasks` (#1013).
+/// `/background` are `sideTasks` (#1013); its model and Profile chips are `settings` (#1015).
 ///
 /// A turn's identity is the stored key and the host's `turn_started_at`, in place of a
 /// webui stream id. A turn starts at `message.start`, an accepted send or a running
@@ -85,6 +85,8 @@ struct HermesChatTranscript: Equatable {
     let requests: HermesChatRequests
     /// The session's goal, `/btw` question and `/background` tasks (#1013).
     let sideTasks: HermesChatSideTasks
+    /// The composer's model and Profile chips (#1015).
+    let settings: HermesChatSettings
 
     /// The host's `turn_started_at` for the running turn, once known.
     @ObservationIgnored private var turnStartedAt: Double?
@@ -135,6 +137,7 @@ struct HermesChatTranscript: Equatable {
         self.isNetworkAvailable = isNetworkAvailable
         requests = HermesChatRequests(engine: engine)
         sideTasks = HermesChatSideTasks(engine: engine)
+        settings = HermesChatSettings(engine: engine)
         draftKey = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id)
         engine.owner = self
         requests.onOpenChange = { [weak self] in self?.syncLiveActivityWaiting() }
@@ -500,6 +503,7 @@ struct HermesChatTranscript: Equatable {
     private func applyInfo(_ info: BotJSON) {
         if let model = info["model"].text, !model.isEmpty { delegate?.hermesApplyModel(model) }
         requests.applyBypass(info)
+        settings.apply(info: info, idle: info["running"].flag.map { !$0 } ?? !hostRunning)
         guard let running = info["running"].flag else { return }
         hostRunning = running
         if running {
@@ -812,6 +816,7 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
 extension HermesChatTurnCoordinator: HermesConversationOwner {
     func conversationDidReset() {
         requests.reset()
+        settings.disconnect()
         heldFrames = []; deltasInRebuild = []; replayedReply = ""
     }
 
@@ -844,6 +849,8 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         refusedSignIn = false
         delegate?.hermesConnectionDidChange(failure: nil)
         sideTasks.didConnect(runtime: runtime, attempt: attempt)
+        // Off the attach's path: the chips fill in once the catalog answers.
+        Task { [settings] in await settings.connect(runtime: runtime, attempt: attempt) }
     }
 
     func conversation(didReceive frame: BotJSON, afterGap: Bool) {

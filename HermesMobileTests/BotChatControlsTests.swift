@@ -8,11 +8,11 @@ import XCTest
     private let next = ModelCatalogOption(id: "model-b", displayName: "model-b", providerID: "provider")
 
     func testCatalogToleratesUnknownFieldsAndDeduplicatesRows() {
-        let catalog = BotModelCatalog(SettingsWire.catalog)
+        let catalog = HermesModelCatalog(SettingsWire.catalog)
         XCTAssertEqual(catalog.groups.count, 1)
         XCTAssertEqual(catalog.groups[0].models.count, 2)
         XCTAssertEqual(catalog.active?.id, "model-a")
-        XCTAssertTrue(BotModelCatalog(.object([:])).groups.isEmpty)
+        XCTAssertTrue(HermesModelCatalog(.object([:])).groups.isEmpty)
     }
 
     func testMissingContextDoesNotUseCumulativeInputAsCurrentUsage() {
@@ -26,9 +26,9 @@ import XCTest
     }
 
     func testModelWireValueAlwaysPinsSessionAndRejectsFlags() {
-        XCTAssertEqual(BotModelCatalog.sessionModelValue(next), "model-b --provider provider --session")
+        XCTAssertEqual(HermesModelCatalog.sessionModelValue(next), "model-b --provider provider --session")
         for id in ["m --global", "m\n--once", "—global", "--global"] {
-            XCTAssertNil(BotModelCatalog.sessionModelValue(.init(id: id, displayName: id, providerID: "provider")))
+            XCTAssertNil(HermesModelCatalog.sessionModelValue(.init(id: id, displayName: id, providerID: "provider")))
         }
     }
 

@@ -376,7 +376,7 @@ enum HermesCall: Equatable, Sendable {
         case .configSet(let sessionID, _, let setting):
             switch setting {
             case .model(let value, _): valid = !sessionID.isEmpty && value.hasSuffix(" --session")
-            case .reasoning(let value): valid = !sessionID.isEmpty && BotModelCatalog.effortLevels.contains(value)
+            case .reasoning(let value): valid = !sessionID.isEmpty && HermesModelCatalog.effortLevels.contains(value)
             case .fast, .yolo: valid = !sessionID.isEmpty
             }
         case .commandDispatch(let name, _, let sessionID):

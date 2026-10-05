@@ -269,10 +269,16 @@ struct MessageComposerView: View {
     let onSelectGitBranch: (GitCheckoutTarget) -> Void
     let onCreateGitBranch: (GitCheckoutTarget) -> Void
     let onRefreshGitBranches: () -> Void
-    /// False on a Hermes session (#1010): the model, workspace and Profile selectors, the
-    /// branch picker, voice notes and the `/` panel stay hidden until their phases land.
-    /// The + menu, dictation and the context indicator stay.
+    /// False on a Hermes session (#1010): the workspace selector, the branch picker, voice
+    /// notes and the `/` panel stay hidden until their phases land. The + menu, dictation
+    /// and the context indicator stay.
     var showsSessionControls = true
+    /// A Hermes session's model and Profile chips (#1015), shown while the rest of
+    /// `showsSessionControls` stays hidden.
+    var showsModelAndProfileControls = false
+    /// A configuration change that has not landed yet, such as a model the host applies
+    /// after the running response. Shown below any configuration error.
+    var configurationNotice: String?
     /// A Hermes session (#1012): staged files upload when they are sent, under Bot Chat's
     /// rules. Up to eight, and Steer drops out while a response runs.
     var uploadsAttachmentsOnSend = false
@@ -925,14 +931,14 @@ struct MessageComposerView: View {
             ComposerToolbarScroller {
                 composerPlusMenu
 
-                if showsSessionControls {
+                if showsSessionControls || showsModelAndProfileControls {
                     modelEffortControl
 
-                    workspaceSelector
+                    if showsSessionControls { workspaceSelector }
 
                     profileSelector
 
-                    gitBranchPicker
+                    if showsSessionControls { gitBranchPicker }
                 }
 
                 voiceControlButton
@@ -1244,6 +1250,8 @@ struct MessageComposerView: View {
             return (errorMessage, true, false, nil, errorFixPrompt, nil)
         } else if let configurationErrorMessage {
             return (configurationErrorMessage, true, false, nil, nil, nil)
+        } else if let configurationNotice {
+            return (configurationNotice, false, false, nil, nil, nil)
         } else if isUpdatingConfiguration {
             return (String(localized: "Updating composer settings..."), false, false, nil, nil, nil)
         }
