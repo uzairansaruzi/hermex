@@ -107,7 +107,10 @@ enum HermesProfilePreference {
         guard !option.matchesSelection(modelID: selectedModel?.id, providerID: selectedModel?.providerID),
               let action = controls.prepare(.model(option)) else { return false }
         await controls.apply(action)
-        return controls.errorMessage == nil && controls.confirmation == nil
+        let picked = controls.errorMessage == nil && controls.confirmation == nil
+        // The last level sent was the old model's; the next `session.info` reports the new one's.
+        if picked { reportedEffort = nil }
+        return picked
     }
 
     /// The catalog's model `query` names, by id first, then by any id or name containing it.

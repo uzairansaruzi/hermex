@@ -167,6 +167,15 @@ import Observation
                                                "reasoning_effort_wire": .string("")]))
         await waitUntil("unreported") { chat.model.composerReasoningEffort == "ultra" }
         XCTAssertNil(chat.model.composerSentReasoningEffort)
+
+        // A new model's route may take the level whole; the old model's report goes with it.
+        chat.receive(event(4, "session.info", ["reasoning_effort": .string("ultra"),
+                                               "reasoning_effort_wire": .string("max")]))
+        await waitUntil("lowered") { chat.model.composerSentReasoningEffort == "max" }
+        chat.host.always("config.set", .init(result: Self.modelReply()))
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        _ = await chat.model.selectComposerModel(Self.opus)
+        XCTAssertNil(chat.model.composerSentReasoningEffort)
     }
 
     /// `/reasoning <level>` takes the chip's path; a display word is refused and sends nothing.
@@ -187,6 +196,17 @@ import Observation
         XCTAssertEqual(set, .executed(message: nil))
         XCTAssertEqual(chat.writes("config.set").map { $0["value"] }, [.string("max")])
         XCTAssertEqual(chat.model.composerReasoningEffort, "max")
+    }
+
+    /// Like the effort menu, `/reasoning` waits for a running reply to finish.
+    func testSlashReasoningWaitsForTheRunningReply() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        await waitUntil("running") { chat.model.activeStreamID != nil }
+
+        let refused = await chat.model.executeSlashCommand(Self.command("reasoning"), args: "high")
+        XCTAssertEqual(refused, .unsupported(friendlyMessage: "Wait for the current response to finish before changing reasoning."))
+        XCTAssertEqual(chat.writes("config.set"), [])
     }
 
     // MARK: Personality

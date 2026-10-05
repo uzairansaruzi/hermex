@@ -3925,6 +3925,10 @@ final class ChatViewModel {
             return .unsupported(friendlyMessage: String(localized: "This model can't turn reasoning off."))
         }
         guard level != settings.controls.effort else { return .executed(message: nil) }
+        // As the effort menu is, while a reply runs.
+        guard activeStreamID == nil else {
+            return .unsupported(friendlyMessage: String(localized: "Wait for the current response to finish before changing reasoning."))
+        }
         if await settings.select(effort: level) { return .executed(message: nil) }
         return .unsupported(friendlyMessage: settings.controls.errorMessage
                             ?? String(localized: "Wait for this chat to connect before changing reasoning."))
