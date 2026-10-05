@@ -3853,9 +3853,13 @@ private struct HermesModelConfirmationModifier: ViewModifier {
             get: { controls?.confirmation != nil },
             set: { if !$0 { controls?.cancelConfirmation() } }
         ), titleVisibility: .visible) {
-            if let controls, controls.confirmation != nil {
-                Button("Change model") { Task { await controls.confirm() } }
-                    .disabled(!controls.mayChangeModel)
+            if let controls, let confirmation = controls.confirmation {
+                // Dismissing clears `confirmation`, so the pending pick is captured first.
+                Button("Change model") {
+                    controls.cancelConfirmation()
+                    Task { await controls.apply(confirmation.action, confirmed: true) }
+                }
+                .disabled(!controls.mayChangeModel)
             }
             Button("Cancel", role: .cancel) { controls?.cancelConfirmation() }
         } message: {
