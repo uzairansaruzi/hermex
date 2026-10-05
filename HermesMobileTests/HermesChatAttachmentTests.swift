@@ -241,6 +241,20 @@ import UIKit
         XCTAssertEqual(chat.model.uploadAttachmentErrorMessage, "Use up to 8 attachments, 25 MB each and 50 MB total.")
     }
 
+    /// Imports that stage at once share the 50 MB total: of three 20 MB files, one is refused.
+    func testOverlappingImportsShareTheTotalLimit() async {
+        let chat = await openChat()
+        let file = Data(repeating: 0x61, count: 20 * 1024 * 1024)
+        let imports = ["a.txt", "b.txt", "c.txt"].map { name in
+            Task { await chat.model.uploadAttachment(data: file, filename: name) }
+        }
+        var staged = 0
+        for task in imports { if await task.value != nil { staged += 1 } }
+        XCTAssertEqual(staged, 2)
+        XCTAssertEqual(chat.model.pendingAttachments.count, 2)
+        XCTAssertEqual(chat.model.uploadAttachmentErrorMessage, "Use up to 8 attachments, 25 MB each and 50 MB total.")
+    }
+
     // MARK: Transcript
 
     /// The rule keeps text without references as it is, and reads references only as whole
@@ -258,6 +272,9 @@ import UIKit
         let expanded = "Only files\n\n@file:\"/h/x y.txt\"\n\n--- Attached Context ---\n\n📄 @file:\"/h/x y.txt\"\nsecret text"
         XCTAssertEqual(MessageAttachment.hermesReferences(in: expanded).text, "Only files")
         XCTAssertEqual(MessageAttachment.hermesReferences(in: expanded).attachments.map(\.name), ["x y.txt"])
+
+        let warned = "Read @folder:src\n\n--- Context Warnings ---\n- @folder:src: path is outside the allowed workspace"
+        XCTAssertEqual(MessageAttachment.hermesReferences(in: warned).text, "Read @folder:src", "a footer with no @file: goes too")
     }
 
     /// After a rebuild the user row shows the typed text and one chip per reference: the

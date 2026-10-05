@@ -31,6 +31,8 @@ final class ChatAttachmentCoordinator {
     private(set) var localAttachmentPreviews: [String: [String: Data]] = [:]
     private var activeUploadCount = 0
     private var stagingIDs: Set<UUID> = []
+    /// Bytes of Hermes files still staging, so overlapping imports share the 50 MB total.
+    private var stagingBytes = 0
     private(set) var uploadStartGeneration = 0
 
     var isUploadingAttachment: Bool {
@@ -185,12 +187,14 @@ final class ChatAttachmentCoordinator {
                   !data.isEmpty, data.count <= BotAttachmentDraft.maximumFileBytes
             else { throw BotAttachmentFailure.limit }
             prepared = try await Task.detached { try BotAttachmentDraft.prepare(data: data, filename: filename) }.value
-            let staged = pendingAttachments.reduce(0) { $0 + ($1.size ?? BotAttachmentDraft.maximumFileBytes) }
+            let staged = pendingAttachments.reduce(stagingBytes) { $0 + ($1.size ?? BotAttachmentDraft.maximumFileBytes) }
             guard staged + prepared.data.count <= BotAttachmentDraft.maximumTotalBytes else { throw BotAttachmentFailure.limit }
         } catch {
             uploadAttachmentErrorMessage = error.localizedDescription
             return nil
         }
+        stagingBytes += prepared.data.count
+        defer { stagingBytes -= prepared.data.count }
         guard let file = await saveDraftCopy(prepared.data, filename: prepared.name, attachmentID: stagingID,
                                              maximumBytes: BotAttachmentDraft.maximumFileBytes) else { return nil }
         let attachment = PendingAttachment(

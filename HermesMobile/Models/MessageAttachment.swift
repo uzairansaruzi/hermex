@@ -171,7 +171,8 @@ extension MessageAttachment {
     /// webui marker rule above is separate and never reads these.
     static func hermesReferences(in content: String) -> (text: String, attachments: [MessageAttachment]) {
         guard content.contains("@file:") || content.contains("[The user attached an image: ")
-                || content.contains(" Context ---") else { return (content, []) }
+                || content.contains(" Context ---") || content.contains("--- Context Warnings ---")
+        else { return (content, []) }
         // Hermes's text-mode image line pair, whose first line names the stored file, and an
         // `@file:` token as `file.attach` quotes it: backticks, double or single quotes, or bare.
         let imageReference =
