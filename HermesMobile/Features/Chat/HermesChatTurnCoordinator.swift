@@ -705,16 +705,17 @@ struct HermesChatTranscript: Equatable {
     /// A user row as a Hermes session's transcript shows it (#1012): the reference lines a
     /// Hermex send appends become chips and the host's context footer goes
     /// (`MessageAttachment.hermesReferences`), so no host path is shown. Every other row
-    /// is returned as it is. Bot Chat does not apply it.
+    /// is returned as it is. Bot Chat reads the rule itself, keeping the paths it downloads.
     static func displayed(_ message: ChatMessage) -> ChatMessage {
         guard message.role == "user", let content = message.content else { return message }
         let shown = MessageAttachment.hermesReferences(in: content)
         guard shown.text != content || !shown.attachments.isEmpty else { return message }
+        let chips = shown.attachments.map { MessageAttachment(name: $0.name, isImage: $0.isImage) }
         return ChatMessage(
             role: message.role, content: shown.text, timestamp: message.timestamp, messageId: message.messageId,
             name: message.name, toolCallId: message.toolCallId, toolUseId: message.toolUseId,
             toolCalls: message.toolCalls, contentParts: message.contentParts, reasoning: message.reasoning,
-            attachments: shown.attachments.isEmpty ? message.attachments : (message.attachments ?? []) + shown.attachments,
+            attachments: chips.isEmpty ? message.attachments : (message.attachments ?? []) + chips,
             displayKind: message.displayKind, displayMetadata: message.displayMetadata, turnTps: message.turnTps,
             turnDuration: message.turnDuration, rowID: message.rowID
         )

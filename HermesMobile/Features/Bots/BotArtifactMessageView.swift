@@ -40,12 +40,7 @@ struct BotArtifactMessageView: View {
             if let completion = BotDelegationCompletion(message) {
                 BotDelegationCompletionCard(completion: completion)
             } else if message.role == "user" {
-                MessageBubbleView(
-                    message: message,
-                    transcriptMediaCacheNamespace: "\(model.server.absoluteString)|bot:\(model.connection.id.uuidString)",
-                    contextMenuActions: userActions,
-                    textOnly: true
-                )
+                userContent
             } else if isLive {
                 assistantContent
             } else {
@@ -82,6 +77,35 @@ struct BotArtifactMessageView: View {
         .onChange(of: model.artifactContext) { _, _ in preview = nil; previewContext = nil }
     }
 
+    /// A prompt as you sent it (#1017): the typed text in its bubble, then one row per
+    /// attachment it referenced, opening through the Bot's download like a reply's media.
+    /// An attachment-only prompt has no bubble, so its rows carry the long-press menu.
+    private var userContent: some View {
+        let prompt = BotPrompt(message)
+        return VStack(alignment: .trailing, spacing: 8) {
+            if prompt.hasText || prompt.attachments.isEmpty {
+                MessageBubbleView(
+                    message: prompt.message,
+                    transcriptMediaCacheNamespace: "\(model.server.absoluteString)|bot:\(model.connection.id.uuidString)",
+                    contextMenuActions: userActions(copyText: prompt.message.content),
+                    textOnly: true
+                )
+            }
+            if !prompt.attachments.isEmpty {
+                VStack(alignment: .trailing, spacing: 8) {
+                    ForEach(Array(prompt.attachments.enumerated()), id: \.offset) { _, attachment in
+                        BotArtifactRow(reference: attachment.reference, model: model, title: attachment.name) {
+                            previewContext = model.artifactContext
+                            preview = TranscriptMediaPreviewItem(reference: attachment.reference)
+                        }
+                    }
+                }
+                .chatMessageContextMenu(prompt.hasText ? [] : userActions(copyText: nil))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
     /// Attached to the message content, not the row, so the gutter beside a
     /// user bubble stays inert.
     private var assistantContent: some View {
@@ -112,16 +136,15 @@ struct BotArtifactMessageView: View {
         BotMessageActions.items(copyText: message.content, isHapticsEnabled: isHapticsEnabled)
     }
 
-    /// A prompt's long-press menu: the Tapback row, Copy, then Remove Reaction.
-    /// It reads no connection state, so a tap elsewhere never rebuilds this
-    /// row; a Tapback picked while the chat can't react is dropped by the model.
-    private var userActions: [ChatMessageActionItem] {
-        guard message.rowID != nil else { return actions }
-        let reacting = BotMessageActions.Reacting(
-            current: message.botReactions.first { $0.author == .user }?.emoji,
-            react: react
-        )
-        return BotMessageActions.items(copyText: message.content, isHapticsEnabled: isHapticsEnabled, reacting: reacting)
+    /// A prompt's long-press menu: the Tapback row, Copy of the typed text, then
+    /// Remove Reaction. It reads no connection state, so a tap elsewhere never
+    /// rebuilds this row; a Tapback picked while the chat can't react is dropped
+    /// by the model.
+    private func userActions(copyText: String?) -> [ChatMessageActionItem] {
+        let reacting = message.rowID.map { _ in
+            BotMessageActions.Reacting(current: message.botReactions.first { $0.author == .user }?.emoji, react: react)
+        }
+        return BotMessageActions.items(copyText: copyText, isHapticsEnabled: isHapticsEnabled, reacting: reacting)
     }
 
     /// The footer's reaction part. Only settled prompts and replies with a
@@ -281,9 +304,44 @@ private struct BotReactionChip: View {
     }
 }
 
+/// A Bot Chat prompt as its row shows it (#1017). The reference lines a Hermex send
+/// appends (`MessageAttachment.hermesReferences`) become attachments that keep the host
+/// path the Bot downloads through, and `message` keeps only the typed text, which is what
+/// the bubble shows and Copy copies. A line the rule does not read stays in the text.
+struct BotPrompt {
+    struct Attachment {
+        let name: String
+        let reference: TranscriptMediaReference
+    }
+
+    let message: ChatMessage
+    let attachments: [Attachment]
+
+    var hasText: Bool { !(message.content ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    init(_ message: ChatMessage) {
+        guard let content = message.content else { (self.message, attachments) = (message, []); return }
+        let shown = MessageAttachment.hermesReferences(in: content)
+        attachments = shown.attachments.compactMap { attachment in
+            guard let path = attachment.path else { return nil }
+            let reference = TranscriptMediaReference(rawReference: path)
+            return Attachment(name: attachment.name ?? reference.displayName, reference: reference)
+        }
+        self.message = shown.text == content ? message : ChatMessage(
+            role: message.role, content: shown.text, timestamp: message.timestamp, messageId: message.messageId,
+            name: message.name, toolCallId: message.toolCallId, toolUseId: message.toolUseId,
+            toolCalls: message.toolCalls, contentParts: message.contentParts, reasoning: message.reasoning,
+            attachments: message.attachments, displayKind: message.displayKind, displayMetadata: message.displayMetadata,
+            turnTps: message.turnTps, turnDuration: message.turnDuration, rowID: message.rowID
+        )
+    }
+}
+
 private struct BotArtifactRow: View {
     let reference: TranscriptMediaReference
     let model: BotConversation
+    /// The row's label; a reply's media shows its file name.
+    var title: String? = nil
     let open: () -> Void
     @State private var image: UIImage?
 
@@ -295,7 +353,7 @@ private struct BotArtifactRow: View {
                         .frame(maxWidth: 210, maxHeight: 150)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                Label(reference.displayName, systemImage: reference.isAudioCandidate ? "waveform" : (reference.isRasterImageCandidate ? "photo" : "doc"))
+                Label(title ?? reference.displayName, systemImage: reference.isAudioCandidate ? "waveform" : (reference.isRasterImageCandidate ? "photo" : "doc"))
                     .font(.subheadline)
                     .lineLimit(2)
                     .truncationMode(.middle)
@@ -305,7 +363,7 @@ private struct BotArtifactRow: View {
             .foregroundStyle(.primary)
         }
         .buttonStyle(.chatTactile(.thumbnail))
-        .accessibilityLabel("Open attachment \(reference.accessibilityName)")
+        .accessibilityLabel("Open attachment \(title ?? reference.accessibilityName)")
         .task(id: LoadIdentity(context: model.artifactContext, reference: reference.rawReference)) {
             image = nil
             guard reference.isRasterImageCandidate, let context = model.artifactContext,

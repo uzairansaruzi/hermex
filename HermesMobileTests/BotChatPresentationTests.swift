@@ -704,6 +704,42 @@ import XCTest
         XCTAssertEqual(BotPromptMode.busyChoices(hasAttachments: true), [.queue, .redirect])
     }
 
+    /// A sent prompt's bubble keeps only the typed text (#1017): the image pair and each
+    /// `@file:` block, plain or quoted, become attachments that keep the host path the
+    /// preview downloads. Copy copies the typed text. A line the rule does not read stays.
+    func testSentPromptSplitsTypedTextFromItsAttachments() {
+        let uuid = "0f8fad5b-d9cb-469f-a165-70867728950e"
+        let content = "Compare these\n\n"
+            + "[The user attached an image: dashboard_20261004_031500_ab12cd34_photo.jpg]\n"
+            + "[Examine it with the vision_analyze tool using image_url: /home/u/.hermes/images/dashboard_20261004_031500_ab12cd34_photo.jpg]\n\n"
+            + "@file:attachments/\(uuid)-notes.txt\n\n"
+            + "@file:`/home/u/.hermes/attachments/\(uuid)-Q3 report.pdf`"
+        let prompt = BotPrompt(ChatMessage(role: "user", content: content, timestamp: 1, messageId: "u1", rowID: 7))
+        XCTAssertEqual(prompt.message.content, "Compare these")
+        XCTAssertEqual(prompt.message.rowID, 7, "reactions still address the row")
+        XCTAssertEqual(prompt.attachments.map(\.name), ["photo.jpg", "notes.txt", "Q3 report.pdf"])
+        XCTAssertEqual(prompt.attachments.map(\.reference.rawReference), [
+            "/home/u/.hermes/images/dashboard_20261004_031500_ab12cd34_photo.jpg",
+            "attachments/\(uuid)-notes.txt",
+            "/home/u/.hermes/attachments/\(uuid)-Q3 report.pdf"
+        ])
+        XCTAssertEqual(prompt.attachments.map(\.reference.isRasterImageCandidate), [true, false, false])
+
+        var copied: String?
+        let copy = BotMessageActions.items(copyText: prompt.message.content, isHapticsEnabled: false) { copied = $0 }
+        copy.first { $0.kind == .copy }?.perform()
+        XCTAssertEqual(copied, "Compare these")
+
+        let attachmentOnly = BotPrompt(ChatMessage(role: "user", content: "@file:\"/h/\(uuid)-a b.pdf\"", timestamp: 1, messageId: "u2"))
+        XCTAssertFalse(attachmentOnly.hasText)
+        XCTAssertEqual(attachmentOnly.attachments.map(\.name), ["a b.pdf"])
+
+        let unread = "Look at @file:src/app.swift\n\n[The user attached an image: x.png]"
+        let typed = BotPrompt(ChatMessage(role: "user", content: unread, timestamp: 1, messageId: "u3"))
+        XCTAssertEqual(typed.message.content, unread)
+        XCTAssertTrue(typed.attachments.isEmpty)
+    }
+
     func testOnlyUserMessagesAndTurnEndingRepliesCarryAFooterTime() {
         let messages = [
             botRow("u1", "user", at: 1_000),

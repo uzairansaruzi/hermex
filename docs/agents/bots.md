@@ -791,6 +791,14 @@ the session cwd; that warning does not reject the prompt. The path remains
 available to agent tools. Actual document interpretation depends on the host's
 tools and file format.
 
+A sent prompt's bubble shows only the typed text, and Copy copies only that
+(`BotPrompt`, #1017). Each image pair or `@file:` block, read by the Sessions rule
+`MessageAttachment.hermesReferences`, becomes an attachment row under it, the same
+row and preview a reply's media uses: a thumbnail for an image, a file row for a
+document. Both download by the host path the reference names. An attachment-only
+prompt shows only its rows, which then carry the long-press menu. A block the
+rule does not read stays as text.
+
 These upload handlers were rechecked against installed Hermes Agent 0.21.2 source
 on 2026-09-14, together with prompt preprocessing and text-mode image routing.
 No live upload or prompt was executed. The compatibility pin is unchanged.
