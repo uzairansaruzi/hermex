@@ -153,6 +153,9 @@ enum BotConnectionAdvice {
     /// The Profile the host's dashboard is scoped to (`/api/profiles/active` `current`), the
     /// one a new session runs under.
     func currentProfile() async throws -> String
+    /// A stored session's latest rows under `profile` (`HermesREST.sessionMessages`), or nil
+    /// when the host has no such session (404).
+    func sessionMessages(_ key: String, profile: String) async throws -> [BotJSON]?
     /// Ends this screen's calls, uploads and downloads; the shared socket stays for others.
     func close()
 }
@@ -175,6 +178,10 @@ extension BotTransport {
     }
 
     func currentProfile() async throws -> String {
+        throw BotFailure.unsupported
+    }
+
+    func sessionMessages(_ key: String, profile: String) async throws -> [BotJSON]? {
         throw BotFailure.unsupported
     }
 

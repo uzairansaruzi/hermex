@@ -357,6 +357,10 @@ struct ChatView: View {
     /// Measured height of the collapsed clarification bar, the request's only
     /// layout footprint; the expanded card overlays the transcript instead.
     @State private var clarificationBarHeight: CGFloat = 0
+    /// The `/btw` card's height in the clarification slot, part of its footprint (#1013).
+    @State private var btwInsetHeight: CGFloat = 0
+    /// The `/btw` answer is open full screen.
+    @State private var showsBtwFullScreen = false
     /// Measured height of the run-status pill, which wraps at accessibility
     /// text sizes. Seeded with its one-line height at the default size.
     @State private var activeRunStatusHeight: CGFloat = 28
@@ -1032,6 +1036,10 @@ struct ChatView: View {
             .sheet(item: $activeGitSheet, content: gitSheet)
             .sheet(item: $turnDiffPresentation, content: turnDiffSheet)
             .alert(item: $gitAlert, content: gitAlertPresentation)
+            .fullScreenCover(isPresented: $showsBtwFullScreen) { btwFullScreen }
+            .onChange(of: viewModel.hermesSideTasks?.btw == nil) { _, isClosed in
+                if isClosed { showsBtwFullScreen = false }
+            }
             .sheet(isPresented: $showsGoalSheet) {
                 GoalSubmissionSheet(
                     goalDraft: $goalDraft,
@@ -1432,6 +1440,8 @@ struct ChatView: View {
     private func clarificationInset(maximumExpandedHeight: CGFloat) -> some View {
         ZStack(alignment: .bottom) {
             if let requests = viewModel.hermesRequests {
+                // Below the request inset, whose expanded card rises over it.
+                btwInset(maximumExpandedHeight: maximumExpandedHeight)
                 if let request = hermesInsetRequest {
                     hermesRequestInset(request, requests: requests, maximumExpandedHeight: maximumExpandedHeight)
                 }
@@ -1467,6 +1477,53 @@ struct ChatView: View {
         }
         .zIndex(9)
         .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: requestInsetID)
+        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.hermesSideTasks?.btw?.id)
+    }
+
+    /// A Hermes session's `/btw` question in the clarification slot (#1013): the card, or one
+    /// line above a host request that takes the slot.
+    @ViewBuilder
+    private func btwInset(maximumExpandedHeight: CGFloat) -> some View {
+        if let sideTasks = viewModel.hermesSideTasks, let btw = sideTasks.btw {
+            Group {
+                if hermesInsetRequest == nil {
+                    HermesBtwCard(
+                        btw: btw,
+                        maximumExpandedHeight: maximumExpandedHeight,
+                        onExpand: { showsBtwFullScreen = true },
+                        onClose: sideTasks.closeBtw
+                    )
+                } else {
+                    HermesBtwBar(btw: btw, onExpand: { showsBtwFullScreen = true }, onClose: sideTasks.closeBtw)
+                }
+            }
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.height
+            } action: { height in
+                btwInsetHeight = height
+            }
+            .id(btw.id)
+            .padding(.horizontal, 16)
+            .padding(.bottom, composerHeight + 8 + (hermesInsetRequest == nil ? 0 : clarificationBarHeight + 8))
+            .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+        }
+    }
+
+    /// The `/btw` answer full screen, while its question is open.
+    @ViewBuilder
+    private var btwFullScreen: some View {
+        if let sideTasks = viewModel.hermesSideTasks, let btw = sideTasks.btw {
+            HermesBtwFullScreen(
+                btw: btw,
+                sessionTitle: displayTitle,
+                isTurnRunning: viewModel.activeStreamID != nil,
+                onCollapse: { showsBtwFullScreen = false },
+                onClose: {
+                    showsBtwFullScreen = false
+                    sideTasks.closeBtw()
+                }
+            )
+        }
     }
 
     /// A Hermes session's question, or sudo or secret prompt, in the clarification's slot (#1011).
@@ -1819,9 +1876,11 @@ struct ChatView: View {
 
     /// Bar height plus its gap above the composer while a clarification is
     /// pending. Constant across expand and collapse, so the transcript never
-    /// moves while the card animates.
+    /// moves while the card animates. A Hermes `/btw` card or line adds its own
+    /// height, so the live tail streams above it (#1013).
     private var clarificationFootprintHeight: CGFloat {
-        requestInsetID == nil ? 0 : clarificationBarHeight + 8
+        let request = requestInsetID == nil ? 0 : clarificationBarHeight + 8
+        return request + (viewModel.hermesSideTasks?.btw == nil ? 0 : btwInsetHeight + 8)
     }
 
     private var pinnedNoticeSpacerHeight: CGFloat {
@@ -2052,7 +2111,11 @@ struct ChatView: View {
         GoalControlsMenu(
             currentGoal: viewModel.currentGoal,
             isViewingCachedData: viewModel.isViewingCachedData,
-            isActionDisabled: isGoalActionDisabled,
+            isSetGoalDisabled: isGoalActionDisabled,
+            // A Hermes session's goal turns keep it busy, so its commands work mid-turn (#1013).
+            isActionDisabled: isHermesSession
+                ? viewModel.isViewingCachedData || viewModel.isSubmittingGoal
+                : isGoalActionDisabled,
             onSetGoal: {
                 showsGoalSheet = true
             },
@@ -2153,10 +2216,12 @@ struct ChatView: View {
             }
         }
 
-        // A Hermes session sends `/` text as typed: its commands are not webui's (#1010).
-        if !isHermesSession, submittedContent.quotes.isEmpty,
-           submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/") {
-            let parsedCommand = SlashCommandExecutor.parse(submittedDraft)?.command
+        // A Hermes session sends `/` text as typed (#1010), except the goal, btw and background
+        // commands it runs itself (#1013).
+        let parsedCommand = SlashCommandExecutor.parse(submittedDraft)?.command
+        if submittedContent.quotes.isEmpty,
+           submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/"),
+           !isHermesSession || parsedCommand?.runsInHermesSession == true {
             // `/clear` wipes the conversation on the server, so it always asks
             // first. The draft stays in the composer until the user confirms.
             // A refusal the app already knows about (cached view, CLI session,

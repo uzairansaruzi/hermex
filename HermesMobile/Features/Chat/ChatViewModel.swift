@@ -2599,6 +2599,10 @@ final class ChatViewModel {
     /// A Hermes session is parked on one of its host's requests.
     var isWaitingForUser: Bool { hermesRequests?.isWaiting == true }
 
+    /// A Hermes session's goal, `/btw` question and `/background` tasks (#1013). Nil on a
+    /// webui session.
+    var hermesSideTasks: HermesChatSideTasks? { hermesTurn?.sideTasks }
+
     /// Who asks in a Hermes session's request card: its Profile on its saved connection.
     var hermesRequestIdentity: String? {
         hermesTurn.map { String(localized: "\($0.engine.target.profile) on \($0.engine.connection.name)") }
@@ -2616,14 +2620,17 @@ final class ChatViewModel {
     /// prompt at once and a Stop & send once it takes over; a steer shows its echo once
     /// accepted; a queued prompt shows only the composer receipt until the host runs it.
     /// False keeps the draft: the host refused it, did not confirm it, or it was not sent.
+    /// `shown` is the prompt's row when it differs from what is sent, as for a goal's message;
+    /// such a prompt leaves the staged files where they are.
     private func submitHermesPrompt(
         _ draft: String,
         mode: BotPromptMode,
-        to hermes: HermesChatTurnCoordinator
+        to hermes: HermesChatTurnCoordinator,
+        shown: String? = nil
     ) async -> Bool {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         // Only Send and Queue carry the staged files (#1012); Steer and Stop & send stay text-only.
-        let files = mode.startsTurn ? attachmentCoordinator.pendingAttachments : []
+        let files = mode.startsTurn && shown == nil ? attachmentCoordinator.pendingAttachments : []
         guard !text.isEmpty || !files.isEmpty, !isHermesSubmissionUncertain else { return false }
         sendErrorMessage = nil
         lastError = nil
@@ -2631,7 +2638,7 @@ final class ChatViewModel {
         if !files.isEmpty { attachmentCoordinator.setUploadAttachmentError(nil) }
         let promptID = "local-\(UUID().uuidString)"
         let prompt = ChatMessage(
-            role: "user", content: text, timestamp: Date().timeIntervalSince1970, messageId: promptID,
+            role: "user", content: shown ?? text, timestamp: Date().timeIntervalSince1970, messageId: promptID,
             attachments: files.isEmpty ? nil : files.map {
                 MessageAttachment(name: $0.name, mime: $0.mime, size: $0.size, isImage: $0.isImage)
             }
@@ -2977,6 +2984,10 @@ final class ChatViewModel {
         let args = rawArgs.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !args.isEmpty else { return false }
 
+        if let hermesTurn {
+            return await submitHermesGoal(args, to: hermesTurn)
+        }
+
         guard let sessionID else {
             goalErrorMessage = String(localized: "The server did not provide a session ID.")
             sendErrorMessage = goalErrorMessage
@@ -3031,6 +3042,63 @@ final class ChatViewModel {
             goalErrorMessage = error.localizedDescription
             sendErrorMessage = goalErrorMessage
             return false
+        }
+    }
+
+    /// A `/goal` command in a Hermes session (#1013), through the host's own `/goal`: `exec`
+    /// output shows as a notice, and a `send` message goes out once (#508), shown as the
+    /// host's `display` when it names one; mid-turn the host queues it. A new goal waits for
+    /// a running turn to finish, as on webui; the control verbs do not, since a goal's own
+    /// turns keep the session busy.
+    private func submitHermesGoal(_ args: String, to hermes: HermesChatTurnCoordinator) async -> Bool {
+        func fail(_ message: String) -> Bool {
+            goalErrorMessage = message
+            sendErrorMessage = message
+            return false
+        }
+        guard activeStreamID == nil || HermesChatSideTasks.isGoalControl(args) else {
+            return fail(String(localized: "Wait for the current response to finish before changing goals."))
+        }
+        // A lost prompt holds every send until the chat reattaches, and a goal's message is one.
+        guard !isHermesSubmissionUncertain else {
+            return fail(String(localized: "Wait for Hermes to confirm the last message before changing goals."))
+        }
+
+        isSubmittingGoal = true
+        goalErrorMessage = nil
+        sendErrorMessage = nil
+        lastError = nil
+        defer { isSubmittingGoal = false }
+
+        let reply: HermesGoalReply
+        do {
+            reply = try await hermes.sideTasks.dispatchGoal(args)
+        } catch is HermesChatTurnCoordinator.NotSent {
+            return fail(String(localized: "Reconnect to the server to manage goals."))
+        } catch let refusal as BotSettingFailure {
+            // The host's own reason, such as an invalid `/goal wait`.
+            return fail(refusal.localizedDescription)
+        } catch {
+            return fail(String(localized: "Hermes did not confirm the goal command. Check the goal before trying again."))
+        }
+
+        hasActivatedGoalCommand = true
+        // Mid-turn a notice is pinned above the composer until the turn ends, as on webui.
+        func notify(_ text: String) {
+            if activeStreamID == nil { appendLocalNoticeMessage(text) } else { pinLocalNoticeMessage(text) }
+        }
+        switch reply {
+        case .exec(let output):
+            notify(output)
+            return true
+        case .send(let notice, let message, let display):
+            if let notice { notify(notice) }
+            let mode: BotPromptMode = activeStreamID == nil ? .send : .queue
+            // The goal is set either way; its message is never sent again by itself (#508).
+            guard await submitHermesPrompt(message, mode: mode, to: hermes, shown: display ?? message) else {
+                return fail(String(localized: "Hermes did not confirm the goal command. Check the goal before trying again."))
+            }
+            return true
         }
     }
 
@@ -3380,6 +3448,10 @@ final class ChatViewModel {
             return .unsupported(friendlyMessage: String(localized: "Usage: /btw <question>"))
         }
 
+        if let hermesTurn {
+            return await askHermesBtw(question, sideTasks: hermesTurn.sideTasks)
+        }
+
         guard let sessionID else {
             return .unsupported(friendlyMessage: String(localized: "The server did not provide a session ID."))
         }
@@ -3424,6 +3496,10 @@ final class ChatViewModel {
             return .unsupported(friendlyMessage: String(localized: "Usage: /background <prompt>"))
         }
 
+        if let hermesTurn {
+            return await startHermesBackground(prompt, sideTasks: hermesTurn.sideTasks)
+        }
+
         guard let sessionID else {
             return .unsupported(friendlyMessage: String(localized: "The server did not provide a session ID."))
         }
@@ -3453,6 +3529,45 @@ final class ChatViewModel {
             lastError = error
             return .unsupported(friendlyMessage: error.localizedDescription)
         }
+    }
+
+    /// `/btw` in a Hermes session (#1013): asked even while a turn runs, and answered in the
+    /// panel, never the transcript. One at a time. A question that was not sent or was
+    /// refused keeps its draft.
+    private func askHermesBtw(_ question: String, sideTasks: HermesChatSideTasks) async -> SlashCommandExecutionResult {
+        guard !sideTasks.isAsking else {
+            return notDelivered(String(localized: "Wait for the current /btw answer to finish first."))
+        }
+        do {
+            try await sideTasks.ask(question)
+        } catch HermesSideTaskFailure.notSent {
+            return notDelivered(String(localized: "Reconnect to the server to ask a side question."))
+        } catch {
+            return notDelivered(String(localized: "Hermes did not accept this side question."))
+        }
+        return .executed(message: nil)
+    }
+
+    /// `/background` in a Hermes session (#1013): its card shows the task running until the
+    /// result replaces it. A task that did not start, or whose start was not confirmed,
+    /// keeps its draft and is never sent again by itself.
+    private func startHermesBackground(_ prompt: String, sideTasks: HermesChatSideTasks) async -> SlashCommandExecutionResult {
+        do {
+            try await sideTasks.startBackground(prompt)
+        } catch HermesSideTaskFailure.notSent {
+            return notDelivered(String(localized: "Reconnect to the server to start a background task."))
+        } catch HermesSideTaskFailure.refused {
+            return notDelivered(String(localized: "Hermes did not start the background task."))
+        } catch {
+            return notDelivered(String(localized: "Hermes did not confirm the background task. It may still run, but its result can't show here."))
+        }
+        return .executed(message: nil)
+    }
+
+    /// Keeps the draft, and says why on the composer's status line.
+    private func notDelivered(_ message: String) -> SlashCommandExecutionResult {
+        sendErrorMessage = message
+        return .notDelivered
     }
 
     private func submitGoalFromSlashCommand(_ args: String) async -> SlashCommandExecutionResult {
@@ -6231,6 +6346,23 @@ final class ChatViewModel {
         """
     }
 
+    /// The id prefix of a Hermes background task's transcript card, which a rebuilt
+    /// transcript keeps.
+    private static let hermesBackgroundCardPrefix = "local-background-"
+
+    /// A Hermes background task's transcript card (#1013): the webui's result card, saying
+    /// the task runs until its result, or that the result is unavailable.
+    private static func hermesBackgroundCard(_ task: HermesBackgroundTask, timestamp: Double?) -> ChatMessage {
+        let body: String
+        switch task.state {
+        case .running: body = String(localized: "Running in the background…")
+        case .finished(let text): body = text
+        case .unavailable: body = String(localized: "Result unavailable.")
+        }
+        return ChatMessage(role: "local_assistant", content: backgroundResultText(prompt: task.prompt, answer: body),
+                           timestamp: timestamp, messageId: hermesBackgroundCardPrefix + task.id)
+    }
+
     private static func backgroundResultText(prompt: String, answer: String?) -> String {
         let trimmedAnswer = answer?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let body = trimmedAnswer.isEmpty ? String(localized: "No answer produced.") : trimmedAnswer
@@ -6569,7 +6701,9 @@ extension ChatViewModel: HermesChatTurnDelegate {
 
     func hermesReplaceTranscript(_ transcript: HermesChatTranscript) {
         resetPendingStreamingContentBuffers()
-        messages = transcript.messages + (transcript.streamingReply.map { [$0] } ?? [])
+        // Background cards are this chat's own; the host's history has none of them.
+        let cards = messages.filter { $0.messageId?.hasPrefix(Self.hermesBackgroundCardPrefix) == true }
+        messages = transcript.messages + cards + (transcript.streamingReply.map { [$0] } ?? [])
         transcriptRevision &+= 1
         messagesOffset = 0
         hasOlderMessages = false
@@ -6616,6 +6750,22 @@ extension ChatViewModel: HermesChatTurnDelegate {
 
     func hermesRequestDidFail(_ message: String) {
         sendErrorMessage = message
+    }
+
+    func hermesBackgroundDidChange(_ task: HermesBackgroundTask) {
+        let id = Self.hermesBackgroundCardPrefix + task.id
+        if let index = messages.firstIndex(where: { $0.messageId == id }) {
+            messages[index] = Self.hermesBackgroundCard(task, timestamp: messages[index].timestamp)
+        } else {
+            messages.append(Self.hermesBackgroundCard(task, timestamp: Date().timeIntervalSince1970))
+        }
+        scheduleStreamingScrollTrigger()
+    }
+
+    func hermesGoalDidChange(_ goal: SubmittedGoal?) {
+        currentGoal = goal
+        // The goal menu shows once the session has a goal, and stays to set the next one.
+        if goal != nil { hasActivatedGoalCommand = true }
     }
 }
 

@@ -57,6 +57,13 @@ enum HermesCall: Equatable, Sendable {
     case sessionInterrupt(sessionID: String)
     case fileAttach(sessionID: String, name: String, dataURL: String)
 
+    // Side work (#1013): each runs beside the session's turn, even mid-turn, and answers
+    // `{task_id}`; its result arrives later on the session's runtime.
+    /// A side question over a snapshot of the conversation, tools off: `btw.complete`.
+    case promptBtw(sessionID: String, text: String)
+    /// A side agent in its own `bg_<id>` session under the Profile: `background.complete`.
+    case promptBackground(sessionID: String, text: String)
+
     // Answers to the host's requests
     case approvalRespond(sessionID: String, requestID: String, choice: BotApprovalRequest.Choice)
     case requestAnswer(id: String, result: RequestAnswer)
@@ -202,6 +209,8 @@ enum HermesCall: Equatable, Sendable {
         case .sessionRedirect: return "session.redirect"
         case .sessionInterrupt: return "session.interrupt"
         case .fileAttach: return "file.attach"
+        case .promptBtw: return "prompt.btw"
+        case .promptBackground: return "prompt.background"
         case .approvalRespond: return "approval.respond"
         case .requestAnswer: return "request.answer"
         case .clarifyLock: return "clarify.lock"
@@ -270,7 +279,8 @@ enum HermesCall: Equatable, Sendable {
             // cutting at the first prompt legitimately empties the transcript.
             return ["session_id": .string(sessionID), "text": .string(text), "truncate_before_row_id": .number(Double(rowID)),
                     "confirm_truncate": .bool(true), "confirm_empty_truncate": .bool(true)]
-        case .sessionSteer(let sessionID, let text), .sessionRedirect(let sessionID, let text):
+        case .sessionSteer(let sessionID, let text), .sessionRedirect(let sessionID, let text),
+             .promptBtw(let sessionID, let text), .promptBackground(let sessionID, let text):
             return ["session_id": .string(sessionID), "text": .string(text)]
         case .sessionInterrupt(let sessionID), .commandsCatalog(let sessionID), .subagentList(let sessionID):
             return ["session_id": .string(sessionID)]
@@ -391,6 +401,9 @@ enum HermesCall: Equatable, Sendable {
             valid = !sessionID.isEmpty && emoji?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != true
         case .promptRewind(let sessionID, let text, let rowID):
             valid = !sessionID.isEmpty && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && rowID > 0
+        case .promptBtw(let sessionID, let text), .promptBackground(let sessionID, let text):
+            // The host refuses empty text (4012).
+            valid = !sessionID.isEmpty && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .groupsList(let offset): valid = offset >= 0
         case .groupsState(let roomID), .groupsDisband(let roomID): valid = BotRoomRPC.validID(roomID)
         case .groupsLog(let roomID, let sinceSeq, let limit):

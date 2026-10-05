@@ -620,6 +620,20 @@ import XCTest
         }
     }
 
+    /// A side question or background task needs its session and some text (#1013); the host
+    /// refuses empty text.
+    func testSideTaskCallsAdmitOnlyASessionAndText() {
+        let rejected: [HermesCall] = [
+            .promptBtw(sessionID: "", text: "why?"),
+            .promptBtw(sessionID: "runtime", text: " \n"),
+            .promptBackground(sessionID: "", text: "sum up"),
+            .promptBackground(sessionID: "runtime", text: "")
+        ]
+        for call in rejected {
+            XCTAssertThrowsError(try call.params()) { XCTAssertEqual($0 as? BotFailure, .unsupported) }
+        }
+    }
+
     /// The inbox's live-status read is `session.active_list` with no parameters,
     /// exactly as Desktop's background sync sends it; anything else stays local.
     func testActiveListAllowlistAdmitsOnlyTheEmptyRead() async throws {

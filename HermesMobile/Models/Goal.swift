@@ -64,6 +64,19 @@ struct SubmittedGoal: Decodable, Equatable {
         case pausedReasonSnake = "paused_reason"
     }
 
+    /// A goal read from somewhere other than the webui, such as a Hermes session's
+    /// `session.control` snapshot (#1013).
+    init(goal: String?, status: String?, turnsUsed: Int?, maxTurns: Int?, lastVerdict: String?,
+         lastReason: String?, pausedReason: String?) {
+        self.goal = goal
+        self.status = status
+        self.turnsUsed = turnsUsed
+        self.maxTurns = maxTurns
+        self.lastVerdict = lastVerdict
+        self.lastReason = lastReason
+        self.pausedReason = pausedReason
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         goal = container.decodeLossyStringIfPresent(forKey: .goal)

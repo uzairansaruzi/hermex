@@ -23,6 +23,10 @@ import SwiftData
     func hermesDraftKeyDidChange(from: ChatDraftKey, to: ChatDraftKey)
     /// The host refused an answer to one of its requests, or a bypass change (#1011).
     func hermesRequestDidFail(_ message: String)
+    /// A `/background` task's card changed: started, finished, or its result unavailable (#1013).
+    func hermesBackgroundDidChange(_ task: HermesBackgroundTask)
+    /// The session's goal, as its control snapshot reports it; nil once cleared (#1013).
+    func hermesGoalDidChange(_ goal: SubmittedGoal?)
 }
 
 /// A Hermes session the main chat opens: the server, its saved connection and the target.
@@ -55,7 +59,8 @@ struct HermesChatTranscript: Equatable {
 /// new runtime). The engine drops repeated frames by `seq`, so appends never deduplicate
 /// by text. Each prompt, steer, redirect and stop is one `write`, never resent; a Send or
 /// Queue uploads its staged files first (#1012). The host's requests (approvals,
-/// questions, sudo and secret prompts) are `requests` (#1011).
+/// questions, sudo and secret prompts) are `requests` (#1011); the goal, `/btw` and
+/// `/background` are `sideTasks` (#1013).
 ///
 /// A turn's identity is the stored key and the host's `turn_started_at`, in place of a
 /// webui stream id. A turn starts at `message.start`, an accepted send or a running
@@ -75,6 +80,8 @@ struct HermesChatTranscript: Equatable {
     private(set) var queuedPrompt: String?
     /// Host requests open on this runtime (#1011): an approval, a question, a credential prompt.
     let requests: HermesChatRequests
+    /// The session's goal, `/btw` question and `/background` tasks (#1013).
+    let sideTasks: HermesChatSideTasks
 
     /// The host's `turn_started_at` for the running turn, once known.
     @ObservationIgnored private var turnStartedAt: Double?
@@ -114,10 +121,14 @@ struct HermesChatTranscript: Equatable {
         self.engine = engine
         self.isNetworkAvailable = isNetworkAvailable
         requests = HermesChatRequests(engine: engine)
+        sideTasks = HermesChatSideTasks(engine: engine)
         draftKey = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id)
         engine.owner = self
         requests.onFailure = { [weak self] in self?.delegate?.hermesRequestDidFail($0) }
         requests.onNeedsReattach = { [weak self] in self?.reattach() }
+        sideTasks.onNeedsReattach = { [weak self] in self?.reattach() }
+        sideTasks.onBackgroundChange = { [weak self] in self?.delegate?.hermesBackgroundDidChange($0) }
+        sideTasks.onGoalChange = { [weak self] in self?.delegate?.hermesGoalDidChange($0) }
     }
 
     /// A chat on `target` over the connection's shared gateway socket.
@@ -437,6 +448,8 @@ struct HermesChatTranscript: Equatable {
             }
         case "request.cancel":
             requests.cancel(payload)
+        case "btw.complete", "background.complete", "session.control.update":
+            sideTasks.receive(frame)
         default:
             // `thinking.delta` is spinner text and `reasoning.available` carries the answer
             // itself: neither is reasoning. The working row already says Hermes is working.
@@ -710,9 +723,11 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     func conversationDidReplay(_ reply: BotJSON, frames: [BotJSON]) {
         requests.didReplay(reply, frames: frames)
         defer { requests.willReadSnapshot() }
+        let lostFrames = engine.replayWasReset || needsRebuild
+        sideTasks.didReplay(frames, lostFrames: lostFrames)
         // After lost frames the snapshot that follows rebuilds instead, and what the replay
         // carried of the running reply places the deltas that raced it.
-        guard !engine.replayWasReset, !needsRebuild else {
+        guard !lostFrames else {
             replayedReply = Self.replyText(frames)
             return
         }
@@ -729,10 +744,15 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         heldFrames = []; deltasInRebuild = []; replayedReply = ""
         refusedSignIn = false
         delegate?.hermesConnectionDidChange(failure: nil)
+        sideTasks.didConnect(runtime: runtime, attempt: attempt)
     }
 
     func conversation(didReceive frame: BotJSON, afterGap: Bool) {
-        guard !afterGap else { return rebuildAfterGap() }
+        guard !afterGap else {
+            // A side frame needs no order: it applies before the rebuild the gap asks for.
+            sideTasks.receive(frame)
+            return rebuildAfterGap()
+        }
         apply(frame)
     }
 

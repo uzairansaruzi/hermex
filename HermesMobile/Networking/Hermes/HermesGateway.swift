@@ -447,11 +447,13 @@ private extension HermesCall {
     }
 
     /// Room rejections carry the host's reason as `BotRoomFailure`; setting rejections
-    /// carry its message as `BotSettingFailure`.
+    /// carry its message as `BotSettingFailure`. So does a refused `/goal`, whose 4004 message
+    /// says what was wrong with it (#1013).
     var rejection: Rejection {
         if method.hasPrefix("groups.") { return .room }
         switch self {
         case .configSet, .sessionCwdSet, .sessionControl, .modelOptions, .configuredModelOptions, .sessionControlRead: return .setting
+        case .commandDispatch(let name, _, _) where name == "goal": return .setting
         default: return .plain
         }
     }

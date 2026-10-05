@@ -317,6 +317,25 @@ Send and Queue carry staged files (#1012; see the attachments section below). Th
 temporary entry is the inbox's "New Session" (DEBUG and Hermex Branch), on the dashboard's
 `/api/profiles/active` `current` Profile, until #709's Sessions tab.
 
+Its goal, `/btw` and `/background` are `HermesChatSideTasks` (#1013); the main chat routes
+only these three `/` commands and sends any other `/` text as typed. Every goal verb and a
+new goal's text is `command.dispatch {name: "goal", arg}`: `exec` output shows as a notice,
+and a `send` reply's `message` goes out once as a `prompt.submit queued:true` Send, shown as
+its `display` when the host names one (#508). A new goal waits for a running turn, as on
+webui; the control verbs (the host's `is_goal_control`) run mid-turn, since a goal's own
+turns keep the session busy, and a resume's message then joins the host's queue. A 4004
+refusal keeps the host's message. The goal menu reads `session.control.read`
+on each attach and every `session.control.update`. `/btw` is `prompt.btw` and works
+mid-turn: its panel (the clarification's slot, collapsed to one line when a host request
+takes the slot, or full screen) shows the question, a static waiting line, then
+`btw.complete`'s text, matched by `task_id`; it never enters the transcript, and one
+question waits at a time. `/background` is `prompt.background`: a transcript card that
+`background.complete` replaces with the result, kept across a rebuild. Completions ride the
+replay; when an attach lost frames, a waiting question reads unavailable and each task
+without a result is read once from `GET /api/sessions/bg_<id>/messages?profile=` (its last
+reply that is not a tool call; a 404 or none reads unavailable). A completion that beats its
+ask's reply is kept until the task id is known. Nothing is resent.
+
 Its host requests are `HermesChatRequests` (#1011), on the Bot request model below and the
 engine's `answer`. An approval takes the Sessions overlay with only the host's choices
 (`ApprovalScope.Host.hermes`); a question or a sudo or secret prompt takes the
@@ -849,12 +868,13 @@ only adds a prompt. Queue inspection/edit/remove/resume remain unavailable until
 an installed host exposes a verified safe management contract. The phone does
 not synthesize a queue from receipts or call generic slash commands to manage it.
 
-Aside and background actions remain unavailable in this composer. The verified
+Aside and background actions remain unavailable in this composer; a Hermes session in
+the main chat offers both (#1013, `HermesChatSideTasks` above). The verified
 `prompt.btw` and `prompt.background` handlers return a `task_id` and emit results
 on the parent runtime as `btw.complete` and `background.complete`. They do not
-append normal canonical chat history. A future slice needs explicit result
-presentation and recovery behavior before offering either execution mode; neither
-is a Send variant or a reason to create another canonical session.
+append normal canonical chat history. Bot Chat would need its own result
+presentation and recovery before offering either execution mode; neither is a Send
+variant or a reason to create another canonical session.
 
 Stop affects current conversation work, including Desktop work, queued prompts,
 pending approvals and process-wide speech playback. Confirmation actions carry

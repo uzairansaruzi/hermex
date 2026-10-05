@@ -15,7 +15,9 @@ import Foundation
 /// 202 `{ok: true}`, 401 without a sign-in, then the dashboard back on its PID about 2 s later
 /// with a new per-process session key, so the next signed-in read signs in again.
 /// `GET /api/profiles/active` (#1010) is read at the same pin: `{active, current}`, each
-/// falling back to `default`.
+/// falling back to `default`. `GET /api/sessions/{id}/messages` (#1013) too, against
+/// `scripts/local-hermes`: `{session_id, profile, messages: [{role, content, tool_calls}]}`, the
+/// latest 500 rows oldest first, or 404 `{detail}` for a session the Profile does not have.
 enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
@@ -44,6 +46,9 @@ enum HermesREST: Equatable, Sendable {
     case restartDashboard
     /// Every agent plugin with its on-disk version.
     case pluginsHub
+    /// A stored session's latest rows under `profile`: a background task's `bg_<id>` side
+    /// session, whose last reply is its durable result (#1013).
+    case sessionMessages(key: String, profile: String)
 
     func request(base: URL) throws -> URLRequest {
         switch self {
@@ -90,6 +95,16 @@ enum HermesREST: Equatable, Sendable {
         case .pushPairing: return Self.get(base.appendingPathComponent("api/plugins/hermex-push/pairing"))
         case .restartDashboard: return try Self.send("POST", base.appendingPathComponent("api/plugins/hermex-push/restart"), [:])
         case .pluginsHub: return Self.get(base.appendingPathComponent("api/dashboard/plugins/hub"))
+        case .sessionMessages(let key, let profile):
+            // One path segment of the host's own id characters, so it never names another route.
+            guard !key.isEmpty, !profile.isEmpty,
+                  key.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || "_-".unicodeScalars.contains($0) }),
+                  var parts = URLComponents(url: base.appendingPathComponent("api/sessions").appendingPathComponent(key)
+                                                .appendingPathComponent("messages"), resolvingAgainstBaseURL: false)
+            else { throw BotFailure.invalidAddress }
+            parts.queryItems = [URLQueryItem(name: "profile", value: profile)]
+            guard let url = parts.url else { throw BotFailure.invalidAddress }
+            return Self.get(url)
         }
     }
 

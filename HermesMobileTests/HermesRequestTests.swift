@@ -58,6 +58,9 @@ final class HermesRequestTests: XCTestCase {
             (.sessionSteer(sessionID: "runtime", text: "hi"), "session.steer", ["session_id": .string("runtime"), "text": .string("hi")]),
             (.sessionRedirect(sessionID: "runtime", text: "hi"), "session.redirect", ["session_id": .string("runtime"), "text": .string("hi")]),
             (.sessionInterrupt(sessionID: "runtime"), "session.interrupt", ["session_id": .string("runtime")]),
+            (.promptBtw(sessionID: "runtime", text: "why?"), "prompt.btw", ["session_id": .string("runtime"), "text": .string("why?")]),
+            (.promptBackground(sessionID: "runtime", text: "sum up"), "prompt.background",
+             ["session_id": .string("runtime"), "text": .string("sum up")]),
             (.fileAttach(sessionID: "runtime", name: "id-a.txt", dataURL: "data:text/plain;base64,YQ=="), "file.attach",
              ["session_id": .string("runtime"), "name": .string("id-a.txt"), "data_url": .string("data:text/plain;base64,YQ==")]),
             (.approvalRespond(sessionID: "runtime", requestID: "r1", choice: .session), "approval.respond",
@@ -155,7 +158,9 @@ final class HermesRequestTests: XCTestCase {
             (.restartGateway, "POST", "https://hermes.example:9120/api/gateway/restart", .object([:]), json),
             (.pushPairing, "GET", "https://hermes.example:9120/api/plugins/hermex-push/pairing", nil, [:]),
             (.restartDashboard, "POST", "https://hermes.example:9120/api/plugins/hermex-push/restart", .object([:]), json),
-            (.pluginsHub, "GET", "https://hermes.example:9120/api/dashboard/plugins/hub", nil, [:])
+            (.pluginsHub, "GET", "https://hermes.example:9120/api/dashboard/plugins/hub", nil, [:]),
+            (.sessionMessages(key: "bg_0a5110", profile: "triage"), "GET",
+             "https://hermes.example:9120/api/sessions/bg_0a5110/messages?profile=triage", nil, [:])
         ]
         for (rest, method, url, body, headers) in cases {
             let request = try rest.request(base: base)
@@ -168,6 +173,8 @@ final class HermesRequestTests: XCTestCase {
         XCTAssertEqual(artifact.cachePolicy, .reloadIgnoringLocalCacheData)
         XCTAssertThrowsError(try HermesREST.uploadImage(profile: "", filename: "a.png", dataURL: "data:,").request(base: base))
         XCTAssertThrowsError(try HermesREST.downloadArtifact(path: "a.pdf", profile: "triage", sessionID: "").request(base: base))
+        XCTAssertThrowsError(try HermesREST.sessionMessages(key: "../profiles", profile: "triage").request(base: base))
+        XCTAssertThrowsError(try HermesREST.sessionMessages(key: "bg_1", profile: "").request(base: base))
         let upgrade = try HermesREST.gatewayUpgrade(base: base, ticket: "t1")
         XCTAssertEqual(upgrade.url?.absoluteString, "wss://hermes.example:9120/api/ws")
         XCTAssertEqual(upgrade.allHTTPHeaderFields ?? [:], ["Sec-WebSocket-Protocol": "hermes-gateway-v1, hermes-gateway-ticket.t1"])

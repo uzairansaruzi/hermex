@@ -3,6 +3,9 @@ import SwiftUI
 struct GoalControlsMenu: View {
     let currentGoal: SubmittedGoal?
     let isViewingCachedData: Bool
+    /// Disables Set Goal.
+    let isSetGoalDisabled: Bool
+    /// Disables the commands: Status, Pause, Resume, Mark Done, Clear and Stop.
     let isActionDisabled: Bool
     let onSetGoal: () -> Void
     let onSubmitCommand: (String) -> Void
@@ -14,7 +17,7 @@ struct GoalControlsMenu: View {
             } label: {
                 Label("Set Goal", systemImage: "target")
             }
-            .disabled(isActionDisabled)
+            .disabled(isSetGoalDisabled)
 
             Divider()
 
