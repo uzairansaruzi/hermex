@@ -472,7 +472,9 @@ final class ChatViewModel {
     private(set) var isUpdatingComposerConfiguration = false
     private(set) var composerConfigurationErrorMessage: String?
     var pendingAttachments: [PendingAttachment] { attachmentCoordinator.pendingAttachments }
-    var isUploadingAttachment: Bool { attachmentCoordinator.isUploadingAttachment }
+    var isUploadingAttachment: Bool { attachmentCoordinator.isUploadingAttachment || isSendingAttachments }
+    /// A Hermes Send or Queue is uploading its files (#1012); `cancelAttachmentUpload()` stops it.
+    var isSendingAttachments: Bool { hermesTurn?.isUploadingAttachments == true }
     var attachmentUploadCount: Int { attachmentCoordinator.uploadInFlightCount }
     var attachmentUploadGeneration: Int { attachmentCoordinator.uploadStartGeneration }
     var uploadAttachmentErrorMessage: String? { attachmentCoordinator.uploadAttachmentErrorMessage }
@@ -691,7 +693,8 @@ final class ChatViewModel {
         self.attachmentCoordinator = ChatAttachmentCoordinator(
             client: resolvedClient,
             draftAttachmentStore: draftAttachmentStore,
-            draftStore: draftStore
+            draftStore: draftStore,
+            uploadsOnSend: hermesTurn != nil
         )
         self.btwStreamClient = btwStreamClient ?? SSEClient()
         self.liveActivityManager = resolvedLiveActivityManager
@@ -1449,7 +1452,8 @@ final class ChatViewModel {
     }
 
     /// Saves and uploads a freshly staged file into the pending strip. Returns
-    /// nil unless both the durable draft copy and server upload succeed.
+    /// nil unless both the durable draft copy and server upload succeed. A Hermes
+    /// session only saves the copy; its Send or Queue uploads it (#1012).
     @discardableResult
     func uploadAttachment(data: Data, filename: String, previewData: Data? = nil) async -> PendingAttachment? {
         await attachmentCoordinator.uploadAttachment(
@@ -2573,6 +2577,11 @@ final class ChatViewModel {
     /// Whether this chat runs a Hermes session rather than a webui one (#1010).
     var isHermesSession: Bool { hermesTurn != nil }
 
+    /// A Hermes prompt is on its way, from its uploads to the host's answer.
+    @ObservationIgnored private var isSubmittingHermesPrompt = false
+    /// The last attach's release of a lost prompt's mark (`releaseSubmissionMark`).
+    @ObservationIgnored private(set) var submissionMarkRelease: Task<Void, Never>?
+
     /// A Hermes session's draft key: the new-session key until the host names the session.
     var hermesDraftKey: ChatDraftKey? { hermesTurn?.currentDraftKey }
 
@@ -2610,11 +2619,19 @@ final class ChatViewModel {
         to hermes: HermesChatTurnCoordinator
     ) async -> Bool {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return false }
+        // Only Send and Queue carry the staged files (#1012); Steer and Stop & send stay text-only.
+        let files = mode.startsTurn ? attachmentCoordinator.pendingAttachments : []
+        guard !text.isEmpty || !files.isEmpty else { return false }
         sendErrorMessage = nil
         lastError = nil
         let promptID = "local-\(UUID().uuidString)"
-        let prompt = ChatMessage(role: "user", content: text, timestamp: Date().timeIntervalSince1970, messageId: promptID)
+        let prompt = ChatMessage(
+            role: "user", content: text, timestamp: Date().timeIntervalSince1970, messageId: promptID,
+            attachments: files.isEmpty ? nil : files.map {
+                MessageAttachment(name: $0.name, mime: $0.mime, size: $0.size, isImage: $0.isImage)
+            }
+        )
+        attachmentCoordinator.keepLocalPreviews(of: files, forMessageID: promptID)
         if mode == .send {
             isStartingChat = true
             archiveLiveActivityForNewTurn()
@@ -2622,66 +2639,112 @@ final class ChatViewModel {
         }
         defer { if mode == .send { isStartingChat = false } }
 
+        // #508: from just before the prompt goes out until the host answers, the draft and
+        // its files are on disk with the submission marked unresolved. A lost answer keeps
+        // all three, and the next attach clears only the mark; nothing is sent again.
+        var marked = false
+        let outcome: BotPromptOutcome
         do {
-            switch try await hermes.submit(text, mode: mode) {
-            case .started:
-                // A queued send that found the host idle ran at once.
-                if mode != .send { messages.append(prompt) }
-                return true
-            case .voiceStopped:
-                // The host took a stop phrase: it stopped the work and started no turn.
-                rollbackOptimisticMessage(id: promptID)
-                return true
-            case .followUpQueued, .redirectQueued:
-                // The host runs it as a later turn, whose start shows it.
-                rollbackOptimisticMessage(id: promptID)
-                return true
-            case .guidanceQueued:
-                appendLocalSteerEcho(text)
-                showSteeringConfirmation(String(localized: "Steering hint delivered."))
-                return true
-            case .redirected:
-                // The turn carries on from the new prompt, and the reply after it gets its own row.
-                flushPendingStreamingContent()
-                streamingAssistantMessageID = nil
-                messages.append(prompt)
-                return true
-            case .rejected:
-                rollbackOptimisticMessage(id: promptID)
-                // A refused steer leaves the run going (#856).
-                if mode == .steer {
-                    steerFailureMessage = String(localized: "Couldn't steer")
-                } else {
-                    sendErrorMessage = String(localized: "Hermes did not accept this message. Your draft is still here.")
-                }
-                return false
-            case .unknown:
-                rollbackOptimisticMessage(id: promptID)
-                sendErrorMessage = String(localized: "Hermes did not confirm this message. Your draft is still here.")
-                return false
+            isSubmittingHermesPrompt = true
+            defer { isSubmittingHermesPrompt = false }
+            outcome = try await hermes.submit(text, mode: mode, attachments: attachmentCoordinator.outgoingAttachments(files)) {
+                [drafts] in
+                let key = hermes.currentDraftKey
+                // Loaded first, so the mark never stands in for the saved draft.
+                _ = await drafts.draft(for: key)
+                drafts.setBotSubmissionUncertain(true, for: key)
+                marked = true
+                try await drafts.flush()
             }
         } catch {
             rollbackOptimisticMessage(id: promptID)
-            if error is HermesChatTurnCoordinator.NotSent {
-                sendErrorMessage = String(localized: "Reconnect to the server to send a message.")
+            if let notSent = error as? HermesChatTurnCoordinator.NotSent {
+                if marked { drafts.setBotSubmissionUncertain(false, for: hermes.currentDraftKey) }
+                sendErrorMessage = notSent.duringUpload
+                    ? Self.uploadFailureMessage(notSent.underlying)
+                    : String(localized: "Reconnect to the server to send a message.")
             } else if mode.definitelyRejected(error) {
+                drafts.setBotSubmissionUncertain(false, for: hermes.currentDraftKey)
                 sendErrorMessage = String(localized: "Hermes did not accept this message. Your draft is still here.")
             } else {
                 sendErrorMessage = String(localized: "Hermes did not confirm this message. Your draft is still here.")
             }
             return false
         }
+        if outcome != .unknown { drafts.setBotSubmissionUncertain(false, for: hermes.currentDraftKey) }
+
+        switch outcome {
+        case .started:
+            // A queued send that found the host idle ran at once.
+            if mode != .send { messages.append(prompt) }
+        case .voiceStopped:
+            // The host took a stop phrase: it stopped the work and started no turn.
+            rollbackOptimisticMessage(id: promptID)
+        case .followUpQueued, .redirectQueued:
+            // The host runs it as a later turn, whose start shows it.
+            rollbackOptimisticMessage(id: promptID)
+        case .guidanceQueued:
+            appendLocalSteerEcho(text)
+            showSteeringConfirmation(String(localized: "Steering hint delivered."))
+        case .redirected:
+            // The turn carries on from the new prompt, and the reply after it gets its own row.
+            flushPendingStreamingContent()
+            streamingAssistantMessageID = nil
+            messages.append(prompt)
+        case .rejected:
+            rollbackOptimisticMessage(id: promptID)
+            // A refused steer leaves the run going (#856).
+            if mode == .steer {
+                steerFailureMessage = String(localized: "Couldn't steer")
+            } else {
+                sendErrorMessage = String(localized: "Hermes did not accept this message. Your draft is still here.")
+            }
+            return false
+        case .unknown:
+            rollbackOptimisticMessage(id: promptID)
+            sendErrorMessage = String(localized: "Hermes did not confirm this message. Your draft is still here.")
+            return false
+        }
+        // Accepted: the host holds the files now, so their local copies go.
+        await attachmentCoordinator.consumeSentAttachments(files)
+        return true
+    }
+
+    /// Attached again: the host's snapshot now shows whether a prompt whose answer was lost
+    /// ran, so its unresolved mark goes. The draft and its files stay as they are (#508).
+    private func releaseSubmissionMark() {
+        guard let key = hermesDraftKey else { return }
+        submissionMarkRelease = Task { [weak self, drafts] in
+            guard await drafts.draft(for: key)?.botSubmissionUncertain == true,
+                  self?.isSubmittingHermesPrompt == false else { return }
+            drafts.setBotSubmissionUncertain(false, for: key)
+        }
+    }
+
+    /// Why a Hermes send's files did not upload; the text and files stay in the composer.
+    private static func uploadFailureMessage(_ error: Error) -> String {
+        if error is CancellationError || error as? BotFailure == .stale {
+            return String(localized: "Upload cancelled. Your message and attachments are still here.")
+        }
+        if let error = error as? BotAttachmentFailure { return error.localizedDescription }
+        return String(localized: "Couldn't upload the attachments. Your message and attachments are still here.")
+    }
+
+    /// Stops a Hermes send's uploads before its prompt goes out (#1012).
+    func cancelAttachmentUpload() {
+        hermesTurn?.cancelAttachmentUpload()
     }
 
     /// A send while a Hermes turn runs: Steer is `session.steer`, Queue the host's queue,
-    /// and Stop & send `session.redirect` (#858). A turn that ended meanwhile takes a plain send.
+    /// and Stop & send `session.redirect` (#858). With files staged it queues, since only a
+    /// fresh turn takes them (#1012). A turn that ended meanwhile takes a plain send.
     private func submitHermesStreamingMessage(
         _ draft: String,
         behavior: StreamingSendBehavior,
         to hermes: HermesChatTurnCoordinator
     ) async -> SlashCommandExecutionResult {
         let mode: BotPromptMode
-        switch behavior {
+        switch attachmentCoordinator.pendingAttachments.isEmpty ? behavior : .queue {
         case .steer: mode = activeStreamID == nil ? .send : .steer
         case .queue: mode = activeStreamID == nil ? .send : .queue
         case .interrupt: mode = activeStreamID == nil ? .send : .redirect
@@ -2696,7 +2759,7 @@ final class ChatViewModel {
     /// returns nothing. Returns true only if the chat send started.
     @discardableResult
     func sendVoiceNote(audioData: Data, filename: String, modelContext: ModelContext? = nil) async -> Bool {
-        // Voice notes ride on webui transcription and attachments; Hermes attachments are #701 slice 1.3.
+        // Voice notes ride on webui transcription, which a Hermes host does not offer.
         guard hermesTurn == nil else { return false }
         // Reentrancy guard: bail if a voice note OR a regular chat send is already
         // in flight. `performChatSend` has no internal guard, so two overlapping
@@ -6460,10 +6523,10 @@ extension ChatViewModel: HermesChatTurnDelegate {
         streamingAssistantMessageID = nil
         responseCompletionNeedsTranscriptRefresh = false
         if let prompt {
-            messages.append(ChatMessage(
+            messages.append(HermesChatTurnCoordinator.displayed(ChatMessage(
                 role: "user", content: prompt, timestamp: Date().timeIntervalSince1970,
                 messageId: "local-\(UUID().uuidString)"
-            ))
+            )))
         }
     }
 
@@ -6509,6 +6572,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
         guard let failure else {
             if errorMessage != nil { errorMessage = nil }
             if sendErrorIsFromStreamRecovery { sendErrorMessage = nil }
+            releaseSubmissionMark()
             return
         }
         // With nothing on screen yet it is the chat's error, with its retry; otherwise the composer's.

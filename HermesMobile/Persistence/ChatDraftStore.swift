@@ -74,7 +74,8 @@ struct ChatDraft: Equatable, Sendable {
     var quotes: [ComposerQuote] = []
     var attachments: [ChatDraftAttachment] = []
     var settings: ChatDraftSettings?
-    // Written durably before Bot submission; acknowledgement loss must survive relaunch.
+    // Written durably before a Bot Chat or Hermes session submission; acknowledgement
+    // loss must survive relaunch (#508).
     var botSubmissionUncertain = false
     var lastUsedAt: Date?
 
@@ -447,8 +448,9 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             sessionID = (try? container.decodeIfPresent(String.self, forKey: .sessionID)) ?? nil
             connectionID = try? container.decodeIfPresent(UUID.self, forKey: .connectionID)
             profile = try? container.decodeIfPresent(String.self, forKey: .profile)
-            // A malformed uncertainty field fails closed for Bot records.
-            botSubmissionUncertain = (try? container.decodeIfPresent(Bool.self, forKey: .botSubmissionUncertain)) ?? (context == "bot" && container.contains(.botSubmissionUncertain))
+            // A malformed uncertainty field fails closed for Bot and Hermes session records.
+            botSubmissionUncertain = (try? container.decodeIfPresent(Bool.self, forKey: .botSubmissionUncertain))
+                ?? (["bot", "hermesSession"].contains(context) && container.contains(.botSubmissionUncertain))
             text = (try? container.decodeIfPresent(String.self, forKey: .text)) ?? nil
             quotes = (try? container.decodeIfPresent([FailableQuote].self, forKey: .quotes)) ?? nil
             attachments = (try? container.decodeIfPresent([FailableAttachment].self, forKey: .attachments)) ?? nil
@@ -493,7 +495,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 quotes: (quotes ?? []).compactMap(\.value?.quote),
                 attachments: (attachments ?? []).compactMap(\.value?.attachment),
                 settings: settings?.settings,
-                botSubmissionUncertain: context == "bot" && (botSubmissionUncertain ?? false),
+                botSubmissionUncertain: ["bot", "hermesSession"].contains(context) && (botSubmissionUncertain ?? false),
                 lastUsedAt: lastUsedAt
             )
             guard !draft.isEmpty else { return nil }
@@ -635,8 +637,12 @@ final class ChatDraftStore {
         updateDraft(for: key) { $0.text = text }
     }
 
+    /// Marks a Bot Chat or Hermes session prompt sent with its outcome unknown (#508).
     func setBotSubmissionUncertain(_ uncertain: Bool, for key: ChatDraftKey) {
-        guard case .bot = key.context else { return }
+        switch key.context {
+        case .bot, .hermesSession: break
+        case .session, .newChat: return
+        }
         markChangedBeforeLoad(key)
         updateDraft(for: key) { $0.botSubmissionUncertain = uncertain }
     }

@@ -365,14 +365,16 @@ final class ChatAttachmentPreviewViewModel {
         didLoad = true
         preview = nil
 
-        guard let sessionID = session.sessionId else {
-            errorMessage = String(localized: "Session ID is missing.")
-            return
-        }
-
+        // A pathless item, such as a Hermes session's chip (#1012), shows its local copy
+        // and never needs the session.
         let trimmedPath = item.path?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let path = trimmedPath, !path.isEmpty else {
             preview = localFallbackPreview
+            return
+        }
+
+        guard let sessionID = session.sessionId else {
+            errorMessage = String(localized: "Session ID is missing.")
             return
         }
 

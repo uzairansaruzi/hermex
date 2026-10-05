@@ -15,6 +15,8 @@ private struct ComposerStatusView: View {
     let onRetry: (() -> Void)?
     /// Offers Copy fix prompt, which puts this text on the pasteboard (#955).
     let fixPrompt: String?
+    /// Offers Cancel, which stops a Hermes send's uploads (#1012).
+    let onCancel: (() -> Void)?
     let onDismiss: () -> Void
     @State private var didCopyFixPrompt = false
 
@@ -33,6 +35,12 @@ private struct ComposerStatusView: View {
 
             if let onRetry {
                 Button("Retry", action: onRetry)
+                    .font(AppFont.caption(weight: .semibold))
+                    .buttonStyle(.borderless)
+            }
+
+            if let onCancel {
+                Button("Cancel", action: onCancel)
                     .font(AppFont.caption(weight: .semibold))
                     .buttonStyle(.borderless)
             }
@@ -261,10 +269,15 @@ struct MessageComposerView: View {
     let onSelectGitBranch: (GitCheckoutTarget) -> Void
     let onCreateGitBranch: (GitCheckoutTarget) -> Void
     let onRefreshGitBranches: () -> Void
-    /// False on a Hermes session (#1010): the + menu, the model, workspace and Profile
-    /// selectors, the branch picker, voice notes and the `/` panel stay hidden until
-    /// their phases land. Dictation and the context indicator stay.
+    /// False on a Hermes session (#1010): the model, workspace and Profile selectors, the
+    /// branch picker, voice notes and the `/` panel stay hidden until their phases land.
+    /// The + menu, dictation and the context indicator stay.
     var showsSessionControls = true
+    /// A Hermes session (#1012): staged files upload when they are sent, under Bot Chat's
+    /// rules. Up to eight, and only Queue takes them while a response runs.
+    var uploadsAttachmentsOnSend = false
+    /// Set while a send uploads its files, for the status line's Cancel.
+    var onCancelAttachmentUpload: (() -> Void)?
 
     @State private var textFieldHeight: CGFloat = 0
     @State private var textInputHeight: CGFloat = 22
@@ -488,6 +501,7 @@ struct MessageComposerView: View {
                         isDismissible: composerStatus.isDismissible,
                         onRetry: composerStatus.onRetry,
                         fixPrompt: composerStatus.fixPrompt,
+                        onCancel: composerStatus.onCancel,
                         onDismiss: onDismissUploadAttachmentError
                     )
                 }
@@ -585,7 +599,9 @@ struct MessageComposerView: View {
                 HermexAttachmentPickerView(
                     imageCapacity: HermexAttachmentPickerPolicy.availableCapacity(
                         existingCount: pendingAttachments.count,
-                        maximum: HermexAttachmentPickerPolicy.maximumSessionImages
+                        maximum: uploadsAttachmentsOnSend
+                            ? HermexAttachmentPickerPolicy.maximumBotAttachments
+                            : HermexAttachmentPickerPolicy.maximumSessionImages
                     ),
                     onChooseFiles: {
                         presentFilesAfterMediaPickerDismisses = true
@@ -907,9 +923,9 @@ struct MessageComposerView: View {
     private var toolbarRow: some View {
         HStack(alignment: .center, spacing: 8) {
             ComposerToolbarScroller {
-                if showsSessionControls {
-                    composerPlusMenu
+                composerPlusMenu
 
+                if showsSessionControls {
                     modelEffortControl
 
                     workspaceSelector
@@ -1208,27 +1224,28 @@ struct MessageComposerView: View {
         showsAllModelsSheet = true
     }
 
-    private var composerStatus: (text: String, isError: Bool, isDismissible: Bool, onRetry: (() -> Void)?, fixPrompt: String?)? {
+    private var composerStatus: (text: String, isError: Bool, isDismissible: Bool, onRetry: (() -> Void)?, fixPrompt: String?,
+                                 onCancel: (() -> Void)?)? {
         if let readOnlyMessage {
-            return (readOnlyMessage, false, false, nil, nil)
+            return (readOnlyMessage, false, false, nil, nil, nil)
         } else if isWaitingForStream && isCancellingStream {
-            return (String(localized: "Stopping response..."), false, false, nil, nil)
+            return (String(localized: "Stopping response..."), false, false, nil, nil, nil)
         } else if isCompressingSession {
-            return (String(localized: "Compressing context..."), false, false, nil, nil)
+            return (String(localized: "Compressing context..."), false, false, nil, nil, nil)
         } else if let uploadAttachmentErrorMessage {
-            return (uploadAttachmentErrorMessage, true, true, nil, nil)
+            return (uploadAttachmentErrorMessage, true, true, nil, nil, nil)
         } else if isSendingVoiceNote {
-            return (String(localized: "Sending voice note..."), false, false, nil, nil)
+            return (String(localized: "Sending voice note..."), false, false, nil, nil, nil)
         } else if isUploadingAttachment {
-            return (String(localized: "Uploading attachment..."), false, false, nil, nil)
+            return (String(localized: "Uploading attachment..."), false, false, nil, nil, onCancelAttachmentUpload)
         } else if let steerFailure {
-            return (steerFailure.message, true, false, steerFailure.onRetry, nil)
+            return (steerFailure.message, true, false, steerFailure.onRetry, nil, nil)
         } else if let errorMessage {
-            return (errorMessage, true, false, nil, errorFixPrompt)
+            return (errorMessage, true, false, nil, errorFixPrompt, nil)
         } else if let configurationErrorMessage {
-            return (configurationErrorMessage, true, false, nil, nil)
+            return (configurationErrorMessage, true, false, nil, nil, nil)
         } else if isUpdatingConfiguration {
-            return (String(localized: "Updating composer settings..."), false, false, nil, nil)
+            return (String(localized: "Updating composer settings..."), false, false, nil, nil, nil)
         }
 
         return nil
@@ -1361,7 +1378,8 @@ struct MessageComposerView: View {
             isWaitingForStream: isWaitingForStream,
             hasText: !trimmedDraftMessage.isEmpty,
             hasQuotes: !quotes.isEmpty,
-            defaultBehavior: streamingSendBehavior
+            defaultBehavior: streamingSendBehavior,
+            queuesStagedFiles: uploadsAttachmentsOnSend && !pendingAttachments.isEmpty
         )
     }
 

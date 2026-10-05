@@ -153,7 +153,11 @@ enum BotAttachmentFailure: Error, LocalizedError {
         for item in old { if let file = item.draftFileName { await drafts.deleteAttachmentIfUnreferenced(file, from: copies) } }
     }
 
-    nonisolated private static func prepare(data: Data, filename: String) throws -> (data: Data, name: String, mime: String, image: Bool) {
+    /// A file as Hermes receives it: an image re-encoded as JPEG, or PNG when it has
+    /// transparency, at most 4096 px on its longest edge; a PDF, text, audio or common
+    /// document as it is. Throws for any other type. Slow on large images, so callers
+    /// run it off the main actor. A Hermes session's chat stages with it too (#1012).
+    nonisolated static func prepare(data: Data, filename: String) throws -> (data: Data, name: String, mime: String, image: Bool) {
         let name = URL(fileURLWithPath: filename).lastPathComponent
         guard let type = UTType(filenameExtension: URL(fileURLWithPath: name).pathExtension) else { throw BotAttachmentFailure.type }
         if type.conforms(to: .image) {

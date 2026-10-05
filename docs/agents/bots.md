@@ -312,7 +312,8 @@ receipt, restored from the snapshot's `queued`), Steer is `session.steer` (a ref
 the draft and the run), and Stop & send is `session.redirect`. Stop is
 `session.interrupt`, confirmed first only when a queued prompt or an open request would be
 lost; any client's stop (an interrupted `message.complete`) clears the receipt. A Send
-shows no model or reasoning change: no `config.set` or `session.cwd.set` goes out. The
+shows no model or reasoning change: no `config.set` or `session.cwd.set` goes out.
+Send and Queue carry staged files (#1012; see the attachments section below). The
 temporary entry is the inbox's "New Session" (DEBUG and Hermex Branch), on the dashboard's
 `/api/profiles/active` `current` Profile, until #709's Sessions tab.
 
@@ -779,6 +780,21 @@ no verified session-scoped delete API, and the client never deletes guessed path
 Cancel upload retains the local draft. A lost prompt acknowledgment preserves text
 and local copies; recovery silently restores them to the ordinary composer.
 Accepted sends clear the durable record before deleting local copies.
+
+A Hermes session in the main chat shares this path (#1012). `ChatAttachmentCoordinator`
+stages only the local copy under the same limits and image conversion, under the
+session's `ChatDraftKey.hermesSession`; Send and Queue upload in
+`HermesChatTurnCoordinator.submit` on the captured attach and runtime, with Cancel on
+the composer's uploading line. With files staged, a send during a run can only queue,
+so Steer and Stop and send drop out of the send button. The submission mark is written
+just before the prompt and released at the next attach. The transcript turns the
+reference lines back into chips (`MessageAttachment.hermesReferences`): the instruction
+pair, and a lone `@file:` token plain or quoted. It drops the host's saved
+`--- Context Warnings ---` and `--- Attached Context ---` footer, which repeats the path
+and inlines a text file. No host path is shown, live or after a rebuild, and ↑ recalls
+only the typed text. A chip has a name and no path, so tapping one shows the local copy
+when this phone sent it and otherwise says it has no server path. Bot Chat still shows
+the raw lines (#1017).
 
 Bot drafts extend `ChatDraftStore` with server + connection UUID + Profile context.
 After uploads finish, immediately before prompt submission, the client flushes an

@@ -53,8 +53,9 @@ struct HermesChatTranscript: Equatable {
 /// pacing and run endings are the webui path's. Text is delta-driven; a full snapshot
 /// replaces the transcript only on the engine's rebuild signal (a gap, a reset replay, a
 /// new runtime). The engine drops repeated frames by `seq`, so appends never deduplicate
-/// by text. Each prompt, steer, redirect and stop is one `write`, never resent. The host's
-/// requests (approvals, questions, sudo and secret prompts) are `requests` (#1011).
+/// by text. Each prompt, steer, redirect and stop is one `write`, never resent; a Send or
+/// Queue uploads its staged files first (#1012). The host's requests (approvals,
+/// questions, sudo and secret prompts) are `requests` (#1011).
 ///
 /// A turn's identity is the stored key and the host's `turn_started_at`, in place of a
 /// webui stream id. A turn starts at `message.start`, an accepted send or a running
@@ -163,18 +164,49 @@ struct HermesChatTranscript: Equatable {
         attachGeneration += 1
     }
 
-    /// A prompt that never reached the socket: not attached, or the attach changed first.
-    struct NotSent: Error { let underlying: Error }
+    /// A prompt that never reached the socket: not attached, the attach changed first, or
+    /// one of its files failed to upload or was cancelled (`duringUpload`).
+    struct NotSent: Error {
+        let underlying: Error
+        var duringUpload = false
+    }
+
+    /// A staged file a Send or Queue uploads ahead of its prompt (#1012). Its local copy is
+    /// read only then.
+    struct OutgoingAttachment {
+        let name: String
+        let mime: String
+        let isImage: Bool
+        let data: () async throws -> Data
+    }
+
+    /// A send is uploading its files; `cancelAttachmentUpload()` stops it.
+    private(set) var isUploadingAttachments = false
+    @ObservationIgnored private var attachmentUpload: Task<[String], Error>?
 
     /// Sends `text` in `mode` on the attached runtime, attaching first if the chat has not.
-    /// Returns what the host said; throws `NotSent` when it never went out, and the
-    /// failure itself when its reply was refused or lost. Never resent: after a lost
-    /// reply the next snapshot says what happened.
-    func submit(_ text: String, mode: BotPromptMode) async throws -> BotPromptOutcome {
+    /// `attachments` (Send and Queue only) upload first on that attach and runtime, and
+    /// their references follow the text; `beforePrompt` runs after the last upload, just
+    /// before the prompt goes out. Returns what the host said; throws `NotSent` when it
+    /// never went out, and the failure itself when its reply was refused or lost. Never
+    /// resent: after a lost reply the next snapshot says what happened.
+    func submit(_ text: String, mode: BotPromptMode, attachments: [OutgoingAttachment] = [],
+                beforePrompt: () async throws -> Void = {}) async throws -> BotPromptOutcome {
         await activate()
         guard engine.connectionState == .connected, let runtime = engine.runtime else {
             throw NotSent(underlying: BotFailure.transport)
         }
+        // Only a fresh turn takes files (`docs/agents/bots.md`); the chat never offers more.
+        guard attachments.isEmpty || mode.startsTurn else { throw NotSent(underlying: BotFailure.unsupported) }
+        let attempt = engine.generation
+        let references: [String]
+        do {
+            references = try await upload(attachments, runtime: runtime, attempt: attempt)
+        } catch {
+            throw NotSent(underlying: error, duringUpload: true)
+        }
+        do { try await beforePrompt() } catch { throw NotSent(underlying: error) }
+        let prompt = ([text] + references).filter { !$0.isEmpty }.joined(separator: "\n\n")
         let startsBefore = turnsStarted
         if mode == .send { isSubmittingSend = true }
         // As in Bot Chat, a stop withdrawal while Stop & send is in flight is this phone's doing.
@@ -186,7 +218,7 @@ struct HermesChatTranscript: Equatable {
         var dispatched = false
         let reply: BotJSON
         do {
-            reply = try await engine.write(mode.call(runtime: runtime, text: text), attempt: engine.generation,
+            reply = try await engine.write(mode.call(runtime: runtime, text: prompt), attempt: attempt,
                                            runtime: runtime) { dispatched = true }
         } catch {
             // A reaped runtime (4001): reattach to the stored key, which reads only.
@@ -202,7 +234,7 @@ struct HermesChatTranscript: Equatable {
                 awaitingStart = true
             }
         case .followUpQueued, .redirectQueued:
-            queuedPrompt = queuedPrompt.map { "\($0)\n\n\(text)" } ?? text
+            queuedPrompt = queuedPrompt.map { "\($0)\n\n\(prompt)" } ?? prompt
         case .guidanceQueued, .redirected, .voiceStopped:
             // None of these withdraws a request: a redirect while a tool waits on one only
             // steers, and a stop phrase ends voice mode. The host's `request.cancel` says
@@ -215,6 +247,52 @@ struct HermesChatTranscript: Equatable {
         acceptPrompt()
         return outcome
     }
+
+    /// Uploads a send's files in order on the attach and runtime it captured, as Bot Chat
+    /// does (`docs/agents/bots.md` § attachments), and returns their references: an
+    /// image's vision-tool line pair after image-upload, a document's `file.attach`
+    /// `ref_text` verbatim. The first failure, a cancel or a reattach ends it, so a
+    /// partial set is never submitted. Files already stored stay on the host.
+    private func upload(_ attachments: [OutgoingAttachment], runtime: String, attempt: Int) async throws -> [String] {
+        guard !attachments.isEmpty else { return [] }
+        guard let key = engine.storedKey else { throw BotFailure.stale }
+        let context = BotArtifactContext(connectionID: engine.connection.id, profile: engine.target.profile,
+                                         sessionID: key, generation: attempt)
+        let task = Task { [engine] in
+            var references: [String] = []
+            for attachment in attachments {
+                try engine.check(attempt)
+                let data = try await attachment.data()
+                try engine.check(attempt)
+                if attachment.isImage {
+                    let path = try await engine.wire.uploadImage(data: data, filename: attachment.name, context: context)
+                    references.append(BotAttachmentUpload.imageReference(path: try BotAttachmentUpload.verifiedPath(path)))
+                } else {
+                    let call = await BotAttachmentUpload.fileAttach(data: data, runtime: runtime,
+                                                                    filename: attachment.name, mime: attachment.mime)
+                    let reply = try await engine.write(call, attempt: attempt, runtime: runtime)
+                    guard reply["attached"].flag == true, let ref = reply["ref_text"].text, ref.hasPrefix("@file:"),
+                          !ref.contains("\n"), !ref.contains("\r") else { throw BotFailure.unsupported }
+                    _ = try BotAttachmentUpload.verifiedPath(reply["path"].text)
+                    references.append(ref)
+                }
+            }
+            try engine.check(attempt)
+            return references
+        }
+        attachmentUpload = task
+        isUploadingAttachments = true
+        defer { attachmentUpload = nil; isUploadingAttachments = false }
+        do {
+            return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+        } catch {
+            // However the cancelled request ended (a `URLError`, a stale check), it was a cancel.
+            throw task.isCancelled ? CancellationError() : error
+        }
+    }
+
+    /// Stops a send's uploads: its prompt is not submitted, and the draft keeps its files.
+    func cancelAttachmentUpload() { attachmentUpload?.cancel() }
 
     /// The host's first accepted prompt moves a new session's draft to the session's key.
     /// Before that it keeps the new-session key: the host keeps no row for a session with
@@ -431,11 +509,12 @@ struct HermesChatTranscript: Equatable {
         guard let history = snapshot["messages"].list, snapshot["messages_omitted"].flag != true else { return }
         let root = engine.storedKey ?? ""
         let projected = BotTranscriptProjection.project(history: history, root: root)
-        var messages = projected.messages
+        var messages = projected.messages.map(Self.displayed)
         let inflight = snapshot["inflight"]
         let startedAt = inflight["started_at"].number ?? snapshot["turn_started_at"].number
-        if let prompt = inflight["user"].text, !prompt.isEmpty, !Self.holdsPrompt(prompt, in: messages, startedAt: startedAt) {
-            messages.append(ChatMessage(role: "user", content: prompt, timestamp: startedAt, messageId: "\(root)/live-user"))
+        if let text = inflight["user"].text, !text.isEmpty {
+            let prompt = Self.displayed(ChatMessage(role: "user", content: text, timestamp: startedAt, messageId: "\(root)/live-user"))
+            if !Self.holdsPrompt(prompt, in: messages, startedAt: startedAt) { messages.append(prompt) }
         }
         var reply: ChatMessage?
         if let text = inflight["assistant"].text, !text.isEmpty {
@@ -505,11 +584,31 @@ struct HermesChatTranscript: Equatable {
     }
 
     /// Whether the snapshot's saved rows already hold the in-flight prompt: the last turn
-    /// boundary is dated at or after the turn began, or, undated, carries the same text.
-    private static func holdsPrompt(_ prompt: String, in messages: [ChatMessage], startedAt: Double?) -> Bool {
+    /// boundary is dated at or after the turn began, or, undated, shows the same.
+    private static func holdsPrompt(_ prompt: ChatMessage, in messages: [ChatMessage], startedAt: Double?) -> Bool {
         guard let settled = messages.last(where: BotTranscriptProjection.isTurnBoundary) else { return false }
-        guard let startedAt, let stamp = settled.timestamp else { return settled.content == prompt }
+        guard let startedAt, let stamp = settled.timestamp else {
+            return settled.content == prompt.content && settled.attachments == prompt.attachments
+        }
         return stamp >= startedAt
+    }
+
+    /// A user row as a Hermes session's transcript shows it (#1012): the reference lines a
+    /// Hermex send appends become chips and the host's context footer goes
+    /// (`MessageAttachment.hermesReferences`), so no host path is shown. Every other row
+    /// is returned as it is. Bot Chat does not apply it.
+    static func displayed(_ message: ChatMessage) -> ChatMessage {
+        guard message.role == "user", let content = message.content else { return message }
+        let shown = MessageAttachment.hermesReferences(in: content)
+        guard shown.text != content || !shown.attachments.isEmpty else { return message }
+        return ChatMessage(
+            role: message.role, content: shown.text, timestamp: message.timestamp, messageId: message.messageId,
+            name: message.name, toolCallId: message.toolCallId, toolUseId: message.toolUseId,
+            toolCalls: message.toolCalls, contentParts: message.contentParts, reasoning: message.reasoning,
+            attachments: shown.attachments.isEmpty ? message.attachments : (message.attachments ?? []) + shown.attachments,
+            displayKind: message.displayKind, displayMetadata: message.displayMetadata, turnTps: message.turnTps,
+            turnDuration: message.turnDuration, rowID: message.rowID
+        )
     }
 
     /// A `tool.start` or `tool.complete` as the shared tool row reads it, keyed by `tool_id`.
