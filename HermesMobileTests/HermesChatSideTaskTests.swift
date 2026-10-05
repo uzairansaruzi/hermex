@@ -89,6 +89,25 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit"), [])
     }
 
+    /// A goal command on a reaped runtime (4001) reattaches the chat instead of showing the
+    /// host's raw reason, and sends nothing again.
+    func testAGoalCommandOnAReapedRuntimeReattaches() async {
+        let chat = await openChat()
+        chat.host.next("command.dispatch", .init(error: 4001))
+        let attached = chat.host.requests.count
+
+        let submitted = await chat.model.submitGoal(args: "pause")
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(chat.model.goalErrorMessage, "Reconnect to the server to manage goals.")
+        // Joins the reattach the 4001 started.
+        await chat.turn.activate()
+        // The first attach's goal read can land anywhere in this; it is not the reattach.
+        let methods = chat.host.requests.dropFirst(attached).compactMap { $0["method"].text }
+        XCTAssertEqual(methods.filter { $0 != "session.control.read" },
+                       ["command.dispatch", "session.resume", "session.events.since", "session.resume"],
+                       "reattaching only reads")
+    }
+
     /// The goal menu follows the session's control snapshots: the attach's read, then each
     /// `session.control.update`. A cleared goal keeps the menu to set the next one.
     func testGoalStateFollowsTheSessionsControlSnapshots() async {

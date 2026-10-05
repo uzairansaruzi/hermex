@@ -91,12 +91,13 @@ struct HermesBtwBar: View {
 }
 
 /// The `/btw` answer full screen (#1013, expand pick 1): Collapse returns to the card, Close
-/// ends the question. The chat is hidden, so a running turn shows as a static pill. On iPad
-/// the answer keeps a readable column.
+/// ends the question. The chat is hidden, so a running turn shows as a static pill, which
+/// says when the turn waits on the user. On iPad the answer keeps a readable column.
 struct HermesBtwFullScreen: View {
     let btw: HermesBtw
     let sessionTitle: String
-    let isTurnRunning: Bool
+    /// The hidden chat's run, as its own run-status pill names it; nil when idle.
+    let runStatus: ChatActiveRunStatusKind?
     let onCollapse: () -> Void
     let onClose: () -> Void
 
@@ -115,8 +116,8 @@ struct HermesBtwFullScreen: View {
                 .padding(.vertical, 12)
             }
             .safeAreaInset(edge: .bottom) {
-                if isTurnRunning {
-                    HermesBtwRunPill()
+                if let runStatus {
+                    HermesBtwRunPill(status: runStatus)
                         .padding(.bottom, 8)
                 }
             }
@@ -255,13 +256,15 @@ private struct HermesBtwAnswer: View {
 
 /// The run going on behind the full-screen answer. Static: no timer, nothing repaints.
 private struct HermesBtwRunPill: View {
+    let status: ChatActiveRunStatusKind
+
     var body: some View {
         HStack(spacing: 8) {
             Circle()
                 .fill(.secondary)
                 .frame(width: 6, height: 6)
                 .accessibilityHidden(true)
-            Text("Hermes is working")
+            Text(status.label)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
         }
@@ -269,7 +272,8 @@ private struct HermesBtwRunPill: View {
         .padding(.vertical, 8)
         .background(.regularMaterial, in: Capsule())
         .overlay(Capsule().stroke(.primary.opacity(0.08), lineWidth: 0.5))
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(status.accessibilityLabel)
     }
 }
 

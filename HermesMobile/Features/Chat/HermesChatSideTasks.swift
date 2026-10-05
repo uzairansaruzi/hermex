@@ -290,7 +290,9 @@ enum HermesSideTaskFailure: Error, Equatable {
         }
     }
 
-    /// One write bound to the attached runtime. Throws `NotSent` when it never went out.
+    /// One write bound to the attached runtime. Throws `NotSent` when it never went out. A
+    /// 4001 means the host reaped the runtime, whether it arrives plain or, from `/goal`, as
+    /// a setting refusal; the chat reattaches either way.
     private func write(_ call: (String) -> HermesCall) async throws -> BotJSON {
         guard engine.connectionState == .connected, let runtime = engine.runtime else {
             throw HermesChatTurnCoordinator.NotSent(underlying: BotFailure.transport)
@@ -299,8 +301,16 @@ enum HermesSideTaskFailure: Error, Equatable {
         do {
             return try await engine.write(call(runtime), attempt: engine.generation, runtime: runtime) { dispatched = true }
         } catch {
-            if case BotFailure.rejected(4001) = error { onNeedsReattach() }
+            if Self.isReaped(error) { onNeedsReattach() }
             throw dispatched ? error : HermesChatTurnCoordinator.NotSent(underlying: error)
+        }
+    }
+
+    /// The host no longer has the runtime (4001).
+    static func isReaped(_ error: Error) -> Bool {
+        switch error {
+        case BotFailure.rejected(4001), BotSettingFailure.rejected(4001, _): return true
+        default: return false
         }
     }
 

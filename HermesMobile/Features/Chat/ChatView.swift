@@ -1516,7 +1516,7 @@ struct ChatView: View {
             HermesBtwFullScreen(
                 btw: btw,
                 sessionTitle: displayTitle,
-                isTurnRunning: viewModel.activeStreamID != nil,
+                runStatus: btwRunStatus,
                 onCollapse: { showsBtwFullScreen = false },
                 onClose: {
                     showsBtwFullScreen = false
@@ -1524,6 +1524,21 @@ struct ChatView: View {
                 }
             )
         }
+    }
+
+    /// The run the full-screen `/btw` answer hides, as the run-status pill names it but
+    /// without its ticking time; nil when idle. "Waiting for you" when a host request,
+    /// under the cover, holds the turn.
+    private var btwRunStatus: ChatActiveRunStatusKind? {
+        ChatActiveRunStatusPolicy.presentation(
+            isStartingChat: viewModel.isStartingChat,
+            hasActiveStream: viewModel.activeStreamID != nil,
+            activeStreamRecoveryState: viewModel.activeStreamRecoveryState,
+            isCancellingStream: viewModel.isCancellingStream,
+            isScrolledNearBottom: false,
+            activeRunStartedAt: nil,
+            isWaitingForUser: viewModel.isWaitingForUser
+        )?.kind
     }
 
     /// A Hermes session's question, or sudo or secret prompt, in the clarification's slot (#1011).

@@ -3073,7 +3073,8 @@ final class ChatViewModel {
         let reply: HermesGoalReply
         do {
             reply = try await hermes.sideTasks.dispatchGoal(args)
-        } catch is HermesChatTurnCoordinator.NotSent {
+        } catch let error where error is HermesChatTurnCoordinator.NotSent || HermesChatSideTasks.isReaped(error) {
+            // Never sent, or the runtime was reaped and the chat is reattaching.
             return fail(String(localized: "Reconnect to the server to manage goals."))
         } catch let refusal as BotSettingFailure {
             // The host's own reason, such as an invalid `/goal wait`.
