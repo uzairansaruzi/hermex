@@ -324,13 +324,15 @@ and a `send` reply's `message` goes out once as a `prompt.submit queued:true` Se
 its `display` when the host names one (#508). A new goal waits for a running turn, as on
 webui; the control verbs (the host's `is_goal_control`) run mid-turn, since a goal's own
 turns keep the session busy, and a resume's message then joins the host's queue. A 4004
-refusal keeps the host's message. The goal menu reads `session.control.read`
+refusal keeps the host's message, a 4001 reattaches, and a typed `/goal` that fails keeps
+its draft. The goal menu reads `session.control.read`
 on each attach and every `session.control.update`. `/btw` is `prompt.btw` and works
 mid-turn: its panel (the clarification's slot, collapsed to one line when a host request
 takes the slot, or full screen) shows the question, a static waiting line, then
 `btw.complete`'s text, matched by `task_id`; it never enters the transcript, and one
 question waits at a time. `/background` is `prompt.background`: a transcript card that
-`background.complete` replaces with the result, kept across a rebuild. Completions ride the
+`background.complete` replaces with the result, kept across a rebuild but, as on webui, not
+past leaving the chat. Completions ride the
 replay; when an attach lost frames, a waiting question reads unavailable and each task
 without a result is read once from `GET /api/sessions/bg_<id>/messages?profile=` (its last
 reply that is not a tool call; a 404 or none reads unavailable). A completion that beats its

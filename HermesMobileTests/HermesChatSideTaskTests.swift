@@ -89,6 +89,23 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit"), [])
     }
 
+    /// A typed `/goal` that does not go through keeps its draft, as a Hermes send does, and
+    /// the status line says why: a new goal mid-turn, or one the host refuses.
+    func testAFailedGoalCommandKeepsItsDraft() async {
+        let chat = await openChat()
+        chat.host.next("command.dispatch", .init(error: 4004))
+
+        let refused = await chat.model.executeSlashCommand(Self.command("goal"), args: "wait abc")
+        XCTAssertEqual(refused, .notDelivered)
+        XCTAssertEqual(chat.model.sendErrorMessage, "refused", "the fixture host's message")
+
+        chat.receive(event(1, "message.start"))
+        let midTurn = await chat.model.executeSlashCommand(Self.command("goal"), args: "write a sonnet")
+        XCTAssertEqual(midTurn, .notDelivered)
+        XCTAssertEqual(chat.model.sendErrorMessage, "Wait for the current response to finish before changing goals.")
+        XCTAssertEqual(chat.writes("command.dispatch").map { $0["arg"] }, [.string("wait abc")])
+    }
+
     /// A goal command on a reaped runtime (4001) reattaches the chat instead of showing the
     /// host's raw reason, and sends nothing again.
     func testAGoalCommandOnAReapedRuntimeReattaches() async {

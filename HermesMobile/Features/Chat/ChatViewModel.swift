@@ -3571,10 +3571,14 @@ final class ChatViewModel {
         return .notDelivered
     }
 
+    /// A typed `/goal`. On failure a Hermes session keeps the draft, as its sends do (#1013),
+    /// with the status line `submitGoal` set; nothing is sent again by itself. Webui clears it.
     private func submitGoalFromSlashCommand(_ args: String) async -> SlashCommandExecutionResult {
         let goalArgs = args.trimmingCharacters(in: .whitespacesAndNewlines)
         let didSubmit = await submitGoal(args: goalArgs.isEmpty ? "status" : goalArgs)
-        return didSubmit ? .executed(message: nil) : .unsupported(friendlyMessage: goalErrorMessage ?? String(localized: "Could not submit the goal command."))
+        if didSubmit { return .executed(message: nil) }
+        if hermesTurn != nil { return .notDelivered }
+        return .unsupported(friendlyMessage: goalErrorMessage ?? String(localized: "Could not submit the goal command."))
     }
 
     private func switchModelFromSlashCommand(_ args: String) async -> SlashCommandExecutionResult {
