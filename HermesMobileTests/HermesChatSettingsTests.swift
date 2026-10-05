@@ -28,6 +28,7 @@ import Observation
         XCTAssertEqual(chat.model.composerModelGroups.map(\.id), ["anthropic", "nous"])
         XCTAssertEqual(chat.model.selectedModelID, "claude-sonnet")
         XCTAssertEqual(chat.model.selectedModelProviderID, "anthropic")
+        XCTAssertEqual(chat.model.selectedModelTitle, "claude-sonnet")
         XCTAssertEqual(chat.writes("model.options"), [["session_id": .string("runtime"), "profile": .string("work")]])
         XCTAssertFalse(chat.model.showsReasoningEffortControl, "reasoning waits for #1016")
     }
@@ -111,6 +112,7 @@ import Observation
         XCTAssertEqual(chat.model.composerProfileOptions.map(\.name), ["default", "work", "setup"])
         XCTAssertFalse(chat.model.composerIsSingleProfileMode)
         XCTAssertEqual(chat.model.selectedProfileTitle, "work")
+        XCTAssertEqual(chat.model.selectedProfileName, "work", "the menu's checkmark")
         XCTAssertTrue(chat.model.isSelectedProfile(Self.profile("work")))
         XCTAssertFalse(chat.model.isSelectedProfile(Self.profile("default")))
     }
@@ -125,11 +127,20 @@ import Observation
         let next = try XCTUnwrap(chat.model.newHermesSessionChat(profile: "default"))
         XCTAssertEqual(next.target, .new(profile: "default"))
         XCTAssertEqual(next.connection, Self.connection)
-        chat.model.handOffHermesDraft(to: next)
-        let moved = await chat.drafts.draft(for: next.target.draftKey(server: next.server, connectionID: Self.connection.id))
+        await chat.model.handOffHermesDraft(to: next)
+        let nextKey = next.target.draftKey(server: next.server, connectionID: Self.connection.id)
+        let moved = await chat.drafts.draft(for: nextKey)
         XCTAssertEqual(moved?.text, "hello")
         let left = await chat.drafts.draft(for: key)
         XCTAssertNil(left)
+
+        // A draft already waiting in the other Profile's new chat is never replaced.
+        chat.drafts.setContent(ComposerDraftContent(text: "again", quotes: []), for: key)
+        await chat.model.handOffHermesDraft(to: next)
+        let kept = await chat.drafts.draft(for: nextKey)
+        XCTAssertEqual(kept?.text, "hello")
+        let stayed = await chat.drafts.draft(for: key)
+        XCTAssertEqual(stayed?.text, "again")
         XCTAssertEqual(chat.turn.engine.target.profile, "work")
         assertNeverWritesHostDefaults(chat)
     }

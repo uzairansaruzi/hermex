@@ -46,7 +46,7 @@ enum HermesProfilePreference {
     let controls = BotChatControls(readsSessionControl: false)
     /// The session's Profile.
     let profile: String
-    /// The host's Profiles, from the first attach's `profiles.list`; empty until it answers.
+    /// The host's Profiles, from the latest attach's `profiles.list`; empty until it answers.
     private(set) var profiles: [String] = []
     private let engine: HermesConversation
 
@@ -66,13 +66,13 @@ enum HermesProfilePreference {
         }
     }
 
-    /// Reads the catalog for `runtime`, and the Profiles once per chat. Nothing reads for an
-    /// attach that is no longer current.
+    /// Reads the catalog for `runtime` and the host's Profiles. Nothing reads for an attach
+    /// that is no longer current, and a failed Profile read keeps the last list.
     func connect(runtime: String, attempt: Int) async {
         guard engine.generation == attempt, engine.connectionState == .connected else { return }
         await controls.connect(.init(connectionID: engine.connection.id, profile: profile, runtime: runtime,
                                      generation: attempt), wire: engine.wire)
-        guard profiles.isEmpty, engine.generation == attempt,
+        guard engine.generation == attempt,
               let roster = try? await engine.request(.profilesList(includeSessions: false), attempt: attempt),
               let rows = roster["profiles"].list else { return }
         var seen = Set<String>()

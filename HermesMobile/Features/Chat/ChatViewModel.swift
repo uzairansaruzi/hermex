@@ -685,6 +685,7 @@ final class ChatViewModel {
             hermesTurn = coordinator
             turn = coordinator
             currentProfile = coordinator.settings.profile
+            selectedProfileName = coordinator.settings.profile
             coordinator.setShowsLiveActivityResponseExcerpts(showsLiveActivityResponseExcerpts)
         }
         self.drafts = draftStore ?? .shared
@@ -814,7 +815,7 @@ final class ChatViewModel {
     }
 
     var selectedModelTitle: String {
-        guard let currentModel, !currentModel.isEmpty else {
+        guard let model = selectedModelID, !model.isEmpty else {
             return String(localized: "Model")
         }
 
@@ -823,7 +824,7 @@ final class ChatViewModel {
             .firstMatchingSelection(modelID: selectedModelID, providerID: selectedModelProviderID)?
             .displayName
 
-        return catalogName ?? Self.compactModelTitle(selectedModelID ?? currentModel)
+        return catalogName ?? Self.compactModelTitle(model)
     }
 
     func isSelectedProfile(_ profile: ProfileSummary) -> Bool {
@@ -2645,10 +2646,13 @@ final class ChatViewModel {
                                            target: .new(profile: profile)) }
     }
 
-    /// Moves this new Hermes chat's draft, files included, to `chat`, which replaces it.
-    func handOffHermesDraft(to chat: HermesSessionChat) {
+    /// Moves this new Hermes chat's draft, files included, to `chat`, which replaces it. A
+    /// draft already waiting in that Profile's new chat stays, and this one keeps its key.
+    func handOffHermesDraft(to chat: HermesSessionChat) async {
         guard let key = hermesDraftKey else { return }
-        drafts.moveDraft(from: key, to: chat.target.draftKey(server: chat.server, connectionID: chat.connection.id))
+        let target = chat.target.draftKey(server: chat.server, connectionID: chat.connection.id)
+        guard await drafts.draft(for: target) == nil else { return }
+        drafts.moveDraft(from: key, to: target)
     }
 
     /// Who asks in a Hermes session's request card: its Profile on its saved connection.

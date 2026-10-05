@@ -1137,6 +1137,7 @@ struct ChatView: View {
                 )
             )
             .notificationOfferAlert($pendingNotificationOffer)
+            .modifier(HermesModelConfirmationModifier(controls: viewModel.hermesSettings?.controls))
             .modifier(StopConfirmationModifier(isPresented: $showsStopConfirmation) {
                 Task { await stopStream() }
             })
@@ -2842,8 +2843,10 @@ struct ChatView: View {
         HermesProfilePreference.save(name, for: server)
         ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
         if replacing, let onReplaceHermesSession {
-            viewModel.handOffHermesDraft(to: chat)
-            onReplaceHermesSession(chat)
+            Task {
+                await viewModel.handOffHermesDraft(to: chat)
+                onReplaceHermesSession(chat)
+            }
         } else {
             pushedHermesSession = chat
         }
@@ -3837,5 +3840,26 @@ struct ChatNavigationBackground: ViewModifier {
             return AnyShapeStyle(.regularMaterial)
         }
         return AnyShapeStyle(Color(uiColor: .systemBackground))
+    }
+}
+
+/// The host's expensive-model question for a Hermes session's model pick (#1015), as Bot
+/// Chat asks it: Change model resends the pick confirmed, Cancel sends nothing.
+private struct HermesModelConfirmationModifier: ViewModifier {
+    let controls: BotChatControls?
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog("Change chat model?", isPresented: Binding(
+            get: { controls?.confirmation != nil },
+            set: { if !$0 { controls?.cancelConfirmation() } }
+        ), titleVisibility: .visible) {
+            if let controls, controls.confirmation != nil {
+                Button("Change model") { Task { await controls.confirm() } }
+                    .disabled(!controls.mayChangeModel)
+            }
+            Button("Cancel", role: .cancel) { controls?.cancelConfirmation() }
+        } message: {
+            if let confirmation = controls?.confirmation { Text(confirmation.message) }
+        }
     }
 }
