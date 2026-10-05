@@ -1554,9 +1554,26 @@ final class ChatViewModel {
         attachmentCoordinator.setUploadAttachmentError(message)
     }
 
+    /// A sent attachment's thumbnail bytes: a Hermes session downloads from its host
+    /// (#1030), a webui chat through the server's file API. Nil when it can't load.
     func attachmentImageData(path: String) async -> Data? {
-        await attachmentCoordinator.attachmentImageData(path: path)
+        guard let hermesTurn else { return await attachmentCoordinator.attachmentImageData(path: path) }
+        guard let data = try? await hermesTurn.attachmentData(path: path) else { return nil }
+        return await ImagePreviewDownsampler.previewDataAsync(
+            from: data,
+            maxPixelSize: ImagePreviewDownsampler.attachmentMaxPixelSize
+        ) ?? data
     }
+
+    /// A Hermes session's sent file in full, for its preview (#1030). Throws `.stale` on a
+    /// webui chat, which previews through `ChatAttachmentPreviewView` instead.
+    func hermesAttachmentData(path: String) async throws -> Data {
+        guard let hermesTurn else { throw BotFailure.stale }
+        return try await hermesTurn.attachmentData(path: path)
+    }
+
+    /// The thumbnail cache namespace of a Hermes session; nil on a webui chat.
+    var hermesAttachmentCacheNamespace: String? { hermesTurn?.attachmentCacheNamespace }
 
     func attachmentRawData(path: String) async -> Data? {
         await attachmentCoordinator.attachmentRawData(path: path)

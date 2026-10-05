@@ -342,6 +342,8 @@ struct ChatView: View {
     @State private var transcriptMediaPreviewItem: TranscriptMediaPreviewItem?
     @State private var transcriptMediaImageItem: TranscriptMediaPreviewItem?
     @State private var attachmentImageItem: ChatAttachmentPreviewItem?
+    /// A Hermes session's sent file, previewed from its host (#1030).
+    @State private var hermesAttachmentItem: HermesAttachmentPreviewItem?
     /// A workspace file a chat link named; presented on the source viewer at its line.
     @State private var openedFileReference: FileReference?
     @State private var pendingProfileSelection: ProfileSummary?
@@ -698,6 +700,18 @@ struct ChatView: View {
         }
     }
 
+    /// A Hermes chip with a host path opens from the host with Save to Files and Share
+    /// (#1030); every other chip, a Hermes one still sending included, opens its local
+    /// copy or the webui file.
+    private func presentSentAttachmentPreview(_ attachment: MessageAttachment, localData: Data?) {
+        guard isHermesSession, let path = attachment.path, !path.isEmpty else {
+            return presentAttachmentPreview(ChatAttachmentPreviewItem(message: attachment, localData: localData))
+        }
+        presentPreviewRestoringComposerFocusIfNeeded {
+            hermesAttachmentItem = HermesAttachmentPreviewItem(path: path, name: attachment.name)
+        }
+    }
+
     private func presentAttachmentPreview(_ item: ChatAttachmentPreviewItem) {
         presentPreviewRestoringComposerFocusIfNeeded {
             if item.inferredIsImage {
@@ -764,7 +778,8 @@ struct ChatView: View {
     }
 
     private var transcriptMediaCacheNamespace: String {
-        "\(server.absoluteString)|\(transcriptMediaSessionID ?? "local:\(session.id)")"
+        viewModel.hermesAttachmentCacheNamespace
+            ?? "\(server.absoluteString)|\(transcriptMediaSessionID ?? "local:\(session.id)")"
     }
 
     /// Extracted from `body` so the view's single chained expression stays
@@ -1033,6 +1048,16 @@ struct ChatView: View {
                 )
             }
             .onChange(of: attachmentImageItem == nil) { _, isDismissed in
+                if isDismissed {
+                    restoreComposerFocusAfterPreviewIfNeeded()
+                }
+            }
+            .sheet(item: $hermesAttachmentItem) { item in
+                BotArtifactPreview(reference: TranscriptMediaReference(rawReference: item.path), title: item.name) {
+                    try await viewModel.hermesAttachmentData(path: item.path)
+                }
+            }
+            .onChange(of: hermesAttachmentItem == nil) { _, isDismissed in
                 if isDismissed {
                     restoreComposerFocusAfterPreviewIfNeeded()
                 }
@@ -1765,11 +1790,7 @@ struct ChatView: View {
             onScrollToLatestContent: { proxy, animated in
                 scrollToLatestContent(proxy, animated: animated)
             },
-            onPreviewAttachment: { attachment, localData in
-                presentAttachmentPreview(
-                    ChatAttachmentPreviewItem(message: attachment, localData: localData)
-                )
-            },
+            onPreviewAttachment: presentSentAttachmentPreview,
             onPreviewTranscriptMedia: { reference in
                 presentTranscriptMediaPreview(reference)
             },
@@ -3915,4 +3936,12 @@ private struct HermesPersonalityConfirmationModifier: ViewModifier {
             Text(message)
         }
     }
+}
+
+/// A Hermes session's sent file to preview: the host path its chip keeps, never shown,
+/// and the chip's name for the title.
+private struct HermesAttachmentPreviewItem: Identifiable {
+    let id = UUID()
+    let path: String
+    let name: String?
 }

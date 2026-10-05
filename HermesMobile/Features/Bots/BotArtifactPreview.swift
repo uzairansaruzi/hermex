@@ -57,10 +57,13 @@ import UniformTypeIdentifiers
 
 }
 
-/// A Bot Chat artifact or staged attachment in Quick Look. Once loaded, Save to
-/// Files and Share sit beside Done and act on the bytes already downloaded.
+/// A Bot Chat artifact or staged attachment, or a Hermes session's sent file, in Quick
+/// Look. Once loaded, Save to Files and Share sit beside Done and act on the bytes
+/// already downloaded.
 struct BotArtifactPreview: View {
     let reference: TranscriptMediaReference
+    /// The title and saved file name; the reference's file name when nil.
+    var title: String? = nil
     let download: () async throws -> Data
     @Environment(\.dismiss) private var dismiss
     @State private var model = BotArtifactPreviewModel()
@@ -85,7 +88,7 @@ struct BotArtifactPreview: View {
                     Text("Loading file...").foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle(reference.displayName)
+            .navigationTitle(name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
@@ -96,11 +99,11 @@ struct BotArtifactPreview: View {
                         } label: {
                             Image(systemName: "square.and.arrow.down")
                         }
-                        .accessibilityLabel(String(localized: "Save \(reference.displayName) to Files"))
+                        .accessibilityLabel(String(localized: "Save \(name) to Files"))
                         ShareLink(item: url) {
                             Image(systemName: "square.and.arrow.up")
                         }
-                        .accessibilityLabel(String(localized: "Share \(reference.displayName)"))
+                        .accessibilityLabel(String(localized: "Share \(name)"))
                     }
                 }
             }
@@ -126,7 +129,9 @@ struct BotArtifactPreview: View {
         } message: {
             Text(exportErrorMessage ?? "")
         }
-        .task(id: attempt) { await model.load(name: reference.displayName, download: download) }
+        .task(id: attempt) { await model.load(name: name, download: download) }
         .onDisappear { model.cleanup() }
     }
+
+    private var name: String { title ?? reference.displayName }
 }

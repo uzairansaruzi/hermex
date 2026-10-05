@@ -167,8 +167,8 @@ extension MessageAttachment {
     /// lone `@file:` token, plain or quoted (`file.attach`'s `ref_text`). The footer the
     /// host saves after a prompt's `@file:` tokens (`--- Context Warnings ---` and
     /// `--- Attached Context ---`, with the text or path it inlines) is dropped. Each
-    /// attachment carries its display name and the host path the reference names: Bot Chat
-    /// downloads through it (#1017), and Sessions drops it so no chip holds a host path.
+    /// attachment carries its display name and the host path the reference names, which
+    /// Bot Chat (#1017) and a Hermes session's chips (#1030) download through; neither shows it.
     /// Text with neither comes back as it is. The webui marker rule above is separate and
     /// never reads these.
     static func hermesReferences(in content: String) -> (text: String, attachments: [MessageAttachment]) {

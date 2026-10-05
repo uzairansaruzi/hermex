@@ -279,8 +279,9 @@ import UIKit
 
     /// After a rebuild the user row shows the typed text and one chip per reference: the
     /// image pair, a plain and a quoted `@file:` token. The host's context footer and every
-    /// host path are gone, and ↑ recalls only the typed text. The saved row is the shape
-    /// `scripts/local-hermes` stored at the pin for such a prompt, its paths shortened.
+    /// host path are gone from the text, each chip keeps its path for the download (#1030)
+    /// under its display name, and ↑ recalls only the typed text. The saved row is the
+    /// shape `scripts/local-hermes` stored at the pin for such a prompt, its paths shortened.
     func testTheTranscriptShowsChipsAndNoHostPathsAfterARebuild() async throws {
         let quoted = "@file:`/home/u/.hermes/attachments/\(Self.uuid)-Q3 report.pdf`"
         let stored = "Compare these\n\n"
@@ -297,7 +298,9 @@ import UIKit
         XCTAssertEqual(row.content, "Compare these")
         XCTAssertEqual(row.attachments?.map(\.name), ["photo.jpg", "notes.txt", "Q3 report.pdf"])
         XCTAssertEqual(row.attachments?.map(\.isImage), [true, false, false])
-        XCTAssertEqual(row.attachments?.compactMap(\.path), [], "a chip never carries a host path")
+        XCTAssertEqual(row.attachments?.map(\.path), [Self.storedImage,
+                                                      "/home/u/.hermes/attachments/\(Self.uuid)-notes.txt",
+                                                      "/home/u/.hermes/attachments/\(Self.uuid)-Q3 report.pdf"])
         XCTAssertFalse(chat.model.messages.contains { $0.content?.contains("/home/u") == true })
         XCTAssertEqual(chat.model.lastSentText, "Compare these")
     }
@@ -317,6 +320,59 @@ import UIKit
         }
         XCTAssertEqual(image.data, staged.thumbnailData)
         XCTAssertNil(preview.errorMessage)
+    }
+
+    // MARK: Downloading (#1030)
+
+    /// A chip's thumbnail downloads from the host by its path, under the session's
+    /// Profile and stored key, so the host resolves it against the session.
+    func testAThumbnailDownloadsThroughTheSessionsProfileAndStoredKey() async throws {
+        let chat = await openChat()
+        var query: [URLQueryItem]?
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/fs/download" else { return nil }
+            query = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems }
+            return .json(200, .string("bytes"))
+        }
+        let data = await chat.model.attachmentImageData(path: Self.storedImage)
+        XCTAssertNotNil(data)
+        XCTAssertEqual(query, [URLQueryItem(name: "path", value: Self.storedImage),
+                               URLQueryItem(name: "profile", value: "default"),
+                               URLQueryItem(name: "session_id", value: "tip")])
+    }
+
+    /// A download still in flight when the chat reattaches is dropped, not shown.
+    func testADownloadThatOutlivesItsAttachIsDropped() async throws {
+        let chat = await openChat()
+        _ = HermesHostFixture.configuration { request in request.url?.path == "/api/fs/download" ? .park : nil }
+        let attempt = chat.turn.engine.generation
+        HermesHostFixture.onPark = {
+            Task { @MainActor in
+                chat.turn.recoverAfterLostAnswer()
+                HermesHostFixture.releaseParked(.json(200, .string("bytes")))
+            }
+        }
+        do {
+            _ = try await chat.model.hermesAttachmentData(path: Self.storedImage)
+            XCTFail("a result from an older attach is dropped")
+        } catch {}
+        XCTAssertNotEqual(chat.turn.engine.generation, attempt)
+    }
+
+    /// Thumbnails are cached per connection and Profile: neither shows the other's.
+    func testTheThumbnailNamespaceSeparatesConnectionsAndProfiles() {
+        let other = BotConnection(id: UUID(), name: "Mac", address: Self.connection.address,
+                                  username: "user", password: "fixture")
+        func namespace(_ connection: BotConnection, _ profile: String) -> String {
+            let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: connection,
+                                            target: .session(profile: profile, key: "tip"),
+                                            wire: BotClient(http: BotSocketHost().connection(connection)))
+            return HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true }).attachmentCacheNamespace
+        }
+        let base = namespace(Self.connection, "default")
+        XCTAssertEqual(base, namespace(Self.connection, "default"))
+        XCTAssertNotEqual(base, namespace(other, "default"))
+        XCTAssertNotEqual(base, namespace(Self.connection, "work"))
     }
 
     // MARK: Fixture

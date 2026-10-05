@@ -2,8 +2,9 @@ import UIKit
 
 /// The process-wide cache of transcript thumbnails: attached images
 /// (`MessageBubbleView`) and images the agent links in replies
-/// (`TranscriptMediaView`), in webui chats and archived sessions. Bot
-/// transcripts render `MessageBubbleView` text-only and never reach it.
+/// (`TranscriptMediaView`), in webui chats, archived sessions and Hermes
+/// sessions. Bot transcripts render `MessageBubbleView` text-only and never
+/// reach it.
 ///
 /// Bounded to 48 MB of decoded pixels and 150 images, and emptied on a memory
 /// warning; an evicted image reloads the next time its row appears. Keys carry

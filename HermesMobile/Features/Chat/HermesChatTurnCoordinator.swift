@@ -324,6 +324,28 @@ struct HermesChatTranscript: Equatable {
     /// Stops a send's uploads: its prompt is not submitted, and the draft keeps its files.
     func cancelAttachmentUpload() { attachmentUpload?.cancel() }
 
+    /// A sent file's bytes from the host, by the path its chip keeps (#1030), for the chip's
+    /// thumbnail and preview. Downloads through this attach as Bot Chat does
+    /// (`HermesREST.downloadArtifact` with the session's Profile and stored key), so the
+    /// host resolves a relative `@file:` path against the session. Throws `.stale` while
+    /// detached, and for a result that lands after a reattach or a cancel.
+    func attachmentData(path: String) async throws -> Data {
+        guard engine.connectionState == .connected, let key = engine.storedKey else { throw BotFailure.stale }
+        let attempt = engine.generation
+        let context = BotArtifactContext(connectionID: engine.connection.id, profile: engine.target.profile,
+                                         sessionID: key, generation: attempt)
+        let data = try await engine.wire.artifactData(path: path, context: context)
+        try engine.check(attempt)
+        return data
+    }
+
+    /// Keys this session's thumbnails in the process-wide `TranscriptImageCache`: its
+    /// connection, Profile and stored key, so no other connection, Profile or session
+    /// ever shows them.
+    var attachmentCacheNamespace: String {
+        "hermes|\(engine.connection.id.uuidString)|\(engine.target.profile)|\(engine.storedKey ?? "")"
+    }
+
     /// A prompt's answer was lost or unreadable: reattach and rebuild, so the snapshot shows
     /// whether it ran (#508). Nothing is resent. A chat already left attaches when it reopens.
     func recoverAfterLostAnswer() {
@@ -708,13 +730,14 @@ struct HermesChatTranscript: Equatable {
 
     /// A user row as a Hermes session's transcript shows it (#1012): the reference lines a
     /// Hermex send appends become chips and the host's context footer goes
-    /// (`MessageAttachment.hermesReferences`), so no host path is shown. Every other row
-    /// is returned as it is. Bot Chat reads the rule itself, keeping the paths it downloads.
+    /// (`MessageAttachment.hermesReferences`), so the text shows no host path. Each chip
+    /// keeps the path it names for `attachmentData` (#1030); chips show only their name.
+    /// Every other row is returned as it is. Bot Chat reads the rule itself.
     static func displayed(_ message: ChatMessage) -> ChatMessage {
         guard message.role == "user", let content = message.content else { return message }
         let shown = MessageAttachment.hermesReferences(in: content)
         guard shown.text != content || !shown.attachments.isEmpty else { return message }
-        let chips = shown.attachments.map { MessageAttachment(name: $0.name, isImage: $0.isImage) }
+        let chips = shown.attachments
         return ChatMessage(
             role: message.role, content: shown.text, timestamp: message.timestamp, messageId: message.messageId,
             name: message.name, toolCallId: message.toolCallId, toolUseId: message.toolUseId,
