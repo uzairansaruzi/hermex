@@ -627,7 +627,11 @@ extension BotsInboxView {
             .navigationDestination(item: $editSelection) { selection in
                 editProfile(selection)
             }
-            .navigationDestination(item: $newSession) { ChatView(hermesSession: $0) { newSession = $0 } }
+            // Keyed by the chat, so a Profile picked before sending replaces the screen's
+            // state rather than reusing it (#1015).
+            .navigationDestination(item: $newSession) { chat in
+                ChatView(hermesSession: chat) { newSession = $0 }.id(chat.id)
+            }
             // The subscription lives while the inbox is on screen and the app is not in the
             // background; returning, refreshing and reconnecting all go through the same open().
             .task(id: revision) { await inbox.open(); hasSettled = true; openPendingDestination() }

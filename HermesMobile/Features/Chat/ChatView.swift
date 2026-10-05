@@ -1007,7 +1007,7 @@ struct ChatView: View {
                 ChatView(session: session, server: server, onAPIError: onAPIError)
             }
             .navigationDestination(item: $pushedHermesSession) { chat in
-                ChatView(hermesSession: chat) { pushedHermesSession = $0 }
+                ChatView(hermesSession: chat) { pushedHermesSession = $0 }.id(chat.id)
             }
             .sheet(item: $attachmentPreviewItem) { item in
                 ChatAttachmentPreviewView(
