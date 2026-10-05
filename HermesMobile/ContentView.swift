@@ -77,7 +77,8 @@ struct ContentView: View {
     }
 
     private func reconcileOrphanedLiveActivities(notifiesOnCompletion: Bool) async {
-        // Live Activities follow webui runs; a Hermes server has none to reconcile.
+        // Only webui runs can be reconciled against a server. A Hermes session's activity
+        // (#1014) has no stream status to ask, and orphanedActivities() skips it.
         guard case let .loggedIn(server) = authManager.state, authManager.kind(of: server) == .webui else { return }
         await LiveActivityReconciler.reconcileOrphanedActivities(
             server: server,
