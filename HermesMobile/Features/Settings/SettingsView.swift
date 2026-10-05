@@ -2686,7 +2686,9 @@ struct AddServerView: View {
             // A URL means the server is already saved, so its chosen identity applies even
             // when the sheet closed meanwhile.
             guard let url = await form.connect(authManager: authManager, replacingWebuiServer: replacingWebuiServer) else { return }
-            applyIdentity(to: url)
+            // A replaced webui server's name, initials and color stay unless new ones were chosen.
+            let choseIdentity = !displayName.isEmpty || !initials.isEmpty || colorHex != HeaderLogoColor.defaultHex
+            if !replacingWebuiServer || choseIdentity { applyIdentity(to: url) }
             dismiss()
         }
     }
