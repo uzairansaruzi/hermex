@@ -21,9 +21,11 @@ import Observation
     /// Asks the owner to reattach, whose `open_requests` settles a batch the host still
     /// holds questions of.
     @ObservationIgnored var onNeedsReattach: () -> Void = {}
+    /// Runs after every change to `open`; the owner's Live Activity shows the wait (#1014).
+    @ObservationIgnored var onOpenChange: () -> Void = {}
 
     /// This runtime's open requests, oldest first, one per envelope id.
-    private(set) var open: [BotServerRequest] = []
+    private(set) var open: [BotServerRequest] = [] { didSet { onOpenChange() } }
     /// The request whose answer is in flight; its card stays inert.
     private(set) var answeringRequestID: String?
     /// Why the last answer or bypass change was refused. Cleared by the next one.

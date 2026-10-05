@@ -148,7 +148,12 @@ enum HermesDeepLink {
 
 /// Shared by the Lock Screen and Dynamic Island, and exercised by main-app tests.
 enum AgentRunTapTarget {
+    /// Starts a Hermes session's interim activity key, `hermes:<profile>:<stored key>`
+    /// (#1014). Until #706 such an activity has no destination: a tap opens the app as it is.
+    static let hermesSessionPrefix = "hermes:"
+
     static func url(attributes: AgentRunActivityAttributes, sessionID: String, activityID: String) -> URL? {
+        guard attributes.bot != nil || !attributes.sessionID.hasPrefix(hermesSessionPrefix) else { return nil }
         let destination: URL?
         if let bot = attributes.bot {
             destination = bot.destinationURL

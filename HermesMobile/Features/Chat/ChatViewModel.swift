@@ -682,6 +682,7 @@ final class ChatViewModel {
         case .hermes(let coordinator):
             hermesTurn = coordinator
             turn = coordinator
+            coordinator.setShowsLiveActivityResponseExcerpts(showsLiveActivityResponseExcerpts)
         }
         self.drafts = draftStore ?? .shared
         self.pendingActionCoordinator = ChatPendingActionCoordinator(
@@ -6081,7 +6082,8 @@ final class ChatViewModel {
 
     private func applyLiveActivitySessionTitle(_ title: String) {
         displayTitle = Self.displayTitle(from: title)
-        // A Hermes session runs no webui Live Activity; the one on screen may be another session's.
+        // A Hermes session's turns drive their own activity (#1014); the one on screen may be
+        // another session's.
         guard hermesTurn == nil else { return }
         liveActivityManager.update(.sessionTitle(displayTitle))
     }

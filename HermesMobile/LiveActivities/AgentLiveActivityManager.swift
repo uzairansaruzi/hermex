@@ -473,8 +473,10 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         // caller gates purely on the server's status instead, which is ground
         // truth — a genuinely live run reports active=true and is left alone.
         let result: [OrphanedLiveActivity] = all.compactMap { activity in
-            // A bot's activity has no webui stream to ask about (#489).
-            guard activity.attributes.bot == nil else { return nil }
+            // A bot's activity has no webui stream to ask about (#489), and neither has a
+            // Hermes session's (#1014): left over, it ages out by its stale date.
+            guard activity.attributes.bot == nil,
+                  !activity.attributes.sessionID.hasPrefix(AgentRunTapTarget.hermesSessionPrefix) else { return nil }
             guard let streamID = AgentLiveActivityReusePolicy.normalizedStreamID(activity.attributes.streamID) else {
                 return nil
             }

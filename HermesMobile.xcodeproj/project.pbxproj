@@ -190,6 +190,7 @@
 		E1011000000000000000A003 /* HermesChatRequestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1011000000000000000A004 /* HermesChatRequestTests.swift */; };
 		E1012000000000000000A003 /* HermesChatAttachmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1012000000000000000A004 /* HermesChatAttachmentTests.swift */; };
 		E1013000000000000000A003 /* HermesChatSideTaskTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1013000000000000000A004 /* HermesChatSideTaskTests.swift */; };
+		E1014000000000000000A003 /* HermesChatLiveActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */; };
 		532000000000000000000003 /* RatingPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532000000000000000000004 /* RatingPromptTests.swift */; };
 		531000000000000000000201 /* TipJarPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000202 /* TipJarPromptTests.swift */; };
 		870000000000000000000201 /* HitchMeterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870000000000000000000202 /* HitchMeterTests.swift */; };
@@ -815,6 +816,7 @@
 		E1011000000000000000A004 /* HermesChatRequestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatRequestTests.swift; sourceTree = "<group>"; };
 		E1012000000000000000A004 /* HermesChatAttachmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatAttachmentTests.swift; sourceTree = "<group>"; };
 		E1013000000000000000A004 /* HermesChatSideTaskTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatSideTaskTests.swift; sourceTree = "<group>"; };
+		E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatLiveActivityTests.swift; sourceTree = "<group>"; };
 		532000000000000000000004 /* RatingPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPromptTests.swift; sourceTree = "<group>"; };
 		531000000000000000000202 /* TipJarPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarPromptTests.swift; sourceTree = "<group>"; };
 		870000000000000000000202 /* HitchMeterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitchMeterTests.swift; sourceTree = "<group>"; };
@@ -1405,6 +1407,7 @@
 					E1011000000000000000A004 /* HermesChatRequestTests.swift */,
 					E1012000000000000000A004 /* HermesChatAttachmentTests.swift */,
 					E1013000000000000000A004 /* HermesChatSideTaskTests.swift */,
+					E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */,
 				532000000000000000000004 /* RatingPromptTests.swift */,
 				531000000000000000000202 /* TipJarPromptTests.swift */,
 				870000000000000000000202 /* HitchMeterTests.swift */,
@@ -2788,6 +2791,7 @@
 					E1011000000000000000A003 /* HermesChatRequestTests.swift in Sources */,
 					E1012000000000000000A003 /* HermesChatAttachmentTests.swift in Sources */,
 					E1013000000000000000A003 /* HermesChatSideTaskTests.swift in Sources */,
+					E1014000000000000000A003 /* HermesChatLiveActivityTests.swift in Sources */,
 				532000000000000000000003 /* RatingPromptTests.swift in Sources */,
 				531000000000000000000201 /* TipJarPromptTests.swift in Sources */,
 				870000000000000000000201 /* HitchMeterTests.swift in Sources */,

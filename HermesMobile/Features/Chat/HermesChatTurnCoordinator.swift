@@ -67,6 +67,9 @@ struct HermesChatTranscript: Equatable {
 /// snapshot, and ends once `message.complete` and `session.info {running: false}` have
 /// both arrived. An `error` before the turn's `message.start` ends it at once; after it,
 /// an `error` with no completion ends it failed when the host settles.
+///
+/// Each turn drives the shared Live Activity at the same points (#1014), under the interim
+/// key `hermes:<profile>:<stored key>`, with no push and no tap destination until #706.
 @MainActor @Observable final class HermesChatTurnCoordinator {
     let engine: HermesConversation
     @ObservationIgnored private weak var delegate: (any HermesChatTurnDelegate)?
@@ -115,15 +118,26 @@ struct HermesChatTranscript: Equatable {
     @ObservationIgnored private var refusedSignIn = false
     @ObservationIgnored private var draftKey: ChatDraftKey
     private let isNetworkAvailable: @MainActor () -> Bool
+    /// The shared Live Activity manager this chat's turns drive (#1014); nil drives none.
+    @ObservationIgnored private let liveActivities: (any AgentLiveActivityManaging)?
+    /// The running turn's activity: its session key and stream id, the host's
+    /// `turn_started_at`, or this chat's own id when the turn began without one. Kept for
+    /// the turn, so a reattach adopts the same activity.
+    @ObservationIgnored private var liveActivity: (sessionID: String, streamID: String)?
+    @ObservationIgnored private var showsLiveActivityExcerpts = false
+    /// The waiting state last shown for the open requests, so each change is written once.
+    @ObservationIgnored private var shownWaiting: AgentLiveActivityEvent?
 
-    init(engine: HermesConversation,
+    init(engine: HermesConversation, liveActivities: (any AgentLiveActivityManaging)? = nil,
          isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
         self.engine = engine
+        self.liveActivities = liveActivities
         self.isNetworkAvailable = isNetworkAvailable
         requests = HermesChatRequests(engine: engine)
         sideTasks = HermesChatSideTasks(engine: engine)
         draftKey = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id)
         engine.owner = self
+        requests.onOpenChange = { [weak self] in self?.syncLiveActivityWaiting() }
         requests.onFailure = { [weak self] in self?.delegate?.hermesRequestDidFail($0) }
         requests.onNeedsReattach = { [weak self] in self?.reattach() }
         sideTasks.onNeedsReattach = { [weak self] in self?.reattach() }
@@ -131,10 +145,12 @@ struct HermesChatTranscript: Equatable {
         sideTasks.onGoalChange = { [weak self] in self?.delegate?.hermesGoalDidChange($0) }
     }
 
-    /// A chat on `target` over the connection's shared gateway socket.
+    /// A chat on `target` over the connection's shared gateway socket, driving the app's
+    /// Live Activity.
     convenience init(server: URL, connection: BotConnection, target: ConversationTarget) {
         self.init(engine: HermesConversation(server: server, connection: connection, target: target,
-                                             wire: BotClient(saved: connection, server: server)))
+                                             wire: BotClient(saved: connection, server: server)),
+                  liveActivities: AgentLiveActivityManager.shared)
     }
 
     /// The composer draft's key: a new session's stays the new-session key until the host
@@ -359,6 +375,11 @@ struct HermesChatTranscript: Equatable {
         hostTurnStartedAt = nil
         delegate?.hermesTurnDidStart(prompt: prompt)
         delegate?.streamCoordinatorDidStartConnection(isReplay: false)
+        liveActivity = engine.storedKey.map { key in
+            (sessionID: "\(AgentRunTapTarget.hermesSessionPrefix)\(engine.target.profile):\(key)",
+             streamID: startedAt.map { String($0) } ?? UUID().uuidString)
+        }
+        startLiveActivity()
     }
 
     private func ensureTurn() {
@@ -369,6 +390,8 @@ struct HermesChatTranscript: Equatable {
     /// same outcome, haptic and alert.
     private func finish(_ ending: TranscriptTurnRunOutcome.Ending) {
         guard let streamID = activeStreamID else { return }
+        endLiveActivity(ending)
+        liveActivity = nil
         latestRunEnding = ChatRunEnding(startedAt: activeRunStartedAt ?? Date(), endedAt: Date(), ending: ending)
         if ending == .completed {
             successfulResponseCompletion = .init(streamID: streamID, needsTranscriptRefresh: false)
@@ -390,6 +413,13 @@ struct HermesChatTranscript: Equatable {
         activeRunStartedAt = min(activeRunStartedAt ?? date, date)
     }
 
+    /// The session's title from the host: the chat shows it, and so does the turn's activity.
+    private func applyTitle(_ title: String) {
+        guard delegate?.streamCoordinatorUpdateTitle(TitleStreamEvent(sessionId: nil, title: title)) == true,
+              let shown = delegate?.streamCoordinatorDisplayTitle else { return }
+        drivenLiveActivity?.update(.sessionTitle(shown))
+    }
+
     /// One event of this runtime, in `seq` order.
     private func apply(_ frame: BotJSON) {
         let payload = frame["payload"]
@@ -407,26 +437,34 @@ struct HermesChatTranscript: Equatable {
             if let seq = frame["seq"].integer, deltasInRebuild.remove(seq) != nil { return }
             guard let text = payload["text"].text, !text.isEmpty else { return }
             ensureTurn()
+            if showsLiveActivityExcerpts { drivenLiveActivity?.update(.token(text)) }
             delegate?.streamCoordinatorAppendToken(text)
         case "message.interim":
             ensureTurn()
-            delegate?.streamCoordinatorAppendInterimAssistant(InterimAssistantStreamEvent(
-                text: payload["text"].text, alreadyStreamed: payload["already_streamed"].flag))
+            let interim = InterimAssistantStreamEvent(text: payload["text"].text, alreadyStreamed: payload["already_streamed"].flag)
+            if showsLiveActivityExcerpts, interim.alreadyStreamed != true, let text = interim.text {
+                drivenLiveActivity?.update(.interimAssistant(text))
+            }
+            delegate?.streamCoordinatorAppendInterimAssistant(interim)
         case "reasoning.delta":
             guard let text = payload["text"].text, !text.isEmpty else { return }
             ensureTurn()
+            drivenLiveActivity?.update(.reasoning(text))
             delegate?.streamCoordinatorAppendReasoning(text)
         case "tool.start":
             ensureTurn()
-            delegate?.streamCoordinatorAppendToolCall(Self.toolEvent(payload, completed: false))
+            let tool = Self.toolEvent(payload, completed: false)
+            drivenLiveActivity?.update(.toolStarted(name: tool.name))
+            delegate?.streamCoordinatorAppendToolCall(tool)
         case "tool.complete":
             ensureTurn()
+            drivenLiveActivity?.update(.toolCompleted)
             delegate?.streamCoordinatorCompleteToolCall(Self.toolEvent(payload, completed: true))
         case "session.title":
             // A suggestion for this session's title; the chat shows it and renames nothing.
             if let key = payload["session_id"].text, key != engine.storedKey { return }
             guard let title = payload["title"].text, !title.isEmpty else { return }
-            delegate?.streamCoordinatorUpdateTitle(TitleStreamEvent(sessionId: nil, title: title))
+            applyTitle(title)
         case "session.usage":
             if let usage = Self.contextWindow(payload["usage"]) { delegate?.hermesApplyUsage(usage) }
         case "session.info":
@@ -510,14 +548,19 @@ struct HermesChatTranscript: Equatable {
         queuedPrompt = snapshot["queued"]["user"].text.flatMap { $0.isEmpty ? nil : $0 }
         requests.didReadSnapshot(snapshot)
         if let model = snapshot["info"]["model"].text, !model.isEmpty { delegate?.hermesApplyModel(model) }
+        // Ahead of the turn below, so its Live Activity starts under the session's title.
+        if let title = snapshot["info"]["title"].text, !title.isEmpty { applyTitle(title) }
         if activeStreamID != nil, !running || (startedAt != nil && turnStartedAt != nil && startedAt != turnStartedAt) {
             // The turn this chat was following ended while it was away.
             let failure = snapshot["inflight"]["error"].text.flatMap { $0.isEmpty ? nil : $0 }
             if let failure { delegate?.streamCoordinatorDidReceiveErrorMessage(failure) }
             finish(pendingEnding ?? (failure != nil ? .failed : stopRequested ? .cancelled : .completed))
         }
+        let continuing = running && activeStreamID != nil
         if running, activeStreamID == nil { beginTurn(startedAt: startedAt, prompt: nil) }
         if running, let startedAt, turnStartedAt == nil { adoptStart(startedAt) }
+        // The same turn after a reattach: adopt its activity again, which is current once more.
+        if continuing { startLiveActivity() }
         if engine.replayWasReset || needsRebuild { rebuild(from: snapshot, running: running) }
     }
 
@@ -567,6 +610,50 @@ struct HermesChatTranscript: Equatable {
         cancelAttach()
         engine.suspend()
         startAttach()
+    }
+
+    // MARK: Live Activity
+
+    /// The manager while it still drives this turn's activity. One a webui run or a bot took
+    /// over is never touched, as in Bot Chat (`BotLiveActivityFeed`).
+    private var drivenLiveActivity: (any AgentLiveActivityManaging)? {
+        guard let liveActivities, let id = liveActivity?.sessionID, liveActivities.drivenSessionID == id else { return nil }
+        return liveActivities
+    }
+
+    /// Starts the turn's activity, or adopts it again: the manager reuses the activity of the
+    /// same session key and stream id. An open request then shows as waiting.
+    private func startLiveActivity() {
+        guard let liveActivities, let liveActivity else { return }
+        liveActivities.start(sessionID: liveActivity.sessionID, server: engine.server,
+                             sessionTitle: delegate?.streamCoordinatorDisplayTitle ?? String(localized: "Untitled Session"),
+                             streamID: liveActivity.streamID, startedAt: activeRunStartedAt ?? Date())
+        shownWaiting = nil
+        syncLiveActivityWaiting()
+    }
+
+    /// Shows the open requests as waiting, once per change: an approval on screen as an
+    /// approval, any other request as a question, as Bot Chat does. Answering moves nothing;
+    /// the turn's next work does.
+    private func syncLiveActivityWaiting() {
+        let waiting: AgentLiveActivityEvent?
+        if !requests.isWaiting { waiting = nil }
+        else if case .approval? = requests.onScreen { waiting = .waitingForApproval }
+        else { waiting = .waitingForClarification }
+        guard waiting != shownWaiting else { return }
+        shownWaiting = waiting
+        if let waiting { drivenLiveActivity?.update(waiting) }
+    }
+
+    private func endLiveActivity(_ ending: TranscriptTurnRunOutcome.Ending) {
+        switch ending {
+        case .completed:
+            drivenLiveActivity?.end(status: .complete, activity: String(localized: "Response complete"), errorSummary: nil)
+        case .cancelled:
+            drivenLiveActivity?.end(status: .cancelled, activity: String(localized: "Response cancelled"), errorSummary: nil)
+        case .failed:
+            drivenLiveActivity?.end(status: .failed, activity: String(localized: "Response failed"), errorSummary: nil)
+        }
     }
 
     // MARK: Mapping
@@ -681,11 +768,20 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
         self.delegate = delegate as? any HermesChatTurnDelegate
     }
 
-    func setShowsLiveActivityResponseExcerpts(_ shows: Bool) {}
+    /// Reply text reaches the Live Activity only while excerpts are on; turning them off
+    /// clears what it shows.
+    func setShowsLiveActivityResponseExcerpts(_ shows: Bool) {
+        guard showsLiveActivityExcerpts != shows else { return }
+        showsLiveActivityExcerpts = shows
+        if !shows { drivenLiveActivity?.update(.clearResponseExcerpt) }
+    }
+
     func prepareForNewResponse() {}
 
-    /// Leaving or backgrounding drops the socket (#902); the host session keeps running.
+    /// Leaving or backgrounding drops the socket (#902); the host session keeps running, and
+    /// its activity is no longer current until a reattach adopts it.
     func suspendActiveStreamConnection() {
+        drivenLiveActivity?.markStale()
         requests.willLeave()
         cancelAttach()
         engine.suspend()
@@ -774,6 +870,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     }
 
     func conversationDidDisconnect(_ failure: BotFailure, retrying: Bool) {
+        drivenLiveActivity?.markStale()
         refusedSignIn = failure == .rejected(401)
         guard !retrying else { return }
         delegate?.hermesConnectionDidChange(failure: BotConnectionAdvice.message(for: failure, address: engine.connection.address))

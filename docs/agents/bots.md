@@ -1254,6 +1254,21 @@ those values into manager calls.
   widget reads it; that is why the widget target carries the app-group
   entitlement. A missing file falls back to the status dot.
 
+A Hermes session in the main chat drives the same manager from
+`HermesChatTurnCoordinator` (#1014), starting, updating and ending the activity where
+its turn does, with the webui layouts. The key is the interim
+`hermes:<profile>:<stored key>` and the stream id the host's `turn_started_at`, so a
+reattach, or the session reopened mid-turn, adopts the turn's activity. Only a session's
+first turn after an attach is sure to learn `turn_started_at` live; a later one uses the
+chat's own turn id, so reopening the session during it replaces the activity. Reply text
+follows the excerpt setting; an open approval shows as waiting for approval and any other
+request as a question. Leaving or a dropped socket marks it stale, and it checks
+`drivenSessionID` like the Bot feed. It has no push, a tap opens the app as it is
+(`AgentRunTapTarget` builds no route for the key), and the orphan reconciler skips it, so a
+leftover one ages out by its stale date. #706 slice 6.2 replaces the key with
+`<server>:<profile>:<lineage root>#<turn_started_at>` and adds the tap destination, push and
+cold-launch reconciliation.
+
 The shared content state accepts both existing local fields and the relay's compact
 `v`, `status`, `tool`, `tool_calls`, `started_at`, `updated_at` shape. With no reply
 text, a webui activity shows `ContentState.detailChips` in place of the panel (#644):
