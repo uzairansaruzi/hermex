@@ -91,6 +91,9 @@ final class OnboardingViewModel {
     private(set) var reusedSignIn: AuthManager.SavedHermesSignIn?
     /// Add Server's webui answered that it needs a password, so its field shows.
     private(set) var webuiNeedsPassword = false
+    /// The last Connect found a webui server saved at the dashboard's address, which
+    /// `connect(authManager:replacingWebuiServer:)` can replace (#1027).
+    private(set) var offersWebuiReplace = false
     /// Bot Mode (beta), which adding a Hermes server needs, as of the last detection.
     private(set) var isBotModeEnabled: Bool
     var connectionMessage: String?
@@ -279,6 +282,7 @@ final class OnboardingViewModel {
     /// Drops what the last probe found, which no longer describes the typed address.
     private func forgetProbe() {
         authStatus = nil
+        offersWebuiReplace = false
         detectedKind = nil
         savedSignIns = []
         probedConnectionIdentity = nil
@@ -437,12 +441,14 @@ final class OnboardingViewModel {
     /// Connect in onboarding, Add in Settings. The first one for an address finds out what
     /// answers there; a dashboard then waits for its username and password. Returns the
     /// server it added, or nil when nothing was added yet. Onboarding needs no result: the
-    /// new server's sign-in replaces it.
+    /// new server's sign-in replaces it. `replacingWebuiServer` is the confirmed Replace a
+    /// saved webui server at a dashboard's address offers (`offersWebuiReplace`).
     @discardableResult
-    func connect(authManager: AuthManager) async -> URL? {
+    func connect(authManager: AuthManager, replacingWebuiServer: Bool = false) async -> URL? {
         guard !isConnectionLocked else { return nil }
         errorMessage = nil
         connectionMessage = nil
+        offersWebuiReplace = false
 
         if entry == .onboarding, detectedKind != .hermes,
            let validationMessage = Self.passwordValidationMessage(authStatus: authStatus, password: password) {
@@ -483,7 +489,9 @@ final class OnboardingViewModel {
             }
         }
 
-        if detectedKind == .hermes { return await addHermesServer(authManager: authManager, token: token) }
+        if detectedKind == .hermes {
+            return await addHermesServer(authManager: authManager, token: token, replacingWebuiServer: replacingWebuiServer)
+        }
         switch entry {
         case .onboarding:
             await configureWebui(authManager: authManager, token: token)
@@ -495,8 +503,10 @@ final class OnboardingViewModel {
 
     /// Signs the detected dashboard in once with the form's username, password and headers
     /// on a connection of its own, then adds it as a Hermes server. A failure shows
-    /// `BotConnectionAdvice`'s copy, and nothing is retried (#884).
-    private func addHermesServer(authManager: AuthManager, token: Int) async -> URL? {
+    /// `BotConnectionAdvice`'s copy, and nothing is retried (#884). A webui server saved at
+    /// the address is replaced only when `replacingWebuiServer`, and only after the sign-in
+    /// succeeded; otherwise it stops here with the Replace offer (#1027).
+    private func addHermesServer(authManager: AuthManager, token: Int, replacingWebuiServer: Bool) async -> URL? {
         guard isBotModeEnabled else { return nil }
         let identity = currentConnectionIdentity()
         let address: URL
@@ -508,8 +518,12 @@ final class OnboardingViewModel {
             errorMessage = error.localizedDescription
             return nil
         }
-        guard !authManager.servers.contains(where: { $0.id == address.absoluteString }) else {
-            errorMessage = String(localized: "This server is already configured.")
+        let saved = authManager.servers.first { $0.id == address.absoluteString }
+        if let saved, !(replacingWebuiServer && saved.kind == .webui) {
+            offersWebuiReplace = saved.kind == .webui
+            errorMessage = offersWebuiReplace
+                ? String(localized: "A webui server is saved at this address.")
+                : String(localized: "This server is already configured.")
             return nil
         }
         let candidate = BotConnection(
@@ -530,7 +544,10 @@ final class OnboardingViewModel {
         var record = candidate
         record.hermesVersion = http.serverVersion
         record.installID = http.serverInstallID ?? candidate.installID
-        guard authManager.addHermesServer(record) else {
+        let added = saved == nil
+            ? authManager.addHermesServer(record)
+            : await authManager.replaceWebuiServer(with: record)
+        guard added else {
             errorMessage = authManager.lastErrorMessage
             return nil
         }

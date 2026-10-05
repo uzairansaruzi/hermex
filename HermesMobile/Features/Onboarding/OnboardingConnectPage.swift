@@ -13,6 +13,7 @@ struct OnboardingConnectPage: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var isShowingAdvanced = false
+    @State private var isConfirmingReplace = false
 
     private let accent = Color(red: 1.0, green: 0.74, blue: 0.10)
     private let success = Color(red: 0.45, green: 0.92, blue: 0.56)
@@ -146,6 +147,13 @@ struct OnboardingConnectPage: View {
             // The Access rows Cloudflare Tunnel adds sit in Advanced, so they open with it.
             if mode == .cloudflareTunnel { isShowingAdvanced = true }
         }
+        .confirmationDialog("Replace the webui server?", isPresented: $isConfirmingReplace, titleVisibility: .visible) {
+            Button("Replace", role: .destructive) {
+                Task { await viewModel.connect(authManager: authManager, replacingWebuiServer: true) }
+            }
+        } message: {
+            Text("Its sign-in, cached chats and drafts are removed from this iPhone. Conversations on the host stay.")
+        }
     }
 
     /// What the last Connect or Test Connection found, next to the address it is about.
@@ -207,6 +215,17 @@ struct OnboardingConnectPage: View {
                 systemImage: "exclamationmark.triangle.fill",
                 tint: Color(red: 1.0, green: 0.47, blue: 0.34)
             )
+        }
+
+        if viewModel.offersWebuiReplace {
+            Button {
+                isConfirmingReplace = true
+            } label: {
+                Text("Replace…")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(OnboardingSecondaryButtonStyle())
+            .disabled(viewModel.isConnectionLocked)
         }
     }
 

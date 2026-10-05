@@ -304,7 +304,8 @@ final class AuthManager {
     /// connection form or dev sign-in has already verified, and becomes the server's own
     /// record, saved under its address, which is also the server's id. Needs Bot Mode on
     /// (`BotModeGate`); refuses an address already in the registry, as `addServer` does, so
-    /// a webui server and a Hermes server never share a URL. Returns whether it was added.
+    /// a webui server and a Hermes server never share a URL (`replaceWebuiServer` swaps
+    /// one for the other). Returns whether it was added.
     @discardableResult
     func addHermesServer(_ connection: BotConnection) -> Bool {
         lastErrorMessage = nil
@@ -326,6 +327,29 @@ final class AuthManager {
         // The Shortcuts Profile list belonged to the server this replaces as active (#339).
         ProfileEntityCache.shared.save([])
         enterActiveServer(server)
+        return true
+    }
+
+    /// Replaces the webui server saved at `connection`'s address with a Hermes server, for a
+    /// host that moved from hermes-webui to the dashboard (#1027). `connection` is a sign-in
+    /// already verified, as for `addHermesServer`. The webui server goes as `removeServer`
+    /// takes it (its sign-in, cache and drafts on this iPhone), and the Hermes server keeps
+    /// its name, initials and color. Refuses unless a webui server is saved there. Returns
+    /// whether the Hermes server was added.
+    func replaceWebuiServer(with connection: BotConnection) async -> Bool {
+        lastErrorMessage = nil
+        guard BotModeGate.isEnabled(in: preferences) else { return false }
+        let server = (try? BotConnection.address(connection.address.absoluteString)) ?? connection.address
+        guard let webui = servers.first(where: { $0.id == server.absoluteString }), webui.kind == .webui else {
+            lastErrorMessage = String(localized: "This server is already configured.")
+            return false
+        }
+        // No suspension between the removal's last step and the add, so no screen ever
+        // shows the server the removal falls back to.
+        await removeServer(webui)
+        guard addHermesServer(connection), let added = activeServer else { return false }
+        updateServerIdentity(added, displayName: webui.displayName, initials: webui.initials,
+                             headerLogoColorHex: webui.headerLogoColorHex)
         return true
     }
 
