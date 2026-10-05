@@ -91,9 +91,9 @@ final class ChatComposerSendGateTests: XCTestCase {
     }
 
     /// A long-press offers every behavior, in the Bot card's order, only while
-    /// Send shows mid-run. Staged files are deliberately not an input: unlike
-    /// Bots (`BotPromptMode.busyChoices(hasAttachments:)`), Sessions keep Steer
-    /// with files staged, because #856 sends them with the steer as a note.
+    /// Send shows mid-run. A webui session keeps Steer with files staged, because
+    /// #856 sends them with the steer as a note; a Hermes session's files drop it
+    /// (`HermesChatAttachmentTests`).
     func testRunningSendOffersEveryChoiceAndIdleOrStopOffersNone() {
         for behavior in StreamingSendBehavior.allCases {
             let running = ChatComposerSendButton(

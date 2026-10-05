@@ -274,7 +274,7 @@ struct MessageComposerView: View {
     /// The + menu, dictation and the context indicator stay.
     var showsSessionControls = true
     /// A Hermes session (#1012): staged files upload when they are sent, under Bot Chat's
-    /// rules. Up to eight, and only Queue takes them while a response runs.
+    /// rules. Up to eight, and Steer drops out while a response runs.
     var uploadsAttachmentsOnSend = false
     /// Set while a send uploads its files, for the status line's Cancel.
     var onCancelAttachmentUpload: (() -> Void)?
@@ -1379,7 +1379,7 @@ struct MessageComposerView: View {
             hasText: !trimmedDraftMessage.isEmpty,
             hasQuotes: !quotes.isEmpty,
             defaultBehavior: streamingSendBehavior,
-            queuesStagedFiles: uploadsAttachmentsOnSend && !pendingAttachments.isEmpty
+            stagedFilesDropSteer: uploadsAttachmentsOnSend && !pendingAttachments.isEmpty
         )
     }
 

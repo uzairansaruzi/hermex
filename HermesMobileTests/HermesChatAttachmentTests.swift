@@ -109,10 +109,11 @@ import UIKit
         XCTAssertEqual(chat.model.sendErrorMessage, "Upload cancelled. Your message and attachments are still here.")
     }
 
-    /// #508: a lost answer to the prompt keeps the text and files, leaves the submission
-    /// marked unresolved on disk, and sends nothing again. The next attach clears the mark
-    /// and leaves the draft.
-    func testALostAcknowledgmentKeepsTheFilesAndNeverResends() async throws {
+    /// #508: a lost answer to the prompt keeps the text and files, marks the submission
+    /// unresolved on disk, and holds Send while the chat reattaches; nothing is sent again.
+    /// The reattach releases the hold and the mark and leaves the draft. A draft reopened
+    /// with the mark holds Send the same way until the chat attaches.
+    func testALostAcknowledgmentHoldsSendUntilTheReattachAndNeverResends() async throws {
         let chat = await openChat()
         chat.host.always("file.attach", .init(result: .object([
             "attached": .bool(true), "path": .string("/home/u/.hermes/attachments/a-notes.txt"),
@@ -125,7 +126,11 @@ import UIKit
 
         let sent = await chat.model.sendMessage("Read this")
         XCTAssertFalse(sent)
+        XCTAssertTrue(chat.model.isHermesSubmissionUncertain)
+        let again = await chat.model.sendMessage("Read this")
+        XCTAssertFalse(again, "Send waits for the reattach")
         XCTAssertEqual(chat.writes("prompt.submit").count, 1)
+        XCTAssertEqual(chat.writes("file.attach").count, 1)
         XCTAssertEqual(chat.model.pendingAttachments.map(\.name), ["notes.txt"])
         let copies = await chat.copies.count
         XCTAssertEqual(copies, 1)
@@ -133,13 +138,20 @@ import UIKit
         XCTAssertEqual(marked?.botSubmissionUncertain, true)
         XCTAssertEqual(marked?.text, "Read this")
 
-        chat.model.suspendStreamForNavigation()
-        await chat.model.reconnectStreamIfNeeded()
+        // Joins the reattach the lost answer started.
+        await chat.turn.activate()
         await chat.model.submissionMarkRelease?.value
+        XCTAssertFalse(chat.model.isHermesSubmissionUncertain)
         let released = await chat.drafts.draft(for: key)
         XCTAssertEqual(released?.botSubmissionUncertain, false)
         XCTAssertEqual(released?.text, "Read this")
         XCTAssertEqual(chat.writes("prompt.submit").count, 1, "reattaching only reads")
+
+        chat.model.suspendStreamForNavigation()
+        chat.model.restoreSubmissionMark(true)
+        XCTAssertTrue(chat.model.isHermesSubmissionUncertain, "a reopened mark holds Send")
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertFalse(chat.model.isHermesSubmissionUncertain)
     }
 
     /// Queue carries the files too; when the host runs the queued prompt, its row shows them
@@ -167,13 +179,17 @@ import UIKit
 
     // MARK: Steer and limits
 
-    /// Steer and Stop and send never carry files: with files staged on a Hermes session the
-    /// send button offers and taps Queue, and a Steer the keyboard asks for queues.
-    func testStagedFilesLeaveOnlyQueueWhileAResponseRuns() async {
-        let hermes = ChatComposerSendButton(isWaitingForStream: true, hasText: true, hasQuotes: false,
-                                            defaultBehavior: .steer, queuesStagedFiles: true)
-        XCTAssertEqual(hermes.choices, [.queue])
-        XCTAssertEqual(hermes.runningBehavior, .queue)
+    /// Steer and Stop and send never carry files. With files staged on a Hermes session,
+    /// Steer drops out of the send button and a Steer default queues them; Stop and send
+    /// stays, goes text-only and leaves them staged.
+    func testStagedFilesDropSteerAndStopAndSendLeavesThemStaged() async {
+        let steer = ChatComposerSendButton(isWaitingForStream: true, hasText: true, hasQuotes: false,
+                                           defaultBehavior: .steer, stagedFilesDropSteer: true)
+        XCTAssertEqual(steer.choices, [.queue, .interrupt])
+        XCTAssertEqual(steer.runningBehavior, .queue)
+        let interrupt = ChatComposerSendButton(isWaitingForStream: true, hasText: true, hasQuotes: false,
+                                               defaultBehavior: .interrupt, stagedFilesDropSteer: true)
+        XCTAssertEqual(interrupt.runningBehavior, .interrupt)
         let webui = ChatComposerSendButton(isWaitingForStream: true, hasText: true, hasQuotes: false, defaultBehavior: .steer)
         XCTAssertEqual(webui.choices, [.steer, .queue, .interrupt], "webui steers carry their files (#856)")
 
@@ -183,10 +199,36 @@ import UIKit
             "attached": .bool(true), "path": .string("/a/notes.txt"), "ref_text": .string("@file:/a/notes.txt")
         ])))
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("queued")])))
+        chat.host.always("session.redirect", .init(result: .object(["status": .string("redirected")])))
         await chat.model.uploadAttachment(data: Data("notes".utf8), filename: "notes.txt")
         _ = await chat.model.submitStreamingMessage("Use these", behavior: .steer)
         XCTAssertEqual(chat.writes("session.steer"), [])
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["text"] }, [.string("Use these\n\n@file:/a/notes.txt")])
+
+        await chat.model.uploadAttachment(data: Data("more".utf8), filename: "more.txt")
+        let result = await chat.model.submitStreamingMessage("Stop and look", behavior: .interrupt)
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(chat.writes("session.redirect").map { $0["text"] }, [.string("Stop and look")])
+        XCTAssertEqual(chat.writes("file.attach").count, 1, "Stop and send uploads nothing")
+        XCTAssertEqual(chat.model.pendingAttachments.map(\.name), ["more.txt"])
+    }
+
+    /// A Hermes send clears a staging error, so the status line shows its upload and Cancel.
+    func testASendClearsAStaleStagingError() async {
+        let chat = await openChat()
+        _ = HermesHostFixture.configuration { request in request.url?.path == "/api/chat/image-upload" ? .park : nil }
+        HermesHostFixture.onPark = { Task { @MainActor in
+            XCTAssertNil(chat.model.uploadAttachmentErrorMessage)
+            XCTAssertTrue(chat.model.isSendingAttachments)
+            chat.model.cancelAttachmentUpload()
+        } }
+        await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
+        await chat.model.uploadAttachment(data: Data(), filename: "empty.txt")
+        XCTAssertEqual(chat.model.uploadAttachmentErrorMessage, "Use up to 8 attachments, 25 MB each and 50 MB total.")
+
+        let sent = await chat.model.sendMessage("Look")
+        XCTAssertFalse(sent)
+        XCTAssertEqual(chat.model.sendErrorMessage, "Upload cancelled. Your message and attachments are still here.")
     }
 
     /// Bot Chat's limits: eight files. The ninth is refused with the Bot message.

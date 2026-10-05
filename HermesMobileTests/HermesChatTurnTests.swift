@@ -193,6 +193,8 @@ import Observation
         chat.host.next("prompt.submit", .init(result: .object(["status": .string("something new")])))
         _ = await chat.model.sendMessage("Plan the release")
         XCTAssertEqual(chat.model.hermesDraftKey, newKey, "an unconfirmed prompt moves nothing")
+        // Its lost answer holds Send until the reattach it started has read the session (#508).
+        await chat.model.reconnectStreamIfNeeded()
 
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
         _ = await chat.model.sendMessage("Plan the release")

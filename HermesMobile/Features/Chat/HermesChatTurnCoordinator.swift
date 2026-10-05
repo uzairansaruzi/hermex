@@ -294,6 +294,13 @@ struct HermesChatTranscript: Equatable {
     /// Stops a send's uploads: its prompt is not submitted, and the draft keeps its files.
     func cancelAttachmentUpload() { attachmentUpload?.cancel() }
 
+    /// A prompt's answer was lost or unreadable: reattach and rebuild, so the snapshot shows
+    /// whether it ran (#508). Nothing is resent. A chat already left attaches when it reopens.
+    func recoverAfterLostAnswer() {
+        guard engine.isActive else { return }
+        rebuildAfterGap()
+    }
+
     /// The host's first accepted prompt moves a new session's draft to the session's key.
     /// Before that it keeps the new-session key: the host keeps no row for a session with
     /// no prompt and reaps it, and nothing reopens it, so a draft typed before leaving

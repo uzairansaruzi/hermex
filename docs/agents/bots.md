@@ -785,16 +785,18 @@ A Hermes session in the main chat shares this path (#1012). `ChatAttachmentCoord
 stages only the local copy under the same limits and image conversion, under the
 session's `ChatDraftKey.hermesSession`; Send and Queue upload in
 `HermesChatTurnCoordinator.submit` on the captured attach and runtime, with Cancel on
-the composer's uploading line. With files staged, a send during a run can only queue,
-so Steer and Stop and send drop out of the send button. The submission mark is written
-just before the prompt and released at the next attach. The transcript turns the
+the composer's uploading line. With files staged during a run, Steer drops out of the
+send button and a Steer default queues; Stop and send stays text-only and leaves the
+files staged. The submission mark is written just before the prompt. A lost answer
+holds Send, restored with the draft, while the chat reattaches and rebuilds; that
+attach releases the hold and the mark. The transcript turns the
 reference lines back into chips (`MessageAttachment.hermesReferences`): the instruction
 pair, and a lone `@file:` token plain or quoted. It drops the host's saved
 `--- Context Warnings ---` and `--- Attached Context ---` footer, which repeats the path
 and inlines a text file. No host path is shown, live or after a rebuild, and ↑ recalls
 only the typed text. A chip has a name and no path, so tapping one shows the local copy
-when this phone sent it and otherwise says it has no server path. Bot Chat still shows
-the raw lines (#1017).
+when this phone sent it and otherwise says it has no server path; audio shows as a
+file, not a player. Bot Chat still shows the raw lines (#1017).
 
 Bot drafts extend `ChatDraftStore` with server + connection UUID + Profile context.
 After uploads finish, immediately before prompt submission, the client flushes an

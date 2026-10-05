@@ -2579,6 +2579,9 @@ final class ChatViewModel {
 
     /// A Hermes prompt is on its way, from its uploads to the host's answer.
     @ObservationIgnored private var isSubmittingHermesPrompt = false
+    /// #508: a Hermes prompt's answer was lost, so nothing sends until the next attach's
+    /// snapshot shows whether it ran. Restored from the draft's mark when the chat opens.
+    private(set) var isHermesSubmissionUncertain = false
     /// The last attach's release of a lost prompt's mark (`releaseSubmissionMark`).
     @ObservationIgnored private(set) var submissionMarkRelease: Task<Void, Never>?
 
@@ -2621,9 +2624,11 @@ final class ChatViewModel {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         // Only Send and Queue carry the staged files (#1012); Steer and Stop & send stay text-only.
         let files = mode.startsTurn ? attachmentCoordinator.pendingAttachments : []
-        guard !text.isEmpty || !files.isEmpty else { return false }
+        guard !text.isEmpty || !files.isEmpty, !isHermesSubmissionUncertain else { return false }
         sendErrorMessage = nil
         lastError = nil
+        // A staging error is stale once the files go; the status line shows the upload and its Cancel.
+        if !files.isEmpty { attachmentCoordinator.setUploadAttachmentError(nil) }
         let promptID = "local-\(UUID().uuidString)"
         let prompt = ChatMessage(
             role: "user", content: text, timestamp: Date().timeIntervalSince1970, messageId: promptID,
@@ -2641,7 +2646,8 @@ final class ChatViewModel {
 
         // #508: from just before the prompt goes out until the host answers, the draft and
         // its files are on disk with the submission marked unresolved. A lost answer keeps
-        // all three, and the next attach clears only the mark; nothing is sent again.
+        // all three and holds Send while the chat reattaches; that attach clears only the
+        // mark, and nothing is sent again.
         var marked = false
         let outcome: BotPromptOutcome
         do {
@@ -2668,6 +2674,7 @@ final class ChatViewModel {
                 sendErrorMessage = String(localized: "Hermes did not accept this message. Your draft is still here.")
             } else {
                 sendErrorMessage = String(localized: "Hermes did not confirm this message. Your draft is still here.")
+                holdForLostAnswer(hermes)
             }
             return false
         }
@@ -2703,6 +2710,7 @@ final class ChatViewModel {
         case .unknown:
             rollbackOptimisticMessage(id: promptID)
             sendErrorMessage = String(localized: "Hermes did not confirm this message. Your draft is still here.")
+            holdForLostAnswer(hermes)
             return false
         }
         // Accepted: the host holds the files now, so their local copies go.
@@ -2710,10 +2718,27 @@ final class ChatViewModel {
         return true
     }
 
+    /// A prompt's answer was lost: Send waits, and the chat reattaches so the snapshot
+    /// shows whether it ran (#508). Its connect releases the hold.
+    private func holdForLostAnswer(_ hermes: HermesChatTurnCoordinator) {
+        isHermesSubmissionUncertain = true
+        hermes.recoverAfterLostAnswer()
+    }
+
+    /// A Hermes draft reopened with its submission still marked unresolved holds Send until
+    /// the chat attaches, as a lost answer does (#508).
+    func restoreSubmissionMark(_ uncertain: Bool) {
+        // Attached already: that attach's snapshot was read after the lost answer.
+        guard uncertain, let hermesTurn, hermesTurn.engine.connectionState != .connected else { return }
+        isHermesSubmissionUncertain = true
+    }
+
     /// Attached again: the host's snapshot now shows whether a prompt whose answer was lost
-    /// ran, so its unresolved mark goes. The draft and its files stay as they are (#508).
+    /// ran, so Send is free again and its unresolved mark goes. The draft and its files stay
+    /// as they are (#508).
     private func releaseSubmissionMark() {
-        guard let key = hermesDraftKey else { return }
+        guard let key = hermesDraftKey, !isSubmittingHermesPrompt else { return }
+        isHermesSubmissionUncertain = false
         submissionMarkRelease = Task { [weak self, drafts] in
             guard await drafts.draft(for: key)?.botSubmissionUncertain == true,
                   self?.isSubmittingHermesPrompt == false else { return }
@@ -2736,15 +2761,16 @@ final class ChatViewModel {
     }
 
     /// A send while a Hermes turn runs: Steer is `session.steer`, Queue the host's queue,
-    /// and Stop & send `session.redirect` (#858). With files staged it queues, since only a
-    /// fresh turn takes them (#1012). A turn that ended meanwhile takes a plain send.
+    /// and Stop & send `session.redirect` (#858). With files staged a Steer queues, since
+    /// only a fresh turn takes them, and Stop & send goes text-only, leaving them staged
+    /// (#1012). A turn that ended meanwhile takes a plain send.
     private func submitHermesStreamingMessage(
         _ draft: String,
         behavior: StreamingSendBehavior,
         to hermes: HermesChatTurnCoordinator
     ) async -> SlashCommandExecutionResult {
         let mode: BotPromptMode
-        switch attachmentCoordinator.pendingAttachments.isEmpty ? behavior : .queue {
+        switch behavior == .steer && !attachmentCoordinator.pendingAttachments.isEmpty ? .queue : behavior {
         case .steer: mode = activeStreamID == nil ? .send : .steer
         case .queue: mode = activeStreamID == nil ? .send : .queue
         case .interrupt: mode = activeStreamID == nil ? .send : .redirect

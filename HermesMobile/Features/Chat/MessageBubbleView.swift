@@ -451,11 +451,13 @@ struct MessageBubbleView: View {
     }
 
     // Audio attachments render as full-width Telegram-style player bars stacked
-    // above the square image/file grid; everything else stays in the grid.
+    // above the square image/file grid; everything else stays in the grid. With
+    // no way to load the bytes (a Hermes session's chips), audio stays a file cell.
     private var attachmentPreviews: some View {
         let allItems = attachmentsWithPreviews
-        let audioItems = allItems.filter { $0.attachment.inferredIsAudio }
-        let gridItems = allItems.filter { !$0.attachment.inferredIsAudio }
+        let playsAudio = loadAttachmentData != nil
+        let audioItems = allItems.filter { playsAudio && $0.attachment.inferredIsAudio }
+        let gridItems = allItems.filter { !playsAudio || !$0.attachment.inferredIsAudio }
         let columns = 2
         let spacing: CGFloat = 8
         let cellSize: CGFloat = 118

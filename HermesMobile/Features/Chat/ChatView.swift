@@ -472,7 +472,8 @@ struct ChatView: View {
                     composerIsFocused = value
                 }
             ),
-            isSending: viewModel.isStartingChat || viewModel.isSendingVoiceNote,
+            // A Hermes prompt whose answer was lost holds Send until the chat reattaches (#508).
+            isSending: viewModel.isStartingChat || viewModel.isSendingVoiceNote || viewModel.isHermesSubmissionUncertain,
             isCompressingSession: viewModel.isCompressingSession,
             isWaitingForStream: viewModel.activeStreamID != nil,
             isCancellingStream: viewModel.isCancellingStream,
@@ -1632,7 +1633,7 @@ struct ChatView: View {
             loadAttachmentImage: { path in
                 await viewModel.attachmentImageData(path: path)
             },
-            loadAttachmentData: { path in
+            loadAttachmentData: isHermesSession ? nil : { path in
                 await viewModel.attachmentRawData(path: path)
             },
             loadTranscriptMediaImage: { reference in
@@ -2430,6 +2431,7 @@ struct ChatView: View {
         let quotesBeforeHydration = draftQuotes
         let persistedDraft = await draftStore.draft(for: draftKey)
         viewModel.protectDraftAttachments(for: draftKey, restoring: persistedDraft?.attachments ?? [])
+        viewModel.restoreSubmissionMark(persistedDraft?.botSubmissionUncertain == true)
         guard !Task.isCancelled,
               draftMessage == textBeforeHydration,
               draftQuotes == quotesBeforeHydration
