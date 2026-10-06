@@ -1388,10 +1388,11 @@ prompt or mutation was executed.
 ## Slash suggestions
 
 Typing `/` at the start of a Bot Chat draft opens the slash panel with this
-connection's **skills**. Commands are deliberately absent: the gateway runs those
-only through `slash.exec` and `command.dispatch`'s quick/plugin/registry stages,
-which Bot Mode does not expose, so a command row would insert text nothing runs.
-Model, effort and workspace already have native controls (Chat controls above).
+connection's **skills**. Commands stay absent from Bot Chat until #1038: the
+gateway runs those only through `slash.exec` and `command.dispatch`'s
+quick/plugin/registry stages, which Bot Chat does not use yet, so a command row
+would insert text nothing runs. Model, effort and workspace already have native
+controls (Chat controls above). A Hermes chat runs commands (below).
 
 `commands.catalog {session_id}` (the live runtime id) is read once per
 conversation, after connecting, driven by the composer. `BotSlashCatalog` reads the `skills` keys for which entries
@@ -1431,7 +1432,56 @@ because the host projects the invocation back over the stored message
 
 `BotClient` allowlists `commands.catalog` (exactly `session_id`) and `command.dispatch`
 (exactly `name`, `arg`, `session_id`; a bare name with no slash or whitespace) as
-its third typed exception. `slash.exec` stays unsupported.
+its third typed exception.
+
+### Hermes chats (#1036)
+
+A Hermes chat's panel lists its host's whole `commands.catalog`, as Hermes Desktop
+and the CLI do: built-ins (Hermes-only ones such as `/context` included), the
+user's `quick_commands`, plugin commands and skills. `HermesSlashCatalog` reads
+the command rows as the `pairs` keys `canon` knows, attaches each command's
+aliases from `canon` (so `/ctx` finds `/context`), and keeps skills apart through
+`BotSlashCatalog.skills`. `HermesSlashCommands` reads it on every connect with the
+runtime's `session_id`; a reply for an older attach is dropped, a failed read
+keeps the last list (the panel shows Hermex's own commands until one answers),
+and nothing is persisted or crosses servers.
+
+The panel ranks on the phone. Only a host command's argument stage asks the
+host: `complete.slash {text, session_id}` with the draft up to the caret, about
+150 ms after typing stops, newest reply only, cancelled when the caret leaves.
+The panel shows its rows only while the host has suggestions; a pick replaces
+from `replace_from`.
+
+Send resolves a draft that opens with `/name` in this order:
+
+1. **Hermex's own** (`SlashCommandCatalog.hermesCommands`): `/new`, `/stop`,
+   `/model`, `/reasoning`, `/personality`, `/goal`, `/btw`, `/bg` and
+   `/background`, and `/yolo` (the session's `config.set yolo`). Each keeps its
+   native path; an alias such as `/reset` resolves to its command first.
+2. **Held until #702 slice 2.3** (`hermesHeldNames`): `/compress`, `/compact`,
+   `/undo`, `/retry`, `/clear`, `/branch`, `/fork`, `/title`, `/resume`,
+   `/sessions`. They rewrite history or move between chats, so they show a notice
+   naming #702 and send nothing.
+3. **A catalog skill**: `command.dispatch` expands it and `message` is submitted.
+4. **Any other catalog command or alias**: `slash.exec {session_id, command}`
+   with the typed line, once.
+5. **Anything else** is sent as typed.
+
+`slash.exec` answers `{output, warning?}` or a directive. Output, warnings and
+notices show as a local notice (pinned while a turn runs), the output in a code
+block so its line breaks survive. `send` and `skill` submit `message` through
+the normal send path, so a running turn queues it; `prefill` replaces the draft;
+`alias` runs its target once with the typed argument, and a second alias is
+refused. A refusal shows the host's message and keeps the draft; in a chat with
+nothing sent yet it says to send a message first. A command can run in the
+host's slash worker for up to 45 s, so `slash.exec` waits twice the usual
+deadline and its timeout fails only that command, never the chat's connection.
+
+`/yolo` stays Hermex's own because a worker-run `/yolo` changes only the slash
+worker: only `model`, `approvals`, `personality`, `prompt`, `compress`, `fast`,
+`reload-mcp` and `stop` mirror back into the live session (`_SLASH_MIRRORS`).
+At the pin, an unsent chat's `/context` answers "No active agent -- send a
+message first." as plain output.
 
 Group rooms are out of scope: `BotRoomComposerView` is a separate composer and
 does not get the panel.
@@ -1439,7 +1489,7 @@ does not get the panel.
 Contract checked against the `HERMES_AGENT_TESTED_SHA` pin (`3abeca16`, 0.21.2):
 `tui_gateway/methods_tools.py` (`commands.catalog`, `command.dispatch`,
 `_dispatch_quick`/`_dispatch_skill`), `tui_gateway/methods_complete.py`
-(`complete.slash`, a per-keystroke read the catalog replaces) and
+(`complete.slash`, which the catalog replaces at the command stage) and
 `tui_gateway/session_history.py` (`_skill_scaffold_projection`). At 0.21.4
 (`d337b736`) `commands.catalog` binds skill discovery to the session it is given
 (`_session_home_scope`), so the phone passes the runtime id and the list follows
@@ -1509,7 +1559,7 @@ actually takes; the chip shows it when it differs ("XHigh · sent as High").
 `config.set {key: "personality"}` always writes the Profile's default (the host
 has no session-only personality) and also switches the session, so
 `/personality <name>` asks first and names the Profile. Its list is
-`complete.slash {text: "/personality "}`, which reads the host's launch Profile.
+`complete.slash {text: "/personality ", session_id}`.
 
 **Accepted host limitation (#479):** in the compatibility pin's
 `tui_gateway/methods_config_set.py`, `_set_reasoning` and `_set_fast` fall back to

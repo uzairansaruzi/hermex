@@ -191,6 +191,8 @@
 		E1011000000000000000A003 /* HermesChatRequestTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1011000000000000000A004 /* HermesChatRequestTests.swift */; };
 		E1012000000000000000A003 /* HermesChatAttachmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1012000000000000000A004 /* HermesChatAttachmentTests.swift */; };
 		E1013000000000000000A003 /* HermesChatSideTaskTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1013000000000000000A004 /* HermesChatSideTaskTests.swift */; };
+		E1036000000000000000A001 /* HermesSlashCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1036000000000000000A002 /* HermesSlashCommands.swift */; };
+		E1036000000000000000A003 /* HermesSlashCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1036000000000000000A004 /* HermesSlashCommandTests.swift */; };
 		E1015000000000000000A005 /* HermesChatSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1015000000000000000A006 /* HermesChatSettingsTests.swift */; };
 		E1014000000000000000A003 /* HermesChatLiveActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */; };
 		532000000000000000000003 /* RatingPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532000000000000000000004 /* RatingPromptTests.swift */; };
@@ -820,6 +822,8 @@
 		E1011000000000000000A004 /* HermesChatRequestTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatRequestTests.swift; sourceTree = "<group>"; };
 		E1012000000000000000A004 /* HermesChatAttachmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatAttachmentTests.swift; sourceTree = "<group>"; };
 		E1013000000000000000A004 /* HermesChatSideTaskTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatSideTaskTests.swift; sourceTree = "<group>"; };
+		E1036000000000000000A002 /* HermesSlashCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesSlashCommands.swift; sourceTree = "<group>"; };
+		E1036000000000000000A004 /* HermesSlashCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesSlashCommandTests.swift; sourceTree = "<group>"; };
 		E1015000000000000000A006 /* HermesChatSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatSettingsTests.swift; sourceTree = "<group>"; };
 		E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatLiveActivityTests.swift; sourceTree = "<group>"; };
 		532000000000000000000004 /* RatingPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPromptTests.swift; sourceTree = "<group>"; };
@@ -1413,6 +1417,7 @@
 					E1011000000000000000A004 /* HermesChatRequestTests.swift */,
 					E1012000000000000000A004 /* HermesChatAttachmentTests.swift */,
 					E1013000000000000000A004 /* HermesChatSideTaskTests.swift */,
+					E1036000000000000000A004 /* HermesSlashCommandTests.swift */,
 					E1015000000000000000A006 /* HermesChatSettingsTests.swift */,
 					E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */,
 				532000000000000000000004 /* RatingPromptTests.swift */,
@@ -1878,6 +1883,7 @@
 					E1010000000000000000A002 /* HermesChatTurnCoordinator.swift */,
 					E1011000000000000000A002 /* HermesChatRequests.swift */,
 					E1013000000000000000A002 /* HermesChatSideTasks.swift */,
+					E1036000000000000000A002 /* HermesSlashCommands.swift */,
 					E1015000000000000000A004 /* HermesChatSettings.swift */,
 					E1013000000000000000A006 /* HermesBtwPanel.swift */,
 					C04700000000000000000002 /* ChatPendingActionCoordinator.swift */,
@@ -2655,6 +2661,7 @@
 					E1010000000000000000A001 /* HermesChatTurnCoordinator.swift in Sources */,
 					E1011000000000000000A001 /* HermesChatRequests.swift in Sources */,
 					E1013000000000000000A001 /* HermesChatSideTasks.swift in Sources */,
+					E1036000000000000000A001 /* HermesSlashCommands.swift in Sources */,
 					E1015000000000000000A003 /* HermesChatSettings.swift in Sources */,
 					E1013000000000000000A005 /* HermesBtwPanel.swift in Sources */,
 					C04700000000000000000001 /* ChatPendingActionCoordinator.swift in Sources */,
@@ -2802,6 +2809,7 @@
 					E1011000000000000000A003 /* HermesChatRequestTests.swift in Sources */,
 					E1012000000000000000A003 /* HermesChatAttachmentTests.swift in Sources */,
 					E1013000000000000000A003 /* HermesChatSideTaskTests.swift in Sources */,
+					E1036000000000000000A003 /* HermesSlashCommandTests.swift in Sources */,
 					E1015000000000000000A005 /* HermesChatSettingsTests.swift in Sources */,
 					E1014000000000000000A003 /* HermesChatLiveActivityTests.swift in Sources */,
 				532000000000000000000003 /* RatingPromptTests.swift in Sources */,

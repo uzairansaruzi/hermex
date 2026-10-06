@@ -1194,6 +1194,13 @@ final class ChatViewModel {
     /// next caller retries.
     func loadPersonalitySuggestions() async {
         guard !hasLoadedPersonalitySuggestions else { return }
+        // A Hermes host lists its own (#1016), here for the `/personality ` panel (#1036).
+        if let hermesSettings {
+            guard let personalities = try? await hermesSettings.personalities() else { return }
+            personalitySuggestions = ["none"] + personalities.map(\.name)
+            hasLoadedPersonalitySuggestions = true
+            return
+        }
 
         let load: Task<Void, Never>
         if let existing = personalitySuggestionsLoad {
@@ -3282,6 +3289,9 @@ final class ChatViewModel {
                 await cancelActiveStream()
                 return .executed(message: nil)
             case .new:
+                if let hermesTurn {
+                    return newHermesSessionChat(profile: hermesTurn.settings.profile).map { .openedHermesSession($0) } ?? .notDelivered
+                }
                 return await createSessionFromSlashCommand()
             case .help:
                 return .executed(message: Self.slashCommandHelpText)
@@ -3332,6 +3342,8 @@ final class ChatViewModel {
             return await startBackgroundFromSlashCommand(args)
         case .goal:
             return await submitGoalFromSlashCommand(args)
+        case .yolo:
+            return await toggleHermesApprovalBypassFromSlashCommand()
         }
     }
 
@@ -3657,6 +3669,121 @@ final class ChatViewModel {
     private func notDelivered(_ message: String) -> SlashCommandExecutionResult {
         sendErrorMessage = message
         return .notDelivered
+    }
+
+    // MARK: Hermes slash commands
+
+    /// The host's slash commands in a Hermes chat (#1036); nil on webui.
+    var hermesSlashCommands: HermesSlashCommands? { hermesTurn?.slashCommands }
+
+    /// The skills the composer offers: a Hermes host's catalog, or webui's list.
+    var composerSkillSuggestions: [SkillSlashSuggestion] {
+        hermesTurn?.slashCommands.catalog.skills ?? skillSlashSuggestions
+    }
+
+    /// Runs a Hermes chat's draft that opens with `/name` (#1036): Hermex's own command, the
+    /// #702 notice for a held one, a skill's expansion, or the host's `slash.exec`. Nil when
+    /// the name is no command this chat or its host knows, so the draft is sent as typed.
+    func runHermesSlashCommand(_ draft: String, modelContext: ModelContext? = nil) async -> SlashCommandExecutionResult? {
+        guard let hermesTurn, let invocation = BotSlashCatalog.invocation(in: draft) else { return nil }
+        return await runHermesSlashCommand(invocation, line: draft.trimmingCharacters(in: .whitespacesAndNewlines),
+                                           on: hermesTurn, followsAlias: false, modelContext: modelContext)
+    }
+
+    private func runHermesSlashCommand(
+        _ invocation: BotSlashInvocation,
+        line: String,
+        on hermes: HermesChatTurnCoordinator,
+        followsAlias: Bool,
+        modelContext: ModelContext?
+    ) async -> SlashCommandExecutionResult? {
+        let slash = hermes.slashCommands
+        let name = invocation.name
+        let reply: HermesSlashReply
+        do {
+            switch slash.route(name) {
+            case .appOwned(let command):
+                return await executeSlashCommand(command, args: invocation.argument, modelContext: modelContext)
+            case .held:
+                return .unsupported(friendlyMessage: String(localized: "Hermex can't run /\(name) in a Hermes chat yet (#702)."))
+            case .skill(let skill):
+                reply = try await slash.expand(skill, argument: invocation.argument, typed: line)
+            case .text where !followsAlias:
+                return nil
+            case .host, .text:
+                guard !line.contains(where: \.isNewline) else {
+                    return notDelivered(String(localized: "Run /\(name) on one line."))
+                }
+                reply = try await slash.run(line)
+            }
+        } catch {
+            return hermesSlashFailure(error, name: name)
+        }
+
+        switch reply {
+        case .notice(let text):
+            notifyLocally(text)
+            return .executed(message: nil)
+        case .send(let message, let shown, let notice):
+            if let notice { notifyLocally(notice) }
+            // A running turn queues it, as any send does.
+            let mode: BotPromptMode = activeStreamID == nil ? .send : .queue
+            return await submitHermesPrompt(message, mode: mode, to: hermes, shown: shown) ? .executed(message: nil) : .notDelivered
+        case .prefill(let message, let notice):
+            if let notice { notifyLocally(notice) }
+            return .prefill(message)
+        case .alias(let target):
+            // Run once, with the typed argument; an alias to another alias is refused.
+            let line = invocation.argument.isEmpty ? "/\(target)" : "/\(target) \(invocation.argument)"
+            guard !followsAlias, let next = BotSlashCatalog.invocation(in: line) else {
+                return notDelivered(String(localized: "/\(name) points to another alias, so Hermex didn't run it."))
+            }
+            return await runHermesSlashCommand(next, line: line, on: hermes, followsAlias: true, modelContext: modelContext)
+        }
+    }
+
+    /// Why a Hermes slash command did not run. The draft stays. A refusal is the host's own
+    /// message, except in a chat with nothing sent yet, where there is nothing to run it on.
+    private func hermesSlashFailure(_ error: Error, name: String) -> SlashCommandExecutionResult {
+        switch error {
+        case is HermesChatTurnCoordinator.NotSent:
+            return notDelivered(String(localized: "Reconnect to the server to run /\(name)."))
+        case BotSettingFailure.rejected(_, let message):
+            guard messages.contains(where: { $0.role == "user" }) else {
+                return notDelivered(String(localized: "Send a message first, then run /\(name)."))
+            }
+            return notDelivered(message)
+        case BotFailure.rejected:
+            return notDelivered(String(localized: "Hermes did not accept /\(name)."))
+        default:
+            return notDelivered(String(localized: "Hermes did not confirm /\(name). Check before running it again."))
+        }
+    }
+
+    /// A notice in the transcript, or pinned above the composer while a turn runs.
+    private func notifyLocally(_ text: String) {
+        if activeStreamID == nil { appendLocalNoticeMessage(text) } else { pinLocalNoticeMessage(text) }
+    }
+
+    /// `/yolo` in a Hermes chat (#1036): this session's approval bypass, through the same
+    /// `config.set yolo` as the approval card's Skip all and the bypass pill.
+    private func toggleHermesApprovalBypassFromSlashCommand() async -> SlashCommandExecutionResult {
+        guard let requests = hermesRequests else {
+            return .unsupported(friendlyMessage: SlashCommandExecutor.unsupportedMessage(for: "yolo"))
+        }
+        if requests.approvalBypass, !requests.mayTurnOffApprovalBypass {
+            return notDelivered(String(localized: "This Hermes host approves every command itself, so approvals can't be turned back on from here."))
+        }
+        sendErrorMessage = nil
+        guard let enabled = await requests.toggleApprovalBypass() else {
+            return sendErrorMessage == nil
+                ? notDelivered(String(localized: "Reconnect to the server to run /\("yolo")."))
+                : .notDelivered
+        }
+        notifyLocally(enabled
+                      ? String(localized: "Approvals are skipped in this chat. Run /yolo again to turn them back on.")
+                      : String(localized: "Approvals are back on in this chat."))
+        return .executed(message: nil)
     }
 
     /// A typed `/goal`. On failure a Hermes session keeps the draft, as its sends do (#1013),

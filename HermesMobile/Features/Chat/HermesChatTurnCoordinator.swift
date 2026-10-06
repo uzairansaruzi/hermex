@@ -60,7 +60,8 @@ struct HermesChatTranscript: Equatable {
 /// by text. Each prompt, steer, redirect and stop is one `write`, never resent; a Send or
 /// Queue uploads its staged files first (#1012). The host's requests (approvals,
 /// questions, sudo and secret prompts) are `requests` (#1011); the goal, `/btw` and
-/// `/background` are `sideTasks` (#1013); its model and Profile chips are `settings` (#1015).
+/// `/background` are `sideTasks` (#1013); its model and Profile chips are `settings` (#1015);
+/// its host's slash commands are `slashCommands` (#1036).
 ///
 /// A turn's identity is the stored key and the host's `turn_started_at`, in place of a
 /// webui stream id. A turn starts at `message.start`, an accepted send or a running
@@ -87,6 +88,8 @@ struct HermesChatTranscript: Equatable {
     let sideTasks: HermesChatSideTasks
     /// The composer's model and Profile chips (#1015).
     let settings: HermesChatSettings
+    /// The host's slash commands, for the composer's panel and send path (#1036).
+    let slashCommands: HermesSlashCommands
 
     /// The host's `turn_started_at` for the running turn, once known.
     @ObservationIgnored private var turnStartedAt: Double?
@@ -138,12 +141,14 @@ struct HermesChatTranscript: Equatable {
         requests = HermesChatRequests(engine: engine)
         sideTasks = HermesChatSideTasks(engine: engine)
         settings = HermesChatSettings(engine: engine)
+        slashCommands = HermesSlashCommands(engine: engine)
         draftKey = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id)
         engine.owner = self
         requests.onOpenChange = { [weak self] in self?.syncLiveActivityWaiting() }
         requests.onFailure = { [weak self] in self?.delegate?.hermesRequestDidFail($0) }
         requests.onNeedsReattach = { [weak self] in self?.reattach() }
         sideTasks.onNeedsReattach = { [weak self] in self?.reattach() }
+        slashCommands.onNeedsReattach = { [weak self] in self?.reattach() }
         sideTasks.onBackgroundChange = { [weak self] in self?.delegate?.hermesBackgroundDidChange($0) }
         sideTasks.onGoalChange = { [weak self] in self?.delegate?.hermesGoalDidChange($0) }
     }
@@ -872,8 +877,9 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         refusedSignIn = false
         delegate?.hermesConnectionDidChange(failure: nil)
         sideTasks.didConnect(runtime: runtime, attempt: attempt)
-        // Off the attach's path: the chips fill in once the catalog answers.
+        // Off the attach's path: the chips and the `/` panel fill in once their catalogs answer.
         Task { [settings] in await settings.connect(runtime: runtime, attempt: attempt) }
+        Task { [slashCommands] in await slashCommands.connect(runtime: runtime, attempt: attempt) }
     }
 
     func conversation(didReceive frame: BotJSON, afterGap: Bool) {

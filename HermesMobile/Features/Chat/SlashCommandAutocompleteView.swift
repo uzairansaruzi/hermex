@@ -19,18 +19,25 @@ struct SlashCommandAutocompleteView: View {
     /// so command and agent-command rows would insert text nothing executes.
     let skillsOnly: Bool
     let selectedReasoningEffort: String?
+    /// The commands this chat knows: webui's, or a Hermes chat's and its host's (#1036).
+    var scope: SlashCommandScope = .webui
+    /// The `/reasoning` levels to offer.
+    var reasoningLevels = SlashCommandCatalog.reasoningLevels
+    /// The host's suggestions for a host command's argument (#1036).
+    var hostCompletion: HermesSlashCompletion?
     let onSelectCommand: (SlashCommand) -> Void
     let onSelectSkillCommand: (SkillSlashSuggestion) -> Void
     let onSelectAgentCommand: (AgentSlashCommandSuggestion) -> Void
     let onSelectSkillSubArg: (SkillSlashSuggestion) -> Void
     let onSelectSubArg: (String) -> Void
+    var onSelectHostArgument: (HermesSlashCompletion.Item) -> Void = { _ in }
     let onDismiss: () -> Void
 
     /// The last completed background ranking pass, or `nil` before the first one lands.
     @State private var cachedResults: SlashAutocompleteResults?
 
     private var parsed: ParsedSlashQuery {
-        ParsedSlashQuery(query: query)
+        ParsedSlashQuery(query: query, scope: scope)
     }
 
     var body: some View {
@@ -40,6 +47,8 @@ struct SlashCommandAutocompleteView: View {
         VStack(spacing: 0) {
             if parsed.isSubArgMode, let command = parsed.command {
                 subArgList(for: command, results: results)
+            } else if parsed.isHostArgumentMode {
+                hostArgumentList(hostCompletion?.items ?? [])
             } else {
                 commandList(results)
             }
@@ -99,10 +108,12 @@ struct SlashCommandAutocompleteView: View {
 
         guard parsed.isSubArgMode, let command = parsed.command else {
             return SlashAutocompleteRanking(
-                mode: .commands,
+                mode: parsed.isHostArgumentMode ? .inactive : .commands,
                 query: parsed.commandName,
                 skills: skillSuggestions,
-                agentCommands: agentCommands
+                agentCommands: agentCommands,
+                builtins: scope.builtins,
+                matchesAliases: scope.isHermes
             )
         }
 
@@ -130,6 +141,9 @@ struct SlashCommandAutocompleteView: View {
                 return results.skillSubArgs.count
             }
             return filteredSubArgs(for: command).count
+        }
+        if parsed.isHostArgumentMode {
+            return hostCompletion?.items.count ?? 0
         }
 
         return results.commandRowCount
@@ -424,7 +438,7 @@ struct SlashCommandAutocompleteView: View {
             var seen = Set<String>()
             return (roots + suggestions).filter { seen.insert($0).inserted }
         case .reasoningLevels:
-            return SlashCommandCatalog.reasoningLevels
+            return reasoningLevels
         case .personalities:
             return personalitySuggestions
         case .skills:
@@ -433,6 +447,26 @@ struct SlashCommandAutocompleteView: View {
             return SlashCommandCatalog.goalActions
         case .none:
             return []
+        }
+    }
+
+    /// A host command's argument suggestions (#1036), as `complete.slash` lists them.
+    private func hostArgumentList(_ items: [HermesSlashCompletion.Item]) -> some View {
+        ScrollView(showsIndicators: false) {
+            LazyVStack(spacing: 0) {
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    Button {
+                        onSelectHostArgument(item)
+                    } label: {
+                        rowContent(name: item.display, hint: nil, detail: item.meta, style: .command)
+                    }
+                    .buttonStyle(.plain)
+
+                    if index < items.count - 1 {
+                        rowDivider
+                    }
+                }
+            }
         }
     }
 
@@ -453,6 +487,7 @@ struct SlashCommandAutocompleteView: View {
 
 struct ParsedSlashQuery {
     let query: String
+    var scope: SlashCommandScope = .webui
 
     var commandName: String {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -472,15 +507,22 @@ struct ParsedSlashQuery {
     }
 
     var isSubArgMode: Bool {
-        guard let command = SlashCommandCatalog.command(named: commandName) else { return false }
-        guard command.subArgs != .none else { return false }
-        let prefix = "/\(command.name)"
-        guard query.hasPrefix(prefix) else { return false }
-        let afterCommand = String(query.dropFirst(prefix.count))
-        return afterCommand.hasPrefix(" ")
+        guard let command, command.subArgs != .none else { return false }
+        return hasArgument(after: command.name)
+    }
+
+    /// The query is past a host command's name (#1036): the host completes its argument.
+    var isHostArgumentMode: Bool {
+        command == nil && scope.completesOnHost(commandName) && hasArgument(after: commandName)
     }
 
     var command: SlashCommand? {
-        SlashCommandCatalog.command(named: commandName)
+        scope.command(named: commandName)
+    }
+
+    private func hasArgument(after name: String) -> Bool {
+        let prefix = "/\(name)"
+        guard query.hasPrefix(prefix) else { return false }
+        return query.dropFirst(prefix.count).hasPrefix(" ")
     }
 }

@@ -153,8 +153,9 @@ enum HermesProfilePreference {
 
     /// The host's personalities and their descriptions, `none` left out.
     func personalities() async throws -> [(name: String, description: String)] {
-        guard engine.connectionState == .connected else { throw BotFailure.stale }
-        let reply = try await engine.request(.personalityCompletions, attempt: engine.generation)
+        guard engine.connectionState == .connected, let runtime = engine.runtime else { throw BotFailure.stale }
+        let reply = try await engine.request(.completeSlash(text: "/personality ", sessionID: runtime),
+                                             attempt: engine.generation)
         guard let items = reply["items"].list else { throw BotFailure.unsupported }
         return items.compactMap { item in
             guard let name = item["text"].text?.trimmingCharacters(in: .whitespaces), !name.isEmpty,

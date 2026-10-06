@@ -1,0 +1,1782 @@
+{
+  "_note": "Replies scripts/local-hermes returned at the pin for #1036 (a quick command `hello` running `echo hermex-quick` and a local skill `demo-skill` configured), recorded by hand. The skill directory is redacted, and the catalog's `categories` (its `pairs` again, grouped) left out.",
+  "command.dispatch demo-skill": {
+    "display": "/demo-skill do it",
+    "message": "[IMPORTANT: The user has invoked the \"demo-skill\" skill, indicating they want you to follow its instructions. The full skill content is loaded below.]\n\n---\nname: demo-skill\ndescription: A demo skill for Hermex tests\n---\nSay hello from the demo skill.\n\n[Skill directory: <skills>/demo-skill]",
+    "name": "demo-skill",
+    "type": "skill"
+  },
+  "commands.catalog": {
+    "canon": {
+      "/agents": "/agents",
+      "/approvals": "/approvals",
+      "/battery": "/battery",
+      "/bg": "/bg",
+      "/blueprint": "/blueprint",
+      "/bp": "/blueprint",
+      "/branch": "/branch",
+      "/browser": "/browser",
+      "/btw": "/btw",
+      "/bundles": "/bundles",
+      "/busy": "/busy",
+      "/clear": "/clear",
+      "/codex-runtime": "/codex-runtime",
+      "/codex_runtime": "/codex-runtime",
+      "/compact": "/compress",
+      "/compose": "/prompt",
+      "/compress": "/compress",
+      "/config": "/config",
+      "/context": "/context",
+      "/copy": "/copy",
+      "/cron": "/cron",
+      "/ctx": "/context",
+      "/curator": "/curator",
+      "/debug": "/debug",
+      "/density": "/density",
+      "/diff": "/diff",
+      "/egress": "/egress",
+      "/exit": "/quit",
+      "/export": "/export",
+      "/fast": "/fast",
+      "/focus": "/focus",
+      "/footer": "/footer",
+      "/fork": "/branch",
+      "/gateway": "/platforms",
+      "/generate-pet": "/hatch",
+      "/goal": "/goal",
+      "/handoff": "/handoff",
+      "/hatch": "/hatch",
+      "/hb": "/heartbeat",
+      "/heartbeat": "/heartbeat",
+      "/hello": "/hello",
+      "/help": "/help",
+      "/history": "/history",
+      "/image": "/image",
+      "/import": "/import",
+      "/indicator": "/indicator",
+      "/init": "/init",
+      "/insights": "/insights",
+      "/journey": "/journey",
+      "/kanban": "/kanban",
+      "/learn": "/learn",
+      "/learning": "/journey",
+      "/login": "/login",
+      "/logs": "/logs",
+      "/loop": "/loop",
+      "/memory": "/memory",
+      "/memory-graph": "/journey",
+      "/moa": "/moa",
+      "/model": "/model",
+      "/mouse": "/mouse",
+      "/new": "/new",
+      "/palette": "/palette",
+      "/paste": "/paste",
+      "/personality": "/personality",
+      "/pet": "/pet",
+      "/plan": "/plan",
+      "/platforms": "/platforms",
+      "/plugins": "/plugins",
+      "/proactive": "/loop",
+      "/profile": "/profile",
+      "/prompt": "/prompt",
+      "/q": "/queue",
+      "/queue": "/queue",
+      "/quit": "/quit",
+      "/reasoning": "/reasoning",
+      "/redraw": "/redraw",
+      "/refine": "/refine",
+      "/reload": "/reload",
+      "/reload-mcp": "/reload-mcp",
+      "/reload-skills": "/reload-skills",
+      "/reload_mcp": "/reload-mcp",
+      "/reload_skills": "/reload-skills",
+      "/reset": "/new",
+      "/resume": "/resume",
+      "/retry": "/retry",
+      "/review": "/review",
+      "/rollback": "/rollback",
+      "/save": "/save",
+      "/sb": "/statusbar",
+      "/sessions": "/sessions",
+      "/skills": "/skills",
+      "/skin": "/skin",
+      "/snap": "/snapshot",
+      "/snapshot": "/snapshot",
+      "/status": "/status",
+      "/statusbar": "/statusbar",
+      "/steer": "/steer",
+      "/stop": "/stop",
+      "/subgoal": "/subgoal",
+      "/subscription": "/subscription",
+      "/suggest": "/suggestions",
+      "/suggestions": "/suggestions",
+      "/tasks": "/agents",
+      "/timestamps": "/timestamps",
+      "/title": "/title",
+      "/tools": "/tools",
+      "/toolsets": "/toolsets",
+      "/topup": "/topup",
+      "/ts": "/timestamps",
+      "/undo": "/undo",
+      "/update": "/update",
+      "/upgrade": "/subscription",
+      "/usage": "/usage",
+      "/v": "/version",
+      "/verbose": "/verbose",
+      "/version": "/version",
+      "/voice": "/voice",
+      "/wake": "/wake",
+      "/whoami": "/whoami",
+      "/worktree": "/worktree",
+      "/yolo": "/yolo"
+    },
+    "commands": {
+      "/agents": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/approvals": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/approve": {
+        "argument_mode": "text",
+        "desktop": "messaging"
+      },
+      "/battery": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/bg": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/blueprint": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/bp": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/branch": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/browser": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/btw": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/bundles": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/busy": {
+        "argument_mode": "options",
+        "desktop": "terminal"
+      },
+      "/clear": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/codex-runtime": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/codex_runtime": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/commands": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/compact": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/compose": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/compress": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/config": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/context": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/copy": {
+        "argument_mode": "text",
+        "desktop": "terminal"
+      },
+      "/cron": {
+        "argument_mode": "options",
+        "desktop": "terminal"
+      },
+      "/ctx": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/curator": {
+        "argument_mode": "options",
+        "desktop": "advanced"
+      },
+      "/debug": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/deny": {
+        "argument_mode": "text",
+        "desktop": "messaging"
+      },
+      "/diff": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/egress": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/exit": {
+        "argument_mode": "text",
+        "desktop": "terminal"
+      },
+      "/export": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/fast": {
+        "argument_mode": "options",
+        "desktop": "advanced"
+      },
+      "/focus": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/footer": {
+        "argument_mode": "options",
+        "desktop": "terminal"
+      },
+      "/fork": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/gateway": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/generate-pet": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/goal": {
+        "argument_mode": "mixed",
+        "desktop": null
+      },
+      "/handoff": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/hatch": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/hb": {
+        "argument_mode": "mixed",
+        "desktop": null
+      },
+      "/heartbeat": {
+        "argument_mode": "mixed",
+        "desktop": null
+      },
+      "/help": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/history": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/image": {
+        "argument_mode": "text",
+        "desktop": "terminal"
+      },
+      "/import": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/indicator": {
+        "argument_mode": "options",
+        "desktop": "terminal"
+      },
+      "/init": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/insights": {
+        "argument_mode": "text",
+        "desktop": "advanced"
+      },
+      "/journey": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/kanban": {
+        "argument_mode": "options",
+        "desktop": "advanced"
+      },
+      "/learn": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/learning": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/login": {
+        "argument_mode": null,
+        "desktop": "settings"
+      },
+      "/loop": {
+        "argument_mode": "mixed",
+        "desktop": null
+      },
+      "/memory": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/memory-graph": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/moa": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/model": {
+        "argument_mode": "text",
+        "desktop": "hidden"
+      },
+      "/new": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/palette": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/paste": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/pause": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/personality": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/pet": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/plan": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/platform": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/platforms": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/plugins": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/proactive": {
+        "argument_mode": "mixed",
+        "desktop": null
+      },
+      "/profile": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/prompt": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/q": {
+        "argument_mode": "mixed",
+        "desktop": null
+      },
+      "/queue": {
+        "argument_mode": "mixed",
+        "desktop": null
+      },
+      "/quit": {
+        "argument_mode": "text",
+        "desktop": "terminal"
+      },
+      "/reasoning": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/redraw": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/refine": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/reload": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/reload-mcp": {
+        "argument_mode": null,
+        "desktop": "advanced"
+      },
+      "/reload-skills": {
+        "argument_mode": null,
+        "desktop": "advanced"
+      },
+      "/reload_mcp": {
+        "argument_mode": null,
+        "desktop": "advanced"
+      },
+      "/reload_skills": {
+        "argument_mode": null,
+        "desktop": "advanced"
+      },
+      "/reset": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/restart": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/resume": {
+        "argument_mode": "mixed",
+        "desktop": null
+      },
+      "/retry": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/review": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/rollback": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/save": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/sb": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/sessions": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/set-home": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/sethome": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/skills": {
+        "argument_mode": "options",
+        "desktop": "settings"
+      },
+      "/skin": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/snap": {
+        "argument_mode": "text",
+        "desktop": "terminal"
+      },
+      "/snapshot": {
+        "argument_mode": "text",
+        "desktop": "terminal"
+      },
+      "/start": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/status": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/statusbar": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/steer": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/stop": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/subgoal": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/subscription": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/suggest": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/suggestions": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/tasks": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/timestamps": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/title": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/tools": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/toolsets": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/topic": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/topup": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/ts": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/undo": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/update": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/upgrade": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/usage": {
+        "argument_mode": "text",
+        "desktop": null
+      },
+      "/v": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/verbose": {
+        "argument_mode": null,
+        "desktop": "terminal"
+      },
+      "/version": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/voice": {
+        "argument_mode": "options",
+        "desktop": "composer-voice"
+      },
+      "/wake": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/whoami": {
+        "argument_mode": null,
+        "desktop": null
+      },
+      "/worktree": {
+        "argument_mode": "options",
+        "desktop": null
+      },
+      "/yolo": {
+        "argument_mode": null,
+        "desktop": null
+      }
+    },
+    "pairs": [
+      [
+        "/new",
+        "Start a new session (fresh session ID + history) (usage: /new [name])"
+      ],
+      [
+        "/clear",
+        "Clear screen and start a new session"
+      ],
+      [
+        "/redraw",
+        "Force a full UI repaint (recovers from terminal drift)"
+      ],
+      [
+        "/history",
+        "Show conversation history"
+      ],
+      [
+        "/save",
+        "Export the current conversation (bare /save shows usage) (usage: /save <json|md|html> [filename] [redact])"
+      ],
+      [
+        "/retry",
+        "Retry the last message (resend to agent)"
+      ],
+      [
+        "/prompt",
+        "Compose your next prompt in $EDITOR (markdown), then send it (usage: /prompt [initial text])"
+      ],
+      [
+        "/undo",
+        "Back up N user turns and re-prompt (default 1) (usage: /undo [N])"
+      ],
+      [
+        "/title",
+        "Set a title for the current session (usage: /title [name])"
+      ],
+      [
+        "/handoff",
+        "Hand off this session to a messaging platform (Telegram, Discord, etc.) (usage: /handoff <platform>)"
+      ],
+      [
+        "/branch",
+        "Branch the current session (new thread on Discord/Telegram/Slack/Matrix; --here stays here) (usage: /branch [--here] [name])"
+      ],
+      [
+        "/worktree",
+        "Show, list, create, or prune isolated git worktrees (usage: /worktree [new [name]|list|prune [--dry-run]])"
+      ],
+      [
+        "/compress",
+        "Compress conversation context (add 'here [N]' to keep recent N turns; --preview shows what would happen) (usage: /compress [here [N] | focus topic | --preview|--dry-run])"
+      ],
+      [
+        "/rollback",
+        "List or restore filesystem checkpoints (restores keep your hand-edits; --all overrides) (usage: /rollback [number] [--all])"
+      ],
+      [
+        "/snapshot",
+        "Create or restore state snapshots of Hermes config/state (usage: /snapshot [create|restore <id>|prune])"
+      ],
+      [
+        "/export",
+        "Export a profile (config, skills, theme) to a shareable archive (usage: /export [profile] [-o output.tar.gz])"
+      ],
+      [
+        "/import",
+        "Import a shared profile archive as a new profile (usage: /import <archive.tar.gz> [--name <name>])"
+      ],
+      [
+        "/stop",
+        "Kill all running background processes"
+      ],
+      [
+        "/bg",
+        "Run a prompt in a separate background session (usage: /bg <prompt>)"
+      ],
+      [
+        "/btw",
+        "Ask a side question about the current conversation without interrupting it (usage: /btw <question>)"
+      ],
+      [
+        "/agents",
+        "Show active agents and running tasks"
+      ],
+      [
+        "/journey",
+        "Open the learning journey timeline (usage: /journey [list|delete <id>|edit <id>])"
+      ],
+      [
+        "/queue",
+        "Queue a prompt for the next turn, or list/edit/rm/move/clear queued prompts (usage: /queue [<prompt>|list|edit N <prompt>|rm N|move A B|clear])"
+      ],
+      [
+        "/steer",
+        "Inject a message after the next tool call without interrupting (usage: /steer <prompt>)"
+      ],
+      [
+        "/goal",
+        "Set a standing goal Hermes works on across turns until achieved (usage: /goal [text | draft <text> | show | gate add <cmd> | pause | resume | clear | status | wait <pid> | unwait])"
+      ],
+      [
+        "/heartbeat",
+        "Set a recurring prompt that re-enters this session when idle (usage: /heartbeat [every <interval> <prompt> | status | pause | resume | clear])"
+      ],
+      [
+        "/refine",
+        "Review this conversation now and save lessons to memory/skills (usage: /refine [focus instructions])"
+      ],
+      [
+        "/review",
+        "Spawn an independent subagent to review the work just discussed (PR, code, docs) (usage: /review [review instructions])"
+      ],
+      [
+        "/loop",
+        "Re-run a prompt on a recurring interval in this session (usage: /loop [interval] <prompt> [--times N] [--until <condition>] | status | pause | resume | stop)"
+      ],
+      [
+        "/plan",
+        "Write a markdown implementation plan to .hermes/plans/ without executing anything (usage: /plan [task])"
+      ],
+      [
+        "/moa",
+        "Run one prompt through the default Mixture of Agents preset, then restore your model (usage: /moa <prompt>)"
+      ],
+      [
+        "/subgoal",
+        "Add or manage extra criteria on the active goal (usage: /subgoal [text | remove N | clear])"
+      ],
+      [
+        "/status",
+        "Show session, model, token, and context info"
+      ],
+      [
+        "/egress",
+        "Show Docker egress proxy status (usage: /egress [status])"
+      ],
+      [
+        "/context",
+        "Show detailed context window view with usage gauge, category breakdown, compression stats, and throughput (usage: /context [all])"
+      ],
+      [
+        "/whoami",
+        "Show your slash command access (admin / user)"
+      ],
+      [
+        "/profile",
+        "Show active profile name and home directory"
+      ],
+      [
+        "/resume",
+        "Resume a previously-named session (usage: /resume [name])"
+      ],
+      [
+        "/sessions",
+        "Browse and resume previous sessions"
+      ],
+      [
+        "/config",
+        "Show current configuration"
+      ],
+      [
+        "/model",
+        "Switch model (session-scoped; --global to persist) (usage: /model [model] [--provider name] [--reasoning level] [--global|--session] [--refresh])"
+      ],
+      [
+        "/codex-runtime",
+        "Toggle codex app-server runtime for OpenAI/Codex models (usage: /codex-runtime [auto|codex_app_server])"
+      ],
+      [
+        "/personality",
+        "Set a predefined personality (usage: /personality [name])"
+      ],
+      [
+        "/statusbar",
+        "Toggle the context/model status bar"
+      ],
+      [
+        "/battery",
+        "Toggle a color-coded battery indicator in the status bar (usage: /battery [on|off|status])"
+      ],
+      [
+        "/timestamps",
+        "Toggle [HH:MM] timestamps on messages and /history (usage: /timestamps [on|off|status])"
+      ],
+      [
+        "/diff",
+        "Show git changes in the working directory (usage: /diff [staged|all|session] [--stat] [path...])"
+      ],
+      [
+        "/verbose",
+        "Cycle tool progress display: off -> new -> all -> verbose"
+      ],
+      [
+        "/focus",
+        "Toggle focus view — show only your prompt and the final response (usage: /focus [on|off|status])"
+      ],
+      [
+        "/footer",
+        "Toggle gateway runtime-metadata footer on final replies (usage: /footer [on|off|status])"
+      ],
+      [
+        "/yolo",
+        "Toggle YOLO mode (skip all dangerous command approvals)"
+      ],
+      [
+        "/approvals",
+        "Show or set the persistent dangerous-command approval mode (usage: /approvals [manual|smart|off])"
+      ],
+      [
+        "/reasoning",
+        "Manage reasoning effort and display (usage: /reasoning [level|show|hide|full|clamp] [--global])"
+      ],
+      [
+        "/fast",
+        "Fast mode — OpenAI Priority Processing / Anthropic Fast Mode (normal/fast/auto/cold) (usage: /fast [normal|fast|auto|cold|status] [--global])"
+      ],
+      [
+        "/skin",
+        "Show or change the display skin/theme (usage: /skin [name])"
+      ],
+      [
+        "/indicator",
+        "Pick the TUI busy-indicator style (usage: /indicator [ascii|emoji|kaomoji|unicode])"
+      ],
+      [
+        "/voice",
+        "Toggle voice mode (usage: /voice [on|off|tts|status])"
+      ],
+      [
+        "/wake",
+        "Toggle the 'Hey Hermes' wake word listener (usage: /wake [on|off|status])"
+      ],
+      [
+        "/busy",
+        "Control how messages behave while Hermes is working (usage: /busy [queue|steer|interrupt|status])"
+      ],
+      [
+        "/tools",
+        "Manage tools: /tools [list|disable|enable] [name...] (usage: /tools [list|disable|enable] [name...])"
+      ],
+      [
+        "/toolsets",
+        "List available toolsets"
+      ],
+      [
+        "/skills",
+        "Search, install, inspect, or manage skills"
+      ],
+      [
+        "/memory",
+        "Review pending memory writes / toggle the approval gate (usage: /memory [pending|approve|reject|approval] [id|on|off])"
+      ],
+      [
+        "/bundles",
+        "List skill bundles (aliases /<name> for multiple skills)"
+      ],
+      [
+        "/pet",
+        "Toggle or adopt a petdex mascot (/pet, /pet list, /pet <slug>) (usage: /pet [toggle|list|scale <n>|<slug>])"
+      ],
+      [
+        "/hatch",
+        "Generate a new petdex pet from a description (usage: /hatch [description])"
+      ],
+      [
+        "/learn",
+        "Learn a reusable skill from anything you describe (dirs, URLs, this chat, notes) (usage: /learn <what to learn from>)"
+      ],
+      [
+        "/init",
+        "Generate or update AGENTS.md project instructions from a repo scan (usage: /init [notes])"
+      ],
+      [
+        "/cron",
+        "Manage scheduled tasks (usage: /cron [subcommand])"
+      ],
+      [
+        "/suggestions",
+        "Review suggested automations (accept/dismiss) (usage: /suggestions [accept|dismiss N | catalog])"
+      ],
+      [
+        "/blueprint",
+        "Set up an automation from a blueprint template (usage: /blueprint [name] [slot=value ...])"
+      ],
+      [
+        "/curator",
+        "Background skill maintenance (status, run, pin, archive, list-archived) (usage: /curator [subcommand])"
+      ],
+      [
+        "/kanban",
+        "Multi-profile collaboration board (tasks, links, comments) (usage: /kanban [subcommand])"
+      ],
+      [
+        "/reload",
+        "Reload .env variables into the running session"
+      ],
+      [
+        "/reload-mcp",
+        "Reload MCP servers from config"
+      ],
+      [
+        "/reload-skills",
+        "Re-scan ~/.hermes/skills/ for newly installed or removed skills"
+      ],
+      [
+        "/browser",
+        "Connect browser tools to your live Chromium-family browser via CDP, or switch to Browser Use mode (usage: /browser [connect|disconnect|status|use])"
+      ],
+      [
+        "/plugins",
+        "List installed plugins and their status"
+      ],
+      [
+        "/help",
+        "Show available commands (/help skills lists skill commands, /help <text> filters) (usage: /help [skills|<filter>])"
+      ],
+      [
+        "/palette",
+        "Open the fuzzy command palette (also Ctrl+P)"
+      ],
+      [
+        "/usage",
+        "Show token usage and rate limits; `reset` redeems a banked Codex limit reset (usage: /usage [reset [--force]])"
+      ],
+      [
+        "/subscription",
+        "View your Nous plan and change it in the browser"
+      ],
+      [
+        "/login",
+        "Sign in with a Nous account (keeps your connectors)"
+      ],
+      [
+        "/topup",
+        "Show your Nous balance and manage billing on the portal"
+      ],
+      [
+        "/insights",
+        "Show usage insights and analytics (usage: /insights [days])"
+      ],
+      [
+        "/platforms",
+        "Show gateway/messaging platform status"
+      ],
+      [
+        "/copy",
+        "Copy the last assistant response to clipboard (usage: /copy [number])"
+      ],
+      [
+        "/paste",
+        "Attach clipboard image from your clipboard"
+      ],
+      [
+        "/image",
+        "Attach a local image file for your next prompt (usage: /image <path>)"
+      ],
+      [
+        "/update",
+        "Update Hermes Agent to the latest version"
+      ],
+      [
+        "/version",
+        "Show Hermes Agent version"
+      ],
+      [
+        "/debug",
+        "Upload debug report (system info + logs) and get shareable links (usage: /debug [nous|local])"
+      ],
+      [
+        "/quit",
+        "Exit the CLI (use --delete to also remove session history) (usage: /quit [--delete])"
+      ],
+      [
+        "/density",
+        "Toggle compact display mode"
+      ],
+      [
+        "/logs",
+        "Show recent gateway log lines"
+      ],
+      [
+        "/mouse",
+        "Set mouse tracking preset [on|off|toggle|wheel|buttons|all]"
+      ],
+      [
+        "/hello",
+        "Say hello"
+      ],
+      [
+        "/airtable",
+        "Airtable REST API via curl. Records CRUD, filters, upserts."
+      ],
+      [
+        "/apple-notes",
+        "Manage Apple Notes via memo CLI: create, search, edit."
+      ],
+      [
+        "/apple-reminders",
+        "Apple Reminders via remindctl: add, list, complete."
+      ],
+      [
+        "/architecture-diagram",
+        "Dark-themed SVG architecture/cloud/infra diagrams as HTML."
+      ],
+      [
+        "/arxiv",
+        "Search arXiv papers by keyword, author, category, or ID."
+      ],
+      [
+        "/ascii-video",
+        "ASCII video: convert video/audio to colored ASCII MP4/GIF."
+      ],
+      [
+        "/baoyu-infographic",
+        "Infographics: 21 layouts x 21 styles (信息图, 可视化)."
+      ],
+      [
+        "/blocked-page-recovery",
+        "Use when a fetch fails: 403/429, paywall, WAF, bot wall."
+      ],
+      [
+        "/box",
+        "Box manages cloud files, sharing, search, and metadata."
+      ],
+      [
+        "/claude-code",
+        "Delegate coding to Claude Code CLI (features, PRs)."
+      ],
+      [
+        "/claude-design",
+        "Design one-off HTML artifacts (landing, deck, prototype)."
+      ],
+      [
+        "/codebase-inspection",
+        "Inspect codebases w/ pygount: LOC, languages, ratios."
+      ],
+      [
+        "/codex",
+        "Delegate coding to OpenAI Codex CLI (features, PRs)."
+      ],
+      [
+        "/competitor-news-monitor",
+        "Watch named companies for material news; cited digests."
+      ],
+      [
+        "/computer-use",
+        "Drive the desktop background-first; escalate on signal."
+      ],
+      [
+        "/demo-skill",
+        "A demo skill for Hermex tests"
+      ],
+      [
+        "/design-md",
+        "Author/validate/export Google's DESIGN.md token spec files."
+      ],
+      [
+        "/document-to-action-items",
+        "Extract cited obligations, deadlines, tasks from documents."
+      ],
+      [
+        "/docx",
+        "Create, read, edit, template, and review Word .docx files."
+      ],
+      [
+        "/dogfood",
+        "Exploratory QA of web apps: find bugs, evidence, reports."
+      ],
+      [
+        "/email-inbox-triage",
+        "Triage an inbox: prioritize threads, draft replies safely."
+      ],
+      [
+        "/findmy",
+        "Track Apple devices/AirTags via FindMy.app on macOS."
+      ],
+      [
+        "/gif-search",
+        "Search/download GIFs from Tenor via curl + jq."
+      ],
+      [
+        "/github",
+        "GitHub via gh CLI: PRs, issues, reviews, repos, auth."
+      ],
+      [
+        "/google-workspace",
+        "Gmail, Calendar, Drive, Docs, Sheets via gws CLI or Python."
+      ],
+      [
+        "/grounded-citations",
+        "Ground answers and documents in cited, verifiable sources."
+      ],
+      [
+        "/hermes-agent",
+        "Use, configure, theme, extend, and orchestrate Hermes Agent."
+      ],
+      [
+        "/hermes-agent-skill-authoring",
+        "Author in-repo SKILL.md files: frontmatter and structure."
+      ],
+      [
+        "/himalaya",
+        "Himalaya CLI: IMAP/SMTP email from terminal."
+      ],
+      [
+        "/humanizer",
+        "Humanize text: strip AI-isms and add real voice."
+      ],
+      [
+        "/imessage",
+        "Send and receive iMessages/SMS via the imsg CLI on macOS."
+      ],
+      [
+        "/inspecting-hermes-desktop-dom",
+        "Read the live Hermes desktop DOM/CSS over CDP."
+      ],
+      [
+        "/llm-wiki",
+        "Karpathy's LLM Wiki: build/query interlinked markdown KB."
+      ],
+      [
+        "/manim-video",
+        "Manim CE animations: 3Blue1Brown math/algo videos."
+      ],
+      [
+        "/maps",
+        "Geocode, POIs, routes, timezones via OpenStreetMap/OSRM."
+      ],
+      [
+        "/meeting-action-items",
+        "Turn meeting notes into cited decisions, owners, tickets."
+      ],
+      [
+        "/node-inspect-debugger",
+        "Debug Node.js via --inspect + Chrome DevTools Protocol CLI."
+      ],
+      [
+        "/notion",
+        "Notion API + ntn CLI: pages, databases, markdown, Workers."
+      ],
+      [
+        "/obsidian",
+        "Read, search, create, and edit notes in the Obsidian vault."
+      ],
+      [
+        "/opencode",
+        "Delegate coding to OpenCode CLI (features, PR review)."
+      ],
+      [
+        "/p5js",
+        "p5.js sketches: gen art, shaders, interactive, 3D."
+      ],
+      [
+        "/pdf",
+        "PDF files: create, read, merge, fill, OCR, edit text."
+      ],
+      [
+        "/popular-web-designs",
+        "54 real design systems (Stripe, Linear, Vercel) as HTML/CSS."
+      ],
+      [
+        "/powerpoint",
+        "Create, read, edit .pptx decks with python-pptx."
+      ],
+      [
+        "/product-price-monitor",
+        "Watch product, flight, or listing prices; alert on target."
+      ],
+      [
+        "/python-debugpy",
+        "Debug Python: pdb REPL + debugpy remote (DAP)."
+      ],
+      [
+        "/requesting-code-review",
+        "Pre-commit review: security scan, quality gates, auto-fix."
+      ],
+      [
+        "/simplify-code",
+        "Parallel 4-agent cleanup of recent code changes."
+      ],
+      [
+        "/songsee",
+        "Audio spectrograms/features (mel, chroma, MFCC) via CLI."
+      ],
+      [
+        "/songwriting-and-ai-music",
+        "Songwriting craft and Suno AI music prompts."
+      ],
+      [
+        "/spike",
+        "Throwaway experiments to validate an idea before build."
+      ],
+      [
+        "/systematic-debugging",
+        "4-phase root cause debugging: understand bugs before fixing."
+      ],
+      [
+        "/teams-meeting-pipeline",
+        "Teams meeting summaries, job replay, Graph subscriptions."
+      ],
+      [
+        "/test-driven-development",
+        "TDD: enforce RED-GREEN-REFACTOR, tests before code."
+      ],
+      [
+        "/weekly-review-planning",
+        "Weekly reset: commitments, stalled work, next-week plan."
+      ],
+      [
+        "/xlsx",
+        "Create, read, edit Excel .xlsx workbooks and CSVs."
+      ],
+      [
+        "/xurl",
+        "X/Twitter via xurl CLI: raw post search, posting, DM, media."
+      ],
+      [
+        "/youtube-content",
+        "YouTube transcripts to summaries, threads, blogs."
+      ]
+    ],
+    "skill_count": 58,
+    "skills": {
+      "/airtable": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/apple-notes": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/apple-reminders": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/architecture-diagram": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/arxiv": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/ascii-video": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/baoyu-infographic": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/blocked-page-recovery": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/box": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/claude-code": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/claude-design": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/codebase-inspection": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/codex": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/competitor-news-monitor": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/computer-use": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/demo-skill": {
+        "origin": "local",
+        "usage": 1
+      },
+      "/design-md": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/document-to-action-items": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/docx": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/dogfood": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/email-inbox-triage": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/findmy": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/gif-search": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/github": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/google-workspace": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/grounded-citations": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/hermes-agent": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/hermes-agent-skill-authoring": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/himalaya": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/humanizer": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/imessage": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/inspecting-hermes-desktop-dom": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/llm-wiki": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/manim-video": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/maps": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/meeting-action-items": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/node-inspect-debugger": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/notion": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/obsidian": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/opencode": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/p5js": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/pdf": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/popular-web-designs": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/powerpoint": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/product-price-monitor": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/python-debugpy": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/requesting-code-review": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/simplify-code": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/songsee": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/songwriting-and-ai-music": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/spike": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/systematic-debugging": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/teams-meeting-pipeline": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/test-driven-development": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/weekly-review-planning": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/xlsx": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/xurl": {
+        "origin": "bundled",
+        "usage": 0
+      },
+      "/youtube-content": {
+        "origin": "bundled",
+        "usage": 0
+      }
+    },
+    "sub": {
+      "/approvals": [
+        "manual",
+        "smart",
+        "off"
+      ],
+      "/approve": [
+        "session",
+        "always"
+      ],
+      "/battery": [
+        "on",
+        "off",
+        "status"
+      ],
+      "/browser": [
+        "connect",
+        "disconnect",
+        "status",
+        "use"
+      ],
+      "/busy": [
+        "queue",
+        "steer",
+        "interrupt",
+        "status"
+      ],
+      "/codex-runtime": [
+        "auto",
+        "codex"
+      ],
+      "/context": [
+        "all"
+      ],
+      "/cron": [
+        "list",
+        "add",
+        "create",
+        "edit",
+        "pause",
+        "resume",
+        "run",
+        "remove"
+      ],
+      "/curator": [
+        "status",
+        "run",
+        "pause",
+        "resume",
+        "pin",
+        "unpin",
+        "restore",
+        "list-archived"
+      ],
+      "/debug": [
+        "nous",
+        "local"
+      ],
+      "/diff": [
+        "staged",
+        "all",
+        "session"
+      ],
+      "/egress": [
+        "status"
+      ],
+      "/fast": [
+        "normal",
+        "fast",
+        "auto",
+        "cold",
+        "status",
+        "on",
+        "off",
+        "--global"
+      ],
+      "/focus": [
+        "on",
+        "off",
+        "status"
+      ],
+      "/footer": [
+        "on",
+        "off",
+        "status"
+      ],
+      "/heartbeat": [
+        "status",
+        "pause",
+        "resume",
+        "clear"
+      ],
+      "/indicator": [
+        "ascii",
+        "emoji",
+        "kaomoji",
+        "unicode"
+      ],
+      "/journey": [
+        "list",
+        "delete",
+        "edit"
+      ],
+      "/kanban": [
+        "init",
+        "boards",
+        "create",
+        "list",
+        "ls",
+        "show",
+        "assign",
+        "reclaim",
+        "reassign",
+        "diagnostics",
+        "diag",
+        "link",
+        "unlink",
+        "claim",
+        "comment",
+        "complete",
+        "edit",
+        "block",
+        "unblock",
+        "archive",
+        "tail",
+        "dispatch",
+        "stats",
+        "notify-subscribe",
+        "notify-list",
+        "notify-unsubscribe",
+        "log",
+        "runs",
+        "heartbeat",
+        "assignees",
+        "context",
+        "specify",
+        "gc"
+      ],
+      "/memory": [
+        "pending",
+        "approve",
+        "reject",
+        "approval"
+      ],
+      "/pet": [
+        "toggle",
+        "list",
+        "scale",
+        "off"
+      ],
+      "/platform": [
+        "pause",
+        "resume",
+        "list"
+      ],
+      "/queue": [
+        "list",
+        "edit",
+        "rm",
+        "move",
+        "clear",
+        "add"
+      ],
+      "/reasoning": [
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra",
+        "show",
+        "hide",
+        "on",
+        "off",
+        "full",
+        "clamp",
+        "--global"
+      ],
+      "/save": [
+        "json",
+        "md",
+        "html"
+      ],
+      "/skills": [
+        "search",
+        "browse",
+        "inspect",
+        "install",
+        "audit",
+        "pending",
+        "approve",
+        "reject",
+        "diff",
+        "approval"
+      ],
+      "/snapshot": [
+        "create",
+        "restore"
+      ],
+      "/suggestions": [
+        "accept",
+        "dismiss",
+        "catalog",
+        "clear"
+      ],
+      "/timestamps": [
+        "on",
+        "off",
+        "status"
+      ],
+      "/tools": [
+        "list",
+        "disable",
+        "enable"
+      ],
+      "/topic": [
+        "off",
+        "help",
+        "session"
+      ],
+      "/voice": [
+        "on",
+        "off",
+        "tts",
+        "status"
+      ],
+      "/wake": [
+        "on",
+        "off",
+        "status"
+      ],
+      "/worktree": [
+        "new",
+        "list",
+        "prune"
+      ]
+    },
+    "warning": ""
+  },
+  "complete.slash /approvals ": {
+    "items": [
+      {
+        "display": "manual",
+        "kind": "command",
+        "meta": "",
+        "text": "manual"
+      },
+      {
+        "display": "smart",
+        "kind": "command",
+        "meta": "",
+        "text": "smart"
+      },
+      {
+        "display": "off",
+        "kind": "command",
+        "meta": "",
+        "text": "off"
+      }
+    ],
+    "replace_from": 11
+  },
+  "slash.exec /context (nothing sent yet)": {
+    "output": "  (._.) No active agent -- send a message first."
+  },
+  "slash.exec /demo-skill do it": {
+    "code": 4018,
+    "message": "skill command: use command.dispatch for /demo-skill"
+  },
+  "slash.exec /hello": {
+    "output": "hermex-quick"
+  },
+  "slash.exec /queue hi": {
+    "message": "hi",
+    "type": "send"
+  },
+  "slash.exec /steer": {
+    "code": 4004,
+    "message": "usage: /steer <prompt>"
+  }
+}

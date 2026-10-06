@@ -28,12 +28,6 @@ struct SlashCommand: Identifiable, Equatable, Sendable {
     static func == (lhs: SlashCommand, rhs: SlashCommand) -> Bool {
         lhs.name == rhs.name
     }
-
-    /// Whether a Hermes session runs this command rather than sending it as typed (#1013).
-    var runsInHermesSession: Bool {
-        if case .serverSide(let action) = handler { return action.runsInHermesSession }
-        return false
-    }
 }
 
 enum SlashCommandHandler: Equatable, Sendable {
@@ -67,15 +61,8 @@ enum ServerSideAction: String, Equatable, Sendable {
     case btw
     case background
     case goal
-
-    /// The commands a Hermes session runs itself (#1013, `/model` #1015, `/reasoning` and
-    /// `/personality` #1016); any other `/` text goes to its host as typed.
-    var runsInHermesSession: Bool {
-        switch self {
-        case .goal, .btw, .background, .model, .reasoning, .personality: return true
-        default: return false
-        }
-    }
+    /// A Hermes chat's approval bypass (#1036).
+    case yolo
 }
 
 enum SlashCommandSubArgs: Equatable, Sendable {

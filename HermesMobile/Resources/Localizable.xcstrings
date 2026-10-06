@@ -5406,6 +5406,112 @@
       }
     },
     "/" : { "shouldTranslate" : false },
+    "/%@ points to another alias, so Hermex didn't run it." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يشير /%@ إلى اسم مستعار آخر، لذلك لم يشغّله Hermex."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ verweist auf einen weiteren Alias, daher hat Hermex den Befehl nicht ausgeführt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ apunta a otro alias, así que Hermex no lo ejecutó."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ renvoie vers un autre alias, donc Hermex ne l’a pas exécuté."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ מפנה לכינוי אחר, ולכן Hermex לא הריץ אותו."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ rimanda a un altro alias, quindi Hermex non l’ha eseguito."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ は別のエイリアスを指しているため、Hermex は実行しませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@이(가) 다른 별칭을 가리키므로 Hermex가 실행하지 않았습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ verwijst naar een andere alias, dus Hermex heeft het niet uitgevoerd."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ wskazuje na inny alias, więc Hermex go nie uruchomił."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ aponta para outro alias, então o Hermex não o executou."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ ссылается на другой псевдоним, поэтому Hermex не выполнил команду."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ başka bir takma ada yönlendiriyor, bu yüzden Hermex onu çalıştırmadı."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ کسی دوسرے عرف کی طرف اشارہ کرتا ہے، اس لیے Hermex نے اسے نہیں چلایا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ 指向另一個別名，因此 Hermex 沒有執行它。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ 指向另一个别名，因此 Hermex 没有运行它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ 指向另一個別名，因此 Hermex 沒有執行它。"
+          }
+        }
+      }
+    },
     "/background is available for WebUI sessions only." : {
       "localizations" : {
         "ar" : {
@@ -12177,6 +12283,218 @@
     "Approval withdrawn because Hermes shut down." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Genehmigung zurückgezogen, weil Hermes beendet wurde." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Aprobación retirada porque Hermes se cerró." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Approbation retirée, car Hermes s’est arrêté." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Approvazione ritirata perché Hermes è stato chiuso." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Prośbę o zatwierdzenie wycofano, bo Hermes został zamknięty." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Aprovação retirada porque o Hermes foi encerrado." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Goedkeuring ingetrokken omdat Hermes is afgesloten." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes kapandığı için onay geri çekildi." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Запрос на подтверждение отозван, потому что Hermes завершил работу." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermesが終了したため、承認は取り下げられました。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "因 Hermes 已关闭，审批已撤回。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes가 종료되어 승인이 철회되었습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "سُحب طلب الموافقة لأن Hermes أُغلق." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "בקשת האישור בוטלה כי Hermes נסגר." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes بند ہونے کی وجہ سے منظوری واپس لے لی گئی۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "因 Hermes 已關閉，審核已撤回。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "因 Hermes 已關閉，審批已撤回。" } } } },
     "Approval withdrawn because the work stopped." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Genehmigung zurückgezogen, weil die Arbeit gestoppt wurde." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Aprobación retirada porque el trabajo se detuvo." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Approbation retirée, car le travail s’est arrêté." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Approvazione ritirata perché il lavoro si è interrotto." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Prośbę o zatwierdzenie wycofano, bo praca została zatrzymana." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Aprovação retirada porque o trabalho parou." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Goedkeuring ingetrokken omdat het werk is gestopt." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Çalışma durduğu için onay geri çekildi." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Запрос на подтверждение отозван, потому что работа остановлена." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "作業が停止したため、承認は取り下げられました。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "因工作已停止，审批已撤回。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "작업이 중지되어 승인이 철회되었습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "سُحب طلب الموافقة لأن العمل توقف." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "בקשת האישור בוטלה כי העבודה נעצרה." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "کام رک جانے کی وجہ سے منظوری واپس لے لی گئی۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "因工作已停止，審核已撤回。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "因工作已停止，審批已撤回。" } } } },
     "Approval withdrawn." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Genehmigung zurückgezogen." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Aprobación retirada." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Approbation retirée." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Approvazione ritirata." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Prośbę o zatwierdzenie wycofano." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Aprovação retirada." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Goedkeuring ingetrokken." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Onay geri çekildi." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Запрос на подтверждение отозван." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "承認は取り下げられました。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "审批已撤回。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "승인이 철회되었습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "سُحب طلب الموافقة." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "בקשת האישור בוטלה." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "منظوری واپس لے لی گئی۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "審核已撤回。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "審批已撤回。" } } } },
+    "Approvals are back on in this chat." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "عادت الموافقات للعمل في هذه الدردشة."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Genehmigungen sind in diesem Chat wieder aktiv."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Las aprobaciones vuelven a estar activas en este chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Les approbations sont de nouveau actives dans ce chat."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "האישורים פעילים שוב בצ׳אט הזה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Le approvazioni sono di nuovo attive in questa chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このチャットで承認が再び有効になりました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 채팅에서 승인이 다시 켜졌습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Goedkeuringen staan weer aan in deze chat."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zatwierdzenia są znów włączone na tym czacie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "As aprovações voltaram a valer neste chat."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Подтверждения в этом чате снова включены."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu sohbette onaylar yeniden açık."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اس چیٹ میں منظوریاں دوبارہ فعال ہیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此聊天已重新啟用審批。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此聊天已重新启用审批。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此聊天已重新啟用審核。"
+          }
+        }
+      }
+    },
+    "Approvals are skipped in this chat. Run /yolo again to turn them back on." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يتم تخطي الموافقات في هذه الدردشة. شغّل /yolo مرة أخرى لإعادة تفعيلها."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Genehmigungen werden in diesem Chat übersprungen. Führe /yolo erneut aus, um sie wieder zu aktivieren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Las aprobaciones se omiten en este chat. Vuelve a ejecutar /yolo para reactivarlas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Les approbations sont ignorées dans ce chat. Exécutez de nouveau /yolo pour les réactiver."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "האישורים מדולגים בצ׳אט הזה. הרץ שוב /yolo כדי להפעיל אותם מחדש."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Le approvazioni vengono saltate in questa chat. Esegui di nuovo /yolo per riattivarle."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このチャットでは承認をスキップします。もう一度 /yolo を実行すると元に戻ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 채팅에서는 승인을 건너뜁니다. 다시 켜려면 /yolo를 한 번 더 실행하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Goedkeuringen worden in deze chat overgeslagen. Voer /yolo opnieuw uit om ze weer aan te zetten."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zatwierdzenia są pomijane na tym czacie. Uruchom ponownie /yolo, aby je przywrócić."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "As aprovações estão sendo puladas neste chat. Execute /yolo de novo para reativá-las."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Подтверждения в этом чате пропускаются. Снова выполните /yolo, чтобы включить их."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu sohbette onaylar atlanıyor. Yeniden açmak için /yolo komutunu tekrar çalıştırın."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اس چیٹ میں منظوریاں چھوڑی جا رہی ہیں۔ انہیں دوبارہ فعال کرنے کے لیے /yolo دوبارہ چلائیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此聊天將略過審批。再次執行 /yolo 即可重新啟用。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此聊天将跳过审批。再次运行 /yolo 可重新启用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此聊天將略過審核。再次執行 /yolo 即可重新啟用。"
+          }
+        }
+      }
+    },
     "Approve" : {
       "localizations" : {
         "ar" : {
@@ -45140,6 +45458,218 @@
     "Groups" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Gruppen"}},"es":{"stringUnit":{"state":"needs_review","value":"Grupos"}},"fr":{"stringUnit":{"state":"needs_review","value":"Groupes"}},"it":{"stringUnit":{"state":"needs_review","value":"Gruppi"}},"pl":{"stringUnit":{"state":"needs_review","value":"Grupy"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Grupos"}},"nl":{"stringUnit":{"state":"needs_review","value":"Groepen"}},"tr":{"stringUnit":{"state":"needs_review","value":"Gruplar"}},"ru":{"stringUnit":{"state":"needs_review","value":"Группы"}},"ja":{"stringUnit":{"state":"needs_review","value":"グループ"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"群组"}},"ko":{"stringUnit":{"state":"needs_review","value":"그룹"}},"ar":{"stringUnit":{"state":"needs_review","value":"المجموعات"}},"he":{"stringUnit":{"state":"needs_review","value":"קבוצות"}},"ur":{"stringUnit":{"state":"needs_review","value":"گروپس"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"群組"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"群組"}}}},
     "Groups can have up to six members." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Gruppen können bis zu sechs Mitglieder haben." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Los grupos pueden tener hasta seis miembros." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Un groupe peut compter jusqu’à six membres." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "I gruppi possono avere fino a sei membri." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Grupy mogą mieć maksymalnie sześciu członków." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Os grupos podem ter até seis membros." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Groepen kunnen maximaal zes leden hebben." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Gruplarda en fazla altı üye olabilir." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "В группе может быть не более шести участников." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "グループのメンバーは最大6つまでです。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "群组最多可有 6 名成员。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "그룹에는 멤버를 최대 6개까지 둘 수 있습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "يمكن أن تضم المجموعات ستة أعضاء كحد أقصى." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "בקבוצה יכולים להיות עד שישה חברים." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "گروپس میں زیادہ سے زیادہ چھ ممبرز ہو سکتے ہیں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "群組最多可有 6 位成員。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "群組最多可有 6 位成員。" } } } },
     "Guidance queued. The bot may not have read it yet." : {"extractionState" : "manual", "localizations" : {"de" : {"stringUnit" : {"state" : "needs_review", "value" : "Hinweis eingereiht. Der Bot hat ihn möglicherweise noch nicht gelesen."}}, "es" : {"stringUnit" : {"state" : "needs_review", "value" : "Indicaciones en cola. Puede que el bot aún no las haya leído."}}, "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Indications en attente. Le bot ne les a peut-être pas encore lues."}}, "it" : {"stringUnit" : {"state" : "needs_review", "value" : "Indicazioni in coda. Il bot potrebbe non averle ancora lette."}}, "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Wskazówki w kolejce. Bot mógł ich jeszcze nie przeczytać."}}, "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "Orientações na fila. O bot pode ainda não ter lido."}}, "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "Aanwijzingen in de wachtrij. De bot heeft ze mogelijk nog niet gelezen."}}, "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "Yönlendirme sıraya alındı. Bot henüz okumamış olabilir."}}, "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Указания в очереди. Возможно, бот ещё не прочитал их."}}, "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "指示をキューに追加しました。ボットはまだ読んでいない可能性があります。"}}, "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "指导已排队。机器人可能尚未读取。"}}, "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "지침이 대기열에 추가되었습니다. 봇이 아직 읽지 않았을 수 있습니다."}}, "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "أُضيفت التوجيهات إلى قائمة الانتظار. ربما لم يقرأها البوت بعد."}}, "he" : {"stringUnit" : {"state" : "needs_review", "value" : "ההנחיות נוספו לתור. ייתכן שהבוט עדיין לא קרא אותן."}}, "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "رہنمائی قطار میں شامل ہو گئی۔ ممکن ہے بوٹ نے ابھی اسے نہ پڑھا ہو۔"}}, "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "指引已排入佇列。機器人可能尚未讀取。"}}, "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "指引已加入佇列。機械人可能尚未讀取。"}}, "en" : {"stringUnit" : {"state" : "translated", "value" : "Guidance queued. The bot may not have read it yet."}}}},
+    "Hermes did not accept /%@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "لم يقبل Hermes الأمر /%@."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes hat /%@ nicht angenommen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes no aceptó /%@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes n’a pas accepté /%@."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes לא קיבל את /%@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes non ha accettato /%@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes は /%@ を受け付けませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes가 /%@을(를) 받아들이지 않았습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes heeft /%@ niet geaccepteerd."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes nie przyjął /%@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O Hermes não aceitou /%@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes не принял /%@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes /%@ komutunu kabul etmedi."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes نے /%@ قبول نہیں کیا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 未接受 /%@。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 未接受 /%@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 未接受 /%@。"
+          }
+        }
+      }
+    },
+    "Hermes did not confirm /%@. Check before running it again." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "لم يؤكد Hermes الأمر /%@. تحقّق قبل تشغيله مرة أخرى."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes hat /%@ nicht bestätigt. Prüfe den Stand, bevor du den Befehl erneut ausführst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes no confirmó /%@. Compruébalo antes de volver a ejecutarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes n’a pas confirmé /%@. Vérifiez avant de l’exécuter à nouveau."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes לא אישר את /%@. כדאי לבדוק לפני שמריצים שוב."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes non ha confermato /%@. Controlla prima di eseguirlo di nuovo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes から /%@ の確認がありませんでした。もう一度実行する前に状態を確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes가 /%@을(를) 확인하지 않았습니다. 다시 실행하기 전에 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes heeft /%@ niet bevestigd. Controleer dit voordat u het opnieuw uitvoert."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes nie potwierdził /%@. Sprawdź stan, zanim uruchomisz go ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O Hermes não confirmou /%@. Verifique antes de executá-lo de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes не подтвердил /%@. Проверьте результат, прежде чем запускать снова."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes /%@ komutunu onaylamadı. Tekrar çalıştırmadan önce kontrol edin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes نے /%@ کی تصدیق نہیں کی۔ دوبارہ چلانے سے پہلے جانچ لیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 未確認 /%@。再次執行前請先檢查。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 未确认 /%@。再次运行前请先检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 未確認 /%@。再次執行前請先檢查。"
+          }
+        }
+      }
+    },
     "HERMEX" : {
       "shouldTranslate" : false
     },
@@ -46767,6 +47297,112 @@
       "shouldTranslate" : false
     },
     "Hermex can alert you when a reply finishes or fails while the app is in the background. You can change this in Settings → Notifications." : {"localizations": {"de": {"stringUnit": {"state": "needs_review", "value": "Hermex kann dich benachrichtigen, wenn eine Antwort im Hintergrund fertig wird oder fehlschlägt. Du kannst das unter Einstellungen → Mitteilungen ändern."}}, "es": {"stringUnit": {"state": "needs_review", "value": "Hermex puede avisarte cuando una respuesta termine o falle mientras la app está en segundo plano. Puedes cambiarlo en Ajustes → Notificaciones."}}, "fr": {"stringUnit": {"state": "needs_review", "value": "Hermex peut vous alerter quand une réponse se termine ou échoue pendant que l’app est en arrière-plan. Vous pouvez modifier ce choix dans Réglages → Notifications."}}, "it": {"stringUnit": {"state": "needs_review", "value": "Hermex può avvisarti quando una risposta termina o non riesce mentre l’app è in background. Puoi cambiarlo in Impostazioni → Notifiche."}}, "pl": {"stringUnit": {"state": "needs_review", "value": "Hermex może Cię powiadomić, gdy odpowiedź zakończy się lub nie powiedzie, a aplikacja działa w tle. Możesz to zmienić w Ustawienia → Powiadomienia."}}, "pt-BR": {"stringUnit": {"state": "needs_review", "value": "O Hermex pode avisar você quando uma resposta terminar ou falhar enquanto o app estiver em segundo plano. Você pode mudar isso em Ajustes → Notificações."}}, "nl": {"stringUnit": {"state": "needs_review", "value": "Hermex kan je waarschuwen wanneer een antwoord klaar is of mislukt terwijl de app op de achtergrond staat. Je kunt dit wijzigen in Instellingen → Meldingen."}}, "tr": {"stringUnit": {"state": "needs_review", "value": "Hermex, uygulama arka plandayken bir yanıt bittiğinde veya başarısız olduğunda sizi uyarabilir. Bunu Ayarlar → Bildirimler bölümünden değiştirebilirsiniz."}}, "ru": {"stringUnit": {"state": "needs_review", "value": "Hermex может оповестить вас, когда ответ будет готов или не удастся, пока приложение работает в фоне. Это можно изменить в разделе Настройки → Уведомления."}}, "ja": {"stringUnit": {"state": "needs_review", "value": "アプリがバックグラウンドにあるときに返信が完了または失敗すると、Hermex が通知します。これは「設定」→「通知」で変更できます。"}}, "zh-Hans": {"stringUnit": {"state": "needs_review", "value": "App 在后台时，回复完成或失败后 Hermex 可以提醒你。你可以在“设置”→“通知”中更改。"}}, "ko": {"stringUnit": {"state": "needs_review", "value": "앱이 백그라운드에 있을 때 답변이 완료되거나 실패하면 Hermex가 알려 드립니다. 설정 → 알림에서 변경할 수 있습니다."}}, "ar": {"stringUnit": {"state": "needs_review", "value": "يمكن لـ Hermex تنبيهك عند اكتمال الرد أو فشله أثناء عمل التطبيق في الخلفية. يمكنك تغيير ذلك من الإعدادات ← الإشعارات."}}, "he": {"stringUnit": {"state": "needs_review", "value": "‏Hermex יכול להתריע לך כשתשובה מסתיימת או נכשלת בזמן שהאפליקציה ברקע. אפשר לשנות זאת בהגדרות ← התראות."}}, "ur": {"stringUnit": {"state": "needs_review", "value": "ایپ کے پس منظر میں ہونے کے دوران جواب مکمل یا ناکام ہونے پر Hermex آپ کو الرٹ کر سکتا ہے۔ آپ اسے ترتیبات ← اطلاعات میں تبدیل کر سکتے ہیں۔"}}, "zh-Hant": {"stringUnit": {"state": "needs_review", "value": "App 在背景執行時，回覆完成或失敗後 Hermex 可以提醒你。你可以在「設定」→「通知」中更改。"}}, "zh-HK": {"stringUnit": {"state": "needs_review", "value": "App 在背景執行時，回覆完成或失敗後 Hermex 可以提示你。你可以在「設定」→「通知」中更改。"}}}},
+    "Hermex can't run /%@ in a Hermes chat yet (#702)." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "لا يستطيع Hermex تشغيل /%@ في دردشة Hermes بعد (#702)."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex kann /%@ in einem Hermes-Chat noch nicht ausführen (#702)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex aún no puede ejecutar /%@ en un chat de Hermes (#702)."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex ne peut pas encore exécuter /%@ dans un chat Hermes (#702)."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex עדיין לא יכול להריץ את /%@ בצ׳אט Hermes (#702)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex non può ancora eseguire /%@ in una chat Hermes (#702)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex は Hermes チャットでまだ /%@ を実行できません (#702)。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex는 아직 Hermes 채팅에서 /%@을(를) 실행할 수 없습니다(#702)."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex kan /%@ nog niet uitvoeren in een Hermes-chat (#702)."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex nie może jeszcze uruchomić /%@ na czacie Hermes (#702)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O Hermex ainda não pode executar /%@ em um chat do Hermes (#702)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex пока не может выполнить /%@ в чате Hermes (#702)."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex bir Hermes sohbetinde /%@ komutunu henüz çalıştıramıyor (#702)."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex ابھی Hermes چیٹ میں /%@ نہیں چلا سکتا (#702)۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex 暫時無法在 Hermes 聊天中執行 /%@（#702）。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex 暂时无法在 Hermes 聊天中运行 /%@（#702）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex 暫時無法在 Hermes 聊天中執行 /%@（#702）。"
+          }
+        }
+      }
+    },
     "Hermex cannot restore an archived Board in-app." : {
       "localizations" : {
         "ar" : { "stringUnit" : { "state" : "translated", "value" : "لا يستطيع Hermex استعادة لوحة مؤرشفة من داخل التطبيق." } },
@@ -79474,6 +80110,112 @@
         }
       }
     },
+    "Reconnect to the server to run /%@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "أعد الاتصال بالخادم لتشغيل /%@."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Verbinde dich erneut mit dem Server, um /%@ auszuführen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Reconéctate al servidor para ejecutar /%@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Reconnectez-vous au serveur pour exécuter /%@."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "התחבר מחדש לשרת כדי להריץ את /%@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Riconnettiti al server per eseguire /%@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ を実行するには、サーバに再接続してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@을(를) 실행하려면 서버에 다시 연결하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Maak opnieuw verbinding met de server om /%@ uit te voeren."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Połącz ponownie z serwerem, aby uruchomić /%@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Reconecte-se ao servidor para executar /%@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Переподключитесь к серверу, чтобы выполнить /%@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ komutunu çalıştırmak için sunucuya yeniden bağlanın."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ چلانے کے لیے سرور سے دوبارہ منسلک ہوں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "重新連線伺服器以執行 /%@。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "重新连接服务器以运行 /%@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "重新連線至伺服器以執行 /%@。"
+          }
+        }
+      }
+    },
     "Reconnect to the server to send a message." : {
       "localizations" : {
         "ar" : {
@@ -85730,6 +86472,112 @@
         }
       }
     },
+    "Run /%@ on one line." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "شغّل /%@ في سطر واحد."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Führe /%@ in einer einzigen Zeile aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ejecuta /%@ en una sola línea."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Exécutez /%@ sur une seule ligne."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הרץ את /%@ בשורה אחת."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Esegui /%@ su una sola riga."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ は 1 行で実行してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@은(는) 한 줄로 실행하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Voer /%@ uit op één regel."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Uruchom /%@ w jednym wierszu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Execute /%@ em uma única linha."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Выполните /%@ в одну строку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ komutunu tek satırda çalıştırın."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "/%@ کو ایک ہی سطر میں چلائیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請在一行內執行 /%@。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "请在一行内运行 /%@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請在一行內執行 /%@。"
+          }
+        }
+      }
+    },
     "Run Dispatcher" : { "localizations" : {
       "de" : { "stringUnit" : { "state" : "translated", "value" : "Dispatcher ausführen" } },
       "es" : { "stringUnit" : { "state" : "translated", "value" : "Ejecutar despachador" } },
@@ -86848,6 +87696,218 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "正在執行"
+          }
+        }
+      }
+    },
+    "Send a message first, then run /%@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "أرسل رسالة أولًا، ثم شغّل /%@."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sende zuerst eine Nachricht und führe dann /%@ aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Envía primero un mensaje y luego ejecuta /%@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Envoyez d’abord un message, puis exécutez /%@."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "שלח הודעה קודם, ואז הרץ את /%@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Invia prima un messaggio, poi esegui /%@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "先にメッセージを送信してから、/%@ を実行してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "먼저 메시지를 보낸 다음 /%@을(를) 실행하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Stuur eerst een bericht en voer daarna /%@ uit."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Najpierw wyślij wiadomość, a potem uruchom /%@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Envie uma mensagem primeiro e depois execute /%@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Сначала отправьте сообщение, затем выполните /%@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Önce bir mesaj gönderin, ardından /%@ komutunu çalıştırın."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "پہلے ایک پیغام بھیجیں، پھر /%@ چلائیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請先傳送一則訊息，再執行 /%@。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "请先发送一条消息，再运行 /%@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請先傳送一則訊息，再執行 /%@。"
+          }
+        }
+      }
+    },
+    "Skip approvals in this chat, or ask again" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تخطَّ الموافقات في هذه الدردشة، أو اطلبها من جديد"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Genehmigungen in diesem Chat überspringen oder wieder abfragen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Omitir las aprobaciones en este chat o volver a pedirlas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ignorer les approbations dans ce chat, ou les redemander"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "דלג על אישורים בצ׳אט הזה, או בקש אותם שוב"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Salta le approvazioni in questa chat o richiedile di nuovo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このチャットの承認をスキップ、または再び確認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 채팅에서 승인 건너뛰기 또는 다시 묻기"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Goedkeuringen in deze chat overslaan, of weer vragen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pomijaj zatwierdzenia na tym czacie lub pytaj ponownie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pular as aprovações neste chat ou voltar a pedi-las"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Пропускать подтверждения в этом чате или снова запрашивать"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu sohbette onayları atla veya yeniden sor"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اس چیٹ میں منظوریاں چھوڑیں، یا دوبارہ پوچھیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "在此聊天中略過審批，或重新詢問"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "在此聊天中跳过审批，或重新询问"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "在此聊天中略過審核，或重新詢問"
           }
         }
       }
@@ -112318,6 +113378,112 @@
     },
     "This Hermes connection does not support Bot chat here." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Diese Hermes-Verbindung unterstützt hier keinen Bot-Chat." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Esta conexión de Hermes no admite aquí el chat con bots." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Cette connexion Hermes ne prend pas en charge les discussions avec des bots ici." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Questa connessione Hermes non supporta qui la chat Bot." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "To połączenie Hermes nie obsługuje tutaj czatu z botami." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Esta conexão do Hermes não oferece suporte ao chat de Bot aqui." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Deze Hermes-verbinding ondersteunt hier geen botchat." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu Hermes bağlantısı burada Bot sohbetini desteklemiyor." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Это подключение Hermes не поддерживает здесь чат с ботами." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このHermes接続では、ここでのボットチャットに対応していません。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "此 Hermes 连接不支持在此处进行机器人聊天。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 Hermes 연결은 여기에서 봇 채팅을 지원하지 않습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لا يدعم اتصال Hermes هذا دردشة الروبوتات هنا." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "חיבור Hermes זה אינו תומך כאן בצ׳אט בוטים." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "یہ Hermes کنکشن یہاں بوٹ چیٹ کو سپورٹ نہیں کرتا۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "此 Hermes 連線不支援在此進行機器人聊天。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "此 Hermes 連線不支援在此進行機械人聊天。" } } } },
     "This Hermes connection no longer owns these workers. Reconnect to inspect them." : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Diese Hermes-Verbindung besitzt diese Worker nicht mehr. Stelle die Verbindung erneut her, um sie zu prüfen."}},"es":{"stringUnit":{"state":"needs_review","value":"Esta conexión de Hermes ya no controla estos workers. Vuelve a conectarte para inspeccionarlos."}},"fr":{"stringUnit":{"state":"needs_review","value":"Cette connexion Hermes ne contrôle plus ces workers. Reconnectez-vous pour les inspecter."}},"it":{"stringUnit":{"state":"needs_review","value":"Questa connessione Hermes non controlla più questi worker. Riconnettiti per ispezionarli."}},"pl":{"stringUnit":{"state":"needs_review","value":"To połączenie Hermes nie kontroluje już tych procesów roboczych. Połącz się ponownie, aby je sprawdzić."}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Esta conexão do Hermes não controla mais estes workers. Reconecte para inspecioná-los."}},"nl":{"stringUnit":{"state":"needs_review","value":"Deze Hermes-verbinding beheert deze workers niet meer. Maak opnieuw verbinding om ze te bekijken."}},"tr":{"stringUnit":{"state":"needs_review","value":"Bu Hermes bağlantısı artık bu worker'ları yönetmiyor. İncelemek için yeniden bağlanın."}},"ru":{"stringUnit":{"state":"needs_review","value":"Это подключение Hermes больше не управляет этими воркерами. Переподключитесь, чтобы проверить их."}},"ja":{"stringUnit":{"state":"needs_review","value":"この Hermes 接続はこれらのワーカーを管理していません。確認するには再接続してください。"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"此 Hermes 连接已不再拥有这些工作进程。请重新连接以检查它们。"}},"ko":{"stringUnit":{"state":"needs_review","value":"이 Hermes 연결은 더 이상 이 워커를 관리하지 않습니다. 확인하려면 다시 연결하세요."}},"ar":{"stringUnit":{"state":"needs_review","value":"لم يعد اتصال Hermes هذا يملك هذه العمليات العاملة. أعد الاتصال لفحصها."}},"he":{"stringUnit":{"state":"needs_review","value":"חיבור Hermes זה כבר אינו שולט בתהליכי העבודה האלה. יש להתחבר מחדש כדי לבדוק אותם."}},"ur":{"stringUnit":{"state":"needs_review","value":"یہ Hermes کنکشن اب ان ورکرز کا مالک نہیں ہے۔ ان کا جائزہ لینے کے لیے دوبارہ جڑیں۔"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"此 Hermes 連線已不再擁有這些工作程序。請重新連線以檢查它們。"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"此 Hermes 連線已不再擁有這些工作程序。請重新連線以檢查它們。"}}}},
+    "This Hermes host approves every command itself, so approvals can't be turned back on from here." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يوافق مضيف Hermes هذا على كل أمر بنفسه، لذلك لا يمكن إعادة تفعيل الموافقات من هنا."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dieser Hermes-Host genehmigt jeden Befehl selbst, daher lassen sich Genehmigungen von hier aus nicht wieder aktivieren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Este host de Hermes aprueba él mismo cada comando, así que las aprobaciones no se pueden reactivar desde aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cet hôte Hermes approuve lui-même chaque commande : les approbations ne peuvent donc pas être réactivées d’ici."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "מארח Hermes הזה מאשר כל פקודה בעצמו, ולכן אי אפשר להפעיל מחדש את האישורים מכאן."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Questo host Hermes approva da sé ogni comando, quindi le approvazioni non si possono riattivare da qui."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "この Hermes ホストはすべてのコマンドを自動で承認するため、ここから承認を再び有効にすることはできません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 Hermes 호스트는 모든 명령을 스스로 승인하므로 여기에서 승인을 다시 켤 수 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Deze Hermes-host keurt elke opdracht zelf goed, dus goedkeuringen kunnen hier niet weer worden aangezet."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ten host Hermes sam zatwierdza każde polecenie, więc nie można stąd ponownie włączyć zatwierdzeń."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Este host do Hermes aprova cada comando por conta própria, então as aprovações não podem ser reativadas daqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Этот хост Hermes сам подтверждает каждую команду, поэтому отсюда снова включить подтверждения нельзя."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu Hermes sunucusu her komutu kendisi onaylıyor, bu yüzden onaylar buradan yeniden açılamaz."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "یہ Hermes میزبان ہر کمانڈ خود منظور کرتا ہے، اس لیے یہاں سے منظوریاں دوبارہ فعال نہیں کی جا سکتیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此 Hermes 主機會自行批准每個指令，因此無法從這裡重新啟用審批。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此 Hermes 主机会自行批准每条命令，因此无法在这里重新启用审批。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此 Hermes 主機會自行核准每個指令，因此無法從這裡重新啟用審核。"
+          }
+        }
+      }
+    },
     "This Hermes host does not support delegated-work inspection." : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Dieser Hermes-Host unterstützt die Prüfung delegierter Arbeit nicht."}},"es":{"stringUnit":{"state":"needs_review","value":"Este host de Hermes no admite la inspección del trabajo delegado."}},"fr":{"stringUnit":{"state":"needs_review","value":"Cet hôte Hermes ne prend pas en charge l’inspection du travail délégué."}},"it":{"stringUnit":{"state":"needs_review","value":"Questo host Hermes non supporta l’ispezione del lavoro delegato."}},"pl":{"stringUnit":{"state":"needs_review","value":"Ten host Hermes nie obsługuje inspekcji delegowanej pracy."}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Este host do Hermes não oferece inspeção de trabalho delegado."}},"nl":{"stringUnit":{"state":"needs_review","value":"Deze Hermes-host ondersteunt geen inspectie van gedelegeerd werk."}},"tr":{"stringUnit":{"state":"needs_review","value":"Bu Hermes ana bilgisayarı devredilen iş incelemesini desteklemiyor."}},"ru":{"stringUnit":{"state":"needs_review","value":"Этот хост Hermes не поддерживает просмотр делегированной работы."}},"ja":{"stringUnit":{"state":"needs_review","value":"この Hermes ホストは委任された作業の確認に対応していません。"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"此 Hermes 主机不支持检查委派工作。"}},"ko":{"stringUnit":{"state":"needs_review","value":"이 Hermes 호스트는 위임된 작업 검사를 지원하지 않습니다."}},"ar":{"stringUnit":{"state":"needs_review","value":"مضيف Hermes هذا لا يدعم فحص العمل المفوّض."}},"he":{"stringUnit":{"state":"needs_review","value":"מארח Hermes זה אינו תומך בבדיקת עבודה מואצלת."}},"ur":{"stringUnit":{"state":"needs_review","value":"یہ Hermes ہوسٹ تفویض شدہ کام کے جائزے کو سپورٹ نہیں کرتا۔"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"此 Hermes 主機不支援檢查委派工作。"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"此 Hermes 主機不支援檢查委派工作。"}}}},
     "This Hermes host doesn’t offer the password sign-in push setup needs." : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Dieser Hermes-Host bietet nicht die Passwort-Anmeldung, die die Push-Einrichtung braucht."}},"es":{"stringUnit":{"state":"needs_review","value":"Este host de Hermes no ofrece el inicio de sesión con contraseña que necesita la configuración push."}},"fr":{"stringUnit":{"state":"needs_review","value":"Cet hôte Hermes ne propose pas la connexion par mot de passe dont la configuration push a besoin."}},"it":{"stringUnit":{"state":"needs_review","value":"Questo host Hermes non offre l’accesso con password richiesto dalla configurazione push."}},"pl":{"stringUnit":{"state":"needs_review","value":"Ten host Hermes nie oferuje logowania hasłem, którego wymaga konfiguracja push."}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Este host Hermes não oferece o login com senha de que a configuração de push precisa."}},"nl":{"stringUnit":{"state":"needs_review","value":"Deze Hermes-host biedt niet de inlog met wachtwoord die de pushconfiguratie nodig heeft."}},"tr":{"stringUnit":{"state":"needs_review","value":"Bu Hermes sunucusu, anlık bildirim kurulumunun gerektirdiği parolayla oturum açmayı sunmuyor."}},"ru":{"stringUnit":{"state":"needs_review","value":"Этот хост Hermes не поддерживает вход по паролю, который нужен для настройки push-уведомлений."}},"ja":{"stringUnit":{"state":"needs_review","value":"この Hermes ホストは、プッシュ設定に必要なパスワードでのサインインに対応していません。"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"此 Hermes 主机不提供推送设置所需的密码登录。"}},"ko":{"stringUnit":{"state":"needs_review","value":"이 Hermes 호스트는 푸시 설정에 필요한 암호 로그인을 제공하지 않습니다."}},"ar":{"stringUnit":{"state":"needs_review","value":"لا يوفّر مضيف Hermes هذا تسجيل الدخول بكلمة المرور الذي يحتاجه إعداد الإشعارات الفورية."}},"he":{"stringUnit":{"state":"needs_review","value":"מארח Hermes זה לא מציע את הכניסה בסיסמה שהגדרת ה‑Push צריכה."}},"ur":{"stringUnit":{"state":"needs_review","value":"یہ Hermes ہوسٹ وہ پاس ورڈ سائن اِن فراہم نہیں کرتا جس کی پش سیٹ اپ کو ضرورت ہے۔"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"此 Hermes 主機不提供推播設定所需的密碼登入。"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"此 Hermes 主機不提供推送設定所需的密碼登入。"}}}},
     "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Dieser Hermes-Host bietet nur die Anmeldung über einen Browser an, die Hermex noch nicht unterstützt. Um dich jetzt zu verbinden, richte auf dem Host einen Benutzernamen und ein Passwort für das Dashboard ein." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Este host de Hermes solo ofrece inicio de sesión con un navegador, algo que Hermex aún no admite. Para conectarte ahora, añade un nombre de usuario y una contraseña del panel en el host." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Cet hôte Hermes ne propose que la connexion via un navigateur, que Hermex ne prend pas encore en charge. Pour vous connecter maintenant, ajoutez un nom d’utilisateur et un mot de passe au tableau de bord sur l’hôte." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Questo host Hermes offre solo l’accesso tramite browser, che Hermex non supporta ancora. Per connetterti ora, aggiungi un nome utente e una password della dashboard sull’host." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Ten host Hermes oferuje tylko logowanie przez przeglądarkę, którego Hermex jeszcze nie obsługuje. Aby połączyć się teraz, dodaj na hoście nazwę użytkownika i hasło panelu." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Este host do Hermes só oferece login pelo navegador, que o Hermex ainda não suporta. Para conectar agora, adicione um nome de usuário e uma senha do painel no host." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Deze Hermes-host biedt alleen aanmelden via een browser, wat Hermex nog niet ondersteunt. Voeg op de host een gebruikersnaam en wachtwoord voor het dashboard toe om nu verbinding te maken." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu Hermes ana makinesi yalnızca tarayıcıyla oturum açmayı sunuyor ve Hermex bunu henüz desteklemiyor. Şimdi bağlanmak için ana makinede bir pano kullanıcı adı ve parolası ekleyin." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Этот хост Hermes предлагает только вход через браузер, который Hermex пока не поддерживает. Чтобы подключиться сейчас, добавьте на хосте имя пользователя и пароль для панели." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "この Hermes ホストはブラウザでのサインインのみに対応しており、Hermex はまだそれをサポートしていません。今すぐ接続するには、ホストでダッシュボードのユーザー名とパスワードを追加してください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "此 Hermes 主机仅提供通过浏览器登录，Hermex 暂不支持。若要立即连接，请在主机上添加仪表板用户名和密码。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 Hermes 호스트는 브라우저 로그인만 제공하며, Hermex는 아직 이를 지원하지 않습니다. 지금 연결하려면 호스트에서 대시보드 사용자 이름과 비밀번호를 추가하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لا يوفّر مضيف Hermes هذا إلا تسجيل الدخول عبر المتصفح، وهو ما لا يدعمه Hermex بعد. للاتصال الآن، أضف اسم مستخدم وكلمة مرور للوحة التحكم على المضيف." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "מארח Hermes זה מציע רק התחברות דרך דפדפן, ש‑Hermex עדיין לא תומך בה. כדי להתחבר עכשיו, הוסף שם משתמש וסיסמה ללוח הבקרה במארח." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "یہ Hermes ہوسٹ صرف براؤزر کے ذریعے سائن اِن پیش کرتا ہے، جسے Hermex ابھی سپورٹ نہیں کرتا۔ ابھی کنیکٹ کرنے کے لیے، ہوسٹ پر ڈیش بورڈ کا یوزر نیم اور پاس ورڈ شامل کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "此 Hermes 主機僅提供透過瀏覽器登入，Hermex 目前尚不支援。若要立即連線，請在主機上新增儀表板使用者名稱和密碼。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "此 Hermes 主機僅提供透過瀏覽器登入，Hermex 目前尚不支援。若要立即連線，請在主機上新增儀表板使用者名稱和密碼。" } } } },

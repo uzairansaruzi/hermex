@@ -42,6 +42,10 @@ struct SlashAutocompleteRanking: Equatable, Sendable {
     let query: String
     let skills: [SkillSlashSuggestion]
     let agentCommands: [AgentCommand]
+    /// The app's own commands, listed first (`SlashCommandScope.builtins`).
+    var builtins = SlashCommandCatalog.allCommands
+    /// Whether an agent command's aliases find it, as in a Hermes chat (#1036).
+    var matchesAliases = false
 
     /// True when this pass is cheap enough to run wherever it is asked for.
     var ranksInline: Bool {
@@ -72,14 +76,16 @@ struct SlashAutocompleteRanking: Equatable, Sendable {
             )
         case .commands:
             let skillNames = Set(skills.map { $0.slashName.lowercased() })
+            let builtinNames = Set(builtins.map { $0.name.lowercased() })
             return SlashAutocompleteResults(
                 input: self,
-                commands: SlashCommandCatalog.matching(query),
+                commands: SlashCommandCatalog.matching(query, in: builtins),
                 skills: SlashSkillFormatter.matching(query, in: skills),
                 agentCommands: AgentSlashCommandSuggestion.matching(
                     query,
                     in: agentCommands,
-                    excluding: SlashCommandCatalog.builtinNames.union(skillNames)
+                    excluding: builtinNames.union(skillNames),
+                    matchingAliases: matchesAliases
                 )
             )
         }
@@ -90,6 +96,7 @@ struct AgentSlashCommandSuggestion: Identifiable, Equatable, Sendable {
     let name: String
     let description: String
     let argHint: String?
+    let aliases: [String]
 
     /// The server's own description, or `nil`. Ranking uses this rather than
     /// `description` so the "Agent command" placeholder, which every command
@@ -110,14 +117,17 @@ struct AgentSlashCommandSuggestion: Identifiable, Equatable, Sendable {
         serverDescription = Self.nonEmpty(command.description)
         description = serverDescription ?? String(localized: "Agent command")
         argHint = Self.nonEmpty(command.argsHint)
+        aliases = command.aliases ?? []
     }
 
     /// The agent commands worth showing for `query`, best first, skipping any
-    /// name in `excludedNames` and any duplicate.
+    /// name in `excludedNames` and any duplicate. `matchingAliases` ranks each
+    /// command by its best name or alias, so `/ctx` finds `/context` (#1036).
     static func matching(
         _ query: String,
         in commands: [AgentCommand],
         excluding excludedNames: Set<String> = [],
+        matchingAliases: Bool = false,
         limit: Int = SlashCommandRanker.resultLimit
     ) -> [AgentSlashCommandSuggestion] {
         var seen = excludedNames
@@ -129,9 +139,25 @@ struct AgentSlashCommandSuggestion: Identifiable, Equatable, Sendable {
             candidates.append(suggestion)
         }
 
-        return SlashCommandRanker.rank(candidates, matching: query, limit: limit) { suggestion in
-            SlashRankableFields(name: suggestion.name, description: suggestion.serverDescription)
+        guard matchingAliases, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return SlashCommandRanker.rank(candidates, matching: query, limit: limit) { suggestion in
+                SlashRankableFields(name: suggestion.name, description: suggestion.serverDescription)
+            }
         }
+
+        // One entry per name and alias, then each command once, at its best entry.
+        let entries = candidates.flatMap { suggestion in
+            ([suggestion.name] + suggestion.aliases).map { (suggestion: suggestion, name: $0) }
+        }
+        let ranked = SlashCommandRanker.rank(entries, matching: query, limit: entries.count) { entry in
+            SlashRankableFields(name: entry.name, description: entry.suggestion.serverDescription)
+        }
+        var listed = Set<String>()
+        var results: [AgentSlashCommandSuggestion] = []
+        for entry in ranked where results.count < limit && listed.insert(entry.suggestion.id).inserted {
+            results.append(entry.suggestion)
+        }
+        return results
     }
 
     static func command(named name: String, in commands: [AgentCommand]) -> AgentSlashCommandSuggestion? {

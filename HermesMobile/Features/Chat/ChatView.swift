@@ -507,7 +507,7 @@ struct ChatView: View {
             workspaceSuggestions: viewModel.workspaceSuggestions,
             workspaceManagementServer: server,
             personalitySuggestions: viewModel.personalitySuggestions,
-            skillSuggestions: viewModel.skillSlashSuggestions,
+            skillSuggestions: viewModel.composerSkillSuggestions,
             hasLoadedSkillSuggestions: viewModel.hasLoadedSkillSlashSuggestions,
             agentCommands: viewModel.agentCommands,
             profileOptions: viewModel.composerProfileOptions,
@@ -650,6 +650,11 @@ struct ChatView: View {
                 Task { await gitAvailabilityViewModel.loadBranches() }
             },
             showsSessionControls: !isHermesSession,
+            slashScope: viewModel.hermesSlashCommands?.scope ?? .webui,
+            hostSlashCompletion: viewModel.hermesSlashCommands?.completion,
+            onCompleteHostSlashArgument: { text in
+                await viewModel.hermesSlashCommands?.complete(text)
+            },
             showsModelAndProfileControls: isHermesSession,
             configurationNotice: viewModel.composerConfigurationNotice,
             sentReasoningEffort: viewModel.composerSentReasoningEffort,
@@ -2286,12 +2291,27 @@ struct ChatView: View {
             }
         }
 
-        // A Hermes session sends `/` text as typed (#1010), except the goal, btw and background
-        // commands it runs itself (#1013).
+        // A Hermes chat runs `/` text through its own commands and its host's (#1036); a name
+        // neither knows is sent as typed.
+        if isHermesSession, submittedContent.quotes.isEmpty,
+           let result = await viewModel.runHermesSlashCommand(submittedDraft, modelContext: modelContext) {
+            let name = BotSlashCatalog.invocation(in: submittedDraft)?.name ?? ""
+            handleSlashExecutionResult(
+                result,
+                parsedCommand: SlashCommandCatalog.hermesCommand(named: name),
+                submittedDraft: submittedDraft,
+                submittedDraftRevision: submittedDraftRevision
+            )
+            if let lastError = viewModel.lastError {
+                onAPIError(lastError)
+            }
+            return
+        }
+
         let parsedCommand = SlashCommandExecutor.parse(submittedDraft)?.command
         if submittedContent.quotes.isEmpty,
            submittedDraft.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("/"),
-           !isHermesSession || parsedCommand?.runsInHermesSession == true {
+           !isHermesSession {
             // `/clear` wipes the conversation on the server, so it always asks
             // first. The draft stays in the composer until the user confirms.
             // A refusal the app already knows about (cached view, CLI session,
@@ -2484,6 +2504,20 @@ struct ChatView: View {
                     ComposerDraftContent(text: submittedDraft, quotes: submittedQuotes),
                     submittedDraftRevision: submittedDraftRevision
                 )
+            }
+        case .openedHermesSession(let chat):
+            pushedHermesSession = chat
+            if consumesDraft {
+                reconcileConsumedDraft(
+                    ComposerDraftContent(text: submittedDraft, quotes: submittedQuotes),
+                    submittedDraftRevision: submittedDraftRevision
+                )
+            }
+        case .prefill(let text):
+            // Unless the user typed on meanwhile: their edit wins.
+            if draftRevision == submittedDraftRevision {
+                draftMessage = text
+                persistDraftEdit(text)
             }
         case .unsupported(let friendlyMessage):
             viewModel.setSendErrorMessage(friendlyMessage)
@@ -3831,9 +3865,9 @@ private enum PastedFileError: LocalizedError {
 private extension SlashCommandExecutionResult {
     var isSuccessfulSubmission: Bool {
         switch self {
-        case .executed, .openedSession:
+        case .executed, .openedSession, .openedHermesSession:
             true
-        case .sendAsMessage, .unsupported, .needsSubArg, .notDelivered:
+        case .sendAsMessage, .unsupported, .needsSubArg, .notDelivered, .prefill:
             false
         }
     }

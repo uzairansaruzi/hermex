@@ -225,7 +225,7 @@ import Observation
         let listed = await chat.model.executeSlashCommand(Self.command("personality"), args: "")
         XCTAssertEqual(listed, .executed(message: "Available personalities:\n\n- **concise** - Brief answers\n- **pirate**\n\n"
                                          + "Use `/personality <name>` or `/personality none`."))
-        XCTAssertEqual(chat.writes("complete.slash"), [["text": .string("/personality ")]])
+        XCTAssertEqual(chat.writes("complete.slash"), [["text": .string("/personality "), "session_id": .string("runtime")]])
     }
 
     /// A name asks first; Cancel sends nothing, and confirming sends one Profile-wide

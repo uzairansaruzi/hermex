@@ -99,7 +99,10 @@ final class HermesRequestTests: XCTestCase {
              ["name": .string("work"), "arg": .string("fix it"), "session_id": .string("runtime")]),
             (.completePath(word: "src", sessionID: "runtime", profile: "triage"), "complete.path",
              ["word": .string("src"), "session_id": .string("runtime"), "profile": .string("triage")]),
-            (.personalityCompletions, "complete.slash", ["text": .string("/personality ")]),
+            (.completeSlash(text: "/approvals ", sessionID: "runtime"), "complete.slash",
+             ["text": .string("/approvals "), "session_id": .string("runtime")]),
+            (.slashExec(sessionID: "runtime", command: "/context all"), "slash.exec",
+             ["session_id": .string("runtime"), "command": .string("/context all")]),
             (.subagentList(sessionID: "runtime"), "subagent.list", ["session_id": .string("runtime")]),
             (.subagentTail(sessionID: "runtime", subagentID: "w1"), "subagent.tail",
              ["session_id": .string("runtime"), "subagent_id": .string("w1")]),
@@ -134,6 +137,24 @@ final class HermesRequestTests: XCTestCase {
             XCTAssertEqual(call.method, method)
             XCTAssertEqual(try call.params(), params, method)
         }
+    }
+
+    /// Slash commands go out one typed line at a time, and completion only at a command's
+    /// argument stage (#1036).
+    func testSlashCallsAdmitOnlyOneNamedLine() {
+        XCTAssertNoThrow(try HermesCall.slashExec(sessionID: "runtime", command: "/context").params())
+        XCTAssertNoThrow(try HermesCall.slashExec(sessionID: "runtime", command: "/queue hi there").params())
+        for command in ["", "/", "context", "/ context", "/queue hi\nthere"] {
+            XCTAssertThrowsError(try HermesCall.slashExec(sessionID: "runtime", command: command).params(), command)
+        }
+        XCTAssertThrowsError(try HermesCall.slashExec(sessionID: "", command: "/context").params())
+
+        XCTAssertNoThrow(try HermesCall.completeSlash(text: "/approvals ", sessionID: "runtime").params())
+        XCTAssertNoThrow(try HermesCall.completeSlash(text: "/queue list e", sessionID: "runtime").params())
+        for text in ["/con", "/", "/ approvals", "approvals ", "/approvals \nx"] {
+            XCTAssertThrowsError(try HermesCall.completeSlash(text: text, sessionID: "runtime").params(), text)
+        }
+        XCTAssertThrowsError(try HermesCall.completeSlash(text: "/approvals ", sessionID: "").params())
     }
 
     func testEveryRESTRequestKeepsItsMethodPathQueryAndBody() throws {

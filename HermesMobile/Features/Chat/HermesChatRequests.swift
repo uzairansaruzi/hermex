@@ -175,6 +175,15 @@ import Observation
         await setApprovalBypass(false, for: nil)
     }
 
+    /// `/yolo` (#1036): turns the session's approval bypass on, or off when only this
+    /// session's flag holds it. The bypass after the change, or nil when it did not change;
+    /// a refusal's reason went to `onFailure`.
+    func toggleApprovalBypass() async -> Bool? {
+        let enabled = !approvalBypass
+        guard enabled || mayTurnOffApprovalBypass, await setApprovalBypass(enabled, for: nil) else { return nil }
+        return approvalBypass
+    }
+
     /// Sends one answer and applies the host's verdict. An accepted or already resolved
     /// request leaves at once; a batch the host still holds questions of asks for a reattach.
     /// A refusal over the live socket leaves the card answerable with the reason. A lost

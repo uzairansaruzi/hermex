@@ -158,7 +158,7 @@ import OSLog
             guard owner == generation, !Task.isCancelled, maySend(consumer) else { throw BotFailure.stale }
         } else { text = String(decoding: try JSONEncoder().encode(frame), as: UTF8.self) }
         let timesOutLocally = call.timesOutLocally, cancellationSafe = call.isCancellationSafe
-        let rejection = call.rejection, rpcDeadline = options.rpcDeadline, method = call.method
+        let rejection = call.rejection, rpcDeadline = call.deadline(options.rpcDeadline), method = call.method
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 let deadline = Task { [weak self] in
@@ -432,28 +432,37 @@ private extension HermesCall {
     /// because its outcome is unknown.
     var isCancellationSafe: Bool {
         switch self {
-        case .fileAttach, .completePath, .personalityCompletions, .subagentList, .subagentTail, .sessionActiveList: return true
+        case .fileAttach, .completePath, .completeSlash, .subagentList, .subagentTail, .sessionActiveList: return true
         default: return false
         }
     }
 
-    /// Optional reads whose timeout fails only that request. Any other call that
-    /// times out ends its screen's connection; the socket stays for the others.
+    /// Optional reads, and slash commands, whose timeout fails only that request: a slow
+    /// command must never end its chat's connection. Any other call that times out ends its
+    /// screen's connection; the socket stays for the others.
     var timesOutLocally: Bool {
         switch self {
-        case .subagentList, .subagentTail, .sessionActiveList, .personalityCompletions: return true
+        case .subagentList, .subagentTail, .sessionActiveList, .completeSlash, .slashExec: return true
         default: return false
         }
+    }
+
+    /// How long a reply may take. A slash command may run in the host's slash worker, which
+    /// allows it 45 s, so `slash.exec` waits twice the usual deadline.
+    func deadline(_ standard: Duration) -> Duration {
+        if case .slashExec = self { return standard * 2 }
+        return standard
     }
 
     /// Room rejections carry the host's reason as `BotRoomFailure`; setting rejections
-    /// carry its message as `BotSettingFailure`. So does a refused `/goal`, whose 4004 message
-    /// says what was wrong with it (#1013).
+    /// carry its message as `BotSettingFailure`. So do a refused `/goal`, whose 4004 message
+    /// says what was wrong with it (#1013), and a refused slash command (#1036).
     var rejection: Rejection {
         if method.hasPrefix("groups.") { return .room }
         switch self {
         case .configSet, .sessionCwdSet, .sessionControl, .modelOptions, .configuredModelOptions, .sessionControlRead: return .setting
         case .commandDispatch(let name, _, _) where name == "goal": return .setting
+        case .slashExec: return .setting
         default: return .plain
         }
     }

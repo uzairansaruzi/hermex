@@ -85,11 +85,12 @@ enum HermesCall: Equatable, Sendable {
     case commandsCatalog(sessionID: String)
     case commandDispatch(name: String, argument: String, sessionID: String)
     case completePath(word: String, sessionID: String, profile: String)
-    /// The host's personalities, from `complete.slash`'s `/personality ` stage (#1016). The text
-    /// is fixed here so no caller can widen this into the general slash completer. The host
-    /// reads its launch Profile's config for it, so a user-defined personality listed here may
-    /// not exist in the session's Profile.
-    case personalityCompletions
+    /// `complete.slash` at a command's argument stage (#1036): `text` is one `/name …` line
+    /// with a space. The command stage is ranked on the phone from `commands.catalog`.
+    case completeSlash(text: String, sessionID: String)
+    /// Runs one typed `/name …` line on the session (#1036): the host's built-ins, the user's
+    /// quick commands (which can run shell) and plugin commands, as Desktop runs them.
+    case slashExec(sessionID: String, command: String)
 
     // Delegated work
     case subagentList(sessionID: String)
@@ -233,7 +234,8 @@ enum HermesCall: Equatable, Sendable {
         case .commandsCatalog: return "commands.catalog"
         case .commandDispatch: return "command.dispatch"
         case .completePath: return "complete.path"
-        case .personalityCompletions: return "complete.slash"
+        case .completeSlash: return "complete.slash"
+        case .slashExec: return "slash.exec"
         case .subagentList: return "subagent.list"
         case .subagentTail: return "subagent.tail"
         case .subagentInterrupt: return "subagent.interrupt"
@@ -341,7 +343,8 @@ enum HermesCall: Equatable, Sendable {
             return ["name": .string(name), "arg": .string(argument), "session_id": .string(sessionID)]
         case .completePath(let word, let sessionID, let profile):
             return ["word": .string(word), "session_id": .string(sessionID), "profile": .string(profile)]
-        case .personalityCompletions: return ["text": .string("/personality ")]
+        case .completeSlash(let text, let sessionID): return ["text": .string(text), "session_id": .string(sessionID)]
+        case .slashExec(let sessionID, let command): return ["session_id": .string(sessionID), "command": .string(command)]
         case .subagentTail(let sessionID, let subagentID), .subagentInterrupt(let sessionID, let subagentID):
             return ["session_id": .string(sessionID), "subagent_id": .string(subagentID)]
         case .groupsList(let offset):
@@ -373,6 +376,11 @@ enum HermesCall: Equatable, Sendable {
         HermesCompatibility.release(version)?.lexicographicallyPrecedes([0, 21, 5]) ?? false
     }
 
+    /// One line that opens with `/` and names something after it.
+    private static func isSlashLine(_ text: String) -> Bool {
+        text.count > 1 && text.hasPrefix("/") && !text.contains(where: \.isNewline)
+    }
+
     /// The value rules each case's types cannot express. A case with none is `true`.
     private func admit() throws {
         let valid: Bool
@@ -400,6 +408,12 @@ enum HermesCall: Equatable, Sendable {
             // the gateway resolves quick commands, which can run shell, ahead of skills.
             valid = !name.isEmpty && !name.hasPrefix("/") && name.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
                 && !sessionID.isEmpty
+        case .completeSlash(let text, let sessionID):
+            // The argument stage only: a named command, then a space.
+            valid = !sessionID.isEmpty && Self.isSlashLine(text) && text.dropFirst().first?.isWhitespace == false
+                && text.contains(" ")
+        case .slashExec(let sessionID, let command):
+            valid = !sessionID.isEmpty && Self.isSlashLine(command) && command.dropFirst().first?.isWhitespace == false
         case .completePath(let word, let sessionID, let profile):
             valid = !word.isEmpty && !word.contains(where: \.isWhitespace) && !sessionID.isEmpty && !profile.isEmpty
         case .subagentTail(let sessionID, let subagentID), .subagentInterrupt(let sessionID, let subagentID):
@@ -437,7 +451,7 @@ enum HermesCall: Equatable, Sendable {
         case .profilesList, .profilesGetAsset, .sessionList, .sessionResume, .sessionEventsSince, .sessionActiveList,
              .promptSubmit, .sessionSteer, .sessionRedirect, .sessionInterrupt, .fileAttach, .approvalRespond,
              .requestAnswer, .clarifyLock, .modelOptions, .configuredModelOptions, .sessionCwdSet, .sessionControlRead,
-             .sessionControl, .personalityCompletions, .groupsCapabilities, .clientCapabilities:
+             .sessionControl, .groupsCapabilities, .clientCapabilities:
             valid = true
         }
         guard valid else { throw BotFailure.unsupported }

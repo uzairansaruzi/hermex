@@ -1185,7 +1185,7 @@ struct PinnedLocalNoticeStack: View {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(Color.green)
 
-                    Text(notice)
+                    Text(Self.plainText(notice))
                         .font(.footnote)
                         .foregroundStyle(.primary)
                         .lineLimit(2)
@@ -1204,6 +1204,14 @@ struct PinnedLocalNoticeStack: View {
         .frame(maxWidth: .infinity)
         .shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(notices.joined(separator: "\n"))
+        .accessibilityLabel(notices.map(Self.plainText).joined(separator: "\n"))
+    }
+
+    /// A notice without the code fences a host command's output comes in (#1036): the card
+    /// is plain text, and the transcript renders the fences once the run ends.
+    static func plainText(_ notice: String) -> String {
+        notice.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.hasPrefix("```") }
+            .joined(separator: "\n")
     }
 }

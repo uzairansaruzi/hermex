@@ -26,7 +26,7 @@ struct ComposerSlashTrigger: Equatable {
     /// forward to the caret and never across a line break. A selection with a
     /// length is never a trigger: the user is selecting text, not typing a
     /// command.
-    static func detect(in draft: String, selection: NSRange) -> ComposerSlashTrigger? {
+    static func detect(in draft: String, selection: NSRange, scope: SlashCommandScope = .webui) -> ComposerSlashTrigger? {
         guard selection.length == 0 else { return nil }
 
         let draft = draft as NSString
@@ -54,7 +54,7 @@ struct ComposerSlashTrigger: Equatable {
             let range = NSRange(location: start, length: caret - start)
             let text = draft.substring(with: range)
             let atDraftStart = isAtDraftStart(draft, before: start)
-            if isTrigger(text, atDraftStart: atDraftStart) {
+            if isTrigger(text, atDraftStart: atDraftStart, scope: scope) {
                 return ComposerSlashTrigger(range: range, text: text, startsDraft: atDraftStart)
             }
         }
@@ -114,16 +114,14 @@ struct ComposerSlashTrigger: Equatable {
     /// task" does not hold an empty panel open for the rest of the sentence.
     /// Where it is free-form — a workspace path, a personality name, a skill
     /// query — the spaces are part of the value, so the trigger runs to the
-    /// caret.
-    private static func isTrigger(_ text: String, atDraftStart: Bool) -> Bool {
+    /// caret. So does a host command's (#1036): the host says what it takes.
+    private static func isTrigger(_ text: String, atDraftStart: Bool, scope: SlashCommandScope) -> Bool {
         let body = text.dropFirst()
         guard let space = body.firstIndex(where: { $0.isWhitespace }) else { return true }
         guard atDraftStart else { return false }
-        guard let command = SlashCommandCatalog.command(named: String(body[body.startIndex..<space])),
-              command.subArgs != .none
-        else {
-            return false
-        }
+        let name = String(body[body.startIndex..<space])
+        guard let command = scope.command(named: name) else { return scope.completesOnHost(name) }
+        guard command.subArgs != .none else { return false }
         guard !command.subArgs.allowsSpaces else { return true }
 
         let argument = body[body.index(after: space)...].drop(while: { $0.isWhitespace })

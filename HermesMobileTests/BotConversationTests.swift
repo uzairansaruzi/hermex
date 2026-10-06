@@ -1954,6 +1954,8 @@ final class BotSocketHost: @unchecked Sendable {
         var result: BotJSON = .object([:])
         /// A JSON-RPC error code answered instead of `result`.
         var error: Int?
+        /// The error's message.
+        var message = "refused"
         /// Event frames written ahead of the reply.
         var before: [BotJSON] = []
     }
@@ -2015,7 +2017,7 @@ final class BotSocketHost: @unchecked Sendable {
             socket?.enqueue(Self.message(["method": .string("event"), "params": frame]))
         }
         if let code = reply?.error {
-            return .object(["id": request["id"], "error": .object(["code": .number(Double(code)), "message": .string("refused")])])
+            return .object(["id": request["id"], "error": .object(["code": .number(Double(code)), "message": .string(reply?.message ?? "refused")])])
         }
         if let reply { return .object(["id": request["id"], "result": reply.result]) }
         guard method == "session.resume" else {
