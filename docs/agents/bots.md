@@ -1130,6 +1130,30 @@ path is the folder joined with names from its own listing, never the listing's `
 the host resolves (`/private/var/…` on a Mac). A name that is empty, `.`, `..` or holds a
 separator is refused before any request.
 
+## Memory on a Hermes host
+
+The Memory screen runs on a Hermes host through `HermesMemoryClient` (#1073), the
+`MemoryDataClient` beside webui's `APIClient`, for the Profile the inbox's + menu had
+selected. My Notes and User Profile are `<path>/memories/MEMORY.md` and `USER.md`, where
+`path` is the Profile's `profiles.list` row, read on every load and save: `/api/fs/*` accepts
+any absolute path, so no other path is ever built, and the path is never shown, logged or
+kept. They are read with `GET /api/fs/read-text?path=` (404 is empty; `truncated` or
+`binary` shows the section read-only) and written with `POST /api/fs/write-text`, which
+creates no folders: its 400 "Parent directory does not exist" gets one `POST
+/api/files/mkdir` and a retry. Agent Soul is `GET`/`PUT /api/profiles/{name}/soul`.
+`GET /api/config?profile=` is the whole unredacted config; only `memory` is decoded: a
+section whose flag is off is hidden, and `memory_char_limit` and `user_char_limit` (default
+2200 and 1375) are counted in Unicode scalars, Python's `len`, with Save off over them.
+
+A save re-reads the file and refuses with `MemoryConflict` ("Changed on the host", the draft
+kept, Reload drops it) when it no longer matches what the editor opened with; notes and the
+user profile are then written by `MemoryCanonicalizer` in the agent's own entry format
+(entries joined by `\n§\n`, trimmed as Python trims, no BOM, CR or empty or repeated entries)
+and read back. Any other text trips the agent's drift check, after which it refuses to
+`replace` or `remove` entries. The agent can still write between the re-read and the write,
+which takes no lock: a window accepted to use the host's public file routes. Project context
+and modified times are webui-only. The temporary entry is the inbox's + menu, until #709.
+
 ## Opening a bot from outside the app
 
 One URL route lands on a bot conversation: `hermes-agent://bot?server=…&

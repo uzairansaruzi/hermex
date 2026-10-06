@@ -185,6 +185,82 @@ final class MemoryViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.projectContextDetail, "/Users/test/workspace")
     }
 
+    // MARK: - Hermes (#1073)
+
+    @MainActor
+    func testOverTheHostsLimitNothingIsSentAndTheCountSaysByHowMuch() async throws {
+        let client = StubMemoryClient(limits: [.memory: 10])
+        let viewModel = MemoryViewModel(server: try XCTUnwrap(URL(string: "https://example.test")), client: client)
+        await viewModel.load()
+
+        // 👍🏽 is two scalars on the host: "1234567 👍🏽" is 10, and a second entry makes it 14.
+        let atLimit = MemoryCharacterCount(draft: "1234567 👍🏽", limit: 10)
+        let over = MemoryCharacterCount(draft: "1234567 👍🏽\n\n§\n\nx", limit: 10)
+
+        XCTAssertEqual([atLimit.count, atLimit.overBy], [10, 0])
+        XCTAssertFalse(atLimit.isOver)
+        XCTAssertEqual([over.count, over.overBy], [14, 4])
+        XCTAssertTrue(over.isOver)
+        let didSave = await viewModel.save(section: .memory, content: "1234567 👍🏽\n§\nx", loaded: "")
+        XCTAssertFalse(didSave)
+        XCTAssertEqual(client.saves.count, 0, "Nothing is sent over the limit")
+        XCTAssertEqual(viewModel.actionErrorMessage, "Over the host's limit. Shorten to save.")
+        XCTAssertNil(viewModel.characterLimit(for: .soul), "The soul has no limit")
+    }
+
+    @MainActor
+    func testAConflictKeepsTheDraftAndReloadReturnsTheHostsText() async throws {
+        let client = StubMemoryClient(memory: "On the host")
+        client.saveError = MemoryConflict()
+        let viewModel = MemoryViewModel(server: try XCTUnwrap(URL(string: "https://example.test")), client: client)
+        await viewModel.load()
+        client.response = MemoryResponse(memory: "Changed by the agent", user: "", soul: "")
+
+        let didSave = await viewModel.save(section: .memory, content: "My draft", loaded: "On the host")
+
+        XCTAssertFalse(didSave, "The editor stays open with its draft")
+        XCTAssertEqual(viewModel.conflictedSection, .memory)
+        XCTAssertNil(viewModel.actionErrorMessage)
+        XCTAssertEqual(client.saves.map(\.loaded), ["On the host"])
+        XCTAssertEqual(viewModel.memoryText, "On the host", "Nothing is reloaded behind the draft")
+
+        let reloaded = await viewModel.reload(.memory)
+
+        XCTAssertEqual(reloaded, "Changed by the agent")
+        XCTAssertNil(viewModel.conflictedSection)
+    }
+
+    @MainActor
+    func testHermesSectionsTheHostTurnsOffAreHiddenAndItsFilesShowNoTimesOrProjectContext() async throws {
+        let client = StubMemoryClient()
+        client.response.hiddenSections = [.user]
+        client.response.readOnlySections = [.memory]
+        let viewModel = MemoryViewModel(server: try XCTUnwrap(URL(string: "https://example.test")), client: client)
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.visibleSections, [.memory, .soul])
+        XCTAssertTrue(viewModel.isReadOnly(.memory))
+        XCTAssertFalse(viewModel.isReadOnly(.soul))
+        XCTAssertTrue(viewModel.features.editsApplyNextSession)
+        XCTAssertNil(viewModel.modifiedAt(for: .memory))
+        XCTAssertFalse(viewModel.showsProjectContext)
+    }
+
+    @MainActor
+    func testWebuiShowsEverySectionWithoutLimitsOrTheNextSessionNote() async throws {
+        let client = makeClient { request in
+            apiTestJSONResponse(##"{"memory": "# Notes", "user": "", "soul": "# Soul"}"##, for: request)
+        }
+        let viewModel = MemoryViewModel(server: try XCTUnwrap(URL(string: "https://example.test")), client: client)
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.visibleSections, [.memory, .user, .soul])
+        XCTAssertNil(viewModel.characterLimit(for: .memory))
+        XCTAssertFalse(viewModel.features.editsApplyNextSession)
+    }
+
     private func makeClient(
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
     ) -> APIClient {
@@ -195,5 +271,27 @@ final class MemoryViewModelTests: XCTestCase {
         let session = URLSession(configuration: configuration)
 
         return APIClient(baseURL: URL(string: "https://example.test")!, session: session)
+    }
+}
+
+/// A Hermes memory client with scripted replies, recording each save.
+@MainActor
+private final class StubMemoryClient: MemoryDataClient {
+    nonisolated var memoryFeatures: MemoryFeatures { .hermes }
+    var response: MemoryResponse
+    var saveError: Error?
+    private(set) var saves: [(section: MemorySection, content: String, loaded: String)] = []
+
+    init(memory: String = "", limits: [MemorySection: Int] = [.memory: 2200, .user: 1375]) {
+        response = MemoryResponse(memory: memory, user: "", soul: "")
+        response.characterLimits = limits
+    }
+
+    func memory() async throws -> MemoryResponse { response }
+
+    func saveMemory(section: MemorySection, content: String, loaded: String) async throws -> MemoryWriteResponse {
+        saves.append((section, content, loaded))
+        if let saveError { throw saveError }
+        return MemoryWriteResponse(saved: section)
     }
 }

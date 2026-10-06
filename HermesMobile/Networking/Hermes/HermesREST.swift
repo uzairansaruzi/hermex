@@ -35,6 +35,10 @@ import Foundation
 /// `scripts/local-hermes`: a listing answers `{entries: [{name, path, isDirectory}]}`, or 200
 /// `{entries: [], error}` for a folder it can't read, and each entry's `path` is resolved
 /// (`/private/var/…` for `/var/…` on a Mac), so it never matches the path that was asked for.
+/// The file, config and soul routes the Memory screen uses (#1073) are read at the same pin and
+/// checked against `scripts/local-hermes`: a missing file reads 404 `{detail: "File not found"}`,
+/// a write to a missing folder is 400 "Parent directory does not exist", and `files/mkdir`
+/// answers the folder's entry.
 enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
@@ -98,6 +102,17 @@ enum HermesREST: Equatable, Sendable {
     /// `{text, binary, truncated, byteSize, …}` for the file at a host path, its first 512 KiB
     /// (`truncated` past that); 404 `{detail}` when there is none.
     case fsReadText(path: String)
+    /// Replaces or creates the file at a host path, atomically; `{ok, path, byteSize}`. It never
+    /// creates folders: a missing parent is 400 "Parent directory does not exist".
+    case fsWriteText(path: String, content: String)
+    /// Creates the folder at a host path, with its parents; 409 when a file is in the way.
+    case filesMkdir(path: String)
+    /// A Profile's whole config, unredacted, credentials included: decode only what is needed.
+    case config(profile: String)
+    /// `{content, exists}`: the Profile's SOUL.md, empty when it has none.
+    case profileSoul(name: String)
+    /// Replaces the Profile's SOUL.md, atomically; `{ok: true}`.
+    case setProfileSoul(name: String, content: String)
     /// `{default_tenant, …}`, or 404 when the Kanban plugin is disabled or absent.
     case kanbanConfig
     /// Every Board with its counts, and `current`.
@@ -227,6 +242,20 @@ enum HermesREST: Equatable, Sendable {
             parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
             guard let url = parts.url else { throw BotFailure.invalidAddress }
             return Self.get(url)
+        case .fsWriteText(let path, let content):
+            return try Self.send("POST", base.appendingPathComponent("api/fs/write-text"),
+                                 ["path": .string(path), "content": .string(content)])
+        case .filesMkdir(let path):
+            return try Self.send("POST", base.appendingPathComponent("api/files/mkdir"), ["path": .string(path)])
+        case .config(let profile):
+            guard !profile.isEmpty else { throw BotFailure.invalidAddress }
+            return Self.get(try Self.url(base, "api/config", profile: profile))
+        case .profileSoul(let name):
+            guard Self.isSegment(name) else { throw BotFailure.invalidAddress }
+            return Self.get(base.appendingPathComponent("api/profiles/\(name)/soul"))
+        case .setProfileSoul(let name, let content):
+            guard Self.isSegment(name) else { throw BotFailure.invalidAddress }
+            return try Self.send("PUT", base.appendingPathComponent("api/profiles/\(name)/soul"), ["content": .string(content)])
         case .kanbanConfig: return try Self.kanban(base, ["config"])
         case .kanbanBoards: return try Self.kanban(base, ["boards"])
         case .kanbanBoard(let board, let tenant, let includeArchived):

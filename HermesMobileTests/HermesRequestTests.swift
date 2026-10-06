@@ -208,6 +208,16 @@ final class HermesRequestTests: XCTestCase {
             (.cronDeliveryTargets(profile: "research"), "GET",
              "https://hermes.example:9120/api/cron/delivery-targets?profile=research", nil, [:]),
             (.skills(profile: "research"), "GET", "https://hermes.example:9120/api/skills?profile=research", nil, [:]),
+            (.fsReadText(path: "/h/a+b c/MEMORY.md"), "GET",
+             "https://hermes.example:9120/api/fs/read-text?path=/h/a%2Bb%20c/MEMORY.md", nil, [:]),
+            (.fsWriteText(path: "/h/memories/MEMORY.md", content: "a\n§\nb"), "POST", "https://hermes.example:9120/api/fs/write-text",
+             .object(["path": .string("/h/memories/MEMORY.md"), "content": .string("a\n§\nb")]), json),
+            (.filesMkdir(path: "/h/memories"), "POST", "https://hermes.example:9120/api/files/mkdir",
+             .object(["path": .string("/h/memories")]), json),
+            (.config(profile: "research"), "GET", "https://hermes.example:9120/api/config?profile=research", nil, [:]),
+            (.profileSoul(name: "research"), "GET", "https://hermes.example:9120/api/profiles/research/soul", nil, [:]),
+            (.setProfileSoul(name: "research", content: "Be direct."), "PUT", "https://hermes.example:9120/api/profiles/research/soul",
+             .object(["content": .string("Be direct.")]), json),
             (.kanbanConfig, "GET", "https://hermes.example:9120/api/plugins/kanban/config", nil, [:]),
             (.kanbanBoards, "GET", "https://hermes.example:9120/api/plugins/kanban/boards", nil, [:]),
             (.kanbanBoard(board: "default", tenant: nil, includeArchived: false), "GET",
@@ -264,6 +274,9 @@ final class HermesRequestTests: XCTestCase {
         XCTAssertThrowsError(try HermesREST.kanbanTaskLog(id: "", board: "ops", tailBytes: 1).request(base: base))
         XCTAssertThrowsError(try HermesREST.kanbanUpdateTask(id: "../bulk", board: "ops", body: [:]).request(base: base))
         XCTAssertThrowsError(try HermesREST.kanbanArchiveBoard(slug: "../config").request(base: base))
+        XCTAssertThrowsError(try HermesREST.profileSoul(name: "../config").request(base: base))
+        XCTAssertThrowsError(try HermesREST.setProfileSoul(name: "", content: "x").request(base: base))
+        XCTAssertThrowsError(try HermesREST.config(profile: "").request(base: base))
         let upgrade = try HermesREST.gatewayUpgrade(base: base, ticket: "t1")
         XCTAssertEqual(upgrade.url?.absoluteString, "wss://hermes.example:9120/api/ws")
         XCTAssertEqual(upgrade.allHTTPHeaderFields ?? [:], ["Sec-WebSocket-Protocol": "hermes-gateway-v1, hermes-gateway-ticket.t1"])
