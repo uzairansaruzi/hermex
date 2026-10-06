@@ -293,6 +293,9 @@ struct MessageComposerView: View {
     var uploadsAttachmentsOnSend = false
     /// Set while a send uploads its files, for the status line's Cancel.
     var onCancelAttachmentUpload: (() -> Void)?
+    /// A Hermes session's dictation transcriber: the host's speech-to-text for the chat's
+    /// Profile (#1071). Nil sends dictation to the webui's `/api/transcribe` through `apiClient`.
+    var hermesTranscriber: ComposerTranscriber?
 
     @State private var textFieldHeight: CGFloat = 0
     @State private var textInputHeight: CGFloat = 22
@@ -1494,7 +1497,7 @@ struct MessageComposerView: View {
 
     @MainActor
     private func toggleVoiceInput() {
-        voiceInput.apiClient = apiClient
+        voiceInput.transcribe = hermesTranscriber ?? apiClient?.dictationTranscriber
         voiceInput.providerPreference = ComposerSTTProviderPreference.storedValue(sttProviderPreferenceRawValue)
         voiceInput.scheduleToggle(currentDraft: draftMessage) { newDraft in
             editDraft(newDraft)

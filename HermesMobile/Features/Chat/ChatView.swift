@@ -300,6 +300,8 @@ struct ChatView: View {
     /// Puts a new Hermes chat in this one's place: a Profile picked before anything was
     /// sent (#1015). Nil pushes it on top instead.
     let onReplaceHermesSession: ((HermesSessionChat) -> Void)?
+    /// A Hermes session's dictation goes to its host for its Profile (#1071).
+    private let hermesTranscriber: ComposerTranscriber?
 
     /// The composer's draft. Never read it in `body` or wrap it in a get/set
     /// binding for the composer: either re-runs this whole screen on every
@@ -439,6 +441,7 @@ struct ChatView: View {
         self.onConversationStarted = onConversationStarted
         isHermesSession = hermesSession != nil
         self.onReplaceHermesSession = onReplaceHermesSession
+        hermesTranscriber = hermesSession.map { HermesTranscription.transcriber(for: $0) }
         _draftMessage = State(initialValue: initialDraft)
         _draftQuotes = State(initialValue: initialQuotes)
         _initialAttachments = State(initialValue: initialAttachments)
@@ -659,7 +662,8 @@ struct ChatView: View {
             configurationNotice: viewModel.composerConfigurationNotice,
             sentReasoningEffort: viewModel.composerSentReasoningEffort,
             uploadsAttachmentsOnSend: isHermesSession,
-            onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil
+            onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,
+            hermesTranscriber: hermesTranscriber
         )
         // The composer flips wholesale with the transcript under the RTL
         // toggle (#259): input, placeholder, and chrome mirror together.

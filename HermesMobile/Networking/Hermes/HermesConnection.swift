@@ -194,8 +194,14 @@ import OSLog
     /// refused cron or Kanban write (#1044). A 401 still signs in again and resends once, as
     /// `data` does.
     func reply(_ rest: HermesREST, deadline: Deadline = .standard) async throws -> (body: Data, status: Int) {
+        try await reply(try rest.request(base: connection.address), deadline: deadline)
+    }
+
+    /// `reply` for a request built off the main actor from a `HermesREST` case, such as
+    /// dictation's base64 upload (#1071).
+    func reply(_ request: URLRequest, deadline: Deadline = .standard) async throws -> (body: Data, status: Int) {
         let redirectGuard = self.redirectGuard
-        return try await authorized(try rest.request(base: connection.address), deadline: deadline) { request, session in
+        return try await authorized(request, deadline: deadline) { request, session in
             let (data, response) = try await Self.exchange(request, on: session, redirectGuard: redirectGuard)
             if response.statusCode == 401 { throw BotFailure.rejected(401) }
             return (data, response.statusCode)

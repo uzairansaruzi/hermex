@@ -828,6 +828,14 @@ only the typed text. A chip has a name and no path, so tapping one shows the loc
 when this phone sent it and otherwise says it has no server path; audio shows as a
 file, not a player. Bot Chat still shows the raw lines (#1017).
 
+Dictation in a Hermes session follows the Dictation Provider setting as on webui
+(#1071), but `HermesTranscription` uploads one JSON `POST /api/audio/transcribe` for
+the chat's Profile on the `.provisioning` deadline, never the webui's multipart
+`/api/transcribe`. An empty successful transcript is silence: nothing is inserted and
+nothing fails. The host's `{detail}` is the failure Server first falls back on-device
+from. There is no capability probe, because `/api/audio/voice-config` returns provider
+keys. Bot Chat dictation stays on-device only (#487, #593).
+
 Bot drafts extend `ChatDraftStore` with server + connection UUID + Profile context.
 After uploads finish, immediately before prompt submission, the client flushes an
 unresolved marker to disk. Upload interruptions never mark a draft ambiguous. An acknowledged

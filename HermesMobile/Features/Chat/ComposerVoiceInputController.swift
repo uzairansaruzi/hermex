@@ -5,6 +5,11 @@ import OSLog
 import Speech
 import UIKit
 
+/// Uploads one finished dictation recording (its bytes and file name) to the server's
+/// speech-to-text and returns the reply. A webui server's is `APIClient.dictationTranscriber`;
+/// a Hermes chat's is `HermesTranscription.transcriber(for:)`, bound to its Profile (#1071).
+typealias ComposerTranscriber = @MainActor (Data, String) async throws -> TranscribeResponse
+
 @MainActor
 @Observable
 final class ComposerVoiceInputController {
@@ -53,16 +58,23 @@ final class ComposerVoiceInputController {
     @ObservationIgnored private var interruptionObserver: NSObjectProtocol?
     private var resumeWaiter: CheckedContinuation<Void, Never>?
     private let microphonePermission: () async -> Bool
+    private let speechAuthorization: () async -> SFSpeechRecognizerAuthorizationStatus
     private let mayRecord: @MainActor () -> Bool
     private let logger = Logger.hermesVoiceInput
 
-    @ObservationIgnored var apiClient: APIClient?
+    /// The server's speech-to-text; nil when the server has none, which leaves only on-device.
+    @ObservationIgnored var transcribe: ComposerTranscriber?
     @ObservationIgnored var providerPreference = ComposerSTTProviderPreference.defaultValue
 
     init(
         speechRecognizerFactory: @escaping (Locale) -> SFSpeechRecognizer? = { SFSpeechRecognizer(locale: $0) },
         audioEngineFactory: @escaping () -> AVAudioEngine = { AVAudioEngine() },
         microphonePermission: @escaping () async -> Bool = { await ComposerVoiceMicrophonePermissionRequester.request() },
+        speechAuthorization: @escaping () async -> SFSpeechRecognizerAuthorizationStatus = {
+            await withCheckedContinuation { continuation in
+                SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
+            }
+        },
         serverRecorder: (any ComposerServerRecording)? = nil,
         mayRecord: @escaping @MainActor () -> Bool = {
             ComposerVoiceInputStartPolicy.canStart(
@@ -73,6 +85,7 @@ final class ComposerVoiceInputController {
         self.speechRecognizerFactory = speechRecognizerFactory
         self.audioEngineFactory = audioEngineFactory
         self.microphonePermission = microphonePermission
+        self.speechAuthorization = speechAuthorization
         self.mayRecord = mayRecord
         self.serverRecorder = serverRecorder ?? ComposerServerAudioRecorder()
         interruptionObserver = NotificationCenter.default.addObserver(
@@ -206,7 +219,7 @@ final class ComposerVoiceInputController {
         self.updateDraft = updateDraft
         state = .requestingPermission
 
-        let canUseServer = apiClient != nil
+        let canUseServer = transcribe != nil
         let canUseOnDevice = onDeviceSpeechRecognizerForRecording() != nil
         let providers = ComposerSTTProviderPolicy.orderedProviders(
             preference: providerPreference,
@@ -332,7 +345,7 @@ final class ComposerVoiceInputController {
         let fallback = ComposerSTTProviderPolicy.fallbackProvider(
             after: failedProvider,
             preference: providerPreference,
-            serverConfigured: apiClient != nil,
+            serverConfigured: transcribe != nil,
             onDeviceSupported: onDeviceSpeechRecognizerForRecording() != nil
         )
 
@@ -378,6 +391,7 @@ final class ComposerVoiceInputController {
     static let serverRecordingFileExtension = "m4a"
     // Leave 1 MiB below the server's configurable 20 MiB default for the
     // multipart envelope. A lower custom limit still uses the existing fallback.
+    // A Hermes host takes up to 25 MiB of decoded audio (#1071).
     static let maximumServerRecordingUploadBytes = 19 * 1_024 * 1_024
 
     static func serverRecordingFileSize(at url: URL) throws -> Int {
@@ -444,7 +458,7 @@ final class ComposerVoiceInputController {
             return
         }
 
-        guard let apiClient else {
+        guard let transcribe else {
             cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
             fail(
                 String(localized: "Server speech-to-text is not configured."),
@@ -489,10 +503,7 @@ final class ComposerVoiceInputController {
         }
 
         do {
-            let response = try await apiClient.transcribeAudio(
-                data: audioData,
-                filename: recordingURL.lastPathComponent
-            )
+            let response = try await transcribe(audioData, recordingURL.lastPathComponent)
 
             await waitUntilResumed()
             guard isActiveTranscription(transcriptionID), !Task.isCancelled else {
@@ -500,25 +511,27 @@ final class ComposerVoiceInputController {
                 return
             }
 
-            if let transcript = response.transcript?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !transcript.isEmpty {
+            let transcript = response.transcript?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            // An empty transcript the server reports as a success is silence, which a Hermes
+            // host answers `{ok: true, transcript: ""}` (#1071): nothing to insert, nothing failed.
+            guard !transcript.isEmpty || (response.ok == true && response.error == nil) else {
+                await fallbackFromServerFailure(
+                    recordingURL: recordingURL,
+                    transcriptionID: transcriptionID,
+                    message: response.error ?? String(localized: "Transcription returned no text.")
+                )
+                return
+            }
+            if !transcript.isEmpty {
                 liveTranscript = transcript
                 if let composedDraft = draftUpdateSession.composedDraft(for: transcript) {
                     updateDraft?(composedDraft)
                 }
-                stopAcceptingDraftUpdates()
-                cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
-                state = .idle
-                suppressNextRecognitionError = false
-                return
             }
-
-            let serverMessage = response.error ?? String(localized: "Transcription returned no text.")
-            await fallbackFromServerFailure(
-                recordingURL: recordingURL,
-                transcriptionID: transcriptionID,
-                message: serverMessage
-            )
+            stopAcceptingDraftUpdates()
+            cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
+            state = .idle
+            suppressNextRecognitionError = false
         } catch {
             await waitUntilResumed()
             guard isActiveTranscription(transcriptionID), !Task.isCancelled else {
@@ -542,7 +555,7 @@ final class ComposerVoiceInputController {
         guard ComposerSTTProviderPolicy.fallbackProvider(
             after: .server,
             preference: providerPreference,
-            serverConfigured: apiClient != nil,
+            serverConfigured: transcribe != nil,
             onDeviceSupported: onDeviceSpeechRecognizerForRecording() != nil
         ) == .onDevice,
               let speechRecognizer = onDeviceSpeechRecognizerForRecording()
@@ -850,11 +863,7 @@ final class ComposerVoiceInputController {
     }
 
     private func requestSpeechAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
-        await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { status in
-                continuation.resume(returning: status)
-            }
-        }
+        await speechAuthorization()
     }
 
     private func requestMicrophonePermission() async -> Bool {

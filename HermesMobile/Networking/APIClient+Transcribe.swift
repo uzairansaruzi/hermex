@@ -1,6 +1,12 @@
 import Foundation
 
 extension APIClient {
+    /// Dictation's transcriber on a webui server: `transcribeAudio`, which the Sessions
+    /// composer hands to `ComposerVoiceInputController`.
+    nonisolated var dictationTranscriber: ComposerTranscriber {
+        { try await self.transcribeAudio(data: $0, filename: $1) }
+    }
+
     /// Uploads an audio clip to the server's speech-to-text endpoint and returns
     /// the tolerant `{ok, transcript, error}` payload. Mirrors `uploadFile`'s
     /// multipart shape but sends only the `file` field (no `session_id`).
