@@ -74265,6 +74265,112 @@
         }
       }
     },
+    "Preview truncated" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تم اقتطاع المعاينة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vorschau gekürzt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vista previa truncada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aperçu tronqué"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "התצוגה המקדימה קוצרה"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Anteprima troncata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "プレビューは一部のみ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "미리보기 일부만 표시"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Voorbeeld ingekort"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Podgląd skrócony"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pré-visualização truncada"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Предпросмотр обрезан"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Önizleme kısaltıldı"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "پیش منظر مختصر کیا گیا"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "預覽已截斷"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "预览已截断"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "預覽已截斷"
+          }
+        }
+      }
+    },
     "Previous Chat" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Vorheriger Chat" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Chat anterior" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Discussion précédente" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Chat precedente" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Poprzedni czat" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Chat anterior" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Vorige chat" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Önceki Sohbet" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Предыдущий чат" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "前のチャット" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "上一个聊天" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이전 채팅" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "المحادثة السابقة" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "הצ׳אט הקודם" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "پچھلی چیٹ" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "上一個聊天" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "上一個聊天" } } } },
     "Priority" : {
       "localizations" : {

@@ -1115,9 +1115,20 @@ skills included, whose `enabled` becomes the app's `disabled` (the Tasks editor'
 shares that decode), and `GET /api/skills/content?name=&profile=`. A toggle is
 `PUT /api/skills/toggle` with `{name, enabled, profile}` in the body, where the host reads the
 Profile first; a refusal rolls the row back and shows the host's `detail`, and a missing skill
-is a 404 `{detail}`. The content reply's `path` is a host path and is never decoded. The host
-sends no tags or linked files (`SkillsFeatures.hermes`), and has create and edit routes the
-app does not use. The temporary entry is the inbox's + menu (DEBUG and Hermex Branch), until #709.
+is a 404 `{detail}`. The host sends no tags, and has create and edit routes the app does not
+use. The temporary entry is the inbox's + menu (DEBUG and Hermex Branch), until #709.
+
+A skill's linked files (#1070) are the other files in its SKILL.md's folder, the content
+reply's `path` without `/SKILL.md`. That folder is an opaque handle the client keeps in memory,
+never shown, logged or persisted. The detail lists it with `GET /api/fs/list?path=` and each
+folder directly inside it, two levels in all, as one flat sorted list of paths relative to the
+skill, without SKILL.md or dotfiles. A listing the host can't read, including its 200
+`{entries: [], error}`, adds no files and no error. A file opens through
+`GET /api/fs/read-text?path=`; `binary` shows No Preview, and `truncated` (past 512 KiB)
+shows the start with a "Preview truncated" note. `/api/fs/*` takes any host path, so every
+path is the folder joined with names from its own listing, never the listing's `path`, which
+the host resolves (`/private/var/…` on a Mac). A name that is empty, `.`, `..` or holds a
+separator is refused before any request.
 
 ## Opening a bot from outside the app
 

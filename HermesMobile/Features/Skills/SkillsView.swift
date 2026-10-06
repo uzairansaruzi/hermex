@@ -297,7 +297,7 @@ struct SkillDetailView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var selectedFile: String?
-    @State private var fileContent: String?
+    @State private var openedFile: SkillDetailResponse?
     @State private var isLoadingFile = false
 
     var body: some View {
@@ -324,8 +324,10 @@ struct SkillDetailView: View {
                 NavigationStack {
                     SkillLinkedFileView(
                         fileName: fileName,
-                        content: fileContent,
-                        isLoading: isLoadingFile
+                        content: openedFile?.content,
+                        isLoading: isLoadingFile,
+                        isBinary: openedFile?.isBinary == true,
+                        isTruncated: openedFile?.isTruncated == true
                     )
                 }
                 .adaptivePagePresentation()
@@ -397,10 +399,10 @@ struct SkillDetailView: View {
         defer { isLoadingFile = false }
 
         do {
-            let response = try await client.skillContent(name: name, file: fileName)
-            fileContent = response.content
+            openedFile = try await client.skillContent(name: name, file: fileName)
         } catch {
-            fileContent = String(localized: "Could not load file: \(error.localizedDescription)")
+            openedFile = SkillDetailResponse(name: name, content: String(localized: "Could not load file: \(error.localizedDescription)"),
+                                             linkedFiles: nil)
         }
     }
 }
@@ -473,10 +475,14 @@ private struct SkillLinkedFilesSection: View {
     }
 }
 
+/// One linked file's text. A Hermes host (#1070) also says when the file is not text, which has
+/// no preview, and when the text is only the start of the file.
 struct SkillLinkedFileView: View {
     let fileName: String
     let content: String?
     let isLoading: Bool
+    var isBinary = false
+    var isTruncated = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -484,10 +490,23 @@ struct SkillLinkedFileView: View {
         Group {
             if isLoading {
                 ProgressView("Loading file...")
+            } else if isBinary {
+                ContentUnavailableView {
+                    Label("No Preview", systemImage: "doc.questionmark")
+                } description: {
+                    Text("Preview is not available for this file type.")
+                }
             } else if let content, !content.isEmpty {
                 ScrollView {
-                    MarkdownRenderer(content: content)
-                        .padding()
+                    VStack(alignment: .leading, spacing: 12) {
+                        if isTruncated {
+                            Label("Preview truncated", systemImage: "scissors")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        MarkdownRenderer(content: content)
+                    }
+                    .padding()
                 }
             } else {
                 ContentUnavailableView {

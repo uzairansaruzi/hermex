@@ -11,13 +11,13 @@ protocol SkillsDataClient: Sendable {
     func toggleSkill(name: String, enabled: Bool) async throws -> ToggleSkillResponse
 }
 
-/// The parts of Skills one server backs. A webui server lists a skill's linked files and
-/// opens each; a Hermes host has no skill route for them, so its client offers none (#1070).
+/// The parts of Skills one server backs. Both list a skill's linked files and open each: webui
+/// through its skill route, a Hermes host through its file routes (#1070).
 struct SkillsFeatures: Equatable, Sendable {
     let hasLinkedFiles: Bool
 
     static let webui = SkillsFeatures(hasLinkedFiles: true)
-    static let hermes = SkillsFeatures(hasLinkedFiles: false)
+    static let hermes = SkillsFeatures(hasLinkedFiles: true)
 }
 
 extension APIClient: SkillsDataClient {

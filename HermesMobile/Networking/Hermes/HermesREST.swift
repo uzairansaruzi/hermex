@@ -30,7 +30,11 @@ import Foundation
 /// `/api/plugins/kanban` at the same pin, checked against `scripts/local-hermes`;
 /// `docs/agents/kanban.md` § Hermes has their shapes. The skills routes (#1069) are read at the
 /// same pin and checked against `scripts/local-hermes`: the list is a bare array with `enabled`,
-/// the toggle is PUT, not webui's POST, and a refusal or a missing skill is `{detail}`.
+/// the toggle is PUT, not webui's POST, and a refusal or a missing skill is `{detail}`. The file
+/// routes a skill's linked files use (#1070) are read at the same pin and checked against
+/// `scripts/local-hermes`: a listing answers `{entries: [{name, path, isDirectory}]}`, or 200
+/// `{entries: [], error}` for a folder it can't read, and each entry's `path` is resolved
+/// (`/private/var/…` for `/var/…` on a Mac), so it never matches the path that was asked for.
 enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
@@ -88,6 +92,12 @@ enum HermesREST: Equatable, Sendable {
     case setSkill(name: String, enabled: Bool, profile: String?)
     /// A skill's SKILL.md: `{name, content, path}`, where `path` is a host path, or 404 `{detail}`.
     case skillContent(name: String, profile: String?)
+    /// `{entries: [{name, path, isDirectory}]}` for one folder at a host path, not recursive, with
+    /// build, VCS and credential entries hidden; 200 `{entries: [], error}` when it can't be read.
+    case fsList(path: String)
+    /// `{text, binary, truncated, byteSize, …}` for the file at a host path, its first 512 KiB
+    /// (`truncated` past that); 404 `{detail}` when there is none.
+    case fsReadText(path: String)
     /// `{default_tenant, …}`, or 404 when the Kanban plugin is disabled or absent.
     case kanbanConfig
     /// Every Board with its counts, and `current`.
@@ -199,6 +209,22 @@ enum HermesREST: Equatable, Sendable {
             guard var parts = URLComponents(url: try Self.url(base, "api/skills/content", profile: profile),
                                             resolvingAgainstBaseURL: false) else { throw BotFailure.invalidAddress }
             parts.queryItems = [URLQueryItem(name: "name", value: name)] + (parts.queryItems ?? [])
+            guard let url = parts.url else { throw BotFailure.invalidAddress }
+            return Self.get(url)
+        case .fsList(let path):
+            guard var parts = URLComponents(url: base.appendingPathComponent("api/fs/list"), resolvingAgainstBaseURL: false)
+            else { throw BotFailure.invalidAddress }
+            parts.queryItems = [URLQueryItem(name: "path", value: path)]
+            // The host reads a query's `+` as a space; a path keeps its own.
+            parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+            guard let url = parts.url else { throw BotFailure.invalidAddress }
+            return Self.get(url)
+        case .fsReadText(let path):
+            guard var parts = URLComponents(url: base.appendingPathComponent("api/fs/read-text"), resolvingAgainstBaseURL: false)
+            else { throw BotFailure.invalidAddress }
+            parts.queryItems = [URLQueryItem(name: "path", value: path)]
+            // The host reads a query's `+` as a space; a path keeps its own.
+            parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
             guard let url = parts.url else { throw BotFailure.invalidAddress }
             return Self.get(url)
         case .kanbanConfig: return try Self.kanban(base, ["config"])

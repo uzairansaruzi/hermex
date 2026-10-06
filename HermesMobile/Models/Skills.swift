@@ -228,11 +228,23 @@ struct SkillDetailResponse: Decodable, Equatable {
     let name: String?
     let content: String?
     let linkedFiles: [String]?
+    /// A Hermes host's linked file that is not text (#1070), which has no preview. webui never sets it.
+    var isBinary = false
+    /// A Hermes host's linked file past its 512 KiB preview, which `content` holds. webui never sets it.
+    var isTruncated = false
 
     enum CodingKeys: String, CodingKey {
         case name
         case content
         case linkedFiles
+    }
+
+    init(name: String?, content: String?, linkedFiles: [String]?, isBinary: Bool = false, isTruncated: Bool = false) {
+        self.name = name
+        self.content = content
+        self.linkedFiles = linkedFiles
+        self.isBinary = isBinary
+        self.isTruncated = isTruncated
     }
 
     init(from decoder: Decoder) throws {
