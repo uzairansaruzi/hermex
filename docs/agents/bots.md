@@ -98,8 +98,9 @@ Connection Headers, for a proxy such as Cloudflare Access, are saved in the
 connection's own Keychain record (`BotConnection.headers`) and edited from the
 connection form with the shared `CustomHeadersEditor`. `HermesConnection` sends them,
 as `HermesHeaders`, on every request to its own origin: the public `/api/status`,
-sign-in, identity, ticket, REST and plugin calls, uploads, downloads and the `/api/ws`
-upgrade. The status probe sends them too, and the form signs its unsaved candidate in
+sign-in, identity, ticket, REST and plugin calls, uploads, downloads, and both socket
+upgrades: the gateway's `/api/ws` and the Kanban event socket (#1045), each on its own
+ticket. The status probe sends them too, and the form signs its unsaved candidate in
 with the form's set. A cross-origin redirect drops them before the push relay or any
 other host, and `PushRelayClient` never sees them. The policy refuses transport names
 (`Host`, `Cookie`, `Sec-WebSocket-*` and similar), the names Hermes reads for its own

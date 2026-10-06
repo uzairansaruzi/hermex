@@ -43,6 +43,25 @@ final class KanbanEventStreamClientTests: XCTestCase {
         )
     }
 
+    /// A Hermes socket frame is `{events, cursor}` with no event type or frame id (#1045).
+    func testHermesSocketFramesReadAsEventsAndOtherMessagesAreIgnored() {
+        let frame = KanbanStreamFrameDecoder.decodeSocketFrame(Data(
+            #"{"events":[{"id":2,"task_id":"t_8aa1b5e6","run_id":null,"kind":"status","payload":{"status":"ready"},"created_at":1791255525,"future":1}],"cursor":2,"future":true}"#.utf8
+        ))
+        guard case let .events(events, cursor, frameID) = frame else {
+            return XCTFail("Expected events frame, got \(frame)")
+        }
+        XCTAssertEqual(cursor, 2)
+        XCTAssertNil(frameID)
+        XCTAssertEqual(events.map(\.eventID), [2])
+        XCTAssertEqual(events.first?.cardID, "t_8aa1b5e6")
+
+        XCTAssertEqual(KanbanStreamFrameDecoder.decodeSocketFrame(Data(#"{"type":"hello"}"#.utf8)), .ignored)
+        for malformed in [#"{"events":[],"cursor":-1}"#, #"{"events":[]}"#, #"{"cursor":"2"}"#, "not json"] {
+            XCTAssertEqual(KanbanStreamFrameDecoder.decodeSocketFrame(Data(malformed.utf8)), .malformed, malformed)
+        }
+    }
+
     func testSSECommentsAreTransportKeepalives() {
         // LDSwiftEventSource delivers comment lines through EventHandler.onComment,
         // which KanbanEventStreamClient intentionally treats as a no-op. The

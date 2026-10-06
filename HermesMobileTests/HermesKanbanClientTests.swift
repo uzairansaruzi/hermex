@@ -19,7 +19,7 @@ import XCTest
         super.tearDown()
     }
 
-    func testHandshakeShowsTheHostsEightColumnsReadOnlyWithoutLiveUpdates() async {
+    func testHandshakeShowsTheHostsEightColumnsReadOnlyAndStreamsFromTheBoardsCursor() async {
         let stream = RecordingKanbanStream()
         let state = KanbanFeatureState(server: server, client: HermesKanbanClient(http: host()), streamClient: stream)
 
@@ -47,40 +47,36 @@ import XCTest
         XCTAssertFalse(state.canManageBoards)
         XCTAssertEqual(state.dispatcherAvailability, .readOnly)
         XCTAssertFalse(state.offersOnlyMine)
-        XCTAssertEqual(stream.startCount, 0, "the host has no event stream until #1045")
+        XCTAssertEqual(stream.starts, ["default@14"], "live updates start at the Board's `latest_event_id`")
 
-        // Returning to the foreground reloads the Board instead.
+        // The foreground asks whether the Board moved, keeps it unmoved, and reopens the socket.
+        let detailRevision = state.detailRefreshRevision
         await state.setScenePhase(.background)
         await state.setScenePhase(.active)
         XCTAssertEqual(HermesHostFixture.count("/api/plugins/kanban/board"), 2)
-        XCTAssertEqual(stream.startCount, 0)
+        XCTAssertEqual(state.detailRefreshRevision, detailRevision, "an unmoved Board is not applied again")
+        XCTAssertEqual(stream.starts, ["default@14", "default@14"])
         XCTAssertFalse(state.liveUpdatesDelayed)
+        state.setVisible(false)
     }
 
-    /// A foreground return while a pushed Card covers the Board reloads the Board when it
-    /// reappears; without one, reappearing keeps the Board on screen.
-    func testAForegroundReturnBehindACardReloadsTheBoardWhenItReappears() async {
-        let state = KanbanFeatureState(server: server, client: HermesKanbanClient(http: host()))
-        await state.load()
-        state.setVisible(true)
-        state.setVisible(false)
-        await state.setScenePhase(.background)
-        // The host retitles a Card while the app is in the background.
-        _ = host(["/api/plugins/kanban/board": .json(200, Self.json(Self.board.replacingOccurrences(
-            of: "Await review", with: "Reviewed while away")))])
-        await state.setScenePhase(.active)
-        XCTAssertEqual(HermesHostFixture.count("/api/plugins/kanban/board"), 1, "the covered Board waits")
+    /// The host's `/board` takes no `since`, so its `latest_event_id` answers one: unchanged
+    /// only while it still equals `since`. A recreated database's lower id is a change.
+    func testASinceReadIsUnchangedOnlyWhileTheBoardsLatestEventIsTheSame() async throws {
+        let client = HermesKanbanClient(http: host())
 
-        state.setVisible(true)
-        await state.loadIfNeeded()
+        let full = try await client.kanbanBoard(KanbanBoardRequest(board: "default"))
+        let unchanged = try await client.kanbanBoard(KanbanBoardRequest(board: "default", since: 14))
+        let moved = try await client.kanbanBoard(KanbanBoardRequest(board: "default", since: 13))
+        let recreated = try await client.kanbanBoard(KanbanBoardRequest(board: "default", since: 40))
 
-        XCTAssertEqual(state.allCards.first { $0.cardID == "t_04fba87e" }?.title, "Reviewed while away")
-        XCTAssertEqual(HermesHostFixture.count("/api/plugins/kanban/board"), 2)
-
-        state.setVisible(false)
-        state.setVisible(true)
-        await state.loadIfNeeded()
-        XCTAssertEqual(HermesHostFixture.count("/api/plugins/kanban/board"), 2)
+        XCTAssertNil(full.changed)
+        XCTAssertEqual(unchanged.changed, false)
+        XCTAssertEqual(moved.changed, true)
+        XCTAssertEqual(recreated.changed, true)
+        XCTAssertEqual(unchanged.latestEventID, 14)
+        XCTAssertEqual(kanbanRequests(), Array(repeating: "/api/plugins/kanban/board?board=default", count: 4),
+                       "the host never sees `since`")
     }
 
     /// A Card's workspace path, claim and worker PID, a run's worker PID, a Board's database
@@ -314,16 +310,17 @@ import XCTest
     """#
 }
 
-/// Counts live-update starts; a Hermes host must see none.
+/// Records live-update starts as `board@since`.
 private final class RecordingKanbanStream: KanbanEventStreamingClient {
-    private(set) var startCount = 0
+    private(set) var starts: [String] = []
 
     func start(
-        url: URL,
+        board: String,
+        since: Int,
         onFrame: @escaping @MainActor (KanbanStreamFrame) -> Void,
         onFailure: @escaping @MainActor () -> Void
     ) {
-        startCount += 1
+        starts.append("\(board)@\(since)")
     }
 
     func stop() {}

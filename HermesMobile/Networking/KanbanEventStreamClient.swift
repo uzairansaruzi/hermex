@@ -2,7 +2,10 @@ import Foundation
 import LDSwiftEventSource
 
 enum KanbanStreamFrame: Equatable, Sendable {
+    /// webui's handshake: the stream is live at `cursor` for `board`.
     case hello(cursor: Int, board: String)
+    /// A Hermes socket's upgrade succeeded. The host sends no hello, so this stands in for it.
+    case opened
     case events(events: [KanbanEvent], cursor: Int, frameID: Int?)
     case ignored
     case malformed
@@ -37,6 +40,18 @@ enum KanbanStreamFrameDecoder {
         }
     }
 
+    /// One frame from a Hermes host's Kanban socket (#1045): `{events, cursor}`, read as webui's
+    /// `events` frame without a frame id. A JSON object with neither key is some other message
+    /// a newer host might add, and is ignored rather than ending the socket.
+    static func decodeSocketFrame(_ data: Data) -> KanbanStreamFrame {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        guard let payload = try? decoder.decode(Events.self, from: data) else { return .malformed }
+        guard payload.events != nil || payload.cursor != nil else { return .ignored }
+        guard let events = payload.events, let cursor = payload.cursor, cursor >= 0 else { return .malformed }
+        return .events(events: events, cursor: cursor, frameID: nil)
+    }
+
     private static func normalized(_ value: String?) -> String? {
         guard let value else { return nil }
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -54,36 +69,47 @@ enum KanbanStreamFrameDecoder {
     }
 }
 
+/// One Board's live events. `KanbanFeatureState` starts it at the Board's cursor while the
+/// Board is on screen and the app is active, and stops it otherwise. A client reports each
+/// frame and at most one failure per `start`, and nothing after `stop()`.
 @MainActor
 protocol KanbanEventStreamingClient: AnyObject {
     func start(
-        url: URL,
+        board: String,
+        since: Int,
         onFrame: @escaping @MainActor (KanbanStreamFrame) -> Void,
         onFailure: @escaping @MainActor () -> Void
     )
     func stop()
 }
 
+/// webui's SSE stream, `/api/kanban/events/stream` on `server`, with the custom headers.
 @MainActor
 final class KanbanEventStreamClient: KanbanEventStreamingClient {
+    private let server: URL
     private let baseConfiguration: URLSessionConfiguration
     private let customHeaderProvider: @MainActor () -> [CustomHeader]
     private var eventSource: EventSource?
 
     init(
+        server: URL,
         urlSessionConfiguration: URLSessionConfiguration = .default,
         customHeaderProvider: @escaping @MainActor () -> [CustomHeader] = { CustomHeaderStore.shared.snapshot() }
     ) {
+        self.server = server
         baseConfiguration = urlSessionConfiguration
         self.customHeaderProvider = customHeaderProvider
     }
 
     func start(
-        url: URL,
+        board: String,
+        since: Int,
         onFrame: @escaping @MainActor (KanbanStreamFrame) -> Void,
         onFailure: @escaping @MainActor () -> Void
     ) {
         stop()
+        let url = Endpoint.kanbanEventsStream(KanbanEventsStreamRequest(board: board, since: since))
+            .url(relativeTo: server)
         let handler = Handler(onFrame: onFrame, onFailure: onFailure)
         var config = EventSource.Config(handler: handler, url: url)
         config.connectionErrorHandler = { _ in .shutdown }

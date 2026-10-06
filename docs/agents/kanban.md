@@ -77,10 +77,9 @@ legacy Card patch alias, or unsupported task attachments.
 
 A Hermes server's Kanban (#1043) is the host's bundled Kanban plugin, read by
 `HermesKanbanClient` over the server's shared `HermesConnection` (its sign-in, cookie jar
-and connection headers). It is read-only until #1044 adds writes, and has no live updates
-until #1045 adds the socket: pull to refresh and returning to the foreground reload the
-Board. Until #709 gives it a home, the Hermes inbox's + menu offers it in DEBUG builds and
-Hermex Branch only.
+and connection headers), and kept live over the Board's Kanban socket
+(`KanbanWebSocketEventClient`, #1045). It is read-only until #1044 adds writes. Until #709
+gives it a home, the Hermes inbox's + menu offers it in DEBUG builds and Hermex Branch only.
 
 Read at the pin (`ca678285`, 0.21.5; `plugins/kanban/dashboard/plugin_api.py`) and checked
 against `scripts/local-hermes`. Every route is a GET under `/api/plugins/kanban`, and every
@@ -94,6 +93,7 @@ route but `/config` and `/boards` takes `?board=<slug>`; an unknown Board is 404
 | `/tasks/{id}` | `{task, comments, events, attachments, links {parents, children}, link_tasks, child_results, runs}`. |
 | `/tasks/{id}/log?tail=` | `{task_id, path, exists, size_bytes, content, truncated}`; a Card that never ran is `exists: false`, not 404. |
 | `/stats`, `/assignees` | `{by_status, by_assignee: {name: {status: n}}, …}` and `{assignees: [{name, on_disk, counts}]}`. |
+| `/events?board=&since=&ticket=` (WebSocket) | `{events: [{id, task_id, run_id, kind, payload, created_at}], cursor}`, only when events after `since` exist, at most 200 a frame. No hello, no heartbeat, and client messages are ignored. A used, expired or missing ticket is HTTP 403 on the upgrade. |
 
 How Hermex adapts it:
 
@@ -111,6 +111,24 @@ How Hermex adapts it:
 - **Errors.** A transport failure is offline, 502–504 and 520–530 are server unavailable,
   and a refused or replaced sign-in reads as signed out. The sign-out itself stays with
   `HermesConnection`, never `onAPIError`.
+- **Live updates.** One socket per open Board, pinned to it, from the Board's
+  `latest_event_id`. Every connect mints a fresh `POST /api/auth/ws-ticket` ticket through
+  `HermesConnection` (never the gateway's) and sends the connection headers on the upgrade,
+  to its own origin only. It offers no subprotocol: the host accepts without echoing one. A
+  completed upgrade is live; a frame advances the cursor and triggers the same coalesced
+  Board reload as webui's. Leaving the Board, the background and a server switch close it.
+- **Keepalive.** The host sends nothing on a quiet Board, and a dashboard bound to loopback
+  (how a tunneled one runs) sends no protocol pings, so Cloudflare would close the socket at
+  about 100 s. The phone pings every 25 s; a ping with neither its pong nor a frame by the
+  next one ends the socket.
+- **Reconnect.** A 403 on the upgrade tries one fresh ticket first. Reconnects wait 1, 2, 5
+  and 10 s, then 30 s each. From the third failure the Board shows **Live updates delayed**
+  and polls while the socket keeps reconnecting: there is no events route, so polling reloads
+  the Board every 30 s and keeps it while its `latest_event_id` has not moved. The socket
+  opening stops the polling and clears the notice.
+- **Cursor regression.** The host sends only ids above `since`, so a recreated database
+  would stay silent. A Board reload whose `latest_event_id` is below the cursor the request
+  started with takes that lower cursor and reopens the socket.
 
 ## Native information architecture and interaction model
 

@@ -26,8 +26,9 @@ import Foundation
 /// read at the same pin and checked against `scripts/local-hermes`: `{runs, limit}`, the job's run
 /// sessions newest first, each `cron_<job>_<YYYYmmdd_HHMMSS>` with the session's `system_prompt`;
 /// `limit` is clamped to 1-100, there is no offset, and a job without runs answers `{runs: []}`.
-/// The Kanban plugin's reads (#1043) are under `/api/plugins/kanban` at the same pin, checked
-/// against `scripts/local-hermes`; `docs/agents/kanban.md` § Hermes has their shapes.
+/// The Kanban plugin's reads (#1043) and its event socket (#1045) are under `/api/plugins/kanban`
+/// at the same pin, checked against `scripts/local-hermes`; `docs/agents/kanban.md` § Hermes
+/// has their shapes.
 enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
@@ -201,6 +202,21 @@ enum HermesREST: Equatable, Sendable {
         var request = URLRequest(url: url)
         request.setValue("hermes-gateway-v1, hermes-gateway-ticket." + ticket, forHTTPHeaderField: "Sec-WebSocket-Protocol")
         return request
+    }
+
+    /// A Board's Kanban event socket (#1045): `/api/plugins/kanban/events` on the `ws`/`wss`
+    /// URL matching the address's scheme, presenting the single-use ticket as `?ticket=`. It
+    /// offers no subprotocol, because the host accepts without echoing one. The host pins the
+    /// socket to `board` and sends only events after `since`.
+    static func kanbanEventsUpgrade(base: URL, board: String, since: Int, ticket: String) throws -> URLRequest {
+        guard var parts = URLComponents(url: base.appendingPathComponent("api/plugins/kanban/events"),
+                                        resolvingAgainstBaseURL: false)
+        else { throw BotFailure.invalidAddress }
+        parts.scheme = base.scheme == "https" ? "wss" : "ws"
+        parts.queryItems = [URLQueryItem(name: "board", value: board), URLQueryItem(name: "since", value: String(max(0, since))),
+                            URLQueryItem(name: "ticket", value: ticket)]
+        guard let url = parts.url else { throw BotFailure.invalidAddress }
+        return URLRequest(url: url)
     }
 
     private static func get(_ url: URL) -> URLRequest { bare("GET", url) }

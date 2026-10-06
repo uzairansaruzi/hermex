@@ -9,6 +9,11 @@ final class KanbanLiveUpdateTests: XCTestCase {
         clearSavedKanbanBoards()
     }
 
+    override func tearDown() {
+        HermesHostFixture.reset()
+        super.tearDown()
+    }
+
     func testVisibleBoardStartsAtSnapshotCursorAndCoalescesEventBurst() async throws {
         let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.newer)])
         let stream = KanbanStreamSpy()
@@ -17,8 +22,8 @@ final class KanbanLiveUpdateTests: XCTestCase {
         await state.load()
         state.setVisible(true)
 
-        XCTAssertEqual(stream.startURLs.first?.queryValue("board"), "main")
-        XCTAssertEqual(stream.startURLs.first?.queryValue("since"), "11")
+        XCTAssertEqual(stream.starts.first?.board, "main")
+        XCTAssertEqual(stream.starts.first?.since, 11)
         stream.emit(.hello(cursor: 11, board: "main"))
         stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
         stream.emit(Self.eventsFrame(cursor: 13, kind: "future.unknown.kind"))
@@ -202,8 +207,8 @@ final class KanbanLiveUpdateTests: XCTestCase {
         await state.loadIfNeeded()
         state.setVisible(true)
 
-        XCTAssertEqual(stream.startURLs.count, 2)
-        XCTAssertEqual(stream.startURLs.last?.queryValue("since"), "13")
+        XCTAssertEqual(stream.starts.count, 2)
+        XCTAssertEqual(stream.starts.last?.since, 13)
         let boardCallCount = await client.boardCallCount
         XCTAssertEqual(boardCallCount, 2)
         state.setVisible(false)
@@ -238,7 +243,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         let requests = await client.boardRequests
         XCTAssertEqual(requests.count, 2)
         XCTAssertNil(requests.last?.since)
-        XCTAssertEqual(stream.startURLs.last?.queryValue("since"), "13")
+        XCTAssertEqual(stream.starts.last?.since, 13)
         state.setVisible(false)
     }
 
@@ -283,9 +288,9 @@ final class KanbanLiveUpdateTests: XCTestCase {
         await state.load()
         state.setVisible(true)
         stream.failCurrent()
-        try await waitUntil { stream.startURLs.count == 2 }
+        try await waitUntil { stream.starts.count == 2 }
         stream.failCurrent()
-        try await waitUntil { stream.startURLs.count == 3 }
+        try await waitUntil { stream.starts.count == 3 }
         stream.failCurrent()
 
         try await waitUntil { state.liveUpdatesDelayed }
@@ -295,7 +300,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         let eventCallCount = await client.eventCallCount
         XCTAssertEqual(eventCallCount, 1)
         XCTAssertEqual(state.liveCursor, 13)
-        XCTAssertEqual(stream.startURLs.count, 3)
+        XCTAssertEqual(stream.starts.count, 3)
         state.setVisible(false)
     }
 
@@ -326,7 +331,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         XCTAssertFalse(state.loadedDetailIsStale)
         XCTAssertEqual(state.snapshot?.latestEventID, 13)
         XCTAssertTrue(state.canUseServerAuthoritativeActions)
-        XCTAssertEqual(stream.startURLs.count, 2)
+        XCTAssertEqual(stream.starts.count, 2)
         state.setVisible(false)
     }
 
@@ -337,7 +342,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
 
         await state.load()
         state.setVisible(true)
-        XCTAssertEqual(stream.startURLs.count, 1)
+        XCTAssertEqual(stream.starts.count, 1)
 
         await state.setScenePhase(.background)
         XCTAssertGreaterThanOrEqual(stream.stopCount, 1)
@@ -357,7 +362,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         XCTAssertEqual(boardsCallCount, 2)
         XCTAssertEqual(statsCallCount, 2)
         XCTAssertEqual(assigneeCallCount, 2)
-        XCTAssertEqual(stream.startURLs.count, 2)
+        XCTAssertEqual(stream.starts.count, 2)
         state.setVisible(false)
     }
 
@@ -381,7 +386,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         XCTAssertEqual(boardsCallCount, 1)
         XCTAssertEqual(statsCallCount, 1)
         XCTAssertEqual(stream.stopCount, stopCount)
-        XCTAssertEqual(stream.startURLs.count, 1)
+        XCTAssertEqual(stream.starts.count, 1)
         XCTAssertEqual(state.detailRefreshRevision, revision)
 
         // The stream stayed current through the overlay, so its events still land.
@@ -417,8 +422,8 @@ final class KanbanLiveUpdateTests: XCTestCase {
         XCTAssertEqual(state.snapshot, snapshot)
         XCTAssertEqual(state.detailRefreshRevision, revision)
         XCTAssertFalse(state.isRefreshing)
-        XCTAssertEqual(stream.startURLs.count, 2)
-        XCTAssertEqual(stream.startURLs.last?.queryValue("since"), "11")
+        XCTAssertEqual(stream.starts.count, 2)
+        XCTAssertEqual(stream.starts.last?.since, 11)
         state.setVisible(false)
     }
 
@@ -492,7 +497,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         let boardCallCount = await client.boardCallCount
         XCTAssertEqual(boardCallCount, 2)
         XCTAssertEqual(state.snapshot?.latestEventID, 13)
-        XCTAssertEqual(stream.startURLs.count, 2)
+        XCTAssertEqual(stream.starts.count, 2)
         XCTAssertTrue(state.refreshFailed)
         XCTAssertFalse(state.canUseServerAuthoritativeActions)
         state.setVisible(false)
@@ -526,7 +531,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         await foreground.value
 
         XCTAssertEqual(state.selectedBoardSlug, "release")
-        XCTAssertEqual(stream.startURLs.last?.queryValue("board"), "release")
+        XCTAssertEqual(stream.starts.last?.board, "release")
         XCTAssertEqual(stream.stopCount, stopCountAfterSwitch)
         state.setVisible(false)
     }
@@ -543,9 +548,9 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(true)
         await state.selectBoard("release")
 
-        XCTAssertEqual(stream.startURLs.count, 2)
-        XCTAssertEqual(stream.startURLs.last?.queryValue("board"), "release")
-        XCTAssertEqual(stream.startURLs.last?.queryValue("since"), "20")
+        XCTAssertEqual(stream.starts.count, 2)
+        XCTAssertEqual(stream.starts.last?.board, "release")
+        XCTAssertEqual(stream.starts.last?.since, 20)
         stream.emit(.events(events: [], cursor: 99, frameID: 99), startIndex: 0)
         XCTAssertEqual(state.liveCursor, 20)
         stream.emit(Self.eventsFrame(cursor: 21, kind: "task.created"))
@@ -571,8 +576,8 @@ final class KanbanLiveUpdateTests: XCTestCase {
         await state.load()
         state.setVisible(true)
         XCTAssertEqual(state.selectedBoardSlug, "release")
-        XCTAssertEqual(stream.startURLs.first?.queryValue("board"), "release")
-        XCTAssertEqual(stream.startURLs.first?.queryValue("since"), "20")
+        XCTAssertEqual(stream.starts.first?.board, "release")
+        XCTAssertEqual(stream.starts.first?.since, 20)
 
         await state.setScenePhase(.background)
         await state.setScenePhase(.active)
@@ -581,8 +586,8 @@ final class KanbanLiveUpdateTests: XCTestCase {
         XCTAssertEqual(boardRequests.map(\.board), ["release", "release"])
         XCTAssertEqual(boardRequests.last?.since, 20)
         XCTAssertEqual(state.snapshot?.latestEventID, 21)
-        XCTAssertEqual(stream.startURLs.count, 2)
-        XCTAssertEqual(stream.startURLs.last?.queryValue("board"), "release")
+        XCTAssertEqual(stream.starts.count, 2)
+        XCTAssertEqual(stream.starts.last?.board, "release")
         state.setVisible(false)
     }
 
@@ -604,7 +609,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(true)
         for expectedStarts in 2...3 {
             stream.failCurrent()
-            try await waitUntil { stream.startURLs.count == expectedStarts }
+            try await waitUntil { stream.starts.count == expectedStarts }
         }
         stream.failCurrent()
         try await waitUntil { state.liveUpdatesDelayed }
@@ -612,7 +617,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         await state.refresh()
 
         XCTAssertTrue(state.liveUpdatesDelayed)
-        XCTAssertEqual(stream.startURLs.count, 4)
+        XCTAssertEqual(stream.starts.count, 4)
         stream.emit(.hello(cursor: 13, board: "main"))
         XCTAssertFalse(state.liveUpdatesDelayed)
         state.setVisible(false)
@@ -637,7 +642,7 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state?.setVisible(true)
         for expectedStarts in 2...3 {
             stream.failCurrent()
-            try await waitUntil { stream.startURLs.count == expectedStarts }
+            try await waitUntil { stream.starts.count == expectedStarts }
         }
         stream.failCurrent()
         try await waitUntil { state?.liveUpdatesDelayed == true }
@@ -678,8 +683,246 @@ final class KanbanLiveUpdateTests: XCTestCase {
         let firstBoardCallCount = await firstClient.boardCallCount
         XCTAssertEqual(firstBoardCallCount, 1)
         XCTAssertEqual(first.liveCursor, 11)
-        XCTAssertEqual(secondStream.startURLs.count, 1)
+        XCTAssertEqual(secondStream.starts.count, 1)
         second.setVisible(false)
+    }
+
+    // MARK: - Hermes socket (#1045)
+
+    func testAHermesBoardStreamsFromItsCursorAndAFrameBurstReloadsItOnce() async {
+        let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.newer)], backend: .hermes)
+        let stream = KanbanStreamSpy()
+        let clock = ScriptedClock()
+        let state = makeState(client: client, stream: stream, sleep: clock.sleep)
+
+        await state.load()
+        state.setVisible(true)
+        XCTAssertEqual(stream.starts, [.init(board: "main", since: 11)])
+        stream.emit(.opened)
+        stream.emit(Self.socketFrame(cursor: 12))
+        stream.emit(Self.socketFrame(cursor: 13))
+
+        await until("the burst's reload") { state.snapshot?.latestEventID == 13 }
+        XCTAssertEqual(state.liveCursor, 13)
+        let boardCallCount = await client.boardCallCount
+        XCTAssertEqual(boardCallCount, 2, "one load and one coalesced reload")
+        XCTAssertEqual(stream.starts.count, 1)
+        state.setVisible(false)
+    }
+
+    func testAFailingHermesSocketBacksOffOneTwoFiveTenThenHoldsThirty() async {
+        let client = LiveKanbanClient(boardResults: [.success(.rich)], backend: .hermes)
+        let stream = KanbanStreamSpy()
+        let clock = ScriptedClock(parking: [Self.pollingInterval])
+        let state = makeState(client: client, stream: stream, timing: Self.hermesTiming, sleep: clock.sleep)
+
+        await state.load()
+        state.setVisible(true)
+        for failure in 1...6 {
+            stream.failCurrent()
+            await until("reconnect \(failure)") { stream.starts.count == failure + 1 }
+            XCTAssertEqual(state.liveUpdatesDelayed, failure >= 3, "failure \(failure)")
+        }
+
+        XCTAssertEqual(clock.durations.filter { $0 != Self.pollingInterval },
+                       [.seconds(1), .seconds(2), .seconds(5), .seconds(10), .seconds(30), .seconds(30)])
+        XCTAssertEqual(stream.starts.map(\.since), Array(repeating: 11, count: 7))
+        state.setVisible(false)
+    }
+
+    func testThreeHermesFailuresPollTheBoardUntilTheSocketOpensAgain() async {
+        let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.unchanged(latest: 11))], backend: .hermes)
+        let stream = KanbanStreamSpy()
+        let clock = ScriptedClock(parking: [Self.pollingInterval])
+        let state = makeState(client: client, stream: stream, timing: Self.hermesTiming, sleep: clock.sleep)
+
+        await state.load()
+        state.setVisible(true)
+        for failure in 1...3 {
+            stream.failCurrent()
+            await until("reconnect \(failure)") { stream.starts.count == failure + 1 }
+        }
+        XCTAssertTrue(state.liveUpdatesDelayed)
+        await until("the first poll waits") { clock.parkedCount(Self.pollingInterval) == 1 }
+
+        clock.resume(Self.pollingInterval)
+        await until("the poll's reload, then the next wait") { clock.durations.filter { $0 == Self.pollingInterval }.count == 2 }
+        let boardRequests = await client.boardRequests
+        XCTAssertEqual(boardRequests.map(\.since), [nil, 11], "the poll asks whether the Board moved past the one on screen")
+        XCTAssertEqual(state.allCards.map(\.cardID), ["CARD-1"], "an unmoved Board stays as it is")
+        XCTAssertTrue(state.liveUpdatesDelayed)
+
+        stream.emit(.opened)
+        XCTAssertFalse(state.liveUpdatesDelayed)
+        await until("polling stops") { clock.parkedCount(Self.pollingInterval) == 0 }
+        XCTAssertEqual(clock.cancelledCount, 1)
+        state.setVisible(false)
+    }
+
+    func testAHermesBoardReloadBelowTheCursorResetsItAndReconnects() async {
+        let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.recreated)], backend: .hermes)
+        let stream = KanbanStreamSpy()
+        let state = makeState(client: client, stream: stream, sleep: ScriptedClock().sleep)
+
+        await state.load()
+        state.setVisible(true)
+        stream.emit(.opened)
+        stream.emit(Self.socketFrame(cursor: 14))
+
+        await until("the socket reopens at the lower cursor") { stream.starts.count == 2 }
+        XCTAssertEqual(state.liveCursor, 3)
+        XCTAssertEqual(stream.starts.last, .init(board: "main", since: 3))
+        XCTAssertEqual(state.snapshot?.latestEventID, 3)
+        state.setVisible(false)
+    }
+
+    /// The real socket client under the feature state: a socket that answers no ping is
+    /// dead, and the next one opens on a fresh ticket at the cursor its frames reached.
+    func testADeadHermesSocketReconnectsOnAFreshTicketAtTheCurrentCursor() async throws {
+        let host = KanbanSocketHost()
+        let socketClock = ScriptedClock(parking: [.seconds(25)])
+        let stateClock = ScriptedClock()
+        let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.cursor12)], backend: .hermes)
+        let state = KanbanFeatureState(
+            server: URL(string: "https://hermes-home.example")!,
+            client: client,
+            streamClient: KanbanWebSocketEventClient(http: host.connection(), options: .init(
+                sleep: socketClock.sleep, socketFactory: host.script.makeSocket)),
+            sleep: stateClock.sleep
+        )
+
+        await state.load()
+        state.setVisible(true)
+        await until("the first ping") { host.script.pingCount(0) == 1 }
+        host.script.pong(0)
+        host.script.deliver(Self.socketText(cursor: 12), on: 0)
+        await until("the frame's reload") { state.snapshot?.latestEventID == 12 }
+
+        // A ping goes out every 25 s; one still unanswered at the next ends the socket.
+        socketClock.resume(.seconds(25))
+        await until("the second ping") { host.script.pingCount(0) == 2 }
+        socketClock.resume(.seconds(25))
+        await until("the reconnect") { host.script.upgrades.count == 2 }
+
+        XCTAssertTrue(host.script.isClosed(0))
+        XCTAssertEqual(stateClock.durations, [.milliseconds(300), .seconds(1)], "the frame's debounce, then the first reconnect's 1 s")
+        let upgrade = try XCTUnwrap(host.script.upgrades.last)
+        XCTAssertEqual(upgrade.url?.queryValue("since"), "12")
+        XCTAssertEqual(upgrade.url?.queryValue("ticket"), "ticket-2")
+        XCTAssertEqual(HermesHostFixture.count("/api/auth/ws-ticket"), 2)
+        state.setVisible(false)
+        await until("leaving closes the socket") { host.script.isClosed(1) }
+    }
+
+    func testEachHermesConnectMintsATicketForTheBoardsSocketWithTheSavedHeadersAndNoSubprotocol() async throws {
+        let host = KanbanSocketHost()
+        let events = KanbanSocketEvents()
+        let client = KanbanWebSocketEventClient(http: host.connection(headers: [CustomHeader(name: "X-Access", value: "token")]),
+                                                options: .init(sleep: ScriptedClock(parking: [.seconds(25)]).sleep,
+                                                               socketFactory: host.script.makeSocket))
+
+        client.start(board: "release board", since: 11, onFrame: events.frame, onFailure: events.failure)
+        await until("the first upgrade") { host.script.upgrades.count == 1 }
+        client.stop()
+        client.start(board: "main", since: 12, onFrame: events.frame, onFailure: events.failure)
+        await until("the second upgrade") { host.script.upgrades.count == 2 }
+
+        let upgrades = host.script.upgrades
+        XCTAssertEqual(upgrades.map { $0.url?.absoluteString }, [
+            "wss://hermes.example/api/plugins/kanban/events?board=release%20board&since=11&ticket=ticket-1",
+            "wss://hermes.example/api/plugins/kanban/events?board=main&since=12&ticket=ticket-2"
+        ])
+        for upgrade in upgrades {
+            XCTAssertNil(upgrade.value(forHTTPHeaderField: "Sec-WebSocket-Protocol"), "the host echoes no subprotocol")
+            XCTAssertEqual(upgrade.value(forHTTPHeaderField: "X-Access"), "token")
+        }
+        XCTAssertEqual(HermesHostFixture.count("/api/auth/ws-ticket"), 2)
+        let elsewhere = HermesHeaders(saved: host.record(headers: [CustomHeader(name: "X-Access", value: "token")]))
+            .applied(to: URLRequest(url: URL(string: "wss://elsewhere.example/api/plugins/kanban/events")!),
+                     origin: URL(string: "https://hermes.example")!)
+        XCTAssertNil(elsewhere.value(forHTTPHeaderField: "X-Access"), "headers stay with their origin")
+        XCTAssertTrue(events.frames.isEmpty)
+        XCTAssertEqual(events.failures, 0)
+        client.stop()
+    }
+
+    func testA403OnTheHermesUpgradeTriesOneFreshTicketBeforeFailing() async {
+        let host = KanbanSocketHost()
+        host.script.refusals = [0: BotFailure.upgradeRefused(403), 1: BotFailure.upgradeRefused(403)]
+        let events = KanbanSocketEvents()
+        let client = KanbanWebSocketEventClient(http: host.connection(),
+                                                options: .init(sleep: ScriptedClock(parking: [.seconds(25)]).sleep,
+                                                               socketFactory: host.script.makeSocket))
+
+        client.start(board: "main", since: 11, onFrame: events.frame, onFailure: events.failure)
+        await until("the failure") { events.failures == 1 }
+
+        XCTAssertEqual(host.script.upgrades.compactMap { $0.url?.queryValue("ticket") }, ["ticket-1", "ticket-2"])
+        XCTAssertTrue(events.frames.isEmpty)
+        client.start(board: "main", since: 11, onFrame: events.frame, onFailure: events.failure)
+        await until("a later start's upgrade") { host.script.upgrades.count == 3 }
+        await until("the later start opens") { host.script.pingCount(2) == 1 }
+        host.script.pong(2)
+        await until("open") { events.frames == [.opened] }
+        XCTAssertEqual(events.failures, 1, "a 403 retry belongs to one start")
+        client.stop()
+    }
+
+    func testAHermesSocketPingsEveryTwentyFiveSecondsAndAFrameCountsAsAPong() async {
+        let host = KanbanSocketHost()
+        let clock = ScriptedClock(parking: [.seconds(25)])
+        let events = KanbanSocketEvents()
+        let client = KanbanWebSocketEventClient(http: host.connection(),
+                                                options: .init(sleep: clock.sleep, socketFactory: host.script.makeSocket))
+
+        client.start(board: "main", since: 11, onFrame: events.frame, onFailure: events.failure)
+        await until("the first ping") { host.script.pingCount(0) == 1 }
+        XCTAssertTrue(events.frames.isEmpty, "the upgrade is not open until its first pong")
+        host.script.pong(0)
+        await until("open") { events.frames == [.opened] }
+
+        clock.resume(.seconds(25))
+        await until("the second ping") { host.script.pingCount(0) == 2 }
+        host.script.deliver(#"{"events":[{"id":12,"task_id":"t_1","kind":"status","future":1}],"cursor":12,"future":true}"#, on: 0)
+        await until("the frame") { events.frames.count == 2 }
+        clock.resume(.seconds(25))
+        await until("the third ping") { host.script.pingCount(0) == 3 }
+        XCTAssertEqual(events.failures, 0, "a frame since the last ping keeps the socket")
+        clock.resume(.seconds(25))
+        await until("the failure") { events.failures == 1 }
+
+        XCTAssertTrue(host.script.isClosed(0))
+        guard case let .events(frameEvents, cursor, _) = events.frames[1] else {
+            return XCTFail("Expected an events frame, got \(events.frames[1])")
+        }
+        XCTAssertEqual(cursor, 12)
+        XCTAssertEqual(frameEvents.map(\.eventID), [12], "unknown keys are ignored")
+        XCTAssertEqual(clock.durations, Array(repeating: .seconds(25), count: 3))
+        client.stop()
+    }
+
+    func testAStoppedHermesSocketReportsNothingMore() async {
+        let host = KanbanSocketHost()
+        let events = KanbanSocketEvents()
+        let client = KanbanWebSocketEventClient(http: host.connection(),
+                                                options: .init(sleep: ScriptedClock(parking: [.seconds(25)]).sleep,
+                                                               socketFactory: host.script.makeSocket))
+        client.start(board: "main", since: 11, onFrame: events.frame, onFailure: events.failure)
+        await until("the first ping") { host.script.pingCount(0) == 1 }
+        host.script.pong(0)
+        await until("open") { events.frames == [.opened] }
+
+        client.stop()
+        await until("the socket closes") { host.script.isClosed(0) }
+        // Its read now fails, as a cancelled socket's does; the next start shows that went unreported.
+        client.start(board: "main", since: 11, onFrame: events.frame, onFailure: events.failure)
+        await until("the next socket's ping") { host.script.pingCount(1) == 1 }
+        host.script.pong(1)
+        await until("the next socket opens") { events.frames.count == 2 }
+
+        XCTAssertEqual(events.frames, [.opened, .opened])
+        XCTAssertEqual(events.failures, 0)
+        client.stop()
     }
 
     private func makeState(
@@ -706,6 +949,37 @@ final class KanbanLiveUpdateTests: XCTestCase {
         )
     }
 
+    /// Apart from the 30 s reconnect hold, so a test can tell the two waits apart.
+    private static let pollingInterval = Duration.seconds(60)
+    private static let hermesTiming = KanbanLiveUpdateTiming(
+        coalescingDelay: .milliseconds(300),
+        reconnectDelays: KanbanLiveUpdateTiming.production.reconnectDelays,
+        pollingInterval: pollingInterval,
+        failuresBeforePolling: 3
+    )
+
+    /// A Hermes socket frame, as `scripts/local-hermes` sends one.
+    private static func socketText(cursor: Int) -> String {
+        #"{"events":[{"id":\#(cursor),"task_id":"t_9b1c2d3e","run_id":null,"kind":"status","payload":{"status":"ready"},"created_at":1791251517}],"cursor":\#(cursor)}"#
+    }
+
+    private static func socketFrame(cursor: Int) -> KanbanStreamFrame {
+        KanbanStreamFrameDecoder.decodeSocketFrame(Data(socketText(cursor: cursor).utf8))
+    }
+
+    /// Waits, without polling, for `condition`: it is checked again whenever an observable
+    /// value it read changes.
+    private func until(_ description: String, file: StaticString = #filePath, line: UInt = #line,
+                       _ condition: @escaping @MainActor () -> Bool) async {
+        while !condition() {
+            let changed = XCTestExpectation(description: description)
+            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
+            guard await XCTWaiter().fulfillment(of: [changed], timeout: 2) == .completed else {
+                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
+            }
+        }
+    }
+
     private static func eventsFrame(cursor: Int, kind: String) -> KanbanStreamFrame {
         KanbanStreamFrameDecoder.decode(
             eventType: "events",
@@ -727,19 +1001,25 @@ final class KanbanLiveUpdateTests: XCTestCase {
     }
 }
 
-@MainActor
+@MainActor @Observable
 private final class KanbanStreamSpy: KanbanEventStreamingClient {
-    private(set) var startURLs: [URL] = []
+    struct Start: Equatable {
+        let board: String
+        let since: Int
+    }
+
+    private(set) var starts: [Start] = []
     private(set) var stopCount = 0
-    private var frameCallbacks: [@MainActor (KanbanStreamFrame) -> Void] = []
-    private var failureCallbacks: [@MainActor () -> Void] = []
+    @ObservationIgnored private var frameCallbacks: [@MainActor (KanbanStreamFrame) -> Void] = []
+    @ObservationIgnored private var failureCallbacks: [@MainActor () -> Void] = []
 
     func start(
-        url: URL,
+        board: String,
+        since: Int,
         onFrame: @escaping @MainActor (KanbanStreamFrame) -> Void,
         onFailure: @escaping @MainActor () -> Void
     ) {
-        startURLs.append(url)
+        starts.append(Start(board: board, since: since))
         frameCallbacks.append(onFrame)
         failureCallbacks.append(onFailure)
     }
@@ -756,6 +1036,192 @@ private final class KanbanStreamSpy: KanbanEventStreamingClient {
     }
 }
 
+/// Stands in for `Task.sleep`. A duration in `parking` waits until the test resumes it, and
+/// throws `CancellationError` when its task is cancelled, like the real sleep; any other
+/// returns at once. Observable, so a test waits for a sleep instead of polling for it.
+@MainActor @Observable
+private final class ScriptedClock {
+    private(set) var durations: [Duration] = []
+    private(set) var cancelledCount = 0
+    @ObservationIgnored private let parking: Set<Duration>
+    private var parked: [(id: Int, duration: Duration, continuation: CheckedContinuation<Void, Error>)] = []
+
+    init(parking: Set<Duration> = []) {
+        self.parking = parking
+    }
+
+    var sleep: @MainActor @Sendable (Duration) async throws -> Void {
+        { [self] duration in try await self.wait(duration) }
+    }
+
+    func parkedCount(_ duration: Duration) -> Int {
+        parked.filter { $0.duration == duration }.count
+    }
+
+    /// Resumes the oldest waiting sleep of `duration`.
+    func resume(_ duration: Duration, file: StaticString = #filePath, line: UInt = #line) {
+        guard let index = parked.firstIndex(where: { $0.duration == duration }) else {
+            return XCTFail("No \(duration) sleep is waiting", file: file, line: line)
+        }
+        parked.remove(at: index).continuation.resume()
+    }
+
+    private func wait(_ duration: Duration) async throws {
+        durations.append(duration)
+        guard parking.contains(duration) else {
+            await Task.yield()
+            try Task.checkCancellation()
+            return
+        }
+        let id = durations.count
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                parked.append((id, duration, continuation))
+            }
+        } onCancel: {
+            Task { @MainActor in self.cancel(id) }
+        }
+    }
+
+    private func cancel(_ id: Int) {
+        guard let index = parked.firstIndex(where: { $0.id == id }) else { return }
+        cancelledCount += 1
+        parked.remove(at: index).continuation.resume(throwing: CancellationError())
+    }
+}
+
+/// A scripted Hermes host for the Kanban socket: the fixture answers the sign-in and mints
+/// `ticket-1`, `ticket-2`, … in order, and `script` stands in for the sockets.
+@MainActor
+private final class KanbanSocketHost {
+    let script = KanbanSocketScript()
+    private let id = UUID()
+
+    func record(headers: [CustomHeader]? = nil) -> BotConnection {
+        var record = BotConnection(id: id, name: "Host", address: URL(string: "https://hermes.example")!,
+                                   username: "user", password: "secret")
+        record.headers = headers
+        return record
+    }
+
+    func connection(headers: [CustomHeader]? = nil) -> HermesConnection {
+        var minted = 0
+        return HermesConnection(connection: record(headers: headers), configuration: HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/auth/ws-ticket" else { return nil }
+            minted += 1
+            return .json(200, .object(["ticket": .string("ticket-\(minted)"), "ttl_seconds": .number(30)]))
+        })
+    }
+}
+
+/// The sockets one `KanbanWebSocketEventClient` opens, by index: it records each upgrade, parks
+/// every ping until the test answers it, hands reads the frames the test delivers, and fails
+/// both once the client cancels the socket, as a cancelled `URLSessionWebSocketTask` does.
+@MainActor @Observable
+private final class KanbanSocketScript {
+    private(set) var upgrades: [URLRequest] = []
+    /// Upgrade refusals by socket: its ping and read fail with this at once.
+    var refusals: [Int: Error] = [:]
+    private var pings: [Int: Int] = [:]
+    private var closed: Set<Int> = []
+    @ObservationIgnored private var parkedPings: [Int: [CheckedContinuation<Void, Error>]] = [:]
+    @ObservationIgnored private var parkedReads: [Int: CheckedContinuation<URLSessionWebSocketTask.Message, Error>] = [:]
+    @ObservationIgnored private var queuedFrames: [Int: [String]] = [:]
+
+    var makeSocket: (URLRequest) -> any KanbanSocket {
+        { [unowned self] upgrade in
+            self.upgrades.append(upgrade)
+            return ScriptedKanbanSocket(index: self.upgrades.count - 1, script: self)
+        }
+    }
+
+    func pingCount(_ socket: Int) -> Int { pings[socket, default: 0] }
+    func isClosed(_ socket: Int) -> Bool { closed.contains(socket) }
+
+    /// Answers `socket`'s oldest waiting ping.
+    func pong(_ socket: Int, file: StaticString = #filePath, line: UInt = #line) {
+        guard var waiting = parkedPings[socket], !waiting.isEmpty else {
+            return XCTFail("No ping is waiting on socket \(socket)", file: file, line: line)
+        }
+        let ping = waiting.removeFirst()
+        parkedPings[socket] = waiting
+        ping.resume()
+    }
+
+    /// Sends one text frame on `socket`, to the read waiting now or to its next one.
+    func deliver(_ text: String, on socket: Int) {
+        guard !closed.contains(socket) else { return }
+        if let read = parkedReads.removeValue(forKey: socket) {
+            read.resume(returning: .string(text))
+        } else {
+            queuedFrames[socket, default: []].append(text)
+        }
+    }
+
+    fileprivate func ping(_ socket: Int, _ continuation: CheckedContinuation<Void, Error>) {
+        pings[socket, default: 0] += 1
+        if let refusal = refusals[socket] { return continuation.resume(throwing: refusal) }
+        guard !closed.contains(socket) else { return continuation.resume(throwing: URLError(.cancelled)) }
+        parkedPings[socket, default: []].append(continuation)
+    }
+
+    fileprivate func read(_ socket: Int, _ continuation: CheckedContinuation<URLSessionWebSocketTask.Message, Error>) {
+        if let refusal = refusals[socket] { return continuation.resume(throwing: refusal) }
+        guard !closed.contains(socket) else { return continuation.resume(throwing: URLError(.cancelled)) }
+        if var queued = queuedFrames[socket], !queued.isEmpty {
+            let text = queued.removeFirst()
+            queuedFrames[socket] = queued
+            return continuation.resume(returning: .string(text))
+        }
+        parkedReads[socket] = continuation
+    }
+
+    fileprivate func close(_ socket: Int) {
+        closed.insert(socket)
+        parkedReads.removeValue(forKey: socket)?.resume(throwing: URLError(.cancelled))
+        for ping in parkedPings.removeValue(forKey: socket) ?? [] { ping.resume(throwing: URLError(.cancelled)) }
+    }
+}
+
+/// One scripted socket; every call reaches its script on the main actor.
+private final class ScriptedKanbanSocket: KanbanSocket, @unchecked Sendable {
+    let index: Int
+    let script: KanbanSocketScript
+
+    init(index: Int, script: KanbanSocketScript) {
+        self.index = index
+        self.script = script
+    }
+
+    func receive() async throws -> URLSessionWebSocketTask.Message {
+        try await withCheckedThrowingContinuation { continuation in
+            Task { @MainActor in self.script.read(self.index, continuation) }
+        }
+    }
+
+    func ping() async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            Task { @MainActor in self.script.ping(self.index, continuation) }
+        }
+    }
+
+    func send(_ message: URLSessionWebSocketTask.Message) async throws {}
+
+    func cancel() {
+        Task { @MainActor in self.script.close(self.index) }
+    }
+}
+
+/// What a `KanbanWebSocketEventClient` reported to its feature state.
+@MainActor @Observable
+private final class KanbanSocketEvents {
+    private(set) var frames: [KanbanStreamFrame] = []
+    private(set) var failures = 0
+
+    var frame: @MainActor (KanbanStreamFrame) -> Void { { [weak self] in self?.frames.append($0) } }
+    var failure: @MainActor () -> Void { { [weak self] in self?.failures += 1 } }
+}
+
 private actor LiveKanbanClient: KanbanDataClient {
     private var boardsResults: [Result<KanbanBoardsResponse, Error>]
     private var boardResults: [Result<KanbanBoardSnapshot, Error>]
@@ -766,14 +1232,17 @@ private actor LiveKanbanClient: KanbanDataClient {
     private(set) var statsCallCount = 0
     private(set) var assigneeCallCount = 0
     private var statsFailuresRemaining: Int
+    nonisolated let backend: KanbanBackend
 
     init(
         boards: KanbanBoardsResponse = .single,
         boardResults: [Result<KanbanBoardSnapshot, Error>],
         eventsResult: Result<KanbanEventsEnvelope, Error> = .success(.events(cursor: 11)),
         boardsResults: [Result<KanbanBoardsResponse, Error>]? = nil,
-        statsFailures: Int = 0
+        statsFailures: Int = 0,
+        backend: KanbanBackend = .webui
     ) {
+        self.backend = backend
         self.boardsResults = boardsResults ?? [.success(boards)]
         self.boardResults = boardResults
         self.eventsResult = eventsResult
@@ -961,6 +1430,8 @@ private extension KanbanBoardSnapshot {
     static func unchanged(latest: Int) -> Self {
         decode(#"{"changed":false,"latest_event_id":\#(latest),"read_only":false}"#)
     }
+    /// The host's Kanban database was recreated: its ids restarted.
+    static let recreated: Self = decode(#"{"changed":true,"latest_event_id":3,"read_only":false,"columns":[{"name":"ready","tasks":[{"id":"CARD-9","status":"ready"}]}]}"#)
     static let releaseUpdated: Self = decode(#"{"changed":true,"latest_event_id":21,"read_only":false,"columns":[{"name":"triage","tasks":[{"id":"REL-1","status":"triage"}]}]}"#)
 }
 

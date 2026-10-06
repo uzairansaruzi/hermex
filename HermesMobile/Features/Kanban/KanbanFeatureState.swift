@@ -302,13 +302,15 @@ private struct KanbanPendingDependencyChange {
 
 struct KanbanLiveUpdateTiming: Sendable {
     let coalescingDelay: Duration
+    /// The wait before each reconnect, the last one held. webui reconnects twice and then
+    /// polls; a Hermes socket keeps reconnecting while it polls (#1045).
     let reconnectDelays: [Duration]
     let pollingInterval: Duration
     let failuresBeforePolling: Int
 
     static let production = KanbanLiveUpdateTiming(
         coalescingDelay: .milliseconds(300),
-        reconnectDelays: [.seconds(1), .seconds(2), .seconds(4)],
+        reconnectDelays: [.seconds(1), .seconds(2), .seconds(5), .seconds(10), .seconds(30)],
         pollingInterval: .seconds(30),
         failuresBeforePolling: 3
     )
@@ -395,8 +397,8 @@ final class KanbanFeatureState {
     private var activeBoardLoadID: UUID?
     private var boardsResponse: KanbanBoardsResponse?
     private let client: any KanbanDataClient
-    /// A Hermes host has no event stream yet (#1045): pull to refresh and returning to the
-    /// foreground reload its Board instead.
+    /// A Hermes host's live updates (#1045) come over a socket that keeps reconnecting while
+    /// it polls, and its polling reloads the Board, because the host has no events route.
     private let backend: KanbanBackend
     private let streamClient: any KanbanEventStreamingClient
     private let timing: KanbanLiveUpdateTiming
@@ -407,9 +409,6 @@ final class KanbanFeatureState {
     private let defaults: UserDefaults
     private var isVisible = false
     private var sceneIsActive = true
-    /// A Hermes app returned to the foreground while a pushed Card covered the Board. With no
-    /// stream to catch it up, `loadIfNeeded()` reloads the Board when it reappears.
-    @ObservationIgnored private var owesForegroundReload = false
     private var liveGeneration = 0
     private var streamAttemptID = 0
     private var streamFailureCount = 0
@@ -457,7 +456,7 @@ final class KanbanFeatureState {
         let client = client ?? APIClient(baseURL: server)
         self.client = client
         backend = client.backend
-        self.streamClient = streamClient ?? KanbanEventStreamClient()
+        self.streamClient = streamClient ?? client.makeEventStream(server: server)
         self.timing = timing
         self.archiveUndoLifetime = archiveUndoLifetime
         self.sleep = sleep
@@ -1056,17 +1055,10 @@ final class KanbanFeatureState {
     /// and archive undo; `setVisible(true)` resumes the live stream from `liveCursor`.
     /// When a pop cancelled a live refresh (the stream already moved `liveCursor` past the
     /// Board on screen) or the first load's stats and assignee reads, this refreshes the
-    /// Board in place instead of starting over. A Hermes Board owed a foreground reload
-    /// refreshes like pull to refresh.
+    /// Board in place instead of starting over.
     func loadIfNeeded() async {
         guard let snapshot else {
             await load()
-            return
-        }
-        if owesForegroundReload {
-            owesForegroundReload = false
-            await refresh()
-            if Task.isCancelled { owesForegroundReload = true }
             return
         }
         let boardIsBehindStream = liveCursor > (snapshot.latestEventID ?? 0)
@@ -1457,7 +1449,6 @@ final class KanbanFeatureState {
     /// Returning to `.active` asks the server for the Board since the snapshot's cursor.
     /// When no event landed, the Board, its stats, and the Board list are kept and the
     /// stream resumes from `liveCursor`; a changed Board also reconciles the Board list.
-    /// A Hermes Board hidden behind a Card is reloaded when it reappears instead.
     func setScenePhase(_ phase: ScenePhase) async {
         guard phase != .inactive else { return }
         let active = phase == .active
@@ -1467,12 +1458,7 @@ final class KanbanFeatureState {
             suspendLiveUpdates()
             return
         }
-        guard snapshot != nil else { return }
-        guard isVisible else {
-            if backend == .hermes { owesForegroundReload = true }
-            return
-        }
-        guard let board = selectedBoardSlug else { return }
+        guard isVisible, snapshot != nil, let board = selectedBoardSlug else { return }
         let previousRefreshFailed = refreshFailed
         let generation = liveGeneration
         let outcome = await refreshBoard(usingCursor: true, refreshSupplementary: true)
@@ -2443,6 +2429,7 @@ final class KanbanFeatureState {
         if usingCursor, snapshotRequest == filteredRequest {
             request.since = snapshot?.latestEventID
         }
+        let cursorAtRequest = liveCursor
         do {
             let response = try await client.kanbanBoard(request)
             guard isCurrentBoardLoad(boardLoadID, board: board) else { return .failed }
@@ -2460,7 +2447,14 @@ final class KanbanFeatureState {
                 state = report.isPartial ? .partial : .compatible
                 outcome = .changed
             }
-            liveCursor = max(liveCursor, response.latestEventID ?? 0)
+            if backend == .hermes, let latest = response.latestEventID, latest < cursorAtRequest {
+                // The host's ids went backwards (its Kanban database was recreated), so a
+                // socket reading after the old cursor would stay silent (#1045).
+                liveCursor = latest
+                reopenStream()
+            } else {
+                liveCursor = max(liveCursor, response.latestEventID ?? 0)
+            }
             isOffline = false
             if preserveRefreshFailure {
                 refreshFailed = true
@@ -2489,7 +2483,7 @@ final class KanbanFeatureState {
     }
 
     private func startLiveUpdatesIfReady() {
-        guard backend == .webui, isVisible, sceneIsActive, snapshot != nil, selectedBoardSlug != nil else { return }
+        guard isVisible, sceneIsActive, snapshot != nil, selectedBoardSlug != nil else { return }
         reconnectTask?.cancel()
         reconnectTask = nil
         pollingTask?.cancel()
@@ -2498,15 +2492,13 @@ final class KanbanFeatureState {
     }
 
     private func startStream() {
-        guard backend == .webui, isVisible, sceneIsActive, let board = selectedBoardSlug else { return }
+        guard isVisible, sceneIsActive, let board = selectedBoardSlug else { return }
         streamAttemptID += 1
         let attemptID = streamAttemptID
         let generation = liveGeneration
-        let url = Endpoint.kanbanEventsStream(
-            KanbanEventsStreamRequest(board: board, since: liveCursor)
-        ).url(relativeTo: server)
         streamClient.start(
-            url: url,
+            board: board,
+            since: liveCursor,
             onFrame: { [weak self] frame in
                 self?.handleStreamFrame(
                     frame,
@@ -2541,6 +2533,17 @@ final class KanbanFeatureState {
             liveCursor = max(liveCursor, cursor)
             streamFailureCount = 0
             liveUpdatesDelayed = false
+        case .opened:
+            // A Hermes socket is live once its upgrade succeeds, and polling stops. A Board
+            // that went offline, or whose last live refresh failed after the cursor moved,
+            // catches up now: the socket reports only what follows the cursor.
+            streamFailureCount = 0
+            liveUpdatesDelayed = false
+            pollingTask?.cancel()
+            pollingTask = nil
+            if isOffline || liveCursor > (snapshot?.latestEventID ?? 0) {
+                scheduleCoalescedReconciliation(board: board, generation: generation)
+            }
         case let .events(events, cursor, frameID):
             guard (frameID == nil || frameID == cursor),
                   events.allSatisfy({ event in
@@ -2568,7 +2571,8 @@ final class KanbanFeatureState {
         if streamFailureCount >= timing.failuresBeforePolling {
             liveUpdatesDelayed = true
             startPollingIfNeeded()
-            return
+            // webui stops here and polls; a Hermes socket keeps its backoff while it polls.
+            guard backend == .hermes else { return }
         }
 
         let reconnectDelays = timing.reconnectDelays.isEmpty ? [.seconds(1)] : timing.reconnectDelays
@@ -2607,6 +2611,7 @@ final class KanbanFeatureState {
             }
             repeat {
                 self.needsLiveRefresh = false
+                let wasOffline = self.isOffline
                 let succeeded = await self.refreshBoard(
                     usingCursor: false,
                     refreshSupplementary: !self.supplementaryReadsSettled
@@ -2617,6 +2622,8 @@ final class KanbanFeatureState {
                     self.startPollingIfNeeded()
                     return
                 }
+                // A refresh that brings an offline Board back clears the stale Card detail too.
+                if succeeded, wasOffline { self.loadedDetailIsStale = false }
                 if self.needsLiveRefresh {
                     // Bursts keep folding into the flag while this debounce runs.
                     do { try await sleep(delay) } catch { return }
@@ -2626,12 +2633,16 @@ final class KanbanFeatureState {
         }
     }
 
+    /// Polls every `pollingInterval` until live updates resume. webui stops its stream and
+    /// polls the events route; a Hermes socket keeps reconnecting, and its polling reloads the
+    /// Board, kept as it is while its `latest_event_id` has not moved.
     private func startPollingIfNeeded() {
-        guard backend == .webui, pollingTask == nil, isVisible, sceneIsActive,
-              let board = selectedBoardSlug else { return }
-        streamClient.stop()
-        reconnectTask?.cancel()
-        reconnectTask = nil
+        guard pollingTask == nil, isVisible, sceneIsActive, let board = selectedBoardSlug else { return }
+        if backend == .webui {
+            streamClient.stop()
+            reconnectTask?.cancel()
+            reconnectTask = nil
+        }
         let generation = liveGeneration
         let sleep = self.sleep
         let interval = timing.pollingInterval
@@ -2639,9 +2650,25 @@ final class KanbanFeatureState {
             while !Task.isCancelled {
                 do { try await sleep(interval) } catch { return }
                 guard let self, self.isCurrentLiveWork(board: board, generation: generation) else { return }
-                await self.pollEvents(board: board, generation: generation)
+                switch self.backend {
+                case .webui: await self.pollEvents(board: board, generation: generation)
+                case .hermes: await self.pollBoard(board: board, generation: generation)
+                }
             }
         }
+    }
+
+    /// One Hermes poll. An offline Board reloads in full and, once it is back, restarts the
+    /// socket the way webui's poll restarts its stream.
+    private func pollBoard(board: String, generation: Int) async {
+        let wasOffline = isOffline
+        let succeeded = await refreshBoard(
+            usingCursor: !wasOffline,
+            refreshSupplementary: wasOffline || !supplementaryReadsSettled || supplementaryRefreshPending
+        ).succeeded
+        guard succeeded, wasOffline, isCurrentLiveWork(board: board, generation: generation) else { return }
+        loadedDetailIsStale = false
+        retryLiveStream()
     }
 
     private func pollEvents(board: String, generation: Int) async {
@@ -2676,6 +2703,17 @@ final class KanbanFeatureState {
             markOfflineIfNeeded(error)
             forwardAuthentication(error)
         }
+    }
+
+    /// Reopens the stream at `liveCursor` now, without waiting out a reconnect delay. The
+    /// failure count stays, so a failing socket keeps its backoff.
+    private func reopenStream() {
+        guard isVisible, sceneIsActive else { return }
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        streamAttemptID += 1
+        streamClient.stop()
+        startStream()
     }
 
     private func retryLiveStream() {

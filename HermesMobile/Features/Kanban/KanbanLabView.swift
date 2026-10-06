@@ -2368,8 +2368,9 @@ struct KanbanView: View {
         )
     }
 
-    /// Kanban on a Hermes server, read through its saved connection's shared sign-in. A
-    /// refused sign-in signs the server out through that connection, not `onAPIError`.
+    /// Kanban on a Hermes server, read through its saved connection's shared sign-in and kept
+    /// live over its Kanban socket. A refused sign-in signs the server out through that
+    /// connection, not `onAPIError`.
     init(server: URL, hermes connection: HermesConnection) {
         _model = State(
             initialValue: KanbanFeatureState(
@@ -3023,7 +3024,8 @@ private final class KanbanLabStreamClient: KanbanEventStreamingClient {
     init(fails: Bool) { self.fails = fails }
 
     func start(
-        url: URL,
+        board: String,
+        since: Int,
         onFrame: @escaping @MainActor (KanbanStreamFrame) -> Void,
         onFailure: @escaping @MainActor () -> Void
     ) {
@@ -3034,10 +3036,7 @@ private final class KanbanLabStreamClient: KanbanEventStreamingClient {
             if fails {
                 onFailure()
             } else {
-                let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-                let board = components?.queryItems?.first(where: { $0.name == "board" })?.value ?? "main"
-                let cursor = Int(components?.queryItems?.first(where: { $0.name == "since" })?.value ?? "0") ?? 0
-                onFrame(.hello(cursor: cursor, board: board))
+                onFrame(.hello(cursor: since, board: board))
             }
         }
     }
