@@ -52,7 +52,7 @@ final class TaskDetailViewModel {
     /// list that no longer exists: splicing it on would leave the pages between
     /// them loaded nowhere and unreachable.
     private var historyGeneration = 0
-    /// The job's `last_run_at` when the runs on screen were read. See `latestRun`.
+    /// The job's `last_run_at` as the runs on screen were requested. See `latestRun`.
     private var lastRunWhenRunsRead: Date?
     private var runOutputToken = 0
     /// Bumped by every change the server accepts, so a list read sent before one
@@ -105,16 +105,20 @@ final class TaskDetailViewModel {
         // delivery result keeps the editor's free-text deliver fallback, and
         // history is its own failure domain that reports inline.
         let profile = job.profile
+        let runsAreSessions = client.cronFeatures.runsAreSessions
         async let deliveryOptionsResponse = try? client.cronDeliveryOptions(profile: profile)
-        async let historyResult = Self.fetchHistory(client: client, jobID: jobID, profile: profile, offset: 0)
-
         let generation = beginHistoryReload()
 
-        if client.cronFeatures.runsAreSessions {
-            // A Hermes host's job carries its running state and last outcome; its latest
-            // output comes from the runs.
+        // A Hermes host's job carries its running state and last outcome. It is read before the
+        // runs, so the run that outcome describes is among them (`latestRun`).
+        if runsAreSessions {
             await reloadJob(jobID)
-        } else {
+        }
+        let lastRun = job.lastRunAt?.date
+        async let historyResult = Self.fetchHistory(client: client, jobID: jobID, profile: profile, offset: 0)
+
+        // A Hermes host's latest output comes from the runs (`loadLatestReply`).
+        if !runsAreSessions {
             do {
                 let response = try await client.cronOutput(jobID: jobID, limit: 5)
                 outputs = response.outputs ?? []
@@ -125,7 +129,7 @@ final class TaskDetailViewModel {
         }
 
         deliveryOptions = await deliveryOptionsResponse?.platforms
-        applyFirstHistoryPage(await historyResult, generation: generation)
+        applyFirstHistoryPage(await historyResult, generation: generation, lastRun: lastRun)
         await loadLatestReply(jobID, generation: generation)
     }
 
@@ -156,9 +160,11 @@ final class TaskDetailViewModel {
         guard let jobID = job.jobId else { return }
 
         let generation = beginHistoryReload()
+        let lastRun = job.lastRunAt?.date
         applyFirstHistoryPage(
             await Self.fetchHistory(client: client, jobID: jobID, profile: job.profile, offset: 0),
-            generation: generation
+            generation: generation,
+            lastRun: lastRun
         )
         await loadLatestReply(jobID, generation: generation)
     }
@@ -200,13 +206,22 @@ final class TaskDetailViewModel {
     }
 
     /// The run the job's last outcome describes, which the header's "See full
-    /// output" opens: the newest finished run. On a Hermes host, an outcome newer
-    /// than the runs on screen (a Run Now's, or a refresh's whose runs read
-    /// failed) belongs to a run not listed yet, so there is none until the runs
-    /// are read again (#1042).
+    /// output" opens: the newest finished run.
+    ///
+    /// A Hermes host stamps `last_run_at` once the run's session has ended, and
+    /// the detail reads its runs after the job (#1042). So there it is the newest
+    /// run that ended by then: one that ended later is newer than the outcome. And
+    /// while the runs on screen were read before the job's outcome (a Run Now's,
+    /// or a refresh whose runs read failed), it is none: its run isn't listed yet.
     var latestRun: CronRunHistoryItem? {
-        guard !client.cronFeatures.runsAreSessions || job.lastRunAt?.date == lastRunWhenRunsRead else { return nil }
-        return runs.first { !$0.isRunning }
+        let finished = runs.lazy.filter { !$0.isRunning }
+        guard client.cronFeatures.runsAreSessions else { return finished.first }
+        let lastRun = job.lastRunAt?.date
+        guard lastRun == lastRunWhenRunsRead else { return nil }
+        return finished.first { run in
+            guard let ended = run.modified, let lastRun else { return true }
+            return ended <= lastRun
+        }
     }
 
     /// How a run went, as its row says it (#1042).
@@ -313,10 +328,11 @@ final class TaskDetailViewModel {
     ///
     /// A page from a superseded generation is dropped, so a slow reload cannot
     /// replace — or, on a stale 404, erase — a list that a newer one has since
-    /// loaded.
+    /// loaded. `lastRun` is the job's `last_run_at` as the page was requested.
     private func applyFirstHistoryPage(
         _ result: Result<CronRunHistoryResponse, Error>,
-        generation: Int
+        generation: Int,
+        lastRun: Date?
     ) {
         guard generation == historyGeneration else { return }
         isLoadingHistory = false
@@ -324,7 +340,7 @@ final class TaskDetailViewModel {
         switch result {
         case let .success(response):
             runs = response.runs
-            lastRunWhenRunsRead = job.lastRunAt?.date
+            lastRunWhenRunsRead = lastRun
             runTotal = response.total
             historyOffset = Self.historyPageSize
             isHistoryUnavailable = false

@@ -443,6 +443,64 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertEqual(succeeded.runs.map(succeeded.outcome), [.running, .completed, nil])
     }
 
+    /// The detail reads the job before its runs, so a run that finished as the detail opened is
+    /// among them when the job's outcome is its outcome, and that run carries it.
+    @MainActor
+    func testHermesDetailReadsItsRunsOnlyAfterTheJob() async throws {
+        let failed: [String: BotJSON] = ["last_run_at": .string("2026-10-06T09:00:42-04:00"),
+                                         "last_status": .string("error"), "last_error": .string("exit code 1")]
+        let viewModel = try hermesViewModel(["last_run_at": .string("2026-10-05T09:00:30-04:00"),
+                                             "last_status": .string("ok")]) { request in
+            switch request.url?.path {
+            case "/api/cron/jobs": return .park
+            case "/api/cron/jobs/a1/runs":
+                return .json(200, HermesRunFixture.runs([
+                    HermesRunFixture.run("cron_a1_20261006_090000", started: 1_791_291_600, ended: 1_791_291_642),
+                    HermesRunFixture.run("cron_a1_20261005_090000", started: 1_791_205_200, ended: 1_791_205_230)
+                ]))
+            default: return nil
+            }
+        }
+        let listRead = expectation(description: "the list read is out")
+        HermesHostFixture.onPark = { listRead.fulfill() }
+
+        let load = Task { await viewModel.load() }
+        await fulfillment(of: [listRead], timeout: 5)
+        XCTAssertEqual(HermesHostFixture.count("/api/cron/jobs/a1/runs"), 0, "No runs read before the job is in")
+        HermesHostFixture.releaseParked(.json(200, .array([HermesCronFixture.job("a1", profile: "research", failed)])))
+        await load.value
+
+        XCTAssertEqual(viewModel.runs.map(viewModel.outcome), [.failed("exit code 1"), nil])
+    }
+
+    /// The host stamps a Task's outcome once its run has ended, so a run that ended after the
+    /// job's `last_run_at` (it finished between the two reads) is newer than the outcome and
+    /// claims none. The run that ended by then carries it, and its reply is the latest output.
+    @MainActor
+    func testHermesRunThatEndedAfterTheJobsOutcomeClaimsNone() async throws {
+        let viewModel = try hermesViewModel([
+            "last_run_at": .string("2026-10-05T09:00:30-04:00"), "last_status": .string("error"),
+            "last_error": .string("exit code 1")
+        ]) { request in
+            switch request.url?.path {
+            case "/api/cron/jobs/a1/runs":
+                return .json(200, HermesRunFixture.runs([
+                    HermesRunFixture.run("cron_a1_20261006_090000", started: 1_791_291_600, ended: 1_791_291_642),
+                    HermesRunFixture.run("cron_a1_20261005_090000", started: 1_791_205_200, ended: 1_791_205_230)
+                ]))
+            case "/api/sessions/cron_a1_20261005_090000/messages":
+                return .json(200, HermesRunFixture.messages([HermesRunFixture.message("assistant", "Exit code 1.")]))
+            default: return nil
+            }
+        }
+
+        await viewModel.loadHistory()
+
+        XCTAssertEqual(viewModel.runs.map(viewModel.outcome), [nil, .failed("exit code 1")])
+        XCTAssertEqual(viewModel.latestRun?.filename, "cron_a1_20261005_090000")
+        XCTAssertEqual(viewModel.outputs.map(\.content), ["Exit code 1."])
+    }
+
     /// A run's output is its session's final reply, read in the Task's Profile; the earlier
     /// reply that came with a tool call is not it. Nothing is read from the host's disk.
     @MainActor

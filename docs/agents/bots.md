@@ -1097,11 +1097,12 @@ total, so there is no "Load more". A row decodes only its id, start and end, `is
 model, tokens and cost; never `system_prompt`, and not `preview`, which is the Task's prompt
 behind the scheduler's cron preamble on every run. A run's output is its session's final
 reply, the last assistant message without tool calls, from `GET /api/sessions/{id}/messages?profile=`;
-a 404 shows the run as unavailable. The host keeps one outcome per Task, so only the newest
-finished run shows `last_status` and `last_error`, an `is_active` run shows running, and
-older runs claim nothing. The detail's latest output is that newest finished run's reply,
-read only when it failed. An outcome newer than the runs on screen, as a finished Run Now's
-is, belongs to no listed run until the detail has read its runs again. A page without its
+a 404 shows the run as unavailable. The host keeps one outcome per Task and stamps
+`last_run_at` once the run's session has ended, so the detail reads the job before its runs,
+and only the newest run that ended by `last_run_at` shows `last_status` and `last_error`. An
+`is_active` run shows running, and other runs claim nothing, as do runs read before a newer
+outcome (a finished Run Now's, or a refresh whose runs read failed) until the next read. The
+detail's latest output is that run's reply, read only when it failed. A page without its
 `runs` list is a failed read. Nothing reads `/api/fs/*`.
 
 ## Opening a bot from outside the app
