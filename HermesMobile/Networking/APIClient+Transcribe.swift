@@ -2,9 +2,14 @@ import Foundation
 
 extension APIClient {
     /// Dictation's transcriber on a webui server: `transcribeAudio`, which the Sessions
-    /// composer hands to `ComposerVoiceInputController`.
+    /// composer hands to `ComposerVoiceInputController`. An empty transcript loses its `ok`,
+    /// so webui keeps failing it as before and only a Hermes host's empty success is silence (#1071).
     nonisolated var dictationTranscriber: ComposerTranscriber {
-        { try await self.transcribeAudio(data: $0, filename: $1) }
+        { data, filename in
+            let reply = try await self.transcribeAudio(data: data, filename: filename)
+            guard reply.transcript?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false else { return reply }
+            return TranscribeResponse(ok: nil, transcript: reply.transcript, error: reply.error)
+        }
     }
 
     /// Uploads an audio clip to the server's speech-to-text endpoint and returns

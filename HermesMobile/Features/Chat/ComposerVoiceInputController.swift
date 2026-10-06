@@ -512,8 +512,9 @@ final class ComposerVoiceInputController {
             }
 
             let transcript = response.transcript?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            // An empty transcript the server reports as a success is silence, which a Hermes
-            // host answers `{ok: true, transcript: ""}` (#1071): nothing to insert, nothing failed.
+            // An empty transcript the transcriber reports as a success is silence: a Hermes
+            // host's `{ok: true, transcript: ""}` (#1071). Nothing to insert, nothing failed.
+            // webui's transcriber drops `ok` from an empty reply, so webui still fails it.
             guard !transcript.isEmpty || (response.ok == true && response.error == nil) else {
                 await fallbackFromServerFailure(
                     recordingURL: recordingURL,

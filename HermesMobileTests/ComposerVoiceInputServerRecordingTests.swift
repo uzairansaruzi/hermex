@@ -211,6 +211,20 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
     }
 
+    /// webui's empty `{ok: true}` stays the failure it was before #1071; only a Hermes host's is silence.
+    func testWebuiEmptyTranscriptStillFails() async {
+        let recorder = DictationTestRecorder()
+        let controller = ComposerVoiceInputController(
+            speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
+            serverRecorder: recorder, mayRecord: { true })
+        controller.transcribe = makeClient { request in
+            apiTestJSONResponse(#"{"ok":true,"transcript":"  "}"#, for: request)
+        }.dictationTranscriber
+        await controller.toggle(currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
+        await finishRecording(controller)
+        XCTAssertEqual(controller.errorMessage, "Transcription returned no text.")
+    }
+
     /// With no on-device recognizer, the server is the only provider and its reason shows as is.
     func testServerOnlyShowsTheHostsReason() async {
         let recorder = DictationTestRecorder()
