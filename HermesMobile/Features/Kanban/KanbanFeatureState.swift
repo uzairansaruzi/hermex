@@ -11,6 +11,8 @@ enum KanbanCompatibilityState: Equatable {
     case networkUnavailable
     case serverUnavailable
     case incompatibleContract
+    /// The server has no Kanban: a Hermes host without its Kanban plugin (#1043).
+    case unavailable
 }
 
 enum KanbanReadCapabilityWarning: Hashable, Sendable {
@@ -40,6 +42,7 @@ enum KanbanWriteCapability: String, CaseIterable, Hashable, Sendable {
 
 enum KanbanEndpointCompatibility {
     static func isMissingCapability(_ error: Error) -> Bool {
+        if case BotFailure.rejected(405) = error { return true }
         guard let apiError = error as? APIError,
               case let .http(statusCode, _) = apiError else { return false }
         if statusCode == 405 { return true }
@@ -340,7 +343,9 @@ enum KanbanBoardPreference {
 @MainActor
 @Observable
 final class KanbanFeatureState {
-    static let liveStatuses = ["triage", "todo", "ready", "running", "blocked", "done"]
+    /// Every Status a Card can hold short of Archived, in a Hermes host's Column order.
+    /// A webui Board has six of them; Scheduled and Review are Hermes's (#1043).
+    static let liveStatuses = ["triage", "todo", "scheduled", "ready", "running", "blocked", "review", "done"]
     private static let bulkReconciliationConcurrency = 4
 
     let server: URL
@@ -390,6 +395,9 @@ final class KanbanFeatureState {
     private var activeBoardLoadID: UUID?
     private var boardsResponse: KanbanBoardsResponse?
     private let client: any KanbanDataClient
+    /// A Hermes host has no event stream yet (#1045): pull to refresh and returning to the
+    /// foreground reload its Board instead.
+    private let backend: KanbanBackend
     private let streamClient: any KanbanEventStreamingClient
     private let timing: KanbanLiveUpdateTiming
     private let archiveUndoLifetime: TimeInterval
@@ -443,7 +451,9 @@ final class KanbanFeatureState {
         defaults: UserDefaults = .standard
     ) {
         self.server = server
-        self.client = client ?? APIClient(baseURL: server)
+        let client = client ?? APIClient(baseURL: server)
+        self.client = client
+        backend = client.backend
         self.streamClient = streamClient ?? KanbanEventStreamClient()
         self.timing = timing
         self.archiveUndoLifetime = archiveUndoLifetime
@@ -623,15 +633,21 @@ final class KanbanFeatureState {
         return boards.first { normalized($0.slug) == selectedBoardSlug }
     }
 
+    /// The Board's Columns in the server's order: webui's configured six, or a Hermes
+    /// host's eight. Archived follows the filter, and a Column the server adds follows them.
     var availableStatuses: [String] {
-        var result = Self.liveStatuses
-        if includeArchived { result.append("archived") }
+        var result = configuration?.columns?.compactMap(normalized) ?? Self.liveStatuses
+        if includeArchived, !result.contains("archived") { result.append("archived") }
         for column in snapshot?.columns ?? [] {
             guard let name = normalized(column.name), !result.contains(name) else { continue }
             result.append(name)
         }
         return result
     }
+
+    /// Only Mine filters by the webui's active chat Profile. A Hermes host's Kanban has no
+    /// such Profile, so it does not offer the filter.
+    var offersOnlyMine: Bool { backend == .webui }
 
     var profileOptions: [String] {
         sortedUnique(
@@ -956,7 +972,7 @@ final class KanbanFeatureState {
 
         do {
             // Ordered exactly as docs/agents/kanban.md requires; every probe is a verified GET.
-            let configuration = try await client.kanbanConfiguration()
+            let serverConfiguration = try await client.kanbanConfiguration()
             guard isCurrent(loadID) else { return }
             let boardsResponse = try await client.kanbanBoards()
             guard isCurrent(loadID) else { return }
@@ -970,11 +986,13 @@ final class KanbanFeatureState {
                     KanbanBoardRequest(board: currentBoard)
                 )
                 guard isCurrent(loadID) else { return }
+                let configuration = adoptingBoardColumns(serverConfiguration, from: validationSnapshot)
                 let report = try KanbanCompatibilityValidator.validate(
                     configuration: configuration,
                     boardsResponse: boardsResponse,
                     boardSlug: currentBoard,
-                    snapshot: validationSnapshot
+                    snapshot: validationSnapshot,
+                    backend: backend
                 )
                 guard isCurrent(loadID) else { return }
                 self.configuration = configuration
@@ -992,10 +1010,12 @@ final class KanbanFeatureState {
             let snapshot = try await client.kanbanBoard(request)
             guard isCurrent(loadID) else { return }
 
+            let configuration = adoptingBoardColumns(serverConfiguration, from: snapshot)
             let report = try KanbanCompatibilityValidator.validate(
                 configuration: configuration,
                 boardsResponse: boardsResponse,
-                snapshot: snapshot
+                snapshot: snapshot,
+                backend: backend
             )
             guard isCurrent(loadID) else { return }
             if selectedBoardSlug != nil, selectedBoardSlug != boardToLoad {
@@ -2144,6 +2164,7 @@ final class KanbanFeatureState {
     }
 
     private func isNotFound(_ error: Error) -> Bool {
+        if case BotFailure.rejected(404) = error { return true }
         guard case let APIError.http(statusCode, _) = error else { return false }
         return statusCode == 404
     }
@@ -2153,7 +2174,8 @@ final class KanbanFeatureState {
         if case let APIError.network(underlying) = error {
             return (underlying as? URLError)?.code == .cancelled
         }
-        return false
+        // A Hermes host's transport errors arrive unwrapped.
+        return (error as? URLError)?.code == .cancelled
     }
 
     private func performBoardMutation(
@@ -2451,7 +2473,7 @@ final class KanbanFeatureState {
     }
 
     private func startLiveUpdatesIfReady() {
-        guard isVisible, sceneIsActive, snapshot != nil, selectedBoardSlug != nil else { return }
+        guard backend == .webui, isVisible, sceneIsActive, snapshot != nil, selectedBoardSlug != nil else { return }
         reconnectTask?.cancel()
         reconnectTask = nil
         pollingTask?.cancel()
@@ -2460,7 +2482,7 @@ final class KanbanFeatureState {
     }
 
     private func startStream() {
-        guard isVisible, sceneIsActive, let board = selectedBoardSlug else { return }
+        guard backend == .webui, isVisible, sceneIsActive, let board = selectedBoardSlug else { return }
         streamAttemptID += 1
         let attemptID = streamAttemptID
         let generation = liveGeneration
@@ -2589,7 +2611,8 @@ final class KanbanFeatureState {
     }
 
     private func startPollingIfNeeded() {
-        guard pollingTask == nil, isVisible, sceneIsActive, let board = selectedBoardSlug else { return }
+        guard backend == .webui, pollingTask == nil, isVisible, sceneIsActive,
+              let board = selectedBoardSlug else { return }
         streamClient.stop()
         reconnectTask?.cancel()
         reconnectTask = nil
@@ -2685,10 +2708,19 @@ final class KanbanFeatureState {
     }
 
     private func markOfflineIfNeeded(_ error: Error) {
-        guard snapshot != nil else { return }
-        if let apiError = error as? APIError, case .network = apiError {
-            isOffline = true
-            loadedDetailIsStale = true
+        guard snapshot != nil, Self.isTransportFailure(error) else { return }
+        isOffline = true
+        loadedDetailIsStale = true
+    }
+
+    /// webui wraps a transport failure in `APIError.network`; a Hermes host's arrives as
+    /// `BotFailure.transport` or a bare `URLError`.
+    private static func isTransportFailure(_ error: Error) -> Bool {
+        switch error {
+        case APIError.network: true
+        case BotFailure.transport: true
+        case let error as URLError: error.code != .cancelled
+        default: false
         }
     }
 
@@ -2752,8 +2784,17 @@ final class KanbanFeatureState {
             configuration: configuration,
             boardsResponse: boardsResponse,
             boardSlug: board,
-            snapshot: snapshot
+            snapshot: snapshot,
+            backend: backend
         )
+    }
+
+    /// A Hermes host's `/config` names no Columns, so its Board's Columns stand in.
+    private func adoptingBoardColumns(
+        _ configuration: KanbanConfiguration,
+        from snapshot: KanbanBoardSnapshot
+    ) -> KanbanConfiguration {
+        backend == .hermes ? configuration.adoptingColumns(of: snapshot) : configuration
     }
 
     private func updatePartialState() {
@@ -2795,6 +2836,8 @@ final class KanbanFeatureState {
         if error is KanbanContractViolation || error is KanbanResponseError {
             return .incompatibleContract
         }
+        if error is KanbanCapabilityError { return .unavailable }
+        if let failure = error as? BotFailure { return classify(failure) }
         guard let apiError = error as? APIError else { return .networkUnavailable }
         switch apiError {
         case .unauthorized:
@@ -2805,6 +2848,24 @@ final class KanbanFeatureState {
             return [502, 503, 504].contains(statusCode) ? .serverUnavailable : .incompatibleContract
         case .decoding, .invalidServerURL:
             return .incompatibleContract
+        }
+    }
+
+    /// A Hermes host's failures. Its sign-out stays with `HermesConnection.onLoginRejected`,
+    /// so nothing here is forwarded; a refused or replaced sign-in reads as signed out.
+    private static func classify(_ failure: BotFailure) -> KanbanCompatibilityState {
+        switch failure {
+        case .transport:
+            return .networkUnavailable
+        case .rejected(502...504), .rejected(520...530):
+            return .serverUnavailable
+        case .rejected(401):
+            return .authenticationRequired
+        case .rejected, .invalidAddress:
+            return .incompatibleContract
+        case .stale, .unsupported, .missingChat, .wrongIdentity, .differentHost, .notDashboard, .blocked,
+             .browserSignIn, .upgradeRefused, .outdated:
+            return .authenticationRequired
         }
     }
 

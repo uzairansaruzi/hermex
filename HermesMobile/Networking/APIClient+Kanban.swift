@@ -1,6 +1,17 @@
 import Foundation
 
+/// The server a Kanban client reads. A Hermes host (#1043) has no Columns in `/config`, no
+/// `changed` Board envelope and no event stream, so the feature state checks and refreshes
+/// it differently.
+enum KanbanBackend: Sendable {
+    case webui
+    case hermes
+}
+
+/// Everything the Kanban screens read and write. `APIClient` serves a webui server and
+/// `HermesKanbanClient` a Hermes host; a write a client does not implement throws.
 protocol KanbanDataClient: Sendable {
+    var backend: KanbanBackend { get }
     func kanbanConfiguration() async throws -> KanbanConfiguration
     func kanbanBoards() async throws -> KanbanBoardsResponse
     func createKanbanBoard(_ request: KanbanCreateBoardRequest) async throws -> KanbanBoardMutationEnvelope
@@ -26,6 +37,8 @@ protocol KanbanDataClient: Sendable {
 }
 
 extension KanbanDataClient {
+    var backend: KanbanBackend { .webui }
+
     func createKanbanBoard(_ request: KanbanCreateBoardRequest) async throws -> KanbanBoardMutationEnvelope {
         throw KanbanUnsupportedClientMethod.createBoard
     }

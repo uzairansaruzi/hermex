@@ -26,6 +26,8 @@ import Foundation
 /// read at the same pin and checked against `scripts/local-hermes`: `{runs, limit}`, the job's run
 /// sessions newest first, each `cron_<job>_<YYYYmmdd_HHMMSS>` with the session's `system_prompt`;
 /// `limit` is clamped to 1-100, there is no offset, and a job without runs answers `{runs: []}`.
+/// The Kanban plugin's reads (#1043) are under `/api/plugins/kanban` at the same pin, checked
+/// against `scripts/local-hermes`; `docs/agents/kanban.md` § Hermes has their shapes.
 enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
@@ -77,6 +79,18 @@ enum HermesREST: Equatable, Sendable {
     case cronDeliveryTargets(profile: String?)
     /// One Profile's skills: a bare array of `{name, description, category, enabled, …}`.
     case skills(profile: String?)
+    /// `{default_tenant, …}`, or 404 when the Kanban plugin is disabled or absent.
+    case kanbanConfig
+    /// Every Board with its counts, and `current`.
+    case kanbanBoards
+    /// One Board's Columns and Cards. `tenant` and archived Cards are the host's only filters.
+    case kanbanBoard(board: String, tenant: String?, includeArchived: Bool)
+    case kanbanStats(board: String)
+    case kanbanAssignees(board: String)
+    /// One Card with its comments, events, links and runs. `id` is the host's `t_…` id.
+    case kanbanTask(id: String, board: String)
+    /// The last `tailBytes` of a Card's worker log; `exists: false` when it never ran.
+    case kanbanTaskLog(id: String, board: String, tailBytes: Int)
 
     func request(base: URL) throws -> URLRequest {
         switch self {
@@ -147,7 +161,33 @@ enum HermesREST: Equatable, Sendable {
         case .cronDeliveryTargets(let profile):
             return Self.get(try Self.url(base, "api/cron/delivery-targets", profile: profile))
         case .skills(let profile): return Self.get(try Self.url(base, "api/skills", profile: profile))
+        case .kanbanConfig: return try Self.kanban(base, ["config"])
+        case .kanbanBoards: return try Self.kanban(base, ["boards"])
+        case .kanbanBoard(let board, let tenant, let includeArchived):
+            var query = [URLQueryItem(name: "board", value: board)]
+            if let tenant, !tenant.isEmpty { query.append(URLQueryItem(name: "tenant", value: tenant)) }
+            if includeArchived { query.append(URLQueryItem(name: "include_archived", value: "true")) }
+            return try Self.kanban(base, ["board"], query)
+        case .kanbanStats(let board): return try Self.kanban(base, ["stats"], [URLQueryItem(name: "board", value: board)])
+        case .kanbanAssignees(let board):
+            return try Self.kanban(base, ["assignees"], [URLQueryItem(name: "board", value: board)])
+        case .kanbanTask(let id, let board):
+            guard Self.isSegment(id) else { throw BotFailure.invalidAddress }
+            return try Self.kanban(base, ["tasks", id], [URLQueryItem(name: "board", value: board)])
+        case .kanbanTaskLog(let id, let board, let tailBytes):
+            guard Self.isSegment(id) else { throw BotFailure.invalidAddress }
+            return try Self.kanban(base, ["tasks", id, "log"], [URLQueryItem(name: "board", value: board),
+                                                                 URLQueryItem(name: "tail", value: String(tailBytes))])
         }
+    }
+
+    /// A GET under the Kanban plugin's mount.
+    private static func kanban(_ base: URL, _ path: [String], _ query: [URLQueryItem] = []) throws -> URLRequest {
+        let url = path.reduce(base.appendingPathComponent("api/plugins/kanban")) { $0.appendingPathComponent($1) }
+        guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { throw BotFailure.invalidAddress }
+        if !query.isEmpty { parts.queryItems = query }
+        guard let url = parts.url else { throw BotFailure.invalidAddress }
+        return get(url)
     }
 
     /// The gateway socket's upgrade: the `ws`/`wss` URL matching the address's scheme,

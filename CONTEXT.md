@@ -31,8 +31,16 @@ An individual unit of work on a Board.
 _Avoid_: Task, Kanban task, work item
 
 **Status**:
-The workflow state of a Card: Triage, To Do, Ready, Running, Blocked, Done, or Archived.
+The workflow state of a Card: Triage, To Do, Scheduled, Ready, Running, Blocked, Review, Done, or Archived. Scheduled and Review exist only on a Hermes server.
 _Avoid_: Column, lane, stage
+
+**Scheduled**:
+The Status of a Card parked until a time or condition, waiting on the clock rather than a person. The Dispatcher skips it.
+_Avoid_: Delayed, snoozed
+
+**Review**:
+The Status of a Card whose work is finished and waits for a person to check it before Done.
+_Avoid_: Awaiting approval, QA
 
 **Column**:
 A visual grouping of Cards that share a Status.

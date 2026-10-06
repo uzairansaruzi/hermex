@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Whether the inbox's + menu offers "New Session" (#1010), which opens a Hermes session in
-/// the main chat, and "Tasks" (#1040), the host's scheduled Tasks: only as a Hermes server's
-/// home, and only in a DEBUG build or Hermex Branch (bundle id ending `.branch`). Temporary:
-/// #709's build gives both a permanent home.
+/// the main chat, "Tasks" (#1040), the host's scheduled Tasks, and "Kanban" (#1043), which opens
+/// the host's Boards: only as a Hermes server's home, and only in a DEBUG build or Hermex Branch
+/// (bundle id ending `.branch`). Temporary: #709's build gives them a permanent home.
 enum HermesSessionEntry {
     static func isOffered(isHermesHome: Bool, isDebugBuild: Bool = HermesSessionEntry.isDebugBuild,
                           bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> Bool {
@@ -84,6 +84,8 @@ struct BotsInboxHome {
     @State private var newSession: HermesSessionChat?
     @State private var tasks: HermesTasksEntry?
     @State private var isOpeningSession = false
+    /// True while the host's Kanban is pushed from the + menu (#1043).
+    @State private var showingKanban = false
 
     init(
         server: URL,
@@ -248,6 +250,7 @@ struct BotsInboxHome {
                             }
                         }
                         .disabled(isOpeningSession)
+                        Button("Kanban", systemImage: "rectangle.split.3x1") { showingKanban = true }
                     }
                     if inbox.reorderableSectionNames.count >= 2 {
                         Divider()
@@ -620,6 +623,7 @@ extension BotsInboxView {
                 searchedRoom = nil; searchedSequence = nil; roomSequence = nil
                 selection.room = nil; selection.conversation = nil
                 newSession = nil; tasks = nil
+                showingKanban = false
                 editSelection = nil
                 creation = nil
                 roomCreator?.suspend(); roomCreator = nil; createdRoom = nil
@@ -663,6 +667,12 @@ extension BotsInboxView {
                 TasksView(server: entry.server, onAPIError: { _ in }, client: entry.client,
                           newTaskProfile: entry.newTaskProfile)
                     .id(entry.id)
+            }
+            .navigationDestination(isPresented: $showingKanban) {
+                if let connection = inbox.connection {
+                    KanbanView(server: server, hermes: HermesConnections.shared.connection(for: connection, server: server))
+                        .id(connection.id)
+                }
             }
             // The subscription lives while the inbox is on screen and the app is not in the
             // background; returning, refreshing and reconnecting all go through the same open().

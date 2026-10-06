@@ -207,7 +207,19 @@ final class HermesRequestTests: XCTestCase {
              "https://hermes.example:9120/api/cron/jobs/d804e8d67342/runs?profile=research&limit=100", nil, [:]),
             (.cronDeliveryTargets(profile: "research"), "GET",
              "https://hermes.example:9120/api/cron/delivery-targets?profile=research", nil, [:]),
-            (.skills(profile: "research"), "GET", "https://hermes.example:9120/api/skills?profile=research", nil, [:])
+            (.skills(profile: "research"), "GET", "https://hermes.example:9120/api/skills?profile=research", nil, [:]),
+            (.kanbanConfig, "GET", "https://hermes.example:9120/api/plugins/kanban/config", nil, [:]),
+            (.kanbanBoards, "GET", "https://hermes.example:9120/api/plugins/kanban/boards", nil, [:]),
+            (.kanbanBoard(board: "default", tenant: nil, includeArchived: false), "GET",
+             "https://hermes.example:9120/api/plugins/kanban/board?board=default", nil, [:]),
+            (.kanbanBoard(board: "ops", tenant: "app", includeArchived: true), "GET",
+             "https://hermes.example:9120/api/plugins/kanban/board?board=ops&tenant=app&include_archived=true", nil, [:]),
+            (.kanbanStats(board: "ops"), "GET", "https://hermes.example:9120/api/plugins/kanban/stats?board=ops", nil, [:]),
+            (.kanbanAssignees(board: "ops"), "GET", "https://hermes.example:9120/api/plugins/kanban/assignees?board=ops", nil, [:]),
+            (.kanbanTask(id: "t_6307395e", board: "ops"), "GET",
+             "https://hermes.example:9120/api/plugins/kanban/tasks/t_6307395e?board=ops", nil, [:]),
+            (.kanbanTaskLog(id: "t_6307395e", board: "ops", tailBytes: 65_536), "GET",
+             "https://hermes.example:9120/api/plugins/kanban/tasks/t_6307395e/log?board=ops&tail=65536", nil, [:])
         ]
         for (rest, method, url, body, headers) in cases {
             let request = try rest.request(base: base)
@@ -225,6 +237,8 @@ final class HermesRequestTests: XCTestCase {
         XCTAssertThrowsError(try HermesREST.cronPause(id: "../profiles", profile: "research").request(base: base))
         XCTAssertThrowsError(try HermesREST.cronDelete(id: "", profile: "research").request(base: base))
         XCTAssertThrowsError(try HermesCall.profileModelOptions(profile: "").params())
+        XCTAssertThrowsError(try HermesREST.kanbanTask(id: "../config", board: "ops").request(base: base))
+        XCTAssertThrowsError(try HermesREST.kanbanTaskLog(id: "", board: "ops", tailBytes: 1).request(base: base))
         let upgrade = try HermesREST.gatewayUpgrade(base: base, ticket: "t1")
         XCTAssertEqual(upgrade.url?.absoluteString, "wss://hermes.example:9120/api/ws")
         XCTAssertEqual(upgrade.allHTTPHeaderFields ?? [:], ["Sec-WebSocket-Protocol": "hermes-gateway-v1, hermes-gateway-ticket.t1"])

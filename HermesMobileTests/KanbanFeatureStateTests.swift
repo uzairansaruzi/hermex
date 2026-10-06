@@ -290,7 +290,13 @@ final class KanbanFeatureStateTests: XCTestCase {
         )
         await state.load()
 
-        XCTAssertEqual(Array(state.availableStatuses.prefix(6)), KanbanFeatureState.liveStatuses)
+        // A webui Board keeps its configured six Columns; Scheduled and Review are Hermes's.
+        XCTAssertEqual(
+            Array(state.availableStatuses.prefix(6)),
+            ["triage", "todo", "ready", "running", "blocked", "done"]
+        )
+        XCTAssertFalse(state.availableStatuses.contains("scheduled"))
+        XCTAssertFalse(state.availableStatuses.contains("review"))
         XCTAssertTrue(state.availableStatuses.contains("future"))
         state.selectedStatus = "ready"
         for query in ["CARD-1", "Status Focus", "markdown", "builder", "mobile"] {
@@ -657,6 +663,35 @@ final class KanbanFeatureStateTests: XCTestCase {
             .none, .warning,
             .none, .warning, .critical
         ])
+    }
+
+    /// A Hermes host sends `age` as `{created_age_seconds, started_age_seconds, …}` and webui
+    /// forwards the same dict as `age_seconds`. Running reads the started age, every other
+    /// Status the created age.
+    func testAgeDictionaryDrivesStalenessOnHermesAndWebUI() throws {
+        let snapshot: KanbanBoardSnapshot = mutationDecode("""
+        {"columns":[
+          {"name":"running","tasks":[
+            {"id":"hermes-running","status":"running","age":{"created_age_seconds":90000,"started_age_seconds":700,"time_to_complete_seconds":null}},
+            {"id":"webui-running","status":"running","age_seconds":{"created_age_seconds":10,"started_age_seconds":3600},"age":{"created_age_seconds":10,"started_age_seconds":3600}},
+            {"id":"not-started","status":"running","age":{"created_age_seconds":90000,"started_age_seconds":null}}]},
+          {"name":"ready","tasks":[{"id":"hermes-ready","status":"ready","age":{"created_age_seconds":3600,"started_age_seconds":null}}]},
+          {"name":"blocked","tasks":[{"id":"webui-blocked","status":"blocked","age_seconds":{"created_age_seconds":86400,"started_age_seconds":5}}]},
+          {"name":"todo","tasks":[{"id":"hermes-todo","status":"todo","age":{"created_age_seconds":999999}}]}
+        ]}
+        """)
+        let cards = snapshot.columns?.flatMap { $0.cards ?? [] } ?? []
+
+        XCTAssertEqual(cards.map(\.staleness), [.warning, .critical, .none, .warning, .critical, .none])
+        XCTAssertEqual(cards.first?.ageSeconds, 700, "a running Card shows how long it has run")
+        XCTAssertEqual(cards.last?.ageSeconds, 999_999)
+    }
+
+    func testScheduledAndReviewAreKnownStatusesWithTheirOwnNames() {
+        XCTAssertEqual(KanbanStatusPresentation("scheduled").title, String(localized: "Scheduled"))
+        XCTAssertEqual(KanbanStatusPresentation("review").title, String(localized: "Review"))
+        XCTAssertTrue(KanbanStatus(rawValue: "scheduled").isSupported)
+        XCTAssertTrue(KanbanStatus(rawValue: "review").isSupported)
     }
 
     func testPreviewDispatchIsOptionalSingleFlightTimestampedAndBecomesStaleAfterRefresh() async {

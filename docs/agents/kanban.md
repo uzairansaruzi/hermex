@@ -73,6 +73,45 @@ Hermex deliberately does not expose backend-only hard deletion, archived-Board
 enumeration/restoration, the global `PATCH /api/kanban/config` grouping mutation, the
 legacy Card patch alias, or unsupported task attachments.
 
+## Hermes
+
+A Hermes server's Kanban (#1043) is the host's bundled Kanban plugin, read by
+`HermesKanbanClient` over the server's shared `HermesConnection` (its sign-in, cookie jar
+and connection headers). It is read-only until #1044 adds writes, and has no live updates
+until #1045 adds the socket: pull to refresh and returning to the foreground reload the
+Board. Until #709 gives it a home, the Hermes inbox's + menu offers it in DEBUG builds and
+Hermex Branch only.
+
+Read at the pin (`ca678285`, 0.21.5; `plugins/kanban/dashboard/plugin_api.py`) and checked
+against `scripts/local-hermes`. Every route is a GET under `/api/plugins/kanban`, and every
+route but `/config` and `/boards` takes `?board=<slug>`; an unknown Board is 404.
+
+| Route | Shape Hermex reads |
+|---|---|
+| `/config` | `{default_tenant, lane_by_profile, include_archived_by_default, render_markdown}`. No Columns and no `read_only`. |
+| `/boards` | `{boards: [{slug, name, description, icon, color, archived, is_current, counts, total, …}], current}`. |
+| `/board?board=&tenant=&include_archived=` | `{columns: [{name, tasks}], tenants, assignees, latest_event_id, now}`. Columns are `triage, todo, scheduled, ready, running, blocked, review, done`, plus `archived` when included. No `changed`, no `read_only`, and no assignee or only-mine filter. |
+| `/tasks/{id}` | `{task, comments, events, attachments, links {parents, children}, link_tasks, child_results, runs}`. |
+| `/tasks/{id}/log?tail=` | `{task_id, path, exists, size_bytes, content, truncated}`; a Card that never ran is `exists: false`, not 404. |
+| `/stats`, `/assignees` | `{by_status, by_assignee: {name: {status: n}}, …}` and `{assignees: [{name, on_disk, counts}]}`. |
+
+How Hermex adapts it:
+
+- **Absent plugin.** 404 on `/config` is a host without Kanban: `{"detail": "No such API
+  endpoint: …"}` when the plugin never mounted, `{"detail": "Plugin not found"}` when it
+  was disabled at runtime. Kanban shows as unavailable, not as an error.
+- **Handshake.** The Board's own Columns stand in for `/config`'s, in the host's order, and
+  the Board needs no `changed`. A Card Status outside those Columns still flags.
+- **Read-only.** Every reply is marked `read_only`, so every write control stays disabled.
+- **Filters.** The Assigned Profile filter runs on the client; Only Mine is not offered,
+  because the host's Kanban has no active chat Profile.
+- **Host data never kept.** `workspace_path`, `stored_path`, a log's `path`, `db_path`,
+  `default_workdir`, `worker_pid` and `claim_lock` (on Cards and on runs) are dropped from
+  every reply before it is decoded, so no view or log can show them.
+- **Errors.** A transport failure is offline, 502–504 and 520–530 are server unavailable,
+  and a refused or replaced sign-in reads as signed out. The sign-out itself stays with
+  `HermesConnection`, never `onAPIError`.
+
 ## Native information architecture and interaction model
 
 Kanban is a distinct `SessionListUtilityDestination` constructed with the active
@@ -102,7 +141,10 @@ The interaction model is **Status Focus**:
 Card summaries preserve ID, priority, tenant, title, Markdown-aware body preview,
 Assigned Profile/Unassigned, comment/dependency counts, age, and the verified WebUI
 staleness thresholds: Running at 10 minutes/1 hour, Ready at 1 hour, and Blocked at
-1 hour/24 hours. Running is visible but is never offered as a direct destination.
+1 hour/24 hours. Age comes from the `{created_age_seconds, started_age_seconds}` dict
+both servers send (webui as `age_seconds`, Hermes as `age`): a Running Card reads its
+started age, every other Card its created age, and a plain number from an older bridge
+stands for both. Running is visible but is never offered as a direct destination.
 
 Card detail preserves Markdown description, metadata, comments, events,
 Prerequisites/Dependents, Dispatch Runs, and explicitly requested worker-log content.

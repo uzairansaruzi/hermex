@@ -394,6 +394,22 @@ struct KanbanConfiguration: Decodable, Equatable, Sendable {
         renderMarkdown = container.decodeLossyBoolIfPresent(forKey: .renderMarkdown)
         readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
     }
+
+    private init(copying configuration: KanbanConfiguration, columns: [String]) {
+        self.columns = columns
+        assignees = configuration.assignees
+        defaultTenant = configuration.defaultTenant
+        laneByProfile = configuration.laneByProfile
+        includeArchivedByDefault = configuration.includeArchivedByDefault
+        renderMarkdown = configuration.renderMarkdown
+        readOnly = configuration.readOnly
+    }
+
+    /// A Hermes host's `/config` names no Columns; its Board does. This configuration with
+    /// the Columns `snapshot` lists, in the host's order.
+    func adoptingColumns(of snapshot: KanbanBoardSnapshot) -> KanbanConfiguration {
+        KanbanConfiguration(copying: self, columns: (snapshot.columns ?? []).compactMap(\.name))
+    }
 }
 
 private struct KanbanAssigneeValue: Decodable {
@@ -551,7 +567,7 @@ struct KanbanCard: Decodable, Equatable, Sendable {
     let priority: Int?
     let commentCount: Int?
     let linkCounts: KanbanLinkCounts?
-    let ageSeconds: Double?
+    let age: KanbanCardAge?
     let createdAt: String?
     let updatedAt: String?
     let workspaceKind: String?
@@ -565,7 +581,7 @@ struct KanbanCard: Decodable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case cardID = "id"
-        case title, body, tenant, priority, commentCount, linkCounts, ageSeconds
+        case title, body, tenant, priority, commentCount, linkCounts, age, ageSeconds
         case status
         case assignee
         case createdAt, updatedAt, workspaceKind, workspacePath, skills, maxRuntimeSeconds
@@ -584,7 +600,7 @@ struct KanbanCard: Decodable, Equatable, Sendable {
         priority: Int?,
         commentCount: Int?,
         linkCounts: KanbanLinkCounts?,
-        ageSeconds: Double?,
+        age: KanbanCardAge?,
         createdAt: String?,
         updatedAt: String?,
         workspaceKind: String?,
@@ -605,7 +621,7 @@ struct KanbanCard: Decodable, Equatable, Sendable {
         self.priority = priority
         self.commentCount = commentCount
         self.linkCounts = linkCounts
-        self.ageSeconds = ageSeconds
+        self.age = age
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.workspaceKind = workspaceKind
@@ -629,7 +645,9 @@ struct KanbanCard: Decodable, Equatable, Sendable {
         priority = container.decodeLossyIntIfPresent(forKey: .priority)
         commentCount = container.decodeLossyIntIfPresent(forKey: .commentCount)
         linkCounts = try? container.decodeIfPresent(KanbanLinkCounts.self, forKey: .linkCounts)
-        ageSeconds = container.decodeLossyDoubleIfPresent(forKey: .ageSeconds)
+        // A Hermes host sends `age`; webui forwards the same dict as `age_seconds` too.
+        age = KanbanCardAge.decode(from: container, forKey: .age)
+            ?? KanbanCardAge.decode(from: container, forKey: .ageSeconds)
         createdAt = container.decodeLossyStringIfPresent(forKey: .createdAt)
         updatedAt = container.decodeLossyStringIfPresent(forKey: .updatedAt)
         workspaceKind = container.decodeLossyStringIfPresent(forKey: .workspaceKind)
@@ -640,6 +658,13 @@ struct KanbanCard: Decodable, Equatable, Sendable {
         claimLock = container.decodeLossyStringIfPresent(forKey: .claimLock)
         claimExpires = container.decodeLossyStringIfPresent(forKey: .claimExpires)
         workerID = container.decodeLossyStringIfPresent(forKey: .workerID)
+    }
+
+    /// How long the Card has been in its current stretch of work: since it started for a
+    /// running Card, since it was created otherwise. The Card row shows it and
+    /// `staleness` reads it.
+    var ageSeconds: Double? {
+        status?.rawValue == "running" ? age?.startedSeconds : age?.createdSeconds
     }
 
     var staleness: KanbanStaleness {
@@ -667,7 +692,7 @@ struct KanbanCard: Decodable, Equatable, Sendable {
             priority: priority,
             commentCount: commentCount,
             linkCounts: linkCounts,
-            ageSeconds: ageSeconds,
+            age: age,
             createdAt: createdAt,
             updatedAt: updatedAt,
             workspaceKind: workspaceKind,
@@ -679,6 +704,34 @@ struct KanbanCard: Decodable, Equatable, Sendable {
             claimExpires: status == "running" ? claimExpires : nil,
             workerID: status == "running" ? workerID : nil
         )
+    }
+}
+
+/// A Card's age in seconds, from `{created_age_seconds, started_age_seconds, …}`. An older
+/// webui bridge sent one plain number, which stands for both.
+struct KanbanCardAge: Equatable, Sendable {
+    let createdSeconds: Double?
+    let startedSeconds: Double?
+
+    private enum CodingKeys: String, CodingKey {
+        case createdSeconds = "createdAgeSeconds"
+        case startedSeconds = "startedAgeSeconds"
+    }
+
+    static func decode<Key: CodingKey>(
+        from container: KeyedDecodingContainer<Key>,
+        forKey key: Key
+    ) -> KanbanCardAge? {
+        if let values = try? container.nestedContainer(keyedBy: CodingKeys.self, forKey: key) {
+            let age = KanbanCardAge(
+                createdSeconds: values.decodeLossyDoubleIfPresent(forKey: .createdSeconds),
+                startedSeconds: values.decodeLossyDoubleIfPresent(forKey: .startedSeconds)
+            )
+            return age.createdSeconds == nil && age.startedSeconds == nil ? nil : age
+        }
+        return container.decodeLossyDoubleIfPresent(forKey: key).map {
+            KanbanCardAge(createdSeconds: $0, startedSeconds: $0)
+        }
     }
 }
 
@@ -1046,6 +1099,7 @@ enum KanbanStaleness: Equatable, Sendable {
 
 /// Retains an unknown server Status rather than turning it into a decoding
 /// failure. Future mutation slices can use `isSupported` to keep it read-only.
+/// Scheduled and Review are Hermes-only Columns; webui never sends them.
 struct KanbanStatus: Equatable, Hashable, Sendable {
     let rawValue: String
 
@@ -1054,7 +1108,8 @@ struct KanbanStatus: Equatable, Hashable, Sendable {
     }
 
     var isSupported: Bool {
-        ["triage", "todo", "blocked", "ready", "running", "done", "archived"].contains(rawValue.lowercased())
+        ["triage", "todo", "scheduled", "blocked", "ready", "running", "review", "done", "archived"]
+            .contains(rawValue.lowercased())
     }
 }
 
@@ -1085,6 +1140,12 @@ enum KanbanContractViolation: Error, Equatable, LocalizedError, Sendable {
     }
 }
 
+/// The server has no Kanban to read: a Hermes host whose Kanban plugin is disabled or absent
+/// answers 404 on `/config` (#1043). Kanban shows as unavailable there, not as an error.
+enum KanbanCapabilityError: Error, Equatable, Sendable {
+    case kanbanUnavailable
+}
+
 enum KanbanResponseError: Error, Equatable, LocalizedError, Sendable {
     case nonJSONContentType
 
@@ -1093,18 +1154,24 @@ enum KanbanResponseError: Error, Equatable, LocalizedError, Sendable {
     }
 }
 
+/// Checks the handshake before any Kanban data shows. A webui Board must be a `changed`
+/// envelope whose Columns `/config` names. A Hermes host's `/config` names no Columns and
+/// its Board has no `changed`, so there the Board's own Columns are the configured ones.
+/// Either way a Card Status outside them flags as unsupported.
 enum KanbanCompatibilityValidator {
     static func validate(
         configuration: KanbanConfiguration,
         boardsResponse: KanbanBoardsResponse,
-        snapshot: KanbanBoardSnapshot
+        snapshot: KanbanBoardSnapshot,
+        backend: KanbanBackend = .webui
     ) throws -> KanbanCompatibilityReport {
         let currentBoardSlug = try nonEmpty(boardsResponse.current, missing: .missingCurrentBoard)
         return try validate(
             configuration: configuration,
             boardsResponse: boardsResponse,
             boardSlug: currentBoardSlug,
-            snapshot: snapshot
+            snapshot: snapshot,
+            backend: backend
         )
     }
 
@@ -1112,15 +1179,20 @@ enum KanbanCompatibilityValidator {
         configuration: KanbanConfiguration,
         boardsResponse: KanbanBoardsResponse,
         boardSlug: String,
-        snapshot: KanbanBoardSnapshot
+        snapshot: KanbanBoardSnapshot,
+        backend: KanbanBackend = .webui
     ) throws -> KanbanCompatibilityReport {
-        let configuredStatuses = try nonEmptyValues(configuration.columns, missing: .missingConfigurationColumns)
+        let configuredStatuses = try nonEmptyValues(
+            backend == .hermes ? snapshot.columns?.compactMap(\.name) : configuration.columns,
+            missing: backend == .hermes ? .missingBoardSnapshot : .missingConfigurationColumns
+        )
         let selectedBoardSlug = try nonEmpty(boardSlug, missing: .missingBoardIdentity)
         let boards = boardsResponse.boards ?? []
         guard let board = boards.first(where: { normalized($0.slug) == selectedBoardSlug }) else {
             throw KanbanContractViolation.missingBoardIdentity
         }
-        guard snapshot.changed == true, let columns = snapshot.columns, !columns.isEmpty else {
+        guard backend == .hermes || snapshot.changed == true,
+              let columns = snapshot.columns, !columns.isEmpty else {
             throw KanbanContractViolation.missingBoardSnapshot
         }
 

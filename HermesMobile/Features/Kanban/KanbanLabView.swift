@@ -193,6 +193,12 @@ struct KanbanStatusFocusView: View {
                     detail: String(localized: "No Kanban changes were made."),
                     systemImage: "exclamationmark.triangle"
                 )
+            case .unavailable:
+                unavailableContent(
+                    title: String(localized: "Kanban isn’t available on this server."),
+                    detail: String(localized: "Turn on the Kanban plugin on the Hermes host, then try again."),
+                    systemImage: "puzzlepiece.extension"
+                )
             }
         }
         .onGeometryChange(for: CGFloat.self) { proxy in
@@ -2007,10 +2013,12 @@ private struct KanbanFiltersView: View {
                         }
                     }
                     .disabled(draft.onlyMine)
-                    Toggle("Only Mine", isOn: $draft.onlyMine)
-                        .onChange(of: draft.onlyMine) { _, enabled in
-                            if enabled { draft.profile = nil }
-                        }
+                    if model.offersOnlyMine {
+                        Toggle("Only Mine", isOn: $draft.onlyMine)
+                            .onChange(of: draft.onlyMine) { _, enabled in
+                                if enabled { draft.profile = nil }
+                            }
+                    }
                 }
 
                 Section("Tenant") {
@@ -2320,9 +2328,11 @@ struct KanbanStatusPresentation {
         switch rawValue {
         case "triage": String(localized: "Triage")
         case "todo": String(localized: "To Do")
+        case "scheduled": String(localized: "Scheduled")
         case "ready": String(localized: "Ready")
         case "running": String(localized: "Running")
         case "blocked": String(localized: "Blocked")
+        case "review": String(localized: "Review")
         case "done": String(localized: "Done")
         case "archived": String(localized: "Archived")
         case "": String(localized: "Unknown Status")
@@ -2334,9 +2344,11 @@ struct KanbanStatusPresentation {
         switch rawValue {
         case "triage": .gray
         case "todo": .blue
+        case "scheduled": .indigo
         case "ready": .mint
         case "running": .orange
         case "blocked": .red
+        case "review": .yellow
         case "done": .green
         case "archived": .secondary
         default: .purple
@@ -2352,6 +2364,17 @@ struct KanbanView: View {
             initialValue: KanbanFeatureState(
                 server: server,
                 onAPIError: onAPIError
+            )
+        )
+    }
+
+    /// Kanban on a Hermes server, read through its saved connection's shared sign-in. A
+    /// refused sign-in signs the server out through that connection, not `onAPIError`.
+    init(server: URL, hermes connection: HermesConnection) {
+        _model = State(
+            initialValue: KanbanFeatureState(
+                server: server,
+                client: HermesKanbanClient(http: connection)
             )
         )
     }

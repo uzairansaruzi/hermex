@@ -264,7 +264,9 @@ final class KanbanCardDetailState {
         }
     }
 
+    /// webui's 404, or a Hermes host's (`BotFailure.rejected(404)`) for a Card or Board it lacks.
     private func isNotFound(_ error: Error) -> Bool {
+        if case BotFailure.rejected(404) = error { return true }
         guard case let APIError.http(statusCode, _) = error else { return false }
         return statusCode == 404
     }
