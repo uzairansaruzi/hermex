@@ -316,6 +316,8 @@ extension ResponseSelectionTests {
 
 /// Comparative benchmark: report medians, never assert noisy wall-clock budgets.
 /// This same test is run against baseline and final production sources.
+/// PR CI skips it; run it by hand with
+/// `scripts/test-sim <udid> --only HermesMobileTests/MathTranscriptPerformanceTests`.
 @MainActor
 final class MathTranscriptPerformanceTests: XCTestCase {
     func testRepresentativeTranscriptsAndIncrementalScroll() async throws {

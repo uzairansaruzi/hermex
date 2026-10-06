@@ -160,7 +160,10 @@ CI tests on the iOS 27 simulator only. The `xcode-27` image ships no iOS 26
 runtime, and downloading one would add minutes to every run, so iOS 26 is
 deliberately not covered on CI to keep it fast. Run the affected tests on a
 local iOS 26 simulator when a change depends on OS behavior.
-CI resolves the device UDID and runs the complete suite with one test worker.
+CI resolves the device UDID and runs the complete suite with one test worker,
+except `MathTranscriptPerformanceTests`: that benchmark prints medians, asserts
+no time budget, and took 1-3 minutes of every run, so CI skips it. Run it by
+hand with `--only` when comparing rendering performance.
 Xcode owns that worker's simulator clone and boot. Explicit preboot plus fully
 serial execution did not improve the hosted trial, so retain the one-worker
 configuration unless new measurements justify changing it. Two more hosted

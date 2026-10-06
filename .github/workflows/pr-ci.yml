@@ -158,6 +158,8 @@ jobs:
       - name: Test without building
         id: tests
         # Bound worker clone/boot and suite execution, leaving time for diagnostics.
+        # Skips MathTranscriptPerformanceTests: a manual benchmark that asserts
+        # no budget and costs 1-3 minutes per run (DEVELOPMENT.md § PR CI).
         timeout-minutes: 30
         env:
           SIMULATOR_UDID: ${{ steps.sim.outputs.udid }}
@@ -177,6 +179,7 @@ jobs:
             -disableAutomaticPackageResolution \
             -parallel-testing-enabled YES \
             -parallel-testing-worker-count "${TEST_WORKER_COUNT}" \
+            -skip-testing:HermesMobileTests/MathTranscriptPerformanceTests \
             -collect-test-diagnostics never \
             CODE_SIGNING_ALLOWED=NO 2>&1 | tee "${CI_LOG_DIR}/tests.log"
 
