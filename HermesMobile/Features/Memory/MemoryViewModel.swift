@@ -114,10 +114,12 @@ final class MemoryViewModel {
     }
 
     /// Saves `content` and reloads the screen. `loaded` is the section's text when its editor
-    /// opened, the screen's current text by default. Over the section's limit nothing is sent.
+    /// opened, the screen's current text by default. Over the section's limit, or for a file the
+    /// host turned read-only (found by Reload), nothing is sent.
     /// A file changed on the host since `loaded` is not overwritten: `conflictedSection` names
     /// it and the editor keeps its draft.
     func save(section: MemorySection, content: String, loaded: String? = nil) async -> Bool {
+        guard !isReadOnly(section) else { return false }
         if let limit = characterLimit(for: section), MemoryCharacterCount(draft: content, limit: limit).isOver {
             actionErrorMessage = String(localized: "Over the host's limit. Shorten to save.")
             return false

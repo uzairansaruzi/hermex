@@ -230,6 +230,23 @@ final class MemoryViewModelTests: XCTestCase {
         XCTAssertNil(viewModel.conflictedSection)
     }
 
+    /// A file that turned read-only on the host while its editor was open (seen on Reload) is
+    /// not sent, so the save can't come back as a "Changed on the host" the user can't clear.
+    @MainActor
+    func testASectionReloadFindsReadOnlyIsNotSent() async throws {
+        let client = StubMemoryClient(memory: "Prefers short PRs")
+        let viewModel = MemoryViewModel(server: try XCTUnwrap(URL(string: "https://example.test")), client: client)
+        await viewModel.load()
+        client.response.readOnlySections = [.memory]
+        _ = await viewModel.reload(.memory)
+
+        let didSave = await viewModel.save(section: .memory, content: "My draft", loaded: "Prefers short PRs")
+
+        XCTAssertFalse(didSave)
+        XCTAssertEqual(client.saves.count, 0, "Nothing is sent for a read-only file")
+        XCTAssertNil(viewModel.conflictedSection)
+    }
+
     @MainActor
     func testHermesSectionsTheHostTurnsOffAreHiddenAndUnreadableOnesAreReadOnly() async throws {
         let client = StubMemoryClient()

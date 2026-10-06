@@ -47,6 +47,7 @@ struct MemoryView: View {
                     section: section,
                     initialContent: viewModel.content(for: section),
                     limit: viewModel.characterLimit(for: section),
+                    isReadOnly: viewModel.isReadOnly(section),
                     notesNextSession: viewModel.features.editsApplyNextSession,
                     isSaving: viewModel.isSaving,
                     isReloading: viewModel.isReloading,
@@ -243,9 +244,11 @@ private struct MemorySectionContent: View {
 /// One section's editor. On a Hermes host (#1073) it also counts the draft against the host's
 /// limit beside Save, which it disables over the limit; shows a save that found the file
 /// changed on the host as a banner whose Reload replaces the draft; and notes when edits apply.
+/// A file Reload finds read-only on the host keeps Save off and says so.
 private struct MemoryEditSheet: View {
     let section: MemorySection
     let limit: Int?
+    let isReadOnly: Bool
     let notesNextSession: Bool
     let isSaving: Bool
     let isReloading: Bool
@@ -265,6 +268,7 @@ private struct MemoryEditSheet: View {
         section: MemorySection,
         initialContent: String,
         limit: Int?,
+        isReadOnly: Bool,
         notesNextSession: Bool,
         isSaving: Bool,
         isReloading: Bool,
@@ -275,6 +279,7 @@ private struct MemoryEditSheet: View {
     ) {
         self.section = section
         self.limit = limit
+        self.isReadOnly = isReadOnly
         self.notesNextSession = notesNextSession
         self.isSaving = isSaving
         self.isReloading = isReloading
@@ -325,7 +330,9 @@ private struct MemoryEditSheet: View {
                 } header: {
                     Text(section.title)
                 } footer: {
-                    if notesNextSession {
+                    if isReadOnly {
+                        Label("Read-only", systemImage: "lock.fill")
+                    } else if notesNextSession {
                         Text("Edits apply from the agent's next session.")
                     }
                 }
@@ -368,7 +375,7 @@ private struct MemoryEditSheet: View {
                             Text("Save")
                         }
                     }
-                    .disabled(isBusy || count?.isOver == true)
+                    .disabled(isBusy || isReadOnly || count?.isOver == true)
                 }
             }
         }
