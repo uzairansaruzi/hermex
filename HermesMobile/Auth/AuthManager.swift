@@ -404,6 +404,22 @@ final class AuthManager {
         }
     }
 
+    /// An update from Settings installed `version` on the Hermes server `server` (#1075).
+    /// Records it on the server's saved sign-in and its registry entry, where a sign-in would
+    /// have, and changes nothing else: a server waiting on its sign-in form stays there.
+    func hermesServerUpdated(server: URL, to version: String) {
+        let store = BotConnectionStore(keychain: keychain)
+        if var saved = try? store.load(server: server), saved.hermesVersion != version {
+            saved.hermesVersion = version
+            try? store.save(saved, server: server)
+        }
+        guard var account = servers.first(where: { $0.id == server.absoluteString }), account.kind == .hermes,
+              account.serverVersion != version else { return }
+        account.serverVersion = version
+        serverRegistry.update(account)
+        refreshServers()
+    }
+
     /// Updates the in-effect headers from the Settings editor while signed in. The
     /// in-memory snapshot always updates immediately (so live requests pick them
     /// up), but the Keychain write is opt-in: the editor refreshes on every

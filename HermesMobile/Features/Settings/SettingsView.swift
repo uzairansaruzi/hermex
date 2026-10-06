@@ -913,10 +913,11 @@ struct SettingsView: View {
     /// configures or reads one (#899).
     private var isHermesServer: Bool { authManager.kind(of: server) == .hermes }
 
-    /// A Hermes server's Active Server card: its sign-in, with its headers, and the
-    /// release saved at that sign-in.
+    /// A Hermes server's Active Server card: its sign-in, with its headers, the release saved
+    /// at that sign-in, and the host's update standing (#1075).
     private var hermesServerCard: some View {
-        SettingsCard(title: String(localized: "Active Server")) {
+        let updates = HermesUpdateModel.for(server: server)
+        return SettingsCard(title: String(localized: "Active Server")) {
             NavigationLink {
                 BotConnectionView(server: server) { authManager.hermesSignInSaved(server: server) }
             } label: {
@@ -933,8 +934,17 @@ struct SettingsView: View {
                 SettingsInfoRow(title: String(localized: "Version"), value: version)
             }
 
+            HermesUpdateCallout(model: updates, version: activeAccount?.serverVersion)
+
             SettingsFootnote(String(localized: "Sign-in and connection headers for this Hermes host."))
         }
+        .task {
+            updates.onUpdated = { version in
+                authManager.hermesServerUpdated(server: server, to: version)
+            }
+            await updates.appear()
+        }
+        .onDisappear { updates.leaveSettings() }
     }
 
     /// Pushes the current global identity values (which the Identity + Header Logo

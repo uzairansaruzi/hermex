@@ -481,7 +481,7 @@ import UserNotifications
     /// "Restart Hermes…" (#934), from a confirmed tap on a host whose loaded plugin has the
     /// restart route: hermex-push answers 202 and re-execs the dashboard about a second later.
     /// A connection dropped on that request counts as the restart. Then the public `/api/status`
-    /// is probed on `restartDelays`, and whenever it answers the pairing route is read, until
+    /// is probed on `restartDelays` (`HermesRestartWait`), and whenever it answers the pairing route is read, until
     /// the newest plugin is loaded. The old process can still answer just after the 202, so an
     /// answer with the old plugin keeps waiting. When the schedule runs out the last answer
     /// stands: the old plugin, offered the restart again; a host that answers but whose read
@@ -503,15 +503,14 @@ import UserNotifications
                                     remedy: .retryRestart))
             return
         }
-        var answer: Result<PluginUpdate, Error>?
-        for delay in restartDelays {
-            do { try await sleep(delay) } catch { break }
-            answer = nil
-            guard await client.answersStatus() else { continue }
-            do { answer = .success(try await pluginStanding(client)) } catch where !Self.isUnreachable(error) {
-                answer = .failure(error)
-            } catch {}
-            if case .success(.upToDate)? = answer { break }
+        let answer = await HermesRestartWait.lastAnswer(after: restartDelays, sleep: sleep) { () async -> Result<PluginUpdate, Error>? in
+            guard await client.answersStatus() else { return nil }
+            do { return .success(try await self.pluginStanding(client)) } catch where !Self.isUnreachable(error) {
+                return .failure(error)
+            } catch { return nil }
+        } isFinal: { answer in
+            if case .success(.upToDate) = answer { return true }
+            return false
         }
         switch answer {
         case .success(let standing)?: pluginUpdate = standing

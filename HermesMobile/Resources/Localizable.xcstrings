@@ -1699,6 +1699,358 @@
     },
     "%lld changes" : { "localizations" : { "en" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld change" } }, "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld changes" } } } } }, "de" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld Änderung" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld Änderungen" } } } } }, "es" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld cambio" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld cambios" } } } } }, "fr" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld modification" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld modifications" } } } } }, "it" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld modifica" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld modifiche" } } } } }, "pl" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld zmiana" } }, "few" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld zmiany" } }, "many" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld zmian" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld zmiany" } } } } }, "pt-BR" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld alteração" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld alterações" } } } } }, "nl" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld wijziging" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld wijzigingen" } } } } }, "tr" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld değişiklik" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld değişiklik" } } } } }, "ru" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld изменение" } }, "few" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld изменения" } }, "many" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld изменений" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld изменения" } } } } }, "ja" : { "variations" : { "plural" : { "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld件の変更" } } } } }, "zh-Hans" : { "variations" : { "plural" : { "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld 项更改" } } } } }, "ko" : { "variations" : { "plural" : { "other" : { "stringUnit" : { "state" : "needs_review", "value" : "변경 사항 %lld개" } } } } }, "ar" : { "variations" : { "plural" : { "zero" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld تغيير" } }, "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld تغيير" } }, "two" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld تغييران" } }, "few" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld تغييرات" } }, "many" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld تغييرًا" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld تغيير" } } } } }, "he" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld שינוי" } }, "two" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld שינויים" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld שינויים" } } } } }, "ur" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld تبدیلی" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld تبدیلیاں" } } } } }, "zh-Hant" : { "variations" : { "plural" : { "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld 項更改" } } } } }, "zh-HK" : { "variations" : { "plural" : { "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld 項更改" } } } } } } },
     "%lld comments" : { "localizations" : { "en" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld comment" } }, "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld comments" } } } } }, "de" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld Kommentar" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld Kommentare" } } } } }, "es" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld comentario" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld comentarios" } } } } }, "fr" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld commentaire" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld commentaires" } } } } }, "it" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld commento" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld commenti" } } } } }, "pl" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld komentarz" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld komentarze" } } } } }, "pt-BR" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld comentário" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld comentários" } } } } }, "nl" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld opmerking" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld opmerkingen" } } } } }, "tr" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld yorum" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld yorum" } } } } }, "ru" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld комментарий" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld комментария" } } } } }, "ja" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "コメント%lld件" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "コメント%lld件" } } } } }, "zh-Hans" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld 条评论" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld 条评论" } } } } }, "ko" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "댓글 %lld개" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "댓글 %lld개" } } } } }, "ar" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld تعليق" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld تعليقات" } } } } }, "he" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "תגובה %lld" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld תגובות" } } } } }, "ur" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld تبصرہ" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld تبصرے" } } } } }, "zh-Hant" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld 則留言" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld 則留言" } } } } }, "zh-HK" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld 則留言" } }, "other" : { "stringUnit" : { "state" : "needs_review", "value" : "%lld 則留言" } } } } } } },
+    "%lld commits behind." : {
+      "localizations" : {
+        "ar" : {
+          "variations" : {
+            "plural" : {
+              "zero" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "متأخر بمقدار %lld إيداع."
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "متأخر بمقدار %lld إيداع."
+                }
+              },
+              "two" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "متأخر بمقدار %lld إيداعين."
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "متأخر بمقدار %lld إيداعات."
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "متأخر بمقدار %lld إيداعًا."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "متأخر بمقدار %lld إيداع."
+                }
+              }
+            }
+          }
+        },
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld Commit im Rückstand."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld Commits im Rückstand."
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld commit behind."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld commits behind."
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld commit por detrás."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld commits por detrás."
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld commit de retard."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld commits de retard."
+                }
+              }
+            }
+          }
+        },
+        "he" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld קומיט מאחור."
+                }
+              },
+              "two" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld קומיטים מאחור."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld קומיטים מאחור."
+                }
+              }
+            }
+          }
+        },
+        "it" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld commit indietro."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld commit indietro."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 件のコミット分遅れています。"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "커밋 %lld개 뒤처짐."
+                }
+              }
+            }
+          }
+        },
+        "nl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld commit achter."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld commits achter."
+                }
+              }
+            }
+          }
+        },
+        "pl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "W tyle o %lld commit."
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "W tyle o %lld commity."
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "W tyle o %lld commitów."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "W tyle o %lld commita."
+                }
+              }
+            }
+          }
+        },
+        "pt-BR" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld commit atrás."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld commits atrás."
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Отстаёт на %lld коммит."
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Отстаёт на %lld коммита."
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Отстаёт на %lld коммитов."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Отстаёт на %lld коммита."
+                }
+              }
+            }
+          }
+        },
+        "tr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld commit geride."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld commit geride."
+                }
+              }
+            }
+          }
+        },
+        "ur" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld کمٹ پیچھے۔"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld کمٹس پیچھے۔"
+                }
+              }
+            }
+          }
+        },
+        "zh-HK" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "落後 %lld 個提交。"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "落后 %lld 个提交。"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "落後 %lld 個提交。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld failed" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"%lld fehlgeschlagen"}},"es":{"stringUnit":{"state":"needs_review","value":"%lld fallidos"}},"fr":{"stringUnit":{"state":"needs_review","value":"%lld échecs"}},"it":{"stringUnit":{"state":"needs_review","value":"%lld non riusciti"}},"pl":{"stringUnit":{"state":"needs_review","value":"%lld nieudanych"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"%lld com falha"}},"nl":{"stringUnit":{"state":"needs_review","value":"%lld mislukt"}},"tr":{"stringUnit":{"state":"needs_review","value":"%lld başarısız"}},"ru":{"stringUnit":{"state":"needs_review","value":"%lld с ошибкой"}},"ja":{"stringUnit":{"state":"needs_review","value":"%lld 件失敗"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"%lld 个失败"}},"ko":{"stringUnit":{"state":"needs_review","value":"%lld개 실패"}},"ar":{"stringUnit":{"state":"needs_review","value":"فشلت %lld"}},"he":{"stringUnit":{"state":"needs_review","value":"%lld נכשלו"}},"ur":{"stringUnit":{"state":"needs_review","value":"%lld ناکام"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"%lld 個失敗"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"%lld 個失敗"}}}},
     "%lld files changed" : {
       "localizations" : {
@@ -6496,6 +6848,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "每則回覆串流時輕微震動。"
+          }
+        }
+      }
+    },
+    "A newer Hermes is available." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يتوفر إصدار أحدث من Hermes."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Eine neuere Hermes-Version ist verfügbar."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hay una versión más reciente de Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Une version plus récente de Hermes est disponible."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "יש גרסה חדשה יותר של Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "È disponibile una versione più recente di Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "新しいバージョンの Hermes があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "더 새로운 Hermes 버전이 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Er is een nieuwere versie van Hermes beschikbaar."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dostępna jest nowsza wersja Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Há uma versão mais recente do Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Доступна более новая версия Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes’in daha yeni bir sürümü var."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes کا نیا ورژن دستیاب ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "有較新版本的 Hermes 可用。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "有更新版本的 Hermes 可用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "有較新版本的 Hermes 可用。"
           }
         }
       }
@@ -15891,6 +16349,112 @@
     "Change" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Ändern" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Cambiar" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Changer" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Cambia" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zmień" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Alterar" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Wijzigen" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Değiştir" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Изменить" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "変更" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "更改" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "변경" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تغيير" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "שינוי" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "تبدیل کریں" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "變更" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "更改" } } } },
     "Change the personality for %@?" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Persönlichkeit für %@ ändern?" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "¿Cambiar la personalidad de %@?" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Changer la personnalité de %@ ?" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Cambiare la personalità di %@?" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zmienić osobowość dla %@?" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Alterar a personalidade de %@?" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Persoonlijkheid voor %@ wijzigen?" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ için kişilik değiştirilsin mi?" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Изменить личность для %@?" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ のパーソナリティを変更しますか？" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "要更改 %@ 的个性吗？" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "%@의 성격을 바꿀까요?" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "هل تريد تغيير شخصية %@؟" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "לשנות את האישיות של %@?" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ کی شخصیت تبدیل کریں؟" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "要變更 %@ 的個性嗎？" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "要更改 %@ 的個性嗎？" } } } },
     "Changed on the host" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Auf dem Host geändert" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Cambiado en el host" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Modifié sur l’hôte" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Modificato sull’host" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zmieniono na hoście" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Alterado no host" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Gewijzigd op de host" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Sunucuda değiştirildi" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Изменено на хосте" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "ホストで変更されました" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "已在主机上更改" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "호스트에서 변경됨" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تم التغيير على المضيف" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "שונה במארח" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "ہوسٹ پر تبدیل ہو گیا" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "已在主機上變更" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "已在主機上變更" } } } },
+    "Check" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تحقق"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Prüfen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Comprobar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vérifier"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "בדיקה"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Verifica"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "確認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "확인"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Controleren"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sprawdź"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Verificar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Проверить"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Denetle"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "جانچیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "檢查"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "检查"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "檢查"
+          }
+        }
+      }
+    },
     "Clear the personality for %@?" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Persönlichkeit für %@ zurücksetzen?" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "¿Eliminar la personalidad de %@?" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Effacer la personnalité de %@ ?" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Rimuovere la personalità di %@?" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Wyczyścić osobowość dla %@?" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Remover a personalidade de %@?" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Persoonlijkheid voor %@ wissen?" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ için kişilik temizlensin mi?" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Сбросить личность для %@?" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ のパーソナリティをクリアしますか？" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "要清除 %@ 的个性吗？" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "%@의 성격을 지울까요?" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "هل تريد مسح شخصية %@؟" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "לנקות את האישיות של %@?" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ کی شخصیت صاف کریں؟" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "要清除 %@ 的個性嗎？" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "要清除 %@ 的個性嗎？" } } } },
     "CLI Sessions" : {
       "localizations" : {
@@ -45570,6 +46134,112 @@
     "Groups" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Gruppen"}},"es":{"stringUnit":{"state":"needs_review","value":"Grupos"}},"fr":{"stringUnit":{"state":"needs_review","value":"Groupes"}},"it":{"stringUnit":{"state":"needs_review","value":"Gruppi"}},"pl":{"stringUnit":{"state":"needs_review","value":"Grupy"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Grupos"}},"nl":{"stringUnit":{"state":"needs_review","value":"Groepen"}},"tr":{"stringUnit":{"state":"needs_review","value":"Gruplar"}},"ru":{"stringUnit":{"state":"needs_review","value":"Группы"}},"ja":{"stringUnit":{"state":"needs_review","value":"グループ"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"群组"}},"ko":{"stringUnit":{"state":"needs_review","value":"그룹"}},"ar":{"stringUnit":{"state":"needs_review","value":"المجموعات"}},"he":{"stringUnit":{"state":"needs_review","value":"קבוצות"}},"ur":{"stringUnit":{"state":"needs_review","value":"گروپس"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"群組"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"群組"}}}},
     "Groups can have up to six members." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Gruppen können bis zu sechs Mitglieder haben." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Los grupos pueden tener hasta seis miembros." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Un groupe peut compter jusqu’à six membres." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "I gruppi possono avere fino a sei membri." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Grupy mogą mieć maksymalnie sześciu członków." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Os grupos podem ter até seis membros." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Groepen kunnen maximaal zes leden hebben." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Gruplarda en fazla altı üye olabilir." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "В группе может быть не более шести участников." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "グループのメンバーは最大6つまでです。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "群组最多可有 6 名成员。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "그룹에는 멤버를 최대 6개까지 둘 수 있습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "يمكن أن تضم المجموعات ستة أعضاء كحد أقصى." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "בקבוצה יכולים להיות עד שישה חברים." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "گروپس میں زیادہ سے زیادہ چھ ممبرز ہو سکتے ہیں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "群組最多可有 6 位成員。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "群組最多可有 6 位成員。" } } } },
     "Guidance queued. The bot may not have read it yet." : {"extractionState" : "manual", "localizations" : {"de" : {"stringUnit" : {"state" : "needs_review", "value" : "Hinweis eingereiht. Der Bot hat ihn möglicherweise noch nicht gelesen."}}, "es" : {"stringUnit" : {"state" : "needs_review", "value" : "Indicaciones en cola. Puede que el bot aún no las haya leído."}}, "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Indications en attente. Le bot ne les a peut-être pas encore lues."}}, "it" : {"stringUnit" : {"state" : "needs_review", "value" : "Indicazioni in coda. Il bot potrebbe non averle ancora lette."}}, "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Wskazówki w kolejce. Bot mógł ich jeszcze nie przeczytać."}}, "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "Orientações na fila. O bot pode ainda não ter lido."}}, "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "Aanwijzingen in de wachtrij. De bot heeft ze mogelijk nog niet gelezen."}}, "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "Yönlendirme sıraya alındı. Bot henüz okumamış olabilir."}}, "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Указания в очереди. Возможно, бот ещё не прочитал их."}}, "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "指示をキューに追加しました。ボットはまだ読んでいない可能性があります。"}}, "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "指导已排队。机器人可能尚未读取。"}}, "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "지침이 대기열에 추가되었습니다. 봇이 아직 읽지 않았을 수 있습니다."}}, "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "أُضيفت التوجيهات إلى قائمة الانتظار. ربما لم يقرأها البوت بعد."}}, "he" : {"stringUnit" : {"state" : "needs_review", "value" : "ההנחיות נוספו לתור. ייתכן שהבוט עדיין לא קרא אותן."}}, "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "رہنمائی قطار میں شامل ہو گئی۔ ممکن ہے بوٹ نے ابھی اسے نہ پڑھا ہو۔"}}, "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "指引已排入佇列。機器人可能尚未讀取。"}}, "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "指引已加入佇列。機械人可能尚未讀取。"}}, "en" : {"stringUnit" : {"state" : "translated", "value" : "Guidance queued. The bot may not have read it yet."}}}},
+    "Hermes %@ is current. Checked today at %@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ محدَّث. تم التحقق اليوم في %2$@."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ ist aktuell. Heute um %2$@ geprüft."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ está actualizado. Comprobado hoy a las %2$@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ est à jour. Vérifié aujourd’hui à %2$@."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "‏Hermes %1$@ מעודכן. נבדק היום ב‑%2$@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ è aggiornato. Verificato oggi alle %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ は最新です。今日 %2$@ に確認しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@은(는) 최신 상태입니다. 오늘 %2$@에 확인했습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ is up-to-date. Vandaag om %2$@ gecontroleerd."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ jest aktualny. Sprawdzono dziś o %2$@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O Hermes %1$@ está atualizado. Verificado hoje às %2$@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ актуален. Проверено сегодня в %2$@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ güncel. Bugün %2$@ saatinde denetlendi."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ تازہ ترین ہے۔ آج %2$@ بجے جانچا گیا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ 已是最新。今天 %2$@ 檢查過。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ 已是最新。今天 %2$@ 检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes %1$@ 已是最新。今天 %2$@ 檢查過。"
+          }
+        }
+      }
+    },
     "Hermes did not accept /%@." : {
       "localizations" : {
         "ar" : {
@@ -46336,6 +47006,112 @@
     "Hermes did not start the background task." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes hat die Hintergrundaufgabe nicht gestartet." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes no inició la tarea en segundo plano." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes n’a pas démarré la tâche en arrière-plan." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes non ha avviato l’attività in background." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes nie uruchomił zadania w tle." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "O Hermes não iniciou a tarefa em segundo plano." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes heeft de achtergrondtaak niet gestart." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes arka plan görevini başlatmadı." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes не запустил фоновую задачу." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes はバックグラウンドタスクを開始しませんでした。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 未启动后台任务。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes가 백그라운드 작업을 시작하지 않았습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لم يبدأ Hermes المهمة في الخلفية." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes לא התחיל את משימת הרקע." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes نے پس منظر کا ٹاسک شروع نہیں کیا۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 未啟動背景任務。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 未啟動背景任務。" } } } },
     "Hermes didn't accept the username or password." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes hat den Benutzernamen oder das Passwort nicht akzeptiert." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes no aceptó el usuario o la contraseña." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes n’a pas accepté le nom d’utilisateur ou le mot de passe." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes non ha accettato il nome utente o la password." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes nie zaakceptował nazwy użytkownika lub hasła." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "O Hermes não aceitou o nome de usuário ou a senha." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes heeft de gebruikersnaam of het wachtwoord niet geaccepteerd." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes kullanıcı adını veya parolayı kabul etmedi." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes не принял имя пользователя или пароль." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes はユーザ名またはパスワードを受け付けませんでした。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 未接受该用户名或密码。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes가 사용자 이름 또는 비밀번호를 받아들이지 않았습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لم يقبل Hermes اسم المستخدم أو كلمة المرور." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "‏Hermes לא קיבל את שם המשתמש או את הסיסמה." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes نے یوزر نیم یا پاس ورڈ قبول نہیں کیا۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 未接受該使用者名稱或密碼。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 未接受該用戶名稱或密碼。" } } } },
     "Hermes didn’t come back" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Hermes hat sich nicht wieder gemeldet"}},"es":{"stringUnit":{"state":"needs_review","value":"Hermes no volvió"}},"fr":{"stringUnit":{"state":"needs_review","value":"Hermes n’est pas revenu"}},"it":{"stringUnit":{"state":"needs_review","value":"Hermes non è tornato disponibile"}},"pl":{"stringUnit":{"state":"needs_review","value":"Hermes nie wznowił działania"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"O Hermes não voltou"}},"nl":{"stringUnit":{"state":"needs_review","value":"Hermes kwam niet terug"}},"tr":{"stringUnit":{"state":"needs_review","value":"Hermes geri gelmedi"}},"ru":{"stringUnit":{"state":"needs_review","value":"Hermes не вернулся в строй"}},"ja":{"stringUnit":{"state":"needs_review","value":"Hermes が復帰しませんでした"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"Hermes 未恢复"}},"ko":{"stringUnit":{"state":"needs_review","value":"Hermes가 돌아오지 않았습니다"}},"ar":{"stringUnit":{"state":"needs_review","value":"لم يعد Hermes"}},"he":{"stringUnit":{"state":"needs_review","value":"‏Hermes לא חזר לפעול"}},"ur":{"stringUnit":{"state":"needs_review","value":"Hermes واپس نہیں آیا"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"Hermes 未恢復"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"Hermes 未恢復"}}}},
+    "Hermes didn’t say what went wrong. Its update log on the host has the details." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "لم يذكر Hermes سبب المشكلة. تجد التفاصيل في سجل التحديث على المضيف."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes hat nicht gesagt, was schiefgelaufen ist. Details stehen im Update-Protokoll auf dem Host."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes no indicó qué falló. El registro de actualización del host tiene los detalles."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes n’a pas indiqué ce qui n’a pas fonctionné. Le journal de mise à jour sur l’hôte contient les détails."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "‏Hermes לא ציין מה השתבש. הפרטים נמצאים ביומן העדכון במארח."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes non ha indicato cosa è andato storto. I dettagli sono nel log di aggiornamento sull’host."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes は問題の内容を返しませんでした。詳細はホストのアップデートログにあります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes가 무엇이 잘못되었는지 알려 주지 않았습니다. 자세한 내용은 호스트의 업데이트 로그에 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes zei niet wat er misging. Het updatelogboek op de host bevat de details."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes nie podał, co poszło nie tak. Szczegóły są w dzienniku aktualizacji na hoście."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O Hermes não informou o que deu errado. O log de atualização no host tem os detalhes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes не сообщил, что пошло не так. Подробности — в журнале обновления на хосте."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes neyin ters gittiğini söylemedi. Ayrıntılar sunucudaki güncelleme günlüğünde."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes نے نہیں بتایا کہ کیا غلط ہوا۔ تفصیلات ہوسٹ پر اپ ڈیٹ لاگ میں ہیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 沒有說明發生了什麼問題。詳細資訊請見主機上的更新記錄。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 没有说明出了什么问题。详情见主机上的更新日志。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 沒有說明發生了什麼問題。詳細資訊請見主機上的更新記錄。"
+          }
+        }
+      }
+    },
     "Hermes doesn't accept %@ as its address. On the host, set dashboard.public_url to %@, then restart the dashboard." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes akzeptiert %1$@ nicht als seine Adresse. Setze auf dem Host dashboard.public_url auf %2$@ und starte dann das Dashboard neu." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes no acepta %1$@ como su dirección. En el host, establece dashboard.public_url en %2$@ y reinicia el panel." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes n’accepte pas %1$@ comme adresse. Sur l’hôte, définissez dashboard.public_url sur %2$@, puis redémarrez le tableau de bord." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes non accetta %1$@ come proprio indirizzo. Sull’host, imposta dashboard.public_url su %2$@, poi riavvia la dashboard." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes nie akceptuje %1$@ jako swojego adresu. Na hoście ustaw dashboard.public_url na %2$@, a następnie uruchom ponownie panel." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "O Hermes não aceita %1$@ como endereço. No host, defina dashboard.public_url como %2$@ e reinicie o painel." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes accepteert %1$@ niet als adres. Stel op de host dashboard.public_url in op %2$@ en start het dashboard daarna opnieuw." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes, %1$@ adresini kabul etmiyor. Ana makinede dashboard.public_url değerini %2$@ olarak ayarlayın, ardından panoyu yeniden başlatın." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes не принимает %1$@ как свой адрес. На хосте задайте dashboard.public_url равным %2$@, затем перезапустите панель." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes は %1$@ を自身のアドレスとして受け付けません。ホストで dashboard.public_url を %2$@ に設定し、ダッシュボードを再起動してください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 不接受 %1$@ 作为其地址。请在主机上将 dashboard.public_url 设置为 %2$@，然后重启仪表板。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes가 %1$@을(를) 자신의 주소로 허용하지 않습니다. 호스트에서 dashboard.public_url을 %2$@(으)로 설정한 다음 대시보드를 다시 시작하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لا يقبل Hermes العنوان %1$@. على المضيف، اضبط dashboard.public_url على %2$@، ثم أعد تشغيل لوحة التحكم." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes לא מקבל את %1$@ ככתובת שלו. במארח, הגדר את dashboard.public_url ל‑%2$@ ואז הפעל מחדש את לוח הבקרה." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes، %1$@ کو اپنا پتہ تسلیم نہیں کرتا۔ ہوسٹ پر dashboard.public_url کو %2$@ پر سیٹ کریں، پھر ڈیش بورڈ دوبارہ شروع کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 不接受 %1$@ 作為其位址。請在主機上將 dashboard.public_url 設為 %2$@，然後重新啟動儀表板。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 不接受 %1$@ 作為其位址。請在主機上將 dashboard.public_url 設為 %2$@，然後重新啟動儀表板。" } } } },
     "Hermes has been working for %@" : {
       "localizations" : {
@@ -46445,6 +47221,112 @@
     },
     "Hermes hasn’t answered since it restarted. If it stopped, start `hermes dashboard` on your host, then check again." : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Hermes hat seit dem Neustart nicht geantwortet. Falls es gestoppt ist, starte `hermes dashboard` auf deinem Host und prüfe dann erneut."}},"es":{"stringUnit":{"state":"needs_review","value":"Hermes no ha respondido desde que se reinició. Si se detuvo, inicia `hermes dashboard` en tu host y vuelve a comprobarlo."}},"fr":{"stringUnit":{"state":"needs_review","value":"Hermes n’a pas répondu depuis son redémarrage. S’il s’est arrêté, lancez `hermes dashboard` sur votre hôte, puis vérifiez à nouveau."}},"it":{"stringUnit":{"state":"needs_review","value":"Hermes non ha risposto dal riavvio. Se si è fermato, avvia `hermes dashboard` sul tuo host, poi verifica di nuovo."}},"pl":{"stringUnit":{"state":"needs_review","value":"Hermes nie odpowiada od ponownego uruchomienia. Jeśli się zatrzymał, uruchom `hermes dashboard` na swoim hoście, a potem sprawdź ponownie."}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"O Hermes não respondeu desde que foi reiniciado. Se ele parou, inicie o `hermes dashboard` no seu host e verifique novamente."}},"nl":{"stringUnit":{"state":"needs_review","value":"Hermes heeft sinds de herstart niet geantwoord. Als het gestopt is, start `hermes dashboard` op je host en controleer het daarna opnieuw."}},"tr":{"stringUnit":{"state":"needs_review","value":"Hermes yeniden başlatıldığından beri yanıt vermedi. Durduysa sunucunuzda `hermes dashboard` komutunu başlatın, ardından yeniden denetleyin."}},"ru":{"stringUnit":{"state":"needs_review","value":"Hermes не отвечает с момента перезапуска. Если он остановился, запустите `hermes dashboard` на своём хосте, затем проверьте снова."}},"ja":{"stringUnit":{"state":"needs_review","value":"Hermes は再起動してから応答していません。停止している場合は、ホストで `hermes dashboard` を起動してから、もう一度確認してください。"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"Hermes 重启后一直没有响应。如果它已停止，请在主机上启动 `hermes dashboard`，然后再次检查。"}},"ko":{"stringUnit":{"state":"needs_review","value":"Hermes가 재시작한 뒤로 응답하지 않습니다. 중지되었다면 호스트에서 `hermes dashboard`를 시작한 뒤 다시 확인하세요."}},"ar":{"stringUnit":{"state":"needs_review","value":"لم يستجب Hermes منذ إعادة تشغيله. إذا توقف، فشغّل `hermes dashboard` على مضيفك، ثم تحقق مرة أخرى."}},"he":{"stringUnit":{"state":"needs_review","value":"‏Hermes לא ענה מאז שהופעל מחדש. אם הוא נעצר, יש להפעיל את `hermes dashboard` במארח ואז לבדוק שוב."}},"ur":{"stringUnit":{"state":"needs_review","value":"دوبارہ شروع ہونے کے بعد سے Hermes نے جواب نہیں دیا۔ اگر یہ رک گیا ہے تو اپنے ہوسٹ پر `hermes dashboard` شروع کریں، پھر دوبارہ جانچیں۔"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"Hermes 重新啟動後一直沒有回應。如果它已停止，請在主機上啟動 `hermes dashboard`，然後再檢查一次。"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"Hermes 重新啟動後一直沒有回應。如果它已停止，請在主機上啟動 `hermes dashboard`，然後再檢查一次。"}}}},
     "Hermes hit an internal error while running this turn" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes ist bei diesem Durchlauf auf einen internen Fehler gestoßen" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes encontró un error interno al ejecutar este turno" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes a rencontré une erreur interne pendant ce tour" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes ha riscontrato un errore interno durante questo turno" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes napotkał błąd wewnętrzny podczas tej tury" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "O Hermes encontrou um erro interno ao executar este turno" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes stuitte op een interne fout tijdens deze beurt" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes bu turu çalıştırırken dahili bir hatayla karşılaştı" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes столкнулся с внутренней ошибкой при выполнении этого хода" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このターンの実行中にHermesで内部エラーが発生しました" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 在运行此轮时遇到内部错误" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 턴을 실행하는 중 Hermes에서 내부 오류가 발생했습니다" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "واجه Hermes خطأً داخليًا أثناء تشغيل هذه الجولة" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes נתקל בשגיאה פנימית בזמן הרצת התור הזה" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "یہ باری چلاتے ہوئے Hermes کو اندرونی خرابی پیش آئی" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 在執行此輪時遇到內部錯誤" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 在執行此輪時遇到內部錯誤" } } } },
+    "Hermes is back and Hermex reconnected." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "عاد Hermes وأعاد Hermex الاتصال."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes ist zurück und Hermex hat sich wieder verbunden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes ha vuelto y Hermex se ha reconectado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes est de retour et Hermex s’est reconnecté."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "‏Hermes חזר לפעול ו‑Hermex התחבר מחדש."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes è di nuovo disponibile e Hermex si è riconnesso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes が復帰し、Hermex が再接続しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes가 돌아왔고 Hermex가 다시 연결되었습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes is terug en Hermex heeft opnieuw verbinding gemaakt."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes wrócił, a Hermex połączył się ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O Hermes voltou e o Hermex reconectou."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes снова работает, и Hermex переподключился."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes geri geldi ve Hermex yeniden bağlandı."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes واپس آ گیا اور Hermex دوبارہ منسلک ہو گیا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 已恢復，Hermex 已重新連線。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 已恢复，Hermex 已重新连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 已恢復，Hermex 已重新連線。"
+          }
+        }
+      }
+    },
     "Hermes is checking the response stream" : {
       "localizations" : {
         "ar" : {
@@ -46547,6 +47429,464 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Hermes 正在檢查回應串流"
+          }
+        }
+      }
+    },
+    "Hermes is installing %lld commits on your host." : {
+      "localizations" : {
+        "ar" : {
+          "variations" : {
+            "plural" : {
+              "zero" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "يثبّت Hermes %lld إيداع على مضيفك."
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "يثبّت Hermes %lld إيداع على مضيفك."
+                }
+              },
+              "two" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "يثبّت Hermes %lld إيداعين على مضيفك."
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "يثبّت Hermes %lld إيداعات على مضيفك."
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "يثبّت Hermes %lld إيداعًا على مضيفك."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "يثبّت Hermes %lld إيداع على مضيفك."
+                }
+              }
+            }
+          }
+        },
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes installiert %lld Commit auf deinem Host."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes installiert %lld Commits auf deinem Host."
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Hermes is installing %lld commit on your host."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Hermes is installing %lld commits on your host."
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes está instalando %lld commit en tu host."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes está instalando %lld commits en tu host."
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes installe %lld commit sur votre hôte."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes installe %lld commits sur votre hôte."
+                }
+              }
+            }
+          }
+        },
+        "he" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "‏Hermes מתקין %lld קומיט במארח שלך."
+                }
+              },
+              "two" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "‏Hermes מתקין %lld קומיטים במארח שלך."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "‏Hermes מתקין %lld קומיטים במארח שלך."
+                }
+              }
+            }
+          }
+        },
+        "it" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes sta installando %lld commit sul tuo host."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes sta installando %lld commit sul tuo host."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes がホストに %lld 件のコミットをインストールしています。"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes가 호스트에 커밋 %lld개를 설치하는 중입니다."
+                }
+              }
+            }
+          }
+        },
+        "nl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes installeert %lld commit op je host."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes installeert %lld commits op je host."
+                }
+              }
+            }
+          }
+        },
+        "pl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes instaluje %lld commit na twoim hoście."
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes instaluje %lld commity na twoim hoście."
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes instaluje %lld commitów na twoim hoście."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes instaluje %lld commita na twoim hoście."
+                }
+              }
+            }
+          }
+        },
+        "pt-BR" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "O Hermes está instalando %lld commit no seu host."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "O Hermes está instalando %lld commits no seu host."
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes устанавливает %lld коммит на ваш хост."
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes устанавливает %lld коммита на ваш хост."
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes устанавливает %lld коммитов на ваш хост."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes устанавливает %lld коммита на ваш хост."
+                }
+              }
+            }
+          }
+        },
+        "tr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes sunucunuza %lld commit yüklüyor."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes sunucunuza %lld commit yüklüyor."
+                }
+              }
+            }
+          }
+        },
+        "ur" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes آپ کے ہوسٹ پر %lld کمٹ انسٹال کر رہا ہے۔"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes آپ کے ہوسٹ پر %lld کمٹس انسٹال کر رہا ہے۔"
+                }
+              }
+            }
+          }
+        },
+        "zh-HK" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes 正在主機上安裝 %lld 個提交。"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes 正在主机上安装 %lld 个提交。"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "Hermes 正在主機上安裝 %lld 個提交。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Hermes is installing the update on your host." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يثبّت Hermes التحديث على مضيفك."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes installiert das Update auf deinem Host."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes está instalando la actualización en tu host."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes installe la mise à jour sur votre hôte."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "‏Hermes מתקין את העדכון במארח שלך."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes sta installando l’aggiornamento sul tuo host."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes がホストにアップデートをインストールしています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes가 호스트에 업데이트를 설치하는 중입니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes installeert de update op je host."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes instaluje aktualizację na twoim hoście."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O Hermes está instalando a atualização no seu host."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes устанавливает обновление на ваш хост."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes güncellemeyi sunucunuza yüklüyor."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes آپ کے ہوسٹ پر اپ ڈیٹ انسٹال کر رہا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 正在主機上安裝更新。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 正在主机上安装更新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 正在主機上安裝更新。"
           }
         }
       }
@@ -46759,6 +48099,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Hermes 正在開始回覆"
+          }
+        }
+      }
+    },
+    "Hermes is still updating after 10 minutes. Check again later." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "لا يزال Hermes يُحدَّث بعد 10 دقائق. تحقق مرة أخرى لاحقًا."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes aktualisiert nach 10 Minuten immer noch. Prüfe später erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes sigue actualizándose después de 10 minutos. Vuelve a comprobarlo más tarde."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes est toujours en cours de mise à jour après 10 minutes. Vérifiez à nouveau plus tard."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "‏Hermes עדיין מתעדכן אחרי 10 דקות. כדאי לבדוק שוב מאוחר יותר."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes si sta ancora aggiornando dopo 10 minuti. Verifica di nuovo più tardi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "10 分経っても Hermes はまだアップデート中です。後でもう一度確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "10분이 지났지만 Hermes가 아직 업데이트 중입니다. 나중에 다시 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes is na 10 minuten nog steeds aan het bijwerken. Controleer het later opnieuw."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes wciąż się aktualizuje po 10 minutach. Sprawdź ponownie później."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O Hermes ainda está se atualizando após 10 minutos. Verifique novamente mais tarde."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes всё ещё обновляется спустя 10 минут. Проверьте снова позже."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 10 dakika sonra hâlâ güncelleniyor. Daha sonra yeniden denetleyin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "10 منٹ بعد بھی Hermes اپ ڈیٹ ہو رہا ہے۔ بعد میں دوبارہ جانچیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "10 分鐘後 Hermes 仍在更新。請稍後再檢查一次。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "10 分钟后 Hermes 仍在更新。请稍后再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "10 分鐘後 Hermes 仍在更新。請稍後再檢查一次。"
           }
         }
       }
@@ -71417,6 +72863,112 @@
     },
     "Pair this iPhone" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Dieses iPhone koppeln"}},"es":{"stringUnit":{"state":"needs_review","value":"Emparejar este iPhone"}},"fr":{"stringUnit":{"state":"needs_review","value":"Jumeler cet iPhone"}},"it":{"stringUnit":{"state":"needs_review","value":"Associa questo iPhone"}},"pl":{"stringUnit":{"state":"needs_review","value":"Sparuj tego iPhone’a"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Parear este iPhone"}},"nl":{"stringUnit":{"state":"needs_review","value":"Deze iPhone koppelen"}},"tr":{"stringUnit":{"state":"needs_review","value":"Bu iPhone’u eşleştir"}},"ru":{"stringUnit":{"state":"needs_review","value":"Связать этот iPhone"}},"ja":{"stringUnit":{"state":"needs_review","value":"この iPhone をペアリング"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"配对此 iPhone"}},"ko":{"stringUnit":{"state":"needs_review","value":"이 iPhone 페어링"}},"ar":{"stringUnit":{"state":"needs_review","value":"إقران هذا الـ iPhone"}},"he":{"stringUnit":{"state":"needs_review","value":"התאמת ה‑iPhone הזה"}},"ur":{"stringUnit":{"state":"needs_review","value":"اس iPhone کو پیئر کریں"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"配對此 iPhone"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"配對此 iPhone"}}}},
     "Partial diff. The server sent only the first part of this edit." : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Unvollständiger Diff. Der Server hat nur den ersten Teil dieser Änderung gesendet."}},"es":{"stringUnit":{"state":"needs_review","value":"Diff parcial. El servidor solo envió la primera parte de esta edición."}},"fr":{"stringUnit":{"state":"needs_review","value":"Diff partiel. Le serveur n’a envoyé que la première partie de cette modification."}},"it":{"stringUnit":{"state":"needs_review","value":"Diff parziale. Il server ha inviato solo la prima parte di questa modifica."}},"pl":{"stringUnit":{"state":"needs_review","value":"Częściowy diff. Serwer wysłał tylko pierwszą część tej zmiany."}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Diff parcial. O servidor enviou só a primeira parte desta edição."}},"nl":{"stringUnit":{"state":"needs_review","value":"Gedeeltelijke diff. De server heeft alleen het eerste deel van deze wijziging gestuurd."}},"tr":{"stringUnit":{"state":"needs_review","value":"Kısmi diff. Sunucu bu düzenlemenin yalnızca ilk kısmını gönderdi."}},"ru":{"stringUnit":{"state":"needs_review","value":"Частичный diff. Сервер отправил только первую часть этой правки."}},"ja":{"stringUnit":{"state":"needs_review","value":"差分の一部です。サーバーはこの編集の最初の部分だけを送信しました。"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"部分差异。服务器只发送了此编辑的前一部分。"}},"ko":{"stringUnit":{"state":"needs_review","value":"일부 diff입니다. 서버가 이 편집의 앞부분만 보냈습니다."}},"ar":{"stringUnit":{"state":"needs_review","value":"فرق جزئي. أرسل الخادم الجزء الأول فقط من هذا التعديل."}},"he":{"stringUnit":{"state":"needs_review","value":"הבדלים חלקיים. השרת שלח רק את החלק הראשון של העריכה הזו."}},"ur":{"stringUnit":{"state":"needs_review","value":"جزوی فرق۔ سرور نے اس ترمیم کا صرف پہلا حصہ بھیجا۔"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"部分差異。伺服器只傳送了此編輯的前一部分。"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"部分差異。伺服器只傳送咗呢次編輯嘅頭一部分。"}}}},
+    "Partly updated" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تم التحديث جزئيًا"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Teilweise aktualisiert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Actualizado parcialmente"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mise à jour partielle"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "עודכן חלקית"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aggiornato in parte"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "一部のみアップデートされました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "일부만 업데이트됨"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gedeeltelijk bijgewerkt"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zaktualizowano częściowo"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Atualizado parcialmente"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Обновлено частично"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kısmen güncellendi"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "جزوی طور پر اپ ڈیٹ ہوا"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "部分已更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "部分已更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "部分已更新"
+          }
+        }
+      }
+    },
     "Password" : {
       "localizations" : {
         "ar" : {
@@ -85708,6 +87260,112 @@
     "Restart Hermes?" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Hermes neu starten?"}},"es":{"stringUnit":{"state":"needs_review","value":"¿Reiniciar Hermes?"}},"fr":{"stringUnit":{"state":"needs_review","value":"Redémarrer Hermes ?"}},"it":{"stringUnit":{"state":"needs_review","value":"Riavviare Hermes?"}},"pl":{"stringUnit":{"state":"needs_review","value":"Uruchomić ponownie Hermes?"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Reiniciar o Hermes?"}},"nl":{"stringUnit":{"state":"needs_review","value":"Hermes opnieuw starten?"}},"tr":{"stringUnit":{"state":"needs_review","value":"Hermes yeniden başlatılsın mı?"}},"ru":{"stringUnit":{"state":"needs_review","value":"Перезапустить Hermes?"}},"ja":{"stringUnit":{"state":"needs_review","value":"Hermes を再起動しますか？"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"重启 Hermes？"}},"ko":{"stringUnit":{"state":"needs_review","value":"Hermes를 재시작할까요?"}},"ar":{"stringUnit":{"state":"needs_review","value":"إعادة تشغيل Hermes؟"}},"he":{"stringUnit":{"state":"needs_review","value":"להפעיל מחדש את Hermes?"}},"ur":{"stringUnit":{"state":"needs_review","value":"Hermes دوبارہ شروع کریں؟"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"要重新啟動 Hermes 嗎？"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"要重新啟動 Hermes 嗎？"}}}},
     "Restart Hermes…" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Hermes neu starten …"}},"es":{"stringUnit":{"state":"needs_review","value":"Reiniciar Hermes…"}},"fr":{"stringUnit":{"state":"needs_review","value":"Redémarrer Hermes…"}},"it":{"stringUnit":{"state":"needs_review","value":"Riavvia Hermes…"}},"pl":{"stringUnit":{"state":"needs_review","value":"Uruchom ponownie Hermes…"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Reiniciar o Hermes…"}},"nl":{"stringUnit":{"state":"needs_review","value":"Hermes opnieuw starten…"}},"tr":{"stringUnit":{"state":"needs_review","value":"Hermes’i yeniden başlat…"}},"ru":{"stringUnit":{"state":"needs_review","value":"Перезапустить Hermes…"}},"ja":{"stringUnit":{"state":"needs_review","value":"Hermes を再起動…"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"重启 Hermes…"}},"ko":{"stringUnit":{"state":"needs_review","value":"Hermes 재시작…"}},"ar":{"stringUnit":{"state":"needs_review","value":"إعادة تشغيل Hermes…"}},"he":{"stringUnit":{"state":"needs_review","value":"הפעלה מחדש של Hermes…"}},"ur":{"stringUnit":{"state":"needs_review","value":"Hermes دوبارہ شروع کریں…"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"重新啟動 Hermes…"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"重新啟動 Hermes…"}}}},
     "Restart the Hermes gateway on your Mac, then reconnect." : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Starte das Hermes-Gateway auf deinem Mac neu und verbinde dich erneut."}},"es":{"stringUnit":{"state":"needs_review","value":"Reinicia la puerta de enlace de Hermes en tu Mac y vuelve a conectarte."}},"fr":{"stringUnit":{"state":"needs_review","value":"Redémarrez la passerelle Hermes sur votre Mac, puis reconnectez-vous."}},"it":{"stringUnit":{"state":"needs_review","value":"Riavvia il gateway Hermes sul Mac, poi riconnettiti."}},"pl":{"stringUnit":{"state":"needs_review","value":"Uruchom ponownie bramę Hermes na Macu, a następnie połącz się ponownie."}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Reinicie o gateway Hermes no Mac e conecte-se novamente."}},"nl":{"stringUnit":{"state":"needs_review","value":"Start de Hermes-gateway op je Mac opnieuw en maak opnieuw verbinding."}},"tr":{"stringUnit":{"state":"needs_review","value":"Mac’inizde Hermes ağ geçidini yeniden başlatın, ardından yeniden bağlanın."}},"ru":{"stringUnit":{"state":"needs_review","value":"Перезапустите шлюз Hermes на Mac, затем подключитесь снова."}},"ja":{"stringUnit":{"state":"needs_review","value":"MacでHermesゲートウェイを再起動してから、再接続してください。"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"请在 Mac 上重启 Hermes 网关，然后重新连接。"}},"ko":{"stringUnit":{"state":"needs_review","value":"Mac에서 Hermes 게이트웨이를 재시작한 후 다시 연결하세요."}},"ar":{"stringUnit":{"state":"needs_review","value":"أعد تشغيل بوابة Hermes على جهاز Mac، ثم أعد الاتصال."}},"he":{"stringUnit":{"state":"needs_review","value":"יש להפעיל מחדש את שער Hermes ב-Mac ואז להתחבר מחדש."}},"ur":{"stringUnit":{"state":"needs_review","value":"اپنے Mac پر Hermes گیٹ وے دوبارہ شروع کریں، پھر دوبارہ جڑیں۔"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"請在 Mac 上重新啟動 Hermes 閘道，然後重新連線。"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"請在 Mac 上重新啟動 Hermes 閘道，然後重新連線。"}}}},
+    "Restart the dashboard on the host" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "أعد تشغيل لوحة التحكم على المضيف"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dashboard auf dem Host neu starten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Reinicia el panel en el host"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Redémarrez le tableau de bord sur l’hôte"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "יש להפעיל מחדש את לוח הבקרה במארח"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Riavvia la dashboard sull’host"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ホストでダッシュボードを再起動してください"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "호스트에서 대시보드를 재시작하세요"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Start het dashboard opnieuw op de host"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Uruchom ponownie panel na hoście"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Reinicie o painel no host"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Перезапустите панель на хосте"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Panoyu sunucuda yeniden başlatın"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ہوسٹ پر ڈیش بورڈ دوبارہ شروع کریں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請在主機上重新啟動儀表板"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "请在主机上重启仪表板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請在主機上重新啟動儀表板"
+          }
+        }
+      }
+    },
     "Restart the gateway" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Gateway neu starten"}},"es":{"stringUnit":{"state":"needs_review","value":"Reiniciar la pasarela"}},"fr":{"stringUnit":{"state":"needs_review","value":"Redémarrer la passerelle"}},"it":{"stringUnit":{"state":"needs_review","value":"Riavvia il gateway"}},"pl":{"stringUnit":{"state":"needs_review","value":"Uruchom ponownie bramę"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Reiniciar o gateway"}},"nl":{"stringUnit":{"state":"needs_review","value":"Gateway opnieuw starten"}},"tr":{"stringUnit":{"state":"needs_review","value":"Ağ geçidini yeniden başlat"}},"ru":{"stringUnit":{"state":"needs_review","value":"Перезапустить шлюз"}},"ja":{"stringUnit":{"state":"needs_review","value":"ゲートウェイを再起動"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"重启网关"}},"ko":{"stringUnit":{"state":"needs_review","value":"게이트웨이 재시작"}},"ar":{"stringUnit":{"state":"needs_review","value":"إعادة تشغيل البوابة"}},"he":{"stringUnit":{"state":"needs_review","value":"הפעלה מחדש של השער"}},"ur":{"stringUnit":{"state":"needs_review","value":"گیٹ وے دوبارہ شروع کریں"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"重新啟動閘道"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"重新啟動閘道"}}}},
     "Restarting Hermes…" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Hermes wird neu gestartet …"}},"es":{"stringUnit":{"state":"needs_review","value":"Reiniciando Hermes…"}},"fr":{"stringUnit":{"state":"needs_review","value":"Redémarrage de Hermes…"}},"it":{"stringUnit":{"state":"needs_review","value":"Riavvio di Hermes…"}},"pl":{"stringUnit":{"state":"needs_review","value":"Ponowne uruchamianie Hermes…"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Reiniciando o Hermes…"}},"nl":{"stringUnit":{"state":"needs_review","value":"Hermes wordt opnieuw gestart…"}},"tr":{"stringUnit":{"state":"needs_review","value":"Hermes yeniden başlatılıyor…"}},"ru":{"stringUnit":{"state":"needs_review","value":"Перезапуск Hermes…"}},"ja":{"stringUnit":{"state":"needs_review","value":"Hermes を再起動しています…"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"正在重启 Hermes…"}},"ko":{"stringUnit":{"state":"needs_review","value":"Hermes를 재시작하는 중…"}},"ar":{"stringUnit":{"state":"needs_review","value":"جارٍ إعادة تشغيل Hermes…"}},"he":{"stringUnit":{"state":"needs_review","value":"‏Hermes מופעל מחדש…"}},"ur":{"stringUnit":{"state":"needs_review","value":"Hermes دوبارہ شروع ہو رہا ہے…"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"正在重新啟動 Hermes…"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"正在重新啟動 Hermes…"}}}},
     "Result" : {
@@ -88024,6 +89682,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "正在執行"
+          }
+        }
+      }
+    },
+    "Running turns on this host stop and Hermes restarts. Hermex reconnects when it’s back. This can’t be undone." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تتوقف الجولات الجارية على هذا المضيف ويُعاد تشغيل Hermes. يعيد Hermex الاتصال عند عودته. لا يمكن التراجع عن ذلك."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Laufende Durchläufe auf diesem Host werden beendet und Hermes startet neu. Hermex verbindet sich wieder, sobald es zurück ist. Das lässt sich nicht rückgängig machen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Los turnos en curso en este host se detienen y Hermes se reinicia. Hermex se reconecta cuando vuelve. No se puede deshacer."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Les tours en cours sur cet hôte s’arrêtent et Hermes redémarre. Hermex se reconnecte dès son retour. Cette action est irréversible."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "תורות שרצים במארח הזה ייעצרו ו‑Hermes יופעל מחדש. ‏Hermex יתחבר מחדש כשהוא יחזור. אי אפשר לבטל את הפעולה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "I turni in corso su questo host si interrompono e Hermes si riavvia. Hermex si riconnette quando torna disponibile. L’operazione non può essere annullata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このホストで実行中のターンは停止し、Hermes が再起動します。復帰すると Hermex が再接続します。この操作は取り消せません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 호스트에서 실행 중인 턴이 중지되고 Hermes가 재시작됩니다. 돌아오면 Hermex가 다시 연결합니다. 이 작업은 되돌릴 수 없습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Lopende beurten op deze host stoppen en Hermes start opnieuw. Hermex maakt opnieuw verbinding zodra het terug is. Dit kan niet ongedaan worden gemaakt."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Trwające tury na tym hoście zostaną zatrzymane, a Hermes uruchomi się ponownie. Hermex połączy się ponownie, gdy wróci. Tej operacji nie można cofnąć."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Os turnos em andamento neste host param e o Hermes reinicia. O Hermex reconecta quando ele voltar. Não é possível desfazer."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Текущие ходы на этом хосте остановятся, и Hermes перезапустится. Hermex переподключится, когда он вернётся. Это действие нельзя отменить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu sunucuda çalışan turlar durur ve Hermes yeniden başlar. Geri geldiğinde Hermex yeniden bağlanır. Bu işlem geri alınamaz."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اس ہوسٹ پر چلنے والی باریاں رک جائیں گی اور Hermes دوبارہ شروع ہو گا۔ واپس آنے پر Hermex دوبارہ منسلک ہو جاتا ہے۔ اسے واپس نہیں کیا جا سکتا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此主機上正在執行的輪次會停止，Hermes 會重新啟動。恢復後，Hermex 會重新連線。此動作無法還原。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此主机上正在运行的轮次将停止，Hermes 将重启。恢复后，Hermex 会重新连接。此操作无法撤销。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此主機上正在執行的輪次會停止，Hermes 會重新啟動。恢復後，Hermex 會重新連線。此動作無法還原。"
           }
         }
       }
@@ -112667,6 +114431,218 @@
         }
       }
     },
+    "The update finished, but Hermes hasn’t answered for 2 minutes. Run this on your host, then check again." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انتهى التحديث، لكن Hermes لم يستجب منذ دقيقتين. شغّل هذا على مضيفك، ثم تحقق مرة أخرى."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Das Update ist fertig, aber Hermes antwortet seit 2 Minuten nicht. Führe dies auf deinem Host aus und prüfe dann erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La actualización terminó, pero Hermes no responde desde hace 2 minutos. Ejecuta esto en tu host y vuelve a comprobarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La mise à jour est terminée, mais Hermes ne répond plus depuis 2 minutes. Lancez ceci sur votre hôte, puis vérifiez à nouveau."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "העדכון הסתיים, אבל Hermes לא עונה כבר 2 דקות. יש להריץ את זה במארח ואז לבדוק שוב."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "L’aggiornamento è terminato, ma Hermes non risponde da 2 minuti. Esegui questo comando sul tuo host, poi verifica di nuovo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "アップデートは完了しましたが、Hermes が 2 分間応答していません。ホストでこれを実行してから、もう一度確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "업데이트가 끝났지만 Hermes가 2분 동안 응답하지 않았습니다. 호스트에서 이 명령을 실행한 뒤 다시 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "De update is klaar, maar Hermes antwoordt al 2 minuten niet. Voer dit uit op je host en controleer het daarna opnieuw."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aktualizacja się zakończyła, ale Hermes nie odpowiada od 2 minut. Uruchom to na swoim hoście, a potem sprawdź ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "A atualização terminou, mas o Hermes não responde há 2 minutos. Execute isto no seu host e verifique novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Обновление завершено, но Hermes не отвечает уже 2 минуты. Выполните это на своём хосте, затем проверьте снова."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Güncelleme bitti ama Hermes 2 dakikadır yanıt vermiyor. Bunu sunucunuzda çalıştırın, ardından yeniden denetleyin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اپ ڈیٹ مکمل ہو گئی، لیکن Hermes نے 2 منٹ سے جواب نہیں دیا۔ اسے اپنے ہوسٹ پر چلائیں، پھر دوبارہ جانچیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "更新已完成，但 Hermes 已有 2 分鐘沒有回應。請在主機上執行此指令，然後再檢查一次。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "更新已完成，但 Hermes 已有 2 分钟没有响应。请在主机上运行此命令，然后再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "更新已完成，但 Hermes 已有 2 分鐘沒有回應。請在主機上執行此指令，然後再檢查一次。"
+          }
+        }
+      }
+    },
+    "The update finished, but Hermes still runs %@. Run this on your host, then check again." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انتهى التحديث، لكن Hermes لا يزال يشغّل %@. شغّل هذا على مضيفك، ثم تحقق مرة أخرى."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Das Update ist fertig, aber Hermes läuft noch mit %@. Führe dies auf deinem Host aus und prüfe dann erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La actualización terminó, pero Hermes sigue ejecutando %@. Ejecuta esto en tu host y vuelve a comprobarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "La mise à jour est terminée, mais Hermes exécute toujours %@. Lancez ceci sur votre hôte, puis vérifiez à nouveau."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "העדכון הסתיים, אבל Hermes עדיין מריץ את %@. יש להריץ את זה במארח ואז לבדוק שוב."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "L’aggiornamento è terminato, ma Hermes esegue ancora %@. Esegui questo comando sul tuo host, poi verifica di nuovo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "アップデートは完了しましたが、Hermes はまだ %@ で動作しています。ホストでこれを実行してから、もう一度確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "업데이트가 끝났지만 Hermes가 아직 %@에서 실행 중입니다. 호스트에서 이 명령을 실행한 뒤 다시 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "De update is klaar, maar Hermes draait nog %@. Voer dit uit op je host en controleer het daarna opnieuw."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aktualizacja się zakończyła, ale Hermes nadal działa w wersji %@. Uruchom to na swoim hoście, a potem sprawdź ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "A atualização terminou, mas o Hermes ainda executa a %@. Execute isto no seu host e verifique novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Обновление завершено, но Hermes всё ещё работает на %@. Выполните это на своём хосте, затем проверьте снова."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Güncelleme bitti ama Hermes hâlâ %@ sürümünü çalıştırıyor. Bunu sunucunuzda çalıştırın, ardından yeniden denetleyin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اپ ڈیٹ مکمل ہو گئی، لیکن Hermes اب بھی %@ چلا رہا ہے۔ اسے اپنے ہوسٹ پر چلائیں، پھر دوبارہ جانچیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "更新已完成，但 Hermes 仍在執行 %@。請在主機上執行此指令，然後再檢查一次。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "更新已完成，但 Hermes 仍在运行 %@。请在主机上运行此命令，然后再次检查。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "更新已完成，但 Hermes 仍在執行 %@。請在主機上執行此指令，然後再檢查一次。"
+          }
+        }
+      }
+    },
     "The update is taking longer than expected to finish. Try again in a moment." : {
       "localizations" : {
         "ar" : {
@@ -113933,6 +115909,112 @@
     "This Profile is no longer on the server." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Dieses Profil ist nicht mehr auf dem Server." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Este perfil ya no está en el servidor." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Ce profil n’est plus sur le serveur." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Questo profilo non è più sul server." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Tego profilu nie ma już na serwerze." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Este perfil não está mais no servidor." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Dit profiel staat niet meer op de server." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu profil artık sunucuda değil." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Этого профиля больше нет на сервере." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このプロファイルはサーバー上にもうありません。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "此配置文件已不在服务器上。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 프로필은 더 이상 서버에 없어요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لم يعد ملف التعريف هذا موجودًا على الخادم." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "הפרופיל הזה כבר לא נמצא בשרת." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "یہ پروفائل اب سرور پر نہیں ہے۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "此設定檔已不在伺服器上。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "此設定檔已不在伺服器上。" } } } },
     "This also resumes the Task." : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Dadurch wird die Aufgabe auch fortgesetzt."}},"es":{"stringUnit":{"state":"needs_review","value":"Esto también reanuda la Tarea."}},"fr":{"stringUnit":{"state":"needs_review","value":"Cela reprend aussi la Tâche."}},"it":{"stringUnit":{"state":"needs_review","value":"Questo riprende anche l’Attività."}},"pl":{"stringUnit":{"state":"needs_review","value":"Spowoduje to również wznowienie Zadania."}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Isso também retoma a Tarefa."}},"nl":{"stringUnit":{"state":"needs_review","value":"Hiermee wordt de taak ook hervat."}},"tr":{"stringUnit":{"state":"needs_review","value":"Bu, Görevi de devam ettirir."}},"ru":{"stringUnit":{"state":"needs_review","value":"Это также возобновит задачу."}},"ja":{"stringUnit":{"state":"needs_review","value":"タスクも再開されます。"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"这也会继续该任务。"}},"ko":{"stringUnit":{"state":"needs_review","value":"작업도 재개돼요."}},"ar":{"stringUnit":{"state":"needs_review","value":"يؤدي هذا أيضًا إلى استئناف المهمة."}},"he":{"stringUnit":{"state":"needs_review","value":"פעולה זו גם ממשיכה את המשימה."}},"ur":{"stringUnit":{"state":"needs_review","value":"اس سے ٹاسک بھی دوبارہ شروع ہو جائے گا۔"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"這也會繼續該任務。"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"這也會繼續該任務。"}}}},
     "This host doesn't offer a model named %@." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Dieser Host bietet kein Modell namens %@ an." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Este host no ofrece ningún modelo llamado %@." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Cet hôte ne propose aucun modèle nommé %@." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Questo host non offre un modello chiamato %@." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Ten host nie oferuje modelu o nazwie %@." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Este host não oferece um modelo chamado %@." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Deze host biedt geen model met de naam %@." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu ana makine %@ adlı bir model sunmuyor." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Этот хост не предлагает модель с именем %@." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このホストには %@ という名前のモデルがありません。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "此主机不提供名为 %@ 的模型。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 호스트에는 %@(이)라는 모델이 없습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لا يوفّر هذا المضيف نموذجًا باسم %@." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "המארח הזה לא מציע מודל בשם %@." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "یہ ہوسٹ %@ نام کا کوئی ماڈل پیش نہیں کرتا۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "此主機不提供名為 %@ 的模型。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "此主機不提供名為 %@ 的模型。" } } } },
+    "This install updates on your host, not from Hermex. Run:" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يُحدَّث هذا التثبيت على مضيفك، لا من Hermex. شغّل:"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Diese Installation wird auf deinem Host aktualisiert, nicht über Hermex. Führe aus:"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Esta instalación se actualiza en tu host, no desde Hermex. Ejecuta:"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cette installation se met à jour sur votre hôte, pas depuis Hermex. Lancez :"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ההתקנה הזו מתעדכנת במארח שלך, לא מ‑Hermex. יש להריץ:"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Questa installazione si aggiorna sul tuo host, non da Hermex. Esegui:"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このインストールは Hermex からではなく、ホスト上でアップデートします。次を実行してください："
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 설치는 Hermex가 아니라 호스트에서 업데이트됩니다. 다음을 실행하세요:"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Deze installatie wordt op je host bijgewerkt, niet vanuit Hermex. Voer uit:"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ta instalacja aktualizuje się na twoim hoście, nie z Hermex. Uruchom:"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Esta instalação é atualizada no seu host, não pelo Hermex. Execute:"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Эта установка обновляется на вашем хосте, а не из Hermex. Выполните:"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu kurulum Hermex’ten değil, sunucunuzda güncellenir. Şunu çalıştırın:"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "یہ انسٹال Hermex سے نہیں، آپ کے ہوسٹ پر اپ ڈیٹ ہوتا ہے۔ چلائیں:"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此安裝需在主機上更新，而非透過 Hermex。請執行："
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此安装需在主机上更新，而不是通过 Hermex。请运行："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此安裝需在主機上更新，而非透過 Hermex。請執行："
+          }
+        }
+      }
+    },
     "This model can't turn reasoning off." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Dieses Modell kann Reasoning nicht ausschalten." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Este modelo no puede desactivar el razonamiento." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Ce modèle ne peut pas désactiver le raisonnement." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Questo modello non può disattivare il ragionamento." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Ten model nie może wyłączyć rozumowania." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Este modelo não pode desativar o raciocínio." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Dit model kan redeneren niet uitschakelen." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu model akıl yürütmeyi kapatamaz." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Эта модель не может отключить рассуждения." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このモデルは推論をオフにできません。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "此模型无法关闭推理。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 모델은 추론을 끌 수 없어요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لا يمكن لهذا النموذج إيقاف الاستدلال." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "המודל הזה לא יכול לכבות חשיבה." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "یہ ماڈل استدلال بند نہیں کر سکتا۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "此模型無法關閉推理。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "此模型無法關閉推理。" } } } },
     "This model doesn't take a reasoning level." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Dieses Modell unterstützt keine Reasoning-Stufe." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Este modelo no admite un nivel de razonamiento." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Ce modèle n’accepte pas de niveau de raisonnement." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Questo modello non accetta un livello di ragionamento." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Ten model nie obsługuje poziomu rozumowania." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Este modelo não aceita um nível de raciocínio." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Dit model ondersteunt geen redeneerniveau." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu model bir akıl yürütme düzeyi almıyor." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Эта модель не поддерживает уровень рассуждений." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このモデルは推論レベルに対応していません。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "此模型不支持推理级别。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 모델은 추론 수준을 지원하지 않아요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لا يدعم هذا النموذج مستوى للاستدلال." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "המודל הזה לא תומך ברמת חשיבה." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "یہ ماڈل استدلال کی سطح قبول نہیں کرتا۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "此模型不支援推理等級。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "此模型不支援推理等級。" } } } },
     "This Preview is stale. Run Preview Dispatch again before relying on it." : { "localizations" : {
@@ -118883,6 +120965,112 @@
     },
     "Try again" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Erneut versuchen"}},"es":{"stringUnit":{"state":"needs_review","value":"Reintentar"}},"fr":{"stringUnit":{"state":"needs_review","value":"Réessayer"}},"it":{"stringUnit":{"state":"needs_review","value":"Riprova"}},"pl":{"stringUnit":{"state":"needs_review","value":"Spróbuj ponownie"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Tentar novamente"}},"nl":{"stringUnit":{"state":"needs_review","value":"Probeer opnieuw"}},"tr":{"stringUnit":{"state":"needs_review","value":"Tekrar dene"}},"ru":{"stringUnit":{"state":"needs_review","value":"Повторить"}},"ja":{"stringUnit":{"state":"needs_review","value":"もう一度試す"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"重试"}},"ko":{"stringUnit":{"state":"needs_review","value":"다시 시도"}},"ar":{"stringUnit":{"state":"needs_review","value":"حاول مرة أخرى"}},"he":{"stringUnit":{"state":"needs_review","value":"ניסיון נוסף"}},"ur":{"stringUnit":{"state":"needs_review","value":"دوبارہ کوشش کریں"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"再試一次"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"再試一次"}}}},
     "Try again." : {"localizations": {"de": {"stringUnit": {"state": "needs_review", "value": "Versuche es erneut."}}, "es": {"stringUnit": {"state": "needs_review", "value": "Inténtalo de nuevo."}}, "fr": {"stringUnit": {"state": "needs_review", "value": "Réessayez."}}, "it": {"stringUnit": {"state": "needs_review", "value": "Riprova."}}, "pl": {"stringUnit": {"state": "needs_review", "value": "Spróbuj ponownie."}}, "pt-BR": {"stringUnit": {"state": "needs_review", "value": "Tente novamente."}}, "nl": {"stringUnit": {"state": "needs_review", "value": "Probeer het opnieuw."}}, "tr": {"stringUnit": {"state": "needs_review", "value": "Tekrar deneyin."}}, "ru": {"stringUnit": {"state": "needs_review", "value": "Повторите попытку."}}, "ja": {"stringUnit": {"state": "needs_review", "value": "もう一度お試しください。"}}, "zh-Hans": {"stringUnit": {"state": "needs_review", "value": "请重试。"}}, "ko": {"stringUnit": {"state": "needs_review", "value": "다시 시도하세요."}}, "ar": {"stringUnit": {"state": "needs_review", "value": "حاول مرة أخرى."}}, "he": {"stringUnit": {"state": "needs_review", "value": "יש לנסות שוב."}}, "ur": {"stringUnit": {"state": "needs_review", "value": "دوبارہ کوشش کریں۔"}}, "zh-Hant": {"stringUnit": {"state": "needs_review", "value": "請再試一次。"}}, "zh-HK": {"stringUnit": {"state": "needs_review", "value": "請再試一次。"}}}},
+    "Try again…" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "حاول مرة أخرى…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Erneut versuchen …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Reintentar…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Réessayer…"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ניסיון נוסף…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Riprova…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "もう一度試す…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "다시 시도…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Probeer opnieuw…"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Spróbuj ponownie…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tentar novamente…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Повторить…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tekrar dene…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "دوبارہ کوشش کریں…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "再試一次…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "重试…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "再試一次…"
+          }
+        }
+      }
+    },
     "Try another search or project filter." : {
       "localizations" : {
         "ar" : {
@@ -121730,6 +123918,324 @@
         }
       }
     },
+    "Update Hermes on your host" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "حدّث Hermes على مضيفك"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes auf deinem Host aktualisieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Actualiza Hermes en tu host"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mettez à jour Hermes sur votre hôte"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "יש לעדכן את Hermes במארח"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aggiorna Hermes sul tuo host"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ホストで Hermes をアップデートしてください"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "호스트에서 Hermes를 업데이트하세요"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Werk Hermes bij op je host"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zaktualizuj Hermes na swoim hoście"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Atualize o Hermes no seu host"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Обновите Hermes на своём хосте"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes’i sunucunuzda güncelleyin"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اپنے ہوسٹ پر Hermes اپ ڈیٹ کریں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請在主機上更新 Hermes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "请在主机上更新 Hermes"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請在主機上更新 Hermes"
+          }
+        }
+      }
+    },
+    "Update Hermes?" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تحديث Hermes؟"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes aktualisieren?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "¿Actualizar Hermes?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mettre à jour Hermes ?"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "לעדכן את Hermes?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aggiornare Hermes?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes をアップデートしますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes를 업데이트할까요?"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes bijwerken?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zaktualizować Hermes?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Atualizar o Hermes?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Обновить Hermes?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes güncellensin mi?"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes اپ ڈیٹ کریں؟"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "要更新 Hermes 嗎？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "更新 Hermes？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "要更新 Hermes 嗎？"
+          }
+        }
+      }
+    },
+    "Update available" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يتوفر تحديث"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Update verfügbar"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Actualización disponible"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mise à jour disponible"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "יש עדכון זמין"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aggiornamento disponibile"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "アップデートがあります"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "업데이트 사용 가능"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Update beschikbaar"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dostępna aktualizacja"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Atualização disponível"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Доступно обновление"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Güncelleme mevcut"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اپ ڈیٹ دستیاب ہے"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "有可用更新"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "有可用更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "有可用更新"
+          }
+        }
+      }
+    },
     "Update available · %lld behind" : {
       "localizations" : {
         "ar" : {
@@ -121991,6 +124497,112 @@
       }
     },
     "Updated %@ ago" : {"localizations" : {"de" : {"stringUnit" : {"state" : "needs_review", "value" : "Vor %@ aktualisiert"}}, "es" : {"stringUnit" : {"state" : "needs_review", "value" : "Actualizado hace %@"}}, "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Mis à jour il y a %@"}}, "it" : {"stringUnit" : {"state" : "needs_review", "value" : "Aggiornato %@ fa"}}, "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Zaktualizowano %@ temu"}}, "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "Atualizado há %@"}}, "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "%@ geleden bijgewerkt"}}, "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "%@ önce güncellendi"}}, "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Обновлено %@ назад"}}, "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "%@前に更新"}}, "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "%@前更新"}}, "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "%@ 전 업데이트됨"}}, "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "تم التحديث قبل %@"}}, "he" : {"stringUnit" : {"state" : "needs_review", "value" : "עודכן לפני %@"}}, "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "%@ پہلے اپ ڈیٹ ہوا"}}, "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "%@前更新"}}, "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "%@前更新"}}}},
+    "Updated to %@" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تم التحديث إلى %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aktualisiert auf %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Actualizado a %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mis à jour vers %@"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "עודכן ל‑%@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aggiornato a %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ にアップデートしました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@(으)로 업데이트됨"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bijgewerkt naar %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zaktualizowano do %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Atualizado para %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Обновлено до %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ sürümüne güncellendi"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ پر اپ ڈیٹ ہو گیا"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已更新至 %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已更新到 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已更新至 %@"
+          }
+        }
+      }
+    },
     "Updates the Sessions header logo color." : {
       "localizations" : {
         "ar" : {
@@ -122093,6 +124705,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "更新工作階段標題標誌顏色。"
+          }
+        }
+      }
+    },
+    "Update…" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تحديث…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aktualisieren …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Actualizar…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mettre à jour…"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "עדכון…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aggiorna…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "アップデート…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "업데이트…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bijwerken…"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aktualizuj…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Atualizar…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Обновить…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Güncelle…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اپ ڈیٹ کریں…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "更新…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "更新…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "更新…"
           }
         }
       }
@@ -122544,6 +125262,112 @@
       }
     },
     "Updating the plugin…" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Das Plug-in wird aktualisiert …"}},"es":{"stringUnit":{"state":"needs_review","value":"Actualizando el complemento…"}},"fr":{"stringUnit":{"state":"needs_review","value":"Mise à jour du plug-in en cours…"}},"it":{"stringUnit":{"state":"needs_review","value":"Aggiornamento del plugin…"}},"pl":{"stringUnit":{"state":"needs_review","value":"Trwa aktualizowanie wtyczki…"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Atualizando o plugin…"}},"nl":{"stringUnit":{"state":"needs_review","value":"De plug-in wordt bijgewerkt…"}},"tr":{"stringUnit":{"state":"needs_review","value":"Eklenti güncelleniyor…"}},"ru":{"stringUnit":{"state":"needs_review","value":"Плагин обновляется…"}},"ja":{"stringUnit":{"state":"needs_review","value":"プラグインを更新しています…"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"正在更新插件…"}},"ko":{"stringUnit":{"state":"needs_review","value":"플러그인을 업데이트하는 중…"}},"ar":{"stringUnit":{"state":"needs_review","value":"جارٍ تحديث الإضافة…"}},"he":{"stringUnit":{"state":"needs_review","value":"התוסף מתעדכן…"}},"ur":{"stringUnit":{"state":"needs_review","value":"پلگ ان اپ ڈیٹ ہو رہا ہے…"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"正在更新外掛程式…"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"正在更新外掛程式…"}}}},
+    "Updating…" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "جارٍ التحديث…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wird aktualisiert …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Actualizando…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mise à jour…"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "מעדכן…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aggiornamento…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "アップデート中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "업데이트 중…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bijwerken…"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aktualizowanie…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Atualizando…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Обновление…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Güncelleniyor…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اپ ڈیٹ ہو رہا ہے…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "正在更新…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "正在更新…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "正在更新…"
+          }
+        }
+      }
+    },
     "Upload cancelled. Your message and attachments are still here." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Upload abgebrochen. Deine Nachricht und Anhänge sind noch da." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Subida cancelada. Tu mensaje y tus adjuntos siguen aquí." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Envoi annulé. Votre message et vos pièces jointes sont toujours là." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Caricamento annullato. Il messaggio e gli allegati sono ancora qui." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Przesyłanie anulowane. Twoja wiadomość i załączniki nadal tu są." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Upload cancelado. Sua mensagem e seus anexos continuam aqui." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Uploaden geannuleerd. Je bericht en bijlagen staan er nog." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Yükleme iptal edildi. Mesajınız ve ekleriniz hâlâ burada." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Загрузка отменена. Ваше сообщение и вложения сохранены." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "アップロードをキャンセルしました。メッセージと添付ファイルは残っています。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "上传已取消。你的消息和附件仍在此处。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "업로드가 취소되었습니다. 메시지와 첨부 파일은 그대로 있습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "أُلغي الرفع. لا تزال رسالتك ومرفقاتك هنا." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "ההעלאה בוטלה. ההודעה והקבצים המצורפים שלך עדיין כאן." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اپ لوڈ منسوخ ہو گیا۔ آپ کا پیغام اور منسلکات ابھی یہیں ہیں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "上傳已取消。你的訊息和附件仍在這裡。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "上傳已取消。你的訊息和附件仍在這裡。" } } } },
     "Uploading attachment..." : {
       "localizations" : {

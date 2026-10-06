@@ -165,6 +165,17 @@ import OSLog
         return (try? await publicStatus(on: session)) != nil
     }
 
+    /// The body of one public route the host answers before its auth gate, such as
+    /// `/api/health`, sent with this connection's headers and without signing in. Any status
+    /// but 200 throws `BotFailure.rejected`.
+    func publicData(_ rest: HermesREST) async throws -> Data {
+        try checkCurrent()
+        let data = try await Self.send(prepared(try rest.request(base: connection.address)), on: session,
+                                       accepting: 200..<201, redirectGuard: redirectGuard)
+        try checkCurrent()
+        return data
+    }
+
     /// Sends one signed-in request built from `rest` and returns the body of a reply whose
     /// status is in `accepted`. Any other status throws `BotFailure.rejected`.
     /// `validateDispatch` is as in `authorized`.
@@ -374,6 +385,14 @@ import OSLog
         current?.liveGateway?.closeForBackground()
     }
 
+    /// Ends `server`'s gateway socket as lost because its dashboard restarted on an update
+    /// (#1075), so every Bot screen on it reconnects now, onto a fresh ticket and handshake,
+    /// rather than on its backoff or its next `.active`. Nothing happens for another server.
+    func reconnectGateway(server: URL) {
+        guard self.server == server.absoluteString else { return }
+        current?.liveGateway?.dropSocket()
+    }
+
     /// Retires `server`'s connection now unless `saved`, its newly saved record, is still
     /// that connection. `AuthManager` calls it when `server` stops being active, and
     /// `BotConnectionStore` when its credentials are saved or removed, so a sign-in in
@@ -384,6 +403,28 @@ import OSLog
         if let saved, current.adopt(saved) { return }
         current.retire()
         self.current = nil
+    }
+}
+
+/// The wait for a Hermes dashboard that went away to restart: push's "Restart Hermes…" (#934)
+/// and an update from Settings (#1075). Whoever starts the restart counts a dropped connection
+/// on that request as the restart having begun. The probe signs in again for the restarted
+/// dashboard's new session key, which `HermesConnection` does on the first 401.
+enum HermesRestartWait {
+    /// Sleeps each of `delays` in turn and then asks `probe`, until `isFinal` holds for its
+    /// answer or the schedule runs out. The last answer stands: the final probe's, which is
+    /// nil when it heard nothing. A cancelled sleep ends the wait with the answer before it.
+    @MainActor static func lastAnswer<Answer>(
+        after delays: [Duration], sleep: @Sendable (Duration) async throws -> Void,
+        probe: () async -> Answer?, isFinal: (Answer) -> Bool
+    ) async -> Answer? {
+        var answer: Answer?
+        for delay in delays {
+            do { try await sleep(delay) } catch { break }
+            answer = await probe()
+            if let answer, isFinal(answer) { break }
+        }
+        return answer
     }
 }
 

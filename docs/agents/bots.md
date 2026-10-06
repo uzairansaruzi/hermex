@@ -1155,6 +1155,39 @@ and read back. Any other text trips the agent's drift check, after which it refu
 which takes no lock: a window accepted to use the host's public file routes. Project context
 and modified times are webui-only. The temporary entry is the inbox's + menu, until #709.
 
+## Updating Hermes
+
+A Hermes server's Settings card shows the host's update standing under its Version row
+(#1075), one callout in the push section's style. `HermesUpdateClient` reads
+`GET /api/hermes/update/check` when Settings appears (the host caches it for 24 hours; Check
+adds `?force=true`): `{install_method, current_version, behind, update_available, can_apply,
+update_command, message, commits?}`, where `behind` is 0 when current, -1 for an unknown count
+and null when the check couldn't run, and only a git install `can_apply`. Any other install
+shows its `update_command` with Copy, except `managed-runtime`, whose command is a sentence.
+Update asks first, because running turns stop and the host restarts, then sends one
+`POST /api/hermes/update` (no body): `{ok: true, pid, action_id}`, `{ok: true,
+already_running: true}`, which is followed like a new run, or 200 `{ok: false, error, message,
+update_command}` for an install it won't update in place.
+
+`HermesUpdateMachine` follows the run every 3 s. It reads
+`GET /api/actions/hermes-update/status?lines=40` (`{running, exit_code, pid, lines, receipt?}`),
+then, once the receipt says success, the public `GET /api/health` (`{ok, version}`). A read
+with no answer (a dropped connection, a proxy's 502, Cloudflare's 530) is the dashboard
+restarting. The receipt summary (`{outcome, started_at, post_version, …}`, also
+`GET /api/hermes/update/receipt`, 404 before any update) is the outcome. Only one that
+differs from the receipt read before the POST counts: a restarted dashboard no longer tracks
+the process (`pid` null) and can report an exit code from an earlier run's receipt. An exit
+code counts only while the status still names the POST's `pid`; a null one keeps waiting.
+Success is done once health answers on `post_version`; partial and failed show the last
+✗ or ⚠ line of the update log. No answer for 2 minutes, or 2 minutes on another release,
+ends in "Restart the dashboard on the host" with `hermes dashboard` and Check again, which
+reads once. A wait stops after 10 minutes on what the host last said. The status read signs
+in again on the restarted dashboard's first 401, through `HermesConnection`. Once done, the
+saved version follows (`AuthManager.hermesServerUpdated`) and the shared gateway socket is
+dropped so Bot screens reconnect at once. The wait shares `HermesRestartWait` with push's
+restart. The model is per server and outlives Settings; another server becoming active
+retires its connection and pauses the reads, and Settings picks them up on return.
+
 ## Opening a bot from outside the app
 
 One URL route lands on a bot conversation: `hermes-agent://bot?server=…&

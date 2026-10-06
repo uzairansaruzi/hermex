@@ -132,6 +132,16 @@ import OSLog
         end(nil)
     }
 
+    /// Ends the socket as lost after the dashboard restarted (#1075), whose old socket can
+    /// linger half-open behind a tunnel: attached screens hear `.transport` once and reconnect
+    /// on their own, as after any drop. Nothing happens while no socket is open or opening.
+    func dropSocket() {
+        guard socket != nil || opening != nil else { return }
+        let label = socketLabel(generation)
+        HermesConnectionLog.logger.notice("\(label, privacy: .public) closed, dashboard restarted")
+        end(BotFailure.transport)
+    }
+
     /// Ends the socket for good because the connection was replaced. Attached screens hear
     /// `.stale` once, and every later `join` throws it.
     func retire() {
