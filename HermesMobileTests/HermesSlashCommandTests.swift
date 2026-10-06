@@ -29,6 +29,14 @@ import Observation
         XCTAssertEqual(ranked.filter { $0.name == "context" }.count, 1)
     }
 
+    /// The composer's panel gets the host's commands and skills.
+    func testTheComposerOffersTheHostsCatalog() async {
+        let chat = await openChat()
+        XCTAssertEqual(chat.model.composerAgentCommands, chat.turn.slashCommands.catalog.commands)
+        XCTAssertTrue(chat.model.composerAgentCommands.contains { $0.name == "context" })
+        XCTAssertTrue(chat.model.composerSkillSuggestions.contains { $0.name == "demo-skill" })
+    }
+
     /// A catalog read for an attach that is no longer current is dropped.
     func testAStaleCatalogReplyIsDropped() async throws {
         let chat = await openChat(catalog: false)
@@ -201,6 +209,18 @@ import Observation
 
         await slash.complete(nil)
         XCTAssertNil(slash.completion)
+    }
+
+    /// Suggestions fit only while just the completed word follows their head, so a pick
+    /// never deletes words typed after them.
+    func testSuggestionsFitOnlyTheWordTheyComplete() {
+        let completion = HermesSlashCompletion(text: "/queue ", items: [.init(text: "list", display: "list", meta: "")],
+                                               replaceFrom: 7)
+        XCTAssertTrue(completion.applies(to: "/queue "))
+        XCTAssertTrue(completion.applies(to: "/queue li"))
+        XCTAssertFalse(completion.applies(to: "/queue edit 2 "))
+        XCTAssertFalse(completion.applies(to: "/steer "))
+        XCTAssertEqual(completion.applying(completion.items[0]), "/queue list")
     }
 
     /// Typing within the pause sends one request, for the latest text.

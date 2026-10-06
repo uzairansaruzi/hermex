@@ -392,7 +392,8 @@ struct MessageComposerView: View {
         let parsed = ParsedSlashQuery(query: query, scope: slashScope)
         if slashScope.isHermes {
             guard slashTrigger?.startsDraft == true else { return nil }
-            if parsed.isHostArgumentMode, hostSlashCompletion?.items.isEmpty ?? true { return nil }
+            if parsed.isHostArgumentMode,
+               hostSlashCompletion.map({ $0.items.isEmpty || !$0.applies(to: query) }) ?? true { return nil }
         }
         if parsed.command?.subArgs == .skills,
            SlashSkillFormatter.invocation(from: parsed.argQuery, suggestions: skillSuggestions) != nil {
@@ -579,7 +580,10 @@ struct MessageComposerView: View {
                                 pickCompletion("/\(parsedSlashQuery.commandName) \(subArg)")
                             },
                             onSelectHostArgument: { item in
-                                if let completion = hostSlashCompletion { pickCompletion(completion.applying(item)) }
+                                if let completion = hostSlashCompletion, let trigger = slashTrigger,
+                                   completion.applies(to: trigger.text) {
+                                    pickCompletion(completion.applying(item))
+                                }
                             },
                             onDismiss: {
                                 applyCompletion("")

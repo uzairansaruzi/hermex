@@ -136,10 +136,20 @@ struct HermesSlashCompletion: Equatable {
     /// Where in `text`, in Unicode scalars, a picked item's text replaces the rest.
     let replaceFrom: Int
 
-    /// `text` with `item` in place of what follows `replaceFrom`.
-    func applying(_ item: Item) -> String {
-        String(String.UnicodeScalarView(text.unicodeScalars.prefix(max(0, replaceFrom)))) + item.text
+    /// What these suggestions keep: `text` up to `replaceFrom`.
+    private var head: String {
+        String(String.UnicodeScalarView(text.unicodeScalars.prefix(max(0, replaceFrom))))
     }
+
+    /// Whether these suggestions still fit `current`, the draft up to the caret now: it keeps
+    /// their head, and only the word being completed follows it.
+    func applies(to current: String) -> Bool {
+        current.hasPrefix(head) && !current.unicodeScalars.dropFirst(head.unicodeScalars.count)
+            .contains { CharacterSet.whitespacesAndNewlines.contains($0) }
+    }
+
+    /// The draft up to the caret with `item` in place of the word being completed.
+    func applying(_ item: Item) -> String { head + item.text }
 }
 
 /// A Hermes session's slash commands in the main chat (#1036). `HermesChatTurnCoordinator`
@@ -239,7 +249,7 @@ struct HermesSlashCompletion: Equatable {
             completion = nil
             return
         }
-        if let completion, completion.text != text, !text.hasPrefix(completion.text) { self.completion = nil }
+        if let completion, !completion.applies(to: text) { self.completion = nil }
         do { try await Task.sleep(for: completionDelay) } catch { return }
         let reply = try? await engine.request(.completeSlash(text: text, sessionID: runtime), attempt: engine.generation)
         guard revision == completionRevision, !Task.isCancelled else { return }

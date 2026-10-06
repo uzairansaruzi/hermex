@@ -509,7 +509,7 @@ struct ChatView: View {
             personalitySuggestions: viewModel.personalitySuggestions,
             skillSuggestions: viewModel.composerSkillSuggestions,
             hasLoadedSkillSuggestions: viewModel.hasLoadedSkillSlashSuggestions,
-            agentCommands: viewModel.agentCommands,
+            agentCommands: viewModel.composerAgentCommands,
             profileOptions: viewModel.composerProfileOptions,
             isSingleProfileMode: viewModel.composerIsSingleProfileMode,
             selectedProfileName: viewModel.selectedProfileName,

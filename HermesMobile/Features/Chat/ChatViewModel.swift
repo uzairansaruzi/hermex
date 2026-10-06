@@ -3676,6 +3676,11 @@ final class ChatViewModel {
     /// The host's slash commands in a Hermes chat (#1036); nil on webui.
     var hermesSlashCommands: HermesSlashCommands? { hermesTurn?.slashCommands }
 
+    /// The agent commands the composer offers: a Hermes host's catalog, or webui's list.
+    var composerAgentCommands: [AgentCommand] {
+        hermesTurn?.slashCommands.catalog.commands ?? agentCommands
+    }
+
     /// The skills the composer offers: a Hermes host's catalog, or webui's list.
     var composerSkillSuggestions: [SkillSlashSuggestion] {
         hermesTurn?.slashCommands.catalog.skills ?? skillSlashSuggestions
