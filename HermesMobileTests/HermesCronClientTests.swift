@@ -211,17 +211,25 @@ import XCTest
     }
 
     /// Choices made for the old Profile that the newly picked one doesn't offer are dropped;
-    /// a list that didn't load leaves its choice as it was.
+    /// choices made since the pick, such as a custom skill typed while its list loaded,
+    /// stay, and a list that didn't load checks nothing.
     func testAPickedProfileKeepsOnlyTheChoicesItOffers() {
-        var draft = CronJobEditorDraft(deliver: "telegram,discord:123", skillsText: "arxiv, web-search")
+        let earlier = CronJobEditorDraft(deliver: "telegram,discord:123", skillsText: "arxiv, web-search")
+        var draft = earlier
+        draft.applySkillSelection(earlier.skills + ["my-custom"])
 
-        draft.keepChoices(offeredTargets: ["local", "discord"], offeredSkills: ["web-search"])
+        draft.keepChoices(madeBefore: earlier, offeredTargets: ["local", "discord"], offeredSkills: ["web-search"])
         XCTAssertEqual(draft.deliver, "discord:123")
-        XCTAssertEqual(draft.skills, ["web-search"])
+        XCTAssertEqual(draft.skills, ["web-search", "my-custom"])
 
-        draft.keepChoices(offeredTargets: ["local"], offeredSkills: nil)
+        draft.keepChoices(madeBefore: draft, offeredTargets: ["local"], offeredSkills: nil)
         XCTAssertEqual(draft.deliver, "local", "With no target left, delivery falls back to local")
-        XCTAssertEqual(draft.skills, ["web-search"], "A skill list that didn't load keeps the choice")
+        XCTAssertEqual(draft.skills, ["web-search", "my-custom"], "A skill list that didn't load checks nothing")
+
+        var retargeted = earlier
+        retargeted.deliver = "telegram"
+        retargeted.keepChoices(madeBefore: earlier, offeredTargets: ["local"], offeredSkills: nil)
+        XCTAssertEqual(retargeted.deliver, "telegram", "A target chosen since the pick stays")
     }
 }
 

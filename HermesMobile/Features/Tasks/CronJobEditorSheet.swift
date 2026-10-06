@@ -24,9 +24,10 @@ struct CronJobEditorSheet: View {
     @State private var isPresentingModelPicker = false
     @State private var isPresentingProfilePicker = false
     @State private var isPresentingSkillsPicker = false
-    /// Set once the user picks another Profile on a server that scopes the editor's
-    /// sources by Profile, so the choices made for the old one are checked (#1040).
-    @State private var hasPickedProfile = false
+    /// The draft when the user picked another Profile on a server that scopes the
+    /// editor's sources by Profile, until that Profile's lists load and the choices
+    /// made for the old one are checked (#1040).
+    @State private var draftAtProfilePick: CronJobEditorDraft?
     @Environment(\.dismiss) private var dismiss
 
     /// Server-provided deliver targets. A plain `let` so a re-init while the
@@ -160,17 +161,19 @@ struct CronJobEditorSheet: View {
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             // A new loader is a new Profile's sources, so its loads start over. Once a
-            // picked Profile's lists arrive, the targets and skills it lacks are dropped.
+            // picked Profile's lists arrive, the earlier targets and skills it lacks go.
             .task(id: ObjectIdentifier(configuration)) {
                 let loader = configuration
                 await loader.load()
-                guard hasPickedProfile, !Task.isCancelled else { return }
-                draft.keepChoices(offeredTargets: loader.deliveryOptions?.compactMap(\.value),
+                guard let earlier = draftAtProfilePick, !Task.isCancelled else { return }
+                draftAtProfilePick = nil
+                draft.keepChoices(madeBefore: earlier, offeredTargets: loader.deliveryOptions?.compactMap(\.value),
                                   offeredSkills: loader.skillsErrorMessage == nil ? loader.skills.compactMap(\.name) : nil)
             }
             .onChange(of: draft.trimmedProfile) { _, profile in
                 guard client.cronFeatures.isProfileScoped else { return }
-                hasPickedProfile = true
+                // A second pick before the first one's lists load still checks the first's choices.
+                if draftAtProfilePick == nil { draftAtProfilePick = draft }
                 configuration = CronJobEditorConfigurationLoader(server: server, client: client, profile: profile)
             }
             .sheet(isPresented: $isPresentingModelPicker) {

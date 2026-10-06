@@ -549,18 +549,20 @@ struct CronJobEditorDraft: Equatable {
         skillsText = names.joined(separator: ", ")
     }
 
-    /// Keeps only the delivery targets and skills a newly picked Profile offers (#1040),
-    /// once its lists have loaded. A target is kept when its platform (`telegram` in
-    /// `telegram:123`) is offered; with none left, delivery falls back to `local`, which
-    /// every Profile offers. A list that didn't load (nil) leaves its choice alone.
-    mutating func keepChoices(offeredTargets: [String]?, offeredSkills: [String]?) {
-        if let offeredTargets {
+    /// Drops the delivery targets and skills chosen in `earlier`, the draft when another
+    /// Profile was picked, that the new Profile doesn't offer, once its lists have loaded
+    /// (#1040). Choices made since the pick stay. A target is kept when its platform
+    /// (`telegram` in `telegram:123`) is offered; with none left, delivery falls back to
+    /// `local`, which every Profile offers. A list that didn't load (nil) checks nothing.
+    mutating func keepChoices(madeBefore earlier: CronJobEditorDraft, offeredTargets: [String]?,
+                              offeredSkills: [String]?) {
+        if let offeredTargets, deliver == earlier.deliver {
             let kept = deliver.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { offeredTargets.contains(String($0.prefix { $0 != ":" })) }
             deliver = kept.isEmpty ? "local" : kept.joined(separator: ",")
         }
         if let offeredSkills {
-            applySkillSelection(skills.filter(offeredSkills.contains))
+            applySkillSelection(skills.filter { offeredSkills.contains($0) || !earlier.skills.contains($0) })
         }
     }
 
