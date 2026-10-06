@@ -61,7 +61,9 @@ struct KanbanCreateCardRequest: Equatable, Sendable {
     let priority: Int?
     let assignee: String?
     let tenant: String?
-    let workspaceKind: String
+    /// nil leaves it to the server: a Hermes host's Board default, its project's worktree on a
+    /// project Board (#1044). webui always gets one.
+    let workspaceKind: String?
     let workspacePath: String?
     let skills: [String]?
     let maxRuntimeSeconds: Int?
@@ -82,6 +84,10 @@ struct KanbanEditCardRequest: Equatable, Sendable {
     let priority: Int
     let assignee: String?
     let status: String?
+    /// Whether `assignee` differs from the Card the editor opened. A Hermes host reassigns on
+    /// any `assignee` it gets, and refuses a running Card's with a 409, so it gets one only
+    /// when it changed (#1044); webui always gets it.
+    var changesAssignee = true
 
     var queryItems: [URLQueryItem] {
         [URLQueryItem(name: "board", value: board)]
@@ -456,9 +462,12 @@ struct KanbanBoard: Decodable, Equatable, Sendable {
     let total: Int?
     let counts: [String: Int]?
     let readOnly: Bool?
+    /// The workspace kind a Hermes host gives a new Card on this Board: `worktree` or `dir` when
+    /// the Board has a project directory, else `scratch` (#1044). webui sends none.
+    let defaultWorkspaceKind: String?
 
     enum CodingKeys: String, CodingKey {
-        case slug, name, description, icon, color, isCurrent, total, counts, readOnly
+        case slug, name, description, icon, color, isCurrent, total, counts, readOnly, defaultWorkspaceKind
     }
 
     init(from decoder: Decoder) throws {
@@ -472,6 +481,7 @@ struct KanbanBoard: Decodable, Equatable, Sendable {
         total = container.decodeLossyIntIfPresent(forKey: .total)
         counts = try? container.decodeIfPresent([String: Int].self, forKey: .counts)
         readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+        defaultWorkspaceKind = container.decodeLossyStringIfPresent(forKey: .defaultWorkspaceKind)
     }
 }
 
@@ -762,16 +772,20 @@ struct KanbanCardDetailEnvelope: Decodable, Equatable, Sendable {
 struct KanbanCardMutationEnvelope: Decodable, Equatable, Sendable {
     let card: KanbanCard?
     let readOnly: Bool?
+    /// A Hermes host's note on a created Card, such as a Ready, assigned Card with no
+    /// dispatcher running to pick it up (#1044). Shown as a notice, never as a failure.
+    let warning: String?
 
     enum CodingKeys: String, CodingKey {
         case card = "task"
-        case readOnly
+        case readOnly, warning
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         card = try? container.decodeIfPresent(KanbanCard.self, forKey: .card)
         readOnly = container.decodeLossyBoolIfPresent(forKey: .readOnly)
+        warning = container.decodeLossyStringIfPresent(forKey: .warning)
     }
 }
 
@@ -1144,6 +1158,74 @@ enum KanbanContractViolation: Error, Equatable, LocalizedError, Sendable {
 /// answers 404 on `/config` (#1043). Kanban shows as unavailable there, not as an error.
 enum KanbanCapabilityError: Error, Equatable, Sendable {
     case kanbanUnavailable
+}
+
+/// A write the server refused and said why: a Hermes host's 400 or 409 `{detail}`, such as a
+/// move blocked by an open prerequisite (#1044). The message shows where the failure shows.
+struct KanbanWriteRefusal: Error, Equatable, LocalizedError, Sendable {
+    let status: Int
+    let message: String
+
+    var errorDescription: String? { message }
+
+    /// The server's own words for a refused write, or nil for any other failure.
+    static func message(for error: Error) -> String? {
+        (error as? KanbanWriteRefusal)?.message
+    }
+}
+
+/// Where a Card can go on each server (#1044). A Hermes host promotes a To Do Card whose
+/// prerequisites are all done to Ready on its next dispatcher tick, so To Do never sticks
+/// there: a Card goes to Triage or Ready, and the host itself puts it in To Do while a
+/// prerequisite is open. Scheduled and Review are the host's own states, moved out of but
+/// never into. webui keeps today's Triage, To Do and Ready.
+extension KanbanBackend {
+    /// The Statuses a new Card starts in, which are also the ordinary Move destinations.
+    var createStatuses: [String] {
+        self == .hermes ? ["triage", "ready"] : ["triage", "todo", "ready"]
+    }
+
+    /// Statuses never offered as a destination, in a Move, a Bulk Action or the editor.
+    var unofferedStatuses: Set<String> {
+        self == .hermes ? ["running", "todo", "scheduled", "review"] : ["running"]
+    }
+
+    /// Whether a Card in `status` offers Block. A Hermes host blocks only a Ready or Running
+    /// Card and refuses the rest with a 409.
+    func offersBlock(from status: String?) -> Bool {
+        switch self {
+        case .webui: status != "blocked" && status != "archived"
+        case .hermes: status == "ready" || status == "running"
+        }
+    }
+
+    /// Whether a Card the server now reports in `landed` shows that a write asking for
+    /// `requested` from `previous` took effect. webui lands a Card where it was asked. A Hermes
+    /// host can land a blocked Card in Triage (a repeat block), and a Card asked into Ready
+    /// (an unblock or a reopened review) in To Do while a prerequisite is open or back in Review.
+    func accepts(_ landed: String?, requested: String, from previous: String?) -> Bool {
+        guard let landed else { return false }
+        if landed == requested { return true }
+        guard self == .hermes, landed != previous else { return false }
+        switch requested {
+        case "blocked": return landed == "triage"
+        case "ready": return landed == "todo" || landed == "review"
+        default: return false
+        }
+    }
+
+    /// The Status Undo Archive returns a Card archived from `previous` to, or nil when Undo
+    /// can't. A Hermes host restores only to an ordinary destination, so everything but Triage
+    /// goes to Ready, except Done: the host refuses Done from Archived, and Ready would hand
+    /// finished work back to the dispatcher. Such a Card is restored from the Archived filter.
+    func restoreStatus(after previous: String) -> String? {
+        guard self == .hermes else { return previous }
+        switch previous {
+        case "triage": return "triage"
+        case "done": return nil
+        default: return "ready"
+        }
+    }
 }
 
 enum KanbanResponseError: Error, Equatable, LocalizedError, Sendable {

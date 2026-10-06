@@ -86,7 +86,7 @@ private struct KanbanCardDetailContent: View {
                 state: editor,
                 allowsMutation: featureModel.canEditCards,
                 onSaved: {
-                    await featureModel.reconcileAfterCardMutation()
+                    await featureModel.reconcileAfterCardMutation(notice: editor.notice)
                     await state.refresh()
                 }
             )
@@ -255,8 +255,14 @@ private struct KanbanCardDetailContent: View {
             Label("Added", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
         case .failed:
-            Label("Failed", systemImage: "exclamationmark.circle")
-                .foregroundStyle(.red)
+            VStack(alignment: .leading) {
+                Label("Failed", systemImage: "exclamationmark.circle")
+                    .foregroundStyle(.red)
+                if let message = state.commentFailureMessage {
+                    Text(verbatim: message)
+                        .font(.footnote)
+                }
+            }
         case .outcomeUncertain:
             VStack(alignment: .leading) {
                 Label("Outcome Uncertain", systemImage: "questionmark.circle")
@@ -351,6 +357,11 @@ private struct KanbanCardDetailContent: View {
                 case .failed:
                     Label("The server refused or did not apply this update.", systemImage: "exclamationmark.circle")
                         .foregroundStyle(.red)
+                    if let message = mutation.message {
+                        Text(verbatim: message)
+                            .font(.footnote)
+                            .textSelection(.enabled)
+                    }
                     if case .undoArchive = mutation.kind {
                         EmptyView()
                     } else {
@@ -398,7 +409,7 @@ private struct KanbanCardDetailContent: View {
             }
             if card.status?.rawValue == "blocked" {
                 Button("Unblock") { request(.unblock, for: card) }
-            } else if card.status?.rawValue != "archived" {
+            } else if featureModel.canBlock(card) {
                 Button("Block") { request(.block, for: card) }
             }
             if card.status?.rawValue != "done", card.status?.rawValue != "archived" {

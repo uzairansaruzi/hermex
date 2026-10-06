@@ -216,11 +216,15 @@ enum KanbanCardMutationKind: Equatable, Sendable {
 struct KanbanCardMutationState: Equatable, Sendable {
     let kind: KanbanCardMutationKind
     let phase: KanbanCardMutationPhase
+    /// Why the server refused it, in its own words (`KanbanWriteRefusal`), shown with the failure.
+    var message: String?
 }
 
 struct KanbanArchiveUndo: Equatable, Sendable {
     let cardID: String
     let cardTitle: String
+    /// Where Undo returns the Card: its Status before Archive, or on a Hermes host the
+    /// ordinary destination `KanbanBackend.restoreStatus(after:)` names (#1044).
     let previousStatus: String
     let expiresAt: Date
     let card: KanbanCard
@@ -248,6 +252,8 @@ enum KanbanBoardMutationKind: Equatable, Sendable {
 struct KanbanBoardMutationState: Equatable, Sendable {
     let kind: KanbanBoardMutationKind
     let phase: KanbanCardMutationPhase
+    /// Why the server refused it, in its own words (`KanbanWriteRefusal`), shown with the failure.
+    var message: String?
 }
 
 struct KanbanBoardSelectionNotice: Equatable, Sendable {
@@ -378,6 +384,10 @@ final class KanbanFeatureState {
     private(set) var boardSelectionNotice: KanbanBoardSelectionNotice?
     private(set) var dispatchState: KanbanDispatchState?
     private(set) var dispatcherCapabilityIsIncompatible = false
+    /// The server's note on the last created Card, such as a Hermes host's warning that no
+    /// dispatcher is running to pick up a Ready Card (#1044). Shown until dismissed, a reload
+    /// or another Board.
+    private(set) var cardNotice: String?
 
     private(set) var selectedBoardSlug: String? {
         didSet {
@@ -398,7 +408,8 @@ final class KanbanFeatureState {
     private var boardsResponse: KanbanBoardsResponse?
     private let client: any KanbanDataClient
     /// A Hermes host's live updates (#1045) come over a socket that keeps reconnecting while
-    /// it polls, and its polling reloads the Board, because the host has no events route.
+    /// it polls, and its polling reloads the Board, because the host has no events route. Its
+    /// writes (#1044) offer fewer destinations and can land a Card elsewhere than asked.
     private let backend: KanbanBackend
     private let streamClient: any KanbanEventStreamingClient
     private let timing: KanbanLiveUpdateTiming
@@ -508,7 +519,7 @@ final class KanbanFeatureState {
     var canMutateCards: Bool {
         canUseWrites
             && bulkActionPhase == nil
-            && Set(KanbanCardEditorState.createStatuses).isSubset(of: Set(configuration?.columns ?? []))
+            && Set(backend.createStatuses).isSubset(of: Set(configuration?.columns ?? []))
     }
 
     var canCreateCards: Bool {
@@ -601,7 +612,7 @@ final class KanbanFeatureState {
         if isRefreshing { return .refreshing }
         guard state == .compatible || state == .partial,
               snapshot != nil,
-              Set(KanbanCardEditorState.createStatuses).isSubset(of: Set(configuration?.columns ?? [])),
+              Set(backend.createStatuses).isSubset(of: Set(configuration?.columns ?? [])),
               !unavailableWriteCapabilities.contains(.bulkActions)
         else { return .incompatible }
         guard configuration?.readOnly == false,
@@ -715,11 +726,29 @@ final class KanbanFeatureState {
         return cardMutationStates[cardID]
     }
 
+    /// The ordinary Statuses a Card can move to: Triage, To Do and Ready, or on a Hermes host
+    /// Triage and Ready (#1044). Scheduled and Review are never destinations.
     func moveDestinations(for card: KanbanCard) -> [String] {
         guard canMutateCard(card) else { return [] }
-        let ordinaryDestinations = Set(["triage", "todo", "ready"])
         return (configuration?.columns ?? [])
-            .filter { ordinaryDestinations.contains($0) && $0 != card.status?.rawValue }
+            .filter { backend.createStatuses.contains($0) && $0 != card.status?.rawValue }
+    }
+
+    /// Whether `card` offers Block: a Hermes host blocks only a Ready or Running Card (#1044).
+    func canBlock(_ card: KanbanCard) -> Bool {
+        canMutateCard(card) && backend.offersBlock(from: card.status?.rawValue)
+    }
+
+    /// The Statuses a Bulk Action can move Cards to: every Column but Running, and on a Hermes
+    /// host none of To Do, Scheduled and Review either (#1044).
+    var bulkStatusOptions: [String] {
+        (configuration?.columns ?? []).filter { !backend.unofferedStatuses.contains($0) }
+    }
+
+    /// Where `cardID` is on the Board now, which after a Hermes write can differ from where it
+    /// was asked to go (#1044).
+    func status(ofCard cardID: String?) -> String? {
+        normalizedOptional(cardID).flatMap(cardInSnapshot)?.status?.rawValue
     }
 
     func displayedPrerequisites(for cardID: String, canonical: [String]) -> [String] {
@@ -784,7 +813,7 @@ final class KanbanFeatureState {
         reason: String?,
         confirmingRunningExit: Bool = false
     ) async {
-        guard canMutateCard(card), card.status?.rawValue != "blocked", card.status?.rawValue != "archived" else { return }
+        guard canBlock(card) else { return }
         let reason = normalizedOptional(reason)
         await performStatusMutation(
             card,
@@ -906,16 +935,18 @@ final class KanbanFeatureState {
             )
             try KanbanCardDetailValidator.validate(detail, requestedCardID: cardID)
             guard let authoritative = detail.card else { throw KanbanMutationSettlementError.unexpectedStatus }
+            let previous = uncertainProtectedCards[cardID]?.status?.rawValue
+            let landed = authoritative.status?.rawValue
             uncertainProtectedCards[cardID] = nil
             replaceCardInSnapshot(authoritative)
             let succeeded: Bool
             switch mutation.kind {
             case let .status(status), let .undoArchive(status):
-                succeeded = authoritative.status?.rawValue == status
+                succeeded = backend.accepts(landed, requested: status, from: previous)
             case .block:
-                succeeded = authoritative.status?.rawValue == "blocked"
+                succeeded = backend.accepts(landed, requested: "blocked", from: previous)
             case .unblock:
-                succeeded = authoritative.status?.rawValue == "ready"
+                succeeded = backend.accepts(landed, requested: "ready", from: "blocked")
             case .archive:
                 succeeded = authoritative.status?.rawValue == "archived"
             case let .addPrerequisite(prerequisiteID):
@@ -952,6 +983,7 @@ final class KanbanFeatureState {
         unavailableWriteCapabilities = []
         archiveUndoTask?.cancel()
         archiveUndo = nil
+        cardNotice = nil
         clearSettledMutationPresentation()
         resetLiveUpdates(clearCursor: true)
         let loadID = UUID()
@@ -1134,6 +1166,7 @@ final class KanbanFeatureState {
         resetLiveUpdates(clearCursor: true)
         selectedBoardSlug = slug
         boardSelectionNotice = nil
+        cardNotice = nil
         snapshot = nil
         stats = nil
         assigneeHistory = nil
@@ -1583,6 +1616,7 @@ final class KanbanFeatureState {
             mode: .create,
             board: board,
             client: client,
+            defaultWorkspaceKind: selectedBoard?.defaultWorkspaceKind,
             profileOptions: profileOptions,
             tenantOptions: tenantOptions,
             prerequisiteOptions: allCards.filter { $0.cardID != nil },
@@ -1614,8 +1648,15 @@ final class KanbanFeatureState {
         )
     }
 
-    func reconcileAfterCardMutation() async {
+    /// Reads the Board again after the editor saved, keeping the server's `notice` on the
+    /// created Card for the Board to show.
+    func reconcileAfterCardMutation(notice: String? = nil) async {
+        if let notice { cardNotice = notice }
         _ = await refreshBoard(usingCursor: false, refreshSupplementary: true)
+    }
+
+    func dismissCardNotice() {
+        cardNotice = nil
     }
 
     private func performBulkAction(_ action: KanbanBulkAction, cardIDs: Set<String>) async {
@@ -1671,7 +1712,7 @@ final class KanbanFeatureState {
                 }
                 replaceCardInSnapshot(authoritative)
                 selectedCardsByID[cardID] = authoritative
-                let intendedResultIsPresent = actionMatches(action, card: authoritative)
+                let intendedResultIsPresent = actionMatches(action, card: authoritative, original: original)
                 members.append(bulkMember(
                     cardID: cardID,
                     card: authoritative,
@@ -1753,8 +1794,7 @@ final class KanbanFeatureState {
         switch action {
         case let .changeStatus(status):
             guard let normalizedStatus = normalized(status) else { return false }
-            return normalizedStatus != "running"
-                && (configuration?.columns ?? []).contains(normalizedStatus)
+            return bulkStatusOptions.contains(normalizedStatus)
         case let .assignProfile(profile):
             guard let profile = normalizedOptional(profile) else { return profile == nil }
             return profileOptions.contains(profile)
@@ -1765,10 +1805,11 @@ final class KanbanFeatureState {
         }
     }
 
-    private func actionMatches(_ action: KanbanBulkAction, card: KanbanCard) -> Bool {
+    private func actionMatches(_ action: KanbanBulkAction, card: KanbanCard, original: KanbanCard?) -> Bool {
         switch action {
         case let .changeStatus(status):
-            return card.status?.rawValue == normalized(status)
+            guard let status = normalized(status) else { return false }
+            return backend.accepts(card.status?.rawValue, requested: status, from: original?.status?.rawValue)
         case let .assignProfile(profile):
             return normalizedOptional(card.assignee) == normalizedOptional(profile)
         case let .setPriority(priority):
@@ -1824,7 +1865,7 @@ final class KanbanFeatureState {
             }
             guard activeCardMutationIDs[cardID] == mutationID else { return }
             let authoritative = try KanbanCardMutationValidator.validate(response, expectedCardID: cardID)
-            guard authoritative.status?.rawValue == status else {
+            guard backend.accepts(authoritative.status?.rawValue, requested: status, from: baseline.status?.rawValue) else {
                 throw KanbanMutationSettlementError.unexpectedStatus
             }
             settleSuccessfulStatusMutation(
@@ -1842,7 +1883,13 @@ final class KanbanFeatureState {
             forwardAuthentication(error)
             markCapabilityUnavailableIfNeeded(.cardWorkflow, error: error)
             if isDefinitiveWriteFailure(error) {
-                restoreFailedOptimisticMutation(cardID: cardID, baseline: baseline, kind: kind, phase: .failed)
+                restoreFailedOptimisticMutation(
+                    cardID: cardID,
+                    baseline: baseline,
+                    kind: kind,
+                    phase: .failed,
+                    message: KanbanWriteRefusal.message(for: error)
+                )
             } else {
                 cardMutationStates[cardID] = KanbanCardMutationState(kind: kind, phase: .checkingResult)
                 await reconcileStatusMutation(
@@ -1854,6 +1901,7 @@ final class KanbanFeatureState {
                 )
             }
         }
+        await reloadBoardAfterHermesWrite()
     }
 
     private func reconcileStatusMutation(
@@ -1870,7 +1918,7 @@ final class KanbanFeatureState {
             )
             try KanbanCardDetailValidator.validate(detail, requestedCardID: cardID)
             guard activeCardMutationIDs[cardID] == mutationID, let authoritative = detail.card else { return }
-            if authoritative.status?.rawValue == expectedStatus {
+            if backend.accepts(authoritative.status?.rawValue, requested: expectedStatus, from: baseline.status?.rawValue) {
                 settleSuccessfulStatusMutation(
                     authoritative,
                     baseline: baseline,
@@ -1914,11 +1962,11 @@ final class KanbanFeatureState {
         settledDetailStatuses[cardID] = authoritative.status?.rawValue
         replaceCardInSnapshot(authoritative)
         finishMutation(cardID: cardID, kind: kind, phase: .succeeded)
-        if case let .archive(previousStatus) = kind {
+        if case let .archive(previousStatus) = kind, let restoreStatus = backend.restoreStatus(after: previousStatus) {
             offerArchiveUndo(
                 card: authoritative,
                 title: baseline.title,
-                previousStatus: previousStatus
+                previousStatus: restoreStatus
             )
         }
     }
@@ -1967,7 +2015,7 @@ final class KanbanFeatureState {
             markCapabilityUnavailableIfNeeded(.cardWorkflow, error: error)
             if isDefinitiveWriteFailure(error) {
                 pendingDependencyChanges[cardID] = nil
-                finishMutation(cardID: cardID, kind: kind, phase: .failed)
+                finishMutation(cardID: cardID, kind: kind, phase: .failed, message: KanbanWriteRefusal.message(for: error))
             } else {
                 cardMutationStates[cardID] = KanbanCardMutationState(kind: kind, phase: .checkingResult)
                 await reconcileDependencyMutation(
@@ -1978,6 +2026,9 @@ final class KanbanFeatureState {
                 )
             }
         }
+        // A new prerequisite can send a Ready dependent back to To Do, and a removed one can
+        // promote it, so the Board is read again to show where the host put it.
+        await reloadBoardAfterHermesWrite()
     }
 
     private func reconcileDependencyMutation(
@@ -2042,24 +2093,33 @@ final class KanbanFeatureState {
         cardID: String,
         baseline: KanbanCard,
         kind: KanbanCardMutationKind,
-        phase: KanbanCardMutationPhase
+        phase: KanbanCardMutationPhase,
+        message: String? = nil
     ) {
         pendingOptimisticStatuses[cardID] = nil
         settledDetailStatuses[cardID] = nil
         uncertainProtectedCards[cardID] = phase == .outcomeUncertain ? baseline : nil
         replaceCardInSnapshot(baseline)
-        finishMutation(cardID: cardID, kind: kind, phase: phase)
+        finishMutation(cardID: cardID, kind: kind, phase: phase, message: message)
     }
 
     private func finishMutation(
         cardID: String,
         kind: KanbanCardMutationKind,
-        phase: KanbanCardMutationPhase
+        phase: KanbanCardMutationPhase,
+        message: String? = nil
     ) {
         activeCardMutationIDs[cardID] = nil
         if phase != .outcomeUncertain { uncertainProtectedCards[cardID] = nil }
-        cardMutationStates[cardID] = KanbanCardMutationState(kind: kind, phase: phase)
+        cardMutationStates[cardID] = KanbanCardMutationState(kind: kind, phase: phase, message: message)
         detailRefreshRevision &+= 1
+    }
+
+    /// A Hermes host's write reports no `changed` and can move other Cards too (a promoted
+    /// dependent, a gated one), so once a Card write settles the Board is read again (#1044).
+    private func reloadBoardAfterHermesWrite() async {
+        guard backend == .hermes else { return }
+        _ = await refreshBoard(usingCursor: false)
     }
 
     private func clearSettledMutationPresentation() {
@@ -2154,7 +2214,7 @@ final class KanbanFeatureState {
     }
 
     private func isDefinitiveWriteFailure(_ error: Error) -> Bool {
-        guard let apiError = error as? APIError else { return error is KanbanRequestError }
+        guard let apiError = error as? APIError else { return error is KanbanRequestError || error is KanbanWriteRefusal }
         switch apiError {
         case .unauthorized, .invalidServerURL:
             return true
@@ -2192,6 +2252,7 @@ final class KanbanFeatureState {
         boardMutationIntendedResult = intendedResult
         boardMutationState = KanbanBoardMutationState(kind: kind, phase: .updating)
         var definitiveFailure = false
+        var refusal: String?
         do {
             _ = try await write()
         } catch {
@@ -2203,6 +2264,7 @@ final class KanbanFeatureState {
             forwardAuthentication(error)
             markCapabilityUnavailableIfNeeded(.boardManagement, error: error)
             definitiveFailure = isDefinitiveWriteFailure(error)
+            refusal = KanbanWriteRefusal.message(for: error)
         }
         guard continueBoardMutation(mutationGeneration, kind: kind) else {
             clearBoardMutationIfCurrent(mutationGeneration)
@@ -2220,7 +2282,7 @@ final class KanbanFeatureState {
             return
         }
         if definitiveFailure {
-            boardMutationState = KanbanBoardMutationState(kind: kind, phase: .failed)
+            boardMutationState = KanbanBoardMutationState(kind: kind, phase: .failed, message: refusal)
         } else if let response {
             boardMutationState = KanbanBoardMutationState(
                 kind: kind,

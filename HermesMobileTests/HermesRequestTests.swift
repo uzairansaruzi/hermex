@@ -219,7 +219,30 @@ final class HermesRequestTests: XCTestCase {
             (.kanbanTask(id: "t_6307395e", board: "ops"), "GET",
              "https://hermes.example:9120/api/plugins/kanban/tasks/t_6307395e?board=ops", nil, [:]),
             (.kanbanTaskLog(id: "t_6307395e", board: "ops", tailBytes: 65_536), "GET",
-             "https://hermes.example:9120/api/plugins/kanban/tasks/t_6307395e/log?board=ops&tail=65536", nil, [:])
+             "https://hermes.example:9120/api/plugins/kanban/tasks/t_6307395e/log?board=ops&tail=65536", nil, [:]),
+            (.kanbanCreateTask(board: "ops", body: ["title": .string("A")]), "POST",
+             "https://hermes.example:9120/api/plugins/kanban/tasks?board=ops", .object(["title": .string("A")]), json),
+            (.kanbanUpdateTask(id: "t_6307395e", board: "ops", body: ["status": .string("ready")]), "PATCH",
+             "https://hermes.example:9120/api/plugins/kanban/tasks/t_6307395e?board=ops", .object(["status": .string("ready")]), json),
+            (.kanbanComment(id: "t_6307395e", board: "ops", body: "Hi"), "POST",
+             "https://hermes.example:9120/api/plugins/kanban/tasks/t_6307395e/comments?board=ops", .object(["body": .string("Hi")]), json),
+            (.kanbanLink(board: "ops", parent: "t_1", child: "t_2"), "POST", "https://hermes.example:9120/api/plugins/kanban/links?board=ops",
+             .object(["parent_id": .string("t_1"), "child_id": .string("t_2")]), json),
+            (.kanbanUnlink(board: "ops", parent: "t_1", child: "t_2"), "DELETE",
+             "https://hermes.example:9120/api/plugins/kanban/links?board=ops&parent_id=t_1&child_id=t_2", nil, [:]),
+            (.kanbanBulk(board: "ops", body: ["ids": .array([.string("t_1")]), "archive": .bool(true)]), "POST",
+             "https://hermes.example:9120/api/plugins/kanban/tasks/bulk?board=ops",
+             .object(["ids": .array([.string("t_1")]), "archive": .bool(true)]), json),
+            (.kanbanDispatch(board: "ops", dryRun: true), "POST",
+             "https://hermes.example:9120/api/plugins/kanban/dispatch?board=ops&dry_run=true&max=8", .object([:]), json),
+            (.kanbanCreateBoard(body: ["slug": .string("ops")]), "POST", "https://hermes.example:9120/api/plugins/kanban/boards",
+             .object(["slug": .string("ops")]), json),
+            (.kanbanEditBoard(slug: "ops", body: ["name": .string("Ops")]), "PATCH",
+             "https://hermes.example:9120/api/plugins/kanban/boards/ops", .object(["name": .string("Ops")]), json),
+            (.kanbanArchiveBoard(slug: "ops"), "DELETE", "https://hermes.example:9120/api/plugins/kanban/boards/ops?delete=false",
+             nil, [:]),
+            (.kanbanSwitchBoard(slug: "ops"), "POST", "https://hermes.example:9120/api/plugins/kanban/boards/ops/switch",
+             .object([:]), json)
         ]
         for (rest, method, url, body, headers) in cases {
             let request = try rest.request(base: base)
@@ -239,6 +262,8 @@ final class HermesRequestTests: XCTestCase {
         XCTAssertThrowsError(try HermesCall.profileModelOptions(profile: "").params())
         XCTAssertThrowsError(try HermesREST.kanbanTask(id: "../config", board: "ops").request(base: base))
         XCTAssertThrowsError(try HermesREST.kanbanTaskLog(id: "", board: "ops", tailBytes: 1).request(base: base))
+        XCTAssertThrowsError(try HermesREST.kanbanUpdateTask(id: "../bulk", board: "ops", body: [:]).request(base: base))
+        XCTAssertThrowsError(try HermesREST.kanbanArchiveBoard(slug: "../config").request(base: base))
         let upgrade = try HermesREST.gatewayUpgrade(base: base, ticket: "t1")
         XCTAssertEqual(upgrade.url?.absoluteString, "wss://hermes.example:9120/api/ws")
         XCTAssertEqual(upgrade.allHTTPHeaderFields ?? [:], ["Sec-WebSocket-Protocol": "hermes-gateway-v1, hermes-gateway-ticket.t1"])

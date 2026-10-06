@@ -26,9 +26,9 @@ import Foundation
 /// read at the same pin and checked against `scripts/local-hermes`: `{runs, limit}`, the job's run
 /// sessions newest first, each `cron_<job>_<YYYYmmdd_HHMMSS>` with the session's `system_prompt`;
 /// `limit` is clamped to 1-100, there is no offset, and a job without runs answers `{runs: []}`.
-/// The Kanban plugin's reads (#1043) and its event socket (#1045) are under `/api/plugins/kanban`
-/// at the same pin, checked against `scripts/local-hermes`; `docs/agents/kanban.md` § Hermes
-/// has their shapes.
+/// The Kanban plugin's reads (#1043), its event socket (#1045) and its writes (#1044) are under
+/// `/api/plugins/kanban` at the same pin, checked against `scripts/local-hermes`;
+/// `docs/agents/kanban.md` § Hermes has their shapes.
 enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
@@ -92,6 +92,27 @@ enum HermesREST: Equatable, Sendable {
     case kanbanTask(id: String, board: String)
     /// The last `tailBytes` of a Card's worker log; `exists: false` when it never ran.
     case kanbanTaskLog(id: String, board: String, tailBytes: Int)
+    /// Creates a Card from `body`; `{task, warning?}`.
+    case kanbanCreateTask(board: String, body: [String: BotJSON])
+    /// Edits a Card or changes its Status, which is how the host blocks and unblocks; `{task}`.
+    case kanbanUpdateTask(id: String, board: String, body: [String: BotJSON])
+    /// `{ok: true}`, without the comment.
+    case kanbanComment(id: String, board: String, body: String)
+    /// `parent` becomes a prerequisite of `child`; `{ok, gated}`, with neither id.
+    case kanbanLink(board: String, parent: String, child: String)
+    /// `{ok}`, 200 even when there was no such link.
+    case kanbanUnlink(board: String, parent: String, child: String)
+    /// One change for every id in `body`; `{results: [{id, ok, error?}]}`, 200 with failures.
+    case kanbanBulk(board: String, body: [String: BotJSON])
+    /// One dispatcher pass, at most eight workers; a dry run starts none.
+    case kanbanDispatch(board: String, dryRun: Bool)
+    /// `body` names the Board, never its directory or project; `{board, current}`.
+    case kanbanCreateBoard(body: [String: BotJSON])
+    case kanbanEditBoard(slug: String, body: [String: BotJSON])
+    /// Archives the Board, never deletes it; `{result, current}`.
+    case kanbanArchiveBoard(slug: String)
+    /// Makes the Board the host's active one, for every client; `{current}`.
+    case kanbanSwitchBoard(slug: String)
 
     func request(base: URL) throws -> URLRequest {
         switch self {
@@ -179,16 +200,56 @@ enum HermesREST: Equatable, Sendable {
             guard Self.isSegment(id) else { throw BotFailure.invalidAddress }
             return try Self.kanban(base, ["tasks", id, "log"], [URLQueryItem(name: "board", value: board),
                                                                  URLQueryItem(name: "tail", value: String(tailBytes))])
+        case .kanbanCreateTask(let board, let body):
+            return try Self.kanban(base, ["tasks"], [URLQueryItem(name: "board", value: board)], "POST", body)
+        case .kanbanUpdateTask(let id, let board, let body):
+            guard Self.isSegment(id) else { throw BotFailure.invalidAddress }
+            return try Self.kanban(base, ["tasks", id], [URLQueryItem(name: "board", value: board)], "PATCH", body)
+        case .kanbanComment(let id, let board, let body):
+            guard Self.isSegment(id) else { throw BotFailure.invalidAddress }
+            return try Self.kanban(base, ["tasks", id, "comments"], [URLQueryItem(name: "board", value: board)], "POST",
+                                   ["body": .string(body)])
+        case .kanbanLink(let board, let parent, let child):
+            return try Self.kanban(base, ["links"], [URLQueryItem(name: "board", value: board)], "POST",
+                                   ["parent_id": .string(parent), "child_id": .string(child)])
+        case .kanbanUnlink(let board, let parent, let child):
+            var request = try Self.kanban(base, ["links"], [URLQueryItem(name: "board", value: board),
+                                                            URLQueryItem(name: "parent_id", value: parent),
+                                                            URLQueryItem(name: "child_id", value: child)])
+            request.httpMethod = "DELETE"
+            return request
+        case .kanbanBulk(let board, let body):
+            return try Self.kanban(base, ["tasks", "bulk"], [URLQueryItem(name: "board", value: board)], "POST", body)
+        case .kanbanDispatch(let board, let dryRun):
+            return try Self.kanban(base, ["dispatch"], [URLQueryItem(name: "board", value: board),
+                                                        URLQueryItem(name: "dry_run", value: dryRun ? "true" : "false"),
+                                                        URLQueryItem(name: "max", value: String(KanbanDispatchRequest.maximum))],
+                                   "POST", [:])
+        case .kanbanCreateBoard(let body):
+            return try Self.kanban(base, ["boards"], [], "POST", body)
+        case .kanbanEditBoard(let slug, let body):
+            guard Self.isSegment(slug) else { throw BotFailure.invalidAddress }
+            return try Self.kanban(base, ["boards", slug], [], "PATCH", body)
+        case .kanbanArchiveBoard(let slug):
+            guard Self.isSegment(slug) else { throw BotFailure.invalidAddress }
+            var request = try Self.kanban(base, ["boards", slug], [URLQueryItem(name: "delete", value: "false")])
+            request.httpMethod = "DELETE"
+            return request
+        case .kanbanSwitchBoard(let slug):
+            guard Self.isSegment(slug) else { throw BotFailure.invalidAddress }
+            return try Self.kanban(base, ["boards", slug, "switch"], [], "POST", [:])
         }
     }
 
-    /// A GET under the Kanban plugin's mount.
-    private static func kanban(_ base: URL, _ path: [String], _ query: [URLQueryItem] = []) throws -> URLRequest {
+    /// A request under the Kanban plugin's mount: a GET, or `method` with the JSON `body`.
+    private static func kanban(_ base: URL, _ path: [String], _ query: [URLQueryItem] = [],
+                               _ method: String = "GET", _ body: [String: BotJSON]? = nil) throws -> URLRequest {
         let url = path.reduce(base.appendingPathComponent("api/plugins/kanban")) { $0.appendingPathComponent($1) }
         guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { throw BotFailure.invalidAddress }
         if !query.isEmpty { parts.queryItems = query }
         guard let url = parts.url else { throw BotFailure.invalidAddress }
-        return get(url)
+        guard let body else { return get(url) }
+        return try send(method, url, body)
     }
 
     /// The gateway socket's upgrade: the `ws`/`wss` URL matching the address's scheme,

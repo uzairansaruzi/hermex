@@ -9,7 +9,7 @@ enum KanbanBackend: Sendable {
 }
 
 /// Everything the Kanban screens read and write. `APIClient` serves a webui server and
-/// `HermesKanbanClient` a Hermes host; a write a client does not implement throws.
+/// `HermesKanbanClient` a Hermes host (#1043, #1044); a write a client does not implement throws.
 protocol KanbanDataClient: Sendable {
     var backend: KanbanBackend { get }
     /// The server's live-update channel: webui's SSE stream, or a Hermes host's Kanban socket.
@@ -432,7 +432,7 @@ private struct KanbanCreateCardBody: Encodable {
         priority = request.priority
         assignee = request.assignee
         tenant = request.tenant
-        workspaceKind = request.workspaceKind
+        workspaceKind = request.workspaceKind ?? "scratch"
         workspacePath = request.workspacePath
         skills = request.skills
         maxRuntimeSeconds = request.maxRuntimeSeconds

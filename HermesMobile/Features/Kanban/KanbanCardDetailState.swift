@@ -41,6 +41,8 @@ final class KanbanCardDetailState {
     private(set) var loadState: KanbanCardDetailLoadState = .idle
     private(set) var detail: KanbanCardDetailEnvelope?
     private(set) var commentSubmission: KanbanCommentSubmissionState = .idle
+    /// Why the server refused the last comment, in its own words (`KanbanWriteRefusal`).
+    private(set) var commentFailureMessage: String?
     private(set) var workerLogState: KanbanWorkerLogState = .idle
     var commentDraft = ""
 
@@ -106,6 +108,7 @@ final class KanbanCardDetailState {
         activeDetailLoadID = UUID() // Invalidates a read that began before this mutation.
         let attempt = PendingCommentAttempt(body: body, baseline: detail?.comments ?? [])
         pendingAttempt = attempt
+        commentFailureMessage = nil
         commentSubmission = .submitting
 
         do {
@@ -138,6 +141,7 @@ final class KanbanCardDetailState {
                 activeMutationID = nil
                 await reconcileMissingEntity(loadID: nil)
             } else if isDefinitiveWriteFailure(error) {
+                commentFailureMessage = KanbanWriteRefusal.message(for: error)
                 commentSubmission = .failed
                 pendingAttempt = nil
                 activeMutationID = nil
@@ -253,7 +257,7 @@ final class KanbanCardDetailState {
     }
 
     private func isDefinitiveWriteFailure(_ error: Error) -> Bool {
-        guard let apiError = error as? APIError else { return false }
+        guard let apiError = error as? APIError else { return error is KanbanWriteRefusal }
         switch apiError {
         case .unauthorized, .invalidServerURL:
             return true

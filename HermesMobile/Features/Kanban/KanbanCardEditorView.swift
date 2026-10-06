@@ -68,14 +68,14 @@ struct KanbanCardEditorView: View {
 
             Picker("Status", selection: $state.status) {
                 if state.isEditing, let originalStatus = state.originalStatus,
-                   !KanbanCardEditorState.createStatuses.contains(originalStatus) {
+                   !state.createStatuses.contains(originalStatus) {
                     Text(KanbanStatusPresentation(originalStatus).title)
                         .tag(originalStatus)
                         .disabled(true)
                 }
-                Text("Triage").tag("triage")
-                Text("To Do").tag("todo")
-                Text("Ready").tag("ready")
+                ForEach(state.createStatuses, id: \.self) { status in
+                    Text(KanbanStatusPresentation(status).title).tag(status)
+                }
             }
 
             LabeledContent("Priority") {
@@ -90,7 +90,7 @@ struct KanbanCardEditorView: View {
             Text("Card")
         } footer: {
             if state.isEditing, let originalStatus = state.originalStatus,
-               !KanbanCardEditorState.createStatuses.contains(originalStatus) {
+               !state.createStatuses.contains(originalStatus) {
                 Text("Current Status: \(KanbanStatusPresentation(originalStatus).title). Choose a permitted Status only if you want to move the Card.")
             }
         }
@@ -109,8 +109,9 @@ struct KanbanCardEditorView: View {
                 .focused($focusedField, equals: .tenant)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .disabled(!state.canEditTenant)
 
-            if !state.tenantOptions.isEmpty {
+            if !state.tenantOptions.isEmpty, state.canEditTenant {
                 Menu("Choose Tenant") {
                     Button("None") { state.tenant = "" }
                     ForEach(state.tenantOptions, id: \.self) { tenant in
@@ -120,6 +121,10 @@ struct KanbanCardEditorView: View {
             }
         } header: {
             Text("Assignment")
+        } footer: {
+            if !state.canEditTenant {
+                Text("Tenant is set when the Card is created and cannot be edited here.")
+            }
         }
     }
 
@@ -131,7 +136,7 @@ struct KanbanCardEditorView: View {
                 Text("Directory").tag("dir")
             }
 
-            if state.workspaceKind != "scratch" || state.isEditing {
+            if state.offersWorkspacePath, state.workspaceKind != "scratch" || state.isEditing {
                 TextField("Workspace path", text: $state.workspacePath)
                     .focused($focusedField, equals: .workspacePath)
                     .textInputAutocapitalization(.never)
@@ -197,6 +202,11 @@ struct KanbanCardEditorView: View {
             Section {
                 Label("Failed", systemImage: "exclamationmark.circle")
                     .foregroundStyle(.red)
+                if let message = state.failureMessage {
+                    Text(verbatim: message)
+                        .font(.footnote)
+                        .textSelection(.enabled)
+                }
                 Button("Try Again") { beginSubmit() }
             }
         case .outcomeUncertain:

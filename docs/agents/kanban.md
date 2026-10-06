@@ -75,25 +75,32 @@ legacy Card patch alias, or unsupported task attachments.
 
 ## Hermes
 
-A Hermes server's Kanban (#1043) is the host's bundled Kanban plugin, read by
-`HermesKanbanClient` over the server's shared `HermesConnection` (its sign-in, cookie jar
-and connection headers), and kept live over the Board's Kanban socket
-(`KanbanWebSocketEventClient`, #1045). It is read-only until #1044 adds writes. Until #709
-gives it a home, the Hermes inbox's + menu offers it in DEBUG builds and Hermex Branch only.
+A Hermes server's Kanban (#1043) is the host's bundled Kanban plugin, read and written
+(#1044) by `HermesKanbanClient` over the server's shared `HermesConnection` (its sign-in,
+cookie jar and connection headers), and kept live over the Board's Kanban socket
+(`KanbanWebSocketEventClient`, #1045). Until #709 gives it a home, the Hermes inbox's + menu
+offers it in DEBUG builds and Hermex Branch only.
 
 Read at the pin (`ca678285`, 0.21.5; `plugins/kanban/dashboard/plugin_api.py`) and checked
-against `scripts/local-hermes`. Every route is a GET under `/api/plugins/kanban`, and every
-route but `/config` and `/boards` takes `?board=<slug>`; an unknown Board is 404.
+against `scripts/local-hermes`. Every route is under `/api/plugins/kanban`, and every Card
+route takes `?board=<slug>`; an unknown Board or Card is 404.
 
-| Route | Shape Hermex reads |
+| Route | Shape (a route without a method is a GET) |
 |---|---|
 | `/config` | `{default_tenant, lane_by_profile, include_archived_by_default, render_markdown}`. No Columns and no `read_only`. |
-| `/boards` | `{boards: [{slug, name, description, icon, color, archived, is_current, counts, total, …}], current}`. |
+| `/boards` | `{boards: [{slug, name, description, icon, color, archived, is_current, counts, total, default_workspace_kind, …}], current}`. |
 | `/board?board=&tenant=&include_archived=` | `{columns: [{name, tasks}], tenants, assignees, latest_event_id, now}`. Columns are `triage, todo, scheduled, ready, running, blocked, review, done`, plus `archived` when included. No `changed`, no `read_only`, and no assignee or only-mine filter. |
 | `/tasks/{id}` | `{task, comments, events, attachments, links {parents, children}, link_tasks, child_results, runs}`. |
 | `/tasks/{id}/log?tail=` | `{task_id, path, exists, size_bytes, content, truncated}`; a Card that never ran is `exists: false`, not 404. |
 | `/stats`, `/assignees` | `{by_status, by_assignee: {name: {status: n}}, …}` and `{assignees: [{name, on_disk, counts}]}`. |
 | `/events?board=&since=&ticket=` (WebSocket) | `{events: [{id, task_id, run_id, kind, payload, created_at}], cursor}`, only when events after `since` exist, at most 200 a frame. No hello, no heartbeat, and client messages are ignored. A used, expired or missing ticket is HTTP 403 on the upgrade. |
+| `POST /tasks` | `{title, body?, assignee, tenant?, priority?, workspace_kind?, parents?, triage, idempotency_key, max_runtime_seconds?, skills?}` → `{task, warning?}`. No `status`: Triage is `triage: true`, otherwise the host starts the Card in To Do while a parent is open and Ready otherwise. `assignee: ""` is a 400, so none is null. `warning` is a Ready, assigned Card with no dispatcher running. |
+| `PATCH /tasks/{id}` | `{title, body, priority, assignee?, status?, block_reason?}` → `{task}`. No tenant field. `assignee: ""` unassigns, and any `assignee` on a running, claimed Card is 409, so it is sent only when it changed. Block, unblock, Done, Archive and moves are all `status`. |
+| `POST /tasks/{id}/comments` | `{body}` → `{ok: true}`, without the comment. |
+| `POST /links`, `DELETE /links?parent_id=&child_id=` | `{parent_id, child_id}` → `{ok, gated}`, and `{ok}` (200 `false` when there was no link). Neither echoes an id. A self-link, unknown id, running child or cycle is 400. |
+| `POST /tasks/bulk` | `{ids, status? \| assignee? \| priority? \| archive}` → `{results: [{id, ok, error?}]}`, 200 with per-Card failures. |
+| `POST /dispatch?board=&dry_run=&max=8` | The `DispatchResult` webui's keys match. A dry run starts no worker but does promote To Do Cards whose parents are done. |
+| `POST /boards`, `PATCH /boards/{slug}`, `DELETE /boards/{slug}?delete=false`, `POST /boards/{slug}/switch` | `{slug, name, description, icon, color}` → `{board, current}`; `{board}`; `{result, current}`; `{current}`. Never `default_workdir` or `project_id`. The default Board can't be archived (400). |
 
 How Hermex adapts it:
 
@@ -102,12 +109,31 @@ How Hermex adapts it:
   was disabled at runtime. Kanban shows as unavailable, not as an error.
 - **Handshake.** The Board's own Columns stand in for `/config`'s, in the host's order, and
   the Board needs no `changed`. A Card Status outside those Columns still flags.
-- **Read-only.** Every reply is marked `read_only`, so every write control stays disabled.
+- **Writable.** Every reply is marked `read_only: false`: the host has no read-only mode.
+- **No To Do.** The host promotes a To Do Card whose parents are done to Ready on its next
+  dispatcher tick, so To Do never sticks. New Cards start in Triage or Ready, and Move, the
+  Bulk Actions and Undo Archive offer Triage and Ready only; the host itself puts a Card in
+  To Do while a prerequisite is open, and the Board shows it there. Scheduled and Review are
+  never destinations, but a Card in either moves out: Ready from Scheduled unblocks it, and
+  any move from Review reopens it. Undo Archive returns a Triage Card to Triage and any
+  other to Ready, except Done, which offers no Undo: the host refuses Done from Archived.
+- **Where a Card lands.** Block is offered only on Ready and Running Cards, the only ones the
+  host blocks, and a repeat block can land the Card in Triage. Unblock (Ready from Blocked)
+  lands in Ready, To Do or Review. A write succeeds wherever the reply puts the Card short of
+  where it started (`KanbanBackend.accepts`), and the Card shows there.
+- **Editor.** Tenant is set on create and read-only after; an edit never sends it. The
+  workspace kind starts at the Board's `default_workspace_kind` and is sent only when picked,
+  so a project Board keeps its project worktree. There is no workspace path: the host takes
+  it from the Board's project directory.
+- **After a write.** No reply says what else changed, so every Card write reads the Board
+  again (a gated or promoted dependent moves too); a comment reads the Card again. A 400 or
+  409 `{detail}` shows the host's own words where the failure shows, and the Card stays
+  where the host has it. A create `warning` shows as a dismissible notice on the Board.
 - **Filters.** The Assigned Profile filter runs on the client; Only Mine is not offered,
   because the host's Kanban has no active chat Profile.
 - **Host data never kept.** `workspace_path`, `stored_path`, a log's `path`, `db_path`,
-  `default_workdir`, `worker_pid` and `claim_lock` (on Cards and on runs) are dropped from
-  every reply before it is decoded, so no view or log can show them.
+  `default_workdir`, an archived Board's `new_path`, `worker_pid` and `claim_lock` (on Cards
+  and on runs) are dropped from every reply before it is decoded, so no view or log can show them.
 - **Errors.** A transport failure is offline, 502–504 and 520–530 are server unavailable,
   and a refused or replaced sign-in reads as signed out. The sign-out itself stays with
   `HermesConnection`, never `onAPIError`.

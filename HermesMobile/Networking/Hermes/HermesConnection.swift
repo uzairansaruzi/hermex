@@ -178,8 +178,9 @@ import OSLog
     }
 
     /// Sends one signed-in request built from `rest` and returns its body and status, whatever
-    /// the status, for routes whose refusals carry the host's reason (`{detail}`). A 401 still
-    /// signs in again and resends once, as `data` does.
+    /// the status, for routes whose refusals carry the host's reason (`{detail}`), such as a
+    /// refused cron or Kanban write (#1044). A 401 still signs in again and resends once, as
+    /// `data` does.
     func reply(_ rest: HermesREST, deadline: Deadline = .standard) async throws -> (body: Data, status: Int) {
         let redirectGuard = self.redirectGuard
         return try await authorized(try rest.request(base: connection.address), deadline: deadline) { request, session in

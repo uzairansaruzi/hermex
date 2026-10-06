@@ -33,7 +33,6 @@ enum KanbanCardEditorSubmission: Equatable, Sendable {
 @MainActor
 @Observable
 final class KanbanCardEditorState: Identifiable {
-    static let createStatuses = ["triage", "todo", "ready"]
     static let workspaceKinds = ["scratch", "worktree", "dir"]
 
     let id = UUID()
@@ -51,7 +50,12 @@ final class KanbanCardEditorState: Identifiable {
     var priorityText = "0"
     var assignee: String?
     var tenant = ""
-    var workspaceKind = "scratch"
+    /// The workspace kind the user picked, else the Board's default. A Hermes create sends one
+    /// only when picked, so a project Board keeps its own default (#1044).
+    var workspaceKind: String {
+        get { pickedWorkspaceKind ?? defaultWorkspaceKind }
+        set { pickedWorkspaceKind = newValue }
+    }
     var workspacePath = ""
     var skillsText = ""
     var maximumRuntimeText = ""
@@ -59,8 +63,16 @@ final class KanbanCardEditorState: Identifiable {
 
     private(set) var submission: KanbanCardEditorSubmission = .idle
     private(set) var remoteCard: KanbanCard?
+    /// Why the server refused the last save, in its own words (`KanbanWriteRefusal`).
+    private(set) var failureMessage: String?
+    /// The server's note on the created Card, such as a Hermes host's warning that no
+    /// dispatcher is running; the Board shows it after the editor closes.
+    private(set) var notice: String?
 
     private let client: any KanbanDataClient
+    private let backend: KanbanBackend
+    private let defaultWorkspaceKind: String
+    private var pickedWorkspaceKind: String?
     private let onCapabilityUnavailable: (KanbanWriteCapability) -> Void
     private var baselineCard: KanbanCard?
     private let baselineMatchingCardIDs: Set<String>
@@ -79,6 +91,7 @@ final class KanbanCardEditorState: Identifiable {
         client: any KanbanDataClient,
         card: KanbanCard? = nil,
         prerequisiteID: String? = nil,
+        defaultWorkspaceKind: String? = nil,
         profileOptions: [String] = [],
         tenantOptions: [String] = [],
         prerequisiteOptions: [KanbanCard] = [],
@@ -89,6 +102,11 @@ final class KanbanCardEditorState: Identifiable {
         self.mode = mode
         self.board = board
         self.client = client
+        backend = client.backend
+        // webui's editor starts every Card in Scratch, as before.
+        self.defaultWorkspaceKind = client.backend == .hermes
+            ? defaultWorkspaceKind.flatMap { Self.workspaceKinds.contains($0) ? $0 : nil } ?? "scratch"
+            : "scratch"
         self.profileOptions = profileOptions
         self.tenantOptions = tenantOptions
         self.prerequisiteOptions = prerequisiteOptions
@@ -109,6 +127,17 @@ final class KanbanCardEditorState: Identifiable {
     var originalStatus: String? {
         baselineCard?.status?.rawValue
     }
+
+    /// The Statuses the Status picker offers: Triage, To Do and Ready, or on a Hermes host
+    /// Triage and Ready, which the host turns into To Do while a prerequisite is open (#1044).
+    var createStatuses: [String] { backend.createStatuses }
+
+    /// A Hermes host sets a Card's tenant on create only (#1044); webui edits it.
+    var canEditTenant: Bool { !isEditing || backend == .webui }
+
+    /// A Hermes host picks a Worktree or Directory Card's path itself, from the Board's project
+    /// directory, so it takes none from Hermex (#1044).
+    var offersWorkspacePath: Bool { backend == .webui }
 
     var needsReadyUnassignedConfirmation: Bool {
         !isEditing && status == "ready" && normalized(assignee) == nil
@@ -149,6 +178,7 @@ final class KanbanCardEditorState: Identifiable {
 
         let attemptID = UUID()
         activeAttemptID = attemptID
+        failureMessage = nil
         submission = .saving
 
         if case let .edit(cardID) = mode, !overwriteConflict {
@@ -210,6 +240,7 @@ final class KanbanCardEditorState: Identifiable {
             guard intendedValuesAppear(in: card, intent: intent) else {
                 throw KanbanContractViolation.missingCardStatus
             }
+            notice = envelope.warning
             complete(with: card, attemptID: attemptID)
         } catch {
             guard isCurrent(attemptID) else { return }
@@ -217,6 +248,7 @@ final class KanbanCardEditorState: Identifiable {
                 onCapabilityUnavailable(isEditing ? .editCard : .createCard)
             }
             if isDefinitiveWriteFailure(error) {
+                failureMessage = KanbanWriteRefusal.message(for: error)
                 submission = .failed
                 activeAttemptID = nil
             } else {
@@ -253,7 +285,7 @@ final class KanbanCardEditorState: Identifiable {
             submission = .validationFailed(.priority)
             return false
         }
-        guard Self.createStatuses.contains(status) || (isEditing && status == statusAtOpen) else {
+        guard createStatuses.contains(status) || (isEditing && status == statusAtOpen) else {
             submission = .validationFailed(.status)
             return false
         }
@@ -262,7 +294,7 @@ final class KanbanCardEditorState: Identifiable {
                 submission = .validationFailed(.workspacePath)
                 return false
             }
-            if workspaceKind != "scratch", normalized(workspacePath) == nil {
+            if offersWorkspacePath, workspaceKind != "scratch", normalized(workspacePath) == nil {
                 submission = .validationFailed(.workspacePath)
                 return false
             }
@@ -288,8 +320,8 @@ final class KanbanCardEditorState: Identifiable {
             priority: Int(priorityText) == 0 ? nil : Int(priorityText),
             assignee: normalized(assignee),
             tenant: normalized(tenant),
-            workspaceKind: workspaceKind,
-            workspacePath: normalized(workspacePath),
+            workspaceKind: backend == .hermes ? pickedWorkspaceKind : workspaceKind,
+            workspacePath: offersWorkspacePath ? normalized(workspacePath) : nil,
             skills: parsedSkills,
             maxRuntimeSeconds: Int(maximumRuntimeText),
             prerequisiteID: normalized(prerequisiteID),
@@ -306,7 +338,8 @@ final class KanbanCardEditorState: Identifiable {
             tenant: normalized(tenant),
             priority: Int(priorityText)!,
             assignee: normalized(assignee),
-            status: status == statusAtOpen ? nil : status
+            status: status == statusAtOpen ? nil : status,
+            changesAssignee: normalized(assignee) != normalized(baselineCard?.assignee)
         )
     }
 
@@ -370,16 +403,21 @@ final class KanbanCardEditorState: Identifiable {
         activeAttemptID = nil
     }
 
+    /// Whether `card` carries what the save asked for. A Hermes host decides what the save
+    /// leaves to it (#1044): a new Card's tenant (a prerequisite's) and workspace kind (the
+    /// Board's) when none was sent, and To Do for a Card asked into Ready.
     private func intendedValuesAppear(in card: KanbanCard, intent: MutationIntent) -> Bool {
         switch intent {
         case let .create(request):
+            let hostDecides = backend == .hermes
             return normalized(card.title) == normalized(request.title)
                 && normalized(card.body) == normalized(request.body)
                 && normalized(card.assignee) == normalized(request.assignee)
-                && normalized(card.tenant) == normalized(request.tenant)
+                && (normalized(card.tenant) == normalized(request.tenant) || (hostDecides && request.tenant == nil))
                 && (card.priority ?? 0) == (request.priority ?? 0)
-                && card.status?.rawValue == request.status
-                && normalized(card.workspaceKind) == normalized(request.workspaceKind)
+                && backend.accepts(card.status?.rawValue, requested: request.status, from: nil)
+                && (normalized(card.workspaceKind) == normalized(request.workspaceKind)
+                    || (hostDecides && request.workspaceKind == nil))
                 && normalized(card.workspacePath) == normalized(request.workspacePath)
                 && (card.skills ?? []) == (request.skills ?? [])
                 && card.maxRuntimeSeconds == request.maxRuntimeSeconds
@@ -389,7 +427,7 @@ final class KanbanCardEditorState: Identifiable {
                 && normalized(card.assignee) == normalized(request.assignee)
                 && normalized(card.tenant) == normalized(request.tenant)
                 && (card.priority ?? 0) == request.priority
-                && (request.status == nil || card.status?.rawValue == request.status)
+                && (request.status.map { backend.accepts(card.status?.rawValue, requested: $0, from: statusAtOpen) } ?? true)
         }
     }
 
@@ -433,7 +471,7 @@ final class KanbanCardEditorState: Identifiable {
     }
 
     private func isDefinitiveWriteFailure(_ error: Error) -> Bool {
-        guard let apiError = error as? APIError else { return false }
+        guard let apiError = error as? APIError else { return error is KanbanWriteRefusal }
         switch apiError {
         case .unauthorized, .invalidServerURL:
             return true
