@@ -57,6 +57,32 @@ import XCTest
         XCTAssertFalse(state.liveUpdatesDelayed)
     }
 
+    /// A foreground return while a pushed Card covers the Board reloads the Board when it
+    /// reappears; without one, reappearing keeps the Board on screen.
+    func testAForegroundReturnBehindACardReloadsTheBoardWhenItReappears() async {
+        let state = KanbanFeatureState(server: server, client: HermesKanbanClient(http: host()))
+        await state.load()
+        state.setVisible(true)
+        state.setVisible(false)
+        await state.setScenePhase(.background)
+        // The host retitles a Card while the app is in the background.
+        _ = host(["/api/plugins/kanban/board": .json(200, Self.json(Self.board.replacingOccurrences(
+            of: "Await review", with: "Reviewed while away")))])
+        await state.setScenePhase(.active)
+        XCTAssertEqual(HermesHostFixture.count("/api/plugins/kanban/board"), 1, "the covered Board waits")
+
+        state.setVisible(true)
+        await state.loadIfNeeded()
+
+        XCTAssertEqual(state.allCards.first { $0.cardID == "t_04fba87e" }?.title, "Reviewed while away")
+        XCTAssertEqual(HermesHostFixture.count("/api/plugins/kanban/board"), 2)
+
+        state.setVisible(false)
+        state.setVisible(true)
+        await state.loadIfNeeded()
+        XCTAssertEqual(HermesHostFixture.count("/api/plugins/kanban/board"), 2)
+    }
+
     /// A Card's workspace path, claim and worker PID, a run's worker PID, a Board's database
     /// path and workdir, an attachment's stored path and a log's path never reach a model.
     func testHostPathsAndProcessDataAreDroppedBeforeDecoding() async throws {

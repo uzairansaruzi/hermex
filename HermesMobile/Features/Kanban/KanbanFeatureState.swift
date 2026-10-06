@@ -407,6 +407,9 @@ final class KanbanFeatureState {
     private let defaults: UserDefaults
     private var isVisible = false
     private var sceneIsActive = true
+    /// A Hermes app returned to the foreground while a pushed Card covered the Board. With no
+    /// stream to catch it up, `loadIfNeeded()` reloads the Board when it reappears.
+    @ObservationIgnored private var owesForegroundReload = false
     private var liveGeneration = 0
     private var streamAttemptID = 0
     private var streamFailureCount = 0
@@ -1053,10 +1056,17 @@ final class KanbanFeatureState {
     /// and archive undo; `setVisible(true)` resumes the live stream from `liveCursor`.
     /// When a pop cancelled a live refresh (the stream already moved `liveCursor` past the
     /// Board on screen) or the first load's stats and assignee reads, this refreshes the
-    /// Board in place instead of starting over.
+    /// Board in place instead of starting over. A Hermes Board owed a foreground reload
+    /// refreshes like pull to refresh.
     func loadIfNeeded() async {
         guard let snapshot else {
             await load()
+            return
+        }
+        if owesForegroundReload {
+            owesForegroundReload = false
+            await refresh()
+            if Task.isCancelled { owesForegroundReload = true }
             return
         }
         let boardIsBehindStream = liveCursor > (snapshot.latestEventID ?? 0)
@@ -1447,6 +1457,7 @@ final class KanbanFeatureState {
     /// Returning to `.active` asks the server for the Board since the snapshot's cursor.
     /// When no event landed, the Board, its stats, and the Board list are kept and the
     /// stream resumes from `liveCursor`; a changed Board also reconciles the Board list.
+    /// A Hermes Board hidden behind a Card is reloaded when it reappears instead.
     func setScenePhase(_ phase: ScenePhase) async {
         guard phase != .inactive else { return }
         let active = phase == .active
@@ -1456,7 +1467,12 @@ final class KanbanFeatureState {
             suspendLiveUpdates()
             return
         }
-        guard isVisible, snapshot != nil, let board = selectedBoardSlug else { return }
+        guard snapshot != nil else { return }
+        guard isVisible else {
+            if backend == .hermes { owesForegroundReload = true }
+            return
+        }
+        guard let board = selectedBoardSlug else { return }
         let previousRefreshFailed = refreshFailed
         let generation = liveGeneration
         let outcome = await refreshBoard(usingCursor: true, refreshSupplementary: true)
