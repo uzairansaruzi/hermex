@@ -412,7 +412,7 @@ private struct KanbanCardDetailContent: View {
             } else if featureModel.canBlock(card) {
                 Button("Block") { request(.block, for: card) }
             }
-            if card.status?.rawValue != "done", card.status?.rawValue != "archived" {
+            if featureModel.canComplete(card) {
                 Button("Complete") { request(.complete, for: card) }
             }
             if card.status?.rawValue != "archived" {

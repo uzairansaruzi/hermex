@@ -272,7 +272,8 @@ import XCTest
 
     /// No To Do anywhere on Hermes: a Card goes to Triage or Ready, and Scheduled and Review are
     /// never destinations, though a Card in either moves out to them. Block is offered only on
-    /// Ready and Running Cards, the only ones the host blocks.
+    /// Ready and Running Cards, the only ones the host blocks, and Complete only on a Card in
+    /// Review, the only one the host completes without a result.
     func testHermesOffersTriageAndReadyButNeverToDoScheduledOrReview() async throws {
         let state = KanbanFeatureState(server: server, client: HermesKanbanClient(http: host([
             "/api/plugins/kanban/board": .json(200, Self.json(Self.boardWithReadyCard))
@@ -288,6 +289,12 @@ import XCTest
         XCTAssertFalse(state.canSubmitBulkAction(.changeStatus("todo")))
         XCTAssertEqual(["t_017edf3a", "t_ded419c6", "t_2ad0ddc5", "t_9b1c2d3e", "t_04fba87e", "t_ed0bb193"]
             .map { state.canBlock(try! card($0)) }, [false, false, true, true, false, false])
+        XCTAssertEqual(["t_017edf3a", "t_ded419c6", "t_2ad0ddc5", "t_9b1c2d3e", "t_04fba87e", "t_ed0bb193"]
+            .map { state.canComplete(try! card($0)) }, [false, false, false, false, true, false])
+
+        await state.completeCard(try card("t_2ad0ddc5"))
+
+        XCTAssertEqual(writes(), [], "the host refuses Done for a Ready Card without a result")
     }
 
     /// Unblock succeeds wherever the host lands the Card but Blocked: To Do while a prerequisite
@@ -507,10 +514,11 @@ import XCTest
         }
     }
 
-    /// The editor on Hermes: Triage and Ready, the Board's workspace kind sent only when picked,
-    /// and a Card asked into Ready that the host parks in To Do behind its open prerequisite.
-    /// The host's warning becomes the Board's notice.
-    func testCreateOffersTriageAndReadyAndLeavesTheHostsDefaultsToTheHost() async throws {
+    /// The editor on Hermes: Triage and Ready, the Board's workspace kind sent as shown, because
+    /// an omitted one is Scratch on a Board with a directory but no project, and a Card asked
+    /// into Ready that the host parks in To Do behind its open prerequisite. The host's warning
+    /// becomes the Board's notice.
+    func testCreateOffersTriageAndReadyAndSendsTheBoardsWorkspaceKind() async throws {
         let warning = "No gateway is running — the task will sit in 'ready' until you start it."
         let projectBoards = Self.boards.replacingOccurrences(of: #""default_workspace_kind":"scratch""#,
                                                              with: #""default_workspace_kind":"worktree""#)
@@ -536,10 +544,32 @@ import XCTest
 
         XCTAssertEqual(editor.submission, .succeeded(cardID: "t_07aac7b2"))
         XCTAssertEqual(body(of: "POST /api/plugins/kanban/tasks"), .object([
-            "title": .string("Child card"), "assignee": .null, "triage": .bool(false),
+            "title": .string("Child card"), "assignee": .null, "triage": .bool(false), "workspace_kind": .string("worktree"),
             "parents": .array([.string("t_017edf3a")]), "idempotency_key": .string(editor.idempotencyKey)
         ]))
         XCTAssertEqual(state.cardNotice, warning)
+    }
+
+    /// A Scratch nobody picked is left out, so a project Board gives the Card its project; a
+    /// picked Scratch is sent, which opts out of the project.
+    func testCreateLeavesOutOnlyAScratchNobodyPicked() async throws {
+        let state = KanbanFeatureState(server: server, client: HermesKanbanClient(http: host([
+            "POST /api/plugins/kanban/tasks": .json(200, Self.json(Self.card("t_5ff898b1", status: "triage")))
+        ])))
+        await state.load()
+
+        var sent: [BotJSON?] = []
+        for picked in [false, true] {
+            let editor = try XCTUnwrap(state.makeCreateCardEditorState())
+            XCTAssertEqual(editor.workspaceKind, "scratch", "the Board's default")
+            editor.title = "Ready card"
+            if picked { editor.workspaceKind = "scratch" }
+            await editor.save(allowsMutation: state.canCreateCards)
+            XCTAssertEqual(editor.submission, .succeeded(cardID: "t_5ff898b1"))
+            sent.append(body(of: "POST /api/plugins/kanban/tasks")?.fields?["workspace_kind"])
+        }
+
+        XCTAssertEqual(sent, [nil, .string("scratch")])
     }
 
     /// The editor on Hermes: tenant read-only, never sent; the assignee sent only when it
@@ -573,6 +603,32 @@ import XCTest
         XCTAssertEqual(body(of: "PATCH /api/plugins/kanban/tasks/t_9b1c2d3e"), .object([
             "title": .string("Run the write contracts"), "body": .string("- Dense board"), "priority": .number(1)
         ]), "an unchanged assignee is not sent: the host refuses any reassign of a running Card")
+    }
+
+    /// Review and Overwrite sends the draft's assignee when it differs from the newer server
+    /// Card it overwrites, even if the draft kept the one the editor opened.
+    func testOverwritingARemotelyReassignedCardSendsTheDraftsAssignee() async throws {
+        let opened = Self.json(Self.detail("t_2ad0ddc5", status: "ready"))
+        let reassigned = Self.json(Self.detail("t_2ad0ddc5", status: "ready")
+            .replacingOccurrences(of: #""assignee":null"#, with: #""assignee":"reviewer""#))
+        let client = HermesKanbanClient(http: host([
+            "/api/plugins/kanban/board": .json(200, Self.json(Self.boardWithReadyCard)),
+            "/api/plugins/kanban/tasks/t_2ad0ddc5": .json(200, opened),
+            "PATCH /api/plugins/kanban/tasks/t_2ad0ddc5": .json(200, Self.json(Self.card("t_2ad0ddc5", status: "ready")))
+        ], after: [
+            "/api/plugins/kanban/tasks/t_2ad0ddc5": ["/api/plugins/kanban/tasks/t_2ad0ddc5": .json(200, reassigned)]
+        ]))
+        let state = KanbanFeatureState(server: server, client: client)
+        await state.load()
+        let detail = try await client.kanbanCardDetail(KanbanCardDetailRequest(cardID: "t_2ad0ddc5", board: "default"))
+        let editor = try XCTUnwrap(state.makeEditCardEditorState(detail: detail))
+
+        await editor.save(allowsMutation: state.canEditCards)
+        XCTAssertEqual(editor.submission, .conflict)
+        await editor.save(allowsMutation: state.canEditCards, overwriteConflict: true)
+
+        XCTAssertEqual(editor.submission, .succeeded(cardID: "t_2ad0ddc5"))
+        XCTAssertEqual(body(of: "PATCH /api/plugins/kanban/tasks/t_2ad0ddc5")?["assignee"], .string(""))
     }
 
     /// Undo Archive on Hermes restores to Ready unless the Card came from Triage, and a Done

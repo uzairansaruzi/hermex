@@ -739,6 +739,11 @@ final class KanbanFeatureState {
         canMutateCard(card) && backend.offersBlock(from: card.status?.rawValue)
     }
 
+    /// Whether `card` offers Complete: a Hermes host completes only a Card in Review (#1044).
+    func canComplete(_ card: KanbanCard) -> Bool {
+        canMutateCard(card) && backend.offersComplete(from: card.status?.rawValue)
+    }
+
     /// The Statuses a Bulk Action can move Cards to: every Column but Running, and on a Hermes
     /// host none of To Do, Scheduled and Review either (#1044).
     var bulkStatusOptions: [String] {
@@ -789,7 +794,7 @@ final class KanbanFeatureState {
     }
 
     func completeCard(_ card: KanbanCard, confirmingRunningExit: Bool = false) async {
-        guard card.status?.rawValue != "done", card.status?.rawValue != "archived" else { return }
+        guard backend.offersComplete(from: card.status?.rawValue) else { return }
         await performStatusMutation(
             card,
             status: "done",

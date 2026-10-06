@@ -1246,7 +1246,7 @@ struct KanbanStatusFocusView: View {
             } else if model.canBlock(card) {
                 Button("Block") { request(.block, for: card) }
             }
-            if card.status?.rawValue != "done", card.status?.rawValue != "archived" {
+            if model.canComplete(card) {
                 Button("Complete") { request(.complete, for: card) }
             }
             if card.status?.rawValue != "archived" {

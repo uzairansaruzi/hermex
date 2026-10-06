@@ -61,7 +61,7 @@ struct KanbanCreateCardRequest: Equatable, Sendable {
     let priority: Int?
     let assignee: String?
     let tenant: String?
-    /// nil leaves it to the server: a Hermes host's Board default, its project's worktree on a
+    /// nil leaves it to the server: on a Hermes host, Scratch, or the project's worktree on a
     /// project Board (#1044). webui always gets one.
     let workspaceKind: String?
     let workspacePath: String?
@@ -84,7 +84,8 @@ struct KanbanEditCardRequest: Equatable, Sendable {
     let priority: Int
     let assignee: String?
     let status: String?
-    /// Whether `assignee` differs from the Card the editor opened. A Hermes host reassigns on
+    /// Whether `assignee` differs from the server's Card the save replaces: the one the editor
+    /// opened, or the newer one a Review and Overwrite overwrites. A Hermes host reassigns on
     /// any `assignee` it gets, and refuses a running Card's with a 409, so it gets one only
     /// when it changed (#1044); webui always gets it.
     var changesAssignee = true
@@ -1196,6 +1197,15 @@ extension KanbanBackend {
         switch self {
         case .webui: status != "blocked" && status != "archived"
         case .hermes: status == "ready" || status == "running"
+        }
+    }
+
+    /// Whether a Card in `status` offers Complete. A Hermes host completes a Card without a
+    /// result, which Hermex never sends, only out of Review, and refuses the rest with a 400.
+    func offersComplete(from status: String?) -> Bool {
+        switch self {
+        case .webui: status != "done" && status != "archived"
+        case .hermes: status == "review"
         }
     }
 

@@ -121,10 +121,14 @@ How Hermex adapts it:
   host blocks, and a repeat block can land the Card in Triage. Unblock (Ready from Blocked)
   lands in Ready, To Do or Review. A write succeeds wherever the reply puts the Card short of
   where it started (`KanbanBackend.accepts`), and the Card shows there.
+- **Complete.** Offered only on a Card in Review: the host completes any other Card only
+  with a result, which Hermex doesn't send, and refuses it with a 400. The Bulk Action to
+  Done stays, for approving Review Cards, and shows any other Card as failed.
 - **Editor.** Tenant is set on create and read-only after; an edit never sends it. The
-  workspace kind starts at the Board's `default_workspace_kind` and is sent only when picked,
-  so a project Board keeps its project worktree. There is no workspace path: the host takes
-  it from the Board's project directory.
+  workspace kind starts at the Board's `default_workspace_kind` and is sent unless it is a
+  Scratch nobody picked. An omitted kind is Scratch on a Board without a project, even one
+  with a directory, and the project's worktree on a project Board. There is no workspace
+  path: the host takes it from the Board's directory.
 - **After a write.** No reply says what else changed, so every Card write reads the Board
   again (a gated or promoted dependent moves too); a comment reads the Card again. A 400 or
   409 `{detail}` shows the host's own words where the failure shows, and the Card stays

@@ -50,8 +50,8 @@ final class KanbanCardEditorState: Identifiable {
     var priorityText = "0"
     var assignee: String?
     var tenant = ""
-    /// The workspace kind the user picked, else the Board's default. A Hermes create sends one
-    /// only when picked, so a project Board keeps its own default (#1044).
+    /// The workspace kind the user picked, else the Board's default. A Hermes create sends it
+    /// unless it is a Scratch nobody picked, which leaves a project Board its project (#1044).
     var workspaceKind: String {
         get { pickedWorkspaceKind ?? defaultWorkspaceKind }
         set { pickedWorkspaceKind = newValue }
@@ -320,7 +320,8 @@ final class KanbanCardEditorState: Identifiable {
             priority: Int(priorityText) == 0 ? nil : Int(priorityText),
             assignee: normalized(assignee),
             tenant: normalized(tenant),
-            workspaceKind: backend == .hermes ? pickedWorkspaceKind : workspaceKind,
+            workspaceKind: backend == .hermes && pickedWorkspaceKind == nil && workspaceKind == "scratch"
+                ? nil : workspaceKind,
             workspacePath: offersWorkspacePath ? normalized(workspacePath) : nil,
             skills: parsedSkills,
             maxRuntimeSeconds: Int(maximumRuntimeText),
@@ -339,7 +340,7 @@ final class KanbanCardEditorState: Identifiable {
             priority: Int(priorityText)!,
             assignee: normalized(assignee),
             status: status == statusAtOpen ? nil : status,
-            changesAssignee: normalized(assignee) != normalized(baselineCard?.assignee)
+            changesAssignee: normalized(assignee) != normalized((remoteCard ?? baselineCard)?.assignee)
         )
     }
 
@@ -404,8 +405,8 @@ final class KanbanCardEditorState: Identifiable {
     }
 
     /// Whether `card` carries what the save asked for. A Hermes host decides what the save
-    /// leaves to it (#1044): a new Card's tenant (a prerequisite's) and workspace kind (the
-    /// Board's) when none was sent, and To Do for a Card asked into Ready.
+    /// leaves to it (#1044): a new Card's tenant (a prerequisite's) and workspace kind (Scratch
+    /// or the project's worktree) when none was sent, and To Do for a Card asked into Ready.
     private func intendedValuesAppear(in card: KanbanCard, intent: MutationIntent) -> Bool {
         switch intent {
         case let .create(request):
