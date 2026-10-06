@@ -323,7 +323,10 @@ import Observation
         await chat.model.reconnectStreamIfNeeded()
         chat.model.flushPendingStreamingContent()
         XCTAssertEqual(chat.model.messages.map(\.content), ["Write a haiku", "Autumn moonlight"])
-        XCTAssertEqual(chat.host.requests.dropFirst(leaving).compactMap { $0["method"].text },
+        // Each attach's goal, model-catalog, Profile (#1015) and command-catalog (#1036) reads
+        // run off its path and can land anywhere in this; they are not the reattach.
+        let methods = chat.host.requests.dropFirst(leaving).compactMap { $0["method"].text }
+        XCTAssertEqual(methods.filter { !["session.control.read", "model.options", "profiles.list", "commands.catalog"].contains($0) },
                        ["session.resume", "session.events.since", "session.resume"], "reattaching only reads")
         XCTAssertEqual(chat.writes("prompt.submit").count, 1)
         XCTAssertNotNil(chat.model.activeStreamID)
