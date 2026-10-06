@@ -10,10 +10,14 @@ import Observation
 /// The create sheet and the edit sheet are the same sheet, so they share this
 /// one loader instead of each view model growing its own copy.
 ///
-/// The three loads are independent and non-fatal. A failed catalog leaves the
+/// The loads are independent and non-fatal. A failed catalog leaves the
 /// model picker with only its custom entry; a failed profile or skill list
 /// leaves its row showing an error with a retry. None of them disturbs any
 /// other field in the sheet.
+///
+/// On a server that keeps Tasks in Profiles (a Hermes host, #1040), the models,
+/// skills and delivery targets are the Task's Profile's, so one loader serves one
+/// Profile and the sheet makes a new one when the Profile changes.
 @MainActor
 @Observable
 final class CronJobEditorConfigurationLoader {
@@ -29,19 +33,28 @@ final class CronJobEditorConfigurationLoader {
     private(set) var isLoadingSkills = false
     private(set) var skillsErrorMessage: String?
 
-    private let client: APIClient
+    /// The Profile's delivery targets, on a server that scopes them by Profile; nil
+    /// elsewhere, where the sheet's caller supplies them.
+    private(set) var deliveryOptions: [CronDeliveryOption]?
 
-    init(server: URL, client: APIClient? = nil) {
+    /// The Profile the models, skills and delivery targets follow where the server
+    /// scopes them; nil reads the server's own.
+    let profile: String?
+    private let client: any CronDataClient
+
+    init(server: URL, client: (any CronDataClient)? = nil, profile: String? = nil) {
         self.client = client ?? APIClient(baseURL: server)
+        self.profile = profile
     }
 
-    /// Runs all three loads concurrently. Re-entrant calls are dropped, so the
+    /// Runs all the loads concurrently. Re-entrant calls are dropped, so the
     /// sheet's `.task` restarting does not stack requests.
     func load() async {
         async let models: Void = loadModels()
         async let profiles: Void = loadProfiles()
         async let skills: Void = loadSkills()
-        _ = await (models, profiles, skills)
+        async let delivery: Void = loadDeliveryOptions()
+        _ = await (models, profiles, skills, delivery)
     }
 
     func loadModels() async {
@@ -51,7 +64,7 @@ final class CronJobEditorConfigurationLoader {
         defer { isLoadingModels = false }
 
         do {
-            modelGroups = try await client.models().catalogGroups
+            modelGroups = try await client.cronModelGroups(profile: profile)
         } catch {
             // A cancelled `.task` (the sheet dismissed mid-load) is not a
             // failure the user should see.
@@ -68,7 +81,7 @@ final class CronJobEditorConfigurationLoader {
         defer { isLoadingProfiles = false }
 
         do {
-            profiles = try await client.profiles().profiles ?? []
+            profiles = try await client.cronProfiles()
         } catch {
             guard !Self.isCancellation(error) else { return }
             profilesErrorMessage = error.localizedDescription
@@ -85,18 +98,26 @@ final class CronJobEditorConfigurationLoader {
         do {
             // Disabled skills are filtered out: the picker offers what a run
             // could actually use, and the server would ignore the rest.
-            skills = (try await client.skills().skills ?? []).filter { $0.disabled != true }
+            skills = try await client.cronSkills(profile: profile).filter { $0.disabled != true }
         } catch {
             guard !Self.isCancellation(error) else { return }
             skillsErrorMessage = error.localizedDescription
         }
     }
 
+    /// Only where the server scopes targets by Profile. A failure leaves the
+    /// deliver field as free text, as a missing list always has.
+    func loadDeliveryOptions() async {
+        guard client.cronFeatures.isProfileScoped else { return }
+        deliveryOptions = (try? await client.cronDeliveryOptions(profile: profile))?.platforms
+    }
+
     /// Mirrors `DefaultProfilePickerView.isCancellationError`: cancellation
     /// arrives either as `CancellationError` or as a `.cancelled` `URLError`,
-    /// possibly wrapped in `APIError.network`.
+    /// possibly wrapped in `APIError.network`. A Hermes host's gateway reads end
+    /// as `BotFailure.stale` once their task is cancelled (#1040).
     static func isCancellation(_ error: Error) -> Bool {
-        if error is CancellationError { return true }
+        if error is CancellationError || error as? BotFailure == .stale { return true }
 
         let underlying: Error
         if case APIError.network(let wrapped) = error {

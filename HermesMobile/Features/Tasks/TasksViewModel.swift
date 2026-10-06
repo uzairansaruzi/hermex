@@ -24,6 +24,9 @@ final class TasksViewModel {
     private(set) var isMutating = false
     private(set) var errorMessage: String?
     private(set) var actionErrorMessage: String?
+    /// What the server said about a Task it saved anyway: a Hermes host whose scheduler
+    /// could not register a new one (#1040).
+    private(set) var saveWarning: String?
     private(set) var lastError: Error?
 
     /// Selected segment. View state only: never persisted, never carried
@@ -35,9 +38,10 @@ final class TasksViewModel {
     private(set) var pendingActionJobIDs: Set<String> = []
 
     private let server: URL
-    private let client: APIClient
+    /// The server's Tasks, shared with the detail screens and editors this list opens.
+    let client: any CronDataClient
 
-    init(server: URL, client: APIClient? = nil) {
+    init(server: URL, client: (any CronDataClient)? = nil) {
         self.server = server
         self.client = client ?? APIClient(baseURL: server)
     }
@@ -48,23 +52,47 @@ final class TasksViewModel {
         lastError = nil
         defer { isLoading = false }
 
-        refreshRecentRuns()
+        if client.cronFeatures.hasRecentRunsFeed {
+            refreshRecentRuns()
+        }
 
         do {
-            async let jobsResponse = client.crons()
-            async let statusResponse = client.cronStatus()
-            // Optional endpoint: failure must not break the task list, and a
-            // nil result keeps the editor's free-text deliver fallback.
-            async let deliveryOptionsResponse = try? client.cronDeliveryOptions()
+            async let listResponse = client.cronJobs()
+            async let deliveryOptionsResponse = listDeliveryOptions()
 
-            let (jobsResult, statusResult) = try await (jobsResponse, statusResponse)
-            runningJobs = statusResult.runningJobs ?? [:]
-            jobs = jobsResult.jobs ?? []
-            deliveryOptions = await deliveryOptionsResponse?.platforms
+            let list = try await listResponse
+            runningJobs = list.runningJobs
+            jobs = list.jobs
+            if let recent = list.recentRuns {
+                recentRuns = CronRecentCompletion.newestFirst(recent)
+            }
+            deliveryOptions = await deliveryOptionsResponse
         } catch {
             lastError = error
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Optional endpoint: failure must not break the task list, and a nil result keeps the
+    /// editor's free-text deliver fallback. A server that scopes targets by Profile has the
+    /// editor read them for the Task's own (#1040).
+    private func listDeliveryOptions() async -> [CronDeliveryOption]? {
+        guard !client.cronFeatures.isProfileScoped else { return nil }
+        return (try? await client.cronDeliveryOptions(profile: nil))?.platforms
+    }
+
+    /// The longest any enabled Task's Profile has gone without a scheduler tick, when that is
+    /// past three missed 60 s ticks: a Hermes host whose scheduler has stopped (#1040). Nil
+    /// while every scheduler is ticking, or none reports.
+    var schedulerStallAge: Double? {
+        jobs.filter { $0.enabled != false }
+            .compactMap(\.schedulerHeartbeatAge)
+            .filter { $0 > 180 }
+            .max()
+    }
+
+    func clearSaveWarning() {
+        saveWarning = nil
     }
 
     /// Fetches the recent-runs feed on its own task so a slow or missing
@@ -157,6 +185,7 @@ final class TasksViewModel {
                 return false
             }
 
+            saveWarning = response.warning
             if let job = response.job {
                 apply(.upsert(job))
             } else {

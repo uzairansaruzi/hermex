@@ -432,7 +432,8 @@ private extension HermesCall {
     /// because its outcome is unknown.
     var isCancellationSafe: Bool {
         switch self {
-        case .fileAttach, .completePath, .completeSlash, .subagentList, .subagentTail, .sessionActiveList: return true
+        case .fileAttach, .completePath, .completeSlash, .subagentList, .subagentTail, .sessionActiveList,
+             .profileModelOptions: return true
         default: return false
         }
     }
@@ -442,7 +443,7 @@ private extension HermesCall {
     /// screen's connection; the socket stays for the others.
     var timesOutLocally: Bool {
         switch self {
-        case .subagentList, .subagentTail, .sessionActiveList, .completeSlash, .slashExec: return true
+        case .subagentList, .subagentTail, .sessionActiveList, .completeSlash, .slashExec, .profileModelOptions: return true
         default: return false
         }
     }
@@ -460,7 +461,8 @@ private extension HermesCall {
     var rejection: Rejection {
         if method.hasPrefix("groups.") { return .room }
         switch self {
-        case .configSet, .sessionCwdSet, .sessionControl, .modelOptions, .configuredModelOptions, .sessionControlRead: return .setting
+        case .configSet, .sessionCwdSet, .sessionControl, .modelOptions, .configuredModelOptions, .profileModelOptions,
+             .sessionControlRead: return .setting
         case .commandDispatch(let name, _, _) where name == "goal": return .setting
         case .slashExec: return .setting
         default: return .plain

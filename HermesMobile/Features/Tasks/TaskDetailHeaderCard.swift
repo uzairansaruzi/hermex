@@ -9,6 +9,8 @@ struct TaskDetailHeaderCard: View {
     let runningElapsed: Double?
     let isBusy: Bool
     let canSeeFullOutput: Bool
+    /// False where the server can't run a Task on demand (a Hermes host until #1041).
+    var showsRunNow = true
     let runNow: () -> Void
     let togglePauseResume: () -> Void
     let seeFullOutput: () -> Void
@@ -137,7 +139,9 @@ struct TaskDetailHeaderCard: View {
         )
 
         Group {
-            if dynamicTypeSize.isAccessibilitySize {
+            if !showsRunNow {
+                pauseButton
+            } else if dynamicTypeSize.isAccessibilitySize {
                 // Two labels will not sit side by side at these sizes, so the
                 // divider turns with them.
                 VStack(spacing: 0) {

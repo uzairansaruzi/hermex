@@ -76,6 +76,8 @@ enum HermesCall: Equatable, Sendable {
     case modelOptions(sessionID: String, profile: String)
     /// The configured-provider inventory the Profile editors pick from.
     case configuredModelOptions
+    /// One Profile's models, outside any session: the Task editor's picker (#1040).
+    case profileModelOptions(profile: String)
     case configSet(sessionID: String, profile: String, setting: SessionSetting)
     case sessionCwdSet(sessionID: String, profile: String, cwd: String)
     case sessionControlRead(sessionID: String, profile: String)
@@ -226,7 +228,7 @@ enum HermesCall: Equatable, Sendable {
         case .clarifyLock: return "clarify.lock"
         case .connectionRespond: return "connection.respond"
         case .messageReact: return "message.react"
-        case .modelOptions, .configuredModelOptions: return "model.options"
+        case .modelOptions, .configuredModelOptions, .profileModelOptions: return "model.options"
         case .configSet: return "config.set"
         case .sessionCwdSet: return "session.cwd.set"
         case .sessionControlRead: return "session.control.read"
@@ -318,6 +320,7 @@ enum HermesCall: Equatable, Sendable {
         case .modelOptions(let sessionID, let profile), .sessionControlRead(let sessionID, let profile):
             return ["session_id": .string(sessionID), "profile": .string(profile)]
         case .configuredModelOptions: return ["include_unconfigured": .bool(false)]
+        case .profileModelOptions(let profile): return ["profile": .string(profile)]
         case .configSet(let sessionID, let profile, let setting):
             var params: [String: BotJSON] = ["session_id": .string(sessionID), "profile": .string(profile)]
             if case .personality = setting {} else { params["scope"] = .string("session") }
@@ -435,6 +438,7 @@ enum HermesCall: Equatable, Sendable {
             // The host refuses empty text (4012).
             valid = !sessionID.isEmpty && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .groupsList(let offset): valid = offset >= 0
+        case .profileModelOptions(let profile): valid = !profile.isEmpty
         case .groupsState(let roomID), .groupsDisband(let roomID): valid = BotRoomRPC.validID(roomID)
         case .groupsLog(let roomID, let sinceSeq, let limit):
             valid = BotRoomRPC.validID(roomID) && sinceSeq >= 0 && (1...Self.roomPageSize).contains(limit)

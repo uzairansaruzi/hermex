@@ -8,6 +8,13 @@ struct CronMutationResponse: Decodable, Equatable {
     let ok: Bool?
     let job: CronJob?
     let error: String?
+    /// Set when the server saved the job but warns about it: a Hermes host whose scheduler
+    /// could not register a new Task (424, #1040). Never decoded from webui.
+    var warning: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ok, job, error
+    }
 }
 
 struct CronStatusResponse: Decodable, Equatable {
@@ -62,6 +69,14 @@ struct CronJob: Decodable, Equatable, Identifiable {
     let provider: String?
     let profile: String?
     let toastNotifications: Bool?
+    /// A Hermes host's claim on a run in progress (`fire_claim`); nil when none is held.
+    let fireClaim: CronFireClaim?
+    /// `latest_execution.status` from a Hermes host's executions ledger: `claimed`,
+    /// `running`, `completed`, `failed` or `unknown`.
+    let latestExecutionStatus: String?
+    /// `scheduler_heartbeat_age_s`: seconds since a Hermes host's scheduler last ticked for
+    /// this job's Profile; nil when it never has or the host can't tell.
+    let schedulerHeartbeatAge: Double?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -84,6 +99,9 @@ struct CronJob: Decodable, Equatable, Identifiable {
         case provider
         case profile
         case toastNotifications
+        case fireClaim
+        case latestExecution
+        case schedulerHeartbeatAge = "schedulerHeartbeatAgeS"
     }
 
     init(from decoder: Decoder) throws {
@@ -108,6 +126,16 @@ struct CronJob: Decodable, Equatable, Identifiable {
         provider = container.decodeLossyStringIfPresent(forKey: .provider)
         profile = container.decodeLossyStringIfPresent(forKey: .profile)
         toastNotifications = container.decodeLossyBoolIfPresent(forKey: .toastNotifications)
+        fireClaim = (try? container.decodeIfPresent(CronFireClaim.self, forKey: .fireClaim)) ?? nil
+        latestExecutionStatus = ((try? container.decodeIfPresent(CronExecution.self, forKey: .latestExecution)) ?? nil)?.status
+        schedulerHeartbeatAge = (try? container.decodeFlexibleDoubleIfPresent(forKey: .schedulerHeartbeatAge)) ?? nil
+    }
+
+    /// The job's Profile as a row names it, "Default" for the host's default Profile; nil
+    /// when the job names none.
+    var profileLabel: String? {
+        guard let profile = profile?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty else { return nil }
+        return profile == "default" ? String(localized: "Default") : profile
     }
 
     var displayName: String {
@@ -207,6 +235,30 @@ struct CronSchedule: Decodable, Equatable {
 struct CronRepeat: Decodable, Equatable {
     let times: Int?
     let completed: Int?
+}
+
+/// A Hermes host's `fire_claim`, `{at, by}`: a run of the job is in progress. `by` names
+/// the claiming machine and is never decoded.
+struct CronFireClaim: Decodable, Equatable {
+    let at: Date?
+
+    enum CodingKeys: String, CodingKey { case at }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        at = ((try? container.decodeIfPresent(CronDateValue.self, forKey: .at)) ?? nil)?.date
+    }
+}
+
+/// The part of a Hermes host's `latest_execution` the Tasks list reads.
+private struct CronExecution: Decodable {
+    let status: String?
+
+    enum CodingKeys: String, CodingKey { case status }
+
+    init(from decoder: Decoder) throws {
+        status = try decoder.container(keyedBy: CodingKeys.self).decodeLossyStringIfPresent(forKey: .status)
+    }
 }
 
 struct CronOutputResponse: Decodable, Equatable {

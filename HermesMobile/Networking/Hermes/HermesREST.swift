@@ -18,6 +18,9 @@ import Foundation
 /// falling back to `default`. `GET /api/sessions/{id}/messages` (#1013) too, against
 /// `scripts/local-hermes`: `{session_id, profile, messages: [{role, content, tool_calls}]}`, the
 /// latest 500 rows oldest first, or 404 `{detail}` for a session the Profile does not have.
+/// The cron routes (#1040) are read at the same pin and checked against `scripts/local-hermes`:
+/// the list is a bare array across every Profile, a mutation answers the job (delete `{ok}`),
+/// `?profile=` is a hint the host checks, and a refusal is `{detail}`.
 enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
@@ -49,6 +52,21 @@ enum HermesREST: Equatable, Sendable {
     /// A stored session's latest rows under `profile`: a background task's `bg_<id>` side
     /// session, whose last reply is its durable result (#1013).
     case sessionMessages(key: String, profile: String)
+    /// Every Profile's scheduled Tasks, paused and completed included: a bare array.
+    case cronJobs
+    /// Creates a Task in `profile`, or in the host's default Profile when nil.
+    case cronCreate(profile: String?, fields: [String: BotJSON])
+    /// `{updates}` never names the job or its Profile: the host can't move a job, so
+    /// `profile` only routes the request.
+    case cronUpdate(id: String, profile: String?, updates: [String: BotJSON])
+    case cronPause(id: String, profile: String?)
+    case cronResume(id: String, profile: String?)
+    /// Also deletes the job's output folder on the host.
+    case cronDelete(id: String, profile: String?)
+    /// `{targets: [{id, name, …}]}`, `local` first, for one Profile's gateway platforms.
+    case cronDeliveryTargets(profile: String?)
+    /// One Profile's skills: a bare array of `{name, description, category, enabled, …}`.
+    case skills(profile: String?)
 
     func request(base: URL) throws -> URLRequest {
         switch self {
@@ -96,15 +114,21 @@ enum HermesREST: Equatable, Sendable {
         case .restartDashboard: return try Self.send("POST", base.appendingPathComponent("api/plugins/hermex-push/restart"), [:])
         case .pluginsHub: return Self.get(base.appendingPathComponent("api/dashboard/plugins/hub"))
         case .sessionMessages(let key, let profile):
-            // One path segment of the host's own id characters, so it never names another route.
-            guard !key.isEmpty, !profile.isEmpty,
-                  key.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.contains($0) || "_-".unicodeScalars.contains($0) }),
-                  var parts = URLComponents(url: base.appendingPathComponent("api/sessions").appendingPathComponent(key)
-                                                .appendingPathComponent("messages"), resolvingAgainstBaseURL: false)
-            else { throw BotFailure.invalidAddress }
-            parts.queryItems = [URLQueryItem(name: "profile", value: profile)]
-            guard let url = parts.url else { throw BotFailure.invalidAddress }
-            return Self.get(url)
+            guard Self.isSegment(key), !profile.isEmpty else { throw BotFailure.invalidAddress }
+            return Self.get(try Self.url(base, "api/sessions/\(key)/messages", profile: profile))
+        case .cronJobs: return Self.get(base.appendingPathComponent("api/cron/jobs"))
+        case .cronCreate(let profile, let fields):
+            return try Self.send("POST", try Self.url(base, "api/cron/jobs", profile: profile), fields)
+        case .cronUpdate(let id, let profile, let updates):
+            return try Self.send("PUT", try Self.cronJob(base, id, profile: profile), ["updates": .object(updates)])
+        case .cronPause(let id, let profile):
+            return Self.bare("POST", try Self.cronJob(base, id, "pause", profile: profile))
+        case .cronResume(let id, let profile):
+            return Self.bare("POST", try Self.cronJob(base, id, "resume", profile: profile))
+        case .cronDelete(let id, let profile): return Self.bare("DELETE", try Self.cronJob(base, id, profile: profile))
+        case .cronDeliveryTargets(let profile):
+            return Self.get(try Self.url(base, "api/cron/delivery-targets", profile: profile))
+        case .skills(let profile): return Self.get(try Self.url(base, "api/skills", profile: profile))
         }
     }
 
@@ -121,10 +145,33 @@ enum HermesREST: Equatable, Sendable {
         return request
     }
 
-    private static func get(_ url: URL) -> URLRequest {
+    private static func get(_ url: URL) -> URLRequest { bare("GET", url) }
+
+    /// A request without a body.
+    private static func bare(_ method: String, _ url: URL) -> URLRequest {
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        request.httpMethod = method
         return request
+    }
+
+    /// `path` under `base`, with `?profile=` when a Profile is named.
+    private static func url(_ base: URL, _ path: String, profile: String?) throws -> URL {
+        guard var parts = URLComponents(url: base.appendingPathComponent(path), resolvingAgainstBaseURL: false)
+        else { throw BotFailure.invalidAddress }
+        if let profile, !profile.isEmpty { parts.queryItems = [URLQueryItem(name: "profile", value: profile)] }
+        guard let url = parts.url else { throw BotFailure.invalidAddress }
+        return url
+    }
+
+    /// One job's route, or one of its actions.
+    private static func cronJob(_ base: URL, _ id: String, _ action: String? = nil, profile: String?) throws -> URL {
+        guard isSegment(id) else { throw BotFailure.invalidAddress }
+        return try url(base, "api/cron/jobs/\(id)" + (action.map { "/" + $0 } ?? ""), profile: profile)
+    }
+
+    /// One path segment of the host's own id characters, so an id never names another route.
+    private static func isSegment(_ value: String) -> Bool {
+        !value.isEmpty && value.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) || "_-".unicodeScalars.contains($0) }
     }
 
     private static func send(_ method: String, _ url: URL, _ body: [String: BotJSON]) throws -> URLRequest {

@@ -3,11 +3,14 @@ import SwiftUI
 /// One agenda row: a status rail, the job's name, and a single meta line whose
 /// content is chosen by the group the row sits in. Model, provider, profile,
 /// skills, deliver and the prompt live on Task Detail — a list that repeats
-/// them reads as a wall.
+/// them reads as a wall. The one exception is `profile`, set where a list mixes
+/// every Profile's Tasks (a Hermes host, #1040), so two Tasks of one name can be
+/// told apart.
 struct CronJobRowView: View {
     let job: CronJob
     let group: TaskAgendaGroup
     let runningElapsed: Double?
+    var profile: String?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.calendar) private var calendar
@@ -20,10 +23,16 @@ struct CronJobRowView: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(job.displayName)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isDimmed ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                    .lineLimit(nameLineLimit)
+                if let profile, !dynamicTypeSize.isAccessibilitySize {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        name
+                        Spacer(minLength: 0)
+                        profileLabel(profile)
+                    }
+                } else {
+                    name
+                    if let profile { profileLabel(profile) }
+                }
 
                 Text(metaText)
                     .font(.caption)
@@ -33,7 +42,28 @@ struct CronJobRowView: View {
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: [job.displayName, statusWord, metaText].joined(separator: ", ")))
+        .accessibilityLabel(Text(verbatim: accessibilityParts.joined(separator: ", ")))
+    }
+
+    private var name: some View {
+        Text(job.displayName)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(isDimmed ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+            .lineLimit(nameLineLimit)
+    }
+
+    /// Beside the name, or under it at accessibility sizes where both need the width.
+    private func profileLabel(_ profile: String) -> some View {
+        Text(verbatim: profile)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+    }
+
+    private var accessibilityParts: [String] {
+        let parts = [job.displayName, statusWord, metaText]
+        guard let profile else { return parts }
+        return parts + [String(localized: "Profile"), profile]
     }
 
     // MARK: - Meta line

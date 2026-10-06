@@ -198,6 +198,7 @@ final class CronManagementModelTests: XCTestCase {
 final class CronManagementViewModelTests: XCTestCase {
     override func tearDown() {
         MockURLProtocol.requestHandler = nil
+        HermesHostFixture.reset()
         super.tearDown()
     }
 

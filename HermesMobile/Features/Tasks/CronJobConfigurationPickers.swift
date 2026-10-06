@@ -84,16 +84,32 @@ struct CronJobModelRow: View {
 /// The Task editor's Profile row, plus the inline load failure and retry that
 /// replace it when `/api/profiles` will not load. Free text is not an option
 /// here: upstream 400s an unknown profile name, so typing one has exactly one
-/// failure mode the user cannot predict.
+/// failure mode the user cannot predict. A locked row only names the Profile: a
+/// Hermes host can't move an existing Task to another (#1040).
 struct CronJobProfileRow: View {
     let profileName: String
     let profiles: [ProfileSummary]
     let errorMessage: String?
     let isLoading: Bool
+    var isLocked = false
     let action: () -> Void
     let onRetry: () -> Void
 
     var body: some View {
+        if isLocked {
+            LabeledContent {
+                Text(verbatim: title)
+                    .lineLimit(2)
+            } label: {
+                Text("Profile")
+            }
+        } else {
+            picker
+        }
+    }
+
+    @ViewBuilder
+    private var picker: some View {
         Button(action: action) {
             LabeledContent {
                 HStack(spacing: 6) {

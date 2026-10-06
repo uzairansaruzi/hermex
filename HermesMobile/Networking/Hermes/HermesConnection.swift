@@ -176,6 +176,18 @@ import OSLog
         }
     }
 
+    /// Sends one signed-in request built from `rest` and returns its body and status, whatever
+    /// the status, for routes whose refusals carry the host's reason (`{detail}`). A 401 still
+    /// signs in again and resends once, as `data` does.
+    func reply(_ rest: HermesREST) async throws -> (body: Data, status: Int) {
+        let redirectGuard = self.redirectGuard
+        return try await authorized(try rest.request(base: connection.address)) { request, session in
+            let (data, response) = try await Self.exchange(request, on: session, redirectGuard: redirectGuard)
+            if response.statusCode == 401 { throw BotFailure.rejected(401) }
+            return (data, response.statusCode)
+        }
+    }
+
     /// Runs `perform` signed in, with `request` given this connection's headers. `perform`
     /// sends it on the session for `deadline` and throws `BotFailure.rejected(401)` for an
     /// unauthenticated reply, which alone signs in again and resends it, once.

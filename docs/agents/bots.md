@@ -1059,6 +1059,24 @@ is adaptive: `Color.botBody` paints it white in dark appearance and black in
 light, with eyes inverted to match, so the face and the swatch never vanish
 into the background.
 
+## Tasks on a Hermes host
+
+The Tasks screens run on a Hermes host through `HermesCronClient` (#1040), the
+`CronDataClient` beside webui's `APIClient`. It reads `GET /api/cron/jobs`, a bare array
+of every Profile's jobs, paused and completed included, and sends `POST /api/cron/jobs`,
+`PUT …/{id}` with `{updates}`, `POST …/{id}/pause` and `…/resume`, and `DELETE …/{id}`,
+each with the job's own `?profile=` (a hint the host checks). An update never names the
+job's id or Profile: the host can't move a job, so the editor locks the Profile. A 424
+on create is saved with the host's warning. Running state is a `fire_claim` or a
+`latest_execution` still `claimed` or `running`; recent runs are each job's `last_run_at`
+and `last_status`. The editor reads `GET /api/cron/delivery-targets?profile=` and
+`GET /api/skills?profile=` for the Task's Profile, and `model.options {profile}` and
+`profiles.list` over the gateway. The list warns once when any enabled Task's
+`scheduler_heartbeat_age_s` passes 180 s, three missed 60 s ticks. Jobs carry
+`hermes_home`, a host path, which is never decoded. Toast notifications are webui-only,
+and Run Now and run history wait for #1041 and #1042. The temporary entry is the inbox's
++ menu (DEBUG and Hermex Branch), until #709.
+
 ## Opening a bot from outside the app
 
 One URL route lands on a bot conversation: `hermes-agent://bot?server=…&

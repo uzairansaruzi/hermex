@@ -74,6 +74,7 @@ final class HermesRequestTests: XCTestCase {
             (.modelOptions(sessionID: "runtime", profile: "triage"), "model.options",
              ["session_id": .string("runtime"), "profile": .string("triage")]),
             (.configuredModelOptions, "model.options", ["include_unconfigured": .bool(false)]),
+            (.profileModelOptions(profile: "research"), "model.options", ["profile": .string("research")]),
             (.configSet(sessionID: "runtime", profile: "triage", setting: .model(value: "gpt-6 --provider openai --session", confirmExpensive: false)),
              "config.set", ["session_id": .string("runtime"), "profile": .string("triage"), "scope": .string("session"),
                             "key": .string("model"), "value": .string("gpt-6 --provider openai --session"),
@@ -186,7 +187,23 @@ final class HermesRequestTests: XCTestCase {
             (.restartDashboard, "POST", "https://hermes.example:9120/api/plugins/hermex-push/restart", .object([:]), json),
             (.pluginsHub, "GET", "https://hermes.example:9120/api/dashboard/plugins/hub", nil, [:]),
             (.sessionMessages(key: "bg_0a5110", profile: "triage"), "GET",
-             "https://hermes.example:9120/api/sessions/bg_0a5110/messages?profile=triage", nil, [:])
+             "https://hermes.example:9120/api/sessions/bg_0a5110/messages?profile=triage", nil, [:]),
+            (.cronJobs, "GET", "https://hermes.example:9120/api/cron/jobs", nil, [:]),
+            (.cronCreate(profile: "research", fields: ["schedule": .string("0 9 * * *")]), "POST",
+             "https://hermes.example:9120/api/cron/jobs?profile=research", .object(["schedule": .string("0 9 * * *")]), json),
+            (.cronCreate(profile: nil, fields: [:]), "POST", "https://hermes.example:9120/api/cron/jobs", .object([:]), json),
+            (.cronUpdate(id: "d804e8d67342", profile: "research", updates: ["name": .string("Digest")]), "PUT",
+             "https://hermes.example:9120/api/cron/jobs/d804e8d67342?profile=research",
+             .object(["updates": .object(["name": .string("Digest")])]), json),
+            (.cronPause(id: "d804e8d67342", profile: "research"), "POST",
+             "https://hermes.example:9120/api/cron/jobs/d804e8d67342/pause?profile=research", nil, [:]),
+            (.cronResume(id: "d804e8d67342", profile: nil), "POST",
+             "https://hermes.example:9120/api/cron/jobs/d804e8d67342/resume", nil, [:]),
+            (.cronDelete(id: "d804e8d67342", profile: "research"), "DELETE",
+             "https://hermes.example:9120/api/cron/jobs/d804e8d67342?profile=research", nil, [:]),
+            (.cronDeliveryTargets(profile: "research"), "GET",
+             "https://hermes.example:9120/api/cron/delivery-targets?profile=research", nil, [:]),
+            (.skills(profile: "research"), "GET", "https://hermes.example:9120/api/skills?profile=research", nil, [:])
         ]
         for (rest, method, url, body, headers) in cases {
             let request = try rest.request(base: base)
@@ -201,6 +218,9 @@ final class HermesRequestTests: XCTestCase {
         XCTAssertThrowsError(try HermesREST.downloadArtifact(path: "a.pdf", profile: "triage", sessionID: "").request(base: base))
         XCTAssertThrowsError(try HermesREST.sessionMessages(key: "../profiles", profile: "triage").request(base: base))
         XCTAssertThrowsError(try HermesREST.sessionMessages(key: "bg_1", profile: "").request(base: base))
+        XCTAssertThrowsError(try HermesREST.cronPause(id: "../profiles", profile: "research").request(base: base))
+        XCTAssertThrowsError(try HermesREST.cronDelete(id: "", profile: "research").request(base: base))
+        XCTAssertThrowsError(try HermesCall.profileModelOptions(profile: "").params())
         let upgrade = try HermesREST.gatewayUpgrade(base: base, ticket: "t1")
         XCTAssertEqual(upgrade.url?.absoluteString, "wss://hermes.example:9120/api/ws")
         XCTAssertEqual(upgrade.allHTTPHeaderFields ?? [:], ["Sec-WebSocket-Protocol": "hermes-gateway-v1, hermes-gateway-ticket.t1"])

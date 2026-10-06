@@ -1,8 +1,12 @@
 import SwiftUI
 
+/// A server's scheduled Tasks. A webui server's comes from the session list's sidebar; a
+/// Hermes host's from its inbox's + menu (#1040), where `client` is its `HermesCronClient`
+/// and a new Task starts in `newTaskProfile`.
 struct TasksView: View {
     let server: URL
     let onAPIError: (Error) -> Void
+    private let newTaskProfile: String?
 
     @State private var viewModel: TasksViewModel
     @State private var isPresentingCreateTask = false
@@ -14,11 +18,19 @@ struct TasksView: View {
     /// Rows "Ran Recently" shows before it needs a "Show all" row.
     private static let compactRecentRunCount = 3
 
-    init(server: URL, onAPIError: @escaping (Error) -> Void) {
+    init(
+        server: URL,
+        onAPIError: @escaping (Error) -> Void,
+        client: (any CronDataClient)? = nil,
+        newTaskProfile: String? = nil
+    ) {
         self.server = server
         self.onAPIError = onAPIError
-        _viewModel = State(initialValue: TasksViewModel(server: server))
+        self.newTaskProfile = newTaskProfile
+        _viewModel = State(initialValue: TasksViewModel(server: server, client: client))
     }
+
+    private var features: CronFeatures { viewModel.client.cronFeatures }
 
     var body: some View {
         content
@@ -53,11 +65,12 @@ struct TasksView: View {
                 CronJobEditorSheet(
                     title: String(localized: "New Task"),
                     server: server,
-                    draft: CronJobEditorDraft(),
+                    draft: CronJobEditorDraft(profile: newTaskProfile ?? ""),
                     saveTitle: String(localized: "Create"),
                     isSaving: viewModel.isMutating,
                     errorMessage: viewModel.actionErrorMessage,
-                    deliveryOptions: viewModel.deliveryOptions
+                    deliveryOptions: viewModel.deliveryOptions,
+                    client: viewModel.client
                 ) { draft in
                     let didCreate = await viewModel.create(from: draft)
                     if let lastError = viewModel.lastError {
@@ -78,6 +91,11 @@ struct TasksView: View {
                 Button("OK", role: .cancel) { viewModel.clearActionError() }
             } message: {
                 Text(viewModel.actionErrorMessage ?? "")
+            }
+            .alert("Saved", isPresented: saveWarningBinding) {
+                Button("OK", role: .cancel) { viewModel.clearSaveWarning() }
+            } message: {
+                Text(verbatim: viewModel.saveWarning ?? "")
             }
             .task {
                 await loadTasks()
@@ -116,12 +134,13 @@ struct TasksView: View {
     @ViewBuilder
     private var agenda: some View {
         Group {
-            if sections.isEmpty && viewModel.recentRuns.isEmpty {
+            if sections.isEmpty && viewModel.recentRuns.isEmpty && viewModel.schedulerStallAge == nil {
                 noMatchingTasks
             } else {
                 // The list stays mounted while the feed has rows, so switching
                 // to a filter with no tasks does not take "Ran Recently" away.
                 List {
+                    schedulerNotice
                     recentRunsSection
 
                     if sections.isEmpty {
@@ -169,6 +188,25 @@ struct TasksView: View {
         .background(.bar)
     }
 
+    /// One line when a Hermes host's scheduler has stopped ticking (#1040), above
+    /// everything else and outside the filter, since no Task will fire until it is back.
+    @ViewBuilder
+    private var schedulerNotice: some View {
+        if let age = viewModel.schedulerStallAge {
+            let stalled = Duration.seconds(age).formatted(.units(allowed: [.days, .hours, .minutes], width: .wide,
+                                                                 maximumUnitCount: 2))
+            Section {
+                Label {
+                    Text("Scheduled Tasks aren't running. The host's scheduler hasn't checked in for \(stalled).")
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                }
+                .font(.footnote)
+            }
+        }
+    }
+
     /// Cross-task recent completions, above the agenda and outside the filter.
     /// Absent until the feed answers and whenever it is empty or failed.
     @ViewBuilder
@@ -210,6 +248,7 @@ struct TasksView: View {
             job: job,
             runningElapsed: viewModel.runningElapsed(for: job),
             server: server,
+            client: viewModel.client,
             onAPIError: onAPIError,
             onMutation: { mutation in
                 viewModel.apply(mutation)
@@ -224,7 +263,8 @@ struct TasksView: View {
             CronJobRowView(
                 job: job,
                 group: group,
-                runningElapsed: viewModel.runningElapsed(for: job)
+                runningElapsed: viewModel.runningElapsed(for: job),
+                profile: features.isProfileScoped ? job.profileLabel : nil
             )
         }
         .swipeActions(edge: .trailing) {
@@ -248,13 +288,15 @@ struct TasksView: View {
 
     @ViewBuilder
     private func runNowButton(for job: CronJob) -> some View {
-        Button {
-            Task { await performAction { await viewModel.runNow(job) } }
-        } label: {
-            Label("Run Now", systemImage: "play.fill")
+        if features.hasRunNow {
+            Button {
+                Task { await performAction { await viewModel.runNow(job) } }
+            } label: {
+                Label("Run Now", systemImage: "play.fill")
+            }
+            .tint(.blue)
+            .disabled(job.jobId == nil || viewModel.isPendingAction(job))
         }
-        .tint(.blue)
-        .disabled(job.jobId == nil || viewModel.isPendingAction(job))
     }
 
     @ViewBuilder
@@ -289,6 +331,14 @@ struct TasksView: View {
         Binding(
             get: { viewModel.actionErrorMessage != nil && !isPresentingCreateTask },
             set: { if !$0 { viewModel.clearActionError() } }
+        )
+    }
+
+    /// Shown once the create sheet has closed on the Task it saved.
+    private var saveWarningBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.saveWarning != nil && !isPresentingCreateTask },
+            set: { if !$0 { viewModel.clearSaveWarning() } }
         )
     }
 

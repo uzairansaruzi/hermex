@@ -20,14 +20,19 @@ struct TaskDetailView: View {
         job: CronJob,
         runningElapsed: Double?,
         server: URL,
+        client: (any CronDataClient)? = nil,
         onAPIError: @escaping (Error) -> Void,
         onMutation: @escaping (CronJobListMutation) -> Void = { _ in }
     ) {
         self.server = server
         self.onAPIError = onAPIError
         self.onMutation = onMutation
-        _viewModel = State(initialValue: TaskDetailViewModel(job: job, runningElapsed: runningElapsed, server: server))
+        _viewModel = State(initialValue: TaskDetailViewModel(
+            job: job, runningElapsed: runningElapsed, server: server, client: client
+        ))
     }
+
+    private var features: CronFeatures { viewModel.client.cronFeatures }
 
     var body: some View {
         ScrollView {
@@ -37,6 +42,7 @@ struct TaskDetailView: View {
                     runningElapsed: viewModel.runningElapsed,
                     isBusy: isActionDisabled,
                     canSeeFullOutput: viewModel.latestRun != nil,
+                    showsRunNow: features.hasRunNow,
                     runNow: { Task { await runNow() } },
                     togglePauseResume: { Task { await togglePauseResume() } },
                     seeFullOutput: {
@@ -79,7 +85,9 @@ struct TaskDetailView: View {
                 saveTitle: String(localized: "Save"),
                 isSaving: viewModel.isMutating,
                 errorMessage: viewModel.actionErrorMessage,
-                deliveryOptions: viewModel.deliveryOptions
+                deliveryOptions: viewModel.deliveryOptions,
+                client: viewModel.client,
+                locksProfile: features.isProfileScoped
             ) { draft in
                 let didUpdate = await viewModel.update(from: draft)
                 handleActionResult(didUpdate)
@@ -237,12 +245,14 @@ struct TaskDetailView: View {
             .disabled(viewModel.isLoading)
 
             Menu {
-                Button {
-                    Task { await runNow() }
-                } label: {
-                    Label("Run Now", systemImage: "play.fill")
+                if features.hasRunNow {
+                    Button {
+                        Task { await runNow() }
+                    } label: {
+                        Label("Run Now", systemImage: "play.fill")
+                    }
+                    .disabled(isActionDisabled)
                 }
-                .disabled(isActionDisabled)
 
                 Button {
                     Task { await togglePauseResume() }

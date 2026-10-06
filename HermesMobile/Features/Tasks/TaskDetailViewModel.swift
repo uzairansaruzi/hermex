@@ -29,7 +29,8 @@ final class TaskDetailViewModel {
     private(set) var historyErrorMessage: String?
     /// `true` once the server has answered 404 for the history endpoint: an
     /// older `hermes-webui` that predates it. The section then disappears
-    /// rather than showing a permanent error.
+    /// rather than showing a permanent error. Always `true` on a server without
+    /// run history (a Hermes host until #1042).
     private(set) var isHistoryUnavailable = false
 
     /// The output of the run whose sheet is open, tagged with its filename so a
@@ -51,17 +52,23 @@ final class TaskDetailViewModel {
     private var historyGeneration = 0
     private var runOutputToken = 0
 
-    private let client: APIClient
+    /// The server's Tasks, shared with the edit sheet this screen opens.
+    let client: any CronDataClient
 
-    init(job: CronJob, runningElapsed: Double?, server: URL, client: APIClient? = nil) {
+    init(job: CronJob, runningElapsed: Double?, server: URL, client: (any CronDataClient)? = nil) {
         self.job = job
         self.runningElapsed = runningElapsed
         self.client = client ?? APIClient(baseURL: server)
+        isHistoryUnavailable = !self.client.cronFeatures.hasRunHistory
     }
 
     func load() async {
         guard let jobID = job.jobId else {
             errorMessage = String(localized: "Missing job identifier.")
+            return
+        }
+        guard client.cronFeatures.hasRunHistory else {
+            await reloadJob(jobID)
             return
         }
 
@@ -73,7 +80,8 @@ final class TaskDetailViewModel {
         // Optional endpoints: failure must not break the detail view. A nil
         // delivery result keeps the editor's free-text deliver fallback, and
         // history is its own failure domain that reports inline.
-        async let deliveryOptionsResponse = try? client.cronDeliveryOptions()
+        let profile = job.profile
+        async let deliveryOptionsResponse = try? client.cronDeliveryOptions(profile: profile)
         async let historyResult = Self.fetchHistory(client: client, jobID: jobID, offset: 0)
 
         let generation = beginHistoryReload()
@@ -88,6 +96,25 @@ final class TaskDetailViewModel {
 
         deliveryOptions = await deliveryOptionsResponse?.platforms
         applyFirstHistoryPage(await historyResult, generation: generation)
+    }
+
+    /// Reads the job again from the list, the only read that carries a Hermes host's running
+    /// state (#1040). A job the list no longer has keeps what is on screen.
+    private func reloadJob(_ jobID: String) async {
+        isLoading = true
+        errorMessage = nil
+        lastError = nil
+        defer { isLoading = false }
+
+        do {
+            let list = try await client.cronJobs()
+            guard let fresh = list.jobs.first(where: { $0.jobId == jobID }) else { return }
+            job = fresh
+            runningElapsed = list.runningJobs[jobID]
+        } catch {
+            lastError = error
+            errorMessage = error.localizedDescription
+        }
     }
 
     /// Loads the first page of run history, replacing what is on screen.
@@ -260,7 +287,7 @@ final class TaskDetailViewModel {
     /// Static so `load()` can start it with `async let` without capturing the
     /// view model in a child task.
     private static func fetchHistory(
-        client: APIClient,
+        client: any CronDataClient,
         jobID: String,
         offset: Int
     ) async -> Result<CronRunHistoryResponse, Error> {
@@ -271,9 +298,10 @@ final class TaskDetailViewModel {
         }
     }
 
-    /// A 404 means this server has no history endpoint, not that the request
-    /// was wrong.
+    /// A 404, or a Hermes host without the route (#1040), means this server has no
+    /// history endpoint, not that the request was wrong.
     private static func isMissingEndpoint(_ error: Error) -> Bool {
+        if error as? BotFailure == .unsupported { return true }
         guard case let APIError.http(statusCode, _) = error else { return false }
         return statusCode == 404
     }
@@ -284,7 +312,7 @@ final class TaskDetailViewModel {
 
     func runNow() async -> Bool {
         let success = await mutateJob { jobID in
-            try await client.runCron(jobID: jobID)
+            try await client.runCron(jobID: jobID, profile: job.profile)
         }
         if success {
             runningElapsed = 0
@@ -294,7 +322,7 @@ final class TaskDetailViewModel {
 
     func pause(reason: String? = nil) async -> Bool {
         let success = await mutateJob { jobID in
-            try await client.pauseCron(jobID: jobID, reason: reason)
+            try await client.pauseCron(jobID: jobID, profile: job.profile, reason: reason)
         }
         if success {
             runningElapsed = nil
@@ -304,7 +332,7 @@ final class TaskDetailViewModel {
 
     func resume() async -> Bool {
         return await mutateJob { jobID in
-            try await client.resumeCron(jobID: jobID)
+            try await client.resumeCron(jobID: jobID, profile: job.profile)
         }
     }
 
@@ -314,6 +342,10 @@ final class TaskDetailViewModel {
             return false
         }
 
+        // A Task that lives in a Profile stays in it: the host can't move a job (#1040).
+        let profile = client.cronFeatures.isProfileScoped
+            ? job.profile
+            : draft.profile.trimmingCharacters(in: .whitespacesAndNewlines)
         return await mutateJob { jobID in
             try await client.updateCron(
                 jobID: jobID,
@@ -324,7 +356,7 @@ final class TaskDetailViewModel {
                 skills: draft.skills,
                 model: draft.model.trimmingCharacters(in: .whitespacesAndNewlines),
                 provider: draft.provider.trimmingCharacters(in: .whitespacesAndNewlines),
-                profile: draft.profile.trimmingCharacters(in: .whitespacesAndNewlines),
+                profile: profile,
                 toastNotifications: draft.toastNotifications
             )
         }
@@ -343,7 +375,7 @@ final class TaskDetailViewModel {
         defer { isMutating = false }
 
         do {
-            let response = try await client.deleteCron(jobID: jobID)
+            let response = try await client.deleteCron(jobID: jobID, profile: job.profile)
             guard response.ok != false else {
                 actionErrorMessage = response.error ?? String(localized: "Could not delete task.")
                 return false
