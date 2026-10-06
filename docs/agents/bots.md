@@ -1146,7 +1146,8 @@ section whose flag is off is hidden, and `memory_char_limit` and `user_char_limi
 2200 and 1375) are counted in Unicode scalars, Python's `len`, with Save off over them.
 
 A save re-reads the file and refuses with `MemoryConflict` ("Changed on the host", the draft
-kept, Reload drops it) when it no longer matches what the editor opened with; notes and the
+kept, Reload drops it) when it no longer matches what the editor opened with and doesn't
+already hold the draft (a retry after a save whose reply was lost is no conflict); notes and the
 user profile are then written by `MemoryCanonicalizer` in the agent's own entry format
 (entries joined by `\n§\n`, trimmed as Python trims, no BOM, CR or empty or repeated entries)
 and read back. Any other text trips the agent's drift check, after which it refuses to

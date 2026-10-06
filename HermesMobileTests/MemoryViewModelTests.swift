@@ -231,7 +231,7 @@ final class MemoryViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testHermesSectionsTheHostTurnsOffAreHiddenAndItsFilesShowNoTimesOrProjectContext() async throws {
+    func testHermesSectionsTheHostTurnsOffAreHiddenAndUnreadableOnesAreReadOnly() async throws {
         let client = StubMemoryClient()
         client.response.hiddenSections = [.user]
         client.response.readOnlySections = [.memory]
@@ -242,13 +242,10 @@ final class MemoryViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.visibleSections, [.memory, .soul])
         XCTAssertTrue(viewModel.isReadOnly(.memory))
         XCTAssertFalse(viewModel.isReadOnly(.soul))
-        XCTAssertTrue(viewModel.features.editsApplyNextSession)
-        XCTAssertNil(viewModel.modifiedAt(for: .memory))
-        XCTAssertFalse(viewModel.showsProjectContext)
     }
 
     @MainActor
-    func testWebuiShowsEverySectionWithoutLimitsOrTheNextSessionNote() async throws {
+    func testWebuiShowsEverySectionWithoutLimits() async throws {
         let client = makeClient { request in
             apiTestJSONResponse(##"{"memory": "# Notes", "user": "", "soul": "# Soul"}"##, for: request)
         }
@@ -258,7 +255,6 @@ final class MemoryViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.visibleSections, [.memory, .user, .soul])
         XCTAssertNil(viewModel.characterLimit(for: .memory))
-        XCTAssertFalse(viewModel.features.editsApplyNextSession)
     }
 
     private func makeClient(

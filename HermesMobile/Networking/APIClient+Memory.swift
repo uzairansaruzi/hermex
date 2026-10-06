@@ -7,7 +7,8 @@ protocol MemoryDataClient: Sendable {
     var memoryFeatures: MemoryFeatures { get }
     func memory() async throws -> MemoryResponse
     /// Saves `content` to `section`. `loaded` is the section's text when its editor opened: a
-    /// server that checks for changes made meanwhile throws `MemoryConflict` instead of writing.
+    /// server that checks for changes made meanwhile throws `MemoryConflict` instead of writing,
+    /// unless it already holds `content`, as after a save whose reply was lost.
     func saveMemory(section: MemorySection, content: String, loaded: String) async throws -> MemoryWriteResponse
 }
 
@@ -55,8 +56,10 @@ private struct MemoryWriteRequest: Encodable {
 /// which sections are on and their limits, and only its `memory` section is decoded.
 ///
 /// A save re-reads the file first and refuses with `MemoryConflict` when it no longer matches
-/// what the editor opened with. The agent can still write between that read and the write,
-/// which takes no lock: a small window accepted to use the host's public file routes.
+/// what the editor opened with, unless it already holds what is being saved: a retry after a
+/// save that landed but whose reply or refresh was lost overwrites nothing. The agent can
+/// still write between that read and the write, which takes no lock: a small window accepted
+/// to use the host's public file routes.
 @MainActor final class HermesMemoryClient: MemoryDataClient {
     nonisolated var memoryFeatures: MemoryFeatures { .hermes }
     let profile: String
@@ -100,14 +103,15 @@ private struct MemoryWriteRequest: Encodable {
     func saveMemory(section: MemorySection, content: String, loaded: String) async throws -> MemoryWriteResponse {
         switch section {
         case .soul:
-            guard try await soul() == loaded else { throw MemoryConflict() }
+            let current = try await soul()
+            guard current == loaded || current == content else { throw MemoryConflict() }
             _ = try accepted(try await reply(.setProfileSoul(name: profile, content: content)))
         case .memory, .user:
             let folder = try await memoriesFolder()
             let path = folder + (section == .user ? "/USER.md" : "/MEMORY.md")
             let text = MemoryCanonicalizer.canonical(content)
             let current = try await read(path)
-            guard current.isEditable, current.text == loaded else { throw MemoryConflict() }
+            guard current.isEditable, current.text == loaded || current.text == text else { throw MemoryConflict() }
             var written = try await reply(.fsWriteText(path: path, content: text))
             if written.status == 400, Self.detail(written.body) == "Parent directory does not exist" {
                 _ = try accepted(try await reply(.filesMkdir(path: folder)))

@@ -425,6 +425,22 @@ enum AgentMemoryDrift {
         XCTAssertFalse(host.calls().contains("POST /api/fs/write-text"))
     }
 
+    /// A save that landed but whose reply or refresh was lost leaves the editor open on its old
+    /// text; saving again finds the host already holding the draft, which overwrites nothing.
+    func testARetryAfterASaveThatLandedIsNotAConflict() async throws {
+        let host = MemoryHost(files: [Self.notes: "Prefers short PRs\n§\nNew entry"], soul: "Mine")
+        let client = client(host)
+
+        _ = try await client.saveMemory(section: .memory, content: "Prefers short PRs\n\n§\nNew entry\n",
+                                        loaded: "Prefers short PRs")
+        _ = try await client.saveMemory(section: .soul, content: "Mine", loaded: "Be direct.")
+
+        XCTAssertEqual(host.files[Self.notes], "Prefers short PRs\n§\nNew entry")
+        XCTAssertEqual(host.soul, "Mine")
+        XCTAssertEqual(host.calls().filter { $0.hasPrefix("POST") || $0.hasPrefix("PUT") },
+                       ["POST /api/fs/write-text", "PUT /api/profiles/research/soul"])
+    }
+
     func testAMissingMemoriesFolderIsCreatedOnceAndTheWriteRetried() async throws {
         let host = MemoryHost()
         host.folders = []
