@@ -52,6 +52,8 @@ final class TaskDetailViewModel {
     /// list that no longer exists: splicing it on would leave the pages between
     /// them loaded nowhere and unreachable.
     private var historyGeneration = 0
+    /// The job's `last_run_at` when the runs on screen were read. See `latestRun`.
+    private var lastRunWhenRunsRead: Date?
     private var runOutputToken = 0
     /// Bumped by every change the server accepts, so a list read sent before one
     /// (`reloadJob`, a Run Now's reads) can't put back the state it replaced.
@@ -197,9 +199,15 @@ final class TaskDetailViewModel {
         return max(0, runTotal - runs.count)
     }
 
-    /// The newest finished run: the one the job's last outcome describes, and
-    /// the one the header's "See full output" opens.
-    var latestRun: CronRunHistoryItem? { runs.first { !$0.isRunning } }
+    /// The run the job's last outcome describes, which the header's "See full
+    /// output" opens: the newest finished run. On a Hermes host, an outcome newer
+    /// than the runs on screen (a Run Now's, or a refresh's whose runs read
+    /// failed) belongs to a run not listed yet, so there is none until the runs
+    /// are read again (#1042).
+    var latestRun: CronRunHistoryItem? {
+        guard !client.cronFeatures.runsAreSessions || job.lastRunAt?.date == lastRunWhenRunsRead else { return nil }
+        return runs.first { !$0.isRunning }
+    }
 
     /// How a run went, as its row says it (#1042).
     enum RunOutcome: Equatable {
@@ -316,6 +324,7 @@ final class TaskDetailViewModel {
         switch result {
         case let .success(response):
             runs = response.runs
+            lastRunWhenRunsRead = job.lastRunAt?.date
             runTotal = response.total
             historyOffset = Self.historyPageSize
             isHistoryUnavailable = false

@@ -210,7 +210,8 @@ struct HermesCronRunUnavailable: LocalizedError, Equatable {
 
 /// `GET /api/cron/jobs/{id}/runs` as history rows (#1042). Each row is the run's whole session,
 /// `system_prompt` included, of which only the fields a row shows are decoded. A row without
-/// an id can't be opened, so it is left out.
+/// an id can't be opened, so it is left out; a page without its `runs` list is a failed read,
+/// not a Task that never ran.
 private struct HermesCronRuns: Decodable {
     let runs: [CronRunHistoryItem]
 
@@ -218,7 +219,7 @@ private struct HermesCronRuns: Decodable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        runs = ((try? container.decodeIfPresent([Run].self, forKey: .runs)) ?? nil)?.compactMap(\.item) ?? []
+        runs = try container.decode([Run].self, forKey: .runs).compactMap(\.item)
     }
 
     /// One row. A run lasted from `started_at` to `ended_at`, epoch seconds, and is `is_active`

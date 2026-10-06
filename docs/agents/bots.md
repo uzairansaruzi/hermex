@@ -1100,8 +1100,9 @@ reply, the last assistant message without tool calls, from `GET /api/sessions/{i
 a 404 shows the run as unavailable. The host keeps one outcome per Task, so only the newest
 finished run shows `last_status` and `last_error`, an `is_active` run shows running, and
 older runs claim nothing. The detail's latest output is that newest finished run's reply,
-read only when it failed. A finished Run Now's outcome is a new run's, so the detail reads
-its runs again. Nothing reads `/api/fs/*`.
+read only when it failed. An outcome newer than the runs on screen, as a finished Run Now's
+is, belongs to no listed run until the detail has read its runs again. A page without its
+`runs` list is a failed read. Nothing reads `/api/fs/*`.
 
 ## Opening a bot from outside the app
 
