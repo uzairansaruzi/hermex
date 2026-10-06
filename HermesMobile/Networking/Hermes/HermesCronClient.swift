@@ -3,9 +3,9 @@ import Foundation
 /// The Tasks screens' client on a Hermes host (#1040): `/api/cron/*` and the Profile's skills
 /// over the sign-in, headers and cookie jar the server's Bot screens share, and the editor's
 /// model and Profile lists over the shared gateway socket. A mutation names the job's own
-/// Profile (`?profile=`), which the host treats as a hint and checks. A refusal throws
-/// `APIError.http` with the host's body, whose `detail` is its reason. Every job also carries
-/// `hermes_home`, a host path, which is never decoded.
+/// Profile (`?profile=`), which the host treats as a hint and checks. A refusal the host
+/// explains reads as its `detail` (`accepted`). Every job also carries `hermes_home`, a host
+/// path, which is never decoded.
 @MainActor final class HermesCronClient: CronDataClient {
     nonisolated var cronFeatures: CronFeatures { .hermes }
     private let http: HermesConnection
@@ -121,7 +121,7 @@ import Foundation
 
     // MARK: - Wire
 
-    /// One request's body, or `APIError.http` for a status outside 2xx.
+    /// One request's body, or the failure `accepted` reads from its status.
     private func send(_ rest: HermesREST) async throws -> Data {
         try Self.accepted(try await reply(rest))
     }
@@ -141,11 +141,22 @@ import Foundation
         return try await client.call(call)
     }
 
+    /// A 2xx reply's body. A 4xx the host explains in `detail`, such as a schedule it can't
+    /// parse or a Task that is gone, reads as that reason. Hermes never answers 403, 502-504
+    /// or 520-530 itself, so those get the Hermes connection's copy for the proxy or tunnel
+    /// in front of it. Any other status is `APIError.http`, whose 500 is the host's unhandled error.
     private static func accepted(_ reply: (body: Data, status: Int)) throws -> Data {
-        guard (200..<300).contains(reply.status) else {
-            throw APIError.http(statusCode: reply.status, body: String(data: reply.body, encoding: .utf8))
+        switch reply.status {
+        case 200..<300: return reply.body
+        case 403, 502...504, 520...530: throw BotFailure.rejected(reply.status)
+        case 400..<500:
+            if let detail = (try? json(reply.body))?["detail"].text?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !detail.isEmpty {
+                throw HermesCronRefusal(detail: detail)
+            }
+        default: break
         }
-        return reply.body
+        throw APIError.http(statusCode: reply.status, body: String(data: reply.body, encoding: .utf8))
     }
 
     private static func job(_ body: Data) throws -> CronMutationResponse {
@@ -162,6 +173,12 @@ import Foundation
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return decoder
     }()
+}
+
+/// A Tasks request a Hermes host refused with its reason (`{detail}`).
+struct HermesCronRefusal: LocalizedError, Equatable {
+    let detail: String
+    var errorDescription: String? { String(localized: "The server rejected the request: \(detail)") }
 }
 
 extension CronJobList {

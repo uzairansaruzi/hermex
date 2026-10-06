@@ -1067,7 +1067,9 @@ of every Profile's jobs, paused and completed included, and sends `POST /api/cro
 `PUT …/{id}` with `{updates}`, `POST …/{id}/pause` and `…/resume`, and `DELETE …/{id}`,
 each with the job's own `?profile=` (a hint the host checks). An update never names the
 job's id or Profile: the host can't move a job, so the editor locks the Profile. A 424
-on create is saved with the host's warning. Running state is a `fire_claim` or a
+on create is saved with the host's warning. Another 4xx shows the host's `detail`; a 403,
+502-504 or 520-530 never comes from Hermes and gets the connection's proxy or tunnel
+copy. Running state is a `fire_claim` or a
 `latest_execution` still `claimed` or `running`; recent runs are each job's `last_run_at`
 and `last_status`. The editor reads `GET /api/cron/delivery-targets?profile=` and
 `GET /api/skills?profile=` for the Task's Profile, and `model.options {profile}` and

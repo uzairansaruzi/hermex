@@ -109,6 +109,30 @@ import XCTest
         }
     }
 
+    /// A Task that removed itself after its last run, or was deleted on Desktop, is the host's
+    /// explained 404; a proxy's 502 and Cloudflare's 530 name what is down in front of Hermes.
+    func testAFailureReadsAsTheHostOrTheHopThatAnswered() async throws {
+        let replies: [(id: String, reply: HermesHostFixture.Reply, expected: String)] = [
+            ("gone", .json(404, .object(["detail": .string("Job not found")])), "The server rejected the request: Job not found"),
+            ("a1", .json(502, .string("Bad Gateway")),
+             "Your proxy answered, but Hermes didn't. Check that the dashboard is running on the host."),
+            ("b2", .json(530, .string("")),
+             "Cloudflare can't reach your tunnel. Check that cloudflared and the dashboard are running on the host.")
+        ]
+        let client = HermesCronFixture.client { request in
+            replies.first { request.url?.path == "/api/cron/jobs/\($0.id)/pause" }?.reply
+        }
+
+        for row in replies {
+            do {
+                _ = try await client.pauseCron(jobID: row.id, profile: "research", reason: nil)
+                XCTFail("\(row.id): expected a failure")
+            } catch {
+                XCTAssertEqual(error.localizedDescription, row.expected, row.id)
+            }
+        }
+    }
+
     func testAnEditSendsOnlyUpdatesAndNeverTheJobOrItsProfile() async throws {
         let client = HermesCronFixture.client { request in
             request.httpMethod == "PUT" ? .json(200, HermesCronFixture.job("d804e8d67342", profile: "research",
@@ -326,6 +350,37 @@ extension CronManagementViewModelTests {
         XCTAssertTrue(viewModel.isHistoryUnavailable)
         XCTAssertEqual(viewModel.runningElapsed, 0)
         XCTAssertEqual(HermesHostFixture.requests.compactMap(\.url?.path).filter { $0.hasPrefix("/api/cron") }, ["/api/cron/jobs"])
+    }
+
+    /// The opening list read was sent before a Pause that finished while it was out, so its
+    /// answer is older than the Pause's and must not put the running Task back.
+    @MainActor
+    func testHermesTaskDetailKeepsAPauseThatFinishedDuringItsListRead() async throws {
+        let client = HermesCronFixture.client { request in
+            switch request.url?.path {
+            case "/api/cron/jobs": return .park
+            case "/api/cron/jobs/a1/pause":
+                return .json(200, HermesCronFixture.job("a1", profile: "research", ["enabled": .bool(false), "state": .string("paused")]))
+            default: return nil
+            }
+        }
+        let job = try XCTUnwrap(HermesCronFixture.decode([HermesCronFixture.job("a1", profile: "research")]).first)
+        let viewModel = TaskDetailViewModel(job: job, runningElapsed: nil, server: URL(string: "https://hermes.example")!,
+                                            client: client)
+        let listRead = expectation(description: "the list read is out")
+        HermesHostFixture.onPark = { listRead.fulfill() }
+
+        let load = Task { await viewModel.load() }
+        await fulfillment(of: [listRead], timeout: 5)
+        let didPause = await viewModel.pause()
+        HermesHostFixture.releaseParked(.json(200, .array([
+            HermesCronFixture.job("a1", profile: "research", ["latest_execution": .object(["status": .string("running")])])
+        ])))
+        await load.value
+
+        XCTAssertTrue(didPause)
+        XCTAssertEqual(viewModel.job.state, "paused")
+        XCTAssertNil(viewModel.runningElapsed)
     }
 }
 

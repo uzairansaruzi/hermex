@@ -51,6 +51,9 @@ final class TaskDetailViewModel {
     /// them loaded nowhere and unreachable.
     private var historyGeneration = 0
     private var runOutputToken = 0
+    /// Bumped by every change the server accepts, so a list read sent before one
+    /// (`reloadJob`) can't put back the state it replaced.
+    private var mutationCount = 0
 
     /// The server's Tasks, shared with the edit sheet this screen opens.
     let client: any CronDataClient
@@ -99,16 +102,19 @@ final class TaskDetailViewModel {
     }
 
     /// Reads the job again from the list, the only read that carries a Hermes host's running
-    /// state (#1040). A job the list no longer has keeps what is on screen.
+    /// state (#1040). A job the list no longer has, or one changed here while the read was
+    /// out, keeps what is on screen.
     private func reloadJob(_ jobID: String) async {
         isLoading = true
         errorMessage = nil
         lastError = nil
         defer { isLoading = false }
+        let mutationsBefore = mutationCount
 
         do {
             let list = try await client.cronJobs()
-            guard let fresh = list.jobs.first(where: { $0.jobId == jobID }) else { return }
+            guard mutationCount == mutationsBefore,
+                  let fresh = list.jobs.first(where: { $0.jobId == jobID }) else { return }
             job = fresh
             runningElapsed = list.runningJobs[jobID]
         } catch {
@@ -381,6 +387,7 @@ final class TaskDetailViewModel {
                 return false
             }
 
+            mutationCount += 1
             lastMutation = .delete(jobID: jobID)
             return true
         } catch {
@@ -411,6 +418,7 @@ final class TaskDetailViewModel {
                 return false
             }
 
+            mutationCount += 1
             if let updatedJob = response.job {
                 job = updatedJob
                 lastMutation = .upsert(updatedJob)
