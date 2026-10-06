@@ -351,6 +351,11 @@ struct HermesChatTranscript: Equatable {
         "hermes|\(engine.connection.id.uuidString)|\(engine.target.profile)|\(engine.storedKey ?? "")"
     }
 
+    /// A reply spoken by the host in this session's Profile's voice, for Listen (#1072).
+    func speech(for text: String) async throws -> Data {
+        try await engine.wire.speech(text: text, profile: engine.target.profile)
+    }
+
     /// A prompt's answer was lost or unreadable: reattach and rebuild, so the snapshot shows
     /// whether it ran (#508). Nothing is resent. A chat already left attaches when it reopens.
     func recoverAfterLostAnswer() {

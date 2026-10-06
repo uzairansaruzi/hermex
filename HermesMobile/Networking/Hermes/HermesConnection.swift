@@ -24,7 +24,8 @@ import OSLog
         /// 120 and 180: installing a plugin clones a repository on the host, and a restart
         /// takes the gateway down and back up. 15 seconds would read as a failure while
         /// the host was still succeeding. A sign-in provisioning starts gets them too, and so
-        /// does a Task's Run Now, which the host answers once the run has finished (#1041).
+        /// does a Task's Run Now, which the host answers once the run has finished (#1041), and
+        /// Listen's speech, whose first request can install the host's TTS engine (#1072).
         case provisioning
     }
 

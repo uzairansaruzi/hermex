@@ -40,7 +40,9 @@ import Foundation
 /// a write to a missing folder is 400 "Parent directory does not exist", and `files/mkdir`
 /// answers the folder's entry.
 /// The update routes (#1075) are read at the same pin and checked against `scripts/local-hermes`;
-/// `docs/agents/bots.md` § Updating Hermes has their shapes.
+/// `docs/agents/bots.md` § Updating Hermes has their shapes. `POST /api/audio/speak` (#1072) is
+/// read at the same pin and checked against `scripts/local-hermes`: `{text}` only, spoken by the
+/// Profile's `tts.provider`, answered `{ok, data_url, mime_type, provider}`, or `{detail}`.
 enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
@@ -115,6 +117,8 @@ enum HermesREST: Equatable, Sendable {
     case profileSoul(name: String)
     /// Replaces the Profile's SOUL.md, atomically; `{ok: true}`.
     case setProfileSoul(name: String, content: String)
+    /// Speaks `text` in `profile`'s voice: the audio as a base64 data URL (`BotClient.speech`).
+    case speak(text: String, profile: String)
     /// `{default_tenant, …}`, or 404 when the Kanban plugin is disabled or absent.
     case kanbanConfig
     /// Every Board with its counts, and `current`.
@@ -287,6 +291,9 @@ enum HermesREST: Equatable, Sendable {
         case .setProfileSoul(let name, let content):
             guard Self.isSegment(name) else { throw BotFailure.invalidAddress }
             return try Self.send("PUT", base.appendingPathComponent("api/profiles/\(name)/soul"), ["content": .string(content)])
+        case .speak(let text, let profile):
+            guard !profile.isEmpty else { throw BotFailure.invalidAddress }
+            return try Self.send("POST", try Self.url(base, "api/audio/speak", profile: profile), ["text": .string(text)])
         case .kanbanConfig: return try Self.kanban(base, ["config"])
         case .kanbanBoards: return try Self.kanban(base, ["boards"])
         case .kanbanBoard(let board, let tenant, let includeArchived):

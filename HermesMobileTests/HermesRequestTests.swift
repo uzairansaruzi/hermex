@@ -218,6 +218,8 @@ final class HermesRequestTests: XCTestCase {
             (.profileSoul(name: "research"), "GET", "https://hermes.example:9120/api/profiles/research/soul", nil, [:]),
             (.setProfileSoul(name: "research", content: "Be direct."), "PUT", "https://hermes.example:9120/api/profiles/research/soul",
              .object(["content": .string("Be direct.")]), json),
+            (.speak(text: "Hi there.", profile: "research"), "POST", "https://hermes.example:9120/api/audio/speak?profile=research",
+             .object(["text": .string("Hi there.")]), json),
             (.kanbanConfig, "GET", "https://hermes.example:9120/api/plugins/kanban/config", nil, [:]),
             (.kanbanBoards, "GET", "https://hermes.example:9120/api/plugins/kanban/boards", nil, [:]),
             (.kanbanBoard(board: "default", tenant: nil, includeArchived: false), "GET",
@@ -267,6 +269,7 @@ final class HermesRequestTests: XCTestCase {
         XCTAssertThrowsError(try HermesREST.downloadArtifact(path: "a.pdf", profile: "triage", sessionID: "").request(base: base))
         XCTAssertThrowsError(try HermesREST.sessionMessages(key: "../profiles", profile: "triage").request(base: base))
         XCTAssertThrowsError(try HermesREST.sessionMessages(key: "bg_1", profile: "").request(base: base))
+        XCTAssertThrowsError(try HermesREST.speak(text: "Hi.", profile: "").request(base: base))
         XCTAssertThrowsError(try HermesREST.cronPause(id: "../profiles", profile: "research").request(base: base))
         XCTAssertThrowsError(try HermesREST.cronDelete(id: "", profile: "research").request(base: base))
         XCTAssertThrowsError(try HermesCall.profileModelOptions(profile: "").params())

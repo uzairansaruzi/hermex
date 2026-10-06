@@ -804,6 +804,8 @@ final class ChatViewModelSendTests: XCTestCase {
     func testServerTTSPolicyRoutesByServerTextCap() {
         XCTAssertTrue(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: "a", count: 5000)))
         XCTAssertFalse(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: "a", count: 5001)))
+        XCTAssertTrue(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: "a", count: 4000), onHermes: true))
+        XCTAssertFalse(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: "a", count: 4001), onHermes: true))
         XCTAssertEqual(ServerTTSPolicy.defaultVoice, "en-US-AriaNeural")
     }
 
@@ -11035,6 +11037,146 @@ final class ChatViewModelSendTests: XCTestCase {
             file: file,
             line: line
         )
+    }
+}
+
+/// Listen on a Hermes Sessions reply (#1072): the host's voice from `/api/audio/speak` in
+/// the chat's Profile, else the on-device voice, silently, as on webui (#15).
+@MainActor final class ListenSynthesisTests: XCTestCase {
+    private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
+                                                  username: "user", password: "fixture")
+
+    override func tearDown() {
+        HermesHostFixture.reset()
+        super.tearDown()
+    }
+
+    func testAHermesReplyPlaysInTheHostsVoice() async throws {
+        let speech = SpySpeechSynthesizer()
+        let player = SpyListenAudioPlayer()
+        var played: [Data] = []
+        let model = await openHermesChat(speech: speech) { played.append($0); return player }
+        let audio = Data([0xFF, 0xF3, 0x18, 0xC4])
+        var sent: [URLRequest] = []
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/audio/speak" else { return nil }
+            sent.append(request)
+            return .json(200, .object(["ok": .bool(true), "data_url": .string("data:audio/mpeg;base64," + audio.base64EncodedString()),
+                                       "mime_type": .string("audio/mpeg"), "provider": .string("edge")]))
+        }
+
+        model.toggleListening(to: try Self.reply("Hello from the host."))
+        await model.listenPreparationTask?.value
+
+        let request = try XCTUnwrap(sent.first)
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.url?.query, "profile=work")
+        XCTAssertEqual(try apiTestBodyData(from: request).map { try JSONDecoder().decode(BotJSON.self, from: $0) },
+                       .object(["text": .string("Hello from the host.")]))
+        XCTAssertEqual(played, [audio])
+        XCTAssertEqual(player.playCount, 1)
+        XCTAssertEqual(model.listenPlaybackPhase, .playing)
+        XCTAssertEqual(speech.spokenStrings, [])
+        XCTAssertNil(model.messageActionErrorMessage)
+    }
+
+    /// A refusal, a timeout, audio the player can't decode, or a reply over the 4,000-character
+    /// ceiling: the reply is spoken on device, with no alert.
+    func testAHermesReplyTheHostCannotVoiceIsSpokenOnDeviceSilently() async throws {
+        let ogg = HermesHostFixture.Reply.json(200, .object([
+            "ok": .bool(true), "data_url": .string("data:audio/ogg;base64,T2dnUw=="), "mime_type": .string("audio/ogg")
+        ]))
+        let scenarios: [(label: String, text: String, reply: HermesHostFixture.Reply, requests: Int, decodes: Int)] = [
+            ("refused", "Refused.", .json(400, .object(["detail": .string("Speech synthesis failed")])), 1, 0),
+            ("timed out", "Timed out.", .fail(URLError(.timedOut)), 1, 0),
+            ("undecodable", "Ogg.", ogg, 1, 1),
+            ("over the ceiling", String(repeating: "a", count: ServerTTSPolicy.maximumHermesTextLength + 1), ogg, 0, 0)
+        ]
+        for scenario in scenarios {
+            let speech = SpySpeechSynthesizer()
+            var decodes = 0
+            let model = await openHermesChat(speech: speech) { _ in
+                decodes += 1
+                throw URLError(.cannotDecodeContentData)
+            }
+            var sent = 0
+            _ = HermesHostFixture.configuration { request in
+                guard request.url?.path == "/api/audio/speak" else { return nil }
+                sent += 1
+                return scenario.reply
+            }
+
+            model.toggleListening(to: try Self.reply(scenario.text))
+            await model.listenPreparationTask?.value
+
+            XCTAssertEqual(sent, scenario.requests, scenario.label)
+            XCTAssertEqual(decodes, scenario.decodes, scenario.label)
+            XCTAssertEqual(speech.spokenStrings, [scenario.text], scenario.label)
+            XCTAssertEqual(model.listeningMessageID, "reply", scenario.label)
+            XCTAssertNil(model.messageActionErrorMessage, scenario.label)
+            model.stopListening()
+        }
+    }
+
+    /// Audio the host sends after the user stopped Listen never plays.
+    func testStoppingWhileTheHostSpeaksPlaysNothingWhenTheAudioArrives() async throws {
+        let speech = SpySpeechSynthesizer()
+        let requested = expectation(description: "speech requested")
+        var deliver: CheckedContinuation<Void, Never>?
+        let model = await openHermesChat(speech: speech, player: { _ in
+            XCTFail("A stopped Listen must not create a player")
+            return SpyListenAudioPlayer()
+        }, synthesize: { _ in
+            await withCheckedContinuation { deliver = $0; requested.fulfill() }
+            return Data([0xFF, 0xF3])
+        })
+
+        model.toggleListening(to: try Self.reply("Stop me."))
+        let pending = model.listenPreparationTask
+        await fulfillment(of: [requested], timeout: 3)
+        model.stopListening()
+        deliver?.resume()
+        await pending?.value
+
+        XCTAssertEqual(speech.spokenStrings, [])
+        XCTAssertNil(model.listeningMessageID)
+        XCTAssertEqual(model.listenPlaybackPhase, .idle)
+    }
+
+    /// A Hermes chat in Profile `work`, attached over a scripted host. `synthesize` stands in
+    /// for the host's speech when set.
+    private func openHermesChat(speech: SpySpeechSynthesizer,
+                                player: @escaping @MainActor (Data) throws -> any ListenAudioPlaying,
+                                synthesize: (@MainActor (String) async throws -> Data?)? = nil) async -> ChatViewModel {
+        let host = BotSocketHost()
+        host.always("session.resume", .init(result: .object([
+            "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
+            "messages": .array([]), "info": .object(["profile_name": .string("work")])
+        ])))
+        host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
+        let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
+                                        target: .session(profile: "work", key: "tip"),
+                                        wire: BotClient(http: host.connection(Self.connection)))
+        let model = ChatViewModel(
+            session: SessionSummary(profile: "work"), server: URL(string: "https://hermes.example")!,
+            streamingScrollCoalescingDelayNanoseconds: 0, speechSynthesizerFactory: { speech },
+            listenAudioSession: SpyListenAudioSession(), listenRemoteControlCenter: SpyListenRemoteControlCenter(),
+            serverTTSAudioPlayerFactory: player, synthesizeListenAudio: synthesize,
+            draftStore: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)),
+            backend: .hermes(HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true }))
+        )
+        await model.loadMessages()
+        XCTAssertEqual(engine.connectionState, .connected)
+        return model
+    }
+
+    private static func reply(_ text: String) throws -> MessageActionContext {
+        try XCTUnwrap(MessageActionContext(
+            message: ChatMessage(role: "assistant", content: text, timestamp: 1_770_000_024, messageId: "reply"),
+            visibleIndex: 0,
+            messagesOffset: 0
+        ))
     }
 }
 

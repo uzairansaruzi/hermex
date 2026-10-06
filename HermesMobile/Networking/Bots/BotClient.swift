@@ -122,6 +122,28 @@ import Foundation
         return messages
     }
 
+    /// Listen's speech (#1072). The host may install its TTS engine on first use, so this runs
+    /// on the provisioning deadline. Its reply is read bounded, like a download, and decoded off
+    /// the main actor. Not sent once this screen closes; the caller drops a late result itself.
+    func speech(text: String, profile: String) async throws -> Data {
+        guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
+        let attempt = self.attempt
+        let request = try HermesREST.speak(text: text, profile: profile).request(base: http.connection.address)
+        return try await http.authorized(request, deadline: .provisioning,
+                                         validateDispatch: { try self.checkOwner(attempt) }) { request, session in
+            try Self.speechAudio(fromReply: try await BotArtifactDownload.data(session: session, request: request))
+        }
+    }
+
+    /// The bytes of a speak reply's `data_url`, `data:<mime>;base64,<audio>`.
+    nonisolated static func speechAudio(fromReply body: Data) throws -> Data {
+        guard let url = (try? JSONDecoder().decode(BotJSON.self, from: body))?["data_url"].text,
+              url.hasPrefix("data:"), let comma = url.firstIndex(of: ","), url[..<comma].hasSuffix(";base64"),
+              let audio = Data(base64Encoded: String(url[url.index(after: comma)...])), !audio.isEmpty
+        else { throw BotFailure.unsupported }
+        return audio
+    }
+
     func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String {
         guard context.connectionID == http.connection.id, gateway.isAttached(consumerID) else { throw BotFailure.stale }
         let attempt = self.attempt

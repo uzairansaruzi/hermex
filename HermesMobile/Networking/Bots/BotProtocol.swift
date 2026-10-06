@@ -156,6 +156,9 @@ enum BotConnectionAdvice {
     /// A stored session's latest rows under `profile` (`HermesREST.sessionMessages`), or nil
     /// when the host has no such session (404).
     func sessionMessages(_ key: String, profile: String) async throws -> [BotJSON]?
+    /// `text` spoken in `profile`'s voice (`HermesREST.speak`): the audio bytes, of a format the
+    /// host's TTS provider chose. Any refusal or unreadable reply throws.
+    func speech(text: String, profile: String) async throws -> Data
     /// Ends this screen's calls, uploads and downloads; the shared socket stays for others.
     func close()
 }
@@ -182,6 +185,10 @@ extension BotTransport {
     }
 
     func sessionMessages(_ key: String, profile: String) async throws -> [BotJSON]? {
+        throw BotFailure.unsupported
+    }
+
+    func speech(text: String, profile: String) async throws -> Data {
         throw BotFailure.unsupported
     }
 

@@ -568,6 +568,10 @@ final class ChatViewModel {
     // server's synthesized bytes; injectable so tests never construct a real
     // `AVAudioPlayer` (which requires decodable audio data).
     private let serverTTSAudioPlayerFactory: @MainActor (Data) throws -> any ListenAudioPlaying
+    // A reply's server speech for Listen, or nil to speak it on device: webui's `/api/tts`
+    // with the saved engine and voice, or a Hermes host's voice for the chat's Profile
+    // (#1072). Any throw also falls back on device (#15). Injectable so tests stub the server.
+    private let synthesizeListenAudio: @MainActor (String) async throws -> Data?
     private var listenAudioPlayer: (any ListenAudioPlaying)?
     // Identity of the server-TTS player currently playing. Mirrors
     // `activeListeningUtteranceID`: a stale finish callback from a superseded player
@@ -654,6 +658,7 @@ final class ChatViewModel {
         listenAudioSession: (any ListenAudioSessionControlling)? = nil,
         listenRemoteControlCenter: (any ListenRemoteControlControlling)? = nil,
         serverTTSAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil,
+        synthesizeListenAudio: (@MainActor (String) async throws -> Data?)? = nil,
         draftAttachmentStore: any ChatDraftAttachmentStoring = ChatDraftAttachmentStore.shared,
         draftStore: ChatDraftStore? = nil,
         userDefaults: UserDefaults = .standard,
@@ -677,13 +682,16 @@ final class ChatViewModel {
             showsLiveActivityResponseExcerpts: showsLiveActivityResponseExcerpts
         )
         self.streamCoordinator = streamCoordinator
+        let backendSpeech: @MainActor (String) async throws -> Data?
         switch backend {
         case .webui:
             hermesTurn = nil
             turn = streamCoordinator
+            backendSpeech = { try await resolvedClient.listenSpeech(for: $0) }
         case .hermes(let coordinator):
             hermesTurn = coordinator
             turn = coordinator
+            backendSpeech = { try await coordinator.speech(for: $0) }
             currentProfile = coordinator.settings.profile
             selectedProfileName = coordinator.settings.profile
             coordinator.setShowsLiveActivityResponseExcerpts(showsLiveActivityResponseExcerpts)
@@ -716,6 +724,7 @@ final class ChatViewModel {
         self.listenPlaybackSpeed = ListenPlaybackSpeed.stored(in: userDefaults)
         self.serverTTSAudioPlayerFactory = serverTTSAudioPlayerFactory
             ?? { try ServerTTSAudioPlayer(data: $0) }
+        self.synthesizeListenAudio = synthesizeListenAudio ?? backendSpeech
         displayTitle = Self.displayTitle(from: session.title)
         turn.attach(delegate: self)
         self.pendingActionCoordinator.delegate = self
@@ -5246,15 +5255,15 @@ final class ChatViewModel {
         // Tapping the message that is already listening — fetching server audio or
         // playing on either engine — toggles it off. Matching on `listeningMessageID`
         // alone (not `isSpeaking`) also debounces rapid double-taps: the second tap
-        // stops cleanly instead of firing a second `/api/tts` call into the server's
-        // ~2 s rate limit or stacking audio (#15).
+        // stops cleanly instead of firing a second speech request (into webui's ~2 s
+        // `/api/tts` rate limit) or stacking audio (#15).
         if listeningMessageID == context.messageID {
             stopListening()
             return
         }
 
         stopListening()
-        // The audio session is NOT activated here: `/api/tts` can be slow or
+        // The audio session is NOT activated here: server speech can be slow or
         // unreachable, and activating the non-mixable playback session before the
         // fetch would silence other audio while Hermex has nothing to play (review
         // on #35). Activation happens at the two playback-start points instead —
@@ -5262,46 +5271,27 @@ final class ChatViewModel {
         listeningMessageID = context.messageID
         beginListenPlaybackPreparation(for: context)
 
-        // A Hermes host has no webui speech route, so Listen stays on device there.
-        guard hermesTurn == nil, ServerTTSPolicy.shouldUseServerTTS(for: listenText) else {
-            // Over the server's 5000-char request cap: go straight to the on-device
-            // path (chunking is a non-goal of #15).
+        guard ServerTTSPolicy.shouldUseServerTTS(for: listenText, onHermes: hermesTurn != nil) else {
+            // Over the server's ceiling: go straight to the on-device path (chunking
+            // is a non-goal of #15).
             clearListenPlaybackState()
             speakWithOnDeviceSynthesizer(listenText)
             return
         }
 
-        // Prefer the server's neural TTS; on any failure (offline, 4xx/5xx, rate
+        // Prefer the server's speech; on any failure (offline, 4xx/5xx, rate
         // limit, undecodable audio) fall back silently to the on-device
         // synthesizer — no error alert (#15).
         let requestID = UUID()
         activeListenRequestID = requestID
-        listenPreparationTask = Task { [weak self, client] in
+        listenPreparationTask = Task { [weak self, synthesizeListenAudio] in
             guard !Task.isCancelled else {
                 // Stopped before the fetch began (e.g. a rapid second tap): skip
                 // the request entirely instead of issuing one whose response
                 // would be dropped anyway.
                 return
             }
-            // Fetch for every Listen using this view's client; preferences never
-            // outlive the request or cross server boundaries.
-            let settings = try? await client.settings()
-            guard !Task.isCancelled, self?.activeListenRequestID == requestID else { return }
-            let engine = TTSEngine(savedValue: settings?.ttsEngine)
-            let audioData: Data?
-            if engine == .browser {
-                audioData = nil
-            } else {
-                let savedVoice = settings?.ttsVoice?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let voice = engine == .edge
-                    ? (savedVoice?.isEmpty == false ? savedVoice : ServerTTSPolicy.defaultVoice)
-                    : nil
-                audioData = try? await client.synthesizeSpeech(
-                    text: listenText,
-                    voice: voice,
-                    engine: engine
-                )
-            }
+            let audioData = try? await synthesizeListenAudio(listenText)
 
             guard let self, !Task.isCancelled, self.activeListenRequestID == requestID else {
                 // Stopped or superseded while the fetch was in flight — the user no
@@ -7745,13 +7735,17 @@ enum ServerTTSPolicy {
     /// Server-enforced request cap (`400 text too long` above it); longer text
     /// routes straight to the on-device synthesizer (chunking is a non-goal).
     static let maximumTextLength = 5000
+    /// A Hermes host's ceiling (#1072). The host splits longer text into its provider's
+    /// chunks (Edge 5000, OpenAI 4096, others 4000) and plays only the first without ffmpeg
+    /// to join them, so Hermex sends one chunk's worth and speaks longer replies on device.
+    static let maximumHermesTextLength = 4000
     /// The server's own default voice is `zh-CN-XiaoxiaoNeural`, so the client
     /// must always send an explicit voice. A voice picker is a non-goal of #15;
     /// this is the issue-specified default (verified live 2026-07-02).
     static let defaultVoice = "en-US-AriaNeural"
 
-    static func shouldUseServerTTS(for text: String) -> Bool {
-        text.count <= maximumTextLength
+    static func shouldUseServerTTS(for text: String, onHermes: Bool = false) -> Bool {
+        text.count <= (onHermes ? maximumHermesTextLength : maximumTextLength)
     }
 }
 
