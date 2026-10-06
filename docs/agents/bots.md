@@ -1085,11 +1085,12 @@ reads the list every 5 s until the host's outcome: the trigger's job, or a read 
 Task no longer runs and its `last_run_at` is newer than before the tap. "Running" shows only
 once a read does. A 504, a 524, a timeout or a dropped connection keeps reading without an
 error, since the run outlives its request; a refusal (`{detail}`) shows unless a read right
-after it shows the Task running, as 409 "already running" does. Leaving the screen stops the
-reads, never the run, and nothing is resent. A paused Task asks first, because the trigger
+after it shows the Task running, as 409 "already running" does. Three failed reads in a row
+end it with the read's error, since the run's state is then unknown. Leaving the screen stops
+the reads, never the run, and nothing is resent. A paused Task asks first, because the trigger
 resumes it; a completed one has no Run Now, because the host refuses it. The list's row
-action runs the same machine and shows each list it reads, unless another change landed on
-the list while that read was out.
+action runs the same machine and shows each list it reads, unless a change or a refresh
+landed on the list while that read was out.
 
 ## Opening a bot from outside the app
 

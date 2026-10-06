@@ -36,8 +36,8 @@ final class TasksViewModel {
     /// Jobs with a row action in flight, so a row cannot be double-fired and
     /// can show that it is waiting on the server.
     private(set) var pendingActionJobIDs: Set<String> = []
-    /// Bumped by every change applied to the list, so a row's Run Now read sent before one
-    /// can't put back what it replaced (#1041).
+    /// Bumped by every list shown and every change applied, so a row's Run Now read sent
+    /// before one can't put back what it replaced (#1041).
     private var listChanges = 0
 
     private let server: URL
@@ -81,6 +81,7 @@ final class TasksViewModel {
     /// Shows one read of the list: a load's, or one a row's Run Now made on a Hermes host
     /// while it followed the run (#1041).
     private func show(_ list: CronJobList) {
+        listChanges += 1
         runningJobs = list.runningJobs
         jobs = list.jobs
         if let recent = list.recentRuns {

@@ -688,28 +688,66 @@ extension CronManagementViewModelTests {
         host.answerTrigger(0, .failure(BotFailure.rejected(524)))
     }
 
-    /// A row's Run Now read that was out while another row's Delete landed can't bring the
-    /// deleted Task back; the next read shows the list again.
+    /// A row's Run Now read that was out while the list changed, by another row's Delete or
+    /// by a refresh, can't put back what it replaced; the next read shows the list again.
     func testARowsRunNowReadNeverUndoesAChangeMadeWhileItWasOut() async throws {
-        let other = HermesCronFixture.job("b2", profile: "research")
-        let host = RunNowHost(lists: [[HermesCronFixture.job("a1", profile: "research"), other],
-                                      [Self.running, other], [Self.finished]])
-        let viewModel = TasksViewModel(server: server, client: host, sleep: clock.sleep)
-        await viewModel.load()
-        let jobs = viewModel.jobs
+        let idle = HermesCronFixture.job("a1", profile: "research")
+        let active = HermesCronFixture.job("b2", profile: "research")
+        let paused = HermesCronFixture.job("b2", profile: "research", ["enabled": .bool(false)])
+        let cases: [(String, [[BotJSON]], @MainActor (TasksViewModel, CronJob) async -> Void, [String])] = [
+            ("delete", [[idle, active], [Self.running, active], [Self.finished]],
+             { await $0.delete($1) }, ["a1 active"]),
+            ("refresh", [[idle, active], [Self.running, active], [Self.running, paused], [Self.finished, paused]],
+             { viewModel, _ in await viewModel.load() }, ["a1 active", "b2 paused"])
+        ]
+        for (label, lists, change, expected) in cases {
+            let clock = RunNowClock()
+            let host = RunNowHost(lists: lists)
+            let viewModel = TasksViewModel(server: server, client: host, sleep: clock.sleep)
+            await viewModel.load()
+            let jobs = viewModel.jobs
 
-        let run = Task { await viewModel.runNow(jobs[0]) }
+            let run = Task { await viewModel.runNow(jobs[0]) }
+            await clock.waitUntilSleeping(1)
+            host.duringListRead = { await change(viewModel, jobs[1]) }
+            clock.advance()
+            await clock.waitUntilSleeping(2)
+            XCTAssertEqual(viewModel.jobs.map { "\($0.jobId ?? "") \($0.enabled == false ? "paused" : "active")" },
+                           expected, "\(label): the change stays")
+
+            clock.advance()
+            await run.value
+            XCTAssertEqual(viewModel.jobs.first?.lastStatus, "error", label)
+            host.answerTrigger(0, .failure(BotFailure.rejected(524)))
+        }
+    }
+
+    /// A host the phone can no longer reach after the tunnel gave up on the trigger ends Run
+    /// Now on the third failed read, with why, rather than waiting on with nothing to show.
+    func testReadsThatKeepFailingEndRunNowWithWhy() async throws {
+        let host = RunNowHost(lists: [])
+        let viewModel = TaskDetailViewModel(job: try Self.job(), runningElapsed: nil, server: server, client: host,
+                                            sleep: clock.sleep)
+
+        let run = Task { await viewModel.runNow() }
         await clock.waitUntilSleeping(1)
-        host.duringListRead = { await viewModel.delete(jobs[1]) }
+        host.answerTrigger(0, .failure(BotFailure.rejected(524)))
         clock.advance()
         await clock.waitUntilSleeping(2)
-        XCTAssertEqual(viewModel.jobs.map(\.jobId), ["a1"], "The deleted Task stays deleted")
+        clock.advance()
+        await clock.waitUntilSleeping(3)
+        XCTAssertEqual(viewModel.runNowState, .requested, "Two failed reads still wait")
+        XCTAssertNil(viewModel.actionErrorMessage)
 
         clock.advance()
-        await run.value
-        XCTAssertEqual(viewModel.jobs.map(\.lastStatus), ["error"])
-        XCTAssertEqual(host.deletes, ["b2"])
-        host.answerTrigger(0, .failure(BotFailure.rejected(524)))
+        let didRun = await run.value
+
+        XCTAssertFalse(didRun)
+        XCTAssertEqual(viewModel.runNowState, .idle)
+        XCTAssertEqual(viewModel.actionErrorMessage,
+                       "Could not connect to the server. Check that hermes-webui is running and the tunnel is connected.")
+        XCTAssertEqual(host.listReads, 3)
+        XCTAssertEqual(host.triggers, ["a1?profile=research"])
     }
 
     // MARK: - Fixtures
@@ -772,13 +810,12 @@ extension CronManagementViewModelTests {
 }
 
 /// A Hermes host for the Run Now machine: each trigger waits for the test's answer, and each
-/// list read returns the next of `lists`, the last one again once they run out. A delete
-/// succeeds.
+/// list read returns the next of `lists`, the last one again once they run out, or fails to
+/// connect when there are none. A delete succeeds.
 @MainActor final class RunNowHost: CronDataClient {
     nonisolated var cronFeatures: CronFeatures { .hermes }
     private(set) var triggers: [String] = []
     private(set) var listReads = 0
-    private(set) var deletes: [String] = []
     /// Runs once, inside the next list read, before it answers.
     var duringListRead: (@MainActor () async -> Void)?
     private let lists: [[BotJSON]]
@@ -798,12 +835,13 @@ extension CronManagementViewModelTests {
 
     func cronJobs() async throws -> CronJobList {
         listReads += 1
+        let read = listReads
         if let during = duringListRead {
             duringListRead = nil
             await during()
         }
-        guard !lists.isEmpty else { throw BotFailure.unsupported }
-        return CronJobList(hermesJobs: try HermesCronFixture.decode(lists[min(listReads, lists.count) - 1]))
+        guard !lists.isEmpty else { throw APIError.network(underlying: URLError(.cannotConnectToHost)) }
+        return CronJobList(hermesJobs: try HermesCronFixture.decode(lists[min(read, lists.count) - 1]))
     }
 
     func cronRecent() async throws -> CronRecentCompletionsResponse { throw BotFailure.unsupported }
@@ -818,9 +856,8 @@ extension CronManagementViewModelTests {
         throw BotFailure.unsupported
     }
     func resumeCron(jobID _: String, profile _: String?) async throws -> CronMutationResponse { throw BotFailure.unsupported }
-    func deleteCron(jobID: String, profile _: String?) async throws -> CronMutationResponse {
-        deletes.append(jobID)
-        return CronMutationResponse(ok: true, job: nil, error: nil)
+    func deleteCron(jobID _: String, profile _: String?) async throws -> CronMutationResponse {
+        CronMutationResponse(ok: true, job: nil, error: nil)
     }
     func cronOutput(jobID _: String, limit _: Int?) async throws -> CronOutputResponse { throw BotFailure.unsupported }
     func cronHistory(jobID _: String, offset _: Int, limit _: Int) async throws -> CronRunHistoryResponse {

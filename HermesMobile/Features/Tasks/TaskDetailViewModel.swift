@@ -67,6 +67,9 @@ final class TaskDetailViewModel {
     /// Waits between a pending Run Now's list reads; tests pass a scripted clock.
     private let sleep: @MainActor @Sendable (Duration) async throws -> Void
     static let runNowReadInterval = Duration.seconds(5)
+    /// Failed list reads in a row that end a pending Run Now: about 15 s of a host the phone
+    /// can't reach.
+    static let runNowReadAttempts = 3
 
     /// The server's Tasks, shared with the edit sheet this screen opens.
     let client: any CronDataClient
@@ -371,7 +374,9 @@ final class TaskDetailViewModel {
     /// running only once a read does. A 504, a 524, a timeout or a dropped connection is a
     /// hop giving up on the request while the host goes on with the run, so the reads go on
     /// and no error shows. A refusal shows the host's reason unless a read right after it
-    /// shows the Task running or finished, as a 409 "already running" does.
+    /// shows the Task running or finished, as a 409 "already running" does. Reads that keep
+    /// failing leave the run unknown, so Run Now ends with the read's error rather than
+    /// waiting on with nothing to show.
     ///
     /// Cancelling the caller, as a screen does when it goes away, ends the reads and leaves
     /// the run to the host. The trigger's reply goes to this run's own stream, so one that
@@ -401,6 +406,7 @@ final class TaskDetailViewModel {
             }
         }
         var timer = startRunNowTimer(continuation)
+        var failedReads = 0
         defer {
             timer.cancel()
             continuation.finish()
@@ -418,23 +424,36 @@ final class TaskDetailViewModel {
                 refusal = error
                 timer.cancel()
             case .replied(.failure(let error)):
-                lastError = error
-                actionErrorMessage = error.localizedDescription
-                return false
+                return failRunNow(error)
             case .tick:
                 break
             }
 
-            let reading = await readRunNow(jobID, since: lastRun)
+            let reading: RunNowReading
+            do {
+                reading = try await readRunNow(jobID, since: lastRun)
+                failedReads = 0
+            } catch {
+                guard !Task.isCancelled else { return false }
+                failedReads += 1
+                if refusal == nil, failedReads < Self.runNowReadAttempts {
+                    timer = startRunNowTimer(continuation)
+                    continue
+                }
+                return failRunNow(refusal ?? error)
+            }
             guard !Task.isCancelled else { return false }
             if reading == .finished { return true }
-            if let refusal, reading != .running {
-                lastError = refusal
-                actionErrorMessage = refusal.localizedDescription
-                return false
-            }
+            if let refusal, reading != .running { return failRunNow(refusal) }
             timer = startRunNowTimer(continuation)
         }
+        return false
+    }
+
+    /// Ends a pending Run Now with `error`, which the screen shows.
+    private func failRunNow(_ error: Error) -> Bool {
+        lastError = error
+        actionErrorMessage = error.localizedDescription
         return false
     }
 
@@ -443,8 +462,8 @@ final class TaskDetailViewModel {
         case tick
     }
 
-    /// What one list read says about a pending Run Now. `notYet` also covers a read that
-    /// failed, that a change made here meanwhile superseded, or that no longer has the Task.
+    /// What one list read says about a pending Run Now. `notYet` also covers a read that a
+    /// change made here meanwhile superseded, or that no longer has the Task.
     private enum RunNowReading { case notYet, running, finished }
 
     /// The tick for a pending Run Now's next read.
@@ -456,13 +475,13 @@ final class TaskDetailViewModel {
     }
 
     /// Reads the list for a pending Run Now and shows the Task as it reads, as `reloadJob`
-    /// does. The run has finished once the host no longer shows it running and its last run
-    /// is newer than `lastRun`, the one before the tap.
-    private func readRunNow(_ jobID: String, since lastRun: Date?) async -> RunNowReading {
+    /// does, or throws the read's failure. The run has finished once the host no longer shows
+    /// it running and its last run is newer than `lastRun`, the one before the tap.
+    private func readRunNow(_ jobID: String, since lastRun: Date?) async throws -> RunNowReading {
         let mutationsBefore = mutationCount
         let read = readList ?? { [client] in try await client.cronJobs() }
-        guard let list = try? await read(), !Task.isCancelled else { return .notYet }
-        guard mutationCount == mutationsBefore,
+        let list = try await read()
+        guard !Task.isCancelled, mutationCount == mutationsBefore,
               let fresh = list.jobs.first(where: { $0.jobId == jobID }) else { return .notYet }
         job = fresh
         runningElapsed = list.runningJobs[jobID]
