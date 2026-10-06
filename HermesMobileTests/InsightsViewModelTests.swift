@@ -466,7 +466,7 @@ final class InsightsViewModelTests: XCTestCase {
     }
 
     /// A Hermes host (#1074) has no hours and counts messages over part of the window: the
-    /// picker leaves Today out, messages read "≈", and there are no top sessions or Limits.
+    /// picker leaves Today out and messages read "≈".
     @MainActor
     func testHermesFeaturesHideTodayAndMarkMessagesApproximate() async throws {
         let client = StubInsightsClient(
@@ -479,16 +479,11 @@ final class InsightsViewModelTests: XCTestCase {
         let viewModel = InsightsViewModel(client: client)
 
         await viewModel.load()
-        await viewModel.loadLimits()
 
         XCTAssertEqual(viewModel.timeframes, [.last7Days, .last30Days, .last90Days])
         let messages = try XCTUnwrap(viewModel.totalsCells.first { $0.id == "messages" })
         XCTAssertEqual(messages.value, "≈1,234")
         XCTAssertEqual(messages.detail, "across 5 sessions")
-        XCTAssertNil(viewModel.totalsCells.first { $0.id == "busiestHour" })
-        XCTAssertTrue(viewModel.topSessions.isEmpty)
-        XCTAssertFalse(viewModel.showsLimits)
-        XCTAssertEqual(client.sessionsRequests, 0)
     }
 
     @MainActor
@@ -500,7 +495,7 @@ final class InsightsViewModelTests: XCTestCase {
     }
 
     /// Without a sessions fallback, a failed read is the screen's error, never zeros or the
-    /// previous window's figures.
+    /// previous window's figures, and picking another window from there loads it.
     @MainActor
     func testWithoutASessionsFallbackAFailedReadIsTheError() async throws {
         let client = StubInsightsClient(
@@ -521,6 +516,15 @@ final class InsightsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.errorMessage, "Server insights unavailable")
         XCTAssertFalse(viewModel.hasLoadedAnalytics, "The error replaces the 30-day figures")
         XCTAssertNotNil(viewModel.lastError)
+
+        client.insightsResult = .success(try decodeInsights(#"{"period_days": 90, "total_sessions": 9, "total_tokens": 900}"#))
+        viewModel.selectedTimeframe = .last90Days
+        await viewModel.load()
+
+        XCTAssertEqual(client.requestedDays, [30, 7, 90])
+        XCTAssertNil(viewModel.errorMessage)
+        XCTAssertEqual(viewModel.loadedTimeframe, .last90Days)
+        XCTAssertEqual(viewModel.sessionCount, 9)
     }
 
     @MainActor

@@ -58,9 +58,29 @@ struct InsightsView: View {
 
     @ViewBuilder
     private var content: some View {
-        if viewModel.isLoading && !viewModel.hasLoadedAnalytics {
+        if viewModel.hasLoadedAnalytics {
+            loadedContent
+        } else if viewModel.features.fallsBackToSessions {
+            placeholder
+        } else {
+            // Without a sessions fallback (Hermes) a failed window replaces the figures, so the
+            // picker stays above the placeholder, where it sits once loaded, to leave that window.
+            VStack(spacing: 0) {
+                windowPicker
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                placeholder
+                    .frame(maxHeight: .infinity)
+            }
+        }
+    }
+
+    /// What stands in for the figures before any have loaded: progress, the error, or no data.
+    @ViewBuilder
+    private var placeholder: some View {
+        if viewModel.isLoading {
             ProgressView("Loading usage...")
-        } else if let errorMessage = viewModel.errorMessage, !viewModel.hasLoadedAnalytics {
+        } else if let errorMessage = viewModel.errorMessage {
             ContentUnavailableView {
                 Label("Could Not Load Usage", systemImage: "exclamationmark.triangle")
             } description: {
@@ -70,15 +90,22 @@ struct InsightsView: View {
                     Task { await loadInsights() }
                 }
             }
-        } else if !viewModel.hasLoadedAnalytics {
+        } else {
             ContentUnavailableView {
                 Label("No Data", systemImage: "chart.bar")
             } description: {
                 Text("Session usage data will appear here once you have conversations.")
             }
-        } else {
-            loadedContent
         }
+    }
+
+    private var windowPicker: some View {
+        Picker("Window", selection: $viewModel.selectedTimeframe) {
+            ForEach(viewModel.timeframes) { timeframe in
+                Text(timeframe.title).tag(timeframe)
+            }
+        }
+        .pickerStyle(.segmented)
     }
 
     private var loadedContent: some View {
@@ -91,12 +118,7 @@ struct InsightsView: View {
                     )
                 }
 
-                Picker("Window", selection: $viewModel.selectedTimeframe) {
-                    ForEach(viewModel.timeframes) { timeframe in
-                        Text(timeframe.title).tag(timeframe)
-                    }
-                }
-                .pickerStyle(.segmented)
+                windowPicker
 
                 if viewModel.dataSource != .server {
                     SectionCard {
