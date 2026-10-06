@@ -270,6 +270,11 @@ struct CronOutputResponse: Decodable, Equatable {
         case outputs
     }
 
+    init(jobId: String?, outputs: [CronOutputItem]?) {
+        self.jobId = jobId
+        self.outputs = outputs
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         jobId = try container.decodeIfPresent(String.self, forKey: .jobId)
@@ -286,6 +291,11 @@ struct CronOutputItem: Decodable, Equatable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case filename
         case content
+    }
+
+    init(filename: String?, content: String?) {
+        self.filename = filename
+        self.content = content
     }
 
     init(from decoder: Decoder) throws {

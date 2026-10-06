@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// One past run, read in full.
+/// One run, read in full: webui's output file, or a Hermes run's final reply.
 ///
 /// The sheet renders `output` only when it belongs to the run on screen, so a
 /// slow request that lands after the user has moved to another run can never
@@ -41,7 +41,7 @@ struct TaskRunOutputSheet: View {
                     ContentUnavailableView {
                         Label("Empty Output", systemImage: "doc.text")
                     } description: {
-                        Text("This run finished without writing anything.")
+                        Text("No output for this run.")
                     }
                 }
             }
@@ -65,8 +65,8 @@ struct TaskRunOutputSheet: View {
     }
 
     private var title: String {
-        guard let modified = run.modified else { return run.filename }
-        return modified.formatted(date: .abbreviated, time: .shortened)
+        guard let date = run.date else { return run.filename }
+        return date.formatted(date: .abbreviated, time: .shortened)
     }
 
     /// The loaded text, but only if it is this run's.

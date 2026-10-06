@@ -94,6 +94,12 @@ _Avoid_: Bulk update, batch operation
 The mode for choosing Cards before applying a Bulk Action.
 _Avoid_: Multi-select, bulk mode
 
+## Tasks
+
+**Task Run**:
+One execution of a Task. On a Hermes server it is a session `cron_<task>_<time>`, and its output is that session's final reply; on a webui server it is an output file.
+_Avoid_: job run, execution
+
 ## Chat
 
 **Fork**:

@@ -37,21 +37,32 @@ struct CronRunHistoryResponse: Decodable, Equatable {
     }
 }
 
-/// One past run: enough to render a row, and the `filename` handle the
-/// run-detail endpoint needs.
+/// One run: enough to render a row, and the `filename` handle the run-detail
+/// endpoint needs. A Hermes host's run (#1042) is its session, mapped onto the
+/// same row in `HermesCronClient`.
 struct CronRunHistoryItem: Decodable, Equatable, Identifiable {
     var id: String { filename }
 
     /// Unique within a job's output directory, which is what makes it a safe
-    /// list identity as well as the detail request's key.
+    /// list identity as well as the detail request's key. On a Hermes host,
+    /// the run's session id (`cron_<job>_<time>`).
     let filename: String
     /// Bytes on disk. `nil` when the server sent something unusable rather
     /// than a number.
     let size: Int?
     /// The file's mtime, which is when the run finished.
     let modified: Date?
+    /// When a Hermes host's run started; nil on webui.
+    var startedAt: Date?
+    /// A Hermes host's run still in progress. A webui run is listed only once it
+    /// has finished.
+    var isRunning = false
     /// Parsed out of the run's markdown front matter, and frequently empty.
     let usage: CronRunUsage
+
+    /// When the row says the run happened: a Hermes run's start, else the
+    /// webui file's finish.
+    var date: Date? { startedAt ?? modified }
 
     enum CodingKeys: String, CodingKey {
         case filename

@@ -69,7 +69,7 @@ struct TaskDetailView: View {
                         canLoadMore: viewModel.canLoadMoreRuns,
                         remainingCount: viewModel.remainingRunCount,
                         errorMessage: viewModel.historyErrorMessage,
-                        isFailedRun: viewModel.isFailedRun,
+                        outcome: viewModel.outcome,
                         selectRun: open,
                         retry: { Task { await viewModel.loadHistory() } },
                         loadMore: { Task { await viewModel.loadMoreRuns() } }

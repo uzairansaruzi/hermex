@@ -3,8 +3,13 @@ import XCTest
 
 /// Covers the two places run history can quietly go wrong: paging arithmetic,
 /// which upstream makes non-obvious, and a slow run-output request landing
-/// after the user has moved on.
+/// after the user has moved on. A Hermes host's runs (#1042) are its run sessions.
 final class TaskRunHistoryTests: APIClientTestCase {
+    override func tearDown() {
+        HermesHostFixture.reset()
+        super.tearDown()
+    }
+
     // MARK: - Decoding
 
     func testHistoryDecodesTolerantlyAndDropsRunsWithoutAFilename() throws {
@@ -340,11 +345,207 @@ final class TaskRunHistoryTests: APIClientTestCase {
         await viewModel.loadHistory()
 
         XCTAssertEqual(viewModel.latestRun?.filename, "newest.md")
-        XCTAssertTrue(viewModel.isFailedRun(CronRunHistoryItem(filename: "newest.md")))
-        XCTAssertFalse(viewModel.isFailedRun(CronRunHistoryItem(filename: "older.md")))
+        XCTAssertEqual(viewModel.outcome(of: CronRunHistoryItem(filename: "newest.md")), .failed("exit code 1"))
+        // Each older file is a run that finished.
+        XCTAssertEqual(viewModel.outcome(of: CronRunHistoryItem(filename: "older.md")), .completed)
+    }
+
+    // MARK: - Hermes host (#1042)
+
+    /// One page of the newest 100 runs, read in the Task's Profile. The host reports no total,
+    /// so there is no "Load more". Every row also carries its session's `system_prompt`.
+    @MainActor
+    func testHermesHistoryIsTheNewest100RunsInTheTasksProfile() async throws {
+        let viewModel = try hermesViewModel { request in
+            request.url?.path == "/api/cron/jobs/a1/runs" ? .json(200, HermesRunFixture.runs([
+                HermesRunFixture.run("cron_a1_20261006_090000", started: 1_791_291_600, ended: 1_791_291_642,
+                                     ["input_tokens": .number(1200), "output_tokens": .number(340),
+                                      "estimated_cost_usd": .number(0.02), "actual_cost_usd": .number(0.0123)]),
+                HermesRunFixture.run("cron_a1_20261005_090000", started: 1_791_205_200, ended: 1_791_205_230),
+                .object(["started_at": .number(1_791_118_800), "is_active": .bool(false)])
+            ])) : nil
+        }
+
+        await viewModel.loadHistory()
+
+        XCTAssertEqual(viewModel.runs.map(\.filename), ["cron_a1_20261006_090000", "cron_a1_20261005_090000"])
+        let newest = try XCTUnwrap(viewModel.runs.first)
+        XCTAssertEqual(newest.startedAt, Date(timeIntervalSince1970: 1_791_291_600))
+        XCTAssertEqual(newest.modified, Date(timeIntervalSince1970: 1_791_291_642))
+        XCTAssertFalse(newest.isRunning)
+        XCTAssertEqual(newest.usage, CronRunUsage(model: "hermex-stub", estimatedCostUsd: 0.0123, durationSeconds: 42,
+                                                  inputTokens: 1200, outputTokens: 340, totalTokens: 1540))
+        XCTAssertNil(viewModel.historyErrorMessage)
+        XCTAssertFalse(viewModel.canLoadMoreRuns)
+        XCTAssertEqual(viewModel.remainingRunCount, 0)
+        let read = try XCTUnwrap(HermesHostFixture.requests.last { $0.url?.path == "/api/cron/jobs/a1/runs" })
+        XCTAssertEqual(Set(URLComponents(url: read.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []),
+                       [URLQueryItem(name: "profile", value: "research"), URLQueryItem(name: "limit", value: "100")])
+    }
+
+    @MainActor
+    func testHermesTaskThatHasNotRunHasAnEmptyHistory() async throws {
+        let viewModel = try hermesViewModel { request in
+            request.url?.path == "/api/cron/jobs/a1/runs" ? .json(200, HermesRunFixture.runs([])) : nil
+        }
+
+        await viewModel.loadHistory()
+
+        XCTAssertFalse(viewModel.isHistoryUnavailable)
+        XCTAssertNil(viewModel.historyErrorMessage)
+        XCTAssertEqual(viewModel.runs, [])
+        XCTAssertFalse(viewModel.canLoadMoreRuns)
+    }
+
+    /// The host keeps one outcome per Task, so only the newest finished run shows it, with the
+    /// Task's reason. A run still going shows as running, and older runs claim nothing.
+    @MainActor
+    func testHermesOnlyTheNewestFinishedRunCarriesTheTasksOutcome() async throws {
+        let script: (URLRequest) -> HermesHostFixture.Reply? = { request in
+            request.url?.path == "/api/cron/jobs/a1/runs" ? .json(200, HermesRunFixture.runs([
+                HermesRunFixture.run("cron_a1_20261007_090000", started: 1_791_378_000, ended: nil),
+                HermesRunFixture.run("cron_a1_20261006_090000", started: 1_791_291_600, ended: 1_791_291_642),
+                HermesRunFixture.run("cron_a1_20261005_090000", started: 1_791_205_200, ended: 1_791_205_230)
+            ])) : nil
+        }
+        let failed = try hermesViewModel(["last_status": .string("error"), "last_error": .string("RuntimeError: disk full")],
+                                         script: script)
+        await failed.loadHistory()
+
+        XCTAssertEqual(failed.runs.map(failed.outcome), [.running, .failed("RuntimeError: disk full"), nil])
+        XCTAssertEqual(failed.latestRun?.filename, "cron_a1_20261006_090000")
+
+        let succeeded = try hermesViewModel(["last_status": .string("ok")], script: script)
+        await succeeded.loadHistory()
+
+        XCTAssertEqual(succeeded.runs.map(succeeded.outcome), [.running, .completed, nil])
+    }
+
+    /// A run's output is its session's final reply, read in the Task's Profile; the earlier
+    /// reply that came with a tool call is not it. Nothing is read from the host's disk.
+    @MainActor
+    func testHermesRunOutputIsTheRunsFinalReply() async throws {
+        let viewModel = try hermesViewModel { request in
+            request.url?.path == "/api/sessions/cron_a1_20261006_090000/messages"
+                ? .json(200, HermesRunFixture.messages([
+                    HermesRunFixture.message("user", "[IMPORTANT: You are running as a scheduled cron job.] Check the disk"),
+                    HermesRunFixture.message("assistant", "Let me run a quick check.", callsATool: true),
+                    HermesRunFixture.message("tool", #"{"output": "91%"}"#),
+                    HermesRunFixture.message("assistant", "## Disk\n\nThe disk is **91%** full.")
+                ])) : nil
+        }
+
+        await viewModel.loadRunOutput(for: CronRunHistoryItem(filename: "cron_a1_20261006_090000"))
+
+        XCTAssertEqual(viewModel.runOutput, CronRunOutput(filename: "cron_a1_20261006_090000",
+                                                          text: "## Disk\n\nThe disk is **91%** full."))
+        XCTAssertNil(viewModel.runOutputErrorMessage)
+        XCTAssertEqual(HermesHostFixture.requests.last?.url?.query, "profile=research")
+        XCTAssertFalse(HermesHostFixture.requests.contains { $0.url?.path.hasPrefix("/api/fs") == true })
+    }
+
+    /// A run that never gave a final reply has no output, and the sheet says so. A run the host
+    /// no longer has (404) is unavailable, not empty.
+    @MainActor
+    func testHermesRunWithoutAReplyHasNoOutputAndAMissingRunIsUnavailable() async throws {
+        let viewModel = try hermesViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions/cron_a1_20261006_090000/messages":
+                return .json(200, HermesRunFixture.messages([
+                    HermesRunFixture.message("user", "Check the disk"),
+                    HermesRunFixture.message("assistant", "Let me run a quick check.", callsATool: true),
+                    HermesRunFixture.message("tool", #"{"output": "91%"}"#)
+                ]))
+            case "/api/sessions/cron_a1_20261005_090000/messages":
+                return .json(404, .object(["detail": .string("Session not found")]))
+            default: return nil
+            }
+        }
+
+        await viewModel.loadRunOutput(for: CronRunHistoryItem(filename: "cron_a1_20261006_090000"))
+        XCTAssertEqual(viewModel.runOutput, CronRunOutput(filename: "cron_a1_20261006_090000", text: ""))
+        XCTAssertNil(viewModel.runOutputErrorMessage)
+
+        await viewModel.loadRunOutput(for: CronRunHistoryItem(filename: "cron_a1_20261005_090000"))
+        XCTAssertNil(viewModel.runOutput)
+        XCTAssertEqual(viewModel.runOutputErrorMessage, "This run is no longer on the server.")
+    }
+
+    /// A history read sent before a reload, answering after it, never replaces the reload's runs.
+    @MainActor
+    func testHermesHistoryFromBeforeAReloadNeverReplacesTheReloadsRuns() async throws {
+        let reads = ReadCounter()
+        let viewModel = try hermesViewModel { request in
+            guard request.url?.path == "/api/cron/jobs/a1/runs" else { return nil }
+            return reads.next() == 1 ? .park : .json(200, HermesRunFixture.runs([
+                HermesRunFixture.run("cron_a1_20261006_090000", started: 1_791_291_600, ended: 1_791_291_642)
+            ]))
+        }
+        let parked = expectation(description: "the first read is out")
+        HermesHostFixture.onPark = { parked.fulfill() }
+
+        let first = Task { await viewModel.loadHistory() }
+        await fulfillment(of: [parked], timeout: 5)
+        await viewModel.loadHistory()
+        HermesHostFixture.releaseParked(.json(200, HermesRunFixture.runs([
+            HermesRunFixture.run("cron_a1_20261005_090000", started: 1_791_205_200, ended: 1_791_205_230)
+        ])))
+        await first.value
+
+        XCTAssertEqual(viewModel.runs.map(\.filename), ["cron_a1_20261006_090000"])
+        XCTAssertFalse(viewModel.isLoadingHistory)
+    }
+
+    /// Opening the detail reads the job from the list, its runs, and the newest run's final
+    /// reply as the latest output, each run read in the Task's Profile and none from the disk.
+    @MainActor
+    func testHermesDetailShowsItsRunsAndTheNewestRunsReplyAsTheLatestOutput() async throws {
+        let failed: [String: BotJSON] = ["last_status": .string("error"), "last_error": .string("exit code 1")]
+        let viewModel = try hermesViewModel(failed) { request in
+            switch request.url?.path {
+            case "/api/cron/jobs":
+                return .json(200, .array([HermesCronFixture.job("a1", profile: "research", failed)]))
+            case "/api/cron/jobs/a1/runs":
+                return .json(200, HermesRunFixture.runs([
+                    HermesRunFixture.run("cron_a1_20261006_090000", started: 1_791_291_600, ended: 1_791_291_642),
+                    HermesRunFixture.run("cron_a1_20261005_090000", started: 1_791_205_200, ended: 1_791_205_230)
+                ]))
+            case "/api/sessions/cron_a1_20261006_090000/messages":
+                return .json(200, HermesRunFixture.messages([
+                    HermesRunFixture.message("user", "Check the disk"),
+                    HermesRunFixture.message("assistant", "The disk check failed.")
+                ]))
+            default: return nil
+            }
+        }
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.runs.map(\.filename), ["cron_a1_20261006_090000", "cron_a1_20261005_090000"])
+        XCTAssertEqual(viewModel.outputs.map(\.content), ["The disk check failed."])
+        XCTAssertNil(viewModel.errorMessage)
+        let reads = HermesHostFixture.requests.compactMap(\.url)
+        XCTAssertFalse(reads.contains { $0.path.hasPrefix("/api/fs") })
+        let runReads = reads.filter { $0.path.hasPrefix("/api/cron/jobs/") || $0.path.hasPrefix("/api/sessions/") }
+        XCTAssertEqual(HermesHostFixture.count("/api/sessions/cron_a1_20261006_090000/messages"), 1)
+        XCTAssertEqual(runReads.filter { $0.query?.contains("profile=research") != true }, [])
     }
 
     // MARK: - Helpers
+
+    /// A Task on a Hermes host, in the `research` Profile, with `job` on top of the pinned shape.
+    @MainActor
+    private func hermesViewModel(
+        _ job: [String: BotJSON] = [:],
+        script: @escaping (URLRequest) -> HermesHostFixture.Reply?
+    ) throws -> TaskDetailViewModel {
+        TaskDetailViewModel(
+            job: try XCTUnwrap(HermesCronFixture.decode([HermesCronFixture.job("a1", profile: "research", job)]).first),
+            runningElapsed: nil,
+            server: URL(string: "https://hermes.example")!,
+            client: HermesCronFixture.client(script)
+        )
+    }
 
     @MainActor
     private func makeViewModel(
@@ -415,6 +616,55 @@ private final class RequestRecorder: @unchecked Sendable {
     var offsets: [Int] { lock.withLock { recorded.map(\.offset) } }
     var limits: [Int] { lock.withLock { recorded.map(\.limit) } }
     var lastOffset: Int? { lock.withLock { recorded.last?.offset } }
+}
+
+/// Counts a scripted host's reads from its own thread: the host's script runs under the
+/// fixture's lock, so it can't ask the fixture.
+private final class ReadCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    /// This read's number, from 1.
+    func next() -> Int { lock.withLock { count += 1; return count } }
+}
+
+/// A Hermes host's runs and run sessions (#1042), in the shapes `scripts/local-hermes` answered
+/// at the pin (0.21.5, ca678285).
+enum HermesRunFixture {
+    /// One row of `GET /api/cron/jobs/{id}/runs`: the run's session, `system_prompt` and all,
+    /// active until it has ended.
+    static func run(_ id: String, started: Double, ended: Double?, _ overrides: [String: BotJSON] = [:]) -> BotJSON {
+        var fields: [String: BotJSON] = [
+            "id": .string(id), "source": .string("cron"), "model": .string("hermex-stub"),
+            "system_prompt": .string(String(repeating: "You are Hermes, a helpful agent. ", count: 400)),
+            "started_at": .number(started), "ended_at": ended.map(BotJSON.number) ?? .null,
+            "end_reason": ended == nil ? .null : .string("cron_complete"), "message_count": .number(4),
+            "input_tokens": .number(0), "output_tokens": .number(0), "cache_read_tokens": .number(0),
+            "estimated_cost_usd": .number(0), "actual_cost_usd": .null, "cost_status": .string("unknown"),
+            "title": .string("Morning digest · Oct 06 09:00"),
+            "preview": .string("[IMPORTANT: You are running as a scheduled cron job. DELIVER..."),
+            "last_active": .number(ended ?? started), "is_active": .bool(ended == nil), "profile": .string("research")
+        ]
+        fields.merge(overrides) { $1 }
+        return .object(fields)
+    }
+
+    static func runs(_ rows: [BotJSON]) -> BotJSON {
+        .object(["runs": .array(rows), "limit": .number(100)])
+    }
+
+    /// `GET /api/sessions/{id}/messages`, oldest first.
+    static func messages(_ rows: [BotJSON]) -> BotJSON {
+        .object(["session_id": .string("cron_a1"), "profile": .string("research"), "messages": .array(rows),
+                 "pagination": .object(["limit": .number(500), "offset": .number(0), "order": .string("latest")])])
+    }
+
+    static func message(_ role: String, _ content: String, callsATool: Bool = false) -> BotJSON {
+        let call = BotJSON.object(["id": .string("call_2"), "type": .string("function"),
+                                   "function": .object(["name": .string("terminal"), "arguments": .string("{}")])])
+        return .object(["role": .string(role), "content": .string(content),
+                        "tool_calls": callsATool ? .array([call]) : .null, "display_kind": .null])
+    }
 }
 
 /// A field the job does not have does not get a row: a job that leaves the

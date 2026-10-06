@@ -407,9 +407,10 @@ extension CronManagementViewModelTests {
         XCTAssertEqual(HermesHostFixture.requests.last?.url?.query, "profile=default")
     }
 
-    /// Run history waits for #1042, so Refresh reads the job from the list instead.
+    /// The detail's Refresh reads the job from the list, which carries its running state,
+    /// beside its runs (#1042).
     @MainActor
-    func testHermesTaskDetailReadsTheJobFromTheListWithoutRunHistory() async throws {
+    func testHermesTaskDetailReadsTheJobFromTheList() async throws {
         let client = HermesCronFixture.client { request in
             request.url?.path == "/api/cron/jobs" ? .json(200, .array([
                 HermesCronFixture.job("a1", profile: "research", ["latest_execution": .object(["status": .string("running")])])
@@ -421,9 +422,8 @@ extension CronManagementViewModelTests {
 
         await viewModel.load()
 
-        XCTAssertTrue(viewModel.isHistoryUnavailable)
         XCTAssertEqual(viewModel.runningElapsed, 0)
-        XCTAssertEqual(HermesHostFixture.requests.compactMap(\.url?.path).filter { $0.hasPrefix("/api/cron") }, ["/api/cron/jobs"])
+        XCTAssertEqual(HermesHostFixture.count("/api/cron/jobs"), 1)
         guard case .upsert(let forwarded)? = viewModel.lastMutation else {
             return XCTFail("The list gets the job the detail re-read")
         }
@@ -859,11 +859,13 @@ extension CronManagementViewModelTests {
     func deleteCron(jobID _: String, profile _: String?) async throws -> CronMutationResponse {
         CronMutationResponse(ok: true, job: nil, error: nil)
     }
-    func cronOutput(jobID _: String, limit _: Int?) async throws -> CronOutputResponse { throw BotFailure.unsupported }
-    func cronHistory(jobID _: String, offset _: Int, limit _: Int) async throws -> CronRunHistoryResponse {
+    func cronOutput(jobID _: String, profile _: String?, limit _: Int?) async throws -> CronOutputResponse {
         throw BotFailure.unsupported
     }
-    func cronRunDetail(jobID _: String, filename _: String) async throws -> CronRunDetailResponse {
+    func cronHistory(jobID _: String, profile _: String?, offset _: Int, limit _: Int) async throws -> CronRunHistoryResponse {
+        throw BotFailure.unsupported
+    }
+    func cronRunDetail(jobID _: String, profile _: String?, filename _: String) async throws -> CronRunDetailResponse {
         throw BotFailure.unsupported
     }
     func cronModelGroups(profile _: String?) async throws -> [ModelCatalogGroup] { throw BotFailure.unsupported }

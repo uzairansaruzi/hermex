@@ -203,6 +203,8 @@ final class HermesRequestTests: XCTestCase {
              "https://hermes.example:9120/api/cron/jobs/d804e8d67342?profile=research", nil, [:]),
             (.cronTrigger(id: "d804e8d67342", profile: "research"), "POST",
              "https://hermes.example:9120/api/cron/jobs/d804e8d67342/trigger?profile=research", nil, [:]),
+            (.cronRuns(id: "d804e8d67342", profile: "research", limit: 100), "GET",
+             "https://hermes.example:9120/api/cron/jobs/d804e8d67342/runs?profile=research&limit=100", nil, [:]),
             (.cronDeliveryTargets(profile: "research"), "GET",
              "https://hermes.example:9120/api/cron/delivery-targets?profile=research", nil, [:]),
             (.skills(profile: "research"), "GET", "https://hermes.example:9120/api/skills?profile=research", nil, [:])
