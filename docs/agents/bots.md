@@ -1181,11 +1181,13 @@ code counts only while the status still names the POST's `pid`; a null one keeps
 Success is done once health answers on `post_version`; partial and failed show the last
 ✗ or ⚠ line of the update log. No answer for 2 minutes, or 2 minutes on another release,
 ends in "Restart the dashboard on the host" with `hermes dashboard` and Check again, which
-reads once. A wait stops after 10 minutes on what the host last said. The status read signs
-in again on the restarted dashboard's first 401, through `HermesConnection`. Once done, the
-saved version follows (`AuthManager.hermesServerUpdated`) and the shared gateway socket is
-dropped so Bot screens reconnect at once. The wait shares `HermesRestartWait` with push's
-restart. The model is per server and outlives Settings; another server becoming active
+reads once. A wait stops after 10 minutes on what the host last said, unless the run has
+finished and only the release is left to wait for. Both limits count only time the app watched:
+a gap over a minute between reads (suspended, or another server active) counts as one read.
+The status read signs in again on the restarted dashboard's first 401, through
+`HermesConnection`. Once done, the saved version follows (`AuthManager.hermesServerUpdated`)
+and the shared gateway socket is dropped so Bot screens reconnect at once. The wait shares
+`HermesRestartWait` with push's restart. The model is per server and outlives Settings; another server becoming active
 retires its connection and pauses the reads, and Settings picks them up on return.
 
 ## Opening a bot from outside the app

@@ -135,9 +135,10 @@ final class HermesUpdateMachineTests: XCTestCase {
     func testADashboardSilentForTwoMinutesNeedsARestartOnTheHost() {
         var machine = newRun()
 
-        let states = play([(3, running()), (6, .unreachable), (122, .unreachable), (123, .unreachable)], into: &machine)
+        let states = play([(3, running()), (6, .unreachable), (60, .unreachable), (110, .unreachable), (122, .unreachable),
+                           (123, .unreachable)], into: &machine)
 
-        XCTAssertEqual(states, [.applying, .recovering, .recovering, .needsDashboardRestart(running: nil)],
+        XCTAssertEqual(states, [.applying, .recovering, .recovering, .recovering, .recovering, .needsDashboardRestart(running: nil)],
                        "Two minutes from the last answer")
         XCTAssertNil(machine.nextRead)
     }
@@ -146,16 +147,34 @@ final class HermesUpdateMachineTests: XCTestCase {
         var machine = newRun()
 
         let states = play([
-            (3, respawned(receipt(.success))), (6, .health(version: "0.21.5")), (122, .health(version: "0.21.5")),
-            (123, .health(version: "0.21.5"))
+            (3, respawned(receipt(.success))), (6, .health(version: "0.21.5")), (60, .health(version: "0.21.5")),
+            (110, .health(version: "0.21.5")), (122, .health(version: "0.21.5")), (123, .health(version: "0.21.5"))
         ], into: &machine)
 
-        XCTAssertEqual(states, [.applying, .applying, .applying, .needsDashboardRestart(running: "0.21.5")])
+        XCTAssertEqual(states, [.applying, .applying, .applying, .applying, .applying, .needsDashboardRestart(running: "0.21.5")])
+    }
+
+    func testTimeTheAppWasntWatchingCountsAsOneRead() {
+        // Locked for 12 minutes while the update finished: the first read decides.
+        var locked = newRun()
+        let states = play([(3, running()), (723, respawned(receipt(.success))), (726, .health(version: "0.22.0"))], into: &locked)
+        XCTAssertEqual(states, [.applying, .applying, .done(version: "0.22.0")], "Not still running at the ceiling")
+
+        // A read in flight when the app was suspended fails on resume: one read, not 2 minutes' silence.
+        var suspended = newRun()
+        let silent = play([(3, running()), (303, .unreachable), (306, running())], into: &suspended)
+        XCTAssertEqual(silent, [.applying, .recovering, .applying])
+
+        // The same holds for a dashboard on the old release, waited on across a gap.
+        var away = newRun()
+        let back = play([(3, respawned(receipt(.success))), (6, .health(version: "0.21.5")), (400, .health(version: "0.21.5"))],
+                        into: &away)
+        XCTAssertEqual(back, [.applying, .applying, .applying])
     }
 
     func testCheckAgainOnASilentDashboardReadsOnceAndAnAnswerWatchesAgain() {
         var machine = newRun()
-        _ = play([(3, running()), (6, .unreachable), (200, .unreachable)], into: &machine)
+        _ = play([(3, running()), (6, .unreachable), (60, .unreachable), (110, .unreachable), (125, .unreachable)], into: &machine)
         XCTAssertEqual(machine.state, .needsDashboardRestart(running: nil))
 
         machine.checkAgain()
@@ -171,8 +190,9 @@ final class HermesUpdateMachineTests: XCTestCase {
 
     func testTheCeilingStopsOnWhatTheHostLastSaid() {
         var answering = newRun()
-        let states = play([(3, running()), (597, running()), (600, running())], into: &answering)
-        XCTAssertEqual(states, [.applying, .applying, .stillRunning])
+        let states = play(stride(from: 30, through: 600, by: 30).map { (seconds: $0, event: running()) }, into: &answering)
+        XCTAssertEqual(states.last, .stillRunning)
+        XCTAssertEqual(Array(states.dropLast()), Array(repeating: .applying, count: 19))
 
         answering.checkAgain()
         answering.handle(running(), at: .seconds(603))
@@ -182,5 +202,16 @@ final class HermesUpdateMachineTests: XCTestCase {
         silent.handle(.unreachable, at: .seconds(3))
         silent.expire()
         XCTAssertEqual(silent.state, .needsDashboardRestart(running: nil))
+    }
+
+    func testARunThatFinishesAtTheCeilingStillWaitsForItsRelease() {
+        var machine = newRun()
+        _ = play(stride(from: 30, through: 570, by: 30).map { (seconds: $0, event: running()) }, into: &machine)
+
+        machine.handle(respawned(receipt(.success)), at: .seconds(600))
+        XCTAssertEqual(machine.state, .applying)
+        XCTAssertEqual(machine.nextRead, .health)
+        machine.handle(.health(version: "0.22.0"), at: .seconds(603))
+        XCTAssertEqual(machine.state, .done(version: "0.22.0"))
     }
 }

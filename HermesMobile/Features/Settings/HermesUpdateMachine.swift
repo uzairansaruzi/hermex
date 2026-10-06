@@ -11,7 +11,9 @@ import Foundation
 /// null one keeps waiting. A read that gets no answer means the dashboard is restarting. A
 /// receipt that says success is done once `/api/health` answers on the release it installed.
 /// Silence for `silenceLimit` means the dashboard isn't coming back, and `ceiling` ends a wait
-/// on what the host last said.
+/// that hasn't finished on what the host last said. Both count only time the app watched: a gap
+/// between two answers longer than `longestRead` (the app was suspended, or another server was
+/// active) counts as one read.
 struct HermesUpdateMachine: Equatable {
     enum State: Equatable {
         /// The host is running the update and answering.
@@ -57,6 +59,9 @@ struct HermesUpdateMachine: Equatable {
     static let silenceLimit: Duration = .seconds(120)
     /// How long one wait watches before it stops on what the host last said.
     static let ceiling: Duration = .seconds(600)
+    /// The longest one read takes while the app watches: the cadence, plus a request that times
+    /// out and a sign-in again. A longer gap is time nobody watched.
+    static let longestRead: Duration = .seconds(60)
 
     private(set) var state: State = .applying
     /// "Check again" on a run that stopped without an outcome: its first answer decides, and
@@ -74,6 +79,8 @@ struct HermesUpdateMachine: Equatable {
     private var lines: [String] = []
     private var lastAnswer: Duration
     private var waitStarted: Duration
+    /// When the last event arrived, to tell a read from a gap nobody watched.
+    private var lastEvent: Duration
     /// When the host said the run had finished, for a dashboard back on another release.
     private var finishedAt: Duration?
 
@@ -82,6 +89,7 @@ struct HermesUpdateMachine: Equatable {
         self.pid = pid
         lastAnswer = now
         waitStarted = now
+        lastEvent = now
     }
 
     /// Whether the model stops reading.
@@ -89,12 +97,16 @@ struct HermesUpdateMachine: Equatable {
 
     var nextRead: Read? {
         guard !isSettled else { return nil }
-        if succeeded != nil || exitedCleanly { return .health }
+        if isFinished { return .health }
         return statusIsMissing ? .receipt : .status
     }
 
+    /// The host said the run ended well; only the dashboard's release is left to wait for.
+    private var isFinished: Bool { succeeded != nil || exitedCleanly }
+
     mutating func handle(_ event: Event, at now: Duration) {
         guard !isSettled else { return }
+        skipUnwatched(until: now)
         if isRechecking {
             isRechecking = false
             switch event {
@@ -137,14 +149,15 @@ struct HermesUpdateMachine: Equatable {
                 state = .needsDashboardRestart(running: version)
             }
         }
-        if !state.isSettled, Self.ceiling <= now - waitStarted { expire() }
+        // A finished run waits on the dashboard's release under `silenceLimit` alone.
+        if !state.isSettled, !isFinished, Self.ceiling <= now - waitStarted { expire() }
     }
 
     /// Ends a wait the model stopped watching, on what the host last said: still running if
-    /// it answered, the dashboard to restart if it didn't.
+    /// it answered and hadn't finished, the dashboard to restart otherwise.
     mutating func expire() {
         guard !state.isSettled else { return }
-        state = state == .recovering ? .needsDashboardRestart(running: nil) : .stillRunning
+        state = state == .recovering || isFinished ? .needsDashboardRestart(running: nil) : .stillRunning
     }
 
     /// "Check again" on a run that ended without an outcome. A dashboard that is still silent,
@@ -154,6 +167,16 @@ struct HermesUpdateMachine: Equatable {
         case .needsDashboardRestart, .stillRunning: isRechecking = true
         default: break
         }
+    }
+
+    /// Moves the limits' clocks past time nobody watched, so a gap counts as one read.
+    private mutating func skipUnwatched(until now: Duration) {
+        let unwatched = now - lastEvent - Self.longestRead
+        lastEvent = now
+        guard unwatched > .zero else { return }
+        lastAnswer += unwatched
+        waitStarted += unwatched
+        finishedAt = finishedAt.map { $0 + unwatched }
     }
 
     private mutating func answered(at now: Duration) {
@@ -381,8 +404,10 @@ struct HermesUpdateMachine: Equatable {
 
     /// Reads what the machine asks for until it settles, on `HermesRestartWait`'s schedule.
     private func watch(_ client: HermesUpdateClient, readFirst: Bool) async {
-        // The machine's own ceiling ends the wait; this bounds the schedule for a zero cadence too.
-        let reads = Int(HermesUpdateMachine.ceiling / max(cadence, .seconds(1))) + 1
+        // The machine's own limits end the wait: the ceiling, then the wait for the release. This
+        // bounds the schedule for a zero cadence too.
+        let watched = HermesUpdateMachine.ceiling + HermesUpdateMachine.silenceLimit
+        let reads = Int(watched / max(cadence, .seconds(1))) + 1
         let delays = (readFirst ? [Duration.zero] : []) + Array(repeating: cadence, count: reads)
         _ = await HermesRestartWait.lastAnswer(after: delays, sleep: sleep) { () async -> Bool? in
             guard case .following(var machine)? = self.run, let read = machine.nextRead else { return true }
