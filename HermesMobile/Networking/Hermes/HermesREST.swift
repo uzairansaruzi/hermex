@@ -43,6 +43,11 @@ import Foundation
 /// `docs/agents/bots.md` § Updating Hermes has their shapes. `POST /api/audio/speak` (#1072) is
 /// read at the same pin and checked against `scripts/local-hermes`: `{text}` only, spoken by the
 /// Profile's `tts.provider`, answered `{ok, data_url, mime_type, provider}`, or `{detail}`.
+/// The analytics routes (#1074) are read at the same pin, recorded from `scripts/local-hermes`
+/// (`Fixtures/HermesAgent/analytics.json`) and checked read-only against a live host: `days`
+/// outside 1-365 is a 422, an unknown Profile a 404 `{detail}`, a store the host can't read a
+/// 503 whose `detail` is `{error: "state_db_…", message, path}`, and a sum over an empty window
+/// is null.
 enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
@@ -119,6 +124,11 @@ enum HermesREST: Equatable, Sendable {
     case setProfileSoul(name: String, content: String)
     /// Speaks `text` in `profile`'s voice: the audio as a base64 data URL (`BotClient.speech`).
     case speak(text: String, profile: String)
+    /// One Profile's usage over the last `days` (1-365): `{daily, totals, by_model, period_days, …}`,
+    /// `daily` holding only days with sessions, by UTC date.
+    case analyticsUsage(days: Int, profile: String)
+    /// The same window by model and billing provider: `{models, totals, period_days}`.
+    case analyticsModels(days: Int, profile: String)
     /// `{default_tenant, …}`, or 404 when the Kanban plugin is disabled or absent.
     case kanbanConfig
     /// Every Board with its counts, and `current`.
@@ -294,6 +304,8 @@ enum HermesREST: Equatable, Sendable {
         case .speak(let text, let profile):
             guard !profile.isEmpty else { throw BotFailure.invalidAddress }
             return try Self.send("POST", try Self.url(base, "api/audio/speak", profile: profile), ["text": .string(text)])
+        case .analyticsUsage(let days, let profile): return try Self.analytics(base, "usage", days: days, profile: profile)
+        case .analyticsModels(let days, let profile): return try Self.analytics(base, "models", days: days, profile: profile)
         case .kanbanConfig: return try Self.kanban(base, ["config"])
         case .kanbanBoards: return try Self.kanban(base, ["boards"])
         case .kanbanBoard(let board, let tenant, let includeArchived):
@@ -350,6 +362,16 @@ enum HermesREST: Equatable, Sendable {
             guard Self.isSegment(slug) else { throw BotFailure.invalidAddress }
             return try Self.kanban(base, ["boards", slug, "switch"], [], "POST", [:])
         }
+    }
+
+    /// One analytics read for `profile` over the last `days`, a window the host accepts.
+    private static func analytics(_ base: URL, _ route: String, days: Int, profile: String) throws -> URLRequest {
+        guard (1...365).contains(days), !profile.isEmpty,
+              var parts = URLComponents(url: base.appendingPathComponent("api/analytics").appendingPathComponent(route),
+                                        resolvingAgainstBaseURL: false) else { throw BotFailure.invalidAddress }
+        parts.queryItems = [URLQueryItem(name: "days", value: String(days)), URLQueryItem(name: "profile", value: profile)]
+        guard let url = parts.url else { throw BotFailure.invalidAddress }
+        return get(url)
     }
 
     /// A request under the Kanban plugin's mount: a GET, or `method` with the JSON `body`.

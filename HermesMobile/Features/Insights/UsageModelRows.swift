@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// Every model the server reported for the window, in the order it returned them
-/// (cost descending). There is no provider dot: the insights handler has no
-/// provider dimension to draw one from.
+/// (webui: cost descending; a Hermes host: tokens descending). There is no provider dot:
+/// webui's insights handler has no provider dimension to draw one from. A Hermes host's rows
+/// are per model and billing provider, which leads the row's subtitle (#1074).
 struct UsageModelsCard: View {
     let models: [InsightsModelBreakdown]
     /// Whether the window has any priced usage at all. When it does not, the rows
@@ -51,7 +52,7 @@ private struct UsageModelRow: View {
     }
 
     private var secondaryLine: String {
-        var parts: [String] = []
+        var parts = [model.provider].compactMap { $0 }
 
         if hasCost, let costShare = model.costShare {
             parts.append(String(localized: "\(costShare)% of cost"))

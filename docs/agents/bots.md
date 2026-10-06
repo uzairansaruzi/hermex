@@ -1191,6 +1191,26 @@ and the shared gateway socket is dropped so Bot screens reconnect at once. The w
 `HermesRestartWait` with push's restart. The model is per server and outlives Settings; another server becoming active
 retires its connection and pauses the reads, and Settings picks them up on return.
 
+## Insights on a Hermes host
+
+The Usage screen runs on a Hermes host through `HermesInsightsClient` (#1074), the
+`InsightsDataClient` beside webui's `APIClient`, bound to the inbox's selected Profile, which
+the title names. A window is `GET /api/analytics/usage` and `GET /api/analytics/models`, both
+`?days=&profile=`, and `insights.get {days, profile}` over the gateway, mapped into webui's
+`InsightsResponse`. Totals, sessions, cost (`estimated_cost`, as webui) and the daily chart
+come from usage; `daily` lists only days with sessions, by UTC date, so the chart is carried on
+to today. The hit rate is computed here, cache reads over input plus cache reads, and reads a
+little above webui's because the host reports no cache writes. The models card is one row per
+model and billing provider, the provider leading its subtitle, in the host's order; the same
+pair can repeat (auxiliary usage), as on the dashboard's Models page. Messages come from
+`insights.get`, which counts only visible sessions among the newest 500 (no Bot Chats), so
+they read "≈". The host has no hours, provider limits (#710) or sessions list here
+(`InsightsFeatures.hermes`): the picker has no Today, Limits and top sessions never show, and a
+failed read is the screen's error rather than a fallback. A store the host can't read (a 503
+whose `detail.error` is `state_db_…`, or 5017) gets its own copy, never the host path the 503
+names. Empty-window sums arrive as null and read as 0. The temporary entry is the inbox's +
+menu (DEBUG and Hermex Branch), until #709.
+
 ## Opening a bot from outside the app
 
 One URL route lands on a bot conversation: `hermes-agent://bot?server=…&

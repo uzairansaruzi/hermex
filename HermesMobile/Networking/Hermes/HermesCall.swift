@@ -94,6 +94,12 @@ enum HermesCall: Equatable, Sendable {
     /// quick commands (which can run shell) and plugin commands, as Desktop runs them.
     case slashExec(sessionID: String, command: String)
 
+    // Usage
+    /// The Profile's visible sessions started in the last `days` (1-365) and their messages, over
+    /// at most its newest 500 sessions: `{days, sessions, messages}`, or 5017 for a store the host
+    /// can't open (#1074).
+    case insightsGet(days: Int, profile: String)
+
     // Delegated work
     case subagentList(sessionID: String)
     case subagentTail(sessionID: String, subagentID: String)
@@ -238,6 +244,7 @@ enum HermesCall: Equatable, Sendable {
         case .completePath: return "complete.path"
         case .completeSlash: return "complete.slash"
         case .slashExec: return "slash.exec"
+        case .insightsGet: return "insights.get"
         case .subagentList: return "subagent.list"
         case .subagentTail: return "subagent.tail"
         case .subagentInterrupt: return "subagent.interrupt"
@@ -348,6 +355,7 @@ enum HermesCall: Equatable, Sendable {
             return ["word": .string(word), "session_id": .string(sessionID), "profile": .string(profile)]
         case .completeSlash(let text, let sessionID): return ["text": .string(text), "session_id": .string(sessionID)]
         case .slashExec(let sessionID, let command): return ["session_id": .string(sessionID), "command": .string(command)]
+        case .insightsGet(let days, let profile): return ["days": .number(Double(days)), "profile": .string(profile)]
         case .subagentTail(let sessionID, let subagentID), .subagentInterrupt(let sessionID, let subagentID):
             return ["session_id": .string(sessionID), "subagent_id": .string(subagentID)]
         case .groupsList(let offset):
@@ -439,6 +447,7 @@ enum HermesCall: Equatable, Sendable {
             valid = !sessionID.isEmpty && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .groupsList(let offset): valid = offset >= 0
         case .profileModelOptions(let profile): valid = !profile.isEmpty
+        case .insightsGet(let days, let profile): valid = (1...365).contains(days) && !profile.isEmpty
         case .groupsState(let roomID), .groupsDisband(let roomID): valid = BotRoomRPC.validID(roomID)
         case .groupsLog(let roomID, let sinceSeq, let limit):
             valid = BotRoomRPC.validID(roomID) && sinceSeq >= 0 && (1...Self.roomPageSize).contains(limit)

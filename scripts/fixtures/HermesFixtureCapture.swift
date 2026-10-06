@@ -8,7 +8,8 @@ import Foundation
 ///
 /// The capture signs in like `BotClient.connect`, reads `/api/status` and
 /// `profiles.list`, runs one turn in a disposable hidden session (see `Mode`),
-/// resumes it, then closes and deletes it. Nothing reaches disk until the
+/// resumes it, then closes and deletes it. In local mode it also reads the
+/// Profile's analytics while that session exists. Nothing reaches disk until the
 /// allow-list sanitizer and the leak check have both passed.
 @main
 struct HermesFixtureCapture {
@@ -95,7 +96,8 @@ struct Options {
 /// What one run records. A real host gets the canned text turn on its `inbox-triage`
 /// bot, and any tool or request traffic fails the capture. `--local` records the
 /// scripted tool and approval turn from `scripts/local-hermes` on its `default`
-/// Profile, and is the only mode that lets that traffic and its fields through.
+/// Profile, and is the only mode that lets that traffic and its fields through. It
+/// also records that Profile's 30-day analytics, the Insights screen's three reads.
 struct Mode {
     let local: Bool
     var profile: String { local ? "default" : "inbox-triage" }
@@ -239,10 +241,12 @@ final class Capture {
             ])
             if let id = resume["session_id"].text, !runtimes.contains(id) { runtimes.append(id) }
             guard resume["running"].flag == false else { throw Failure("session.resume reports the turn still running") }
+            // Read while the turn's session still exists, so the window has one session in it.
+            let analytics = mode.local ? try await readAnalytics() : .null
             try await cleanUp(runtimes: runtimes, stored: storedID)
             return (.object([
                 "status": status, "profiles": profiles, "resume": resume, "runtime_id": .string(runtime), "frames": .array(frames),
-                "captured_at": .string(ISO8601DateFormatter().string(from: Date()))
+                "analytics": analytics, "captured_at": .string(ISO8601DateFormatter().string(from: Date()))
             ]), ticket)
         } catch {
             do {
@@ -254,6 +258,17 @@ final class Capture {
             }
             throw error
         }
+    }
+
+    /// The Insights screen's reads for the Profile over 30 days, as `HermesInsightsClient`
+    /// sends them: `/api/analytics/usage`, `/api/analytics/models` and `insights.get`.
+    private func readAnalytics() async throws -> JSON {
+        let query = [URLQueryItem(name: "days", value: "30"), URLQueryItem(name: "profile", value: mode.profile)]
+        return .object([
+            "usage": try await http("api/analytics/usage", query: query),
+            "models": try await http("api/analytics/models", query: query),
+            "insights": try await call("insights.get", ["days": .number(30), "profile": .string(mode.profile)])
+        ])
     }
 
     /// Opens a socket the way `BotClient.connect` does: a fresh ticket, the ticket
@@ -333,8 +348,10 @@ final class Capture {
         }
     }
 
-    private func http(_ path: String, body: JSON? = nil) async throws -> JSON {
-        var request = URLRequest(url: secrets.address.appendingPathComponent(path))
+    private func http(_ path: String, query: [URLQueryItem] = [], body: JSON? = nil) async throws -> JSON {
+        var parts = URLComponents(url: secrets.address.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+        if !query.isEmpty { parts.queryItems = query }
+        var request = URLRequest(url: parts.url!)
         request.timeoutInterval = 20
         if let body {
             request.httpMethod = "POST"
@@ -417,9 +434,16 @@ enum Sanitizer {
             "captured_at": .string(raw["captured_at"].text ?? ISO8601DateFormatter().string(from: Date()))
         ]
         if mode.local {
-            // The real-host fixtures stay as they are; the local turn gets one file with its own pin.
+            // The real-host fixtures stay as they are; the local turn and the analytics each get
+            // one file with its own pin. Analytics keep their days and providers; the stub model's
+            // name contains the local account's, so the leak check needs it redacted.
             let file = stamp.merging(["frames": clean(.array(turn), transcript: true, mode: mode)]) { $1 }
-            return ["turn-tool-approval-frames.json": try HermesFixtureCapture.encode(.object(file))]
+            guard let analytics = raw["analytics"].fields else { throw Failure("the capture has no analytics; record it again") }
+            let reads = analytics.mapValues { clean($0, transcript: false, mode: mode, keeping: ["day", "provider"]) }
+            return [
+                "turn-tool-approval-frames.json": try HermesFixtureCapture.encode(.object(file)),
+                "analytics.json": try HermesFixtureCapture.encode(.object(stamp.merging(reads) { $1 }))
+            ]
         }
 
         var statusFields = status.fields ?? [:]
@@ -483,22 +507,24 @@ enum Sanitizer {
     }
 
     /// Applies the allow-list. `transcript` also keeps `text`, which only the
-    /// disposable session's canned prompt and reply carry.
-    static func clean(_ value: JSON, key: String? = nil, transcript: Bool, mode: Mode) -> JSON {
+    /// disposable session's canned prompt and reply carry; `extra` keeps more keys.
+    static func clean(_ value: JSON, key: String? = nil, transcript: Bool, mode: Mode, keeping extra: Set<String> = []) -> JSON {
         if let key, emptied.contains(key) {
             if value.list != nil { return .array([]) }
             if value.fields != nil { return .object([:]) }
         }
         switch value {
         case .object(let fields):
-            return .object(fields.reduce(into: [:]) { $0[$1.key] = clean($1.value, key: $1.key, transcript: transcript, mode: mode) })
+            return .object(fields.reduce(into: [:]) {
+                $0[$1.key] = clean($1.value, key: $1.key, transcript: transcript, mode: mode, keeping: extra)
+            })
         case .array(let items):
-            return .array(items.map { clean($0, key: key, transcript: transcript, mode: mode) })
+            return .array(items.map { clean($0, key: key, transcript: transcript, mode: mode, keeping: extra) })
         case .string(let text):
             guard let key else { return .string(placeholder) }
             if identities.contains(key) { return .string("fixture-install") }
             if paths.contains(key) { return .string("/fixture/\(key)") }
-            if text == mode.profile || mode.keptStrings.contains(key) || (transcript && key == "text")
+            if text == mode.profile || mode.keptStrings.contains(key) || extra.contains(key) || (transcript && key == "text")
                 || (key == "auth_providers") { return .string(text) }
             return .string(placeholder)
         default:

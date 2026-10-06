@@ -465,6 +465,64 @@ final class InsightsViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.isRefreshing)
     }
 
+    /// A Hermes host (#1074) has no hours and counts messages over part of the window: the
+    /// picker leaves Today out, messages read "≈", and there are no top sessions or Limits.
+    @MainActor
+    func testHermesFeaturesHideTodayAndMarkMessagesApproximate() async throws {
+        let client = StubInsightsClient(
+            insightsResult: .success(try decodeInsights("""
+            {"period_days": 30, "total_sessions": 5, "total_messages": 1234, "total_input_tokens": 10, "total_output_tokens": 5}
+            """)),
+            sessionsResult: .failure(StubInsightsError()),
+            features: .hermes
+        )
+        let viewModel = InsightsViewModel(client: client)
+
+        await viewModel.load()
+        await viewModel.loadLimits()
+
+        XCTAssertEqual(viewModel.timeframes, [.last7Days, .last30Days, .last90Days])
+        let messages = try XCTUnwrap(viewModel.totalsCells.first { $0.id == "messages" })
+        XCTAssertEqual(messages.value, "≈1,234")
+        XCTAssertEqual(messages.detail, "across 5 sessions")
+        XCTAssertNil(viewModel.totalsCells.first { $0.id == "busiestHour" })
+        XCTAssertTrue(viewModel.topSessions.isEmpty)
+        XCTAssertFalse(viewModel.showsLimits)
+        XCTAssertEqual(client.sessionsRequests, 0)
+    }
+
+    @MainActor
+    func testWebuiOffersEveryWindowAndExactMessages() async throws {
+        let viewModel = try await loadedViewModel(timeframe: .last30Days, json: #"{"period_days": 30, "total_messages": 1234}"#)
+
+        XCTAssertEqual(viewModel.timeframes, AnalyticsTimeframe.allCases)
+        XCTAssertEqual(viewModel.totalsCells.first { $0.id == "messages" }?.value, "1,234")
+    }
+
+    /// Without a sessions fallback, a failed read is the screen's error, never zeros or the
+    /// previous window's figures.
+    @MainActor
+    func testWithoutASessionsFallbackAFailedReadIsTheError() async throws {
+        let client = StubInsightsClient(
+            insightsResult: .success(try decodeInsights(#"{"period_days": 30, "total_sessions": 5, "total_tokens": 350}"#)),
+            sessionsResult: .success(SessionsResponse(sessions: [], cliCount: nil, archivedCount: nil, serverTime: nil, serverTz: nil)),
+            features: .hermes
+        )
+        let viewModel = InsightsViewModel(client: client)
+        await viewModel.load()
+        XCTAssertTrue(viewModel.hasLoadedAnalytics)
+
+        client.insightsResult = .failure(StubInsightsError())
+        viewModel.selectedTimeframe = .last7Days
+        await viewModel.load()
+
+        XCTAssertEqual(client.requestedDays, [30, 7])
+        XCTAssertEqual(client.sessionsRequests, 0)
+        XCTAssertEqual(viewModel.errorMessage, "Server insights unavailable")
+        XCTAssertFalse(viewModel.hasLoadedAnalytics, "The error replaces the 30-day figures")
+        XCTAssertNotNil(viewModel.lastError)
+    }
+
     @MainActor
     private func loadedViewModel(timeframe: AnalyticsTimeframe, json: String) async throws -> InsightsViewModel {
         let client = StubInsightsClient(
@@ -527,13 +585,17 @@ final class InsightsViewModelTests: XCTestCase {
 
 @MainActor
 private final class StubInsightsClient: InsightsDataClient {
-    private let insightsResult: Result<InsightsResponse, Error>
+    var insightsResult: Result<InsightsResponse, Error>
     private let sessionsResult: Result<SessionsResponse, Error>
+    nonisolated let insightsFeatures: InsightsFeatures
     private(set) var requestedDays: [Int] = []
+    private(set) var sessionsRequests = 0
 
-    init(insightsResult: Result<InsightsResponse, Error>, sessionsResult: Result<SessionsResponse, Error>) {
+    init(insightsResult: Result<InsightsResponse, Error>, sessionsResult: Result<SessionsResponse, Error>,
+         features: InsightsFeatures = .webui) {
         self.insightsResult = insightsResult
         self.sessionsResult = sessionsResult
+        insightsFeatures = features
     }
 
     func insights(days: Int) async throws -> InsightsResponse {
@@ -542,7 +604,8 @@ private final class StubInsightsClient: InsightsDataClient {
     }
 
     func sessions() async throws -> SessionsResponse {
-        try sessionsResult.get()
+        sessionsRequests += 1
+        return try sessionsResult.get()
     }
 
     func providers() async throws -> ProvidersResponse {
@@ -562,6 +625,7 @@ private struct StubInsightsError: LocalizedError {
 
 @MainActor
 private final class DelayedInsightsClient: InsightsDataClient {
+    nonisolated var insightsFeatures: InsightsFeatures { .webui }
     private var firstResponse: InsightsResponse?
     private var pendingContinuation: CheckedContinuation<InsightsResponse, Error>?
 

@@ -15,8 +15,10 @@
 #
 # --local instead records the tool and approval turn from scripts/local-hermes on
 # this Mac (start it first): the scripted model asks to run `python3 -c "print(1)"`,
-# the capture approves it once, and only turn-tool-approval-frames.json is written.
-# It makes no model call and never touches the real host.
+# and the capture approves it once. Before deleting that session it also reads the
+# Profile's analytics (#1074). Only turn-tool-approval-frames.json and analytics.json
+# are written. It makes no model call and never touches the real host. It reads
+# 127.0.0.1:9199, or the port in HERMEX_LOCAL_HERMES_PORT for `local-hermes --port`.
 #
 # Usage: scripts/capture-hermes-fixtures [--local] [--keep-raw <file>]
 #        scripts/capture-hermes-fixtures [--local] --from-raw <file>
@@ -33,7 +35,7 @@ attribute() {
 
 if (( ${argv[(Ie)--local]} )); then
   # scripts/local-hermes's fixed loopback address and dev credentials.
-  export HERMEX_CAPTURE_ADDRESS="http://127.0.0.1:9199"
+  export HERMEX_CAPTURE_ADDRESS="http://127.0.0.1:${HERMEX_LOCAL_HERMES_PORT:-9199}"
   export HERMEX_CAPTURE_USERNAME="hermex"
   export HERMEX_CAPTURE_PASSWORD="hermex-local"
   if (( ! ${argv[(Ie)--from-raw]} )) && ! curl -fsS --max-time 5 "$HERMEX_CAPTURE_ADDRESS/api/status" >/dev/null 2>&1; then

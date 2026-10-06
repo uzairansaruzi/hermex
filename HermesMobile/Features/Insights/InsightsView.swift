@@ -1,23 +1,29 @@
 import SwiftUI
 
 /// The Usage screen: a window picker, one hero figure with a chart under it, the
-/// window totals, and the per-model breakdown. Every figure comes from
-/// `GET /api/insights`, or from local session metadata when that call fails.
+/// window totals, and the per-model breakdown. On a webui server every figure comes from
+/// `GET /api/insights`, or from local session metadata when that call fails. On a Hermes host
+/// (#1074) they are one Profile's analytics, which the title names (`HermesInsightsClient`).
 struct InsightsView: View {
-    let server: URL
     let onAPIError: (Error) -> Void
+    private let profile: String?
 
     @State private var viewModel: InsightsViewModel
 
     init(server: URL, onAPIError: @escaping (Error) -> Void) {
-        self.server = server
+        self.init(client: APIClient(baseURL: server), onAPIError: onAPIError)
+    }
+
+    /// The usage `client` reads: on a Hermes host, `profile`'s.
+    init(client: any InsightsDataClient, profile: String? = nil, onAPIError: @escaping (Error) -> Void) {
         self.onAPIError = onAPIError
-        _viewModel = State(initialValue: InsightsViewModel(server: server))
+        self.profile = profile
+        _viewModel = State(initialValue: InsightsViewModel(client: client))
     }
 
     var body: some View {
         content
-            .navigationTitle("Usage")
+            .modifier(UsageTitle(profile: profile))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -86,7 +92,7 @@ struct InsightsView: View {
                 }
 
                 Picker("Window", selection: $viewModel.selectedTimeframe) {
-                    ForEach(AnalyticsTimeframe.allCases) { timeframe in
+                    ForEach(viewModel.timeframes) { timeframe in
                         Text(timeframe.title).tag(timeframe)
                     }
                 }
@@ -154,6 +160,24 @@ struct InsightsView: View {
 
         if let lastError = viewModel.lastError {
             onAPIError(lastError)
+        }
+    }
+}
+
+/// Titles the Usage screen. On a Hermes host it also names the Profile the figures are for:
+/// under the title on iOS 26, and after it before that.
+private struct UsageTitle: ViewModifier {
+    let profile: String?
+
+    func body(content: Content) -> some View {
+        if let profile {
+            if #available(iOS 26, *) {
+                content.navigationTitle("Usage").navigationSubtitle(profile)
+            } else {
+                content.navigationTitle(Text(verbatim: "\(String(localized: "Usage")) · \(profile)"))
+            }
+        } else {
+            content.navigationTitle("Usage")
         }
     }
 }

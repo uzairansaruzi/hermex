@@ -2,15 +2,38 @@ import Foundation
 import Observation
 
 /// Sendable because quota probes run concurrently in a task group: the client
-/// is handed to child tasks off the main actor.
+/// is handed to child tasks off the main actor. A webui server's is its `APIClient`;
+/// a Hermes host's is `HermesInsightsClient` (#1074).
 protocol InsightsDataClient: Sendable {
+    /// What this server's insights report, which decides what the Usage screen offers.
+    var insightsFeatures: InsightsFeatures { get }
     func sessions() async throws -> SessionsResponse
     func insights(days: Int) async throws -> InsightsResponse
     func providers() async throws -> ProvidersResponse
     func providerQuota(provider: String, refresh: Bool) async throws -> ProviderQuotaResponse
 }
 
-extension APIClient: InsightsDataClient {}
+extension APIClient: InsightsDataClient {
+    nonisolated var insightsFeatures: InsightsFeatures { .webui }
+}
+
+/// What one server's insights can report.
+struct InsightsFeatures: Equatable, Sendable {
+    /// The windows the picker offers. Today is the only hourly one.
+    let timeframes: [AnalyticsTimeframe]
+    /// Message counts cover only part of the window, so the totals mark them "≈".
+    let approximatesMessages: Bool
+    /// A failed insights read is rebuilt from `/api/sessions`, which is also the only source of
+    /// top sessions. Without it, the failure is the screen's error.
+    let fallsBackToSessions: Bool
+
+    static let webui = InsightsFeatures(timeframes: AnalyticsTimeframe.allCases, approximatesMessages: false,
+                                        fallsBackToSessions: true)
+    /// A Hermes host (#1074) reports no hours, counts messages over at most its newest 500 visible
+    /// sessions (`insights.get`), and has no sessions list here.
+    static let hermes = InsightsFeatures(timeframes: [.last7Days, .last30Days, .last90Days], approximatesMessages: true,
+                                         fallsBackToSessions: false)
+}
 
 /// The windows the Usage screen offers. Each maps to a `days` value the insights
 /// handler clamps to 1-365, and to a matching local filter for the session
@@ -144,10 +167,6 @@ final class InsightsViewModel {
 
     private let client: any InsightsDataClient
 
-    init(server: URL) {
-        client = APIClient(baseURL: server)
-    }
-
     init(client: any InsightsDataClient) {
         self.client = client
     }
@@ -180,6 +199,14 @@ final class InsightsViewModel {
         } catch {
             guard activeLoadID == loadID, !Task.isCancelled else { return }
             lastError = error
+            guard features.fallsBackToSessions else {
+                // Nothing to rebuild the window from, and what is on screen is another window or
+                // unconfirmed: the failure replaces it.
+                serverInsights = nil
+                dataSource = .local
+                errorMessage = error.localizedDescription
+                return
+            }
             fallbackReason = error.localizedDescription
 
             do {
@@ -271,6 +298,16 @@ final class InsightsViewModel {
 
         guard generation == limitsGeneration, !Task.isCancelled else { return }
         limitCards = cards
+    }
+
+    /// What this server's insights report.
+    var features: InsightsFeatures {
+        client.insightsFeatures
+    }
+
+    /// The windows the picker offers.
+    var timeframes: [AnalyticsTimeframe] {
+        features.timeframes
     }
 
     // MARK: - Aggregates
@@ -520,7 +557,7 @@ final class InsightsViewModel {
         cells.append(UsageTotalsCell(
             id: "messages",
             label: String(localized: "Messages"),
-            value: usageFormattedTokens(totalMessages),
+            value: (features.approximatesMessages ? "≈" : "") + usageFormattedTokens(totalMessages),
             detail: String(localized: "across \(String(localized: "\(sessionCount) sessions"))")
         ))
 

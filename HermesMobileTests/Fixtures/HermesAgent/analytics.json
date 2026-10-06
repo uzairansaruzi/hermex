@@ -1,0 +1,81 @@
+{
+  "captured_at" : "2026-10-06T22:39:32Z",
+  "hermes_agent_sha" : "ca6782850432927f33df4775cb6dd45bb51460d2",
+  "insights" : {
+    "days" : 30,
+    "messages" : 0,
+    "sessions" : 0
+  },
+  "models" : {
+    "models" : [
+      {
+        "actual_cost" : 0,
+        "api_calls" : 2,
+        "avg_tokens_per_session" : 0,
+        "cache_read_tokens" : 0,
+        "capabilities" : {},
+        "estimated_cost" : 0,
+        "input_tokens" : 0,
+        "last_used_at" : 1791326370.1671839,
+        "model" : "fixture-redacted",
+        "output_tokens" : 0,
+        "provider" : "custom",
+        "reasoning_tokens" : 0,
+        "sessions" : 1,
+        "tool_calls" : 1
+      }
+    ],
+    "period_days" : 30,
+    "totals" : {
+      "distinct_models" : 1,
+      "total_actual_cost" : 0,
+      "total_api_calls" : 2,
+      "total_cache_read" : 0,
+      "total_estimated_cost" : 0,
+      "total_input" : 0,
+      "total_output" : 0,
+      "total_reasoning" : 0,
+      "total_sessions" : 1
+    }
+  },
+  "usage" : {
+    "by_model" : [
+      {
+        "api_calls" : 2,
+        "estimated_cost" : 0,
+        "input_tokens" : 0,
+        "model" : "fixture-redacted",
+        "output_tokens" : 0,
+        "sessions" : 1
+      }
+    ],
+    "by_task" : [],
+    "daily" : [
+      {
+        "actual_cost" : 0,
+        "api_calls" : 2,
+        "cache_read_tokens" : 0,
+        "day" : "2026-10-06",
+        "estimated_cost" : 0,
+        "input_tokens" : 0,
+        "output_tokens" : 0,
+        "reasoning_tokens" : 0,
+        "sessions" : 1
+      }
+    ],
+    "period_days" : 30,
+    "skills" : {},
+    "tools" : [],
+    "totals" : {
+      "total_actual_cost" : 0,
+      "total_api_calls" : 2,
+      "total_cache_read" : 0,
+      "total_estimated_cost" : 0,
+      "total_input" : 0,
+      "total_output" : 0,
+      "total_reasoning" : 0,
+      "total_sessions" : 1
+    }
+  },
+  "version" : "0.21.5"
+}

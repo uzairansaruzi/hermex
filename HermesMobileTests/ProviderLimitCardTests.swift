@@ -512,6 +512,7 @@ final class ProviderLimitCardTests: XCTestCase {
 /// probe on a continuation so a test can order events without sleeping.
 @MainActor
 private final class QuotaStubClient: InsightsDataClient {
+    nonisolated var insightsFeatures: InsightsFeatures { .webui }
     var holdsQuota = false
     private(set) var refreshFlags: [Bool] = []
     private(set) var quotaCallCount = 0

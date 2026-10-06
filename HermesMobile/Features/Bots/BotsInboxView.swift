@@ -2,10 +2,10 @@ import SwiftUI
 
 /// Whether the inbox's + menu offers "New Session" (#1010), which opens a Hermes session in
 /// the main chat, "Tasks" (#1040), the host's scheduled Tasks, "Kanban" (#1043), which opens
-/// the host's Boards, "Skills" (#1069), the selected Profile's skills, and "Memory" (#1073), the
-/// selected Profile's memory and soul: only as a Hermes server's home, and only in a DEBUG build
-/// or Hermex Branch (bundle id ending `.branch`). Temporary: #709's build gives them a permanent
-/// home.
+/// the host's Boards, "Skills" (#1069), the selected Profile's skills, "Memory" (#1073), the
+/// selected Profile's memory and soul, and "Insights" (#1074), the selected Profile's usage: only
+/// as a Hermes server's home, and only in a DEBUG build or Hermex Branch (bundle id ending
+/// `.branch`). Temporary: #709's build gives them a permanent home.
 enum HermesSessionEntry {
     static func isOffered(isHermesHome: Bool, isDebugBuild: Bool = HermesSessionEntry.isDebugBuild,
                           bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> Bool {
@@ -49,6 +49,16 @@ struct HermesMemoryEntry: Hashable, Identifiable {
     let id = UUID()
     let server: URL
     let client: HermesMemoryClient
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
+/// The Usage screen the inbox's + menu pushed on a Hermes host (#1074), with the client for the
+/// Profile it reads.
+struct HermesInsightsEntry: Hashable, Identifiable {
+    let id = UUID()
+    let client: HermesInsightsClient
 
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -102,12 +112,13 @@ struct BotsInboxHome {
     /// True once `open()` has returned at least once, so "no Bot connection" is a
     /// settled answer to a held deep link rather than a not-loaded-yet one.
     @State private var hasSettled = false
-    /// The Hermes session "New Session" pushed, the Tasks, Skills or Memory screen its item
-    /// pushed, and whether the Profile any of them opens on is being read.
+    /// The Hermes session "New Session" pushed, the Tasks, Skills, Memory or Usage screen its
+    /// item pushed, and whether the Profile any of them opens on is being read.
     @State private var newSession: HermesSessionChat?
     @State private var tasks: HermesTasksEntry?
     @State private var skills: HermesSkillsEntry?
     @State private var memory: HermesMemoryEntry?
+    @State private var insights: HermesInsightsEntry?
     @State private var isOpeningSession = false
     /// True while the host's Kanban is pushed from the + menu (#1043).
     @State private var showingKanban = false
@@ -289,6 +300,13 @@ struct BotsInboxHome {
                             }
                         }
                         .disabled(isOpeningSession)
+                        Button("Insights", systemImage: "chart.bar") {
+                            openOnSelectedProfile { connection, profile in
+                                insights = HermesInsightsEntry(client: HermesInsightsClient(saved: connection, server: server,
+                                                                                            profile: profile))
+                            }
+                        }
+                        .disabled(isOpeningSession)
                     }
                     if inbox.reorderableSectionNames.count >= 2 {
                         Divider()
@@ -410,11 +428,11 @@ struct BotsInboxHome {
         .padding(.vertical, 12)
     }
 
-    /// Opens a new Hermes session, the Tasks, Skills or Memory screen on the Profile last
+    /// Opens a new Hermes session, the Tasks, Skills, Memory or Usage screen on the Profile last
     /// picked for this server, or the one the host's dashboard runs (`current`) when none is, or
     /// the host no longer lists it (#1015). A session is created when its chat attaches, not
     /// here; a new Task starts in that Profile (#1040); Skills lists that Profile's (#1069);
-    /// Memory shows that Profile's (#1073).
+    /// Memory shows that Profile's (#1073); Usage reads that Profile's (#1074).
     private func openOnSelectedProfile(_ open: @escaping (BotConnection, String) -> Void) {
         guard let connection = inbox.connection, !isOpeningSession else { return }
         isOpeningSession = true
@@ -661,7 +679,7 @@ extension BotsInboxView {
                 searchedProfile = nil
                 searchedRoom = nil; searchedSequence = nil; roomSequence = nil
                 selection.room = nil; selection.conversation = nil
-                newSession = nil; tasks = nil; skills = nil; memory = nil
+                newSession = nil; tasks = nil; skills = nil; memory = nil; insights = nil
                 showingKanban = false
                 editSelection = nil
                 creation = nil
@@ -713,6 +731,10 @@ extension BotsInboxView {
             }
             .navigationDestination(item: $memory) { entry in
                 MemoryView(server: entry.server, client: entry.client, profile: entry.client.profile, onAPIError: { _ in })
+                    .id(entry.id)
+            }
+            .navigationDestination(item: $insights) { entry in
+                InsightsView(client: entry.client, profile: entry.client.profile, onAPIError: { _ in })
                     .id(entry.id)
             }
             .navigationDestination(isPresented: $showingKanban) {
