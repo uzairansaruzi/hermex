@@ -688,6 +688,30 @@ extension CronManagementViewModelTests {
         host.answerTrigger(0, .failure(BotFailure.rejected(524)))
     }
 
+    /// A row's Run Now read that was out while another row's Delete landed can't bring the
+    /// deleted Task back; the next read shows the list again.
+    func testARowsRunNowReadNeverUndoesAChangeMadeWhileItWasOut() async throws {
+        let other = HermesCronFixture.job("b2", profile: "research")
+        let host = RunNowHost(lists: [[HermesCronFixture.job("a1", profile: "research"), other],
+                                      [Self.running, other], [Self.finished]])
+        let viewModel = TasksViewModel(server: server, client: host, sleep: clock.sleep)
+        await viewModel.load()
+        let jobs = viewModel.jobs
+
+        let run = Task { await viewModel.runNow(jobs[0]) }
+        await clock.waitUntilSleeping(1)
+        host.duringListRead = { await viewModel.delete(jobs[1]) }
+        clock.advance()
+        await clock.waitUntilSleeping(2)
+        XCTAssertEqual(viewModel.jobs.map(\.jobId), ["a1"], "The deleted Task stays deleted")
+
+        clock.advance()
+        await run.value
+        XCTAssertEqual(viewModel.jobs.map(\.lastStatus), ["error"])
+        XCTAssertEqual(host.deletes, ["b2"])
+        host.answerTrigger(0, .failure(BotFailure.rejected(524)))
+    }
+
     // MARK: - Fixtures
 
     /// The job claimed by a run in progress.
@@ -748,11 +772,15 @@ extension CronManagementViewModelTests {
 }
 
 /// A Hermes host for the Run Now machine: each trigger waits for the test's answer, and each
-/// list read returns the next of `lists`, the last one again once they run out.
+/// list read returns the next of `lists`, the last one again once they run out. A delete
+/// succeeds.
 @MainActor final class RunNowHost: CronDataClient {
     nonisolated var cronFeatures: CronFeatures { .hermes }
     private(set) var triggers: [String] = []
     private(set) var listReads = 0
+    private(set) var deletes: [String] = []
+    /// Runs once, inside the next list read, before it answers.
+    var duringListRead: (@MainActor () async -> Void)?
     private let lists: [[BotJSON]]
     private var answers: [Int: CheckedContinuation<CronMutationResponse, Error>] = [:]
 
@@ -770,6 +798,10 @@ extension CronManagementViewModelTests {
 
     func cronJobs() async throws -> CronJobList {
         listReads += 1
+        if let during = duringListRead {
+            duringListRead = nil
+            await during()
+        }
         guard !lists.isEmpty else { throw BotFailure.unsupported }
         return CronJobList(hermesJobs: try HermesCronFixture.decode(lists[min(listReads, lists.count) - 1]))
     }
@@ -786,7 +818,10 @@ extension CronManagementViewModelTests {
         throw BotFailure.unsupported
     }
     func resumeCron(jobID _: String, profile _: String?) async throws -> CronMutationResponse { throw BotFailure.unsupported }
-    func deleteCron(jobID _: String, profile _: String?) async throws -> CronMutationResponse { throw BotFailure.unsupported }
+    func deleteCron(jobID: String, profile _: String?) async throws -> CronMutationResponse {
+        deletes.append(jobID)
+        return CronMutationResponse(ok: true, job: nil, error: nil)
+    }
     func cronOutput(jobID _: String, limit _: Int?) async throws -> CronOutputResponse { throw BotFailure.unsupported }
     func cronHistory(jobID _: String, offset _: Int, limit _: Int) async throws -> CronRunHistoryResponse {
         throw BotFailure.unsupported

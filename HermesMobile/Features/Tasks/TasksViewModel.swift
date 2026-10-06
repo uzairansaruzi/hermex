@@ -36,6 +36,9 @@ final class TasksViewModel {
     /// Jobs with a row action in flight, so a row cannot be double-fired and
     /// can show that it is waiting on the server.
     private(set) var pendingActionJobIDs: Set<String> = []
+    /// Bumped by every change applied to the list, so a row's Run Now read sent before one
+    /// can't put back what it replaced (#1041).
+    private var listChanges = 0
 
     private let server: URL
     /// The server's Tasks, shared with the detail screens and editors this list opens.
@@ -212,6 +215,7 @@ final class TasksViewModel {
     }
 
     func apply(_ mutation: CronJobListMutation) {
+        listChanges += 1
         switch mutation {
         case .upsert(let job):
             upsert(job)
@@ -229,12 +233,18 @@ final class TasksViewModel {
     // never claims a state the server has not confirmed.
 
     /// Runs `job` now. A Hermes host's Run Now follows the run on the list until the host's
-    /// outcome (#1041), and the rows show each list it reads; the caller's task owns that,
-    /// so cancelling it, as the screen does when it goes away, stops the reads.
+    /// outcome (#1041), and the rows show each list it reads, unless the list changed while
+    /// that read was out. The caller's task owns the follow, so cancelling it, as the screen
+    /// does when it goes away, stops the reads.
     func runNow(_ job: CronJob) async {
         var elapsed: Double?
         guard let jobID = await perform(job, action: { detail in
-            detail.onListRead = { [weak self] list in self?.show(list) }
+            detail.readList = { [weak self, client] in
+                let changesBefore = self?.listChanges
+                let list = try await client.cronJobs()
+                if let self, listChanges == changesBefore, !Task.isCancelled { show(list) }
+                return list
+            }
             let didRun = await detail.runNow()
             elapsed = detail.runningElapsed
             return didRun

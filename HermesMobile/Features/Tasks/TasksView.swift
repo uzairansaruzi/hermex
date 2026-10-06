@@ -298,7 +298,7 @@ struct TasksView: View {
             } label: {
                 Label("Delete", systemImage: "trash")
             }
-            .disabled(job.jobId == nil)
+            .disabled(job.jobId == nil || viewModel.isPendingAction(job))
         }
     }
 

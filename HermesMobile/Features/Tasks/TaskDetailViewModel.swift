@@ -61,8 +61,9 @@ final class TaskDetailViewModel {
 
     /// True from a Hermes host's Run Now until the host's outcome (#1041); see `runNowState`.
     private(set) var isRunNowPending = false
-    /// Given every list a pending Run Now reads, so the Tasks list can show the run too.
-    @ObservationIgnored var onListRead: ((CronJobList) -> Void)?
+    /// How a pending Run Now reads the list. The Tasks list passes one that also shows each
+    /// read on its rows; nil reads it from `client`.
+    @ObservationIgnored var readList: (@MainActor () async throws -> CronJobList)?
     /// Waits between a pending Run Now's list reads; tests pass a scripted clock.
     private let sleep: @MainActor @Sendable (Duration) async throws -> Void
     static let runNowReadInterval = Duration.seconds(5)
@@ -459,8 +460,8 @@ final class TaskDetailViewModel {
     /// is newer than `lastRun`, the one before the tap.
     private func readRunNow(_ jobID: String, since lastRun: Date?) async -> RunNowReading {
         let mutationsBefore = mutationCount
-        guard let list = try? await client.cronJobs(), !Task.isCancelled else { return .notYet }
-        onListRead?(list)
+        let read = readList ?? { [client] in try await client.cronJobs() }
+        guard let list = try? await read(), !Task.isCancelled else { return .notYet }
         guard mutationCount == mutationsBefore,
               let fresh = list.jobs.first(where: { $0.jobId == jobID }) else { return .notYet }
         job = fresh

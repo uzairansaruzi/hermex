@@ -1088,7 +1088,8 @@ error, since the run outlives its request; a refusal (`{detail}`) shows unless a
 after it shows the Task running, as 409 "already running" does. Leaving the screen stops the
 reads, never the run, and nothing is resent. A paused Task asks first, because the trigger
 resumes it; a completed one has no Run Now, because the host refuses it. The list's row
-action runs the same machine and shows each list it reads.
+action runs the same machine and shows each list it reads, unless another change landed on
+the list while that read was out.
 
 ## Opening a bot from outside the app
 
