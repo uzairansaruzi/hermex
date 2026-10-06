@@ -214,4 +214,40 @@ import XCTest
         XCTAssertEqual(installed, ["0.22.0"], "The saved version follows the update")
         XCTAssertFalse(updating.isWorking)
     }
+
+    func testALostReplyToTheUpdateFollowsTheRunTheHostReports() async throws {
+        var applied = false, reads = 0
+        let earlier = #"{"outcome": "success", "started_at": "2026-10-01T09:00:00+00:00", "post_version": "0.21.5"}"#
+        let http = connection { request in
+            switch request.url?.path {
+            case "/api/hermes/update":
+                // The host started the update, but its reply never arrived.
+                applied = true
+                return .fail(URLError(.networkConnectionLost))
+            case "/api/actions/hermes-update/status":
+                guard applied else {
+                    return .json(200, Self.json(#"{"running": false, "exit_code": 0, "pid": null, "lines": [], "receipt": \#(earlier)}"#))
+                }
+                reads += 1
+                if reads == 1 {
+                    return .json(200, Self.json(#"{"running": true, "exit_code": null, "pid": 4242, "lines": [], "receipt": \#(earlier)}"#))
+                }
+                return .json(200, Self.json(#"{"running": false, "exit_code": 0, "pid": null, "lines": [], "receipt": {"outcome": "success", "started_at": "2026-10-06T18:00:00+00:00", "post_version": "0.22.0"}}"#))
+            case "/api/health":
+                return .json(200, .object(["ok": .bool(true), "version": .string("0.22.0"), "auth_required": .bool(true)]))
+            default: return nil
+            }
+        }
+        let model = HermesUpdateModel(server: server, makeClient: { HermesUpdateClient(http: http) }, cadence: .zero, sleep: { _ in })
+        let finished = expectation(description: "updated")
+        model.onUpdated = { _ in finished.fulfill() }
+
+        model.apply()
+        await fulfillment(of: [finished], timeout: 5)
+
+        XCTAssertEqual(HermesHostFixture.count("/api/hermes/update"), 1, "The run is followed, not offered again")
+        guard case .following(let machine)? = model.run else { return XCTFail("Expected the run") }
+        XCTAssertEqual(machine.pid, 4242, "The process the host reported")
+        XCTAssertEqual(machine.state, .done(version: "0.22.0"))
+    }
 }

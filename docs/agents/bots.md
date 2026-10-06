@@ -1167,7 +1167,8 @@ shows its `update_command` with Copy, except `managed-runtime`, whose command is
 Update asks first, because running turns stop and the host restarts, then sends one
 `POST /api/hermes/update` (no body): `{ok: true, pid, action_id}`, `{ok: true,
 already_running: true}`, which is followed like a new run, or 200 `{ok: false, error, message,
-update_command}` for an install it won't update in place.
+update_command}` for an install it won't update in place. A POST that fails without the host's
+answer reads the status once and follows a run the host reports, rather than offering another.
 
 `HermesUpdateMachine` follows the run every 3 s. It reads
 `GET /api/actions/hermes-update/status?lines=40` (`{running, exit_code, pid, lines, receipt?}`),

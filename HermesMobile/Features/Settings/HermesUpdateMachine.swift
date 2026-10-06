@@ -380,7 +380,7 @@ struct HermesUpdateMachine: Equatable {
             do { baseline = try await client.status().receipt } catch BotFailure.rejected(404) {
                 baseline = try await client.receipt()
             }
-            switch try await client.start() {
+            switch try await Self.start(client, after: baseline) {
             case .started(let pid):
                 run = .following(HermesUpdateMachine(baseline: baseline, pid: pid, at: elapsed))
             case let refusal:
@@ -395,6 +395,18 @@ struct HermesUpdateMachine: Equatable {
             return
         }
         await watch(client, readFirst: false)
+    }
+
+    /// Asks the host to update. A request that fails without the host's answer may still have
+    /// started the update before its reply was lost (a dropped connection, a proxy's 5xx), so a
+    /// run the host then reports is followed rather than offered again; else the failure stands.
+    private static func start(_ client: HermesUpdateClient, after baseline: HermesUpdateReceipt?) async throws -> HermesUpdateStart {
+        do { return try await client.start() } catch {
+            if error as? BotFailure == .stale || error is CancellationError { throw error }
+            guard let status = try? await client.status(), status.running || status.receipt.map({ $0 != baseline }) == true
+            else { throw error }
+            return .started(pid: status.pid)
+        }
     }
 
     private func follow(readFirst: Bool) {
