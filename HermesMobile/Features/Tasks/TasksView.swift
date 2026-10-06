@@ -11,6 +11,12 @@ struct TasksView: View {
     @State private var viewModel: TasksViewModel
     @State private var isPresentingCreateTask = false
     @State private var jobPendingDeletion: CronJob?
+    /// A paused Task whose Run Now would also resume it, while the user is asked.
+    @State private var jobPendingRunConfirmation: CronJob?
+    /// Each row's Run Now on a Hermes host, which follows the run until the host's outcome
+    /// (#1041). Leaving the screen cancels them, which stops the reads and leaves the runs to
+    /// the host; the list read on return shows where they are.
+    @State private var runNowTasks: [String: Task<Void, Never>] = [:]
     /// "Ran Recently" shows a few rows until the user asks for the rest. View
     /// state only: every fresh visit starts compact.
     @State private var isShowingAllRecentRuns = false
@@ -87,6 +93,12 @@ struct TasksView: View {
             } message: { job in
                 Text("“\(job.displayName)” will be removed from the Hermes server.")
             }
+            .alert("Run Now?", isPresented: runConfirmationBinding, presenting: jobPendingRunConfirmation) { job in
+                Button("Run Now") { startRunNow(job) }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("This also resumes the Task.")
+            }
             .alert("Could Not Update Task", isPresented: actionErrorBinding) {
                 Button("OK", role: .cancel) { viewModel.clearActionError() }
             } message: {
@@ -99,6 +111,10 @@ struct TasksView: View {
             }
             .task {
                 await loadTasks()
+            }
+            .onDisappear {
+                runNowTasks.values.forEach { $0.cancel() }
+                runNowTasks = [:]
             }
     }
 
@@ -288,9 +304,13 @@ struct TasksView: View {
 
     @ViewBuilder
     private func runNowButton(for job: CronJob) -> some View {
-        if features.hasRunNow {
+        if features.offersRunNow(for: job) {
             Button {
-                Task { await performAction { await viewModel.runNow(job) } }
+                if features.runNowResumes(job) {
+                    jobPendingRunConfirmation = job
+                } else {
+                    startRunNow(job)
+                }
             } label: {
                 Label("Run Now", systemImage: "play.fill")
             }
@@ -320,10 +340,28 @@ struct TasksView: View {
         }
     }
 
+    private func startRunNow(_ job: CronJob) {
+        guard let jobID = job.jobId, runNowTasks[jobID] == nil else { return }
+        let run = Task {
+            await performAction { await viewModel.runNow(job) }
+            if !Task.isCancelled { runNowTasks[jobID] = nil }
+        }
+        if features.runNowWaitsForRun {
+            runNowTasks[jobID] = run
+        }
+    }
+
     private var deletionConfirmationBinding: Binding<Bool> {
         Binding(
             get: { jobPendingDeletion != nil },
             set: { if !$0 { jobPendingDeletion = nil } }
+        )
+    }
+
+    private var runConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { jobPendingRunConfirmation != nil },
+            set: { if !$0 { jobPendingRunConfirmation = nil } }
         )
     }
 

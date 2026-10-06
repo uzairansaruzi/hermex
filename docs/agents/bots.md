@@ -1076,8 +1076,19 @@ and `last_status`. The editor reads `GET /api/cron/delivery-targets?profile=` an
 `profiles.list` over the gateway. The list warns once when any enabled Task's
 `scheduler_heartbeat_age_s` passes 180 s, three missed 60 s ticks. Jobs carry
 `hermes_home`, a host path, which is never decoded. Toast notifications are webui-only,
-and Run Now and run history wait for #1041 and #1042. The temporary entry is the inbox's
-+ menu (DEBUG and Hermex Branch), until #709.
+and run history waits for #1042. The temporary entry is the inbox's + menu (DEBUG and
+Hermex Branch), until #709.
+
+Run Now (#1041) is `POST …/{id}/trigger?profile=`, which runs the job before it answers,
+so it gets the long deadline and goes out on its own task. `TaskDetailViewModel` then
+reads the list every 5 s until the host's outcome: the trigger's job, or a read where the
+Task no longer runs and its `last_run_at` is newer than before the tap. "Running" shows only
+once a read does. A 504, a 524, a timeout or a dropped connection keeps reading without an
+error, since the run outlives its request; a refusal (`{detail}`) shows unless a read right
+after it shows the Task running, as 409 "already running" does. Leaving the screen stops the
+reads, never the run, and nothing is resent. A paused Task asks first, because the trigger
+resumes it; a completed one has no Run Now, because the host refuses it. The list's row
+action runs the same machine and shows each list it reads.
 
 ## Opening a bot from outside the app
 

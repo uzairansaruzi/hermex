@@ -34,7 +34,8 @@ protocol CronDataClient: Sendable {
 
 /// The parts of Tasks one server backs. A webui server backs all of them. A Hermes host
 /// (#1040) keeps every Task in a Profile, reports running state and recent runs in its list,
-/// and has no toast setting; its Run Now and run history arrive with #1041 and #1042.
+/// runs a Task on demand only before it replies (#1041), and has no toast setting; its run
+/// history arrives with #1042.
 struct CronFeatures: Equatable, Sendable {
     /// Each Task belongs to one Profile: rows name it, the editor's sources follow it, and
     /// editing can't move a Task to another.
@@ -42,13 +43,28 @@ struct CronFeatures: Equatable, Sendable {
     let hasToastNotifications: Bool
     /// `/api/crons/recent`. Without it, recent runs come with the list.
     let hasRecentRunsFeed: Bool
-    let hasRunNow: Bool
+    /// Run Now answers once the run has finished rather than when it starts: a Hermes host's
+    /// trigger (#1041). The screens follow the run on the list until the host's outcome. The
+    /// host also resumes a paused Task as it runs it, and refuses a completed one.
+    let runNowWaitsForRun: Bool
     let hasRunHistory: Bool
 
     static let webui = CronFeatures(isProfileScoped: false, hasToastNotifications: true, hasRecentRunsFeed: true,
-                                    hasRunNow: true, hasRunHistory: true)
+                                    runNowWaitsForRun: false, hasRunHistory: true)
     static let hermes = CronFeatures(isProfileScoped: true, hasToastNotifications: false, hasRecentRunsFeed: false,
-                                     hasRunNow: false, hasRunHistory: false)
+                                     runNowWaitsForRun: true, hasRunHistory: false)
+
+    /// Whether the screens offer Run Now for `job`: everywhere but a completed Task on a
+    /// Hermes host, which refuses it.
+    func offersRunNow(for job: CronJob) -> Bool {
+        !(runNowWaitsForRun && job.state == "completed")
+    }
+
+    /// Whether Run Now also resumes `job`, which the screens ask about first: a paused Task on
+    /// a Hermes host, which stays resumed.
+    func runNowResumes(_ job: CronJob) -> Bool {
+        runNowWaitsForRun && job.enabled == false
+    }
 }
 
 /// One read of the Tasks list.

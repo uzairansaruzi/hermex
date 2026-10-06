@@ -20,7 +20,9 @@ import Foundation
 /// latest 500 rows oldest first, or 404 `{detail}` for a session the Profile does not have.
 /// The cron routes (#1040) are read at the same pin and checked against `scripts/local-hermes`:
 /// the list is a bare array across every Profile, a mutation answers the job (delete `{ok}`),
-/// `?profile=` is a hint the host checks, and a refusal is `{detail}`.
+/// `?profile=` is a hint the host checks, and a refusal is `{detail}`. The trigger (#1041) runs
+/// the job before it answers it, and the run outlives a dropped request: `scripts/local-hermes`
+/// finished and recorded a 20 s run whose request was dropped after 5 s.
 enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
@@ -63,6 +65,9 @@ enum HermesREST: Equatable, Sendable {
     case cronResume(id: String, profile: String?)
     /// Also deletes the job's output folder on the host.
     case cronDelete(id: String, profile: String?)
+    /// Runs the job now, without a body, and answers it once the run has finished. A paused
+    /// job is resumed as it runs; one already running, or completed, is refused with 409.
+    case cronTrigger(id: String, profile: String?)
     /// `{targets: [{id, name, …}]}`, `local` first, for one Profile's gateway platforms.
     case cronDeliveryTargets(profile: String?)
     /// One Profile's skills: a bare array of `{name, description, category, enabled, …}`.
@@ -126,6 +131,8 @@ enum HermesREST: Equatable, Sendable {
         case .cronResume(let id, let profile):
             return Self.bare("POST", try Self.cronJob(base, id, "resume", profile: profile))
         case .cronDelete(let id, let profile): return Self.bare("DELETE", try Self.cronJob(base, id, profile: profile))
+        case .cronTrigger(let id, let profile):
+            return Self.bare("POST", try Self.cronJob(base, id, "trigger", profile: profile))
         case .cronDeliveryTargets(let profile):
             return Self.get(try Self.url(base, "api/cron/delivery-targets", profile: profile))
         case .skills(let profile): return Self.get(try Self.url(base, "api/skills", profile: profile))

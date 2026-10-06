@@ -9,8 +9,11 @@ struct TaskDetailHeaderCard: View {
     let runningElapsed: Double?
     let isBusy: Bool
     let canSeeFullOutput: Bool
-    /// False where the server can't run a Task on demand (a Hermes host until #1041).
+    /// False where the server won't run this Task on demand: a completed one on a Hermes host.
     var showsRunNow = true
+    /// A Hermes host's Run Now in flight (#1041): Run now waits with a progress indicator
+    /// until the host shows the run, then stays off until the outcome.
+    var runNowState: TaskDetailViewModel.RunNowState = .idle
     let runNow: () -> Void
     let togglePauseResume: () -> Void
     let seeFullOutput: () -> Void
@@ -130,8 +133,10 @@ struct TaskDetailHeaderCard: View {
         let runButton = footerButton(
             title: String(localized: "Run now"),
             systemImage: "play.fill",
+            isWaiting: runNowState == .requested,
             action: runNow
         )
+        .disabled(runNowState != .idle)
         let pauseButton = footerButton(
             title: job.pauseResumeTitle,
             systemImage: job.pauseResumeSystemImage,
@@ -160,16 +165,23 @@ struct TaskDetailHeaderCard: View {
         .disabled(isBusy)
     }
 
+    /// `isWaiting` puts a progress indicator where the icon was.
     private func footerButton(
         title: String,
         systemImage: String,
+        isWaiting: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                Image(systemName: systemImage)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                if isWaiting {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: systemImage)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
                 Text(title)
                     .font(.subheadline.weight(.semibold))
             }

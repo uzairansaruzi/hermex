@@ -78,6 +78,14 @@ import Foundation
         return CronMutationResponse(ok: ok, job: nil, error: nil)
     }
 
+    /// The host's trigger (#1041), which runs the Task before it answers with the job, so it
+    /// gets the long deadline. A tunnel can still give up first (Cloudflare's 524 after about
+    /// 100 s) while the run goes on; the screens follow it on the list. A paused Task is
+    /// resumed as it runs; one already running is refused with 409 and the host's `detail`.
+    func runCron(jobID: String, profile: String?) async throws -> CronMutationResponse {
+        try Self.job(try Self.accepted(try await reply(.cronTrigger(id: jobID, profile: profile), deadline: .provisioning)))
+    }
+
     /// `model.options` for the Profile, or the host's own when none is named.
     func cronModelGroups(profile: String?) async throws -> [ModelCatalogGroup] {
         let call: HermesCall
@@ -105,10 +113,9 @@ import Foundation
     }
 
     // The screens never ask a Hermes host for these (`cronFeatures`): its recent runs come
-    // with the list, and Run Now and run history arrive with #1041 and #1042.
+    // with the list, and run history arrives with #1042.
 
     func cronRecent() async throws -> CronRecentCompletionsResponse { throw BotFailure.unsupported }
-    func runCron(jobID _: String, profile _: String?) async throws -> CronMutationResponse { throw BotFailure.unsupported }
     func cronOutput(jobID _: String, limit _: Int?) async throws -> CronOutputResponse { throw BotFailure.unsupported }
 
     func cronHistory(jobID _: String, offset _: Int, limit _: Int) async throws -> CronRunHistoryResponse {
@@ -128,8 +135,11 @@ import Foundation
 
     /// A dropped request reads as the webui's network failure, so a cancellation is
     /// recognised as one.
-    private func reply(_ rest: HermesREST) async throws -> (body: Data, status: Int) {
-        do { return try await http.reply(rest) } catch let error as URLError { throw APIError.network(underlying: error) }
+    private func reply(_ rest: HermesREST,
+                       deadline: HermesConnection.Deadline = .standard) async throws -> (body: Data, status: Int) {
+        do { return try await http.reply(rest, deadline: deadline) } catch let error as URLError {
+            throw APIError.network(underlying: error)
+        }
     }
 
     /// One gateway call on its own attachment to the connection's shared socket, left once

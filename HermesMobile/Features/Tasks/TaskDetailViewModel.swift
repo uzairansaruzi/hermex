@@ -54,16 +54,33 @@ final class TaskDetailViewModel {
     private var historyGeneration = 0
     private var runOutputToken = 0
     /// Bumped by every change the server accepts, so a list read sent before one
-    /// (`reloadJob`) can't put back the state it replaced.
+    /// (`reloadJob`, a Run Now's reads) can't put back the state it replaced.
     private var mutationCount = 0
+
+    // MARK: - Run Now on a Hermes host
+
+    /// True from a Hermes host's Run Now until the host's outcome (#1041); see `runNowState`.
+    private(set) var isRunNowPending = false
+    /// Given every list a pending Run Now reads, so the Tasks list can show the run too.
+    @ObservationIgnored var onListRead: ((CronJobList) -> Void)?
+    /// Waits between a pending Run Now's list reads; tests pass a scripted clock.
+    private let sleep: @MainActor @Sendable (Duration) async throws -> Void
+    static let runNowReadInterval = Duration.seconds(5)
 
     /// The server's Tasks, shared with the edit sheet this screen opens.
     let client: any CronDataClient
 
-    init(job: CronJob, runningElapsed: Double?, server: URL, client: (any CronDataClient)? = nil) {
+    init(
+        job: CronJob,
+        runningElapsed: Double?,
+        server: URL,
+        client: (any CronDataClient)? = nil,
+        sleep: @escaping @MainActor @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) {
         self.job = job
         self.runningElapsed = runningElapsed
         self.client = client ?? APIClient(baseURL: server)
+        self.sleep = sleep
         isHistoryUnavailable = !self.client.cronFeatures.hasRunHistory
     }
 
@@ -321,14 +338,156 @@ final class TaskDetailViewModel {
         actionErrorMessage = nil
     }
 
+    /// Where a Run Now on a Hermes host is (#1041): sent, with the host not yet showing the run
+    /// (`requested`), or shown running by the list (`running`). It is `idle` again with the
+    /// host's outcome, and always on a server whose Run Now answers as the run starts.
+    enum RunNowState: Equatable { case idle, requested, running }
+
+    var runNowState: RunNowState {
+        guard isRunNowPending else { return .idle }
+        return runningElapsed == nil ? .requested : .running
+    }
+
+    /// Runs the Task now. A webui server starts the run and answers at once, so the Task
+    /// shows as running from the answer; a Hermes host answers once the run has finished
+    /// (`followRunNow`). Returns true for the server's outcome.
     func runNow() async -> Bool {
-        let success = await mutateJob { jobID in
-            try await client.runCron(jobID: jobID, profile: job.profile)
+        guard client.cronFeatures.runNowWaitsForRun else {
+            let success = await mutateJob { jobID in
+                try await client.runCron(jobID: jobID, profile: job.profile)
+            }
+            if success {
+                runningElapsed = 0
+            }
+            return success
         }
-        if success {
-            runningElapsed = 0
+        return await followRunNow()
+    }
+
+    /// A Hermes host's Run Now (#1041). The trigger goes out on its own task, which nothing
+    /// here cancels, and the list is read every `runNowReadInterval` until the host gives its
+    /// outcome: the trigger's reply, or a read showing the run finished. The Task shows as
+    /// running only once a read does. A 504, a 524, a timeout or a dropped connection is a
+    /// hop giving up on the request while the host goes on with the run, so the reads go on
+    /// and no error shows. A refusal shows the host's reason unless a read right after it
+    /// shows the Task running or finished, as a 409 "already running" does.
+    ///
+    /// Cancelling the caller, as a screen does when it goes away, ends the reads and leaves
+    /// the run to the host. The trigger's reply goes to this run's own stream, so one that
+    /// comes after that can never stand in for a later run's outcome.
+    private func followRunNow() async -> Bool {
+        guard let jobID = job.jobId else {
+            actionErrorMessage = String(localized: "Missing job identifier.")
+            return false
         }
-        return success
+        guard !isRunNowPending else { return false }
+
+        isRunNowPending = true
+        actionErrorMessage = nil
+        lastError = nil
+        lastMutation = nil
+        defer { isRunNowPending = false }
+
+        // A finished run stamps `last_run_at`. Comparing the host's own stamps keeps the
+        // phone's clock out of it.
+        let lastRun = job.lastRunAt?.date
+        let (events, continuation) = AsyncStream<RunNowEvent>.makeStream()
+        Task { [client, profile = job.profile] in
+            do {
+                continuation.yield(.replied(.success(try await client.runCron(jobID: jobID, profile: profile))))
+            } catch {
+                continuation.yield(.replied(.failure(error)))
+            }
+        }
+        var timer = startRunNowTimer(continuation)
+        defer {
+            timer.cancel()
+            continuation.finish()
+        }
+
+        for await event in events {
+            var refusal: Error?
+            switch event {
+            case .replied(.success(let response)):
+                showRunNowReply(response, jobID: jobID)
+                return true
+            case .replied(.failure(let error)) where Self.isUnansweredTrigger(error):
+                continue
+            case .replied(.failure(let error)) where error is HermesCronRefusal:
+                refusal = error
+                timer.cancel()
+            case .replied(.failure(let error)):
+                lastError = error
+                actionErrorMessage = error.localizedDescription
+                return false
+            case .tick:
+                break
+            }
+
+            let reading = await readRunNow(jobID, since: lastRun)
+            guard !Task.isCancelled else { return false }
+            if reading == .finished { return true }
+            if let refusal, reading != .running {
+                lastError = refusal
+                actionErrorMessage = refusal.localizedDescription
+                return false
+            }
+            timer = startRunNowTimer(continuation)
+        }
+        return false
+    }
+
+    private enum RunNowEvent: Sendable {
+        case replied(Result<CronMutationResponse, Error>)
+        case tick
+    }
+
+    /// What one list read says about a pending Run Now. `notYet` also covers a read that
+    /// failed, that a change made here meanwhile superseded, or that no longer has the Task.
+    private enum RunNowReading { case notYet, running, finished }
+
+    /// The tick for a pending Run Now's next read.
+    private func startRunNowTimer(_ continuation: AsyncStream<RunNowEvent>.Continuation) -> Task<Void, Never> {
+        Task { [sleep] in
+            guard (try? await sleep(Self.runNowReadInterval)) != nil, !Task.isCancelled else { return }
+            continuation.yield(.tick)
+        }
+    }
+
+    /// Reads the list for a pending Run Now and shows the Task as it reads, as `reloadJob`
+    /// does. The run has finished once the host no longer shows it running and its last run
+    /// is newer than `lastRun`, the one before the tap.
+    private func readRunNow(_ jobID: String, since lastRun: Date?) async -> RunNowReading {
+        let mutationsBefore = mutationCount
+        guard let list = try? await client.cronJobs(), !Task.isCancelled else { return .notYet }
+        onListRead?(list)
+        guard mutationCount == mutationsBefore,
+              let fresh = list.jobs.first(where: { $0.jobId == jobID }) else { return .notYet }
+        job = fresh
+        runningElapsed = list.runningJobs[jobID]
+        lastMutation = .upsert(fresh)
+        if runningElapsed != nil { return .running }
+        guard let ran = fresh.lastRunAt?.date, ran > lastRun ?? .distantPast else { return .notYet }
+        return .finished
+    }
+
+    /// Shows the trigger's reply: the job as the run left it, running only if the host says so.
+    private func showRunNowReply(_ response: CronMutationResponse, jobID: String) {
+        mutationCount += 1
+        guard let finished = response.job else { return }
+        job = finished
+        runningElapsed = CronJobList(hermesJobs: [finished]).runningJobs[jobID]
+        lastMutation = .upsert(finished)
+    }
+
+    /// A failed trigger that a hop gave up on while the host goes on with the run: a gateway
+    /// timeout (504) or Cloudflare's (524), the request timing out, or the connection dropping.
+    private static func isUnansweredTrigger(_ error: Error) -> Bool {
+        if case .rejected(let status)? = error as? BotFailure { return status == 504 || status == 524 }
+        guard case .network(let underlying)? = error as? APIError, let code = (underlying as? URLError)?.code else {
+            return false
+        }
+        return code == .timedOut || code == .networkConnectionLost
     }
 
     func pause(reason: String? = nil) async -> Bool {
