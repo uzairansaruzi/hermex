@@ -2658,15 +2658,17 @@ final class KanbanFeatureState {
         }
     }
 
-    /// One Hermes poll. An offline Board reloads in full and, once it is back, restarts the
-    /// socket the way webui's poll restarts its stream.
+    /// One Hermes poll. An offline Board reloads in full. A poll that reaches the Board
+    /// restarts the socket, unless the socket is already reconnecting on its own backoff
+    /// (`liveUpdatesDelayed`): a refused foreground check, for one, left no socket open.
     private func pollBoard(board: String, generation: Int) async {
         let wasOffline = isOffline
         let succeeded = await refreshBoard(
             usingCursor: !wasOffline,
             refreshSupplementary: wasOffline || !supplementaryReadsSettled || supplementaryRefreshPending
         ).succeeded
-        guard succeeded, wasOffline, isCurrentLiveWork(board: board, generation: generation) else { return }
+        guard succeeded, wasOffline || !liveUpdatesDelayed,
+              isCurrentLiveWork(board: board, generation: generation) else { return }
         loadedDetailIsStale = false
         retryLiveStream()
     }

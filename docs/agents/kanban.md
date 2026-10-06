@@ -125,7 +125,9 @@ How Hermex adapts it:
   and 10 s, then 30 s each. From the third failure the Board shows **Live updates delayed**
   and polls while the socket keeps reconnecting: there is no events route, so polling reloads
   the Board every 30 s and keeps it while its `latest_event_id` has not moved. The socket
-  opening stops the polling and clears the notice.
+  opening stops the polling and clears the notice. Polling that started without a failing
+  socket (a foreground check the host refused, or an offline Board) reopens the socket at
+  its first successful poll.
 - **Cursor regression.** The host sends only ids above `since`, so a recreated database
   would stay silent. A Board reload whose `latest_event_id` is below the cursor the request
   started with takes that lower cursor and reopens the socket.

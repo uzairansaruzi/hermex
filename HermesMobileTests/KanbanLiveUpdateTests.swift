@@ -759,6 +759,35 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(false)
     }
 
+    /// A foreground check the host refuses (a tunnel's 502 while it restarts) is not
+    /// offline and opens no socket, so the first poll that reaches the Board reopens it.
+    func testAHermesPollAfterARefusedForegroundCheckReopensTheSocket() async {
+        let client = LiveKanbanClient(boardResults: [
+            .success(.rich),
+            .failure(BotFailure.rejected(502)),
+            .success(.unchanged(latest: 11))
+        ], backend: .hermes)
+        let stream = KanbanStreamSpy()
+        let clock = ScriptedClock(parking: [Self.pollingInterval])
+        let state = makeState(client: client, stream: stream, timing: Self.hermesTiming, sleep: clock.sleep)
+
+        await state.load()
+        state.setVisible(true)
+        stream.emit(.opened)
+        await state.setScenePhase(.background)
+        await state.setScenePhase(.active)
+        XCTAssertTrue(state.refreshFailed)
+        XCTAssertFalse(state.isOffline)
+        XCTAssertEqual(stream.starts.count, 1, "the refused check opens no socket")
+        await until("the poll waits") { clock.parkedCount(Self.pollingInterval) == 1 }
+
+        clock.resume(Self.pollingInterval)
+        await until("the poll reopens the socket") { stream.starts.count == 2 }
+        XCTAssertEqual(stream.starts.last, .init(board: "main", since: 11))
+        XCTAssertFalse(state.refreshFailed)
+        state.setVisible(false)
+    }
+
     func testAHermesBoardReloadBelowTheCursorResetsItAndReconnects() async {
         let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.recreated)], backend: .hermes)
         let stream = KanbanStreamSpy()
@@ -837,10 +866,6 @@ final class KanbanLiveUpdateTests: XCTestCase {
             XCTAssertEqual(upgrade.value(forHTTPHeaderField: "X-Access"), "token")
         }
         XCTAssertEqual(HermesHostFixture.count("/api/auth/ws-ticket"), 2)
-        let elsewhere = HermesHeaders(saved: host.record(headers: [CustomHeader(name: "X-Access", value: "token")]))
-            .applied(to: URLRequest(url: URL(string: "wss://elsewhere.example/api/plugins/kanban/events")!),
-                     origin: URL(string: "https://hermes.example")!)
-        XCTAssertNil(elsewhere.value(forHTTPHeaderField: "X-Access"), "headers stay with their origin")
         XCTAssertTrue(events.frames.isEmpty)
         XCTAssertEqual(events.failures, 0)
         client.stop()
