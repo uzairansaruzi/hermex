@@ -16,6 +16,8 @@ final class TaskDetailViewModel {
     private(set) var errorMessage: String?
     private(set) var actionErrorMessage: String?
     private(set) var lastError: Error?
+    /// What the Tasks list should apply after the last action, or after a Hermes host's
+    /// detail re-read its job from the list (#1040).
     private(set) var lastMutation: CronJobListMutation?
 
     // MARK: - Run history
@@ -78,6 +80,7 @@ final class TaskDetailViewModel {
         isLoading = true
         errorMessage = nil
         lastError = nil
+        lastMutation = nil
         defer { isLoading = false }
 
         // Optional endpoints: failure must not break the detail view. A nil
@@ -102,12 +105,13 @@ final class TaskDetailViewModel {
     }
 
     /// Reads the job again from the list, the only read that carries a Hermes host's running
-    /// state (#1040). A job the list no longer has, or one changed here while the read was
-    /// out, keeps what is on screen.
+    /// state (#1040), and hands it to the list too. A job the list no longer has, or one
+    /// changed here while the read was out, keeps what is on screen.
     private func reloadJob(_ jobID: String) async {
         isLoading = true
         errorMessage = nil
         lastError = nil
+        lastMutation = nil
         defer { isLoading = false }
         let mutationsBefore = mutationCount
 
@@ -117,6 +121,7 @@ final class TaskDetailViewModel {
                   let fresh = list.jobs.first(where: { $0.jobId == jobID }) else { return }
             job = fresh
             runningElapsed = list.runningJobs[jobID]
+            lastMutation = .upsert(fresh)
         } catch {
             lastError = error
             errorMessage = error.localizedDescription

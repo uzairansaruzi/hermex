@@ -209,6 +209,20 @@ import XCTest
         let reads = HermesHostFixture.requests.filter { $0.url?.path == "/api/cron/delivery-targets" || $0.url?.path == "/api/skills" }
         XCTAssertEqual(reads.map { $0.url?.query }, ["profile=research", "profile=research"])
     }
+
+    /// Choices made for the old Profile that the newly picked one doesn't offer are dropped;
+    /// a list that didn't load leaves its choice as it was.
+    func testAPickedProfileKeepsOnlyTheChoicesItOffers() {
+        var draft = CronJobEditorDraft(deliver: "telegram,discord:123", skillsText: "arxiv, web-search")
+
+        draft.keepChoices(offeredTargets: ["local", "discord"], offeredSkills: ["web-search"])
+        XCTAssertEqual(draft.deliver, "discord:123")
+        XCTAssertEqual(draft.skills, ["web-search"])
+
+        draft.keepChoices(offeredTargets: ["local"], offeredSkills: nil)
+        XCTAssertEqual(draft.deliver, "local", "With no target left, delivery falls back to local")
+        XCTAssertEqual(draft.skills, ["web-search"], "A skill list that didn't load keeps the choice")
+    }
 }
 
 // MARK: - The Tasks screens' view models on a Hermes host
@@ -350,6 +364,10 @@ extension CronManagementViewModelTests {
         XCTAssertTrue(viewModel.isHistoryUnavailable)
         XCTAssertEqual(viewModel.runningElapsed, 0)
         XCTAssertEqual(HermesHostFixture.requests.compactMap(\.url?.path).filter { $0.hasPrefix("/api/cron") }, ["/api/cron/jobs"])
+        guard case .upsert(let forwarded)? = viewModel.lastMutation else {
+            return XCTFail("The list gets the job the detail re-read")
+        }
+        XCTAssertEqual(forwarded.latestExecutionStatus, "running")
     }
 
     /// The opening list read was sent before a Pause that finished while it was out, so its

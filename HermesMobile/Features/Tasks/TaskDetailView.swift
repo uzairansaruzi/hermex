@@ -303,6 +303,10 @@ struct TaskDetailView: View {
         if let lastError = viewModel.lastError {
             onAPIError(lastError)
         }
+        // A Hermes host's detail re-reads its job, which the list then shows too (#1040).
+        if let mutation = viewModel.lastMutation {
+            onMutation(mutation)
+        }
     }
 
     private func runNow() async {

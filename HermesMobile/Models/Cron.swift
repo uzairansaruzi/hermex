@@ -549,6 +549,21 @@ struct CronJobEditorDraft: Equatable {
         skillsText = names.joined(separator: ", ")
     }
 
+    /// Keeps only the delivery targets and skills a newly picked Profile offers (#1040),
+    /// once its lists have loaded. A target is kept when its platform (`telegram` in
+    /// `telegram:123`) is offered; with none left, delivery falls back to `local`, which
+    /// every Profile offers. A list that didn't load (nil) leaves its choice alone.
+    mutating func keepChoices(offeredTargets: [String]?, offeredSkills: [String]?) {
+        if let offeredTargets {
+            let kept = deliver.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { offeredTargets.contains(String($0.prefix { $0 != ":" })) }
+            deliver = kept.isEmpty ? "local" : kept.joined(separator: ",")
+        }
+        if let offeredSkills {
+            applySkillSelection(skills.filter(offeredSkills.contains))
+        }
+    }
+
     /// `selection` with `name` added if absent, removed if present.
     ///
     /// Order is the user's: a newly selected skill goes on the end rather than
