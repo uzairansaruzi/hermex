@@ -270,11 +270,6 @@ struct CronOutputResponse: Decodable, Equatable {
         case outputs
     }
 
-    init(jobId: String?, outputs: [CronOutputItem]?) {
-        self.jobId = jobId
-        self.outputs = outputs
-    }
-
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         jobId = try container.decodeIfPresent(String.self, forKey: .jobId)

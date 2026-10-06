@@ -108,21 +108,23 @@ final class TaskDetailViewModel {
 
         let generation = beginHistoryReload()
 
-        // A Hermes host's job carries its running state and last outcome.
         if client.cronFeatures.runsAreSessions {
+            // A Hermes host's job carries its running state and last outcome; its latest
+            // output comes from the runs.
             await reloadJob(jobID)
-        }
-
-        do {
-            let response = try await client.cronOutput(jobID: jobID, profile: profile, limit: 5)
-            outputs = response.outputs ?? []
-        } catch {
-            lastError = error
-            errorMessage = error.localizedDescription
+        } else {
+            do {
+                let response = try await client.cronOutput(jobID: jobID, limit: 5)
+                outputs = response.outputs ?? []
+            } catch {
+                lastError = error
+                errorMessage = error.localizedDescription
+            }
         }
 
         deliveryOptions = await deliveryOptionsResponse?.platforms
         applyFirstHistoryPage(await historyResult, generation: generation)
+        await loadLatestReply(jobID, generation: generation)
     }
 
     /// Reads the job again from the list, the only read that carries a Hermes host's running
@@ -143,7 +145,8 @@ final class TaskDetailViewModel {
         }
     }
 
-    /// Loads the first page of run history, replacing what is on screen.
+    /// Loads the first page of run history, replacing what is on screen, and on a
+    /// Hermes host the latest output that comes from it.
     ///
     /// A failed refresh keeps the runs already loaded — losing a list the user
     /// was reading is worse than showing it beside a retry.
@@ -155,6 +158,21 @@ final class TaskDetailViewModel {
             await Self.fetchHistory(client: client, jobID: jobID, profile: job.profile, offset: 0),
             generation: generation
         )
+        await loadLatestReply(jobID, generation: generation)
+    }
+
+    /// A Hermes host's latest output (#1042): the reply of `latestRun`, the run the Task's
+    /// last outcome describes. It is read only when that run failed, the one time the detail
+    /// shows it, and a failed read leaves none. A newer history load supersedes it.
+    private func loadLatestReply(_ jobID: String, generation: Int) async {
+        guard client.cronFeatures.runsAreSessions, generation == historyGeneration else { return }
+        guard job.hasFailedRun, let run = latestRun else {
+            outputs = []
+            return
+        }
+        let reply = try? await client.cronRunDetail(jobID: jobID, profile: job.profile, filename: run.filename)
+        guard generation == historyGeneration else { return }
+        outputs = [CronOutputItem(filename: run.filename, content: reply?.content)]
     }
 
     /// Opens a new history generation and returns it. Every first-page load
@@ -363,6 +381,10 @@ final class TaskDetailViewModel {
     /// Runs the Task now. A webui server starts the run and answers at once, so the Task
     /// shows as running from the answer; a Hermes host answers once the run has finished
     /// (`followRunNow`). Returns true for the server's outcome.
+    ///
+    /// That outcome is the new run's, so a detail that has read its runs reads them again
+    /// (#1042): otherwise the run before it would carry the outcome. A list row's Run Now
+    /// has none to read.
     func runNow() async -> Bool {
         guard client.cronFeatures.runNowWaitsForRun else {
             let success = await mutateJob { jobID in
@@ -373,7 +395,11 @@ final class TaskDetailViewModel {
             }
             return success
         }
-        return await followRunNow()
+        guard await followRunNow() else { return false }
+        if historyGeneration > 0, !Task.isCancelled {
+            await loadHistory()
+        }
+        return true
     }
 
     /// A Hermes host's Run Now (#1041). The trigger goes out on its own task, which nothing

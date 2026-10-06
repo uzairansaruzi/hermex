@@ -859,9 +859,7 @@ extension CronManagementViewModelTests {
     func deleteCron(jobID _: String, profile _: String?) async throws -> CronMutationResponse {
         CronMutationResponse(ok: true, job: nil, error: nil)
     }
-    func cronOutput(jobID _: String, profile _: String?, limit _: Int?) async throws -> CronOutputResponse {
-        throw BotFailure.unsupported
-    }
+    func cronOutput(jobID _: String, limit _: Int?) async throws -> CronOutputResponse { throw BotFailure.unsupported }
     func cronHistory(jobID _: String, profile _: String?, offset _: Int, limit _: Int) async throws -> CronRunHistoryResponse {
         throw BotFailure.unsupported
     }

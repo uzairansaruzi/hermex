@@ -22,8 +22,9 @@ protocol CronDataClient: Sendable {
     func pauseCron(jobID: String, profile: String?, reason: String?) async throws -> CronMutationResponse
     func resumeCron(jobID: String, profile: String?) async throws -> CronMutationResponse
     func deleteCron(jobID: String, profile: String?) async throws -> CronMutationResponse
-    /// The latest runs' output, newest first: up to `limit` on webui, the newest run's on a Hermes host.
-    func cronOutput(jobID: String, profile: String?, limit: Int?) async throws -> CronOutputResponse
+    /// The latest runs' output, newest first. Only webui is asked: a Hermes host's latest output
+    /// is its newest finished run's reply (`cronRunDetail`, #1042).
+    func cronOutput(jobID: String, limit: Int?) async throws -> CronOutputResponse
     /// One page of the Task's runs, newest first. A server with a single page (a Hermes host's
     /// newest 100) answers it for any `limit`, with no `total`, so there is no next page.
     func cronHistory(jobID: String, profile: String?, offset: Int, limit: Int) async throws -> CronRunHistoryResponse
@@ -53,8 +54,8 @@ struct CronFeatures: Equatable, Sendable {
     let runNowWaitsForRun: Bool
     /// Each run is the session it runs in, listed from the moment it starts, and the host keeps
     /// one outcome per Task, on the job its list reads (a Hermes host, #1042). So a run can still
-    /// be running, the Task's last outcome speaks only for the newest finished run, and the
-    /// detail reads the job again from the list. Without it, each run is an output file a
+    /// be running, the Task's last outcome and latest output are the newest finished run's, and
+    /// the detail reads the job again from the list. Without it, each run is an output file a
     /// finished run wrote.
     let runsAreSessions: Bool
 
@@ -118,10 +119,6 @@ extension APIClient: CronDataClient {
 
     func deleteCron(jobID: String, profile _: String?) async throws -> CronMutationResponse {
         try await deleteCron(jobID: jobID)
-    }
-
-    func cronOutput(jobID: String, profile _: String?, limit: Int?) async throws -> CronOutputResponse {
-        try await cronOutput(jobID: jobID, limit: limit)
     }
 
     func cronHistory(jobID: String, profile _: String?, offset: Int, limit: Int) async throws -> CronRunHistoryResponse {

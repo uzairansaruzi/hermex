@@ -496,20 +496,22 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertFalse(viewModel.isLoadingHistory)
     }
 
-    /// Opening the detail reads the job from the list, its runs, and the newest run's final
-    /// reply as the latest output, each run read in the Task's Profile and none from the disk.
+    /// Opening the detail reads the job from the list and its runs, each run read in the Task's
+    /// Profile and none from the disk. The latest output is the reply of the newest finished
+    /// run, the one the Task's failure describes, never of a run still going, and it is read
+    /// only when that run failed, the one time the detail shows it.
     @MainActor
-    func testHermesDetailShowsItsRunsAndTheNewestRunsReplyAsTheLatestOutput() async throws {
-        let failed: [String: BotJSON] = ["last_status": .string("error"), "last_error": .string("exit code 1")]
-        let viewModel = try hermesViewModel(failed) { request in
+    func testHermesLatestOutputIsTheNewestFinishedRunsReplyReadOnlyWhenItFailed() async throws {
+        let script: (URLRequest) -> HermesHostFixture.Reply? = { request in
             switch request.url?.path {
-            case "/api/cron/jobs":
-                return .json(200, .array([HermesCronFixture.job("a1", profile: "research", failed)]))
             case "/api/cron/jobs/a1/runs":
                 return .json(200, HermesRunFixture.runs([
+                    HermesRunFixture.run("cron_a1_20261007_090000", started: 1_791_378_000, ended: nil),
                     HermesRunFixture.run("cron_a1_20261006_090000", started: 1_791_291_600, ended: 1_791_291_642),
                     HermesRunFixture.run("cron_a1_20261005_090000", started: 1_791_205_200, ended: 1_791_205_230)
                 ]))
+            case "/api/sessions/cron_a1_20261007_090000/messages":
+                return .json(200, HermesRunFixture.messages([HermesRunFixture.message("assistant", "Still checking.")]))
             case "/api/sessions/cron_a1_20261006_090000/messages":
                 return .json(200, HermesRunFixture.messages([
                     HermesRunFixture.message("user", "Check the disk"),
@@ -518,17 +520,79 @@ final class TaskRunHistoryTests: APIClientTestCase {
             default: return nil
             }
         }
+        let failed: [String: BotJSON] = ["last_status": .string("error"), "last_error": .string("exit code 1")]
+        let viewModel = try hermesViewModel(failed) { request in
+            request.url?.path == "/api/cron/jobs"
+                ? .json(200, .array([HermesCronFixture.job("a1", profile: "research", failed)])) : script(request)
+        }
 
         await viewModel.load()
 
-        XCTAssertEqual(viewModel.runs.map(\.filename), ["cron_a1_20261006_090000", "cron_a1_20261005_090000"])
+        XCTAssertEqual(viewModel.runs.count, 3)
         XCTAssertEqual(viewModel.outputs.map(\.content), ["The disk check failed."])
         XCTAssertNil(viewModel.errorMessage)
         let reads = HermesHostFixture.requests.compactMap(\.url)
+        XCTAssertEqual(reads.filter { $0.path.hasPrefix("/api/cron/jobs/") || $0.path.hasPrefix("/api/sessions/") }
+            .map { "\($0.path)?\($0.query ?? "")" }, [
+                "/api/cron/jobs/a1/runs?profile=research&limit=100",
+                "/api/sessions/cron_a1_20261006_090000/messages?profile=research"
+            ])
         XCTAssertFalse(reads.contains { $0.path.hasPrefix("/api/fs") })
-        let runReads = reads.filter { $0.path.hasPrefix("/api/cron/jobs/") || $0.path.hasPrefix("/api/sessions/") }
-        XCTAssertEqual(HermesHostFixture.count("/api/sessions/cron_a1_20261006_090000/messages"), 1)
-        XCTAssertEqual(runReads.filter { $0.query?.contains("profile=research") != true }, [])
+
+        HermesHostFixture.reset()
+        let healthy: [String: BotJSON] = ["last_status": .string("ok")]
+        let succeeded = try hermesViewModel(healthy) { request in
+            request.url?.path == "/api/cron/jobs"
+                ? .json(200, .array([HermesCronFixture.job("a1", profile: "research", healthy)])) : script(request)
+        }
+
+        await succeeded.load()
+
+        XCTAssertEqual(succeeded.runs.count, 3)
+        XCTAssertEqual(succeeded.outputs, [])
+        XCTAssertFalse(HermesHostFixture.requests.contains { $0.url?.path.hasPrefix("/api/sessions/") == true })
+    }
+
+    /// A Hermes host answers Run Now with the Task's outcome once the new run has finished.
+    /// The detail reads its runs again, so the outcome and the latest output are that run's,
+    /// and the run before it claims nothing.
+    @MainActor
+    func testAHermesRunNowGivesItsOutcomeToTheNewRunNotTheOneBefore() async throws {
+        let reads = ReadCounter()
+        let before = HermesRunFixture.run("cron_a1_20261005_090000", started: 1_791_205_200, ended: 1_791_205_230)
+        let new = HermesRunFixture.run("cron_a1_20261006_090000", started: 1_791_291_600, ended: 1_791_291_642)
+        let clock = RunNowClock()
+        let viewModel = TaskDetailViewModel(
+            job: try XCTUnwrap(HermesCronFixture.decode([HermesCronFixture.job("a1", profile: "research", [
+                "last_run_at": .string("2026-10-05T09:00:30-04:00"), "last_status": .string("ok")
+            ])]).first),
+            runningElapsed: nil,
+            server: URL(string: "https://hermes.example")!,
+            client: HermesCronFixture.client { request in
+                switch request.url?.path {
+                case "/api/cron/jobs/a1/runs":
+                    return .json(200, HermesRunFixture.runs(reads.next() == 1 ? [before] : [new, before]))
+                case "/api/cron/jobs/a1/trigger":
+                    return .json(200, HermesCronFixture.job("a1", profile: "research", [
+                        "last_run_at": .string("2026-10-06T09:00:42-04:00"), "last_status": .string("error"),
+                        "last_error": .string("RuntimeError: disk full")
+                    ]))
+                case "/api/sessions/cron_a1_20261006_090000/messages":
+                    return .json(200, HermesRunFixture.messages([HermesRunFixture.message("assistant", "The disk is full.")]))
+                default: return nil
+                }
+            },
+            sleep: clock.sleep
+        )
+        await viewModel.loadHistory()
+        XCTAssertEqual(viewModel.runs.map(viewModel.outcome), [.completed])
+
+        let didRun = await viewModel.runNow()
+
+        XCTAssertTrue(didRun)
+        XCTAssertEqual(viewModel.runs.map(\.filename), ["cron_a1_20261006_090000", "cron_a1_20261005_090000"])
+        XCTAssertEqual(viewModel.runs.map(viewModel.outcome), [.failed("RuntimeError: disk full"), nil])
+        XCTAssertEqual(viewModel.outputs.map(\.content), ["The disk is full."])
     }
 
     // MARK: - Helpers

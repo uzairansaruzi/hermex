@@ -113,49 +113,32 @@ import Foundation
         }
     }
 
-    /// The screens never ask a Hermes host for this (`cronFeatures`): its recent runs come with
-    /// the list.
+    // The screens never ask a Hermes host for these (`cronFeatures`): its recent runs come with
+    // the list, and its latest output is the newest finished run's reply (`cronRunDetail`).
+
     func cronRecent() async throws -> CronRecentCompletionsResponse { throw BotFailure.unsupported }
+    func cronOutput(jobID _: String, limit _: Int?) async throws -> CronOutputResponse { throw BotFailure.unsupported }
 
     /// The Task's newest 100 runs, the most the host lists and the one page it has: it takes no
     /// offset and reports no total, so the screens offer no more (#1042).
     func cronHistory(jobID: String, profile: String?, offset: Int, limit _: Int) async throws -> CronRunHistoryResponse {
-        let runs = offset == 0 ? try await runs(jobID, profile: profile, limit: 100) : []
-        return CronRunHistoryResponse(jobId: jobID, runs: runs, total: nil, offset: offset)
+        guard offset == 0 else { return CronRunHistoryResponse(jobId: jobID, runs: [], total: nil, offset: offset) }
+        let page = try await send(.cronRuns(id: jobID, profile: profile, limit: 100))
+        return CronRunHistoryResponse(jobId: jobID, runs: try Self.decoder.decode(HermesCronRuns.self, from: page).runs,
+                                      total: nil, offset: offset)
     }
 
-    /// The newest run's final reply, which the detail shows as the latest output. A newest run
-    /// the host no longer has, or one without a reply yet, leaves no output.
-    func cronOutput(jobID: String, profile: String?, limit _: Int?) async throws -> CronOutputResponse {
-        guard let newest = try await runs(jobID, profile: profile, limit: 1).first else {
-            return CronOutputResponse(jobId: jobID, outputs: [])
-        }
-        let reply = try await messages(of: newest.filename, profile: profile).flatMap(HermesChatSideTasks.result)
-        return CronOutputResponse(jobId: jobID, outputs: [CronOutputItem(filename: newest.filename, content: reply)])
-    }
-
-    /// One run's output: its session's final reply, the last assistant message that is not a
-    /// tool call, as a side session's result is; nil when it gave none. A run the host no longer
-    /// has (404) is `HermesCronRunUnavailable`.
+    /// One run's output: its session's final reply (`HermesREST.sessionMessages`), the last
+    /// assistant message that is not a tool call, as a side session's result is; nil when it gave
+    /// none. A run the host no longer has (404) is `HermesCronRunUnavailable`.
     func cronRunDetail(jobID: String, profile: String?, filename runID: String) async throws -> CronRunDetailResponse {
-        guard let messages = try await messages(of: runID, profile: profile) else { throw HermesCronRunUnavailable() }
+        let answer = try await reply(.sessionMessages(key: runID, profile: profile ?? ""))
+        guard answer.status != 404 else { throw HermesCronRunUnavailable() }
+        let messages = try Self.json(try Self.accepted(answer))["messages"].list ?? []
         return CronRunDetailResponse(jobId: jobID, filename: runID, content: HermesChatSideTasks.result(messages), snippet: nil)
     }
 
     // MARK: - Wire
-
-    /// The job's newest `limit` runs, newest first.
-    private func runs(_ jobID: String, profile: String?, limit: Int) async throws -> [CronRunHistoryItem] {
-        try Self.decoder.decode(HermesCronRuns.self, from: try await send(.cronRuns(id: jobID, profile: profile, limit: limit))).runs
-    }
-
-    /// A run session's latest rows (`HermesREST.sessionMessages`), or nil when the host no
-    /// longer has it.
-    private func messages(of runID: String, profile: String?) async throws -> [BotJSON]? {
-        let answer = try await reply(.sessionMessages(key: runID, profile: profile ?? ""))
-        guard answer.status != 404 else { return nil }
-        return try Self.json(try Self.accepted(answer))["messages"].list ?? []
-    }
 
     /// One request's body, or the failure `accepted` reads from its status.
     private func send(_ rest: HermesREST) async throws -> Data {

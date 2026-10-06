@@ -1075,9 +1075,8 @@ and `last_status`. The editor reads `GET /api/cron/delivery-targets?profile=` an
 `GET /api/skills?profile=` for the Task's Profile, and `model.options {profile}` and
 `profiles.list` over the gateway. The list warns once when any enabled Task's
 `scheduler_heartbeat_age_s` passes 180 s, three missed 60 s ticks. Jobs carry
-`hermes_home`, a host path, which is never decoded. Toast notifications are webui-only,
-and run history waits for #1042. The temporary entry is the inbox's + menu (DEBUG and
-Hermex Branch), until #709.
+`hermes_home`, a host path, which is never decoded. Toast notifications are webui-only.
+The temporary entry is the inbox's + menu (DEBUG and Hermex Branch), until #709.
 
 Run Now (#1041) is `POST …/{id}/trigger?profile=`, which runs the job before it answers,
 so it gets the long deadline and goes out on its own task. `TaskDetailViewModel` then
@@ -1091,6 +1090,18 @@ the reads, never the run, and nothing is resent. A paused Task asks first, becau
 resumes it; a completed one has no Run Now, because the host refuses it. The list's row
 action runs the same machine and shows each list it reads, unless a change or a refresh
 landed on the list while that read was out.
+
+Run history (#1042) is `GET …/{id}/runs?profile=&limit=100`: the Task's newest 100 run
+sessions (`cron_<job>_<YYYYmmdd_HHMMSS>`), newest first, as one page with no offset or
+total, so there is no "Load more". A row decodes only its id, start and end, `is_active`,
+model, tokens and cost; never `system_prompt`, and not `preview`, which is the Task's prompt
+behind the scheduler's cron preamble on every run. A run's output is its session's final
+reply, the last assistant message without tool calls, from `GET /api/sessions/{id}/messages?profile=`;
+a 404 shows the run as unavailable. The host keeps one outcome per Task, so only the newest
+finished run shows `last_status` and `last_error`, an `is_active` run shows running, and
+older runs claim nothing. The detail's latest output is that newest finished run's reply,
+read only when it failed. A finished Run Now's outcome is a new run's, so the detail reads
+its runs again. Nothing reads `/api/fs/*`.
 
 ## Opening a bot from outside the app
 
