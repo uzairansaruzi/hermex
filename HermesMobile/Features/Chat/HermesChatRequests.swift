@@ -25,7 +25,18 @@ import Observation
     @ObservationIgnored var onOpenChange: () -> Void = {}
 
     /// This runtime's open requests, oldest first, one per envelope id.
-    private(set) var open: [BotServerRequest] = [] { didSet { onOpenChange() } }
+    private(set) var open: [BotServerRequest] = [] {
+        didSet {
+            // A warning about one request's answer leaves with that request, so it never
+            // appears over the next card.
+            if let id = errorRequestID, !open.contains(where: { $0.pending?.requestID == id }) {
+                errorMessage = nil; errorRequestID = nil
+            }
+            onOpenChange()
+        }
+    }
+    /// The request `errorMessage` is about, when it is about one answer.
+    private var errorRequestID: String?
     /// The request whose answer is in flight; its card stays inert.
     private(set) var answeringRequestID: String?
     /// Why the last answer or bypass change was refused. Cleared by the next one.
@@ -208,8 +219,10 @@ import Observation
             if outcome == .uncertain {
                 // No verdict: keep the card answerable for a deliberate second tap and say so.
                 // Nothing is resent. If the host did settle it, its `request.cancel` retires
-                // the card; a reattach here would drop the card and the warning before that.
-                fail(BotRequestResolution(requestID: action.requestID, outcome: .uncertain).message)
+                // the card and the warning with it; a reattach here would drop both first.
+                // A reply that lands after its request already left warns about nothing.
+                guard open.contains(where: { $0.pending?.requestID == action.requestID }) else { return outcome }
+                fail(BotRequestResolution(requestID: action.requestID, outcome: .uncertain).message, about: action.requestID)
                 return outcome
             }
             open.removeAll { $0.pending?.requestID == action.requestID }
@@ -223,7 +236,8 @@ import Observation
                 // The host replied over a live socket, so the answer did not take effect.
                 fail([401, 403, -32601].contains(code)
                     ? BotFailure.rejected(code).localizedDescription
-                    : String(localized: "The server did not accept that response. The request is still waiting."))
+                    : String(localized: "The server did not accept that response. The request is still waiting."),
+                     about: action.requestID)
                 return nil
             }
             engine.disconnect(error)
@@ -274,8 +288,9 @@ import Observation
         }
     }
 
-    private func fail(_ message: String) {
+    private func fail(_ message: String, about requestID: String? = nil) {
         errorMessage = message
+        errorRequestID = requestID
         onFailure(message)
     }
 
