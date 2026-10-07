@@ -809,6 +809,15 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(ServerTTSPolicy.defaultVoice, "en-US-AriaNeural")
     }
 
+    /// A Hermes host splits text by Python's `len`, Unicode scalars, so a reply whose characters
+    /// combine several scalars ("é" as e + U+0301) is measured that way, not by Swift's `count`.
+    func testServerTTSPolicyCountsHermesTextInUnicodeScalars() {
+        let accented = "e\u{301}"
+        XCTAssertTrue(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: accented, count: 2000), onHermes: true))
+        XCTAssertFalse(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: accented, count: 2001), onHermes: true))
+        XCTAssertTrue(ServerTTSPolicy.shouldUseServerTTS(for: String(repeating: accented, count: 2001)))
+    }
+
     @MainActor
     func testUploadAttachmentRejectsOversizedFileBeforeRequest() async throws {
         var didRequestUpload = false

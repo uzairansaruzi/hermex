@@ -7738,6 +7738,7 @@ enum ServerTTSPolicy {
     /// A Hermes host's ceiling (#1072). The host splits longer text into its provider's
     /// chunks (Edge 5000, OpenAI 4096, others 4000) and plays only the first without ffmpeg
     /// to join them, so Hermex sends one chunk's worth and speaks longer replies on device.
+    /// Counted in Unicode scalars, as the host's Python `len` counts them.
     static let maximumHermesTextLength = 4000
     /// The server's own default voice is `zh-CN-XiaoxiaoNeural`, so the client
     /// must always send an explicit voice. A voice picker is a non-goal of #15;
@@ -7745,7 +7746,7 @@ enum ServerTTSPolicy {
     static let defaultVoice = "en-US-AriaNeural"
 
     static func shouldUseServerTTS(for text: String, onHermes: Bool = false) -> Bool {
-        text.count <= (onHermes ? maximumHermesTextLength : maximumTextLength)
+        onHermes ? text.unicodeScalars.count <= maximumHermesTextLength : text.count <= maximumTextLength
     }
 }
 
