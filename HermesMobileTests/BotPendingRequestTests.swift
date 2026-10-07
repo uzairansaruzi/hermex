@@ -52,6 +52,17 @@ import XCTest
         )
     }
 
+    /// Only an absent `choices` is an older host. A present value that is not a list
+    /// is malformed, and nothing beyond Deny may be offered for it.
+    func testAPresentButMalformedChoicesOffersOnlyDeny() {
+        for malformed: BotJSON in [.null, .string("once"), .object(["once": .bool(true)]), .number(1)] {
+            let request = BotApprovalRequest(.object([
+                "request_id": .string("req-11"), "choices": malformed, "allow_permanent": .bool(true)
+            ]))
+            XCTAssertEqual(request?.choices, [.deny], "\(malformed)")
+        }
+    }
+
     func testApprovalWithoutARequestIDIsNotShown() {
         XCTAssertNil(BotApprovalRequest(.object(["command": .string("rm -rf /")])))
         XCTAssertNil(BotApprovalRequest(.object(["request_id": .string("")])))
