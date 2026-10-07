@@ -2136,6 +2136,8 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     var answerRequest: ((String, [String: BotJSON]) throws -> BotJSON)?
     /// What `approval.respond` reports unblocking.
     var approvalResolved = 1
+    /// Replaces the whole `approval.respond` reply when set.
+    var approvalReply: BotJSON?
     /// What `request.answer` / `clarify.lock` report by default; "ok" or "expired".
     var answerStatus = "ok"
     var respondFailure: BotFailure?
@@ -2215,6 +2217,7 @@ actor BotMemoryDrafts: ChatDraftPersisting {
             return .object(["status": .string("ok"), "settled": .bool(false)])
         case "approval.respond":
             if let respondFailure { throw respondFailure }
+            if let approvalReply { return approvalReply }
             if approvalResolved > 0 { attention = false; pendingApproval = nil }
             return .object(["resolved": .number(Double(approvalResolved))])
         case "session.events.since": return replay

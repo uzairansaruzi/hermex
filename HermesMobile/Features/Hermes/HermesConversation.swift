@@ -320,7 +320,9 @@ extension HermesConversationOwner {
             let reply = try await send(.approvalRespond(sessionID: action.runtime, requestID: action.requestID, choice: choice))
             // `resolved` counts what the host actually unblocked. Zero means the queue no
             // longer held this request: an action failure, not a delivery one.
-            return (reply["resolved"].integer ?? 0) > 0 ? .answered : .alreadyResolved
+            // A missing, non-integer or negative count is no verdict at all.
+            guard let resolved = reply["resolved"].integer, resolved >= 0 else { return .uncertain }
+            return resolved > 0 ? .answered : .alreadyResolved
         case .value(let value):
             // The host tolerates a late answer to a prompt it already dropped and says so
             // rather than erroring; nothing was applied.

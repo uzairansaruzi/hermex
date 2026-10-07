@@ -166,7 +166,9 @@ import Observation
         // The host lists `once` first in every choice set it computes; without it the card
         // waits for one of its own choices.
         guard approval.choices.contains(.once) else { return false }
-        return await deliver(.approval(.once), action) != nil
+        // Only a confirmed release counts; an uncertain one keeps the card and its warning.
+        let released = await deliver(.approval(.once), action)
+        return released == .answered || released == .alreadyResolved
     }
 
     /// Turns the session's approval bypass off from its pill, so approvals ask again.
@@ -203,6 +205,13 @@ import Observation
                 return nil
             }
             revision += 1
+            if outcome == .uncertain {
+                // No verdict: keep the card answerable for a deliberate second tap and say so.
+                // Nothing is resent. If the host did settle it, its `request.cancel` retires
+                // the card; a reattach here would drop the card and the warning before that.
+                fail(BotRequestResolution(requestID: action.requestID, outcome: .uncertain).message)
+                return outcome
+            }
             open.removeAll { $0.pending?.requestID == action.requestID }
             return outcome
         } catch {
