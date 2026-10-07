@@ -1036,9 +1036,7 @@ import XCTest
 
         let card = scroll.convert(scroll.bounds, to: window)
         let image = capture(window, name: "551-scrolled-skills-clipped")
-        let request = VNRecognizeTextRequest()
-        try VNImageRequestHandler(cgImage: XCTUnwrap(image.cgImage)).perform([request])
-        let rows = (request.results ?? []).filter {
+        let rows = try recognizedText(in: image).filter {
             $0.topCandidates(1).first?.string.localizedCaseInsensitiveContains("skill") == true
         }
         XCTAssertFalse(rows.isEmpty, "The scrolled panel must still show skill rows")
@@ -1775,32 +1773,33 @@ import XCTest
     }
 
     @discardableResult
-    private func screenshot(_ window: UIWindow, name: String, croppedTo bounds: CGRect? = nil, literalText: Bool = false,
-                            inspecting: ((UIImage) -> Void)? = nil) throws -> String {
-        let image = capture(window, name: name)
-        inspecting?(image)
-        var pixels = try XCTUnwrap(image.cgImage)
-        if let bounds {
-            let rect = bounds.intersection(window.bounds).applying(CGAffineTransform(scaleX: image.scale, y: image.scale))
-            pixels = try XCTUnwrap(pixels.cropping(to: rect))
-        }
-        let request = VNRecognizeTextRequest()
-        // Tests render in English and assert literal UI copy, including filenames.
-        // Language correction can turn Report.pdf into Report.odf; do not ask
-        // OCR to rewrite what was rendered.
-        if literalText {
-            request.recognitionLanguages = ["en-US"]
-            request.usesLanguageCorrection = false
-        }
-        try VNImageRequestHandler(cgImage: pixels).perform([request])
-        return request.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ") ?? ""
+    private func screenshot(_ window: UIWindow, name: String) throws -> String {
+        try recognizedText(in: capture(window, name: name, scale: 1))
+            .compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ")
     }
 
-    /// Captures pixels for OCR and layout assertions; retain the JPEG only when
-    /// the test fails so successful runs do not accumulate screenshot evidence.
+    /// Accurate OCR of a capture. Text reads pass 1x captures: recognition at
+    /// the screen's 3x scale took about twice as long for the same assertions,
+    /// and the fast level misread copy. Checks on where text lands keep the
+    /// screen's scale, since 1x boxes round to whole points. Tests render in
+    /// English and assert literal UI copy, including filenames, so language
+    /// correction stays off: it can turn Report.pdf into Report.odf.
+    private func recognizedText(in image: UIImage) throws -> [VNRecognizedTextObservation] {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLanguages = ["en-US"]
+        request.usesLanguageCorrection = false
+        try VNImageRequestHandler(cgImage: XCTUnwrap(image.cgImage)).perform([request])
+        return request.results ?? []
+    }
+
+    /// Captures pixels for OCR and layout assertions, at the screen's scale
+    /// unless `scale` is given; retain the JPEG only when the test fails so
+    /// successful runs do not accumulate screenshot evidence.
     @discardableResult
-    private func capture(_ window: UIWindow, name: String) -> UIImage {
-        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+    private func capture(_ window: UIWindow, name: String, scale: CGFloat? = nil) -> UIImage {
+        let format = UIGraphicsImageRendererFormat.preferred()
+        if let scale { format.scale = scale }
+        let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         let attachment = XCTAttachment(image: image, quality: .medium)
