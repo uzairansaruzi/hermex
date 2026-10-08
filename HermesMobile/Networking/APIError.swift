@@ -92,6 +92,32 @@ enum APIError: LocalizedError {
         return Self.serverErrorPayload(from: body)?.activeStreamId?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
     }
 
+    struct SessionRotation: Equatable {
+        let continuationSessionID: String
+
+        init?(continuationSessionID id: String) {
+            guard !id.isEmpty,
+                  id.rangeOfCharacter(from: .whitespacesAndNewlines.union(.controlCharacters)) == nil,
+                  id.rangeOfCharacter(from: CharacterSet(charactersIn: "/\\?#")) == nil else { return nil }
+            continuationSessionID = id
+        }
+    }
+
+    /// Only the durable compression conflict authorizes continuation navigation.
+    /// Decode separately so malformed continuation metadata cannot hide other errors.
+    var sessionRotation: SessionRotation? {
+        struct Payload: Decodable {
+            let code: String?
+            let continuation_session_id: String?
+        }
+        guard case .http(let status, let body) = self, status == 409,
+              let data = body?.data(using: .utf8),
+              let payload = try? JSONDecoder().decode(Payload.self, from: data),
+              payload.code == "session_rotated",
+              let id = payload.continuation_session_id else { return nil }
+        return SessionRotation(continuationSessionID: id)
+    }
+
     var indicatesMissingStream: Bool {
         guard case .http(let statusCode, let body) = self, statusCode == 404 else { return false }
         return Self.serverErrorMessage(from: body)?.localizedCaseInsensitiveContains("stream not found") == true

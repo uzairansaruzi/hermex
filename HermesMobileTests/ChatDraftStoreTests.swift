@@ -4,6 +4,37 @@ import XCTest
 
 @MainActor
 final class ChatDraftStoreTests: XCTestCase {
+    func testLateRejectedAttachmentsMergeWithoutReplacingNewerDraftWork() async {
+        let store = ChatDraftStore(persistence: RecordingChatDraftPersistence(), debounceDuration: .seconds(10))
+        let key = ChatDraftKey(serverID: "https://example.com", context: .session("sealed"))
+        let rejected = Self.sampleAttachment(file: "rejected.jpg")
+        let newer = Self.sampleAttachment(file: "newer.jpg")
+        store.setDraft("Newer work", for: key)
+        store.setAttachments([newer], for: key)
+        store.retainRejectedAttachments([rejected, newer], for: key)
+        store.retainRejectedAttachments([rejected], for: key)
+        let draft = await store.draft(for: key)
+        XCTAssertEqual(draft?.text, "Newer work")
+        XCTAssertEqual(draft?.attachments, [newer, rejected])
+    }
+
+    func testRotatedRejectionPreservesSubmittedAndConcurrentContent() async {
+        let store = ChatDraftStore(persistence: RecordingChatDraftPersistence(), debounceDuration: .seconds(10))
+        let key = ChatDraftKey(serverID: "https://example.com", context: .session("sealed"))
+        let submitted = ComposerDraftContent(text: "  Submitted  ", quotes: [ComposerQuote(text: "Original")])
+        let current = ComposerDraftContent(text: "New edits", quotes: [ComposerQuote(text: "New quote")])
+        let result = store.resolveSubmission(submitted: submitted, current: current, didStart: false,
+                                             draftWasEdited: true, preserveRejectedSubmission: true, for: key)
+        XCTAssertEqual(result.text, "  Submitted  \n\nNew edits")
+        XCTAssertEqual(result.quotes, submitted.quotes + current.quotes)
+        let durable = await store.draft(for: key)
+        XCTAssertEqual(durable?.text, result.text)
+        XCTAssertEqual(durable?.quotes, result.quotes)
+        let clearedWhileSending = store.resolveSubmission(submitted: submitted, current: .empty, didStart: false,
+                                                          draftWasEdited: true, preserveRejectedSubmission: true, for: key)
+        XCTAssertEqual(clearedWhileSending, submitted)
+    }
+
     func testQuotesAreOrderedAndIsolatedByServerAndSession() async throws {
         let persistence = RecordingChatDraftPersistence()
         let store = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(10))
