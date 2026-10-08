@@ -438,8 +438,9 @@ struct HermesSessionListView<Avatar: View>: View {
                     AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: bot))
                     return
                 }
-                guard let profile,
-                      let opened = session.hermesChat(on: entry.server, connection: entry.connection, listedIn: profile) else { return }
+                // A row of every Profile's cache, before the host settled one, opens in its own.
+                guard let listed = profile ?? session.profile,
+                      let opened = session.hermesChat(on: entry.server, connection: entry.connection, listedIn: listed) else { return }
                 viewModel.beginViewing(session)
                 chat = opened
             },

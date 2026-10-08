@@ -1979,6 +1979,8 @@ final class SessionListViewModel {
             return false
         }
         guard !cached.isEmpty else { return false }
+        // The pick is the Profile the rows open in and New Session uses; the host checks it on connect.
+        if hermesProfile == nil { hermesProfile = picked }
         if sessions != cached { sessions = cached }
         hasMoreSessions = false
         isViewingCachedData = true

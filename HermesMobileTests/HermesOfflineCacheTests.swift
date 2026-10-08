@@ -345,6 +345,7 @@ import XCTest
 
         XCTAssertTrue(list.isViewingCachedData)
         XCTAssertEqual(list.sessions.map(\.sessionId), ["r"])
+        XCTAssertEqual(list.hermesProfile, "research", "its rows open, and New Session starts, in the pick")
     }
 
     // MARK: Fixture
