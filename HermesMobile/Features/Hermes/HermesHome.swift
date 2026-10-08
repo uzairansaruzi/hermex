@@ -5,56 +5,41 @@ enum HermesHomeTab: String {
     case bots, sessions
 }
 
-/// How a Hermes server's home titles itself, and the switch between its two sides. The Bots
-/// inbox and the session list each take one when they are the home's root.
+/// What both sides of a Hermes server's home share: the server's name, which titles a pushed
+/// screen's back button, the server's avatar in the header, and the switch between the sides.
 struct HermesHome {
     let title: String
-    let subtitle: String?
+    let avatar: SessionsHeader.Avatar
     let tab: Binding<HermesHomeTab>
 }
 
-/// The Hermes home's chrome (#709), the same on both sides: HERMEX at the leading edge, the
-/// server's name as the title, search and the server's avatar trailing, and a bottom bar of
-/// `(filter) [Bots | Sessions] (new chat)` whose ends each side fills.
-struct HermesHomeChrome<Filter: View, NewChat: View, Avatar: View>: ViewModifier {
-    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
+/// The Hermes home's bar chrome (#709), the same on both sides: no top bar, since each side's
+/// list leads with the session list's header (`SessionsHeader`), and a bottom bar of
+/// `(filter) [Bots | Sessions] (new chat)` whose ends each side fills. The title names a pushed
+/// screen's back button, and stays inline so a pushed screen such as Tasks keeps the one-line bar.
+struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
     let home: HermesHome
-    let searchLabel: LocalizedStringKey
-    var isSearchDisabled = false
-    let search: () -> Void
     @ViewBuilder let filter: Filter
     @ViewBuilder let newChat: NewChat
-    @ViewBuilder let avatar: Avatar
 
     func body(content: Content) -> some View {
         content
             .navigationTitle(home.title)
-            .navigationBarTitleDisplayMode(.large)
-            .modifier(HermesHomeSubtitle(subtitle: home.subtitle))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             .toolbar {
-                // The wordmark is art, not a control, so it sits on the bar without a glass button.
-                if #available(iOS 26, *) {
-                    ToolbarItem(placement: .topBarLeading) { wordmark }.sharedBackgroundVisibility(.hidden)
-                } else {
-                    ToolbarItem(placement: .topBarLeading) { wordmark }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(searchLabel, systemImage: "magnifyingglass", action: search)
-                        .disabled(isSearchDisabled)
-                }
-                if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
-                ToolbarItem(placement: .topBarTrailing) { avatar }
                 ToolbarItem(placement: .bottomBar) { filter }
-                if #available(iOS 26, *) { ToolbarSpacer(.flexible, placement: .bottomBar) }
-                ToolbarItem(placement: .bottomBar) { HermesHomeSwitch(tab: home.tab) }
-                if #available(iOS 26, *) { ToolbarSpacer(.flexible, placement: .bottomBar) }
+                if #available(iOS 26, *) {
+                    ToolbarSpacer(.flexible, placement: .bottomBar)
+                    // The segmented control is its own pill; a glass one around it would double it.
+                    ToolbarItem(placement: .bottomBar) { HermesHomeSwitch(tab: home.tab) }
+                        .sharedBackgroundVisibility(.hidden)
+                    ToolbarSpacer(.flexible, placement: .bottomBar)
+                } else {
+                    ToolbarItem(placement: .bottomBar) { HermesHomeSwitch(tab: home.tab) }
+                }
                 ToolbarItem(placement: .bottomBar) { newChat }
             }
-    }
-
-    private var wordmark: some View {
-        HermesHeaderLogo(selectedColor: HeaderLogoColor.color(for: headerLogoColorHex))
-            .frame(width: 104)
     }
 }
 
@@ -75,17 +60,5 @@ private struct HermesHomeSwitch: View {
         .fixedSize()
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .accessibilityShowsLargeContentViewer()
-    }
-}
-
-private struct HermesHomeSubtitle: ViewModifier {
-    let subtitle: String?
-
-    func body(content: Content) -> some View {
-        if #available(iOS 26, *), let subtitle {
-            content.navigationSubtitle(subtitle)
-        } else {
-            content
-        }
     }
 }

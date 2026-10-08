@@ -81,8 +81,6 @@ struct SessionListArchiveToastRoute: Equatable {
 
 @MainActor
 struct SessionListView: View {
-    private static let searchChromeIconVisualSize: CGFloat = 36
-    private static let searchChromeIconHitTarget: CGFloat = 44
 
     @Bindable var authManager: AuthManager
     let server: URL
@@ -820,151 +818,25 @@ struct SessionListView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: searchChromeIsExpanded ? 0 : 16) {
-            HermesHeaderLogo(selectedColor: selectedHeaderLogoColor)
-                .frame(width: searchChromeIsExpanded ? 0 : 160, alignment: .leading)
-                .opacity(searchChromeIsExpanded ? 0 : 1)
-                .clipped()
-                .accessibilityHidden(searchChromeIsExpanded)
-
-            searchChrome
-                .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 28)
-        .animation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion), value: searchChromeIsExpanded)
-        .animation(SessionListMotion.searchFocusAnimation(reduceMotion: reduceMotion), value: showsSearchClearButton)
+        SessionsHeader(
+            logoColor: selectedHeaderLogoColor,
+            avatar: SessionsHeader.Avatar(
+                initials: settingsInitials,
+                color: selectedHeaderLogoColor,
+                foreground: initialsAvatarForegroundColor,
+                servers: AvatarServerSwitcherModel(servers: authManager.servers, activeServerID: authManager.activeServerID),
+                openSettings: { selectDestination(.settings(nil)) },
+                switchToServer: { account in authManager.switchActiveServer(to: account) },
+                addServer: { isPresentingAddServer = true },
+                manageServers: { selectDestination(.settings(.servers)) }
+            ),
+            field: SessionsHeader.Field(
+                isExpanded: searchChromeIsExpanded, text: $searchText, isFocused: $searchFieldIsFocused, close: closeSearch
+            ),
+            openSearch: openSearch
+        )
         .onChange(of: searchFieldIsFocused) { _, newValue in
             handleSearchFieldFocusChange(newValue)
-        }
-    }
-
-    private var searchChrome: some View {
-        HStack(spacing: searchChromeIsExpanded ? 8 : 4) {
-            HapticButton {
-                if searchChromeIsExpanded {
-                    searchFieldIsFocused = true
-                } else {
-                    openSearch()
-                }
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(searchChromeIsExpanded ? .secondary : .primary)
-                    .frame(width: Self.searchChromeIconVisualSize, height: Self.searchChromeIconVisualSize)
-                    .frame(width: Self.searchChromeIconHitTarget, height: Self.searchChromeIconHitTarget)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(searchChromeIsExpanded ? "Focus session search" : "Search sessions")
-            .accessibilityHint("Shows the session search field.")
-            .accessibilityHidden(searchChromeIsExpanded)
-
-            searchTextField
-
-            if showsSearchClearButton {
-                searchClearButton
-                    .transition(.scale.combined(with: .opacity))
-            }
-
-            searchTrailingButton
-        }
-        .padding(.vertical, 2)
-        .frame(maxWidth: searchChromeIsExpanded ? .infinity : nil, alignment: .trailing)
-        .sessionsChromeGlass(
-            isInteractive: true,
-            in: Capsule()
-        )
-        .clipShape(Capsule())
-        .contentShape(Capsule())
-    }
-
-    private var searchTextField: some View {
-        TextField("Search sessions", text: $searchText)
-            .font(AppFont.subheadline())
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .focused($searchFieldIsFocused)
-            .submitLabel(.done)
-            .lineLimit(1)
-            .layoutPriority(1)
-            .frame(maxWidth: searchChromeIsExpanded ? .infinity : 0)
-            .opacity(searchChromeIsExpanded ? 1 : 0)
-            .clipped()
-            .accessibilityHidden(!searchChromeIsExpanded)
-    }
-
-    private var searchClearButton: some View {
-        Button {
-            searchText = ""
-            searchFieldIsFocused = true
-        } label: {
-            Image(systemName: "xmark.circle.fill")
-                .font(AppFont.subheadline())
-                .foregroundStyle(.secondary)
-                .frame(width: Self.searchChromeIconVisualSize, height: Self.searchChromeIconVisualSize)
-                .frame(width: Self.searchChromeIconHitTarget, height: Self.searchChromeIconHitTarget)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Clear search")
-    }
-
-    private var searchTrailingButton: some View {
-        HapticButton(feedbackStyle: .medium) {
-            if searchChromeIsExpanded {
-                closeSearch()
-            } else {
-                selectDestination(.settings(nil))
-            }
-        } label: {
-            ZStack {
-                Text(settingsInitials)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(initialsAvatarForegroundColor)
-                    .frame(width: Self.searchChromeIconVisualSize, height: Self.searchChromeIconVisualSize)
-                    .background(selectedHeaderLogoColor, in: Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
-                    .opacity(searchChromeIsExpanded ? 0 : 1)
-                    .scaleEffect(searchChromeIsExpanded ? 0.72 : 1)
-                    .rotationEffect(.degrees(searchChromeIsExpanded ? -18 : 0))
-
-                Image(systemName: "xmark")
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .frame(width: Self.searchChromeIconVisualSize, height: Self.searchChromeIconVisualSize)
-                    .opacity(searchChromeIsExpanded ? 1 : 0)
-                    .scaleEffect(searchChromeIsExpanded ? 1 : 0.72)
-                    .rotationEffect(.degrees(searchChromeIsExpanded ? 0 : 18))
-            }
-            .frame(width: Self.searchChromeIconHitTarget, height: Self.searchChromeIconHitTarget)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(searchChromeIsExpanded ? "Close search" : "Settings")
-        .accessibilityHint(
-            searchChromeIsExpanded
-                ? "Closes search and clears the current query."
-                : "Opens Settings. Long press to switch servers."
-        )
-        // Long-press the avatar to switch the active server, reusing #17's
-        // switch/add actions. Suppressed while search is expanded so the
-        // "close search" tap state is untouched (#283). The plain tap above is
-        // preserved — `contextMenu` adds long-press without stealing the tap.
-        .contextMenu {
-            if !searchChromeIsExpanded {
-                AvatarServerSwitcherMenu(
-                    model: AvatarServerSwitcherModel(
-                        servers: authManager.servers,
-                        activeServerID: authManager.activeServerID
-                    ),
-                    switchToServer: { account in
-                        authManager.switchActiveServer(to: account)
-                    },
-                    addServer: { isPresentingAddServer = true },
-                    manageServers: { selectDestination(.settings(.servers)) }
-                )
-            }
         }
     }
 
@@ -1102,10 +974,6 @@ struct SessionListView: View {
 
     private var hasActiveSessionFilter: Bool {
         selectedProjectID != nil || !normalizedSearchText.isEmpty
-    }
-
-    private var showsSearchClearButton: Bool {
-        searchChromeIsExpanded && !searchText.isEmpty
     }
 
     private func isActiveProfile(_ profile: ProfileSummary) -> Bool {

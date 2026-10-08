@@ -1,15 +1,14 @@
 import SwiftUI
 
 /// The Bots inbox: pushed from a webui server's session list, or the Bots side of a Hermes
-/// server's home (`HermesServerHome`), where it takes the home's chrome (`HermesHomeChrome`):
-/// `home` titles it and holds the switch, `HomeControl` (the server's avatar) replaces the Bot
-/// connection gear, the filter holds hidden bots and section order, and new chat makes a bot
-/// or a group chat.
-@MainActor struct BotsInboxView<HomeControl: View>: View {
+/// server's home (`HermesServerHome`), where it leads with the session list's header, whose
+/// avatar replaces the Bot connection gear, and takes the home's bar (`HermesHomeChrome`): the
+/// filter holds hidden bots and section order, and new chat makes a bot or a group chat.
+@MainActor struct BotsInboxView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     let server: URL
     private let home: HermesHome?
-    private let homeControl: HomeControl
     /// The bot a deep link named, resolved here because this is where the live roster
     /// is. Cleared once this inbox has settled, whether or not it matched (#554).
     @Binding private var pendingDestination: BotDestination?
@@ -47,30 +46,23 @@ import SwiftUI
     init(
         server: URL,
         pendingDestination: Binding<BotDestination?> = .constant(nil)
-    ) where HomeControl == EmptyView {
-        self.init(server: server, pendingDestination: pendingDestination, home: nil) { EmptyView() }
+    ) {
+        self.init(server: server, pendingDestination: pendingDestination, home: nil, inbox: BotInbox(server: server))
     }
 
-    /// A Hermes server's home. Its sign-in form is reached through Settings there, so
-    /// `homeControl`, the server's avatar, takes the gear's place.
-    init(
-        server: URL,
-        pendingDestination: Binding<BotDestination?>,
-        home: HermesHome?,
-        @ViewBuilder homeControl: () -> HomeControl
-    ) {
+    /// A Hermes server's home, which keeps `inbox` across its switch, so a switch back shows the
+    /// roster at once (#709). Its sign-in form is reached through Settings there.
+    init(server: URL, pendingDestination: Binding<BotDestination?>, home: HermesHome?, inbox: BotInbox) {
         self.server = server
         self.home = home
-        self.homeControl = homeControl()
         _pendingDestination = pendingDestination
-        _inbox = State(initialValue: BotInbox(server: server))
+        _inbox = State(initialValue: inbox)
     }
 
     /// An inbox the caller built, such as one on scripted wires.
-    init(server: URL, inbox: BotInbox) where HomeControl == EmptyView {
+    init(server: URL, inbox: BotInbox) {
         self.server = server
         home = nil
-        homeControl = EmptyView()
         _pendingDestination = .constant(nil)
         _inbox = State(initialValue: inbox)
     }
@@ -96,6 +88,7 @@ import SwiftUI
     /// own expression: together they were too much for the CI type-checker.
     private var list: some View {
         List {
+            homeHeader
             if inbox.connection != nil {
                 if let message = inbox.errorMessage ?? inbox.routeAdvice {
                     Text(message).font(.callout)
@@ -170,8 +163,12 @@ import SwiftUI
             if inbox.connection == nil {
                 GeometryReader { geometry in
                     ScrollView {
-                        BotConnectionWelcomeView(isCovered: showingSetup) { showingSetup = true }
-                            .frame(minHeight: geometry.size.height)
+                        // The home's header stays, so Settings and the server switcher do too.
+                        VStack(spacing: 0) {
+                            homeHeader
+                            BotConnectionWelcomeView(isCovered: showingSetup) { showingSetup = true }
+                        }
+                        .frame(minHeight: geometry.size.height)
                     }
                     .background(Color(uiColor: .systemBackground))
                 }
@@ -180,16 +177,20 @@ import SwiftUI
         .modifier(chrome)
     }
 
+    /// The session list's header, leading the home's Bots side. Its search opens the inbox's
+    /// search sheet.
+    @ViewBuilder private var homeHeader: some View {
+        if let home {
+            SessionsHeader(logoColor: HeaderLogoColor.color(for: headerLogoColorHex), avatar: home.avatar,
+                           openSearch: { if inbox.connection != nil { showingSearch = true } })
+                .sessionsTopChromeListRow()
+        }
+    }
+
     /// The home's chrome, or the pushed inbox's own toolbar.
     private var chrome: some ViewModifier {
-        BotsInboxChrome(home: home, isOffline: inbox.connection == nil,
-                        search: { showingSearch = true }, filter: { filterMenu }, newChat: { newChatMenu }) {
-            if home == nil {
-                Button("Bot connection", systemImage: "gearshape") { showingSetup = true }
-            } else {
-                homeControl
-            }
-        }
+        BotsInboxChrome(home: home, isOffline: inbox.connection == nil, search: { showingSearch = true },
+                        openSetup: { showingSetup = true }, filter: { filterMenu }, newChat: { newChatMenu })
     }
 
     /// New Bot and New Group Chat: the pushed inbox's + menu, and the home's new chat.
@@ -611,29 +612,28 @@ extension BotsInboxView {
     }
 }
 
-/// The inbox's title and toolbar. As a Hermes server's home it takes the home's chrome. Pushed
-/// from the session list's Bots row, the back button and the toolbar are the whole header, so
-/// the pinned tiles sit at the top; the title still names the screen for VoiceOver and for a
-/// pushed chat's back button, with only its visible text removed.
-private struct BotsInboxChrome<Control: View, Filter: View, NewChat: View>: ViewModifier {
+/// The inbox's title and toolbar. As a Hermes server's home it takes the home's bar. Pushed from
+/// the session list's Bots row, the back button and the toolbar are the whole header, so the
+/// pinned tiles sit at the top; the title still names the screen for VoiceOver and for a pushed
+/// chat's back button, with only its visible text removed.
+private struct BotsInboxChrome<Filter: View, NewChat: View>: ViewModifier {
     let home: HermesHome?
     /// No Bot connection is saved, so there is nothing to search.
     let isOffline: Bool
     let search: () -> Void
+    let openSetup: () -> Void
     @ViewBuilder let filter: Filter
     @ViewBuilder let newChat: NewChat
-    @ViewBuilder let control: Control
 
-    init(home: HermesHome?, isOffline: Bool, search: @escaping () -> Void,
-         @ViewBuilder filter: () -> Filter, @ViewBuilder newChat: () -> NewChat, @ViewBuilder control: () -> Control) {
-        self.home = home; self.isOffline = isOffline; self.search = search
-        self.filter = filter(); self.newChat = newChat(); self.control = control()
+    init(home: HermesHome?, isOffline: Bool, search: @escaping () -> Void, openSetup: @escaping () -> Void,
+         @ViewBuilder filter: () -> Filter, @ViewBuilder newChat: () -> NewChat) {
+        self.home = home; self.isOffline = isOffline; self.search = search; self.openSetup = openSetup
+        self.filter = filter(); self.newChat = newChat()
     }
 
     func body(content: Content) -> some View {
         if let home {
-            content.modifier(HermesHomeChrome(home: home, searchLabel: "Search bots and messages", isSearchDisabled: isOffline,
-                                              search: search, filter: { filter }, newChat: { newChat }, avatar: { control }))
+            content.modifier(HermesHomeChrome(home: home, filter: { filter }, newChat: { newChat }))
         } else {
             content
                 .navigationTitle("Bots")
@@ -646,7 +646,9 @@ private struct BotsInboxChrome<Control: View, Filter: View, NewChat: View>: View
                     }
                     ToolbarItem(placement: .topBarTrailing) { newChat }
                     if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
-                    ToolbarItem(placement: .topBarTrailing) { control }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Bot connection", systemImage: "gearshape", action: openSetup)
+                    }
                 }
         }
     }

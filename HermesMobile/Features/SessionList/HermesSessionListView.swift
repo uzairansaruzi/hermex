@@ -28,7 +28,7 @@ struct HermesSessionListEntry: Hashable, Identifiable {
 /// filters the loaded rows at once and then adds the host's matches, which reach past the loaded
 /// pages; a bot's Bot Chat among them opens in that bot. Every page it reads goes to the offline
 /// cache, which it shows, read-only under the offline banner, while the host can't be reached (#1054).
-struct HermesSessionListView<Avatar: View>: View {
+struct HermesSessionListView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -43,9 +43,9 @@ struct HermesSessionListView<Avatar: View>: View {
     @AppStorage(SectionVisibilitySettings.skillsKey) private var showsSkills = true
     @AppStorage(SectionVisibilitySettings.memoryKey) private var showsMemory = true
     @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsights = true
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     private let entry: HermesSessionListEntry
     private let home: HermesHome?
-    private let avatar: Avatar
     @State private var viewModel: SessionListViewModel
     /// The chat a row or New Session opened.
     @State private var chat: HermesSessionChat?
@@ -64,7 +64,9 @@ struct HermesSessionListView<Avatar: View>: View {
     /// sheet is gone.
     @State private var movingAfterCreation: HermesProjectMove?
     @State private var searchText: String
-    @State private var isSearchPresented = false
+    /// The home's header has grown its search pill into a field (`SessionsHeader`).
+    @State private var isSearchExpanded = false
+    @FocusState private var isSearchFieldFocused: Bool
     /// The Tasks, Skills, Memory or Usage screen a home row pushed, and whether Kanban is pushed.
     @State private var tasks: HermesTasksEntry?
     @State private var skills: HermesSkillsEntry?
@@ -73,36 +75,53 @@ struct HermesSessionListView<Avatar: View>: View {
     @State private var showingKanban = false
 
     /// The list a chat's `/sessions` pushed.
-    init(entry: HermesSessionListEntry) where Avatar == EmptyView {
-        self.init(entry: entry, home: nil) { EmptyView() }
+    init(entry: HermesSessionListEntry) {
+        self.init(entry: entry, model: Self.model(for: entry), home: nil)
     }
 
-    /// The Sessions side of the Hermes home, with the server's avatar at the top right.
-    init(entry: HermesSessionListEntry, home: HermesHome?, @ViewBuilder avatar: () -> Avatar) {
+    /// The Sessions side of the Hermes home, on a `model` the home keeps across its switch, so a
+    /// switch back shows the last rows at once (#709).
+    init(entry: HermesSessionListEntry, model: SessionListViewModel, home: HermesHome?) {
         self.entry = entry
         self.home = home
-        self.avatar = avatar()
         _searchText = State(initialValue: entry.query)
+        _viewModel = State(initialValue: model)
+    }
+
+    /// The list's view model, reading `entry`'s server through its saved connection.
+    static func model(for entry: HermesSessionListEntry) -> SessionListViewModel {
         let server = entry.server
-        _viewModel = State(initialValue: SessionListViewModel(server: server, hermes: HermesSessionListSource(
+        return SessionListViewModel(server: server, hermes: HermesSessionListSource(
             connection: entry.connection, profile: entry.profile, makeWire: { BotClient(saved: $0, server: server) }
-        )))
+        ))
     }
 
     var body: some View {
         List {
+            if let home {
+                SessionsHeader(
+                    logoColor: HeaderLogoColor.color(for: headerLogoColorHex), avatar: home.avatar,
+                    field: SessionsHeader.Field(isExpanded: isSearchExpanded, text: $searchText,
+                                                isFocused: $isSearchFieldFocused, close: closeSearch),
+                    openSearch: openSearch
+                )
+                .sessionsTopChromeListRow()
+            }
             if viewModel.isViewingCachedData {
                 OfflineCacheBanner()
                     .padding(.top, 16)
                     .sessionsScreenListRow()
             }
-            SessionSidebarUtilityRows(
-                viewModel: viewModel, topPadding: 10, automatedVisibility: .showAll, sectionVisibility: sectionVisibility,
-                profilesAreExpanded: .constant(false), projectsAreExpanded: $projectsAreExpanded,
-                selectedProjectID: $selectedProjectID, projectPendingDeletion: $deletingProject,
-                projectPendingRename: $renamingProject, openDestination: open, switchActiveProfile: { _ in },
-                presentProjectCreation: { creatingProject = HermesProjectCreation(folder: "") }
-            )
+            // A search lists only sessions, as on webui's list.
+            if !isSearchExpanded {
+                SessionSidebarUtilityRows(
+                    viewModel: viewModel, topPadding: 10, automatedVisibility: .showAll, sectionVisibility: sectionVisibility,
+                    profilesAreExpanded: .constant(false), projectsAreExpanded: $projectsAreExpanded,
+                    selectedProjectID: $selectedProjectID, projectPendingDeletion: $deletingProject,
+                    projectPendingRename: $renamingProject, openDestination: open, switchActiveProfile: { _ in },
+                    presentProjectCreation: { creatingProject = HermesProjectCreation(folder: "") }
+                )
+            }
             SessionListRowsSection(
                 viewModel: viewModel,
                 searchText: searchText,
@@ -130,11 +149,6 @@ struct HermesSessionListView<Avatar: View>: View {
                 .padding(.bottom, 22)
         }
         .refreshable { await viewModel.refreshHermes(modelContext: modelContext) }
-        // The home's search button opens the field; a pushed list shows it.
-        .searchable(text: $searchText, isPresented: $isSearchPresented,
-                    placement: .navigationBarDrawer(displayMode: home == nil ? .always : .automatic), prompt: "Search sessions")
-        .autocorrectionDisabled()
-        .textInputAutocapitalization(.never)
         // Debounced inside; a new query or Profile cancels the search in flight.
         .task(id: SearchScope(profile: profile, showsAll: viewModel.hermesShowsAllProfiles, text: searchText)) {
             await viewModel.searchSessions(query: searchText)
@@ -150,7 +164,7 @@ struct HermesSessionListView<Avatar: View>: View {
                     Task { await viewModel.selectHermesProfile(listed) }
                 }
                 searchText = opened.query
-                if !opened.query.isEmpty { isSearchPresented = true }
+                if !opened.query.isEmpty && home != nil { isSearchExpanded = true }
             })
             .id(chat.id)
         }
@@ -303,8 +317,19 @@ struct HermesSessionListView<Avatar: View>: View {
 
     /// The home's chrome, or the pushed list's own title and toolbar.
     private var chrome: some ViewModifier {
-        HermesSessionListChrome(home: home, search: { isSearchPresented = true }, profileMenu: { profileMenu },
-                                filter: { profileFilter }, newSession: { newSessionButton }, avatar: avatar)
+        HermesSessionListChrome(home: home, searchText: $searchText, profileMenu: { profileMenu },
+                                filter: { profileFilter }, newSession: { newSessionButton })
+    }
+
+    private func openSearch() {
+        withAnimation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion)) { isSearchExpanded = true }
+        isSearchFieldFocused = true
+    }
+
+    private func closeSearch() {
+        searchText = ""
+        isSearchFieldFocused = false
+        withAnimation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion)) { isSearchExpanded = false }
     }
 
     private var newSessionButton: some View {
@@ -536,28 +561,30 @@ private struct SearchScope: Hashable {
 }
 
 /// The Sessions list's title and toolbar. As the Hermes home's Sessions side it takes the home's
-/// chrome, with the Profile filter and New Session in the bottom bar; pushed, it is titled
-/// "Sessions" with its Profile menu and New Session at the top right.
-private struct HermesSessionListChrome<Avatar: View, ProfileMenu: View, Filter: View, NewSession: View>: ViewModifier {
+/// bar, with the Profile filter and New Session at its ends, and searches from its header; pushed,
+/// it is titled "Sessions" with its Profile menu and New Session at the top right and a search
+/// field under them.
+private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSession: View>: ViewModifier {
     let home: HermesHome?
-    let search: () -> Void
+    @Binding var searchText: String
     let profileMenu: ProfileMenu
     let filter: Filter
     let newSession: NewSession
-    let avatar: Avatar
 
-    init(home: HermesHome?, search: @escaping () -> Void, @ViewBuilder profileMenu: () -> ProfileMenu,
-         @ViewBuilder filter: () -> Filter, @ViewBuilder newSession: () -> NewSession, avatar: Avatar) {
-        self.home = home; self.search = search; self.profileMenu = profileMenu(); self.filter = filter()
-        self.newSession = newSession(); self.avatar = avatar
+    init(home: HermesHome?, searchText: Binding<String>, @ViewBuilder profileMenu: () -> ProfileMenu,
+         @ViewBuilder filter: () -> Filter, @ViewBuilder newSession: () -> NewSession) {
+        self.home = home; _searchText = searchText; self.profileMenu = profileMenu(); self.filter = filter()
+        self.newSession = newSession()
     }
 
     func body(content: Content) -> some View {
         if let home {
-            content.modifier(HermesHomeChrome(home: home, searchLabel: "Search sessions", search: search,
-                                              filter: { filter }, newChat: { newSession }, avatar: { avatar }))
+            content.modifier(HermesHomeChrome(home: home, filter: { filter }, newChat: { newSession }))
         } else {
             content
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search sessions")
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
                 .navigationTitle("Sessions")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {

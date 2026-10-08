@@ -197,6 +197,189 @@ enum SessionListMotion {
     }
 }
 
+/// The session list's header (#283), on webui's list and both sides of a Hermes home (#709):
+/// HERMEX, and one glass pill of search and the server's avatar. A tap on the avatar opens
+/// Settings and a hold switches servers. With a `field`, search grows the pill into a text field
+/// that pushes the wordmark out and turns the avatar into Close; without one (the Bots side,
+/// whose search is a sheet) the pill stays put and `openSearch` alone runs.
+struct SessionsHeader: View {
+    /// The pill's search field and the state it grows with.
+    struct Field {
+        let isExpanded: Bool
+        let text: Binding<String>
+        let isFocused: FocusState<Bool>.Binding
+        let close: () -> Void
+    }
+
+    /// The server's avatar and what it opens.
+    struct Avatar {
+        let initials: String
+        let color: Color
+        let foreground: Color
+        let servers: AvatarServerSwitcherModel
+        let openSettings: () -> Void
+        let switchToServer: (ServerAccount) -> Void
+        let addServer: () -> Void
+        let manageServers: () -> Void
+    }
+
+    private static let iconVisualSize: CGFloat = 36
+    private static let iconHitTarget: CGFloat = 44
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let logoColor: Color
+    let avatar: Avatar
+    var field: Field?
+    let openSearch: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: isExpanded ? 0 : 16) {
+            HermesHeaderLogo(selectedColor: logoColor)
+                .frame(width: isExpanded ? 0 : 160, alignment: .leading)
+                .opacity(isExpanded ? 0 : 1)
+                .clipped()
+                .accessibilityHidden(isExpanded)
+
+            pill
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 28)
+        .animation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion), value: isExpanded)
+        .animation(SessionListMotion.searchFocusAnimation(reduceMotion: reduceMotion), value: showsClearButton)
+    }
+
+    private var isExpanded: Bool { field?.isExpanded == true }
+
+    private var showsClearButton: Bool {
+        guard let field else { return false }
+        return field.isExpanded && !field.text.wrappedValue.isEmpty
+    }
+
+    private var pill: some View {
+        HStack(spacing: isExpanded ? 8 : 4) {
+            HapticButton {
+                if isExpanded, let field {
+                    field.isFocused.wrappedValue = true
+                } else {
+                    openSearch()
+                }
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(isExpanded ? .secondary : .primary)
+                    .frame(width: Self.iconVisualSize, height: Self.iconVisualSize)
+                    .frame(width: Self.iconHitTarget, height: Self.iconHitTarget)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isExpanded ? "Focus session search" : "Search sessions")
+            .accessibilityHint("Shows the session search field.")
+            .accessibilityHidden(isExpanded)
+
+            if let field {
+                textField(field)
+
+                if showsClearButton {
+                    clearButton(field)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+
+            trailingButton
+        }
+        .padding(.vertical, 2)
+        .frame(maxWidth: isExpanded ? .infinity : nil, alignment: .trailing)
+        .sessionsChromeGlass(isInteractive: true, in: Capsule())
+        .clipShape(Capsule())
+        .contentShape(Capsule())
+    }
+
+    private func textField(_ field: Field) -> some View {
+        TextField("Search sessions", text: field.text)
+            .font(AppFont.subheadline())
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .focused(field.isFocused)
+            .submitLabel(.done)
+            .lineLimit(1)
+            .layoutPriority(1)
+            .frame(maxWidth: isExpanded ? .infinity : 0)
+            .opacity(isExpanded ? 1 : 0)
+            .clipped()
+            .accessibilityHidden(!isExpanded)
+    }
+
+    private func clearButton(_ field: Field) -> some View {
+        Button {
+            field.text.wrappedValue = ""
+            field.isFocused.wrappedValue = true
+        } label: {
+            Image(systemName: "xmark.circle.fill")
+                .font(AppFont.subheadline())
+                .foregroundStyle(.secondary)
+                .frame(width: Self.iconVisualSize, height: Self.iconVisualSize)
+                .frame(width: Self.iconHitTarget, height: Self.iconHitTarget)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Clear search")
+    }
+
+    private var trailingButton: some View {
+        HapticButton(feedbackStyle: .medium) {
+            if isExpanded, let field {
+                field.close()
+            } else {
+                avatar.openSettings()
+            }
+        } label: {
+            ZStack {
+                Text(avatar.initials)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(avatar.foreground)
+                    .frame(width: Self.iconVisualSize, height: Self.iconVisualSize)
+                    .background(avatar.color, in: Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
+                    .opacity(isExpanded ? 0 : 1)
+                    .scaleEffect(isExpanded ? 0.72 : 1)
+                    .rotationEffect(.degrees(isExpanded ? -18 : 0))
+
+                Image(systemName: "xmark")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .frame(width: Self.iconVisualSize, height: Self.iconVisualSize)
+                    .opacity(isExpanded ? 1 : 0)
+                    .scaleEffect(isExpanded ? 1 : 0.72)
+                    .rotationEffect(.degrees(isExpanded ? 0 : 18))
+            }
+            .frame(width: Self.iconHitTarget, height: Self.iconHitTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isExpanded ? "Close search" : "Settings")
+        .accessibilityHint(
+            isExpanded
+                ? "Closes search and clears the current query."
+                : "Opens Settings. Long press to switch servers."
+        )
+        // Long-press the avatar to switch the active server, reusing #17's
+        // switch/add actions. Suppressed while search is expanded so the
+        // "close search" tap state is untouched (#283). The plain tap above is
+        // preserved — `contextMenu` adds long-press without stealing the tap.
+        .contextMenu {
+            if !isExpanded {
+                AvatarServerSwitcherMenu(
+                    model: avatar.servers,
+                    switchToServer: avatar.switchToServer,
+                    addServer: avatar.addServer,
+                    manageServers: avatar.manageServers
+                )
+            }
+        }
+    }
+}
+
 /// Which of the session list's optional navigation rows are shown, so a user can
 /// hide the parts of the app they never use (issue #189).
 struct SidebarSectionVisibility: Equatable {

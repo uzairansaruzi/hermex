@@ -31,8 +31,11 @@ server still opens, and so do its bot links. Its home (#709) has two sides on on
 and one shared connection, the Bots inbox and the Sessions list, switched by a bottom bar
 of `(filter) [Bots | Sessions] (new chat)` that each side fills: on Bots the filter holds
 hidden bots and section order and new chat makes a bot or a group chat; on Sessions the
-filter picks a Profile or All Profiles and new chat starts a session. HERMEX sits top left,
-search and the server's avatar (Settings on tap, switching on hold) top right. The home
+filter picks a Profile or All Profiles and new chat starts a session. Both sides lead with
+webui's header (`SessionsHeader`): HERMEX, and one pill of search and the server's avatar
+(Settings on tap, switching on hold), with no top bar. On Sessions the pill grows into the
+search field; on Bots it opens the search sheet. The home keeps the inbox and the session
+list's view model across the switch, so a switch shows the last roster or rows at once. It
 reopens on the side last shown (`@SceneStorage`), Sessions at first, and a bot link turns it
 to Bots. The two sides keep their own read marks, live states and identities. Without a
 record (after Sign Out, which deletes the record and Bot data but keeps the server) or
