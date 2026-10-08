@@ -387,6 +387,24 @@ import Observation
         XCTAssertEqual(wire.pageReads.filter { $0.profile == "research" }.map(\.offset), [0])
     }
 
+    /// A Profile added on another client joins All Profiles on the next refresh, which names it on
+    /// the socket so its changes reach the list too.
+    func testRefreshingAllProfilesListsAProfileAddedElsewhere() async {
+        let wire = HermesSessionListWire()
+        wire.pages = ["default": [0: page([HermesSessionRow(id: "d", lastActive: 1)])],
+                      "research": [0: page([])], "ops": [0: page([HermesSessionRow(id: "o", lastActive: 3)])]]
+        HermesProfilePreference.saveShowsAllProfiles(true, for: server, in: defaults)
+        let list = makeList(wire)
+        await list.openHermes()
+        XCTAssertEqual(list.sessions.map(\.sessionId), ["d"])
+
+        wire.profiles = ["default", "research", "ops"]
+        await list.refreshHermes()
+
+        XCTAssertEqual(Set(list.sessions.compactMap(\.sessionId)), ["d", "o"])
+        XCTAssertEqual(wire.calls.last { $0.method == "session.most_recent" && $0.profile == "ops" }?.profile, "ops")
+    }
+
     /// The home's list opens on no Profile (#709): it takes the one the host's dashboard runs.
     func testAListWithoutAProfileOpensOnTheHostsCurrentProfile() async {
         let wire = HermesSessionListWire()

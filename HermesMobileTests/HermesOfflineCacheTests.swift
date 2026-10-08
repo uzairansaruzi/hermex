@@ -319,14 +319,32 @@ import XCTest
         await makeList(online).openHermes(modelContext: context)
         XCTAssertEqual(try CacheStore.cachedHermesSessions(serverURL: server, profile: "research", in: context).map(\.sessionId), ["r"])
 
+        // The home's list starts without a Profile, which only the host settles.
         let wire = HermesSessionListWire()
         wire.connectFailure = URLError(.cannotConnectToHost)
-        let list = makeList(wire)
+        let list = makeList(wire, profile: nil)
         await list.openHermes(modelContext: context)
 
         XCTAssertTrue(list.isViewingCachedData)
         XCTAssertEqual(list.visibleSessions(searchText: "", selectedProjectID: nil).map { "\($0.sessionId!)@\($0.profile!)" },
                        ["r@research", "d@default"])
+    }
+
+    /// The home's list, opened offline without a Profile, shows the server's pick's cached rows.
+    func testAListWithoutAProfileShowsThePicksCachedRowsOffline() async throws {
+        let context = try makeContext()
+        let online = HermesSessionListWire()
+        online.pages = ["research": [0: HermesSessionPage(rows: [HermesSessionRow(id: "r", lastActive: 2)])]]
+        await makeList(online, profile: "research").openHermes(modelContext: context)
+        HermesProfilePreference.save("research", for: server, in: defaults)
+
+        let wire = HermesSessionListWire()
+        wire.connectFailure = URLError(.cannotConnectToHost)
+        let list = makeList(wire, profile: nil)
+        await list.openHermes(modelContext: context)
+
+        XCTAssertTrue(list.isViewingCachedData)
+        XCTAssertEqual(list.sessions.map(\.sessionId), ["r"])
     }
 
     // MARK: Fixture
@@ -336,9 +354,9 @@ import XCTest
                                         configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
     }
 
-    private func makeList(_ wire: HermesSessionListWire) -> SessionListViewModel {
+    private func makeList(_ wire: HermesSessionListWire, profile: String? = "default") -> SessionListViewModel {
         SessionListViewModel(server: server, unreadStore: SessionUnreadStore(defaults: defaults), hermes: HermesSessionListSource(
-            connection: connection, profile: "default", makeWire: { _ in wire }, preferences: defaults,
+            connection: connection, profile: profile, makeWire: { _ in wire }, preferences: defaults,
             changeDebounce: .zero, statusPollInterval: .seconds(3600), reconnectDelays: [.seconds(3600)]
         ))
     }

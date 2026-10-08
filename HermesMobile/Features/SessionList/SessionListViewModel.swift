@@ -1748,10 +1748,14 @@ final class SessionListViewModel {
         hermesIsListening = true
         let followed = followSavedHermesProfile()
         if let wire = hermesWire {
-            if followed { _ = await watchHermesProfile(wire) }
+            // A list of every Profile reads today's names before its pages, and names a new one
+            // on the socket.
+            let listed = hermesProfiles
+            if hermesShowsAllProfiles { await readHermesProfiles(wire) }
+            if followed || hermesProfiles != listed { _ = await watchHermesProfile(wire) }
             await reloadHermes()
             await runAwaitedHermesSearch()
-            await readHermesProfiles(wire)
+            if !hermesShowsAllProfiles { await readHermesProfiles(wire) }
             return
         }
         let wire = hermes.makeWire(hermes.connection)
@@ -1962,10 +1966,13 @@ final class SessionListViewModel {
     /// read succeeds. False when it can't: another failure, or nothing cached.
     @discardableResult
     private func showCachedHermesSessions(after error: Error) -> Bool {
-        guard CacheFallbackPolicy.shouldUseCache(for: error), let hermesCache, let profile = hermesProfile else { return false }
+        guard CacheFallbackPolicy.shouldUseCache(for: error), let hermes, let hermesCache else { return false }
+        // A list that never reached the host to settle its Profile reads the server's pick.
+        let picked = hermesProfile ?? hermes.preferences.string(forKey: HermesProfilePreference.key(for: server))
+        guard hermesShowsAllProfiles || picked != nil else { return false }
         let cached: [SessionSummary]
         do {
-            cached = try CacheStore.cachedHermesSessions(serverURL: server, profile: hermesShowsAllProfiles ? nil : profile,
+            cached = try CacheStore.cachedHermesSessions(serverURL: server, profile: hermesShowsAllProfiles ? nil : picked,
                                                          in: hermesCache)
         } catch {
             cacheErrorMessage = error.localizedDescription
