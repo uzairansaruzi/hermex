@@ -824,9 +824,29 @@ reference lines back into chips (`MessageAttachment.hermesReferences`): the inst
 pair, and a lone `@file:` token plain or quoted. It drops the host's saved
 `--- Context Warnings ---` and `--- Attached Context ---` footer, which repeats the path
 and inlines a text file. No host path is shown, live or after a rebuild, and ↑ recalls
-only the typed text. A chip has a name and no path, so tapping one shows the local copy
-when this phone sent it and otherwise says it has no server path; audio shows as a
-file, not a player. Bot Chat still shows the raw lines (#1017).
+only the typed text. Rebuilt chips retain the host path for their preview (#1030):
+`BotArtifactPreview` downloads once with the active Profile and stored session key,
+then Quick Look, Save to Files and Share reuse those bytes. A still-staged chip
+shows its local copy; audio chips remain files, not inline players. Bot Chat still
+shows the raw lines (#1017).
+
+Assistant `MEDIA:` documents in Hermes Sessions use that same native preview,
+including PDFs and the existing `BinaryFilePreview.quickLook` format allow-list.
+Their cards need no webui byte loader. Local paths use the attach-scoped artifact
+transport; image thumbnails, image lightboxes and video players also use that
+transport without changing their presentation. Unsupported files keep the
+download-only row. Webui Sessions' media rendering and transport are unchanged.
+Native document cards follow the interface's layout direction, including their
+forward chevron. Image, audio, video and webui media keep the existing LTR anchor
+inside RTL messages.
+
+Remote document URLs are fetched as URLs, never passed to `/api/fs/download`.
+They use a public ephemeral session with no cookies, stored HTTP credentials,
+Hermes sign-in or either server's proxy headers, even at the Hermes origin.
+Embedded URL credentials are refused, as are redirects and non-200 responses.
+The same streaming 25 MB cap applies with or without `Content-Length`; cancellation,
+reattachment and preview dismissal discard late results. Remote image/audio/video
+URLs retain their existing media URL policy. Ordinary external links remain links.
 
 Bot drafts extend `ChatDraftStore` with server + connection UUID + Profile context.
 After uploads finish, immediately before prompt submission, the client flushes an

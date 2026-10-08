@@ -123,6 +123,7 @@ struct HermesChatTranscript: Equatable {
     @ObservationIgnored private var refusedSignIn = false
     @ObservationIgnored private var draftKey: ChatDraftKey
     private let isNetworkAvailable: @MainActor () -> Bool
+    @ObservationIgnored private let publicArtifactSession: URLSession?
     /// The shared Live Activity manager this chat's turns drive (#1014); nil drives none.
     @ObservationIgnored private let liveActivities: (any AgentLiveActivityManaging)?
     /// The running turn's activity: its session key and stream id, the host's
@@ -134,10 +135,12 @@ struct HermesChatTranscript: Equatable {
     @ObservationIgnored private var shownWaiting: AgentLiveActivityEvent?
 
     init(engine: HermesConversation, liveActivities: (any AgentLiveActivityManaging)? = nil,
-         isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
+         isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied },
+         publicArtifactSession: URLSession? = nil) {
         self.engine = engine
         self.liveActivities = liveActivities
         self.isNetworkAvailable = isNetworkAvailable
+        self.publicArtifactSession = publicArtifactSession
         requests = HermesChatRequests(engine: engine)
         sideTasks = HermesChatSideTasks(engine: engine)
         settings = HermesChatSettings(engine: engine)
@@ -342,6 +345,22 @@ struct HermesChatTranscript: Equatable {
         let data = try await engine.wire.artifactData(path: path, context: context)
         try engine.check(attempt)
         return data
+    }
+
+    /// Local MEDIA stays scoped to the attach. Remote documents use a public,
+    /// bounded URL fetch, never a host filesystem path or either server's auth.
+    func transcriptMediaData(for reference: TranscriptMediaReference) async throws -> Data {
+        switch reference.source {
+        case let .localPath(path):
+            return try await attachmentData(path: path)
+        case let .remoteURL(url):
+            guard reference.isHermesDocumentCandidate else { throw BotArtifactFailure.invalidReference }
+            guard engine.connectionState == .connected else { throw BotFailure.stale }
+            let attempt = engine.generation
+            let data = try await PublicArtifactDownload.data(from: url, session: publicArtifactSession)
+            try engine.check(attempt)
+            return data
+        }
     }
 
     /// Keys this session's thumbnails in the process-wide `TranscriptImageCache`: its

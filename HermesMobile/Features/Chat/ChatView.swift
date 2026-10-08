@@ -342,8 +342,8 @@ struct ChatView: View {
     @State private var transcriptMediaPreviewItem: TranscriptMediaPreviewItem?
     @State private var transcriptMediaImageItem: TranscriptMediaPreviewItem?
     @State private var attachmentImageItem: ChatAttachmentPreviewItem?
-    /// A Hermes session's sent file, previewed from its host (#1030).
-    @State private var hermesAttachmentItem: HermesAttachmentPreviewItem?
+    /// A Hermes sent file or MEDIA document in the shared native artifact preview.
+    @State private var hermesFilePreviewItem: HermesFilePreviewItem?
     /// A workspace file a chat link named; presented on the source viewer at its line.
     @State private var openedFileReference: FileReference?
     @State private var pendingProfileSelection: ProfileSummary?
@@ -691,12 +691,15 @@ struct ChatView: View {
         return nil
     }
 
-    /// An image is known to be an image before it is fetched, so it opens in the
-    /// full-bleed lightbox. Everything else keeps the preview sheet, which still has to
-    /// decide between audio, video, and an unsupported file once the bytes arrive.
+    /// Hermes documents share BotArtifactPreview. Images keep the full-bleed
+    /// lightbox; video and extensionless remote media keep the media sheet.
     private func presentTranscriptMediaPreview(_ reference: TranscriptMediaReference) {
         presentPreviewRestoringComposerFocusIfNeeded {
             let item = TranscriptMediaPreviewItem(reference: reference)
+            if isHermesSession, reference.isHermesDocumentCandidate {
+                hermesFilePreviewItem = HermesFilePreviewItem(reference: reference)
+                return
+            }
             if reference.isRasterImageCandidate, !reference.isExtensionlessRemoteMediaCandidate {
                 transcriptMediaImageItem = item
             } else {
@@ -713,7 +716,9 @@ struct ChatView: View {
             return presentAttachmentPreview(ChatAttachmentPreviewItem(message: attachment, localData: localData))
         }
         presentPreviewRestoringComposerFocusIfNeeded {
-            hermesAttachmentItem = HermesAttachmentPreviewItem(path: path, name: attachment.name)
+            hermesFilePreviewItem = HermesFilePreviewItem(
+                reference: TranscriptMediaReference(rawReference: path), name: attachment.name
+            )
         }
     }
 
@@ -732,7 +737,8 @@ struct ChatView: View {
             server: server,
             sessionID: transcriptMediaSessionID,
             item: item,
-            onAPIError: onAPIError
+            onAPIError: onAPIError,
+            download: hermesMediaDownload(for: item.reference)
         )
     }
 
@@ -741,8 +747,16 @@ struct ChatView: View {
             server: server,
             sessionID: transcriptMediaSessionID,
             item: item,
-            onAPIError: onAPIError
+            onAPIError: onAPIError,
+            download: hermesMediaDownload(for: item.reference)
         )
+    }
+
+    /// The existing image/video viewers must not send a Hermes host path to
+    /// webui. Remote image/video URLs retain their existing URL-loading policy.
+    private func hermesMediaDownload(for reference: TranscriptMediaReference) -> (() async throws -> Data)? {
+        guard isHermesSession, case .localPath = reference.source else { return nil }
+        return { try await viewModel.hermesTranscriptMediaData(for: reference) }
     }
 
     /// A chat link that names a workspace file opens the source viewer at its line; every
@@ -1057,12 +1071,12 @@ struct ChatView: View {
                     restoreComposerFocusAfterPreviewIfNeeded()
                 }
             }
-            .sheet(item: $hermesAttachmentItem) { item in
-                BotArtifactPreview(reference: TranscriptMediaReference(rawReference: item.path), title: item.name) {
-                    try await viewModel.hermesAttachmentData(path: item.path)
+            .sheet(item: $hermesFilePreviewItem) { item in
+                BotArtifactPreview(reference: item.reference, title: item.name) {
+                    try await viewModel.hermesTranscriptMediaData(for: item.reference)
                 }
             }
-            .onChange(of: hermesAttachmentItem == nil) { _, isDismissed in
+            .onChange(of: hermesFilePreviewItem == nil) { _, isDismissed in
                 if isDismissed {
                     restoreComposerFocusAfterPreviewIfNeeded()
                 }
@@ -1839,6 +1853,7 @@ struct ChatView: View {
         .environment(\.composerChipCatalog, viewModel.composerChipCatalog)
         .transcriptLinks(perform: handleTranscriptLink)
         .environment(\.chatWorkspaceRoot, session.workspace)
+        .environment(\.previewsHermesDocuments, isHermesSession)
         .task(id: transcriptSkillReferenceCount) {
             await loadSkillSuggestionsForTranscriptChipsIfNeeded()
         }
@@ -3972,10 +3987,9 @@ private struct HermesPersonalityConfirmationModifier: ViewModifier {
     }
 }
 
-/// A Hermes session's sent file to preview: the host path its chip keeps, never shown,
-/// and the chip's name for the title.
-private struct HermesAttachmentPreviewItem: Identifiable {
+/// One Hermes native preview presentation, for a sent chip or a MEDIA document.
+private struct HermesFilePreviewItem: Identifiable {
     let id = UUID()
-    let path: String
-    let name: String?
+    let reference: TranscriptMediaReference
+    var name: String? = nil
 }

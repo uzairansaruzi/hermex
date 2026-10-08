@@ -1579,6 +1579,13 @@ final class ChatViewModel {
         return try await hermesTurn.attachmentData(path: path)
     }
 
+    /// Hermes MEDIA previews use scoped host downloads for local paths and
+    /// credential-free, bounded URL downloads for remote documents.
+    func hermesTranscriptMediaData(for reference: TranscriptMediaReference) async throws -> Data {
+        guard let hermesTurn else { throw BotFailure.stale }
+        return try await hermesTurn.transcriptMediaData(for: reference)
+    }
+
     /// The thumbnail cache namespace of a Hermes session; nil on a webui chat.
     var hermesAttachmentCacheNamespace: String? { hermesTurn?.attachmentCacheNamespace }
 
@@ -1587,11 +1594,18 @@ final class ChatViewModel {
     }
 
     func transcriptMediaThumbnailData(for reference: TranscriptMediaReference) async -> Data? {
-        await attachmentCoordinator.transcriptMediaThumbnailData(for: reference)
+        if hermesTurn != nil, case let .localPath(path) = reference.source {
+            guard reference.isRasterImageCandidate else { return nil }
+            return await attachmentImageData(path: path)
+        }
+        return await attachmentCoordinator.transcriptMediaThumbnailData(for: reference)
     }
 
     func transcriptMediaData(for reference: TranscriptMediaReference) async -> Data? {
-        await attachmentCoordinator.transcriptMediaData(for: reference)
+        if hermesTurn != nil, case .localPath = reference.source {
+            return try? await hermesTranscriptMediaData(for: reference)
+        }
+        return await attachmentCoordinator.transcriptMediaData(for: reference)
     }
 
     /// Reloads the newest transcript window from the server. `usesInitialPrefetch`

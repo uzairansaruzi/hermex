@@ -4,9 +4,8 @@ import SwiftUI
 @MainActor
 @Observable
 final class TranscriptMediaPreviewViewModel {
-    private let sessionID: String?
     private let reference: TranscriptMediaReference
-    private let apiClient: APIClient
+    private let download: () async throws -> Data
     private var didLoad = false
     private var loadGeneration = 0
     private var originalData: Data?
@@ -24,11 +23,20 @@ final class TranscriptMediaPreviewViewModel {
         server: URL,
         sessionID: String?,
         reference: TranscriptMediaReference,
-        apiClient: APIClient? = nil
+        apiClient: APIClient? = nil,
+        download: (() async throws -> Data)? = nil
     ) {
-        self.sessionID = sessionID
         self.reference = reference
-        self.apiClient = apiClient ?? APIClient(baseURL: server)
+        if let download {
+            self.download = download
+        } else {
+            let client = apiClient ?? APIClient(baseURL: server)
+            let trimmedSessionID = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let resolvedSessionID = trimmedSessionID.flatMap { $0.isEmpty ? nil : $0 }
+            self.download = {
+                try await client.transcriptMediaData(for: reference, sessionID: resolvedSessionID)
+            }
+        }
     }
 
     var canSaveImageToPhotos: Bool {
@@ -74,7 +82,7 @@ final class TranscriptMediaPreviewViewModel {
         }
 
         do {
-            let data = try await transcriptMediaData()
+            let data = try await download()
             guard !Task.isCancelled, loadGeneration == generation else { return }
             originalData = data
             originalByteCount = data.count
@@ -125,7 +133,7 @@ final class TranscriptMediaPreviewViewModel {
             return originalData
         }
 
-        let data = try await transcriptMediaData()
+        let data = try await download()
         try Task.checkCancellation()
         originalData = data
         originalByteCount = data.count
@@ -141,18 +149,6 @@ final class TranscriptMediaPreviewViewModel {
         )
     }
 
-    private func transcriptMediaData() async throws -> Data {
-        try await apiClient.transcriptMediaData(for: reference, sessionID: resolvedSessionID)
-    }
-
-    private var resolvedSessionID: String? {
-        guard let sessionID = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !sessionID.isEmpty
-        else {
-            return nil
-        }
-        return sessionID
-    }
 
     func cleanupTemporaryFiles() {
         loadGeneration += 1

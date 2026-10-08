@@ -75361,6 +75361,25 @@
       }
     },
     "Preview" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Vorschau" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Vista previa" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Aperçu" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Anteprima" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Wersja zapoznawcza" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Prévia" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Preview" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Önizleme" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Предварительные функции" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "プレビュー" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "预览" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "미리보기" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "معاينة" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "תצוגה מקדימה" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "پیش منظر" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "預覽" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "預覽" } } } },
+    "Preview %@" : { "localizations" : {
+      "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Vorschau von %@" } },
+      "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Vista previa de %@" } },
+      "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Aperçu de %@" } },
+      "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Anteprima di %@" } },
+      "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Podgląd %@" } },
+      "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Prévia de %@" } },
+      "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Voorvertoning van %@" } },
+      "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ önizlemesi" } },
+      "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Предпросмотр %@" } },
+      "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "%@をプレビュー" } },
+      "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "预览%@" } },
+      "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ 미리보기" } },
+      "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "معاينة %@" } },
+      "he" : { "stringUnit" : { "state" : "needs_review", "value" : "תצוגה מקדימה של %@" } },
+      "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "%@ کا پیش نظارہ" } },
+      "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "預覽%@" } },
+      "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "預覽%@" } }
+    } },
     "Preview Dispatch" : { "localizations" : {
       "de" : { "stringUnit" : { "state" : "translated", "value" : "Dispatch-Vorschau" } },
       "es" : { "stringUnit" : { "state" : "translated", "value" : "Vista previa del despacho" } },
@@ -107619,6 +107638,25 @@
       }
     },
     "Tap to download" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Zum Herunterladen tippen" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Toca para descargar" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Touchez pour télécharger" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Tocca per scaricare" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Stuknij, aby pobrać" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Toque para baixar" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Tik om te downloaden" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "İndirmek için dokunun" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Нажмите, чтобы скачать" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "タップしてダウンロード" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "轻点以下载" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "탭하여 다운로드" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "اضغط للتنزيل" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "יש להקיש כדי להוריד" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "ڈاؤن لوڈ کے لیے تھپتھپائیں" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "點一下以下載" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "輕按以下載" } } } },
+    "Tap to preview" : { "localizations" : {
+      "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Zum Anzeigen der Vorschau tippen" } },
+      "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Toca para previsualizar" } },
+      "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Touchez pour afficher l’aperçu" } },
+      "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Tocca per visualizzare l’anteprima" } },
+      "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Stuknij, aby wyświetlić podgląd" } },
+      "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Toque para visualizar" } },
+      "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Tik voor een voorvertoning" } },
+      "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Önizlemek için dokunun" } },
+      "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Нажмите для предпросмотра" } },
+      "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "タップしてプレビュー" } },
+      "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "轻点以预览" } },
+      "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "탭하여 미리보기" } },
+      "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "اضغط للمعاينة" } },
+      "he" : { "stringUnit" : { "state" : "needs_review", "value" : "הקישו לתצוגה מקדימה" } },
+      "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "پیش نظارہ دیکھنے کے لیے ٹیپ کریں" } },
+      "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "點一下以預覽" } },
+      "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "點一下以預覽" } }
+    } },
     "Task" : {
       "localizations" : {
         "ar" : {

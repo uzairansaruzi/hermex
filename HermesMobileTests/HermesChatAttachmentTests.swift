@@ -375,6 +375,195 @@ import UIKit
         XCTAssertNotEqual(base, namespace(Self.connection, "work"))
     }
 
+    /// An assistant PDF uses the actual signed-in download, and native export keeps
+    /// its bytes and name without a second request. The webui loader is never used.
+    func testMediaDocumentPreviewUsesItsProfileAndStoredSessionAndReusesItsBytes() async throws {
+        let chat = await openChat(profile: "work", key: "compressed-tip")
+        let reference = TranscriptMediaReference(rawReference: "../reports/Quarter One.pdf")
+        let pdf = Data("%PDF-1.4\n%%EOF".utf8)
+        let before = HermesHostFixture.requests.count
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/fs/download" ? .data(200, ["Content-Type": "application/pdf"], pdf) : nil
+        }
+        let preview = BotArtifactPreviewModel()
+        await preview.load(name: reference.displayName) {
+            try await chat.model.hermesTranscriptMediaData(for: reference)
+        }
+        let file = try XCTUnwrap(preview.fileURL)
+        XCTAssertEqual(try Data(contentsOf: file), pdf)
+        XCTAssertEqual(preview.export?.data, pdf)
+        XCTAssertEqual(preview.export?.filename, "Quarter One.pdf")
+        let downloads = Array(HermesHostFixture.requests.dropFirst(before))
+        XCTAssertEqual(downloads.count, 1, "preview/export never call webui or redownload")
+        XCTAssertEqual(downloads.first?.url?.path, "/api/fs/download")
+        let query = downloads.first?.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems }
+        XCTAssertEqual(query, [URLQueryItem(name: "path", value: "../reports/Quarter One.pdf"),
+                               URLQueryItem(name: "profile", value: "work"),
+                               URLQueryItem(name: "session_id", value: "compressed-tip")])
+        preview.cleanup()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+    }
+
+    /// Unsupported files retain download-only bytes; images and videos retain their
+    /// viewers, now with a host-scoped loader rather than a webui media request.
+    func testLocalMediaKeepsItsExistingKindsAndNeverFallsBackToWebui() async throws {
+        let chat = await openChat()
+        let before = HermesHostFixture.requests.count
+        let image = photo
+        let video = Data("video bytes".utf8)
+        let archive = Data("archive bytes".utf8)
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/fs/download",
+                  let query = request.url.flatMap({ URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems }),
+                  let path = query.first(where: { $0.name == "path" })?.value else { return nil }
+            return .data(200, [:], path.hasSuffix(".jpg") ? image : path.hasSuffix(".mp4") ? video : archive)
+        }
+        let imageReference = TranscriptMediaReference(rawReference: "/host/photo.jpg")
+        let thumbnail = await chat.model.transcriptMediaThumbnailData(for: imageReference)
+        XCTAssertNotNil(thumbnail.flatMap(UIImage.init(data:)))
+        let imagePreview = TranscriptMediaPreviewViewModel(
+            server: URL(string: "https://hermes.example")!, sessionID: nil, reference: imageReference,
+            download: { try await chat.model.hermesTranscriptMediaData(for: imageReference) }
+        )
+        await imagePreview.load()
+        XCTAssertNotNil(imagePreview.previewData.flatMap(UIImage.init(data:)))
+        let originalImage = try await imagePreview.originalMediaData()
+        XCTAssertEqual(originalImage, image)
+        let videoReference = TranscriptMediaReference(rawReference: "/host/movie.mp4")
+        let videoPreview = TranscriptMediaPreviewViewModel(
+            server: URL(string: "https://hermes.example")!, sessionID: nil, reference: videoReference,
+            download: { try await chat.model.hermesTranscriptMediaData(for: videoReference) }
+        )
+        await videoPreview.load()
+        let videoFile = try XCTUnwrap(videoPreview.videoFileURL)
+        XCTAssertEqual(try Data(contentsOf: videoFile), video)
+        videoPreview.cleanupTemporaryFiles()
+        let unsupported = TranscriptMediaReference(rawReference: "/host/archive.zip")
+        XCTAssertFalse(unsupported.isHermesDocumentCandidate)
+        let downloadedArchive = await chat.model.transcriptMediaData(for: unsupported)
+        XCTAssertEqual(downloadedArchive, archive)
+        let requests = Array(HermesHostFixture.requests.dropFirst(before))
+        XCTAssertEqual(requests.count, 4)
+        XCTAssertTrue(requests.allSatisfy { $0.url?.path == "/api/fs/download" })
+    }
+
+    /// The MEDIA path must retain the same stale-attach guard as a sent file.
+    func testMediaDocumentThatOutlivesItsAttachCannotCreateAPreviewOrExport() async {
+        let chat = await openChat()
+        _ = HermesHostFixture.configuration { request in request.url?.path == "/api/fs/download" ? .park : nil }
+        HermesHostFixture.onPark = {
+            Task { @MainActor in
+                chat.turn.recoverAfterLostAnswer()
+                HermesHostFixture.releaseParked(.data(200, [:], Data("%PDF-old".utf8)))
+            }
+        }
+        let preview = BotArtifactPreviewModel()
+        await preview.load(name: "old.pdf") {
+            try await chat.model.hermesTranscriptMediaData(for: .init(rawReference: "/host/old.pdf"))
+        }
+        XCTAssertNil(preview.fileURL)
+        XCTAssertNil(preview.export)
+        XCTAssertNotNil(preview.errorMessage)
+    }
+
+    func testCancellingAMediaDocumentDownloadCannotCreateAPreviewOrExport() async {
+        let chat = await openChat()
+        _ = HermesHostFixture.configuration { request in request.url?.path == "/api/fs/download" ? .park : nil }
+        let started = expectation(description: "document download started")
+        HermesHostFixture.onPark = { started.fulfill() }
+        let preview = BotArtifactPreviewModel()
+        let pending = Task {
+            await preview.load(name: "cancelled.pdf") {
+                try await chat.model.hermesTranscriptMediaData(for: .init(rawReference: "/host/cancelled.pdf"))
+            }
+        }
+        await fulfillment(of: [started], timeout: 2)
+        pending.cancel()
+        await pending.value
+        XCTAssertNil(preview.fileURL)
+        XCTAssertNil(preview.export)
+        XCTAssertNil(preview.errorMessage)
+    }
+
+    /// A remote PDF, even at the Hermes origin, is a URL fetch with no auth and
+    /// no filesystem-download call. A rebuild invalidates its late bytes too.
+    func testRemoteMediaDocumentUsesPublicURLTransportAndRejectsAReattachedResult() async throws {
+        let configuration = PublicArtifactDownload.configuration()
+        configuration.protocolClasses = [BotArtifactHTTPFixture.self]
+        let publicSession = URLSession(configuration: configuration)
+        defer {
+            publicSession.invalidateAndCancel()
+            BotArtifactHTTPFixture.handler = nil
+            BotArtifactHTTPFixture.startHook = nil
+        }
+        let chat = await openChat(publicArtifactSession: publicSession)
+        let reference = TranscriptMediaReference(rawReference: "http://hermes.local:9120/reports/remote.pdf")
+        let pdf = Data("%PDF-public".utf8)
+        let before = HermesHostFixture.requests.count
+        var downloads: [URLRequest] = []
+        BotArtifactHTTPFixture.handler = { request in
+            downloads.append(request)
+            return (200, ["Content-Type": "application/pdf"], pdf)
+        }
+        let preview = BotArtifactPreviewModel()
+        await preview.load(name: reference.displayName) {
+            try await chat.model.hermesTranscriptMediaData(for: reference)
+        }
+        XCTAssertEqual(preview.export?.data, pdf)
+        XCTAssertEqual(downloads.map(\.url?.absoluteString), [reference.rawReference])
+        XCTAssertTrue(downloads.allSatisfy { request in
+            request.value(forHTTPHeaderField: "Cookie") == nil
+                && request.value(forHTTPHeaderField: "Authorization") == nil
+                && request.value(forHTTPHeaderField: "X-Hermes-Session-Token") == nil
+        })
+        XCTAssertEqual(HermesHostFixture.requests.count, before, "remote documents never call fs/download or webui")
+
+        let started = expectation(description: "remote document started")
+        var parked: BotArtifactHTTPFixture?
+        BotArtifactHTTPFixture.startHook = { fixture in parked = fixture; started.fulfill() }
+        let pending = Task { try await chat.model.hermesTranscriptMediaData(for: reference) }
+        await fulfillment(of: [started], timeout: 2)
+        chat.turn.recoverAfterLostAnswer()
+        let fixture = try XCTUnwrap(parked)
+        let response = HTTPURLResponse(url: fixture.request.url!, statusCode: 200, httpVersion: nil, headerFields: [:])!
+        fixture.client?.urlProtocol(fixture, didReceive: response, cacheStoragePolicy: .notAllowed)
+        fixture.client?.urlProtocol(fixture, didLoad: pdf)
+        fixture.client?.urlProtocolDidFinishLoading(fixture)
+        do { _ = try await pending.value; XCTFail("a reattach must reject the old remote result") }
+        catch { XCTAssertEqual(error as? BotFailure, .stale) }
+        preview.cleanup()
+    }
+
+    func testDetachedHermesMediaDoesNotFallBackToWebui() async {
+        let chat = await openChat()
+        chat.model.suspendStreamForNavigation()
+        let before = HermesHostFixture.requests.count
+        let document = TranscriptMediaReference(rawReference: "/host/report.pdf")
+        do { _ = try await chat.model.hermesTranscriptMediaData(for: document); XCTFail("detached documents must fail") }
+        catch { XCTAssertEqual(error as? BotFailure, .stale) }
+        let documentBytes = await chat.model.transcriptMediaData(for: document)
+        let thumbnail = await chat.model.transcriptMediaThumbnailData(for: .init(rawReference: "/host/photo.jpg"))
+        XCTAssertNil(documentBytes)
+        XCTAssertNil(thumbnail)
+        XCTAssertEqual(HermesHostFixture.requests.count, before, "a detached Hermes chat sends no fallback request")
+    }
+
+    func testHermesArtifactDocumentLoaderRejectsRemoteNonDocumentsWithoutSendingRequests() async {
+        let chat = await openChat()
+        let before = HermesHostFixture.requests.count
+        for raw in ["https://cdn.example/photo.jpg", "https://cdn.example/archive.zip",
+                    "https://cdn.example/no-extension?name=report.pdf"] {
+            let reference = TranscriptMediaReference(rawReference: raw)
+            XCTAssertFalse(reference.isHermesDocumentCandidate)
+            do { _ = try await chat.model.hermesTranscriptMediaData(for: reference); XCTFail("not a remote document") }
+            catch {
+                XCTAssertEqual((error as? BotArtifactFailure)?.localizedDescription,
+                               BotArtifactFailure.invalidReference.localizedDescription)
+            }
+        }
+        XCTAssertEqual(HermesHostFixture.requests.count, before)
+    }
+
     // MARK: Fixture
 
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
@@ -411,22 +600,24 @@ import UIKit
                  "payload": .object(payload)])
     }
 
-    private func openChat(history: [BotJSON] = []) async -> Chat {
+    private func openChat(history: [BotJSON] = [], profile: String = "default", key: String = "tip",
+                          publicArtifactSession: URLSession? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: .object([
-            "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
-            "messages": .array(history), "info": .object(["profile_name": .string("default")])
+            "session_id": .string("runtime"), "session_key": .string(key), "running": .bool(false),
+            "messages": .array(history), "info": .object(["profile_name": .string(profile)])
         ])))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
         let copies = BotAttachmentCopies()
         let drafts = ChatDraftStore(persistence: BotMemoryDrafts(), attachmentStore: copies, debounceDuration: .seconds(60))
         let client = BotClient(http: host.connection(Self.connection))
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
-                                        target: .session(profile: "default", key: "tip"), wire: client)
-        let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
+                                        target: .session(profile: profile, key: key), wire: client)
+        let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true },
+                                             publicArtifactSession: publicArtifactSession)
         let model = ChatViewModel(
-            session: SessionSummary(profile: "default"), server: URL(string: "https://hermes.example")!,
+            session: SessionSummary(profile: profile), server: URL(string: "https://hermes.example")!,
             streamingScrollCoalescingDelayNanoseconds: 0,
             draftAttachmentStore: copies, draftStore: drafts, backend: .hermes(turn)
         )

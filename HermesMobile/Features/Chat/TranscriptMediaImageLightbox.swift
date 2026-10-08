@@ -24,7 +24,8 @@ struct TranscriptMediaImageLightbox: View {
         server: URL,
         sessionID: String?,
         item: TranscriptMediaPreviewItem,
-        onAPIError: @escaping (Error) -> Void
+        onAPIError: @escaping (Error) -> Void,
+        download: (() async throws -> Data)? = nil
     ) {
         self.item = item
         self.onAPIError = onAPIError
@@ -32,7 +33,8 @@ struct TranscriptMediaImageLightbox: View {
             initialValue: TranscriptMediaPreviewViewModel(
                 server: server,
                 sessionID: sessionID,
-                reference: item.reference
+                reference: item.reference,
+                download: download
             )
         )
     }

@@ -21,10 +21,21 @@ extension EnvironmentValues {
         get { self[ChatWorkspaceRootKey.self] }
         set { self[ChatWorkspaceRootKey.self] = newValue }
     }
+
+    /// Hermes Sessions opt into document previews without changing the webui
+    /// transcript's download-only file rows.
+    var previewsHermesDocuments: Bool {
+        get { self[HermesDocumentPreviewKey.self] }
+        set { self[HermesDocumentPreviewKey.self] = newValue }
+    }
 }
 
 private struct ChatWorkspaceRootKey: EnvironmentKey {
     static let defaultValue: String? = nil
+}
+
+private struct HermesDocumentPreviewKey: EnvironmentKey {
+    static let defaultValue = false
 }
 
 struct TranscriptMediaContentView: View {
@@ -34,6 +45,7 @@ struct TranscriptMediaContentView: View {
     let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
     let isStreaming: Bool
+    @Environment(\.previewsHermesDocuments) private var previewsHermesDocuments
 
     init(
         segments: [TranscriptMediaSegment],
@@ -60,17 +72,20 @@ struct TranscriptMediaContentView: View {
                         MarkdownRenderer(content: text, isStreaming: isStreaming)
                     }
                 case let .media(reference):
-                    TranscriptMediaThumbnailView(
+                    let thumbnail = TranscriptMediaThumbnailView(
                         reference: reference,
                         cacheNamespace: cacheNamespace,
                         loadMediaImage: loadMediaImage,
                         loadMediaData: loadMediaData,
                         onPreviewMedia: onPreviewMedia
                     )
-                    // Pin the image container LTR so media keeps its leading-edge
-                    // anchor inside an RTL message (#259); the text segments above
-                    // still follow the chat direction.
-                    .forcedLeftToRight()
+                    // Native document controls follow the interface direction.
+                    // Other media retains its LTR anchor inside RTL messages (#259).
+                    if previewsHermesDocuments && reference.isHermesDocumentCandidate && onPreviewMedia != nil {
+                        thumbnail
+                    } else {
+                        thumbnail.forcedLeftToRight()
+                    }
                 }
             }
         }
@@ -83,6 +98,7 @@ private struct TranscriptMediaThumbnailView: View {
     let loadMediaImage: ((TranscriptMediaReference) async -> Data?)?
     let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
+    @Environment(\.previewsHermesDocuments) private var previewsHermesDocuments
 
     @State private var image: UIImage?
     @State private var didAttemptLoad = false
@@ -145,6 +161,11 @@ private struct TranscriptMediaThumbnailView: View {
             }
             .buttonStyle(.chatTactile(.thumbnail))
             .accessibilityLabel(String(localized: "Open media video \(reference.displayName)"))
+
+        case .unsupported where previewsHermesDocuments && reference.isHermesDocumentCandidate && onPreviewMedia != nil:
+            if let onPreviewMedia {
+                TranscriptMediaDocumentCard(reference: reference) { onPreviewMedia(reference) }
+            }
 
         case .unsupported where loadMediaData != nil:
             if let loadMediaData {
@@ -399,6 +420,48 @@ private struct TranscriptMediaAudioExportView: View {
     }
 }
 
+/// A document preview needs only its reference and tap action, not a legacy
+/// inline byte loader. The existing BotArtifactPreview owns loading and export.
+private struct TranscriptMediaDocumentCard: View {
+    let reference: TranscriptMediaReference
+    let onPreview: () -> Void
+
+    var body: some View {
+        Button(action: onPreview) {
+            HStack(spacing: 8) {
+                Image(systemName: "doc")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color(.secondaryLabel))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(reference.displayName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color(.label))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text("Tap to preview")
+                        .font(.caption2)
+                        .foregroundStyle(Color(.secondaryLabel))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(maxWidth: 240, minHeight: 44, alignment: .leading)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.chatTactile(.thumbnail))
+        .accessibilityLabel(String(localized: "Preview \(reference.displayName)"))
+    }
+}
+
 private struct TranscriptMediaFileExportView: View {
     let reference: TranscriptMediaReference
     let loadMediaData: () async -> Data?
@@ -643,7 +706,8 @@ struct TranscriptMediaPreviewView: View {
         server: URL,
         sessionID: String?,
         item: TranscriptMediaPreviewItem,
-        onAPIError: @escaping (Error) -> Void
+        onAPIError: @escaping (Error) -> Void,
+        download: (() async throws -> Data)? = nil
     ) {
         self.item = item
         self.onAPIError = onAPIError
@@ -651,7 +715,8 @@ struct TranscriptMediaPreviewView: View {
             initialValue: TranscriptMediaPreviewViewModel(
                 server: server,
                 sessionID: sessionID,
-                reference: item.reference
+                reference: item.reference,
+                download: download
             )
         )
     }

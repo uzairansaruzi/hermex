@@ -457,7 +457,7 @@ import XCTest
 /// runs under the fixture's lock, and `script(_:)` changes its state under the same lock.
 /// `HermesGatewayTests` scripts its host with it too.
 final class HermesHostFixture: URLProtocol {
-    enum Reply { case json(Int, BotJSON), fail(URLError), redirect(URL), park }
+    enum Reply { case json(Int, BotJSON), data(Int, [String: String], Data), fail(URLError), redirect(URL), park }
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var answer: ((URLRequest) -> Reply?)?
@@ -511,6 +511,11 @@ final class HermesHostFixture: URLProtocol {
                                            headerFields: ["Content-Type": "application/json"])!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: (try? JSONEncoder().encode(body)) ?? Data())
+            client?.urlProtocolDidFinishLoading(self)
+        case .data(let status, let headers, let data):
+            let response = HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
             client?.urlProtocolDidFinishLoading(self)
         case .fail(let error):
             client?.urlProtocol(self, didFailWithError: error)

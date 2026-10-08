@@ -191,6 +191,122 @@ import UniformTypeIdentifiers
         catch { XCTAssertEqual(error as? BotFailure, .stale) }
         model.suspend()
     }
+
+    func testPublicDocumentDownloadsIgnoreAmbientCookiesAndCredentialsAndNeverRetryAuth() async throws {
+        let url = URL(string: "https://document-\(UUID().uuidString.lowercased()).example.invalid/report.pdf")!
+        let cookie = try XCTUnwrap(HTTPCookie(properties: [
+            .domain: url.host!, .path: "/", .name: "hermes_session", .value: "private-cookie", .secure: "TRUE"
+        ]))
+        HTTPCookieStorage.shared.setCookie(cookie)
+        let space = URLProtectionSpace(host: url.host!, port: 443, protocol: "https", realm: "private",
+                                       authenticationMethod: NSURLAuthenticationMethodHTTPBasic)
+        let credential = URLCredential(user: "private-user", password: "private-password", persistence: .forSession)
+        URLCredentialStorage.shared.setDefaultCredential(credential, for: space)
+        let configuration = PublicArtifactDownload.configuration()
+        XCTAssertNil(configuration.httpCookieStorage)
+        XCTAssertNil(configuration.urlCredentialStorage)
+        XCTAssertFalse(configuration.httpShouldSetCookies)
+        XCTAssertNil(configuration.httpAdditionalHeaders)
+        configuration.protocolClasses = [BotArtifactHTTPFixture.self]
+        let session = URLSession(configuration: configuration)
+        defer {
+            session.invalidateAndCancel()
+            BotArtifactHTTPFixture.handler = nil
+            HTTPCookieStorage.shared.deleteCookie(cookie)
+            URLCredentialStorage.shared.remove(credential, for: space)
+        }
+        var requests: [URLRequest] = []
+        let pdf = Data("%PDF-public".utf8)
+        BotArtifactHTTPFixture.handler = { request in
+            requests.append(request)
+            return (200, ["Content-Type": "application/pdf"], pdf)
+        }
+        let bytes = try await PublicArtifactDownload.data(from: url, session: session)
+        XCTAssertEqual(bytes, pdf)
+        XCTAssertEqual(requests.map(\.url), [url])
+        XCTAssertFalse(requests[0].httpShouldHandleCookies)
+        XCTAssertNil(requests[0].value(forHTTPHeaderField: "Cookie"))
+        XCTAssertNil(requests[0].value(forHTTPHeaderField: "Authorization"))
+        XCTAssertNil(requests[0].value(forHTTPHeaderField: "X-Hermes-Session-Token"))
+        XCTAssertNil(requests[0].value(forHTTPHeaderField: "CF-Access-Client-Secret"))
+        XCTAssertNil(requests[0].httpBody)
+
+        requests.removeAll()
+        BotArtifactHTTPFixture.handler = { request in
+            requests.append(request)
+            return (401, ["WWW-Authenticate": "Basic realm=\"private\""], Data())
+        }
+        do { _ = try await PublicArtifactDownload.data(from: url, session: session); XCTFail("public URLs must not sign in") }
+        catch { XCTAssertEqual(error as? BotFailure, .rejected(401)) }
+        XCTAssertEqual(requests.count, 1)
+        XCTAssertNil(requests.first?.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    func testPublicDocumentDownloadIsBoundedWithAndWithoutContentLength() async throws {
+        let configuration = PublicArtifactDownload.configuration()
+        configuration.protocolClasses = [BotArtifactHTTPFixture.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel(); BotArtifactHTTPFixture.handler = nil }
+        let url = URL(string: "https://cdn.example/report.pdf")!
+        BotArtifactHTTPFixture.handler = { _ in
+            (200, ["Content-Length": "\(BotArtifactBuffer.maximumBytes + 1)"], Data())
+        }
+        do { _ = try await PublicArtifactDownload.data(from: url, session: session); XCTFail("oversize length must fail") }
+        catch { XCTAssertEqual((error as? BotArtifactFailure)?.localizedDescription, BotArtifactFailure.tooLarge.localizedDescription) }
+        let oversized = Data(repeating: 0x61, count: BotArtifactBuffer.maximumBytes + 1)
+        BotArtifactHTTPFixture.handler = { _ in (200, [:], oversized) }
+        do { _ = try await PublicArtifactDownload.data(from: url, session: session); XCTFail("lengthless stream must stay bounded") }
+        catch { XCTAssertEqual((error as? BotArtifactFailure)?.localizedDescription, BotArtifactFailure.tooLarge.localizedDescription) }
+    }
+
+    func testPublicDocumentDownloadRejectsRedirectsUnknownSchemesAndEmbeddedCredentials() async throws {
+        let configuration = PublicArtifactDownload.configuration()
+        configuration.protocolClasses = [BotArtifactHTTPFixture.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel(); BotArtifactHTTPFixture.handler = nil }
+        var requests = 0
+        BotArtifactHTTPFixture.handler = { _ in
+            requests += 1
+            return (302, ["Location": "https://other.example/report.pdf"], Data())
+        }
+        do {
+            _ = try await PublicArtifactDownload.data(from: URL(string: "https://cdn.example/report.pdf")!, session: session)
+            XCTFail("redirects must not be followed")
+        } catch { XCTAssertEqual((error as? BotArtifactFailure)?.localizedDescription, BotArtifactFailure.unavailable.localizedDescription) }
+        XCTAssertEqual(requests, 1)
+        for raw in ["file:///host/report.pdf", "ftp://cdn.example/report.pdf", "https://user:secret@cdn.example/report.pdf"] {
+            do { _ = try await PublicArtifactDownload.data(from: URL(string: raw)!, session: session); XCTFail("invalid public URL") }
+            catch { XCTAssertEqual((error as? BotArtifactFailure)?.localizedDescription, BotArtifactFailure.invalidReference.localizedDescription) }
+        }
+        XCTAssertEqual(requests, 1, "refused references send no request")
+    }
+
+    func testCancellingPublicDocumentDownloadStopsItsHTTPTask() async {
+        let configuration = PublicArtifactDownload.configuration()
+        configuration.protocolClasses = [BotArtifactHTTPFixture.self]
+        let session = URLSession(configuration: configuration)
+        let started = expectation(description: "public HTTP request started")
+        let stopped = expectation(description: "public HTTP request cancelled")
+        BotArtifactHTTPFixture.startHook = { fixture in
+            let response = HTTPURLResponse(url: fixture.request.url!, statusCode: 200, httpVersion: nil, headerFields: [:])!
+            fixture.client?.urlProtocol(fixture, didReceive: response, cacheStoragePolicy: .notAllowed)
+            started.fulfill()
+        }
+        BotArtifactHTTPFixture.stopHook = { stopped.fulfill() }
+        defer {
+            session.invalidateAndCancel()
+            BotArtifactHTTPFixture.startHook = nil
+            BotArtifactHTTPFixture.stopHook = nil
+        }
+        let pending = Task {
+            try await PublicArtifactDownload.data(from: URL(string: "https://cdn.example/report.pdf")!, session: session)
+        }
+        await fulfillment(of: [started], timeout: 2)
+        pending.cancel()
+        do { _ = try await pending.value; XCTFail("cancelled public download returned bytes") }
+        catch {}
+        await fulfillment(of: [stopped], timeout: 2)
+    }
 }
 
 final class BotArtifactHTTPFixture: URLProtocol {

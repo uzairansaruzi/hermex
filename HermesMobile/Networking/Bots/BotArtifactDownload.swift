@@ -52,3 +52,32 @@ enum BotArtifactDownload {
         return buffer.data
     }
 }
+
+/// Remote Hermes MEDIA documents are public URL downloads, even at the Hermes
+/// origin. No cookies, stored HTTP credentials, proxy headers, or redirects.
+/// Reuses the native artifact reader's streaming 25 MB limit and cancellation.
+enum PublicArtifactDownload {
+    static func configuration() -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpCookieAcceptPolicy = .never
+        configuration.httpShouldSetCookies = false
+        configuration.urlCredentialStorage = nil
+        configuration.urlCache = nil
+        return configuration
+    }
+
+    private static let sharedSession = URLSession(configuration: configuration())
+
+    static func data(from url: URL, session: URLSession? = nil) async throws -> Data {
+        guard ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              url.host != nil, url.user == nil, url.password == nil else {
+            throw BotArtifactFailure.invalidReference
+        }
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.httpShouldHandleCookies = false
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
+        return try await BotArtifactDownload.data(session: session ?? sharedSession, request: request)
+    }
+}

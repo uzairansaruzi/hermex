@@ -105,6 +105,19 @@ struct TranscriptMediaReference: Equatable, Identifiable {
         return false
     }
 
+    /// Reuses the existing native-preview allow-list for Hermes document cards.
+    /// Images/audio/video keep their existing viewers; unknown files stay
+    /// download-only. A remote URL is classified by its path, never its query.
+    var isHermesDocumentCandidate: Bool {
+        guard mediaKind == .unsupported else { return false }
+        let path: String
+        switch source {
+        case let .localPath(value): path = value
+        case let .remoteURL(url): path = url.path
+        }
+        return BinaryFilePreview(path: path) == .quickLook
+    }
+
     private var pathExtension: String {
         switch source {
         case let .remoteURL(url):
