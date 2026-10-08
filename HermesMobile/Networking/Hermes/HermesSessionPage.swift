@@ -245,6 +245,58 @@ struct HermesSessionPages: Equatable {
     }
 }
 
+/// The Sessions list's pages, by Profile (#709): one Profile's, or every Profile's for "All
+/// Profiles". The host lists one Profile at a time, so a merged list holds back each row older
+/// than the oldest row some Profile with more pages has read: that Profile's next page could
+/// still hold a newer one, and showing the older row now would let the page land above it.
+struct HermesProfilePages: Equatable {
+    private var pages: [String: HermesSessionPages] = [:]
+
+    /// The pages read of `profile`'s list; none yet when it was never read.
+    subscript(profile: String) -> HermesSessionPages {
+        get { pages[profile] ?? HermesSessionPages() }
+        set { pages[profile] = newValue }
+    }
+
+    /// More of some Profile's sessions wait on the host.
+    var hasMore: Bool { pages.values.contains(where: \.hasMore) }
+
+    /// The rows to show, each with the Profile whose list holds it, in each list's order.
+    var rows: [(profile: String, row: HermesSessionRow)] {
+        let frontier = pages.count > 1 ? self.frontier : nil
+        return pages.keys.sorted().flatMap { profile in
+            pages[profile]!.rows.compactMap { row in
+                guard let frontier, row.pinned != true, Self.recency(row) < frontier else { return (profile, row) }
+                return nil
+            }
+        }
+    }
+
+    /// The Profile whose list holds the row `id`.
+    func profile(holding id: String) -> String? {
+        pages.first { $0.value.row(id) != nil }?.key
+    }
+
+    /// Shows a change this phone wrote in the list that holds `id`, as `HermesSessionPages.apply`.
+    mutating func apply(_ change: HermesSessionChange, to id: String) -> (profile: String, row: HermesSessionRow, index: Int)? {
+        guard let profile = profile(holding: id), let before = pages[profile]?.apply(change, to: id) else { return nil }
+        return (profile, before.row, before.index)
+    }
+
+    mutating func remove(_ id: String) {
+        guard let profile = profile(holding: id) else { return }
+        pages[profile]?.remove(id)
+    }
+
+    /// The newest of the oldest unpinned rows each Profile with more pages has read; nil when
+    /// none has more. A Profile whose pages hold only pinned rows holds nothing back.
+    private var frontier: Double? {
+        pages.values.filter(\.hasMore).compactMap { $0.rows.filter { $0.pinned != true }.map(Self.recency).min() }.max()
+    }
+
+    private static func recency(_ row: HermesSessionRow) -> Double { row.lastActive ?? row.startedAt ?? 0 }
+}
+
 extension SessionRowAttentionState {
     /// A Hermes list's row states from one `session.active_list` reply (#1046), by the stored
     /// session each runtime runs (`session_key`). `waiting` (an open approval, question or other

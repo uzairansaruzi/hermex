@@ -1,84 +1,14 @@
 import SwiftUI
 
-/// Whether the inbox's + menu offers "New Session" (#1010), which opens a Hermes session in
-/// the main chat, "Sessions" (#1046), the Profile's session list, "Tasks" (#1040), the host's
-/// scheduled Tasks, "Kanban" (#1043), which opens the host's Boards, "Skills" (#1069), the
-/// selected Profile's skills, "Memory" (#1073), the selected Profile's memory and soul, and
-/// "Insights" (#1074), the selected Profile's usage: only as a Hermes server's home, and only in
-/// a DEBUG build or Hermex Branch (bundle id ending `.branch`). Temporary: #709's bottom bar
-/// replaces New Session and Sessions, and gives the others a permanent home.
-enum HermesSessionEntry {
-    static func isOffered(isHermesHome: Bool, isDebugBuild: Bool = HermesSessionEntry.isDebugBuild,
-                          bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> Bool {
-        isHermesHome && (isDebugBuild || bundleIdentifier?.hasSuffix(".branch") == true)
-    }
-
-    static var isDebugBuild: Bool {
-        #if DEBUG
-        return true
-        #else
-        return false
-        #endif
-    }
-}
-
-/// The Tasks screen the inbox's + menu pushed on a Hermes host (#1040), with the client it
-/// reads through and the Profile a new Task starts in.
-struct HermesTasksEntry: Hashable, Identifiable {
-    let id = UUID()
-    let server: URL
-    let client: HermesCronClient
-    let newTaskProfile: String
-
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
-}
-
-/// The Skills screen the inbox's + menu pushed on a Hermes host (#1069), with the client for
-/// the Profile it lists.
-struct HermesSkillsEntry: Hashable, Identifiable {
-    let id = UUID()
-    let client: HermesSkillsClient
-
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
-}
-
-/// The Memory screen the inbox's + menu pushed on a Hermes host (#1073), with the client it
-/// reads the selected Profile's memory through.
-struct HermesMemoryEntry: Hashable, Identifiable {
-    let id = UUID()
-    let server: URL
-    let client: HermesMemoryClient
-
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
-}
-
-/// The Usage screen the inbox's + menu pushed on a Hermes host (#1074), with the client for the
-/// Profile it reads.
-struct HermesInsightsEntry: Hashable, Identifiable {
-    let id = UUID()
-    let client: HermesInsightsClient
-
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
-    func hash(into hasher: inout Hasher) { hasher.combine(id) }
-}
-
-/// What titles the Bots inbox as a Hermes server's home: the server's name, and its host
-/// when that differs from the name.
-struct BotsInboxHome {
-    let title: String
-    let subtitle: String?
-}
-
-/// The Bots inbox: pushed from a webui server's session list, or the root of a Hermes
-/// server's home (`HermesServerHome`), where `home` titles it and `HomeControl` replaces
-/// the Bot connection gear.
+/// The Bots inbox: pushed from a webui server's session list, or the Bots side of a Hermes
+/// server's home (`HermesServerHome`), where it takes the home's chrome (`HermesHomeChrome`):
+/// `home` titles it and holds the switch, `HomeControl` (the server's avatar) replaces the Bot
+/// connection gear, the filter holds hidden bots and section order, and new chat makes a bot
+/// or a group chat.
 @MainActor struct BotsInboxView<HomeControl: View>: View {
     @Environment(\.scenePhase) private var scenePhase
     let server: URL
-    private let home: BotsInboxHome?
+    private let home: HermesHome?
     private let homeControl: HomeControl
     /// The bot a deep link named, resolved here because this is where the live roster
     /// is. Cleared once this inbox has settled, whether or not it matched (#554).
@@ -113,18 +43,6 @@ struct BotsInboxHome {
     /// True once `open()` has returned at least once, so "no Bot connection" is a
     /// settled answer to a held deep link rather than a not-loaded-yet one.
     @State private var hasSettled = false
-    /// The Hermes session "New Session" pushed, the list "Sessions" pushed, the Tasks, Skills,
-    /// Memory or Usage screen its item pushed, and whether the Profile any of them opens on is
-    /// being read.
-    @State private var newSession: HermesSessionChat?
-    @State private var sessionList: HermesSessionListEntry?
-    @State private var tasks: HermesTasksEntry?
-    @State private var skills: HermesSkillsEntry?
-    @State private var memory: HermesMemoryEntry?
-    @State private var insights: HermesInsightsEntry?
-    @State private var isOpeningSession = false
-    /// True while the host's Kanban is pushed from the + menu (#1043).
-    @State private var showingKanban = false
 
     init(
         server: URL,
@@ -138,7 +56,7 @@ struct BotsInboxHome {
     init(
         server: URL,
         pendingDestination: Binding<BotDestination?>,
-        home: BotsInboxHome?,
+        home: HermesHome?,
         @ViewBuilder homeControl: () -> HomeControl
     ) {
         self.server = server
@@ -197,7 +115,7 @@ struct BotsInboxHome {
                             .accessibilityHidden(index > 0)
                     }
                 } else if inbox.profiles.isEmpty && inbox.link == .live {
-                    Text("No bots yet. Tap + to create one.")
+                    home == nil ? Text("No bots yet. Tap + to create one.") : Text("No bots yet. Tap New Chat to create one.")
                 }
                 if let notice = inbox.notice {
                     Text(notice).font(.callout).foregroundStyle(.secondary).listRowSeparator(.hidden)
@@ -235,7 +153,8 @@ struct BotsInboxHome {
                     .listRowSeparator(.hidden)
                 }
                 chatSections(inbox.sections)
-                if inbox.hiddenCount > 0 {
+                // The home's filter holds this instead.
+                if home == nil && inbox.hiddenCount > 0 {
                     Button(inbox.showsHidden ? "Hide hidden" : "Show hidden (\(inbox.hiddenCount))") {
                         inbox.showsHidden.toggle()
                     }
@@ -258,83 +177,53 @@ struct BotsInboxHome {
                 }
             }
         }
-        .modifier(BotsInboxTitle(home: home))
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Search bots and messages", systemImage: "magnifyingglass") { showingSearch = true }
-                    .disabled(inbox.connection == nil)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button("New Bot", systemImage: "plus.bubble") { creation = .new }
-                    Button("New Group Chat", systemImage: "person.2") {
-                        guard let connection = inbox.connection else { return }
-                        roomCreator = BotRoomCreator(server: server, connection: connection, roster: inbox.profiles,
-                            onReconciled: { inbox.reconcileRooms($0, connectionID: connection.id) })
-                    }
-                    .disabled(!inbox.roomCapabilities.enabled || !inbox.roomCapabilities.methods.contains("groups.create"))
-                    if HermesSessionEntry.isOffered(isHermesHome: home != nil) {
-                        // Temporary entries until #709's build replaces them.
-                        Button("New Session", systemImage: "square.and.pencil") {
-                            openOnSelectedProfile { connection, profile in
-                                newSession = HermesSessionChat(server: server, connection: connection,
-                                                               target: .new(profile: profile))
-                            }
-                        }
-                        .disabled(isOpeningSession)
-                        Button("Sessions", systemImage: "list.bullet") {
-                            openOnSelectedProfile { connection, profile in
-                                sessionList = HermesSessionListEntry(server: server, connection: connection, profile: profile)
-                            }
-                        }
-                        .disabled(isOpeningSession)
-                        Button("Tasks", systemImage: "calendar.badge.clock") {
-                            openOnSelectedProfile { connection, profile in
-                                tasks = HermesTasksEntry(server: server, client: HermesCronClient(saved: connection, server: server),
-                                                         newTaskProfile: profile)
-                            }
-                        }
-                        .disabled(isOpeningSession)
-                        Button("Kanban", systemImage: "rectangle.split.3x1") { showingKanban = true }
-                        Button("Skills", systemImage: "hammer") {
-                            openOnSelectedProfile { connection, profile in
-                                skills = HermesSkillsEntry(client: HermesSkillsClient(saved: connection, server: server, profile: profile))
-                            }
-                        }
-                        .disabled(isOpeningSession)
-                        Button("Memory", systemImage: "brain") {
-                            openOnSelectedProfile { connection, profile in
-                                memory = HermesMemoryEntry(server: server, client: HermesMemoryClient(
-                                    saved: connection, server: server, profile: profile))
-                            }
-                        }
-                        .disabled(isOpeningSession)
-                        Button("Insights", systemImage: "chart.bar") {
-                            openOnSelectedProfile { connection, profile in
-                                insights = HermesInsightsEntry(client: HermesInsightsClient(saved: connection, server: server,
-                                                                                            profile: profile))
-                            }
-                        }
-                        .disabled(isOpeningSession)
-                    }
-                    if inbox.reorderableSectionNames.count >= 2 {
-                        Divider()
-                        Button("Reorder Sections…", systemImage: "arrow.up.arrow.down") { showingSectionOrder = true }
-                    }
-                } label: { Label("New chat", systemImage: "plus") }
-                .disabled(inbox.link != .live)
-            }
-            if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
-            ToolbarItem(placement: .topBarTrailing) {
-                if home == nil {
-                    Button("Bot connection", systemImage: "gearshape") { showingSetup = true }
-                } else {
-                    homeControl
-                }
+        .modifier(chrome)
+    }
+
+    /// The home's chrome, or the pushed inbox's own toolbar.
+    private var chrome: some ViewModifier {
+        BotsInboxChrome(home: home, isOffline: inbox.connection == nil,
+                        search: { showingSearch = true }, filter: { filterMenu }, newChat: { newChatMenu }) {
+            if home == nil {
+                Button("Bot connection", systemImage: "gearshape") { showingSetup = true }
+            } else {
+                homeControl
             }
         }
     }
 
+    /// New Bot and New Group Chat: the pushed inbox's + menu, and the home's new chat.
+    private var newChatMenu: some View {
+        Menu {
+            Button("New Bot", systemImage: "plus.bubble") { creation = .new }
+            Button("New Group Chat", systemImage: "person.2") {
+                guard let connection = inbox.connection else { return }
+                roomCreator = BotRoomCreator(server: server, connection: connection, roster: inbox.profiles,
+                    onReconciled: { inbox.reconcileRooms($0, connectionID: connection.id) })
+            }
+            .disabled(!inbox.roomCapabilities.enabled || !inbox.roomCapabilities.methods.contains("groups.create"))
+            if home == nil && inbox.reorderableSectionNames.count >= 2 {
+                Divider()
+                Button("Reorder Sections…", systemImage: "arrow.up.arrow.down") { showingSectionOrder = true }
+            }
+        } label: { Label("New chat", systemImage: home == nil ? "plus" : "square.and.pencil") }
+        .disabled(inbox.link != .live)
+    }
+
+    /// The home's filter: hidden bots and groups, and the order of Desktop's sections.
+    private var filterMenu: some View {
+        Menu {
+            Toggle(isOn: $inbox.showsHidden) {
+                Label("Show hidden (\(inbox.hiddenCount))", systemImage: "eye")
+            }
+            .disabled(inbox.hiddenCount == 0 && !inbox.showsHidden)
+            Button("Reorder Sections…", systemImage: "arrow.up.arrow.down") { showingSectionOrder = true }
+                .disabled(inbox.reorderableSectionNames.count < 2)
+        } label: {
+            Label("Filter", systemImage: "line.3.horizontal.decrease")
+        }
+        .disabled(inbox.connection == nil)
+    }
 
     /// Opens the bot a deep link named, once this inbox has a roster to resolve it
     /// against. A connecting or retrying socket keeps the link pending, so a dropped
@@ -347,7 +236,6 @@ struct BotsInboxHome {
         // for its roster, so its appearance task can reconnect and resolve the link,
         // as when the Sessions list opens a Bot Chat it found (#1053).
         selection = BotInboxSelection()
-        newSession = nil; sessionList = nil; tasks = nil; showingKanban = false
         guard BotDeepLinkRouter.inboxCanAnswer(
             link: inbox.link, hasConnection: inbox.connection != nil, hasSettled: hasSettled
         ) else { return }
@@ -437,28 +325,6 @@ struct BotsInboxHome {
         }
         .listRowSeparator(.hidden)
         .padding(.vertical, 12)
-    }
-
-    /// Opens a new Hermes session, the Sessions list, or the Tasks, Skills, Memory or Usage screen
-    /// on the Profile last picked for this server, or the one the host's dashboard runs
-    /// (`current`) when none is, or the host no longer lists it (#1015). A session is created
-    /// when its chat attaches, not here; the list shows that Profile's sessions (#1046); a new
-    /// Task starts in that Profile (#1040); Skills lists that Profile's (#1069); Memory shows
-    /// that Profile's (#1073); Usage reads that Profile's (#1074).
-    private func openOnSelectedProfile(_ open: @escaping (BotConnection, String) -> Void) {
-        guard let connection = inbox.connection, !isOpeningSession else { return }
-        isOpeningSession = true
-        Task {
-            defer { isOpeningSession = false }
-            do {
-                let current = try await inbox.currentProfile()
-                guard inbox.connection?.id == connection.id else { return }
-                open(connection, HermesProfilePreference.resolve(for: server, listed: inbox.profiles.map(\.id),
-                                                                 current: current))
-            } catch {
-                toast = BotConnectionAdvice.message(for: error, address: connection.address)
-            }
-        }
     }
 
     /// Opens the sign-in form for a password the host refused. A chat or room returns
@@ -691,8 +557,6 @@ extension BotsInboxView {
                 searchedProfile = nil
                 searchedRoom = nil; searchedSequence = nil; roomSequence = nil
                 selection.room = nil; selection.conversation = nil
-                newSession = nil; sessionList = nil; tasks = nil; skills = nil; memory = nil; insights = nil
-                showingKanban = false
                 editSelection = nil
                 creation = nil
                 roomCreator?.suspend(); roomCreator = nil; createdRoom = nil
@@ -727,37 +591,6 @@ extension BotsInboxView {
             .navigationDestination(item: $editSelection) { selection in
                 editProfile(selection)
             }
-            // Keyed by the chat, so a Profile picked before sending replaces the screen's
-            // state rather than reusing it (#1015).
-            .navigationDestination(item: $newSession) { chat in
-                ChatView(hermesSession: chat) { newSession = $0 }.id(chat.id)
-            }
-            .navigationDestination(item: $sessionList) { entry in
-                HermesSessionListView(entry: entry).id(entry.id)
-            }
-            .navigationDestination(item: $tasks) { entry in
-                TasksView(server: entry.server, onAPIError: { _ in }, client: entry.client,
-                          newTaskProfile: entry.newTaskProfile)
-                    .id(entry.id)
-            }
-            .navigationDestination(item: $skills) { entry in
-                SkillsView(client: entry.client, profile: entry.client.profile, onAPIError: { _ in })
-                    .id(entry.id)
-            }
-            .navigationDestination(item: $memory) { entry in
-                MemoryView(server: entry.server, client: entry.client, profile: entry.client.profile, onAPIError: { _ in })
-                    .id(entry.id)
-            }
-            .navigationDestination(item: $insights) { entry in
-                InsightsView(client: entry.client, profile: entry.client.profile, onAPIError: { _ in })
-                    .id(entry.id)
-            }
-            .navigationDestination(isPresented: $showingKanban) {
-                if let connection = inbox.connection {
-                    KanbanView(server: server, hermes: HermesConnections.shared.connection(for: connection, server: server))
-                        .id(connection.id)
-                }
-            }
             // The subscription lives while the inbox is on screen and the app is not in the
             // background; returning, refreshing and reconnecting all go through the same open().
             .task(id: revision) { await inbox.open(); hasSettled = true; openPendingDestination() }
@@ -778,37 +611,43 @@ extension BotsInboxView {
     }
 }
 
-/// The inbox's title. Pushed from the session list's Bots row, the back button and the
-/// toolbar are the whole header, so the pinned tiles sit at the top; the title still
-/// names the screen for VoiceOver and for a pushed chat's back button, with only its
-/// visible text removed. As a Hermes server's home, the server's name titles it, leading,
-/// with its host under it on iOS 26.
-private struct BotsInboxTitle: ViewModifier {
-    let home: BotsInboxHome?
+/// The inbox's title and toolbar. As a Hermes server's home it takes the home's chrome. Pushed
+/// from the session list's Bots row, the back button and the toolbar are the whole header, so
+/// the pinned tiles sit at the top; the title still names the screen for VoiceOver and for a
+/// pushed chat's back button, with only its visible text removed.
+private struct BotsInboxChrome<Control: View, Filter: View, NewChat: View>: ViewModifier {
+    let home: HermesHome?
+    /// No Bot connection is saved, so there is nothing to search.
+    let isOffline: Bool
+    let search: () -> Void
+    @ViewBuilder let filter: Filter
+    @ViewBuilder let newChat: NewChat
+    @ViewBuilder let control: Control
+
+    init(home: HermesHome?, isOffline: Bool, search: @escaping () -> Void,
+         @ViewBuilder filter: () -> Filter, @ViewBuilder newChat: () -> NewChat, @ViewBuilder control: () -> Control) {
+        self.home = home; self.isOffline = isOffline; self.search = search
+        self.filter = filter(); self.newChat = newChat(); self.control = control()
+    }
 
     func body(content: Content) -> some View {
         if let home {
-            content
-                .navigationTitle(home.title)
-                .toolbarTitleDisplayMode(.inlineLarge)
-                .modifier(BotsInboxSubtitle(subtitle: home.subtitle))
+            content.modifier(HermesHomeChrome(home: home, searchLabel: "Search bots and messages", isSearchDisabled: isOffline,
+                                              search: search, filter: { filter }, newChat: { newChat }, avatar: { control }))
         } else {
             content
                 .navigationTitle("Bots")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar(removing: .title)
-        }
-    }
-}
-
-private struct BotsInboxSubtitle: ViewModifier {
-    let subtitle: String?
-
-    func body(content: Content) -> some View {
-        if #available(iOS 26, *), let subtitle {
-            content.navigationSubtitle(subtitle)
-        } else {
-            content
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Search bots and messages", systemImage: "magnifyingglass", action: search)
+                            .disabled(isOffline)
+                    }
+                    ToolbarItem(placement: .topBarTrailing) { newChat }
+                    if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
+                    ToolbarItem(placement: .topBarTrailing) { control }
+                }
         }
     }
 }

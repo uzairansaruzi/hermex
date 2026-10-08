@@ -671,7 +671,8 @@ struct SessionInteractiveRow: View {
                 isUnread: viewModel.isUnread(session),
                 attentionState: viewModel.attentionState(for: session),
                 searchExcerpt: viewModel.searchExcerpt(for: session, searchText: searchText),
-                labelsArchived: true
+                labelsArchived: true,
+                profileTag: viewModel.hermesShowsAllProfiles ? session.profile : nil
             )
         }
         .buttonStyle(.plain)

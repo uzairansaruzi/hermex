@@ -380,19 +380,6 @@ import Observation
                             shows: "Hello there. ha ha ha")
     }
 
-    // MARK: Entry
-
-    func testNewSessionIsOfferedOnlyOnAHermesHomeInDebugOrBranchBuilds() {
-        XCTAssertTrue(HermesSessionEntry.isOffered(isHermesHome: true, isDebugBuild: true,
-                                                   bundleIdentifier: "com.uzairansar.hermesmobile"))
-        XCTAssertTrue(HermesSessionEntry.isOffered(isHermesHome: true, isDebugBuild: false,
-                                                   bundleIdentifier: "com.uzairansar.hermesmobile.branch"))
-        XCTAssertFalse(HermesSessionEntry.isOffered(isHermesHome: true, isDebugBuild: false,
-                                                    bundleIdentifier: "com.uzairansar.hermesmobile"), "Release")
-        XCTAssertFalse(HermesSessionEntry.isOffered(isHermesHome: false, isDebugBuild: true,
-                                                    bundleIdentifier: "com.uzairansar.hermesmobile"), "a webui server")
-    }
-
     /// The new session runs under the Profile the dashboard is scoped to (`current`), not the
     /// CLI's sticky default (`active`).
     func testCurrentProfileIsTheDashboardsScopedProfile() async throws {

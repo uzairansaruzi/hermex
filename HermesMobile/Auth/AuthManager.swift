@@ -573,9 +573,10 @@ final class AuthManager {
 
     /// Deletes `server`'s Bot connection record with that connection's cached avatars,
     /// which also retires its shared sign-in (`BotConnectionStore.remove`), and the Profile
-    /// its New Session remembers (#1015).
+    /// its New Session remembers (#1015) and whether its Sessions list shows every Profile (#709).
     private func removeBotConnection(for server: URL) {
         HermesProfilePreference.save(nil, for: server, in: preferences)
+        HermesProfilePreference.saveShowsAllProfiles(false, for: server, in: preferences)
         let bots = BotConnectionStore(keychain: keychain)
         if let connection = try? bots.load(server: server) {
             BotAvatarStore.shared.removeAll(connectionID: connection.id)

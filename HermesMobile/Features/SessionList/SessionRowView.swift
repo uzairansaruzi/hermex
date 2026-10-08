@@ -20,6 +20,8 @@ struct SessionRowView: View {
     /// Labels an archived row "Archived": set on the Sessions list, where only a Hermes search
     /// shows one (#1053), and not on the Archived screen, whose rows all are.
     var labelsArchived = false
+    /// The Profile the row belongs to, tagged on a Hermes list of every Profile's sessions (#709).
+    var profileTag: String?
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -283,6 +285,10 @@ struct SessionRowView: View {
         if dynamicTypeSize.isAccessibilitySize {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 4) {
+                    if let profileTag {
+                        SessionProfileTag(profile: profileTag)
+                    }
+
                     if !visibleStateBadges.isEmpty {
                         stateBadgesRow
                     }
@@ -300,6 +306,10 @@ struct SessionRowView: View {
             }
         } else {
             HStack(alignment: .firstTextBaseline, spacing: 7) {
+                if let profileTag {
+                    SessionProfileTag(profile: profileTag)
+                }
+
                 if !visibleStateBadges.isEmpty {
                     stateBadgesRow
                 }
@@ -358,7 +368,7 @@ struct SessionRowView: View {
     }
 
     private var showsSupplementalContent: Bool {
-        metadataLabel != nil || showsStateBadges
+        metadataLabel != nil || showsStateBadges || profileTag != nil
     }
 
     private var rowContentSpacing: CGFloat {
@@ -405,6 +415,10 @@ struct SessionRowView: View {
 
         if let searchExcerpt {
             parts.append(String(localized: "Matched: \(searchExcerpt.text)"))
+        }
+
+        if let profileTag {
+            parts.append(String(localized: "Profile: \(profileTag)"))
         }
 
         parts.append(contentsOf: Self.accessibilityStateLabels(
@@ -528,6 +542,23 @@ private struct SessionSourceBadge: View {
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
             .background(Color.accentColor.opacity(0.12), in: Capsule())
+            .accessibilityHidden(true)
+    }
+}
+
+/// A row's Profile on a list of every Profile's sessions (#709). A Profile name is the user's own
+/// text, never a catalog key.
+private struct SessionProfileTag: View {
+    let profile: String
+
+    var body: some View {
+        Text(verbatim: profile)
+            .font(AppFont.caption2(weight: .semibold))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Color.secondary.opacity(0.12), in: Capsule())
             .accessibilityHidden(true)
     }
 }

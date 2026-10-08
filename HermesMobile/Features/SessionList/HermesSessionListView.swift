@@ -1,23 +1,25 @@
 import SwiftUI
 
-/// The Sessions list the inbox's + menu pushed on a Hermes server (#1046): the server, its saved
-/// connection, and the Profile the list opens on, searching `query` when a chat's `/resume`
-/// opened it (#1053).
+/// A Hermes server's Sessions list (#1046): the server, its saved connection, and the Profile the
+/// list opens on, searching `query` when a chat's `/resume` opened it (#1053). The home's list
+/// (#709) opens on no Profile, which takes the server's pick or the host's `current`.
 struct HermesSessionListEntry: Hashable, Identifiable {
     let id = UUID()
     let server: URL
     let connection: BotConnection
-    let profile: String
+    let profile: String?
     var query = ""
 
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
-/// A Hermes server's sessions in one Profile (#1046): the webui list's rows, live states and row
-/// menu, on a `SessionListViewModel` with a Hermes backend. It is pushed onto the Hermes home's
-/// stack (from the inbox's + menu until #709), so it brings no navigation container of its own,
-/// and a row opens in the main chat on top of it. Its socket listens while it is on screen, rests
+/// A Hermes server's sessions in one Profile, or in every Profile with each row tagged (#709)
+/// (#1046): the webui list's rows, live states and row menu, on a `SessionListViewModel` with a
+/// Hermes backend. It is the Sessions side of the Hermes home (#709), where `home` gives it the
+/// home's chrome and its Tasks, Kanban, Skills, Memory and Usage rows, or pushed from a chat's
+/// `/sessions`; either way it sits on a stack it brings no navigation container to, and a row
+/// opens in the main chat on top of it. Its socket listens while it is on screen, rests
 /// while a chat covers it, and closes when it leaves or the app goes to the background. Rows
 /// rename, pin, archive (with Undo and an Archived screen), delete and export as JSON (#1048), and
 /// duplicate (#1051).
@@ -26,12 +28,7 @@ struct HermesSessionListEntry: Hashable, Identifiable {
 /// filters the loaded rows at once and then adds the host's matches, which reach past the loaded
 /// pages; a bot's Bot Chat among them opens in that bot. Every page it reads goes to the offline
 /// cache, which it shows, read-only under the offline banner, while the host can't be reached (#1054).
-struct HermesSessionListView: View {
-    /// The webui list's Projects disclosure, alone.
-    private static let projectRows = SidebarSectionVisibility(
-        bots: false, tasks: false, kanban: false, skills: false, memory: false, insights: false,
-        activeProfile: false, projects: true
-    )
+struct HermesSessionListView<Avatar: View>: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -41,7 +38,14 @@ struct HermesSessionListView: View {
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(SessionSidebarDisclosureSettings.projectsAreExpandedKey)
     private var projectsAreExpanded = SessionSidebarDisclosureSettings.defaultProjectsAreExpanded
+    @AppStorage(SectionVisibilitySettings.tasksKey) private var showsTasks = true
+    @AppStorage(SectionVisibilitySettings.kanbanKey) private var showsKanban = true
+    @AppStorage(SectionVisibilitySettings.skillsKey) private var showsSkills = true
+    @AppStorage(SectionVisibilitySettings.memoryKey) private var showsMemory = true
+    @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsights = true
     private let entry: HermesSessionListEntry
+    private let home: HermesHome?
+    private let avatar: Avatar
     @State private var viewModel: SessionListViewModel
     /// The chat a row or New Session opened.
     @State private var chat: HermesSessionChat?
@@ -60,9 +64,24 @@ struct HermesSessionListView: View {
     /// sheet is gone.
     @State private var movingAfterCreation: HermesProjectMove?
     @State private var searchText: String
+    @State private var isSearchPresented = false
+    /// The Tasks, Skills, Memory or Usage screen a home row pushed, and whether Kanban is pushed.
+    @State private var tasks: HermesTasksEntry?
+    @State private var skills: HermesSkillsEntry?
+    @State private var memory: HermesMemoryEntry?
+    @State private var insights: HermesInsightsEntry?
+    @State private var showingKanban = false
 
-    init(entry: HermesSessionListEntry) {
+    /// The list a chat's `/sessions` pushed.
+    init(entry: HermesSessionListEntry) where Avatar == EmptyView {
+        self.init(entry: entry, home: nil) { EmptyView() }
+    }
+
+    /// The Sessions side of the Hermes home, with the server's avatar at the top right.
+    init(entry: HermesSessionListEntry, home: HermesHome?, @ViewBuilder avatar: () -> Avatar) {
         self.entry = entry
+        self.home = home
+        self.avatar = avatar()
         _searchText = State(initialValue: entry.query)
         let server = entry.server
         _viewModel = State(initialValue: SessionListViewModel(server: server, hermes: HermesSessionListSource(
@@ -78,10 +97,10 @@ struct HermesSessionListView: View {
                     .sessionsScreenListRow()
             }
             SessionSidebarUtilityRows(
-                viewModel: viewModel, topPadding: 10, automatedVisibility: .showAll, sectionVisibility: Self.projectRows,
+                viewModel: viewModel, topPadding: 10, automatedVisibility: .showAll, sectionVisibility: sectionVisibility,
                 profilesAreExpanded: .constant(false), projectsAreExpanded: $projectsAreExpanded,
                 selectedProjectID: $selectedProjectID, projectPendingDeletion: $deletingProject,
-                projectPendingRename: $renamingProject, openDestination: { _ in }, switchActiveProfile: { _ in },
+                projectPendingRename: $renamingProject, openDestination: open, switchActiveProfile: { _ in },
                 presentProjectCreation: { creatingProject = HermesProjectCreation(folder: "") }
             )
             SessionListRowsSection(
@@ -98,8 +117,8 @@ struct HermesSessionListView: View {
             )
             // A search reads the host's whole list, so it pages nothing in.
             if showsLoadMore && !isSearching { loadMoreRow }
-            // The cache holds no archived rows to show.
-            if !viewModel.isViewingCachedData { archivedRow }
+            // The cache holds no archived rows to show, and the Archived screen lists one Profile.
+            if !viewModel.isViewingCachedData && !viewModel.hermesShowsAllProfiles { archivedRow }
         }
         .listStyle(.plain)
         .environment(\.defaultMinListRowHeight, 0)
@@ -111,35 +130,53 @@ struct HermesSessionListView: View {
                 .padding(.bottom, 22)
         }
         .refreshable { await viewModel.refreshHermes(modelContext: modelContext) }
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search sessions")
+        // The home's search button opens the field; a pushed list shows it.
+        .searchable(text: $searchText, isPresented: $isSearchPresented,
+                    placement: .navigationBarDrawer(displayMode: home == nil ? .always : .automatic), prompt: "Search sessions")
         .autocorrectionDisabled()
         .textInputAutocapitalization(.never)
         // Debounced inside; a new query or Profile cancels the search in flight.
-        .task(id: [profile, searchText]) { await viewModel.searchSessions(query: searchText) }
-        .navigationTitle("Sessions")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { profileMenu }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("New Session", systemImage: "square.and.pencil") {
-                    chat = HermesSessionChat(server: entry.server, connection: entry.connection, target: .new(profile: profile))
-                }
-                .disabled(viewModel.isViewingCachedData)
-            }
+        .task(id: SearchScope(profile: profile, showsAll: viewModel.hermesShowsAllProfiles, text: searchText)) {
+            await viewModel.searchSessions(query: searchText)
         }
+        .modifier(chrome)
         // Keyed by the chat, so a Profile picked in an empty chat replaces its screen (#1015).
         .navigationDestination(item: $chat) { chat in
             // `/sessions` and `/resume` in the chat come back here, in the chat's Profile, searching
             // what they name.
             ChatView(hermesSession: chat, onReplace: { self.chat = $0 }, onOpenSessions: { opened in
                 self.chat = nil
-                if opened.profile != profile { Task { await viewModel.selectHermesProfile(opened.profile) } }
+                if let listed = opened.profile, listed != profile || viewModel.hermesShowsAllProfiles {
+                    Task { await viewModel.selectHermesProfile(listed) }
+                }
                 searchText = opened.query
+                if !opened.query.isEmpty { isSearchPresented = true }
             })
             .id(chat.id)
         }
         .navigationDestination(isPresented: $showingArchived) {
-            ArchivedSessionsView(server: entry.server, hermes: .saved(entry.connection, server: entry.server, profile: profile))
+            if let profile {
+                ArchivedSessionsView(server: entry.server, hermes: .saved(entry.connection, server: entry.server, profile: profile))
+            }
+        }
+        .navigationDestination(item: $tasks) { entry in
+            TasksView(server: entry.server, onAPIError: { _ in }, client: entry.client, newTaskProfile: entry.newTaskProfile)
+                .id(entry.id)
+        }
+        .navigationDestination(item: $skills) { entry in
+            SkillsView(client: entry.client, profile: entry.client.profile, onAPIError: { _ in })
+                .id(entry.id)
+        }
+        .navigationDestination(item: $memory) { entry in
+            MemoryView(server: entry.server, client: entry.client, profile: entry.client.profile, onAPIError: { _ in })
+                .id(entry.id)
+        }
+        .navigationDestination(item: $insights) { entry in
+            InsightsView(client: entry.client, profile: entry.client.profile, onAPIError: { _ in })
+                .id(entry.id)
+        }
+        .navigationDestination(isPresented: $showingKanban) {
+            KanbanView(server: entry.server, hermes: HermesConnections.shared.connection(for: entry.connection, server: entry.server))
         }
         .sheet(item: $renaming, onDismiss: { viewModel.clearRenameError() }) { session in
             SessionRenameSheet(initialTitle: SessionRowView.displayTitle(for: session), isSaving: viewModel.isRenamingSession,
@@ -217,14 +254,66 @@ struct HermesSessionListView: View {
             switch scenePhase {
             case .background: viewModel.closeHermes()
             // Control Center and banners (`.inactive`) keep the socket; only a closed list reopens.
-            case .active where chat == nil && !showingArchived && !viewModel.isHermesConnected:
+            case .active where chat == nil && !isCoveredByScreen && !viewModel.isHermesConnected:
                 Task { await viewModel.openHermes(modelContext: modelContext) }
             default: break
             }
         }
     }
 
-    private var profile: String { viewModel.hermesProfile ?? entry.profile }
+    /// The listed Profile, and the one New Session opens in; nil until a home list without a
+    /// pick has asked the host.
+    private var profile: String? { viewModel.hermesProfile ?? entry.profile }
+
+    /// A screen this list pushed covers it, so the socket stays closed until it returns.
+    private var isCoveredByScreen: Bool {
+        showingArchived || showingKanban || tasks != nil || skills != nil || memory != nil || insights != nil
+    }
+
+    /// The home's Tasks, Kanban, Skills, Memory and Usage rows, as Settings shows them (#709), and
+    /// the project lanes of the one listed Profile.
+    private var sectionVisibility: SidebarSectionVisibility {
+        let isHome = home != nil
+        return SidebarSectionVisibility(
+            bots: false, tasks: isHome && showsTasks, kanban: isHome && showsKanban, skills: isHome && showsSkills,
+            memory: isHome && showsMemory, insights: isHome && showsInsights, activeProfile: false,
+            projects: !viewModel.hermesShowsAllProfiles
+        )
+    }
+
+    /// Pushes a home row's screen: Tasks, Skills, Memory and Usage on the listed Profile (the one
+    /// New Session opens in, on a list of every Profile), Kanban for the whole host.
+    private func open(_ destination: SessionListUtilityDestination) {
+        let server = entry.server, connection = entry.connection
+        if destination == .kanban { showingKanban = true; return }
+        guard let profile else { return }
+        switch destination {
+        case .tasks:
+            tasks = HermesTasksEntry(server: server, client: HermesCronClient(saved: connection, server: server), newTaskProfile: profile)
+        case .skills:
+            skills = HermesSkillsEntry(client: HermesSkillsClient(saved: connection, server: server, profile: profile))
+        case .memory:
+            memory = HermesMemoryEntry(server: server, client: HermesMemoryClient(saved: connection, server: server, profile: profile))
+        case .insights:
+            insights = HermesInsightsEntry(client: HermesInsightsClient(saved: connection, server: server, profile: profile))
+        default:
+            break
+        }
+    }
+
+    /// The home's chrome, or the pushed list's own title and toolbar.
+    private var chrome: some ViewModifier {
+        HermesSessionListChrome(home: home, search: { isSearchPresented = true }, profileMenu: { profileMenu },
+                                filter: { profileFilter }, newSession: { newSessionButton }, avatar: avatar)
+    }
+
+    private var newSessionButton: some View {
+        Button("New Session", systemImage: "square.and.pencil") {
+            guard let profile else { return }
+            chat = HermesSessionChat(server: entry.server, connection: entry.connection, target: .new(profile: profile))
+        }
+        .disabled(viewModel.isViewingCachedData || profile == nil)
+    }
 
     private var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -233,22 +322,47 @@ struct HermesSessionListView: View {
         return selectedProjectID == nil ? String(localized: "No sessions yet") : String(localized: "No sessions in this project")
     }
 
-    /// The Profile whose sessions are listed. Picking another lists it and makes it the
-    /// server's pick, which the composer's Profile chip shares (#1015).
+    /// The pushed list's Profile menu, named for what it lists.
     private var profileMenu: some View {
         Menu {
-            Picker("Profile", selection: Binding(get: { profile }, set: { picked in
-                Task { await viewModel.selectHermesProfile(picked) }
-            })) {
-                ForEach(viewModel.hermesProfiles.isEmpty ? [profile] : viewModel.hermesProfiles, id: \.self) {
-                    Text(verbatim: $0).tag($0)
-                }
-            }
+            profilePicker
         } label: {
             // A Profile name is the user's own text, never a catalog key.
-            Text(verbatim: profile).lineLimit(1)
-                .accessibilityLabel(Text("Profile: \(profile)"))
+            if viewModel.hermesShowsAllProfiles {
+                Text("All Profiles").lineLimit(1)
+            } else {
+                Text(verbatim: profile ?? "").lineLimit(1)
+                    .accessibilityLabel(Text("Profile: \(profile ?? "")"))
+            }
         }
+    }
+
+    /// The home's filter button, which holds the same picker.
+    private var profileFilter: some View {
+        Menu {
+            profilePicker
+        } label: {
+            Label("Filter", systemImage: "line.3.horizontal.decrease")
+        }
+        .accessibilityValue(viewModel.hermesShowsAllProfiles ? Text("All Profiles") : Text(verbatim: profile ?? ""))
+    }
+
+    /// Every Profile's sessions, each row tagged with its Profile (#709), or one Profile's. Picking
+    /// a Profile lists it and makes it the server's pick, which the composer's Profile chip shares
+    /// (#1015); All Profiles keeps the pick for New Session.
+    private var profilePicker: some View {
+        let listed = viewModel.hermesProfiles.isEmpty ? [profile].compactMap(\.self) : viewModel.hermesProfiles
+        return Picker("Profile", selection: Binding<String?>(get: { viewModel.hermesShowsAllProfiles ? nil : profile }, set: { picked in
+            Task {
+                if let picked { await viewModel.selectHermesProfile(picked) } else { await viewModel.showAllHermesProfiles() }
+            }
+        })) {
+            Text("All Profiles").tag(String?.none)
+            ForEach(listed, id: \.self) {
+                Text(verbatim: $0).tag(Optional($0))
+            }
+        }
+        .disabled(profile == nil)
     }
 
     /// More pages may hold rows this list shows: any, or the selected lane's that the host
@@ -324,7 +438,8 @@ struct HermesSessionListView: View {
                     AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: bot))
                     return
                 }
-                guard let opened = session.hermesChat(on: entry.server, connection: entry.connection, listedIn: profile) else { return }
+                guard let profile,
+                      let opened = session.hermesChat(on: entry.server, connection: entry.connection, listedIn: profile) else { return }
                 viewModel.beginViewing(session)
                 chat = opened
             },
@@ -394,7 +509,7 @@ struct HermesSessionListView: View {
 
     /// Opens the copy once the host has it (#1051).
     private func duplicate(_ session: SessionSummary) async {
-        guard let copy = await viewModel.duplicate(session),
+        guard let profile, let copy = await viewModel.duplicate(session),
               let opened = copy.hermesChat(on: entry.server, connection: entry.connection, listedIn: profile) else { return }
         chat = opened
     }
@@ -410,6 +525,89 @@ struct HermesSessionListView: View {
         if renamed, title != session.title { SessionHaptics.sessionRenamed(isEnabled: isHapticsEnabled) }
         return renamed
     }
+}
+
+/// What a search runs against: a new query, Profile or All Profiles cancels the one in flight.
+private struct SearchScope: Hashable {
+    let profile: String?
+    let showsAll: Bool
+    let text: String
+}
+
+/// The Sessions list's title and toolbar. As the Hermes home's Sessions side it takes the home's
+/// chrome, with the Profile filter and New Session in the bottom bar; pushed, it is titled
+/// "Sessions" with its Profile menu and New Session at the top right.
+private struct HermesSessionListChrome<Avatar: View, ProfileMenu: View, Filter: View, NewSession: View>: ViewModifier {
+    let home: HermesHome?
+    let search: () -> Void
+    let profileMenu: ProfileMenu
+    let filter: Filter
+    let newSession: NewSession
+    let avatar: Avatar
+
+    init(home: HermesHome?, search: @escaping () -> Void, @ViewBuilder profileMenu: () -> ProfileMenu,
+         @ViewBuilder filter: () -> Filter, @ViewBuilder newSession: () -> NewSession, avatar: Avatar) {
+        self.home = home; self.search = search; self.profileMenu = profileMenu(); self.filter = filter()
+        self.newSession = newSession(); self.avatar = avatar
+    }
+
+    func body(content: Content) -> some View {
+        if let home {
+            content.modifier(HermesHomeChrome(home: home, searchLabel: "Search sessions", search: search,
+                                              filter: { filter }, newChat: { newSession }, avatar: { avatar }))
+        } else {
+            content
+                .navigationTitle("Sessions")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) { profileMenu }
+                    ToolbarItem(placement: .topBarTrailing) { newSession }
+                }
+        }
+    }
+}
+
+/// The Tasks screen a home row pushed on a Hermes host (#1040, #709), with the client it reads
+/// through and the Profile a new Task starts in.
+struct HermesTasksEntry: Hashable, Identifiable {
+    let id = UUID()
+    let server: URL
+    let client: HermesCronClient
+    let newTaskProfile: String
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
+/// The Skills screen a home row pushed on a Hermes host (#1069, #709), with the client for the
+/// Profile it lists.
+struct HermesSkillsEntry: Hashable, Identifiable {
+    let id = UUID()
+    let client: HermesSkillsClient
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
+/// The Memory screen a home row pushed on a Hermes host (#1073, #709), with the client it reads
+/// the Profile's memory through.
+struct HermesMemoryEntry: Hashable, Identifiable {
+    let id = UUID()
+    let server: URL
+    let client: HermesMemoryClient
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+}
+
+/// The Usage screen a home row pushed on a Hermes host (#1074, #709), with the client for the
+/// Profile it reads.
+struct HermesInsightsEntry: Hashable, Identifiable {
+    let id = UUID()
+    let client: HermesInsightsClient
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
 
 /// A project sheet opened for a new Hermes project (#1052), on `folder` (the session's own when

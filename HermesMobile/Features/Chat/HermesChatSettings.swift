@@ -17,6 +17,20 @@ enum HermesProfilePreference {
         }
     }
 
+    /// Whether the server's Sessions list shows every Profile's sessions (#709). The pick still
+    /// names the Profile New Session opens in.
+    static func showsAllProfiles(for server: URL, in defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: showsAllKey(for: server))
+    }
+
+    static func saveShowsAllProfiles(_ showsAll: Bool, for server: URL, in defaults: UserDefaults = .standard) {
+        if showsAll { defaults.set(true, forKey: showsAllKey(for: server)) } else { defaults.removeObject(forKey: showsAllKey(for: server)) }
+    }
+
+    private static func showsAllKey(for server: URL) -> String {
+        "hermes.sessionsShowAllProfiles|\(server.absoluteString)"
+    }
+
     /// The Profile New Session opens in: the saved pick while `listed` (a fresh
     /// `profiles.list`) still has it, else the host's `current`. A pick the host no longer
     /// lists is dropped without a word; an empty list proves nothing, so it keeps the pick.

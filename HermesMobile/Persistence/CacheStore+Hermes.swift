@@ -31,12 +31,12 @@ extension CacheStore {
 
     // MARK: Sessions
 
-    /// `profile`'s unexpired cached sessions on `serverURL`, latest activity first, as the host
-    /// lists them; the list puts pinned rows first itself.
+    /// `profile`'s unexpired cached sessions on `serverURL`, or every Profile's when nil (#709),
+    /// latest activity first, as the host lists them; the list puts pinned rows first itself.
     @MainActor
     static func cachedHermesSessions(
         serverURL: URL,
-        profile: String,
+        profile: String?,
         in context: ModelContext,
         now: Date = Date()
     ) throws -> [SessionSummary] {
@@ -115,11 +115,13 @@ extension CacheStore {
         return try context.fetch(descriptor).first { $0.cacheKey.hasPrefix(prefix) }?.lineageRoot
     }
 
-    /// Every cached session of `profile` on `serverURL`, expired ones included.
+    /// Every cached session of `profile` on `serverURL`, or of every Profile when nil, expired
+    /// ones included.
     @MainActor
-    private static func hermesSessionRows(serverURL: URL, profile: String, in context: ModelContext) throws -> [CachedSession] {
+    private static func hermesSessionRows(serverURL: URL, profile: String?, in context: ModelContext) throws -> [CachedSession] {
         let serverURLString = serverURL.absoluteString
-        let prefix = hermesSessionKey(serverURL: serverURL, profile: profile, lineageRoot: "")
+        let prefix = profile.map { hermesSessionKey(serverURL: serverURL, profile: $0, lineageRoot: "") }
+            ?? "\(serverURLString)|hermes|"
         let descriptor = FetchDescriptor<CachedSession>(predicate: #Predicate { $0.serverURLString == serverURLString })
         return try context.fetch(descriptor).filter { $0.cacheKey.hasPrefix(prefix) }
     }

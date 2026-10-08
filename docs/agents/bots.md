@@ -27,8 +27,14 @@ URL>`, so every Bot store, draft, cache, section order and bot link keys by it a
 do by a webui server. `AuthManager.addHermesServer` saves a sign-in the form already
 verified and activates the server; it needs Bot Mode on and refuses an address already
 in the registry. Turning Bot Mode off later never locks a user out: an existing Hermes
-server still opens, and so do its bot links. Its home is the Bots inbox, with the
-server's avatar for Settings (tap) and switching (hold) where the gear was. Without a
+server still opens, and so do its bot links. Its home (#709) has two sides on one stack
+and one shared connection, the Bots inbox and the Sessions list, switched by a bottom bar
+of `(filter) [Bots | Sessions] (new chat)` that each side fills: on Bots the filter holds
+hidden bots and section order and new chat makes a bot or a group chat; on Sessions the
+filter picks a Profile or All Profiles and new chat starts a session. HERMEX sits top left,
+search and the server's avatar (Settings on tap, switching on hold) top right. The home
+reopens on the side last shown (`@SceneStorage`), Sessions at first, and a bot link turns it
+to Bots. The two sides keep their own read marks, live states and identities. Without a
 record (after Sign Out, which deletes the record and Bot data but keeps the server) or
 after the host refuses its saved password at the login step, including the one silent
 re-login a signed-in 401 starts (`HermesConnections.onSignInRejected`), the server is
@@ -339,10 +345,9 @@ the draft and the run), and Stop & send is `session.redirect`. Stop is
 `session.interrupt`, confirmed first only when a queued prompt or an open request would be
 lost; any client's stop (an interrupted `message.complete`) clears the receipt. A Send
 shows no model or reasoning change: no `config.set` or `session.cwd.set` goes out.
-Send and Queue carry staged files (#1012; see the attachments section below). The
-temporary entries are the inbox's "New Session" and "Sessions" (DEBUG and Hermex Branch, see
-Sessions list on Hermes below), on the server's picked Profile or the dashboard's
-`/api/profiles/active` `current`, until #709's bottom bar.
+Send and Queue carry staged files (#1012; see the attachments section below). New Session
+is the home's Sessions side (see Sessions list on Hermes below), on the server's picked
+Profile or the dashboard's `/api/profiles/active` `current`.
 
 Edit Message, Regenerate Response and `/retry` rewind the session (#1049): one
 `prompt.submit {session_id: <runtime>, text, truncate_before_row_id, confirm_truncate: true,
@@ -1097,7 +1102,7 @@ local copy, so a missing key would keep the stale section alive there. An
 empty section disappears from the phone but stays in Desktop's list until
 deleted there.
 
-"Reorder Sections…" in the + menu (shown with two or more named sections the
+"Reorder Sections…" in the + menu, or the home's filter (shown with two or more named sections the
 list can head; a section of only pinned bots lives in the tiles and is left out,
 keeping any placed slot through a drag)
 places sections for this phone only: `BotSectionOrderStore` keeps the placed ids in
@@ -1183,10 +1188,22 @@ into the background.
 
 A Hermes server's Sessions list (#1046) is `HermesSessionListView`: the webui list's rows,
 live states and row menu on a `SessionListViewModel` built with a `HermesSessionListSource`,
-pushed from the inbox's + menu (DEBUG and Hermex Branch) until #709's bottom bar. It lists
-one Profile, the server's pick (`HermesProfilePreference`, shared with the composer's Profile
-chip and never written to the host), switchable from its Profile menu, and follows a pick made
-elsewhere when it reappears.
+the Sessions side of the home (#709), or pushed by a chat's `/sessions`. It lists one Profile,
+the server's pick (`HermesProfilePreference`, shared with the composer's Profile chip and
+never written to the host), switchable from its Profile menu, and follows a pick made
+elsewhere when it reappears. The home's list starts without one and asks the host's
+`current` when no pick is saved. Above the rows the home shows Tasks, Kanban, Skills, Memory
+and Usage, as webui's list does and under the same Settings toggles; each opens on the
+listed Profile.
+
+All Profiles (#709), the picker's first entry and remembered per server, lists every
+Profile's sessions merged, each row tagged with its Profile, and keeps the pick for New
+Session. The host lists one Profile at a time, so `HermesProfilePages` keeps each Profile's
+pages and holds back every unpinned row older than the oldest one a Profile with more pages
+has read; "Load more" reads the next page of each Profile with more. Every listed Profile is
+named on the socket (`session.most_recent`), and the host keeps watching each store it was
+named. Search asks each Profile, the offline cache is written per Profile and read across
+all of them, and project lanes and the Archived row, which are one Profile's, are hidden.
 
 The page is `GET /api/sessions?profile=&order=recent&archived=exclude&limit=100&offset=&min_messages=1&exclude_sources=cron,kanban,oneshot,subagent,tool`
 (`HermesREST.sessionList`); every parameter is sent, because the defaults order by creation,
@@ -1376,7 +1393,7 @@ and `last_status`. The editor reads `GET /api/cron/delivery-targets?profile=` an
 `profiles.list` over the gateway. The list warns once when any enabled Task's
 `scheduler_heartbeat_age_s` passes 180 s, three missed 60 s ticks. Jobs carry
 `hermes_home`, a host path, which is never decoded. Toast notifications are webui-only.
-The temporary entry is the inbox's + menu (DEBUG and Hermex Branch), until #709.
+It is a row on the home's Sessions side (#709).
 
 Run Now (#1041) is `POST …/{id}/trigger?profile=`, which runs the job before it answers,
 so it gets the long deadline and goes out on its own task. `TaskDetailViewModel` then
@@ -1415,7 +1432,7 @@ shares that decode), and `GET /api/skills/content?name=&profile=`. A toggle is
 `PUT /api/skills/toggle` with `{name, enabled, profile}` in the body, where the host reads the
 Profile first; a refusal rolls the row back and shows the host's `detail`, and a missing skill
 is a 404 `{detail}`. The host sends no tags, and has create and edit routes the app does not
-use. The temporary entry is the inbox's + menu (DEBUG and Hermex Branch), until #709.
+use. It is a row on the home's Sessions side (#709).
 
 A skill's linked files (#1070) are the other files in its SKILL.md's folder, the content
 reply's `path` without `/SKILL.md`. That folder is an opaque handle the client keeps in memory,
@@ -1432,8 +1449,8 @@ separator is refused before any request.
 ## Memory on a Hermes host
 
 The Memory screen runs on a Hermes host through `HermesMemoryClient` (#1073), the
-`MemoryDataClient` beside webui's `APIClient`, for the Profile the inbox's + menu had
-selected. My Notes and User Profile are `<path>/memories/MEMORY.md` and `USER.md`, where
+`MemoryDataClient` beside webui's `APIClient`, for the Profile the home's Sessions side
+lists (#709). My Notes and User Profile are `<path>/memories/MEMORY.md` and `USER.md`, where
 `path` is the Profile's `profiles.list` row, read on every load and save: `/api/fs/*` accepts
 any absolute path, so no other path is ever built, and the path is never shown, logged or
 kept. They are read with `GET /api/fs/read-text?path=` (404 is empty; `truncated` or
@@ -1452,7 +1469,7 @@ user profile are then written by `MemoryCanonicalizer` in the agent's own entry 
 and read back. Any other text trips the agent's drift check, after which it refuses to
 `replace` or `remove` entries. The agent can still write between the re-read and the write,
 which takes no lock: a window accepted to use the host's public file routes. Project context
-and modified times are webui-only. The temporary entry is the inbox's + menu, until #709.
+and modified times are webui-only. It is a row on the home's Sessions side (#709).
 
 ## Updating Hermes
 
@@ -1507,8 +1524,8 @@ they read "≈". The host has no hours, provider limits (#710) or sessions list 
 (`InsightsFeatures.hermes`): the picker has no Today, Limits and top sessions never show, and a
 failed read is the screen's error rather than a fallback. A store the host can't read (a 503
 whose `detail.error` is `state_db_…`, or 5017) gets its own copy, never the host path the 503
-names. Empty-window sums arrive as null and read as 0. The temporary entry is the inbox's +
-menu (DEBUG and Hermex Branch), until #709.
+names. Empty-window sums arrive as null and read as 0. It is the Usage row on the home's
+Sessions side (#709).
 
 ## Opening a bot from outside the app
 
@@ -2145,7 +2162,7 @@ waiting and working bots first, then unread ones, then the rest newest first,
 using room updated time and bot last activity. Undated chats sort last; ties use
 stable chat identity. Revealed hidden bots join that order, with
 the reveal control at the bottom. Pinned bot tiles remain above the list.
-The top-right + menu offers New Bot and New Group Chat; group creation is disabled
+The top-right + menu, or the home's new chat, offers New Bot and New Group Chat; group creation is disabled
 when the host lacks its capability. `groups.list` pages all active
 rooms; disbanded entries are excluded. Identity is configured server URL + Bot
 connection UUID + `room_id`; names and member Profiles are never room keys.

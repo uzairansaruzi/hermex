@@ -308,6 +308,27 @@ import XCTest
                                                            in: context, limit: 10), [])
     }
 
+    /// All Profiles (#709) caches each Profile's rows under its own Profile and, with the host
+    /// unreachable, shows every Profile's.
+    func testAllProfilesShowsEveryProfilesCachedRowsOffline() async throws {
+        let context = try makeContext()
+        HermesProfilePreference.saveShowsAllProfiles(true, for: server, in: defaults)
+        let online = HermesSessionListWire()
+        online.pages = ["default": [0: HermesSessionPage(rows: [HermesSessionRow(id: "d", lastActive: 1)])],
+                        "research": [0: HermesSessionPage(rows: [HermesSessionRow(id: "r", lastActive: 2)])]]
+        await makeList(online).openHermes(modelContext: context)
+        XCTAssertEqual(try CacheStore.cachedHermesSessions(serverURL: server, profile: "research", in: context).map(\.sessionId), ["r"])
+
+        let wire = HermesSessionListWire()
+        wire.connectFailure = URLError(.cannotConnectToHost)
+        let list = makeList(wire)
+        await list.openHermes(modelContext: context)
+
+        XCTAssertTrue(list.isViewingCachedData)
+        XCTAssertEqual(list.visibleSessions(searchText: "", selectedProjectID: nil).map { "\($0.sessionId!)@\($0.profile!)" },
+                       ["r@research", "d@default"])
+    }
+
     // MARK: Fixture
 
     private func makeContext() throws -> ModelContext {

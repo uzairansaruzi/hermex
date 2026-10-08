@@ -325,35 +325,69 @@ enum WebuiEntryRoute: Equatable {
     }
 }
 
-/// A signed-in Hermes server's whole app (#899): its Bots inbox as the root of one
-/// navigation stack, full width on iPad too, where chats push. The server's avatar
-/// takes the inbox gear's place: a tap opens Settings, a hold switches servers.
+/// A signed-in Hermes server's whole app (#899, #709): one navigation stack, full width on iPad
+/// too, where chats push, rooted on either side of the home's `[Bots | Sessions]` switch. Each
+/// side brings the home's chrome (`HermesHomeChrome`), with the server's avatar at the top right:
+/// a tap opens Settings, a hold switches servers. The home opens on the side last shown, Sessions
+/// at first, and a Bot link (a push tap, a search hit) turns it to Bots, where the inbox opens it.
 struct HermesServerHome: View {
     @Bindable var authManager: AuthManager
     let server: URL
     @Binding var pendingBotDestination: BotDestination?
+    @SceneStorage("hermesHome.tab") private var tab = HermesHomeTab.sessions
+    /// The saved Bot connection the Sessions side lists through, read again each time the home
+    /// shows, so a sign-in changed in Settings gets a fresh list.
+    @State private var connection: BotConnection?
+    /// Bumped when the saved record changed: a sign-in changed in Settings keeps its UUID.
+    @State private var connectionRevision = 0
     @State private var isShowingSettings = false
     @State private var settingsTarget: SettingsScrollAnchor?
     @State private var isPresentingAddServer = false
 
+    init(authManager: AuthManager, server: URL, pendingBotDestination: Binding<BotDestination?>) {
+        self.authManager = authManager
+        self.server = server
+        _pendingBotDestination = pendingBotDestination
+        _connection = State(initialValue: try? BotConnectionStore().load(server: server))
+    }
+
     var body: some View {
+        let identity = HermesServerIdentity(account: authManager.activeServer, server: server)
+        let home = HermesHome(title: identity.title, subtitle: identity.title == identity.host ? nil : identity.host, tab: $tab)
         NavigationStack {
-            BotsInboxView(server: server, pendingDestination: $pendingBotDestination,
-                          home: HermesServerIdentity(account: authManager.activeServer, server: server).inboxHome) {
-                HermesServerAvatarButton(authManager: authManager, server: server) {
-                    settingsTarget = nil; isShowingSettings = true
-                } addServer: {
-                    isPresentingAddServer = true
-                } manageServers: {
-                    settingsTarget = .servers; isShowingSettings = true
+            Group {
+                // Without a saved connection the inbox's welcome sets one up.
+                if tab == .sessions, let connection {
+                    HermesSessionListView(entry: HermesSessionListEntry(server: server, connection: connection,
+                                                                        profile: nil), home: home) { avatar }
+                        .id(connectionRevision)
+                } else {
+                    BotsInboxView(server: server, pendingDestination: $pendingBotDestination, home: home) { avatar }
                 }
+            }
+            .onAppear {
+                let saved = try? BotConnectionStore().load(server: server)
+                if saved != connection { connection = saved; connectionRevision += 1 }
             }
             .navigationDestination(isPresented: $isShowingSettings) {
                 SettingsView(authManager: authManager, server: server, initialScrollTarget: settingsTarget)
             }
         }
+        .onChange(of: pendingBotDestination, initial: true) {
+            if pendingBotDestination != nil { tab = .bots }
+        }
         .sheet(isPresented: $isPresentingAddServer) {
             AddServerView(authManager: authManager)
+        }
+    }
+
+    private var avatar: some View {
+        HermesServerAvatarButton(authManager: authManager, server: server) {
+            settingsTarget = nil; isShowingSettings = true
+        } addServer: {
+            isPresentingAddServer = true
+        } manageServers: {
+            settingsTarget = .servers; isShowingSettings = true
         }
     }
 }
@@ -418,8 +452,6 @@ private struct HermesServerIdentity {
         colorHex = account?.headerLogoColorHex ?? HeaderLogoColor.defaultHex
     }
 
-    /// The host line is left out when the name already is the host.
-    var inboxHome: BotsInboxHome { BotsInboxHome(title: title, subtitle: title == host ? nil : host) }
 }
 
 /// The active Hermes server's avatar, as on the webui home (#283): a tap opens Settings,

@@ -331,9 +331,93 @@ import Observation
         XCTAssertNil(defaults.string(forKey: HermesProfilePreference.key(for: server)))
     }
 
+    // MARK: All Profiles (#709)
+
+    /// All Profiles lists every Profile's sessions, each row in its own Profile, watches every
+    /// Profile's store and is remembered for the server; New Session keeps the pick. Picking a
+    /// Profile goes back to its sessions alone.
+    func testAllProfilesListsEveryProfileUntilOneIsPicked() async {
+        let wire = HermesSessionListWire()
+        wire.pages = ["default": [0: page([HermesSessionRow(id: "d", lastActive: 1)])],
+                      "research": [0: page([HermesSessionRow(id: "r", lastActive: 2)])]]
+        let list = makeList(wire)
+        await list.openHermes()
+
+        await list.showAllHermesProfiles()
+
+        XCTAssertEqual(list.visibleSessions(searchText: "", selectedProjectID: nil).map { "\($0.sessionId!)@\($0.profile!)" },
+                       ["r@research", "d@default"])
+        XCTAssertEqual(Set(wire.calls.filter { $0.method == "session.most_recent" }.compactMap(\.profile)), ["default", "research"])
+        XCTAssertTrue(HermesProfilePreference.showsAllProfiles(for: server, in: defaults))
+        XCTAssertEqual(list.hermesProfile, "default", "New Session still opens in the pick")
+
+        await list.selectHermesProfile("research")
+
+        XCTAssertFalse(list.hermesShowsAllProfiles)
+        XCTAssertEqual(list.sessions.map(\.sessionId), ["r"])
+        XCTAssertFalse(HermesProfilePreference.showsAllProfiles(for: server, in: defaults))
+    }
+
+    /// A merged list holds back rows older than the oldest row a Profile with more pages has read,
+    /// pinned rows aside, so the next page never lands above rows already shown. "Load more" reads
+    /// the next page of each Profile with more, and none of a Profile at its end.
+    func testAllProfilesHoldsBackOlderRowsUntilTheNextPagesAreIn() async {
+        let wire = HermesSessionListWire()
+        wire.pages = ["default": [0: page(rows(0..<100)), 100: page(rows(100..<110))],
+                      "research": [0: page([HermesSessionRow(id: "new", lastActive: 20_000),
+                                            HermesSessionRow(id: "old", lastActive: 1),
+                                            HermesSessionRow(id: "pinned", lastActive: 0, pinned: true)])]]
+        HermesProfilePreference.saveShowsAllProfiles(true, for: server, in: defaults)
+        let list = makeList(wire)
+
+        await list.openHermes()
+
+        var shown = Set(list.sessions.compactMap(\.sessionId))
+        XCTAssertTrue(shown.isSuperset(of: ["new", "pinned"]))
+        XCTAssertFalse(shown.contains("old"), "the default Profile's next page may hold newer rows")
+        XCTAssertEqual(shown.count, 102)
+        XCTAssertTrue(list.hasMoreSessions)
+
+        await list.loadMoreHermesSessions()
+
+        shown = Set(list.sessions.compactMap(\.sessionId))
+        XCTAssertTrue(shown.contains("old"))
+        XCTAssertEqual(shown.count, 113)
+        XCTAssertFalse(list.hasMoreSessions)
+        XCTAssertEqual(wire.pageReads.filter { $0.profile == "research" }.map(\.offset), [0])
+    }
+
+    /// The home's list opens on no Profile (#709): it takes the one the host's dashboard runs.
+    func testAListWithoutAProfileOpensOnTheHostsCurrentProfile() async {
+        let wire = HermesSessionListWire()
+        wire.current = "research"
+        wire.pages = ["research": [0: page([HermesSessionRow(id: "r")])]]
+        let list = makeList(wire, profile: nil)
+
+        await list.openHermes()
+
+        XCTAssertEqual(list.hermesProfile, "research")
+        XCTAssertEqual(list.sessions.map(\.sessionId), ["r"])
+    }
+
+    /// A search of All Profiles asks the host once for each Profile.
+    func testAllProfilesSearchesEveryProfile() async {
+        let wire = HermesSessionListWire()
+        wire.pages = ["default": [0: page([])], "research": [0: page([])]]
+        wire.searchResults = [HermesSessionSearchResult(row: HermesSessionRow(id: "far", title: "Nimbus plan"))]
+        HermesProfilePreference.saveShowsAllProfiles(true, for: server, in: defaults)
+        let list = makeList(wire)
+        await list.openHermes()
+
+        await list.searchSessions(query: "nimbus", debounceNanoseconds: 0)
+
+        XCTAssertEqual(wire.searches.map(\.profile).sorted(), ["default", "research"])
+        XCTAssertEqual(list.visibleSessions(searchText: "nimbus", selectedProjectID: nil).compactMap(\.sessionId), ["far"])
+    }
+
     // MARK: Fixture
 
-    private func makeList(_ wire: HermesSessionListWire, profile: String = "default",
+    private func makeList(_ wire: HermesSessionListWire, profile: String? = "default",
                           reconnectDelays: [Duration] = [.seconds(3600)]) -> SessionListViewModel {
         SessionListViewModel(server: server, unreadStore: SessionUnreadStore(defaults: defaults), hermes: HermesSessionListSource(
             connection: connection, profile: profile, makeWire: { _ in wire }, preferences: defaults,
