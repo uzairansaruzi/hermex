@@ -112,16 +112,13 @@ struct HermesSessionListView: View {
                     .padding(.top, 16)
                     .sessionsScreenListRow()
             }
-            // A search lists only sessions, as on webui's list.
-            if !isSearchExpanded {
-                SessionSidebarUtilityRows(
-                    viewModel: viewModel, topPadding: 10, automatedVisibility: .showAll, sectionVisibility: sectionVisibility,
-                    profilesAreExpanded: .constant(false), projectsAreExpanded: $projectsAreExpanded,
-                    selectedProjectID: $selectedProjectID, projectPendingDeletion: $deletingProject,
-                    projectPendingRename: $renamingProject, openDestination: open, switchActiveProfile: { _ in },
-                    presentProjectCreation: { creatingProject = HermesProjectCreation(folder: "") }
-                )
-            }
+            SessionSidebarUtilityRows(
+                viewModel: viewModel, topPadding: 10, automatedVisibility: .showAll, sectionVisibility: sectionVisibility,
+                profilesAreExpanded: .constant(false), projectsAreExpanded: $projectsAreExpanded,
+                selectedProjectID: $selectedProjectID, projectPendingDeletion: $deletingProject,
+                projectPendingRename: $renamingProject, openDestination: open, switchActiveProfile: { _ in },
+                presentProjectCreation: { creatingProject = HermesProjectCreation(folder: "") }
+            )
             SessionListRowsSection(
                 viewModel: viewModel,
                 searchText: searchText,
@@ -285,9 +282,10 @@ struct HermesSessionListView: View {
     }
 
     /// The home's Tasks, Kanban, Skills, Memory and Usage rows, as Settings shows them (#709), and
-    /// the project lanes of the one listed Profile.
+    /// the project lanes of the one listed Profile. A search drops the links but keeps the lanes,
+    /// so the lane it searches in stays in view and can change.
     private var sectionVisibility: SidebarSectionVisibility {
-        let isHome = home != nil
+        let isHome = home != nil && !isSearchExpanded
         return SidebarSectionVisibility(
             bots: false, tasks: isHome && showsTasks, kanban: isHome && showsKanban, skills: isHome && showsSkills,
             memory: isHome && showsMemory, insights: isHome && showsInsights, activeProfile: false,
