@@ -230,6 +230,9 @@ struct SessionsHeader: View {
     let logoColor: Color
     let avatar: Avatar
     var field: Field?
+    /// What the search button opens, for VoiceOver: the sessions, or the Bots side's sheet.
+    var searchLabel: LocalizedStringKey = "Search sessions"
+    var isSearchDisabled = false
     let openSearch: () -> Void
 
     var body: some View {
@@ -273,8 +276,9 @@ struct SessionsHeader: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(isExpanded ? "Focus session search" : "Search sessions")
-            .accessibilityHint("Shows the session search field.")
+            .disabled(isSearchDisabled)
+            .accessibilityLabel(isExpanded ? Text("Focus session search") : Text(searchLabel))
+            .accessibilityHint(field == nil ? Text(verbatim: "") : Text("Shows the session search field."))
             .accessibilityHidden(isExpanded)
 
             if let field {

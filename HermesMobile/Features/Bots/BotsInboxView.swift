@@ -182,7 +182,8 @@ import SwiftUI
     @ViewBuilder private var homeHeader: some View {
         if let home {
             SessionsHeader(logoColor: HeaderLogoColor.color(for: headerLogoColorHex), avatar: home.avatar,
-                           openSearch: { if inbox.connection != nil { showingSearch = true } })
+                           searchLabel: "Search bots and messages", isSearchDisabled: inbox.connection == nil,
+                           openSearch: { showingSearch = true })
                 .sessionsTopChromeListRow()
         }
     }
