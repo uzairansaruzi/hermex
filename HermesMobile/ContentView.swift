@@ -335,8 +335,8 @@ struct HermesServerHome: View {
     let server: URL
     @Binding var pendingBotDestination: BotDestination?
     @SceneStorage("hermesHome.tab") private var tab = HermesHomeTab.sessions
-    /// The saved Bot connection the Sessions side lists through, read again each time the home
-    /// shows, so a sign-in changed in Settings gets a fresh list.
+    /// The saved Bot connection the Sessions side lists through, read again each time a side
+    /// shows, so a sign-in changed in Settings or the inbox gets a fresh list.
     @State private var connection: BotConnection?
     /// Bumped when the saved record changed: a sign-in changed in Settings keeps its UUID.
     @State private var connectionRevision = 0
@@ -365,20 +365,24 @@ struct HermesServerHome: View {
                     BotsInboxView(server: server, pendingDestination: $pendingBotDestination, home: home) { avatar }
                 }
             }
-            .onAppear {
-                let saved = try? BotConnectionStore().load(server: server)
-                if saved != connection { connection = saved; connectionRevision += 1 }
-            }
+            .onAppear(perform: readConnection)
             .navigationDestination(isPresented: $isShowingSettings) {
                 SettingsView(authManager: authManager, server: server, initialScrollTarget: settingsTarget)
             }
         }
+        // A connection the inbox's sheet saved or changed closes no screen, so the switch reads too.
+        .onChange(of: tab, readConnection)
         .onChange(of: pendingBotDestination, initial: true) {
             if pendingBotDestination != nil { tab = .bots }
         }
         .sheet(isPresented: $isPresentingAddServer) {
             AddServerView(authManager: authManager)
         }
+    }
+
+    private func readConnection() {
+        let saved = try? BotConnectionStore().load(server: server)
+        if saved != connection { connection = saved; connectionRevision += 1 }
     }
 
     private var avatar: some View {
