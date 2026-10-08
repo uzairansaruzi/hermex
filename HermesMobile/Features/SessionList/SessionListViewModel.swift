@@ -2044,12 +2044,13 @@ final class SessionListViewModel {
         return removed
     }
 
-    /// A list opened without a Profile takes the server's pick while the host lists it, else the
-    /// Profile the host's dashboard runs (`HermesProfilePreference`).
+    /// A list opened without a Profile, or showing every Profile while its pick went from the host,
+    /// takes the server's pick while the host lists it, else the Profile the host's dashboard runs
+    /// (`HermesProfilePreference`, which drops a stale pick).
     private func resolveHermesProfile(_ wire: any BotTransport) async {
         guard let hermes else { return }
         let current = (try? await wire.currentProfile()) ?? "default"
-        guard hermesWire === wire, hermesProfile == nil else { return }
+        guard hermesWire === wire else { return }
         hermesProfile = HermesProfilePreference.resolve(for: server, listed: hermesProfiles, current: current, in: hermes.preferences)
     }
 
@@ -2107,6 +2108,11 @@ final class SessionListViewModel {
               let rows = reply["profiles"].list else { return }
         let names = rows.compactMap { $0["name"].text }.filter { !$0.isEmpty }
         if names != hermesProfiles { hermesProfiles = names }
+        // A list of every Profile names only those the host still has, so a pick removed elsewhere
+        // shows up here rather than as a refused watch.
+        if hermesShowsAllProfiles, let pick = hermesProfile, !names.isEmpty, !names.contains(pick) {
+            await resolveHermesProfile(wire)
+        }
     }
 
     /// A lost socket: the rows stay, live states clear, and the list reconnects on the inbox's

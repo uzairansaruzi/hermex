@@ -405,6 +405,23 @@ import Observation
         XCTAssertEqual(wire.calls.last { $0.method == "session.most_recent" && $0.profile == "ops" }?.profile, "ops")
     }
 
+    /// A pick removed on another client while All Profiles shows (here, opened offline on the saved
+    /// pick) moves to the host's current Profile, so New Session never opens in a missing one.
+    func testAllProfilesMovesOffAPickTheHostNoLongerHas() async {
+        let wire = HermesSessionListWire()
+        wire.current = "research"
+        wire.pages = ["default": [0: page([])], "research": [0: page([])]]
+        HermesProfilePreference.save("gone", for: server, in: defaults)
+        HermesProfilePreference.saveShowsAllProfiles(true, for: server, in: defaults)
+        let list = makeList(wire, profile: "gone")
+
+        await list.openHermes()
+
+        XCTAssertEqual(list.hermesProfile, "research")
+        XCTAssertNil(defaults.string(forKey: HermesProfilePreference.key(for: server)))
+        XCTAssertTrue(list.hermesShowsAllProfiles)
+    }
+
     /// The home's list opens on no Profile (#709): it takes the one the host's dashboard runs.
     func testAListWithoutAProfileOpensOnTheHostsCurrentProfile() async {
         let wire = HermesSessionListWire()
