@@ -288,6 +288,11 @@ struct SessionsHeader: View {
                     clearButton(field)
                         .transition(.scale.combined(with: .opacity))
                 }
+            } else {
+                // Holds the collapsed field's slot, and the spacing around it, so the pill is
+                // the same size with or without a field.
+                Color.clear.frame(width: 0, height: 0)
+                    .accessibilityHidden(true)
             }
 
             trailingButton
