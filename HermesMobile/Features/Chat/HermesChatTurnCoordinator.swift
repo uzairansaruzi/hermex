@@ -23,6 +23,8 @@ import SwiftData
     /// An attach failed with `error`; the engine may be retrying. A host it can't reach shows
     /// the offline cache's copy (#1054).
     func hermesAttachDidFail(_ error: Error)
+    /// The attach found the session's root: a Bot Chat's canonical root, or a session's key.
+    func hermesDidIdentify(root: String)
     func hermesApplyUsage(_ usage: ContextWindowSnapshot)
     /// The model `session.info` reports: the Profile's default unless the host says otherwise.
     func hermesApplyModel(_ model: String)
@@ -1423,6 +1425,10 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
 }
 
 extension HermesChatTurnCoordinator: HermesConversationOwner {
+    func conversationDidIdentify(root: String) {
+        delegate?.hermesDidIdentify(root: root)
+    }
+
     func conversationDidReset() {
         requests.reset()
         settings.disconnect()

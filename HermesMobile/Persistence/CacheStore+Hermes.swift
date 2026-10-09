@@ -15,6 +15,12 @@ import SwiftData
 /// reached its end without it, or by the TTL. A message goes when a newest read no longer holds
 /// it inside the row ids that read covered, from its oldest row on (a rewind or undo), or by
 /// the TTL or the cap.
+///
+/// A bot's Bot Chat (#1144) caches only its transcript, never a list row, under the scope
+/// `hermes-bot|<connection>|<Profile>|<canonical root>`: the root `identify` finds is its
+/// identity, which a compaction that moves its stored key leaves in place. A webui server's
+/// list reads and sweeps every session row of its server, so the chat finds its root again
+/// from its message rows, not from a session row.
 extension CacheStore {
     /// A Hermes session's scope: the message rows' `sessionID`, and the tail of every key.
     static func hermesScope(profile: String, lineageRoot: String) -> String {
@@ -26,7 +32,20 @@ extension CacheStore {
     }
 
     static func hermesMessageKey(serverURL: URL, profile: String, lineageRoot: String, rowID: Int) -> String {
-        "\(hermesSessionKey(serverURL: serverURL, profile: profile, lineageRoot: lineageRoot))|row|\(rowID)"
+        hermesMessageKey(serverURL: serverURL, scope: hermesScope(profile: profile, lineageRoot: lineageRoot), rowID: rowID)
+    }
+
+    private static func hermesMessageKey(serverURL: URL, scope: String, rowID: Int) -> String {
+        "\(serverURL.absoluteString)|\(scope)|row|\(rowID)"
+    }
+
+    /// A bot's Bot Chat's scope on the connection `connectionID`: the message rows' `sessionID`.
+    static func hermesBotChatScope(connectionID: UUID, profile: String, root: String) -> String {
+        hermesBotChatScopePrefix(connectionID: connectionID, profile: profile) + root
+    }
+
+    private static func hermesBotChatScopePrefix(connectionID: UUID, profile: String) -> String {
+        "hermes-bot|\(connectionID.uuidString)|\(profile)|"
     }
 
     // MARK: Sessions
@@ -138,8 +157,21 @@ extension CacheStore {
         limit: Int,
         now: Date = Date()
     ) throws -> [ChatMessage] {
+        try cachedHermesMessages(serverURL: serverURL, scope: hermesScope(profile: profile, lineageRoot: lineageRoot),
+                                 in: context, limit: limit, now: now)
+    }
+
+    /// The newest `limit` unexpired cached messages under `scope`, a session's or a Bot Chat's,
+    /// oldest first.
+    @MainActor
+    static func cachedHermesMessages(
+        serverURL: URL,
+        scope: String,
+        in context: ModelContext,
+        limit: Int,
+        now: Date = Date()
+    ) throws -> [ChatMessage] {
         let serverURLString = serverURL.absoluteString
-        let scope = hermesScope(profile: profile, lineageRoot: lineageRoot)
         var descriptor = FetchDescriptor<CachedMessage>(
             predicate: #Predicate {
                 $0.serverURLString == serverURLString && $0.sessionID == scope && $0.expiresAt > now
@@ -166,17 +198,30 @@ extension CacheStore {
         in context: ModelContext,
         cachedAt: Date = Date()
     ) throws {
+        try cacheHermesMessages(messages, newestCoverage: newestCoverage, serverURL: serverURL,
+                                scope: hermesScope(profile: profile, lineageRoot: lineageRoot), in: context, cachedAt: cachedAt)
+    }
+
+    /// `cacheHermesMessages` under `scope`, a session's or a Bot Chat's.
+    @MainActor
+    static func cacheHermesMessages(
+        _ messages: [ChatMessage],
+        newestCoverage: HermesNewestCoverage?,
+        serverURL: URL,
+        scope: String,
+        in context: ModelContext,
+        cachedAt: Date = Date()
+    ) throws {
         let held = messages.compactMap { message in message.rowID.map { (id: $0, message: message) } }
         let signpost = performanceSignposter.beginInterval("Cache Write")
         defer { performanceSignposter.endInterval("Cache Write", signpost, "rows=\(held.count, privacy: .public)") }
 
         let serverURLString = serverURL.absoluteString
-        let scope = hermesScope(profile: profile, lineageRoot: lineageRoot)
         let cached = try context.fetch(FetchDescriptor<CachedMessage>(predicate: #Predicate {
             $0.serverURLString == serverURLString && $0.sessionID == scope
         }))
         let cachedByKey = Dictionary(cached.map { ($0.cacheKey, $0) }, uniquingKeysWith: { first, _ in first })
-        let key = { (id: Int) in hermesMessageKey(serverURL: serverURL, profile: profile, lineageRoot: lineageRoot, rowID: id) }
+        let key = { (id: Int) in hermesMessageKey(serverURL: serverURL, scope: scope, rowID: id) }
         let heldKeys = Set(held.map { key($0.id) })
 
         // Where the newest read's part starts in the cache's order.
@@ -205,5 +250,48 @@ extension CacheStore {
             }
         }
         try saveAndTrim(context, now: cachedAt)
+    }
+
+    // MARK: Bot Chat
+
+    /// The canonical root of the Bot Chat transcript cached for `profile` on `connectionID`, so
+    /// the chat shows it before its attach finds the root. Nil when none is cached.
+    @MainActor
+    static func cachedHermesBotChatRoot(
+        serverURL: URL,
+        connectionID: UUID,
+        profile: String,
+        in context: ModelContext,
+        now: Date = Date()
+    ) throws -> String? {
+        let serverURLString = serverURL.absoluteString
+        let prefix = hermesBotChatScopePrefix(connectionID: connectionID, profile: profile)
+        var descriptor = FetchDescriptor<CachedMessage>(
+            predicate: #Predicate {
+                $0.serverURLString == serverURLString && $0.sessionID.starts(with: prefix) && $0.expiresAt > now
+            },
+            sortBy: [SortDescriptor(\.cachedAt, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first.map { String($0.sessionID.dropFirst(prefix.count)) }
+    }
+
+    /// Removes the Bot Chat transcripts cached for `profile` on `connectionID` under any root but
+    /// `root`: the attach found another canonical root, a Bot Chat made again.
+    @MainActor
+    static func removeHermesBotChats(
+        exceptRoot root: String,
+        serverURL: URL,
+        connectionID: UUID,
+        profile: String,
+        in context: ModelContext
+    ) throws {
+        let serverURLString = serverURL.absoluteString
+        let prefix = hermesBotChatScopePrefix(connectionID: connectionID, profile: profile)
+        let kept = prefix + root
+        try context.delete(model: CachedMessage.self, where: #Predicate {
+            $0.serverURLString == serverURLString && $0.sessionID.starts(with: prefix) && $0.sessionID != kept
+        })
+        try context.save()
     }
 }
