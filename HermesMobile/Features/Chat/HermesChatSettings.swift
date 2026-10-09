@@ -178,6 +178,10 @@ enum HermesProfilePreference {
     /// whose capabilities don't rule it out, and kept while on so it can be turned off.
     var fast: Bool? { controls.showsFast ? controls.fast : nil }
 
+    /// Whether Fast can change now: not while another change applies or the catalog loads,
+    /// nor once the host refused `config.set`.
+    var mayChangeFast: Bool { controls.mayChangeFast }
+
     /// Turns Fast on or off for this chat only; false when it can't go now or the host refused
     /// it. The chip takes the mode only from a reply naming it.
     func select(fast enabled: Bool) async -> Bool {

@@ -680,6 +680,7 @@ struct ChatView: View {
             configurationNotice: viewModel.composerConfigurationNotice,
             sentReasoningEffort: viewModel.composerSentReasoningEffort,
             fastMode: viewModel.composerFastMode,
+            mayChangeFastMode: viewModel.composerMayChangeFastMode,
             onSelectFastMode: { enabled in
                 Task {
                     if await viewModel.selectFastMode(enabled) {
@@ -2320,7 +2321,8 @@ struct ChatView: View {
             automations: viewModel.hermesSideTasks?.automations ?? [],
             // Pause and Resume show only where the host takes `session.control` (#508).
             allowsAutomationChanges: viewModel.hermesSideTasks?.controlsAutomations == true,
-            isAutomationDisabled: viewModel.isViewingCachedData || viewModel.hermesSideTasks?.isChangingAutomation == true,
+            isAutomationDisabled: viewModel.isViewingCachedData || viewModel.hermesSideTasks?.isChangingAutomation == true
+                || viewModel.hermesSideTasks?.canChangeAutomations == false,
             onChangeAutomation: { viewModel.hermesSideTasks?.ask($0) }
         )
     }

@@ -294,6 +294,19 @@ import Observation
         XCTAssertEqual(chat.writes("config.set"), [])
     }
 
+    /// Once the host refuses `config.set` (403) the chip still shows the mode but can't
+    /// change it, as Bot Chat's chip reads `mayChangeFast`.
+    func testTheFastChipDisablesOnceTheHostRefusesConfigSet() async {
+        let chat = await openFastChat()
+        XCTAssertTrue(chat.model.composerMayChangeFastMode)
+        chat.host.next("config.set", .init(error: 403, message: "forbidden"))
+
+        let refused = await chat.model.selectFastMode(true)
+        XCTAssertFalse(refused)
+        XCTAssertEqual(chat.model.composerFastMode, false, "the chip keeps showing the mode")
+        XCTAssertFalse(chat.model.composerMayChangeFastMode)
+    }
+
     // MARK: Personality
 
     /// Bare `/personality` lists the host's personalities from the one fixed completion.

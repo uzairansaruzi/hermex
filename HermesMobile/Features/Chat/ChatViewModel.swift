@@ -847,6 +847,9 @@ final class ChatViewModel {
     /// A Hermes session's Fast mode (#1142); nil hides the chip, as on a webui session.
     var composerFastMode: Bool? { hermesSettings?.fast }
 
+    /// Whether that Fast mode can change now, as Bot Chat's chip reads it (#1142).
+    var composerMayChangeFastMode: Bool { hermesSettings?.mayChangeFast == true }
+
     /// Turns a Hermes session's Fast mode on or off for this chat (#1142); false when it
     /// can't go now or the host refused it.
     func selectFastMode(_ enabled: Bool) async -> Bool {

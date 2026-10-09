@@ -249,6 +249,42 @@ import Observation
         XCTAssertEqual(chat.model.sendErrorMessage, BotFailure.stale.localizedDescription)
     }
 
+    /// A reattach keeps showing the loop, but a Pause waits for that attach's own control
+    /// read, since the host may have replaced the loop while the chat was away. Once the read
+    /// lands, the Pause goes out.
+    func testAReattachHoldsPauseUntilItsControlReadLands() async throws {
+        let chat = await openChat(control: Self.control(loop: "active"))
+        await waitUntil("read") { !chat.sideTasks.automations.isEmpty }
+        let loop = try XCTUnwrap(chat.sideTasks.automations.first)
+        chat.host.always("session.control", .init(result: .object(["control": Self.control(loop: "paused")])))
+        // This attach's read brings no control data, whether it is still out or has failed.
+        chat.host.next("session.control.read", .init(error: 5000, message: "busy"))
+        let readSent = expectation(description: "this attach's read went out")
+        chat.host.expect(readSent, onNext: "session.control.read")
+
+        chat.model.suspendStreamForNavigation()
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.sideTasks.automations, [loop], "the menu keeps showing the loop")
+        chat.sideTasks.ask(loop)
+        XCTAssertNil(chat.sideTasks.pendingAutomation, "nothing to confirm before this attach's read")
+        await chat.model.confirmHermesAutomation(loop)
+        XCTAssertEqual(chat.writes("session.control"), [])
+        XCTAssertEqual(chat.model.sendErrorMessage, BotFailure.stale.localizedDescription)
+        await fulfillment(of: [readSent], timeout: 5)
+
+        chat.host.always("session.control.read", .init(result: .object([
+            "control": Self.control(loop: "active", heartbeat: "active")
+        ])))
+        chat.model.suspendStreamForNavigation()
+        await chat.model.reconnectStreamIfNeeded()
+        await waitUntil("this attach's read") { chat.sideTasks.automations.count == 2 }
+        chat.sideTasks.ask(loop)
+        await chat.model.confirmHermesAutomation(loop)
+        XCTAssertEqual(chat.writes("session.control"), [[
+            "session_id": .string("runtime"), "profile": .string("default"), "action": .string("loop.pause")
+        ]])
+    }
+
     /// A refused Pause shows the host's reason and keeps the state the menu had.
     func testARefusedPauseShowsTheHostsReason() async throws {
         let chat = await openChat(control: Self.control(loop: "active"))

@@ -293,6 +293,8 @@ struct MessageComposerView: View {
     var sentReasoningEffort: String?
     /// A Hermes session's Fast mode (#1142); nil hides the chip.
     var fastMode: Bool?
+    /// Whether the host takes a Fast change now; the chip shows disabled otherwise.
+    var mayChangeFastMode = false
     /// Asks the host for the other Fast mode.
     var onSelectFastMode: (Bool) -> Void = { _ in }
     /// A Hermes session (#1012): staged files upload when they are sent, under Bot Chat's
@@ -977,7 +979,7 @@ struct MessageComposerView: View {
 
                     if let fastMode {
                         ComposerFastModeButton(
-                            isOn: fastMode, isDisabled: isConfigurationControlDisabled, color: metaControlColor,
+                            isOn: fastMode, isDisabled: isConfigurationControlDisabled || !mayChangeFastMode, color: metaControlColor,
                             controlFont: metaControlFont, chevronFont: metaChevronFont, onSelect: onSelectFastMode
                         )
                     }

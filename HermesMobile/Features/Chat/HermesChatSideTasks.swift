@@ -91,6 +91,10 @@ enum HermesSideTaskFailure: Error, Equatable {
     private(set) var pendingAutomation: BotSessionControl?
     /// A confirmed Pause or Resume is on its way; the menu waits for its answer.
     private(set) var isChangingAutomation = false
+    /// The attach whose read or `session.control.update` the loop and heartbeat come from. A
+    /// reattach keeps showing the earlier rows, but they can't be paused or resumed until this
+    /// attach's own control data arrives.
+    private var controlAttempt: Int?
 
     /// Completions whose task id this chat has not learned yet: the host can finish a task
     /// before its reply to the ask is read. Kept only while an ask or start is in flight.
@@ -144,10 +148,14 @@ enum HermesSideTaskFailure: Error, Equatable {
     /// heartbeat but offers no Pause or Resume.
     var controlsAutomations: Bool { !engine.wire.unavailableMethods.contains("session.control") }
 
+    /// Whether the loop and heartbeat shown are this attach's, so a Pause or Resume acts on
+    /// them. False from a reattach until its control read or update lands.
+    var canChangeAutomations: Bool { controlAttempt == engine.generation }
+
     /// Holds a Pause or Resume until the user confirms it. Only a state the host offers one
     /// for (`action`) can be asked.
     func ask(_ control: BotSessionControl) {
-        guard control.action != nil, automations.contains(control), !isChangingAutomation else { return }
+        guard control.action != nil, canChangeAutomations, automations.contains(control), !isChangingAutomation else { return }
         pendingAutomation = control
         pendingAttempt = engine.generation
     }
@@ -157,15 +165,15 @@ enum HermesSideTaskFailure: Error, Equatable {
     /// Sends the asked Pause or Resume once, confirmed, as `session.control` and shows the
     /// snapshot the host answers with, unless a control frame came first. Throws
     /// `BotFailure.stale`, sending nothing, when the chat reattached or the state changed since
-    /// the ask, up to the socket write, and `NotSent` when it never went out. A refusal carries
-    /// the host's message.
+    /// the ask, up to the socket write, or this attach's control data has not arrived yet, and
+    /// `NotSent` when it never went out. A refusal carries the host's message.
     func confirmAutomation(_ control: BotSessionControl) async throws {
         pendingAutomation = nil
-        guard pendingAttempt == engine.generation, automations.contains(control), let action = control.action,
-              !isChangingAutomation else { throw BotFailure.stale }
+        guard pendingAttempt == engine.generation, canChangeAutomations, automations.contains(control),
+              let action = control.action, !isChangingAutomation else { throw BotFailure.stale }
         isChangingAutomation = true
         defer { isChangingAutomation = false }
-        let revision = controlRevision
+        let revision = controlRevision, attempt = engine.generation
         let profile = engine.target.profile
         let reply: BotJSON
         do {
@@ -179,7 +187,7 @@ enum HermesSideTaskFailure: Error, Equatable {
         guard reply["control"].fields != nil else { throw BotSettingFailure.unknownOutcome }
         guard controlRevision == revision else { return }
         controlRevision += 1
-        applyControl(reply["control"])
+        applyControl(reply["control"], attempt: attempt)
     }
 
     // MARK: btw
@@ -250,7 +258,7 @@ enum HermesSideTaskFailure: Error, Equatable {
             return true
         case "session.control.update":
             controlRevision += 1
-            applyControl(payload["control"])
+            applyControl(payload["control"], attempt: engine.generation)
             return true
         default:
             return false
@@ -268,7 +276,8 @@ enum HermesSideTaskFailure: Error, Equatable {
     }
 
     /// Connected: reads the goal, loop and heartbeat, and the results the last replay lost. A
-    /// Pause or Resume asked on an earlier attach is dropped with its confirmation.
+    /// Pause or Resume asked on an earlier attach is dropped with its confirmation, and the rows
+    /// shown wait for this attach's read or update before they take another.
     func didConnect(runtime: String, attempt: Int) {
         if pendingAttempt != attempt { pendingAutomation = nil }
         readControl(runtime: runtime, attempt: attempt)
@@ -288,7 +297,7 @@ enum HermesSideTaskFailure: Error, Equatable {
             guard let reply = try? await engine.request(.sessionControlRead(sessionID: runtime, profile: engine.target.profile),
                                                          attempt: attempt),
                   let self, self.controlRevision == revision else { return }
-            self.applyControl(reply["control"])
+            self.applyControl(reply["control"], attempt: attempt)
         }
     }
 
@@ -388,8 +397,10 @@ enum HermesSideTaskFailure: Error, Equatable {
         onBackgroundChange(backgroundTasks[index])
     }
 
-    private func applyControl(_ control: BotJSON) {
+    /// Shows a control snapshot `attempt`'s attach read or received.
+    private func applyControl(_ control: BotJSON, attempt: Int) {
         guard control.fields != nil else { return }
+        if controlAttempt != attempt { controlAttempt = attempt }
         let automations = BotSessionControl.read(control).filter { $0.kind != .goal }
         if automations != self.automations { self.automations = automations }
         let goal = Self.goal(control["goal"])
