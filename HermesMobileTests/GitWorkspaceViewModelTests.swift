@@ -1804,6 +1804,14 @@ extension GitWorkspaceViewModelTests {
                                       branches: [("main", false), ("dev", false), ("origin/feature/x", true)])
     }
 
+    /// `branchHost` with `b.swift` staged, so the commit sheet has something to commit.
+    private static func stagedBranchHost(_ request: URLRequest) -> HermesHostFixture.Reply? {
+        HermesGitHost.repositoryReply(request, branch: "main",
+                                      rows: [("b.swift", 2, 1, "M", true)],
+                                      flags: [("b.swift", true, false, false, false)],
+                                      branches: [("main", false), ("dev", false)])
+    }
+
     /// The picker lists the host's local branches, then its remote-only ones, and switches to
     /// either. A remote row goes out by its short name, which `git switch` makes a tracking
     /// branch of; the status and branches are read again after each switch.
@@ -1877,5 +1885,107 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(availability.actionErrorMessage,
                        String(localized: "Wait for the active response to finish before changing this repository."))
         XCTAssertEqual(HermesGitHost.writes, [])
+    }
+
+    /// A switch shares the repository's write lock (#1115): while the commit sheet commits, the
+    /// picker is disabled and a switch sends nothing.
+    @MainActor
+    func testAHermesSwitchWaitsForTheSheetsCommit() async throws {
+        let git = HermesGitHost.client(writeMessage: { _, _, _ in "chore: tidy" }) { request in
+            request.url?.path == "/api/git/review/commit" ? .park : Self.stagedBranchHost(request)
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(
+            session: SessionSummary(), server: URL(string: "https://webui.example")!, git: git
+        )
+        await availability.load()
+        let sheet = GitCommitViewModel(git: git)
+        await sheet.load()
+        sheet.message = "feat(app): b"
+        nonisolated(unsafe) var duringCommit: (locked: Bool, outcome: GitCheckoutOutcome)?
+        HermesHostFixture.onPark = { Task { @MainActor in
+            let locked = availability.isWriteLocked
+            let outcome = await availability.checkout(GitCheckoutTarget(ref: "dev", mode: .local))
+            duringCommit = (locked, outcome)
+            HermesHostFixture.releaseParked()
+        } }
+
+        let committed = await sheet.commit(push: false)
+
+        XCTAssertTrue(committed)
+        XCTAssertEqual(duringCommit?.locked, true)
+        XCTAssertEqual(duringCommit?.outcome, .failure)
+        XCTAssertNil(availability.actionErrorMessage)
+        XCTAssertEqual(HermesGitHost.writes, [#"commit "feat(app): b""#])
+        XCTAssertEqual(availability.currentBranchName, "main")
+    }
+
+    /// While a switch runs, the commit sheet is busy and the Git menu's push is refused: neither
+    /// writes under it.
+    @MainActor
+    func testTheHermesSheetAndPushWaitForASwitch() async throws {
+        // The sheet loads a staged file; the switch's own status read finds the tree clean.
+        nonisolated(unsafe) var staged = true
+        let git = HermesGitHost.client { request in
+            if request.url?.path == "/api/git/branch/switch" { return .park }
+            return staged ? Self.stagedBranchHost(request) : Self.branchHost(request, branch: "main")
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(
+            session: SessionSummary(), server: URL(string: "https://webui.example")!, git: git
+        )
+        await availability.load()
+        let sheet = GitCommitViewModel(git: git)
+        await sheet.load()
+        sheet.message = "feat(app): b"
+        HermesHostFixture.script { staged = false }
+        nonisolated(unsafe) var duringSwitch: (busy: Bool, committed: Bool, pushed: Bool)?
+        HermesHostFixture.onPark = { Task { @MainActor in
+            let busy = sheet.isBusy
+            let committed = await sheet.commit(push: false)
+            let pushed = await availability.performRemoteAction(.push)
+            duringSwitch = (busy, committed, pushed)
+            HermesHostFixture.releaseParked(.json(200, .object(["branch": .string("dev")])))
+        } }
+
+        let outcome = await availability.checkout(GitCheckoutTarget(ref: "dev", mode: .local))
+
+        XCTAssertEqual(outcome, .success)
+        XCTAssertEqual(duringSwitch?.busy, true)
+        XCTAssertEqual(duringSwitch?.committed, false)
+        XCTAssertEqual(duringSwitch?.pushed, false)
+        XCTAssertEqual(HermesGitHost.writes, ["switch dev"])
+        XCTAssertFalse(availability.isWriteLocked)
+        XCTAssertFalse(sheet.isBusy)
+    }
+
+    /// A failed switch reads the repository again; if the chat leaves the folder during that
+    /// read, the failure belongs to the old repository and has nothing to show (`.retired`).
+    @MainActor
+    func testAFailedHermesSwitchRetiredDuringItsRefreshShowsNothing() async throws {
+        nonisolated(unsafe) var branchReads = 0
+        let git = HermesGitHost.client { request in
+            switch request.url?.path {
+            case "/api/git/branch/switch":
+                return .json(400, .object(["detail": .string("rejected")]))
+            case "/api/git/branches":
+                branchReads += 1
+                return branchReads > 1 ? .park : Self.branchHost(request, branch: "main")
+            default:
+                return Self.branchHost(request, branch: "main")
+            }
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(
+            session: SessionSummary(), server: URL(string: "https://webui.example")!, git: git
+        )
+        await availability.load()
+        HermesHostFixture.onPark = { Task { @MainActor in
+            availability.retire()
+            HermesHostFixture.releaseParked()
+        } }
+
+        let outcome = await availability.checkout(GitCheckoutTarget(ref: "dev", mode: .local))
+
+        XCTAssertEqual(branchReads, 2)
+        XCTAssertEqual(outcome, .retired)
+        XCTAssertEqual(HermesGitHost.writes, ["switch dev"])
     }
 }

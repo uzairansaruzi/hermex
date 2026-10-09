@@ -190,8 +190,8 @@ final class GitWorkspaceAvailabilityViewModel {
         isSwitchingBranch || runningRemoteAction != nil || commitPhase != nil || isWriteLocked
     }
 
-    /// True while a write on this repository holds its `GitWriteLock`: this menu's, or the commit
-    /// sheet's. Always false on webui.
+    /// True while a write on this repository holds its `GitWriteLock`: this menu's, a branch
+    /// switch, or the commit sheet's. Always false on webui.
     @MainActor var isWriteLocked: Bool { git?.writeLock?.isHeld == true }
 
     /// True while a quick-commit pipeline (menu row or inline turn button) is running.
@@ -216,13 +216,18 @@ final class GitWorkspaceAvailabilityViewModel {
     }
 
     /// Switches branches, then reads the status and branches again. A failed Hermes switch reads
-    /// them again too; one finishing after `retire()` has nothing to show (`.retired`).
+    /// them again too; one finishing after `retire()` has nothing to show (`.retired`). Refused,
+    /// quietly, while another write holds the repository's `GitWriteLock`, as the picker is
+    /// disabled then.
     @MainActor
     func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool = false) async -> GitCheckoutOutcome {
-        guard let git, !isSwitchingBranch else { return .failure }
+        guard let git, !isSwitchingBranch, git.writeLock?.acquire() ?? true else { return .failure }
         isSwitchingBranch = true
         actionErrorMessage = nil
-        defer { isSwitchingBranch = false }
+        defer {
+            isSwitchingBranch = false
+            git.writeLock?.release()
+        }
 
         do {
             let response = try await git.checkout(target, stashingChanges: stashingChanges)
@@ -244,7 +249,7 @@ final class GitWorkspaceAvailabilityViewModel {
             guard !isRetired else { return .retired }
             actionErrorMessage = friendlyMessage(for: error)
             if git.isHermes { await refreshAfterExternalMutation() }
-            return .failure
+            return isRetired ? .retired : .failure
         }
     }
 
@@ -622,8 +627,8 @@ final class GitCommitViewModel {
     var hasChanges: Bool { !trackedFiles.isEmpty }
     var hasStagedChanges: Bool { !stagedFiles.isEmpty }
     var hasSelection: Bool { !selectedPaths.isEmpty }
-    /// True while this sheet runs an operation, or the Git menu's quick commit or push holds the
-    /// repository's `GitWriteLock`.
+    /// True while this sheet runs an operation, or the Git menu's quick commit or push or a branch
+    /// switch holds the repository's `GitWriteLock`.
     var isBusy: Bool { busyOperation != nil || git?.writeLock?.isHeld == true }
     var trimmedMessage: String { message.trimmingCharacters(in: .whitespacesAndNewlines) }
 

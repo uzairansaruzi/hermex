@@ -35,7 +35,8 @@ import Foundation
     private let http: HermesConnection
     private let writeMessage: MessageWriter?
     private let writeOwner: WriteOwner?
-    /// Shared by everything that writes through this client: the chat's Git menu and commit sheet.
+    /// Shared by everything that writes through this client: the chat's Git menu, branch picker and
+    /// commit sheet.
     let writeLock: GitWriteLock?
     /// The repository root, once `fs/git-root` has found one. Never shown, logged or persisted.
     private var root: String?

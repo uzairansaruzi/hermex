@@ -50,9 +50,10 @@ extension GitDataClient {
     @MainActor var writeLock: GitWriteLock? { nil }
 }
 
-/// One Hermes repository's write in flight (#1115). The Git menu's quick commit and push and the
-/// commit sheet's stage, unstage, discard and commit each hold it from start to finish, a quick
-/// commit's message wait included, and the other surface's write controls are disabled meanwhile.
+/// One Hermes repository's write in flight (#1115). The Git menu's quick commit and push, the
+/// composer's branch switch (#1116) and the commit sheet's stage, unstage, discard and commit each
+/// hold it from start to finish, a quick commit's message wait included, and the other surfaces'
+/// write controls are disabled meanwhile.
 @MainActor @Observable final class GitWriteLock {
     private(set) var isHeld = false
 

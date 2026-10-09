@@ -1492,7 +1492,8 @@ struct ChatView: View {
     private func performGitCheckout(_ target: GitCheckoutTarget, stashingChanges: Bool = false) async {
         let git = gitAvailabilityViewModel
         let outcome = await git.checkout(target, stashingChanges: stashingChanges)
-        if outcome == .retired {
+        // A model retired while its switch ran belongs to the folder the chat left.
+        if outcome == .retired || git.isRetired {
             return
         } else if outcome == .requiresStash {
             gitAlert = .dirtyCheckout(target)

@@ -1561,8 +1561,9 @@ panel (#1113) and Git (#1114) read the same context.
   heads, then remote-tracking refs with no local head) and switches with `POST git/branch/switch
   {path, branch}`, which runs `git switch`. A remote row goes out by its short name (`origin/x` →
   `x`), which git turns into a tracking branch; the host rewrites names first, so one it would
-  change (`HermesREST.isBranchName`) is refused. A switch is a write the chat owns, as above, and
-  any uncommitted change, untracked files included, refuses it with "Commit or discard first.":
+  change (`HermesREST.isBranchName`) is refused. A switch is a write the chat owns, as above, holds
+  the repository's `GitWriteLock` (the picker is disabled while another write holds it), and any
+  uncommitted change, untracked files included, refuses it with "Commit or discard first.":
   there is no stash, and `git switch` would carry the changes across. New Branch, Fetch and Pull
   stay hidden. After a switch the status and branches are read again.
 

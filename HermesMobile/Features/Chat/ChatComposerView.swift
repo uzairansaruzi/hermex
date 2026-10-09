@@ -1156,14 +1156,15 @@ struct MessageComposerView: View {
     private var gitBranchPicker: some View {
         // One "Git Actions" toggle covers every git control in chat (#189), so the
         // branch chip goes with the toolbar menu rather than lingering alone. A Hermes chat
-        // switches but can't create a branch (#1116).
+        // switches but can't create a branch (#1116), and not while another write holds the
+        // repository's lock.
         if showsGitControls, gitViewModel.hasRepository, gitViewModel.supportsBranches {
             GitBranchPickerButton(
                 currentBranch: gitViewModel.currentBranchName,
                 branches: gitViewModel.branches,
                 isLoading: gitViewModel.isLoadingBranches,
                 isSwitching: gitViewModel.isSwitchingBranch,
-                isDisabled: isReadOnly || isWaitingForStream,
+                isDisabled: isReadOnly || isWaitingForStream || gitViewModel.isWriteLocked,
                 allowsCreate: gitViewModel.supportsSync,
                 onSelect: onSelectGitBranch,
                 onCreate: onCreateGitBranch,
