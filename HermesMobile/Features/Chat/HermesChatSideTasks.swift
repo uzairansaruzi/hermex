@@ -60,11 +60,11 @@ enum HermesSideTaskFailure: Error, Equatable {
     case unconfirmed
 }
 
-/// A Hermes session's side work in the main chat (#1013): its goal, one `/btw` question at a
-/// time, and its `/background` tasks. `HermesChatTurnCoordinator` owns it and hands it the
-/// session's `btw.complete`, `background.complete` and `session.control.update` frames;
-/// completions match by `task_id`, and unknown ids are ignored. Each ask, start and goal
-/// command is one `write`, never resent.
+/// A Hermes session's side work in the main chat (#1013): its goal, loop and heartbeat (#1142),
+/// one `/btw` question at a time, and its `/background` tasks. `HermesChatTurnCoordinator`
+/// owns it and hands it the session's `btw.complete`, `background.complete` and
+/// `session.control.update` frames; completions match by `task_id`, and unknown ids are
+/// ignored. Each ask, start, goal command and Pause or Resume is one `write`, never resent.
 ///
 /// Completions ride the session's replay. When an attach lost frames (a truncated ring, a new
 /// epoch or runtime, a live gap), a question still waiting reads as unavailable and each task
@@ -84,6 +84,13 @@ enum HermesSideTaskFailure: Error, Equatable {
     private(set) var backgroundTasks: [HermesBackgroundTask] = []
     /// The goal from the last control snapshot; nil without one.
     private(set) var goal: SubmittedGoal?
+    /// The loop and heartbeat from the last control snapshot, in that order, each one the host
+    /// reports. The goal menu lists them beside the goal (#1142).
+    private(set) var automations: [BotSessionControl] = []
+    /// A Pause or Resume waiting for the user's confirmation. A reattach discards it.
+    private(set) var pendingAutomation: BotSessionControl?
+    /// A confirmed Pause or Resume is on its way; the menu waits for its answer.
+    private(set) var isChangingAutomation = false
 
     /// Completions whose task id this chat has not learned yet: the host can finish a task
     /// before its reply to the ask is read. Kept only while an ask or start is in flight.
@@ -93,6 +100,8 @@ enum HermesSideTaskFailure: Error, Equatable {
     @ObservationIgnored private var controlRevision = 0
     /// The last attach lost frames: tasks without a result are read once connected.
     @ObservationIgnored private var needsResultRead = false
+    /// The attach the last Pause or Resume was asked on; a confirmation from another is stale.
+    @ObservationIgnored private var pendingAttempt = 0
 
     init(engine: HermesConversation) {
         self.engine = engine
@@ -127,6 +136,41 @@ enum HermesSideTaskFailure: Error, Equatable {
         default:
             throw BotFailure.unsupported
         }
+    }
+
+    // MARK: Loop and heartbeat
+
+    /// Whether the host takes `session.control`. Without it the goal menu shows the loop and
+    /// heartbeat but offers no Pause or Resume.
+    var controlsAutomations: Bool { !engine.wire.unavailableMethods.contains("session.control") }
+
+    /// Holds a Pause or Resume until the user confirms it. Only a state the host offers one
+    /// for (`action`) can be asked.
+    func ask(_ control: BotSessionControl) {
+        guard control.action != nil, automations.contains(control), !isChangingAutomation else { return }
+        pendingAutomation = control
+        pendingAttempt = engine.generation
+    }
+
+    func cancelAutomation() { pendingAutomation = nil }
+
+    /// Sends the asked Pause or Resume once, confirmed, as `session.control` and shows the
+    /// snapshot the host answers with, unless a control frame came first. Throws
+    /// `BotFailure.stale`, sending nothing, when the chat reattached or the state changed since
+    /// the ask, and `NotSent` when it never went out. A refusal carries the host's message.
+    func confirmAutomation(_ control: BotSessionControl) async throws {
+        pendingAutomation = nil
+        guard pendingAttempt == engine.generation, automations.contains(control), let action = control.action,
+              !isChangingAutomation else { throw BotFailure.stale }
+        isChangingAutomation = true
+        defer { isChangingAutomation = false }
+        let revision = controlRevision
+        let profile = engine.target.profile
+        let reply = try await write { .sessionControl(sessionID: $0, profile: profile, action: action) }
+        guard reply["control"].fields != nil else { throw BotSettingFailure.unknownOutcome }
+        guard controlRevision == revision else { return }
+        controlRevision += 1
+        applyControl(reply["control"])
     }
 
     // MARK: btw
@@ -214,8 +258,10 @@ enum HermesSideTaskFailure: Error, Equatable {
         needsResultRead = true
     }
 
-    /// Connected: reads the goal, and the results the last replay lost.
+    /// Connected: reads the goal, loop and heartbeat, and the results the last replay lost. A
+    /// Pause or Resume asked on an earlier attach is dropped with its confirmation.
     func didConnect(runtime: String, attempt: Int) {
+        if pendingAttempt != attempt { pendingAutomation = nil }
         readControl(runtime: runtime, attempt: attempt)
         if needsResultRead {
             needsResultRead = false
@@ -331,6 +377,8 @@ enum HermesSideTaskFailure: Error, Equatable {
 
     private func applyControl(_ control: BotJSON) {
         guard control.fields != nil else { return }
+        let automations = BotSessionControl.read(control).filter { $0.kind != .goal }
+        if automations != self.automations { self.automations = automations }
         let goal = Self.goal(control["goal"])
         guard goal != self.goal else { return }
         self.goal = goal

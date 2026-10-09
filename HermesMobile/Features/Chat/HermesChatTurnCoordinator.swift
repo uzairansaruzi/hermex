@@ -1028,6 +1028,8 @@ struct HermesChatTranscript: Equatable {
         requests.didReadSnapshot(snapshot)
         if let model = snapshot["info"]["model"].text, !model.isEmpty { delegate?.hermesApplyModel(model) }
         noteInfo(snapshot["info"])
+        // The chips' effort and Fast mode, restored when the controls reconnect (#1142).
+        settings.apply(info: snapshot["info"], idle: !running)
         // Ahead of the turn below, so its Live Activity starts under the session's title.
         if let title = snapshot["info"]["title"].text, !title.isEmpty { applyTitle(title) }
         if activeStreamID != nil, !running || (startedAt != nil && turnStartedAt != nil && startedAt != turnStartedAt) {

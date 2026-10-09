@@ -44,8 +44,8 @@ enum HermesProfilePreference {
     }
 }
 
-/// A Hermes session's model, effort and Profile chips in the main chat's composer (#1015,
-/// #1016), and its `/personality` command. `HermesChatTurnCoordinator` owns it and connects
+/// A Hermes session's model, effort, Fast and Profile chips in the main chat's composer (#1015,
+/// #1016, #1142), and its `/personality` command. `HermesChatTurnCoordinator` owns it and connects
 /// it on each attach.
 ///
 /// The model rides Bot Chat's `BotChatControls` on the session's runtime: the catalog is
@@ -58,6 +58,10 @@ enum HermesProfilePreference {
 /// Effort is session-scoped like the model: one `config.set` reasoning for this chat, never a
 /// display word. The host may send a lower level than the one picked when the model's route
 /// can't take it; `session.info` reports that as `reasoning_effort_wire` (`sentEffort`).
+///
+/// Fast is session-scoped too: one `config.set fast` for this chat, shown only from the host's
+/// answer (#1142). The host may fall back to the Profile's default if the runtime goes away
+/// mid-dispatch, an accepted limitation (#508).
 ///
 /// A personality is Profile-wide: the host has no session-only one, so a confirmed change
 /// writes the Profile's default and switches this session too.
@@ -74,6 +78,8 @@ enum HermesProfilePreference {
     private(set) var pendingPersonality: String?
     /// The latest `session.info`'s requested effort and the level its route sends.
     private var reportedEffort: (requested: String, sent: String)?
+    /// The latest `session.info`, applied again once an attach reconnects the controls.
+    @ObservationIgnored private var latestInfo: (info: BotJSON, idle: Bool)?
     private let engine: HermesConversation
 
     init(engine: HermesConversation) {
@@ -92,14 +98,16 @@ enum HermesProfilePreference {
         }
     }
 
-    /// Reads the catalog for `runtime` and the host's Profiles. Nothing reads for an attach
-    /// that is no longer current, and a failed Profile read keeps the last list.
+    /// Reads the catalog for `runtime` and the host's Profiles, and restores the effort and Fast
+    /// mode the attach's `session.info` reported, which connecting clears. Nothing reads for an
+    /// attach that is no longer current, and a failed Profile read keeps the last list.
     func connect(runtime: String, attempt: Int) async {
         guard engine.generation == attempt, engine.connectionState == .connected else { return }
         await controls.connect(.init(connectionID: engine.connection.id, profile: profile, runtime: runtime,
                                      generation: attempt), wire: engine.wire)
-        guard engine.generation == attempt,
-              let roster = try? await engine.request(.profilesList(includeSessions: false), attempt: attempt),
+        guard engine.generation == attempt else { return }
+        if let latestInfo { controls.snapshot(latestInfo.info, idle: latestInfo.idle) }
+        guard let roster = try? await engine.request(.profilesList(includeSessions: false), attempt: attempt),
               let rows = roster["profiles"].list else { return }
         var seen = Set<String>()
         profiles = rows.compactMap { $0["name"].text }.filter { !$0.isEmpty && seen.insert($0).inserted }
@@ -107,9 +115,10 @@ enum HermesProfilePreference {
 
     func disconnect() { controls.disconnect() }
 
-    /// A `session.info` frame or snapshot. Once a turn ends with a pick still waiting on it,
-    /// the catalog is read again for the model the host now runs.
+    /// A `session.info` frame, or an attach's `session.resume` info. Once a turn ends with a
+    /// pick still waiting on it, the catalog is read again for the model the host now runs.
     func apply(info: BotJSON, idle: Bool) {
+        latestInfo = (info, idle)
         controls.snapshot(info, idle: idle)
         reportedEffort = info["reasoning_effort"].text.map { ($0, info["reasoning_effort_wire"].text ?? "") }
         if idle, controls.pendingModel != nil { controls.refresh() }
@@ -161,6 +170,20 @@ enum HermesProfilePreference {
         guard effortLevels.contains(effort), let action = controls.prepare(.effort(effort)) else { return false }
         await controls.apply(action)
         return controls.errorMessage == nil && controls.effort == effort
+    }
+
+    // MARK: Fast
+
+    /// The Fast chip's mode, nil to hide it: shown once `session.info` reports one, on a model
+    /// whose capabilities don't rule it out, and kept while on so it can be turned off.
+    var fast: Bool? { controls.showsFast ? controls.fast : nil }
+
+    /// Turns Fast on or off for this chat only; false when it can't go now or the host refused
+    /// it. The chip takes the mode only from a reply naming it.
+    func select(fast enabled: Bool) async -> Bool {
+        guard enabled != controls.fast, let action = controls.prepare(.fast(enabled)) else { return false }
+        await controls.apply(action)
+        return controls.errorMessage == nil && controls.fast == enabled
     }
 
     // MARK: Personality

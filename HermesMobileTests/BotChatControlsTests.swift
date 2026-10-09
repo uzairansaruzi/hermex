@@ -203,10 +203,10 @@ import XCTest
         XCTAssertFalse(settings.isLoading)
     }
 
-    func testEffortAndFastUseExplicitSessionValuesAndWaitForAcknowledgment() async throws {
+    func testEffortUsesExplicitSessionValuesAndWaitsForAcknowledgment() async throws {
         let wire = SettingsWire(); let settings = BotChatControls()
         await settings.connect(context(), wire: wire)
-        settings.snapshot(.object(["reasoning_effort": .string("medium"), "fast": .bool(true)]), idle: true)
+        settings.snapshot(.object(["reasoning_effort": .string("medium")]), idle: true)
         wire.failure = BotSettingFailure.rejected(4002, "Unsupported effort")
         await settings.apply(try XCTUnwrap(settings.prepare(.effort("high"))))
         XCTAssertEqual(settings.effort, "medium")
@@ -215,13 +215,6 @@ import XCTest
         wire.response = .object(["key": .string("reasoning"), "value": .string("none")])
         await settings.apply(try XCTUnwrap(settings.prepare(.effort("none"))))
         XCTAssertEqual(settings.effort, "none")
-        wire.response = .object(["key": .string("fast"), "value": .string("normal")])
-        await settings.apply(try XCTUnwrap(settings.prepare(.fast(false))))
-        XCTAssertEqual(settings.fast, false)
-        XCTAssertNotNil(settings.prepare(.fast(true)))
-        wire.response = .object(["key": .string("fast"), "value": .string("fast")])
-        await settings.apply(try XCTUnwrap(settings.prepare(.fast(true))))
-        XCTAssertEqual(settings.fast, true)
         for (_, params) in wire.writes {
             XCTAssertEqual(params["scope"], .string("session"))
             XCTAssertEqual(params["session_id"], .string("runtime"))
@@ -231,14 +224,13 @@ import XCTest
         XCTAssertNil(settings.prepare(.effort("off")))
     }
 
-    func testEffortAndFastStaleActionsNeverWriteAfterReconnect() async throws {
+    func testStaleEffortActionNeverWritesAfterReconnect() async throws {
         let wire = SettingsWire(); let settings = BotChatControls()
         await settings.connect(context(), wire: wire)
-        settings.snapshot(.object(["reasoning_effort": .string("medium"), "fast": .bool(true)]), idle: true)
+        settings.snapshot(.object(["reasoning_effort": .string("medium")]), idle: true)
         let effort = try XCTUnwrap(settings.prepare(.effort("high")))
-        let fast = try XCTUnwrap(settings.prepare(.fast(false)))
         await settings.connect(context(generation: 2), wire: wire)
-        await settings.apply(effort); await settings.apply(fast)
+        await settings.apply(effort)
         XCTAssertTrue(wire.writes.isEmpty)
     }
 

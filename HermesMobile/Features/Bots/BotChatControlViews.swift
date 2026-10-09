@@ -35,17 +35,10 @@ struct BotComposerSettings: View {
                 ) { sheetContext = owner; preparePresentation(); showsWorkspace = true }
             }
             if let fast = settings.fast, settings.showsFast {
-                Button { change(.fast(!fast), context: owner) } label: {
-                    ComposerInlineControlLabel(
-                        title: fast ? String(localized: "Fast") : String(localized: "Normal"),
-                        systemImage: "bolt", showsChevron: false, color: .secondary,
-                        controlFont: AppFont.subheadline(), chevronFont: AppFont.caption2()
-                    )
-                }
-                .buttonStyle(.plain)
-                .disabled(!settings.mayChangeFast)
-                .accessibilityLabel("Fast")
-                .accessibilityValue(fast ? String(localized: "On") : String(localized: "Off"))
+                ComposerFastModeButton(
+                    isOn: fast, isDisabled: !settings.mayChangeFast, color: .secondary,
+                    controlFont: AppFont.subheadline(), chevronFont: AppFont.caption2()
+                ) { change(.fast($0), context: owner) }
             }
             ContextWindowIndicatorView(snapshot: settings.usage.hasContext ? settings.usage.snapshot : nil)
                 .padding(.horizontal, 4)

@@ -291,6 +291,10 @@ struct MessageComposerView: View {
     var configurationNotice: String?
     /// The effort a Hermes host sends when the model takes less than the one picked (#1016).
     var sentReasoningEffort: String?
+    /// A Hermes session's Fast mode (#1142); nil hides the chip.
+    var fastMode: Bool?
+    /// Asks the host for the other Fast mode.
+    var onSelectFastMode: (Bool) -> Void = { _ in }
     /// A Hermes session (#1012): staged files upload when they are sent, under Bot Chat's
     /// rules. Up to eight, and Steer drops out while a response runs.
     var uploadsAttachmentsOnSend = false
@@ -970,6 +974,13 @@ struct MessageComposerView: View {
                     workspaceSelector
 
                     profileSelector
+
+                    if let fastMode {
+                        ComposerFastModeButton(
+                            isOn: fastMode, isDisabled: isConfigurationControlDisabled, color: metaControlColor,
+                            controlFont: metaControlFont, chevronFont: metaChevronFont, onSelect: onSelectFastMode
+                        )
+                    }
 
                     gitBranchPicker
                 }

@@ -2,9 +2,9 @@ import XCTest
 import Observation
 @testable import HermesMobile
 
-/// A Hermes session's goal, `/btw` and `/background` in the main chat (#1013), over #901's
-/// socket-level host. Shapes are the ones `scripts/local-hermes` returned at the
-/// `HERMES_AGENT_TESTED_SHA` pin.
+/// A Hermes session's goal, loop and heartbeat (#1142), `/btw` and `/background` in the main
+/// chat (#1013), over #901's socket-level host. Shapes are the ones `scripts/local-hermes`
+/// returned at the `HERMES_AGENT_TESTED_SHA` pin.
 @MainActor final class HermesChatSideTaskTests: XCTestCase {
     // MARK: Goal
 
@@ -142,6 +142,104 @@ import Observation
         chat.receive(event(2, "session.control.update", ["control": .object(["goal": .null, "revision": .string("")])]))
         XCTAssertNil(chat.model.currentGoal)
         XCTAssertTrue(chat.model.hasActivatedGoalCommand)
+    }
+
+    // MARK: Loop and heartbeat
+
+    /// The goal menu lists the loop and heartbeat beside the goal, each with the action its
+    /// state allows, and follows `session.control.update`. A heartbeat alone shows the menu.
+    func testLoopAndHeartbeatFollowTheSessionsControlSnapshots() async {
+        let chat = await openChat(control: Self.control(goal: "ship it", status: "active", loop: "active", heartbeat: "paused"))
+        await waitUntil("read") { !chat.sideTasks.automations.isEmpty }
+        XCTAssertEqual(chat.sideTasks.automations.map(\.kind), [.loop, .heartbeat])
+        XCTAssertEqual(chat.sideTasks.automations.map(\.action), ["loop.pause", "heartbeat.resume"])
+        XCTAssertEqual(chat.model.currentGoal?.goal, "ship it")
+
+        chat.receive(event(1, "session.control.update", ["control": Self.control(heartbeat: "active")]))
+        XCTAssertEqual(chat.sideTasks.automations.map(\.kind), [.heartbeat])
+        XCTAssertEqual(chat.sideTasks.automations.map(\.status), ["active"])
+        XCTAssertNil(chat.model.currentGoal)
+        XCTAssertTrue(chat.model.showsGoalControls, "the menu shows for a heartbeat alone")
+
+        chat.receive(event(2, "session.control.update", ["control": Self.control(heartbeat: "future")]))
+        XCTAssertEqual(chat.sideTasks.automations.map(\.action), [nil], "an unknown state offers nothing")
+    }
+
+    /// Pause waits for the confirmation, then goes out once as `session.control`, and the menu
+    /// shows the snapshot the host answers with. Cancel sends nothing.
+    func testAHeartbeatPausesAfterOneConfirmation() async throws {
+        let chat = await openChat(control: Self.control(heartbeat: "active"))
+        await waitUntil("read") { !chat.sideTasks.automations.isEmpty }
+        let heartbeat = try XCTUnwrap(chat.sideTasks.automations.first)
+        chat.host.always("session.control", .init(result: .object(["control": Self.control(heartbeat: "paused")])))
+
+        chat.sideTasks.ask(heartbeat)
+        XCTAssertEqual(chat.sideTasks.pendingAutomation, heartbeat)
+        chat.sideTasks.cancelAutomation()
+        XCTAssertNil(chat.sideTasks.pendingAutomation)
+        XCTAssertEqual(chat.writes("session.control"), [], "nothing goes out before the confirmation")
+
+        chat.sideTasks.ask(heartbeat)
+        await chat.model.confirmHermesAutomation(heartbeat)
+        XCTAssertNil(chat.sideTasks.pendingAutomation)
+        XCTAssertEqual(chat.writes("session.control"), [[
+            "session_id": .string("runtime"), "profile": .string("default"), "action": .string("heartbeat.pause")
+        ]])
+        XCTAssertEqual(chat.sideTasks.automations.map(\.status), ["paused"])
+        XCTAssertNil(chat.model.sendErrorMessage)
+    }
+
+    /// A snapshot older than the last control frame never replaces it: the attach's read and a
+    /// write's reply both lose to a `session.control.update` that arrived first.
+    func testAStaleControlSnapshotNeverReplacesANewerUpdate() async throws {
+        let chat = await openChat(control: Self.control(loop: "active"), controlFirst: [
+            event(1, "session.control.update", ["control": Self.control(loop: "active", heartbeat: "active")])
+        ])
+        await waitUntil("update") { chat.sideTasks.automations.count == 2 }
+        // The read's reply follows its frame on the socket: one more call there lands after it.
+        _ = try? await chat.turn.engine.request(.sessionControlRead(sessionID: "runtime", profile: "default"),
+                                                attempt: chat.turn.engine.generation)
+        XCTAssertEqual(chat.sideTasks.automations.map(\.kind), [.loop, .heartbeat])
+
+        let loop = try XCTUnwrap(chat.sideTasks.automations.first)
+        chat.host.next("session.control", .init(
+            result: .object(["control": Self.control(loop: "paused")]),
+            before: [event(2, "session.control.update", ["control": Self.control(loop: "paused", heartbeat: "paused")])]
+        ))
+        chat.sideTasks.ask(loop)
+        await chat.model.confirmHermesAutomation(loop)
+        XCTAssertEqual(chat.sideTasks.automations.map(\.status), ["paused", "paused"])
+    }
+
+    /// A Pause asked for before a reattach is discarded with its confirmation, never sent.
+    func testAReattachDiscardsAPendingPause() async throws {
+        let chat = await openChat(control: Self.control(loop: "active"))
+        await waitUntil("read") { !chat.sideTasks.automations.isEmpty }
+        let loop = try XCTUnwrap(chat.sideTasks.automations.first)
+        chat.sideTasks.ask(loop)
+
+        chat.model.suspendStreamForNavigation()
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+        XCTAssertNil(chat.sideTasks.pendingAutomation, "the confirmation closes")
+        // A dialog dismissed late still carries the old ask.
+        await chat.model.confirmHermesAutomation(loop)
+        XCTAssertEqual(chat.writes("session.control"), [])
+        XCTAssertEqual(chat.model.sendErrorMessage, BotFailure.stale.localizedDescription)
+    }
+
+    /// A refused Pause shows the host's reason and keeps the state the menu had.
+    func testARefusedPauseShowsTheHostsReason() async throws {
+        let chat = await openChat(control: Self.control(loop: "active"))
+        await waitUntil("read") { !chat.sideTasks.automations.isEmpty }
+        chat.host.next("session.control", .init(error: 4004, message: "loop.pause failed: no loop"))
+
+        let loop = try XCTUnwrap(chat.sideTasks.automations.first)
+        chat.sideTasks.ask(loop)
+        await chat.model.confirmHermesAutomation(loop)
+        XCTAssertEqual(chat.model.sendErrorMessage, "loop.pause failed: no loop")
+        XCTAssertEqual(chat.sideTasks.automations.map(\.status), ["active"])
+        XCTAssertEqual(chat.writes("session.control").count, 1)
     }
 
     // MARK: btw
@@ -343,10 +441,30 @@ import Observation
                  "loop": .null, "heartbeat": .null, "revision": .string("r1")])
     }
 
-    private func openChat(control: BotJSON? = nil) async -> Chat {
+    /// A control snapshot as the pin's `_snapshot_control` builds it; a nil part is cleared.
+    private static func control(goal: String? = nil, status: String = "active", loop: String? = nil,
+                                heartbeat: String? = nil) -> BotJSON {
+        let goalRow: BotJSON = goal.map {
+            .object(["title": .string($0), "status": .string(status), "turns_used": .number(0), "max_turns": .number(20)])
+        } ?? .null
+        let loopRow: BotJSON = loop.map {
+            .object(["prompt": .string("check CI"), "status": .string($0), "mode": .string("interval"),
+                     "interval_seconds": .number(600), "ticks_fired": .number(2), "deferred_by_goal": .bool(false)])
+        } ?? .null
+        let heartbeatRow: BotJSON = heartbeat.map {
+            .object(["prompt": .string("tidy the inbox"), "status": .string($0), "interval_seconds": .number(1800),
+                     "fire_count": .number(4)])
+        } ?? .null
+        return .object(["goal": goalRow, "loop": loopRow, "heartbeat": heartbeatRow, "revision": .string("r2")])
+    }
+
+    /// `controlFirst` are frames the host writes ahead of each `session.control.read` reply.
+    private func openChat(control: BotJSON? = nil, controlFirst: [BotJSON] = []) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
-        if let control { host.always("session.control.read", .init(result: .object(["control": control]))) }
+        if let control {
+            host.always("session.control.read", .init(result: .object(["control": control]), before: controlFirst))
+        }
         host.always("session.resume", .init(result: .object([
             "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
             "messages": .array([]), "info": .object(["profile_name": .string("default")])

@@ -446,7 +446,10 @@ webui; the control verbs (the host's `is_goal_control`) run mid-turn, since a go
 turns keep the session busy, and a resume's message then joins the host's queue. A 4004
 refusal keeps the host's message, a 4001 reattaches, and a typed `/goal` that fails keeps
 its draft. The goal menu reads `session.control.read`
-on each attach and every `session.control.update`. `/btw` is `prompt.btw` and works
+on each attach and every `session.control.update`, and lists the loop and heartbeat beside
+the goal (#1142): Pause or Resume, behind one confirmation, is one `session.control
+{action: "loop.pause"…}` whose reply snapshot shows unless a control frame came first, and
+a reattach discards an unconfirmed one. Without `session.control` they show only their state. `/btw` is `prompt.btw` and works
 mid-turn: its panel (the clarification's slot, collapsed to one line when a host request
 takes the slot, or full screen) shows the question, a static waiting line, then
 `btw.complete`'s text, matched by `task_id`; it never enters the transcript, and one
@@ -2156,7 +2159,10 @@ A Hermes session's composer (#1016) offers the same ladder, without `none` when
 `reasoning: false`. Effort is session-scoped: the next chat in the Profile keeps
 its own. `session.info.reasoning_effort_wire` names the level the model's route
 actually takes; the chip shows it when it differs ("XHigh · sent as High").
-`/reasoning` there refuses the display words. Personality is the opposite:
+`/reasoning` there refuses the display words. Its Fast chip (#1142) is Bot Chat's: shown
+once `session.info` reports `fast`, unless `capabilities[model].fast` is false and Fast is
+off. The attach's `session.resume` info restores effort and Fast when the controls
+reconnect. Personality is the opposite:
 `config.set {key: "personality"}` always writes the Profile's default (the host
 has no session-only personality) and also switches the session, so
 `/personality <name>` asks first and names the Profile. Its list is
