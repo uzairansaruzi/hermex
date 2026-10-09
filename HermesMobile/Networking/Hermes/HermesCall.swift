@@ -146,6 +146,13 @@ enum HermesCall: Equatable, Sendable {
     /// quick commands (which can run shell) and plugin commands, as Desktop runs them.
     case slashExec(sessionID: String, command: String)
 
+    // Git (#1115)
+    /// A commit message for `diff`, from `llm.oneshot`'s `commit_message` template at Desktop's
+    /// temperature: one stateless model call outside the conversation, on the model of the
+    /// runtime `sessionID` names when there is one, else the Profile's task backend. `avoid` is the
+    /// last suggestion, which the host is told not to repeat. Answers `{text}`.
+    case commitMessage(diff: String, recentCommits: String, avoid: String?, sessionID: String?, profile: String)
+
     // Usage
     /// The Profile's visible sessions started in the last `days` (1-365) and their messages, over
     /// at most its newest 500 sessions: `{days, sessions, messages}`, or 5017 for a store the host
@@ -308,6 +315,7 @@ enum HermesCall: Equatable, Sendable {
         case .completeSlash: return "complete.slash"
         case .slashExec: return "slash.exec"
         case .insightsGet: return "insights.get"
+        case .commitMessage: return "llm.oneshot"
         case .subagentList: return "subagent.list"
         case .subagentTail: return "subagent.tail"
         case .subagentInterrupt: return "subagent.interrupt"
@@ -450,6 +458,13 @@ enum HermesCall: Equatable, Sendable {
         case .completeSlash(let text, let sessionID): return ["text": .string(text), "session_id": .string(sessionID)]
         case .slashExec(let sessionID, let command): return ["session_id": .string(sessionID), "command": .string(command)]
         case .insightsGet(let days, let profile): return ["days": .number(Double(days)), "profile": .string(profile)]
+        case .commitMessage(let diff, let recentCommits, let avoid, let sessionID, let profile):
+            var variables: [String: BotJSON] = ["diff": .string(diff), "recent_commits": .string(recentCommits)]
+            if let avoid { variables["avoid"] = .string(avoid) }
+            var params: [String: BotJSON] = ["template": .string("commit_message"), "variables": .object(variables),
+                                             "temperature": .number(0.8), "profile": .string(profile)]
+            if let sessionID { params["session_id"] = .string(sessionID) }
+            return params
         case .subagentTail(let sessionID, let subagentID), .subagentInterrupt(let sessionID, let subagentID):
             return ["session_id": .string(sessionID), "subagent_id": .string(subagentID)]
         case .groupsList(let offset):
@@ -565,6 +580,8 @@ enum HermesCall: Equatable, Sendable {
         case .groupsList(let offset): valid = offset >= 0
         case .profileModelOptions(let profile): valid = !profile.isEmpty
         case .insightsGet(let days, let profile): valid = (1...365).contains(days) && !profile.isEmpty
+        case .commitMessage(let diff, _, let avoid, let sessionID, let profile):
+            valid = !Self.isBlank(diff) && avoid.map(Self.isBlank) != true && sessionID?.isEmpty != true && !profile.isEmpty
         case .groupsState(let roomID), .groupsDisband(let roomID): valid = BotRoomRPC.validID(roomID)
         case .groupsLog(let roomID, let sinceSeq, let limit):
             valid = BotRoomRPC.validID(roomID) && sinceSeq >= 0 && (1...Self.roomPageSize).contains(limit)

@@ -680,23 +680,92 @@ extension APIClientGitTests {
     }
 }
 
+// MARK: - Hermes writes (#1115)
+
+extension APIClientGitTests {
+    /// The host's stage, unstage and revert act on the whole tree without a `file`, so each write
+    /// names one file at the root. Only a file with something to do gets a request: stage skips a
+    /// fully staged one, unstage an unstaged one; discard unstages a staged one before reverting it.
+    @MainActor
+    func testHermesWritesNameOneFileEachAtTheRoot() async throws {
+        let git = HermesGitHost.client(cwd: HermesGitHost.repository + "/Sources") { request in
+            HermesGitHost.repositoryReply(request)
+        }
+        let edited = GitFile(path: "Sources/App.swift", status: "M", staged: false, unstaged: true, untracked: false,
+                             conflict: false, additions: 1, deletions: 0)
+        let staged = GitFile(path: "Sources/Staged.swift", status: "M", staged: true, unstaged: false, untracked: false,
+                             conflict: false, additions: 1, deletions: 0)
+        let pastTheCap = GitFile(path: "Both.swift", status: "M", staged: true, unstaged: nil, untracked: false,
+                                 conflict: false, additions: 1, deletions: 0)
+
+        _ = try await git.stage([edited, staged, pastTheCap])
+        _ = try await git.unstage([edited, staged])
+        _ = try await git.discard([edited, staged], deleteUntracked: false)
+
+        XCTAssertEqual(HermesGitHost.writes, [
+            "stage Sources/App.swift", "stage Both.swift",
+            "unstage Sources/Staged.swift",
+            "revert Sources/App.swift", "unstage Sources/Staged.swift", "revert Sources/Staged.swift"
+        ])
+    }
+
+    /// The host's revert deletes an untracked file, and one new in the index once it is unstaged:
+    /// only a confirmation that said so (`deleteUntracked`) lets those go.
+    @MainActor
+    func testAHermesDiscardDeletesNewFilesOnlyWhenConfirmed() async throws {
+        let git = HermesGitHost.client { request in HermesGitHost.repositoryReply(request) }
+        let untracked = GitFile(path: "notes.txt", status: "?", staged: false, unstaged: true, untracked: true,
+                                conflict: false, additions: 1, deletions: 0)
+        let added = GitFile(path: "New.swift", status: "A", staged: true, unstaged: false, untracked: false,
+                            conflict: false, additions: 2, deletions: 0)
+
+        _ = try await git.discard([untracked, added], deleteUntracked: false)
+        let unconfirmed = HermesGitHost.writes
+        _ = try await git.discard([untracked, added], deleteUntracked: true)
+
+        XCTAssertEqual(unconfirmed, [])
+        XCTAssertEqual(HermesGitHost.writes, ["revert notes.txt", "unstage New.swift", "revert New.swift"])
+    }
+
+    /// A refused write is 400 `{detail}` with git's stderr; it reads as the write-failure copy,
+    /// never the detail.
+    @MainActor
+    func testAHermesWriteRefusalNeverShowsGitsOutput() async throws {
+        let git = HermesGitHost.client { request in
+            request.url?.path == "/api/git/review/push"
+                ? .json(400, .object(["detail": .string("fatal: '\(HermesGitHost.repository)' rejected")]))
+                : HermesGitHost.repositoryReply(request)
+        }
+
+        do {
+            _ = try await git.push()
+            XCTFail("Expected the refusal to fail the push")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, String(localized: "Git couldn’t finish this change on your Hermes host."))
+        }
+    }
+}
+
 /// A scripted Hermes host's repository for `APIClientGitTests` and `GitWorkspaceViewModelTests`.
 enum HermesGitHost {
     static let repository = "/Users/agent/projects/app"
     private static let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                               username: "user", password: "secret")
 
-    /// A Hermes chat's repository client on a host `script` answers.
-    @MainActor static func client(cwd: String = repository,
+    /// A Hermes chat's repository client on a host `script` answers, its commit messages written
+    /// by `writeMessage`.
+    @MainActor static func client(cwd: String = repository, writeMessage: HermesGitClient.MessageWriter? = nil,
                                   _ script: @escaping (URLRequest) -> HermesHostFixture.Reply?) -> HermesGitClient {
         HermesGitClient(context: HermesWorkspaceFileClientTests.context(cwd: cwd),
-                        http: HermesConnection(connection: record, configuration: HermesHostFixture.configuration(script)))
+                        http: HermesConnection(connection: record, configuration: HermesHostFixture.configuration(script)),
+                        writeMessage: writeMessage)
     }
 
     /// The host's reply for a repository at `root` whose uncommitted changes are `rows`
     /// (`review/list`) and whose status flags are `flags` (`status.files`, capped at 200 by the host).
     static func repositoryReply(
-        _ request: URLRequest, root: String? = repository, branch: String = "main", ahead: Int = 0, behind: Int = 0,
+        _ request: URLRequest, root: String? = repository, branch: String = "main", detached: Bool = false,
+        ahead: Int = 0, behind: Int = 0,
         rows: [(path: String, added: Int, removed: Int, status: String, staged: Bool)] = [],
         flags: [(path: String, staged: Bool, unstaged: Bool, untracked: Bool, conflicted: Bool)] = []
     ) -> HermesHostFixture.Reply? {
@@ -708,7 +777,7 @@ enum HermesGitHost {
                 BotJSON.number(Double(flags.filter { $0[keyPath: flag] }.count))
             }
             return .json(200, .object([
-                "branch": .string(branch), "defaultBranch": .string("main"), "detached": .bool(false),
+                "branch": detached ? .null : .string(branch), "defaultBranch": .string("main"), "detached": .bool(detached),
                 "ahead": .number(Double(ahead)), "behind": .number(Double(behind)),
                 "staged": count(\.staged), "unstaged": count(\.unstaged), "untracked": count(\.untracked),
                 "conflicted": count(\.conflicted), "changed": .number(Double(max(rows.count, flags.count))),
@@ -724,10 +793,31 @@ enum HermesGitHost {
                 .object(["path": .string($0.path), "added": .number(Double($0.added)), "removed": .number(Double($0.removed)),
                          "status": .string($0.status), "staged": .bool($0.staged)])
             })]))
-        case "/api/git/review/diff":
+        case "/api/git/review/diff", "/api/git/file-diff":
             return .json(200, .object(["diff": .string(diffText(for: query(request, "file") ?? ""))]))
+        case "/api/git/review/rev-parse":
+            return .json(200, .object(["sha": .string(headSHA)]))
+        case "/api/git/review/commit-context":
+            return .json(200, .object(["diff": .string(contextDiff), "recent": .string(recentSubjects)]))
         default:
             return nil
+        }
+    }
+
+    static let headSHA = "abc1234def5678abc1234def5678abc1234def56"
+    static let contextDiff = diffText(for: "staged.swift")
+    static let recentSubjects = "feat(app): add the list\nfix(app): keep the row"
+
+    /// The writes sent, in order, as `stage a.swift`, `unstage (all)` or `commit "message"`, each
+    /// followed by ` path=…` unless it named the repository root.
+    @MainActor static var writes: [String] {
+        requests.filter { $0.httpMethod == "POST" }.map { request in
+            let body = HermesCronFixture.body(request)
+            let route = request.url?.lastPathComponent ?? ""
+            let detail = body["file"].text ?? body["message"].text.map { "\"\($0)\"" + (body["push"].flag == false ? "" : " push") }
+                ?? (route == "unstage" ? "(all)" : nil)
+            let root = body["path"].text == repository ? nil : "path=\(body["path"].text ?? "none")"
+            return ([route] + [detail, root].compactMap { $0 }).joined(separator: " ")
         }
     }
 

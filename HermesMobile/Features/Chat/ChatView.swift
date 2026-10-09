@@ -1281,7 +1281,7 @@ struct ChatView: View {
         GitWriteAvailability(
             isStreaming: viewModel.activeStreamID != nil,
             isViewingCachedData: viewModel.isViewingCachedData,
-            hidesWrites: !gitAvailabilityViewModel.supportsWrites
+            hidesBranchesAndSync: !gitAvailabilityViewModel.supportsBranches
         )
     }
 
@@ -1296,8 +1296,7 @@ struct ChatView: View {
             )
         case .commit:
             GitCommitView(
-                session: session,
-                server: server,
+                git: gitAvailabilityViewModel.git,
                 writesDisabled: gitWriteAvailability.writesDisabled,
                 onAPIError: onAPIError,
                 onCommitted: {
@@ -1342,7 +1341,7 @@ struct ChatView: View {
             isEnabled: !viewModel.isViewingCachedData,
             fetchDisabled: gitWriteAvailability.fetchDisabled,
             writesDisabled: gitWriteAvailability.writesDisabled,
-            hidesWrites: gitWriteAvailability.hidesWrites,
+            hidesBranchesAndSync: gitWriteAvailability.hidesBranchesAndSync,
             isRunningAction: gitAvailabilityViewModel.isRunningGitAction,
             onTap: {
                 HapticButtonHaptics.tap(isEnabled: isHapticsEnabled)
@@ -1514,14 +1513,24 @@ struct ChatView: View {
         }
     }
 
+    /// webui pushes to the configured upstream. A Hermes host pushes there too, or to origin as
+    /// the branch's new upstream when it has none (#1115), so its copy names the branch and both.
+    private var pushConfirmationMessage: String {
+        guard !gitAvailabilityViewModel.supportsBranches else {
+            return String(localized: "Push the current branch to its configured upstream remote?")
+        }
+        let branch = gitAvailabilityViewModel.currentBranchName
+        return String(localized: "Push \(branch) to its upstream remote, or to origin as a new upstream branch if it has none?")
+    }
+
     private func gitAlertPresentation(_ alert: GitChatAlert) -> Alert {
         switch alert {
         case .confirmRemote(let action):
             return Alert(
                 title: Text(action == .pull ? "Pull Remote Changes?" : "Push Local Commits?"),
                 message: Text(action == .pull
-                    ? "Pull uses fast-forward only and will not create a merge commit."
-                    : "Push the current branch to its configured upstream remote?"),
+                    ? String(localized: "Pull uses fast-forward only and will not create a merge commit.")
+                    : pushConfirmationMessage),
                 primaryButton: .default(Text(action == .pull ? "Pull" : "Push")) {
                     Task { await performGitRemoteAction(action) }
                 },
@@ -2225,7 +2234,8 @@ struct ChatView: View {
     }
 
     /// A fresh Git state for the chat's repository: webui's session, or a Hermes chat's folder
-    /// while Files can read it (#1114), which has no writes. Without one, Git stays hidden.
+    /// while Files can read it (#1114), which has no branches, fetch or pull. Without one, Git
+    /// stays hidden.
     private func loadInitialGitAvailability() async {
         let availabilityViewModel = if isHermesSession {
             GitWorkspaceAvailabilityViewModel(

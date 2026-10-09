@@ -1156,8 +1156,8 @@ struct MessageComposerView: View {
     private var gitBranchPicker: some View {
         // One "Git Actions" toggle covers every git control in chat (#189), so the
         // branch chip goes with the toolbar menu rather than lingering alone. It switches
-        // branches, a write, so a read-only repository (a Hermes chat's, #1114) has none.
-        if showsGitControls, gitViewModel.hasRepository, gitViewModel.supportsWrites {
+        // branches through webui's routes, so a Hermes chat (#1114) has none.
+        if showsGitControls, gitViewModel.hasRepository, gitViewModel.supportsBranches {
             GitBranchPickerButton(
                 currentBranch: gitViewModel.currentBranchName,
                 branches: gitViewModel.branches,

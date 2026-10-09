@@ -68,8 +68,8 @@ final class GitWorkspaceViewModel {
 /// Lightweight toolbar probe for whether a chat's workspace is a git repository.
 /// The toolbar stays hidden unless the server confirms `is_git == true`.
 ///
-/// Reads go through `git`; writes (branches, commit, fetch, pull, push) go to webui's session
-/// routes and need `session`'s ID, so a Hermes chat, which has none, has no writes (#1114).
+/// Reads, commits and pushes go through `git` (#1114, #1115). Branches, fetch and pull go to
+/// webui's session routes and need `session`'s ID, so a Hermes chat, which has none, has none.
 @Observable
 final class GitWorkspaceAvailabilityViewModel {
     private let session: SessionSummary
@@ -106,8 +106,12 @@ final class GitWorkspaceAvailabilityViewModel {
         self.init(session: session, server: server, git: WebUIGitClient(session: session, apiClient: client), apiClient: client)
     }
 
-    /// False on a Hermes chat: every write route is webui's and takes its session ID.
-    var supportsWrites: Bool { session.sessionId != nil }
+    /// Whether the menu can stage, commit and push: a repository client to write through.
+    var supportsWrites: Bool { git != nil }
+
+    /// Whether branches, fetch and pull are available: webui's routes, which take its session
+    /// ID. False on a Hermes chat.
+    var supportsBranches: Bool { session.sessionId != nil }
 
     @MainActor
     func loadIfNeeded() async {
@@ -227,17 +231,13 @@ final class GitWorkspaceAvailabilityViewModel {
 
     @MainActor
     func performRemoteAction(_ action: GitRemoteAction) async -> Bool {
-        guard let sessionID = session.sessionId, runningRemoteAction == nil else { return false }
+        guard let call = remoteCall(action), runningRemoteAction == nil else { return false }
         runningRemoteAction = action
         actionErrorMessage = nil
         defer { runningRemoteAction = nil }
 
         do {
-            let response: GitRemoteActionResponse = switch action {
-            case .fetch: try await apiClient.gitFetch(sessionID: sessionID)
-            case .pull: try await apiClient.gitPull(sessionID: sessionID)
-            case .push: try await apiClient.gitPush(sessionID: sessionID)
-            }
+            let response = try await call()
             status = response.status ?? status
             lastActionMessage = response.message
             await loadBranches()
@@ -245,7 +245,22 @@ final class GitWorkspaceAvailabilityViewModel {
             return response.ok != false
         } catch {
             actionErrorMessage = friendlyMessage(for: error)
+            await refreshAfterExternalMutation()
             return false
+        }
+    }
+
+    /// Push through the repository client; fetch and pull through webui's session routes.
+    private func remoteCall(_ action: GitRemoteAction) -> (() async throws -> GitRemoteActionResponse)? {
+        switch action {
+        case .push:
+            guard let git else { return nil }
+            return { try await git.push() }
+        case .fetch, .pull:
+            guard let sessionID = session.sessionId else { return nil }
+            let apiClient = apiClient
+            return action == .fetch ? { try await apiClient.gitFetch(sessionID: sessionID) }
+                : { try await apiClient.gitPull(sessionID: sessionID) }
         }
     }
 
@@ -256,17 +271,15 @@ final class GitWorkspaceAvailabilityViewModel {
     /// state for the inline button while it runs.
     @MainActor
     func quickCommit(push: Bool, onPhase: ((GitCommitPhase) -> Void)? = nil) async -> GitQuickCommitOutcome {
-        guard let sessionID = session.sessionId, commitPhase == nil else { return .failure }
+        guard let git, commitPhase == nil else { return .failure }
 
-        let pathsToStage = (status?.trackedFiles ?? []).compactMap { file -> String? in
-            let path = file.path ?? file.workspacePath
-            let trimmed = path?.trimmingCharacters(in: .whitespacesAndNewlines)
-            return (trimmed?.isEmpty == false) ? trimmed : nil
+        let filesToStage = (status?.trackedFiles ?? []).filter {
+            ($0.path ?? $0.workspacePath)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         }
-        guard !pathsToStage.isEmpty else { return .nothingToCommit }
+        guard !filesToStage.isEmpty else { return .nothingToCommit }
 
         // The server caps git status at 500 changed files (STATUS_FILE_LIMIT) and flags the
-        // list as `truncated`. `pathsToStage` would then cover only the first 500 files, so a
+        // list as `truncated`. `filesToStage` would then cover only the first 500 files, so a
         // one-tap commit would silently leave files 501+ uncommitted while reporting success.
         // Block the quick-commit path entirely in that case rather than commit a partial set;
         // a >500-file commit needs a server-side "stage all" that doesn't exist yet.
@@ -282,9 +295,9 @@ final class GitWorkspaceAvailabilityViewModel {
         do {
             // Stage everything first so this one-tap action commits all local changes,
             // then generate the message from that staged diff.
-            _ = try await apiClient.gitStage(sessionID: sessionID, paths: pathsToStage)
+            _ = try await git.stage(filesToStage)
 
-            let suggestion = try await apiClient.gitCommitMessage(sessionID: sessionID)
+            let suggestion = try await git.suggestMessage(for: nil, avoiding: nil)
             let message = (suggestion.message ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !message.isEmpty else {
                 actionErrorMessage = String(localized: "No commit message could be generated.")
@@ -292,7 +305,7 @@ final class GitWorkspaceAvailabilityViewModel {
             }
 
             setCommitPhase(.committing, notify: onPhase)
-            let commit = try await apiClient.gitCommit(sessionID: sessionID, message: message)
+            let commit = try await git.commit(message: message, only: nil)
             status = commit.resolvedStatus ?? status
 
             // The commit has already landed on the server. A push failure from here must
@@ -303,7 +316,7 @@ final class GitWorkspaceAvailabilityViewModel {
             if push {
                 setCommitPhase(.pushing, notify: onPhase)
                 do {
-                    let pushResponse = try await apiClient.gitPush(sessionID: sessionID)
+                    let pushResponse = try await git.push()
                     status = pushResponse.status ?? status
                     lastActionMessage = pushResponse.message
                     didPush = pushResponse.ok != false
@@ -326,6 +339,7 @@ final class GitWorkspaceAvailabilityViewModel {
             ))
         } catch {
             actionErrorMessage = friendlyMessage(for: error)
+            await refreshAfterExternalMutation()
             return .failure
         }
     }
@@ -336,7 +350,8 @@ final class GitWorkspaceAvailabilityViewModel {
     }
 
     /// Re-fetch info, status and branches after the advanced staging sheet mutates the
-    /// working tree, so the toolbar badge and Changes row stay in sync.
+    /// working tree, or a write here fails partway, so the toolbar badge and Changes row stay
+    /// in sync.
     @MainActor
     func refreshAfterExternalMutation() async {
         await refreshGitInfo()
@@ -469,9 +484,9 @@ enum GitQuickCommitOutcome: Equatable {
 struct GitWriteAvailability: Equatable {
     let isStreaming: Bool
     let isViewingCachedData: Bool
-    /// A Hermes chat's repository is read-only (#1114): every write entry is hidden, not
-    /// disabled. Fetch, Pull and New branch included.
-    var hidesWrites = false
+    /// A Hermes chat's repository has no branch switching, fetch or pull (#1114, #1115): those
+    /// entries are hidden, not disabled.
+    var hidesBranchesAndSync = false
 
     var writesDisabled: Bool { isStreaming || isViewingCachedData }
     var fetchDisabled: Bool { isViewingCachedData }
@@ -501,7 +516,7 @@ struct GitToolbarPresentation: Equatable {
     var changesAreEnabled: Bool { !isLoading && (status != nil || statusFailed) }
 
     /// The branch, with the Changes header's "↑ahead ↓behind" once it has moved from its
-    /// upstream, for the read-only menu, which has no branch picker. Nil without a branch.
+    /// upstream, for a menu without a branch picker (a Hermes chat's). Nil without a branch.
     var branchSummary: String? {
         guard hasRepository, let branch = info?.branch ?? status?.branch, !branch.isEmpty else { return nil }
         let ahead = info?.ahead ?? status?.ahead ?? 0
@@ -520,16 +535,17 @@ enum GitCommitOperation: Equatable {
     case suggesting
 }
 
-/// View model for the advanced staging & commit sheet (issue #315, Slice C).
+/// View model for the advanced staging & commit sheet (issue #315, Slice C; Hermes #1115).
 ///
-/// Self-contained per session: it loads its own status so the sheet always reflects the
-/// current working tree, and owns the file selection, commit-message field, and the
-/// stage / unstage / discard / suggest / commit operations.
+/// Self-contained per repository client: it loads its own status so the sheet always reflects
+/// the current working tree, and owns the file selection, commit-message field, and the
+/// stage / unstage / discard / suggest / commit operations. A failed write reads the status
+/// again, since it can have changed part of the tree.
 @MainActor
 @Observable
 final class GitCommitViewModel {
-    private let session: SessionSummary
-    private let apiClient: APIClient
+    /// Nil for a webui session without an ID.
+    private let git: (any GitDataClient)?
 
     private(set) var status: GitStatus?
     private(set) var isLoading = false
@@ -547,10 +563,16 @@ final class GitCommitViewModel {
     private(set) var lastCommitSHA: String?
     /// Bumps after every successful commit so the host can refresh the toolbar badge.
     private(set) var committedRevision = 0
+    /// The last suggested message, which Regenerate asks the client to avoid.
+    private var lastSuggestion: String?
 
-    init(session: SessionSummary, server: URL, apiClient: APIClient? = nil) {
-        self.session = session
-        self.apiClient = apiClient ?? APIClient(baseURL: server)
+    init(git: (any GitDataClient)?) {
+        self.git = git
+    }
+
+    /// A webui session's repository.
+    convenience init(session: SessionSummary, server: URL, apiClient: APIClient? = nil) {
+        self.init(git: WebUIGitClient(session: session, apiClient: apiClient ?? APIClient(baseURL: server)))
     }
 
     var trackedFiles: [GitFile] { status?.trackedFiles ?? [] }
@@ -575,21 +597,14 @@ final class GitCommitViewModel {
 
     func clearActionError() { actionErrorMessage = nil }
 
-    /// Server paths for the current selection, or all changed files when nothing is
-    /// selected (the "operate on everything" default for the batch buttons).
-    private var targetPaths: [String] {
-        let files = hasSelection ? trackedFiles.filter { selectedPaths.contains($0.id) } : trackedFiles
-        return files.compactMap(serverPath)
-    }
-
-    private func serverPath(_ file: GitFile) -> String? {
-        let path = file.path ?? file.workspacePath
-        let trimmed = path?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (trimmed?.isEmpty == false) ? trimmed : nil
+    /// The current selection, or all changed files when nothing is selected (the "operate on
+    /// everything" default for the batch buttons).
+    private var targetFiles: [GitFile] {
+        hasSelection ? trackedFiles.filter { selectedPaths.contains($0.id) } : trackedFiles
     }
 
     func load() async {
-        guard let sessionID = session.sessionId else {
+        guard let git else {
             loadErrorMessage = String(localized: "Session ID is missing.")
             return
         }
@@ -597,7 +612,7 @@ final class GitCommitViewModel {
         loadErrorMessage = nil
         lastError = nil
         do {
-            status = try await apiClient.gitStatus(sessionID: sessionID).git
+            status = try await git.status()
             pruneSelectionToCurrentFiles()
         } catch {
             lastError = error
@@ -607,56 +622,39 @@ final class GitCommitViewModel {
     }
 
     func stageSelectedOrAll() async {
-        await mutate(.staging, paths: targetPaths) { sessionID, paths in
-            try await self.apiClient.gitStage(sessionID: sessionID, paths: paths)
-        }
+        await mutate(.staging, files: targetFiles) { git, files in try await git.stage(files) }
     }
 
     func unstageSelectedOrAll() async {
-        await mutate(.unstaging, paths: targetPaths) { sessionID, paths in
-            try await self.apiClient.gitUnstage(sessionID: sessionID, paths: paths)
-        }
+        await mutate(.unstaging, files: targetFiles) { git, files in try await git.unstage(files) }
     }
 
+    /// Discards the selection, or every change. The client unstages staged targets first so the
+    /// index is reverted too, as the destructive confirmation says.
     func discardSelectedOrAll(deleteUntracked: Bool) async {
-        let targets = hasSelection ? trackedFiles.filter { selectedPaths.contains($0.id) } : trackedFiles
-        let targetIDs = Set(targets.map(\.id))
-        let allPaths = targets.compactMap(serverPath)
-        let stagedPaths = targets.filter { $0.staged == true }.compactMap(serverPath)
-
-        await mutate(.discarding, paths: allPaths) { sessionID, paths in
-            // The server's discard only runs `git restore --worktree`, which leaves the
-            // index untouched — so staged changes would survive a "discard". Unstage the
-            // staged targets first so discarding actually reverts them, matching the
-            // destructive confirmation copy. (A staged-new file then becomes untracked and
-            // is removed via deleteUntracked, which the sheet's confirmation accounts for.)
-            if !stagedPaths.isEmpty {
-                _ = try await self.apiClient.gitUnstage(sessionID: sessionID, paths: stagedPaths)
-            }
-            return try await self.apiClient.gitDiscard(sessionID: sessionID, paths: paths, deleteUntracked: deleteUntracked)
+        let targets = targetFiles
+        await mutate(.discarding, files: targets) { git, files in
+            try await git.discard(files, deleteUntracked: deleteUntracked)
         }
-        if actionErrorMessage == nil { selectedPaths.subtract(targetIDs) }
+        if actionErrorMessage == nil { selectedPaths.subtract(targets.map(\.id)) }
     }
 
     /// Generate a message from the selection (or whole staged diff). Read-only: works
-    /// even with the destructive flag off and during an active stream.
+    /// even with the destructive flag off and during an active stream. Again, it asks for a
+    /// different message than the last one.
     func suggestMessage() async {
-        guard let sessionID = session.sessionId, busyOperation == nil else { return }
+        guard let git, busyOperation == nil else { return }
         busyOperation = .suggesting
         actionErrorMessage = nil
         defer { busyOperation = nil }
         do {
-            let response: GitCommitMessageResponse
-            if hasSelection {
-                response = try await apiClient.gitCommitMessageSelected(sessionID: sessionID, paths: targetPaths)
-            } else {
-                response = try await apiClient.gitCommitMessage(sessionID: sessionID)
-            }
+            let response = try await git.suggestMessage(for: hasSelection ? targetFiles : nil, avoiding: lastSuggestion)
             let suggested = (response.message ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             if suggested.isEmpty {
                 actionErrorMessage = String(localized: "No commit message could be generated.")
             } else {
                 message = suggested
+                lastSuggestion = suggested
                 messageWasTruncated = response.truncated == true
             }
         } catch {
@@ -666,25 +664,21 @@ final class GitCommitViewModel {
 
     /// Commit all staged changes with the current message. Returns `true` on success.
     func commit(push: Bool) async -> Bool {
-        await runCommit(push: push) { sessionID, message in
-            try await self.apiClient.gitCommit(sessionID: sessionID, message: message)
-        }
+        await runCommit(push: push) { git, message in try await git.commit(message: message, only: nil) }
     }
 
-    /// Commit only the selected paths via `commit-selected`. Returns `true` on success.
+    /// Commit only the selected paths. Returns `true` on success.
     func commitSelected(push: Bool) async -> Bool {
-        let selected = targetPaths
+        let selected = targetFiles
         guard !selected.isEmpty else { return false }
-        return await runCommit(push: push) { sessionID, message in
-            try await self.apiClient.gitCommitSelected(sessionID: sessionID, message: message, paths: selected)
-        }
+        return await runCommit(push: push) { git, message in try await git.commit(message: message, only: selected) }
     }
 
     private func runCommit(
         push: Bool,
-        _ commitCall: @escaping (String, String) async throws -> GitCommitResponse
+        _ commitCall: @escaping (any GitDataClient, String) async throws -> GitCommitResponse
     ) async -> Bool {
-        guard let sessionID = session.sessionId, busyOperation == nil else { return false }
+        guard let git, busyOperation == nil else { return false }
         let messageToSend = trimmedMessage
         guard !messageToSend.isEmpty else {
             actionErrorMessage = String(localized: "Enter a commit message first.")
@@ -694,7 +688,7 @@ final class GitCommitViewModel {
         actionErrorMessage = nil
         defer { busyOperation = nil }
         do {
-            let response = try await commitCall(sessionID, messageToSend)
+            let response = try await commitCall(git, messageToSend)
             status = response.resolvedStatus ?? status
             lastCommitSHA = response.shortSHA
             // The commit has already landed. If a requested push then fails, still run the
@@ -702,7 +696,7 @@ final class GitCommitViewModel {
             // refreshes the toolbar) and surface the push error in the sheet banner.
             if push {
                 do {
-                    let pushResponse = try await apiClient.gitPush(sessionID: sessionID)
+                    let pushResponse = try await git.push()
                     status = pushResponse.status ?? status
                 } catch {
                     // The commit already landed; only the push failed. Phrase it as a
@@ -713,31 +707,41 @@ final class GitCommitViewModel {
             }
             message = ""
             messageWasTruncated = false
+            lastSuggestion = nil
             clearSelection()
             committedRevision += 1
             return true
         } catch {
             actionErrorMessage = gitWriteFriendlyMessage(for: error)
+            await reloadAfterFailedWrite(git)
             return false
         }
     }
 
     private func mutate(
         _ operation: GitCommitOperation,
-        paths: [String],
-        _ call: @escaping (String, [String]) async throws -> GitMutationResponse
+        files: [GitFile],
+        _ call: @escaping (any GitDataClient, [GitFile]) async throws -> GitStatus?
     ) async {
-        guard let sessionID = session.sessionId, busyOperation == nil, !paths.isEmpty else { return }
+        guard let git, busyOperation == nil, !files.isEmpty else { return }
         busyOperation = operation
         actionErrorMessage = nil
         defer { busyOperation = nil }
         do {
-            let response = try await call(sessionID, paths)
-            status = response.resolvedStatus ?? status
+            status = try await call(git, files) ?? status
             pruneSelectionToCurrentFiles()
         } catch {
             actionErrorMessage = gitWriteFriendlyMessage(for: error)
+            await reloadAfterFailedWrite(git)
         }
+    }
+
+    /// The status after a write that failed, which may have changed part of the tree. A failed
+    /// read keeps the last one.
+    private func reloadAfterFailedWrite(_ git: any GitDataClient) async {
+        guard let refreshed = try? await git.status() else { return }
+        status = refreshed
+        pruneSelectionToCurrentFiles()
     }
 
     private func pruneSelectionToCurrentFiles() {

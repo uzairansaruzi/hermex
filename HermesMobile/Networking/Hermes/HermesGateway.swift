@@ -451,19 +451,20 @@ private extension HermesCall {
     var isCancellationSafe: Bool {
         switch self {
         case .fileAttach, .completePath, .completeFolder, .completeSlash, .subagentList, .subagentTail,
-             .sessionActiveList, .sessionMostRecent, .profilesList, .profileModelOptions, .projectsTree: return true
+             .sessionActiveList, .sessionMostRecent, .profilesList, .profileModelOptions, .projectsTree,
+             .commitMessage: return true
         default: return false
         }
     }
 
     /// Optional reads, and slash commands, whose timeout fails only that request: a slow
     /// command must never end its chat's connection, nor a Hermes chat's slow `@` lookup
-    /// (#1113). Any other call that times out ends its screen's connection; the socket stays
-    /// for the others.
+    /// (#1113) or commit message (#1115). Any other call that times out ends its screen's
+    /// connection; the socket stays for the others.
     var timesOutLocally: Bool {
         switch self {
         case .subagentList, .subagentTail, .sessionActiveList, .sessionMostRecent, .completeSlash, .slashExec,
-             .profileModelOptions, .projectsTree, .completeFolder: return true
+             .profileModelOptions, .projectsTree, .completeFolder, .commitMessage: return true
         case .completePath(_, _, _, let timesOutLocally): return timesOutLocally
         default: return false
         }
@@ -472,10 +473,12 @@ private extension HermesCall {
     /// How long a reply may take. A slash command may run in the host's slash worker, which
     /// allows it 45 s, so `slash.exec` waits twice the usual deadline. A compaction asks the
     /// model for its summary, so `session.compress` (#1050) waits as long as Desktop does
-    /// (`SESSION_COMPRESS_TIMEOUT_MS`), past the host's own 630 s cap.
+    /// (`SESSION_COMPRESS_TIMEOUT_MS`), past the host's own 630 s cap. A commit message (#1115)
+    /// waits the two minutes webui's does: the host gives its model call 60 s, on a cold tunnel.
     func deadline(_ standard: Duration) -> Duration {
         switch self {
         case .slashExec: return standard * 2
+        case .commitMessage: return .seconds(120)
         case .sessionCompress: return .seconds(660)
         default: return standard
         }

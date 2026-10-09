@@ -5,9 +5,10 @@ struct GitActionsMenuButton: View {
     let isEnabled: Bool
     let fetchDisabled: Bool
     let writesDisabled: Bool
-    /// Leaves only the branch and Changes in the menu, for a read-only repository
-    /// (`GitWriteAvailability.hidesWrites`), whose branch the composer's picker doesn't show.
-    var hidesWrites = false
+    /// Shows the branch as a row and leaves out Fetch and Pull, for a repository without
+    /// branches or sync (`GitWriteAvailability.hidesBranchesAndSync`), whose branch the
+    /// composer's picker doesn't show.
+    var hidesBranchesAndSync = false
     let isRunningAction: Bool
     let onTap: () -> Void
     let onChanges: () -> Void
@@ -24,7 +25,7 @@ struct GitActionsMenuButton: View {
 
     var body: some View {
         Menu {
-            if hidesWrites, let branch = presentation.branchSummary {
+            if hidesBranchesAndSync, let branch = presentation.branchSummary {
                 Section {
                     Label(branch, systemImage: "arrow.triangle.branch")
                 }
@@ -36,15 +37,13 @@ struct GitActionsMenuButton: View {
                 }
                 .disabled(!presentation.changesAreEnabled)
 
-                if !hidesWrites {
-                    Button(action: onStageEdit) {
-                        Label("Stage Changes…", systemImage: "checklist")
-                    }
-                    .disabled(!presentation.changesAreEnabled || !hasChanges)
+                Button(action: onStageEdit) {
+                    Label("Stage Changes…", systemImage: "checklist")
                 }
+                .disabled(!presentation.changesAreEnabled || !hasChanges)
             }
 
-            if !hidesWrites { writeSections }
+            writeSections
         } label: {
             Image(systemName: "arrow.triangle.branch")
                 .frame(width: 24, height: 24)
@@ -75,16 +74,18 @@ struct GitActionsMenuButton: View {
             .disabled(writesDisabled || isRunningAction)
         }
 
-        Section("Update") {
-            HapticButton(feedbackStyle: .medium, action: onFetch) {
-                Label("Fetch", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
-            }
-            .disabled(fetchDisabled || isRunningAction)
+        if !hidesBranchesAndSync {
+            Section("Update") {
+                HapticButton(feedbackStyle: .medium, action: onFetch) {
+                    Label("Fetch", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
+                }
+                .disabled(fetchDisabled || isRunningAction)
 
-            HapticButton(feedbackStyle: .medium, action: onPull) {
-                Label("Pull", systemImage: "arrow.down.circle")
+                HapticButton(feedbackStyle: .medium, action: onPull) {
+                    Label("Pull", systemImage: "arrow.down.circle")
+                }
+                .disabled(writesDisabled || isRunningAction)
             }
-            .disabled(writesDisabled || isRunningAction)
         }
     }
 

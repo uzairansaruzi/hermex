@@ -1,9 +1,9 @@
 import Foundation
 
-/// The repository reads one chat's Git menu, Changes sheet, diffs and turn-changes card go
-/// through (#1114): webui's session routes (`WebUIGitClient`) or a Hermes host's repository
-/// routes (`HermesGitClient`). Writes are webui-only and stay on `APIClient`. File paths are
-/// repository-relative, as `GitFile.path` carries them.
+/// The repository one chat's Git menu, Changes sheet, commit sheet, diffs and turn-changes card
+/// read (#1114) and change (#1115): webui's session routes (`WebUIGitClient`) or a Hermes host's
+/// repository routes (`HermesGitClient`). Branches, fetch and pull are webui-only and stay on
+/// `APIClient`. File paths are repository-relative, as `GitFile.path` carries them.
 protocol GitDataClient: Sendable {
     /// The toolbar's badge data; nil, or `isGit == false`, outside a repository.
     func info() async throws -> GitInfo?
@@ -13,6 +13,18 @@ protocol GitDataClient: Sendable {
     func diff(for file: GitFile) async throws -> GitDiff?
     /// The row path a turn's tool names a file by, for the turn-changes card's join.
     @MainActor func rowPath(forToolPath path: String) -> String
+
+    // Writes. Each answers the status after it when it has one.
+    func stage(_ files: [GitFile]) async throws -> GitStatus?
+    func unstage(_ files: [GitFile]) async throws -> GitStatus?
+    /// Returns the files to HEAD, deleting untracked and newly added ones when `deleteUntracked`.
+    func discard(_ files: [GitFile], deleteUntracked: Bool) async throws -> GitStatus?
+    /// Commits what is staged, or only `files` when they are named.
+    func commit(message: String, only files: [GitFile]?) async throws -> GitCommitResponse
+    func push() async throws -> GitRemoteActionResponse
+    /// A suggested message for what is staged, or for `files`. `previous` is the last suggestion,
+    /// which a client that can ask for a different one avoids.
+    func suggestMessage(for files: [GitFile]?, avoiding previous: String?) async throws -> GitCommitMessageResponse
 }
 
 extension GitDataClient {
@@ -42,6 +54,47 @@ struct WebUIGitClient: GitDataClient {
 
     func diff(for file: GitFile) async throws -> GitDiff? {
         try await apiClient.gitDiff(sessionID: sessionID, path: file.displayPath, kind: file.preferredDiffKind).diff
+    }
+
+    func stage(_ files: [GitFile]) async throws -> GitStatus? {
+        try await apiClient.gitStage(sessionID: sessionID, paths: Self.paths(files)).resolvedStatus
+    }
+
+    func unstage(_ files: [GitFile]) async throws -> GitStatus? {
+        try await apiClient.gitUnstage(sessionID: sessionID, paths: Self.paths(files)).resolvedStatus
+    }
+
+    /// webui's discard only runs `git restore --worktree`, which leaves the index untouched, so
+    /// staged targets are unstaged first for the discard to revert them. A staged-new file then
+    /// becomes untracked and goes with `deleteUntracked`, which the confirmation accounts for.
+    func discard(_ files: [GitFile], deleteUntracked: Bool) async throws -> GitStatus? {
+        let staged = Self.paths(files.filter { $0.staged == true })
+        if !staged.isEmpty { _ = try await apiClient.gitUnstage(sessionID: sessionID, paths: staged) }
+        return try await apiClient.gitDiscard(sessionID: sessionID, paths: Self.paths(files), deleteUntracked: deleteUntracked)
+            .resolvedStatus
+    }
+
+    func commit(message: String, only files: [GitFile]?) async throws -> GitCommitResponse {
+        guard let files else { return try await apiClient.gitCommit(sessionID: sessionID, message: message) }
+        return try await apiClient.gitCommitSelected(sessionID: sessionID, message: message, paths: Self.paths(files))
+    }
+
+    func push() async throws -> GitRemoteActionResponse {
+        try await apiClient.gitPush(sessionID: sessionID)
+    }
+
+    /// webui has no way to ask for a different message, so `previous` goes unused.
+    func suggestMessage(for files: [GitFile]?, avoiding previous: String?) async throws -> GitCommitMessageResponse {
+        guard let files else { return try await apiClient.gitCommitMessage(sessionID: sessionID) }
+        return try await apiClient.gitCommitMessageSelected(sessionID: sessionID, paths: Self.paths(files))
+    }
+
+    /// The server paths for `files`, skipping any without one.
+    private static func paths(_ files: [GitFile]) -> [String] {
+        files.compactMap { file in
+            let trimmed = (file.path ?? file.workspacePath)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed?.isEmpty == false ? trimmed : nil
+        }
     }
 }
 

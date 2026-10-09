@@ -436,11 +436,24 @@ struct HermesChatTranscript: Equatable {
         return HermesWorkspaceFileClient(context: workspace, http: http)
     }
 
-    /// The repository holding `workspace` (#1114), on this chat's connection. Git reads it only on a
-    /// local backend, as Files does.
+    /// The repository holding `workspace` (#1114), on this chat's connection, its commit messages
+    /// written on this chat's model (#1115). Git reads it only on a local backend, as Files does.
     var workspaceGit: HermesGitClient? {
         guard let workspace, let http = (engine.wire as? BotClient)?.http else { return nil }
-        return HermesGitClient(context: workspace, http: http)
+        return HermesGitClient(context: workspace, http: http) { [weak self] diff, recent, avoid in
+            guard let self else { throw BotFailure.stale }
+            return try await self.commitMessage(diff: diff, recent: recent, avoid: avoid)
+        }
+    }
+
+    /// A commit message for `diff` from the host's one-shot model call, on the attached runtime's
+    /// model. Throws `.stale` while detached, and for a reply that lands after a reattach.
+    func commitMessage(diff: String, recent: String, avoid: String?) async throws -> String {
+        guard engine.connectionState == .connected else { throw BotFailure.stale }
+        let reply = try await engine.request(.commitMessage(diff: diff, recentCommits: recent, avoid: avoid,
+                                                            sessionID: engine.runtime, profile: engine.target.profile),
+                                             attempt: engine.generation)
+        return reply["text"].text ?? ""
     }
 
     /// One query's rows for the composer's `@` panel and its `@path` check (#1113), as Bot Chat
