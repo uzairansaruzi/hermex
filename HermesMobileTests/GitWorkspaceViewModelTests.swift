@@ -1546,6 +1546,111 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesGitHost.writes, ["stage a.swift", "stage c.txt"])
     }
 
+    // MARK: Review fixes, round 2
+
+    /// Commit Selected clears the whole index and promises to put back every staged file, so each
+    /// one it remembers must name one file. The host trims a tracked file's name, so ` a.txt` and
+    /// `a.txt` both list as `a.txt`: staging that path again couldn't reach both, and the
+    /// sequence is refused before it changes anything.
+    @MainActor
+    func testAHermesCommitSelectedRefusesStagedFilesItCouldNotPutBack() async throws {
+        let sheet = await hermesCommitSheet { request in
+            HermesGitHost.repositoryReply(request, rows: [
+                ("a.txt", 1, 0, "M", true), ("a.txt", 1, 0, "M", true), ("c.txt", 1, 0, "M", false)
+            ], flags: [("a.txt", true, false, false, false), ("c.txt", false, true, false, false)])
+        }
+        sheet.toggleSelection(try XCTUnwrap(sheet.trackedFiles.first { $0.path == "c.txt" }))
+        sheet.message = "feat(app): add c"
+
+        let committed = await sheet.commitSelected(push: false)
+
+        XCTAssertFalse(committed)
+        XCTAssertEqual(sheet.actionErrorMessage, String(localized: "Git couldn’t finish this change on your Hermes host."))
+        XCTAssertEqual(HermesGitHost.writes, [])
+    }
+
+    /// A Commit Selected whose first reset reaches the host but whose reply is lost may have
+    /// cleared the index: it puts the staged files back before it reports the failure.
+    @MainActor
+    func testAHermesCommitSelectedPutsTheStagedFilesBackWhenTheResetsReplyIsLost() async throws {
+        nonisolated(unsafe) var bStaged = true
+        nonisolated(unsafe) var resets = 0
+        let sheet = await hermesCommitSheet { request in
+            let body = HermesCronFixture.body(request)
+            switch (request.url?.path, body["file"].text) {
+            case ("/api/git/review/unstage", nil):
+                resets += 1
+                bStaged = false
+                return resets == 1 ? .fail(URLError(.networkConnectionLost)) : .json(200, .object(["ok": .bool(true)]))
+            case ("/api/git/review/stage", ":(literal)b.swift"):
+                bStaged = true
+                return .json(200, .object(["ok": .bool(true)]))
+            default:
+                return HermesGitHost.repositoryReply(request, rows: [("a.swift", 1, 0, "M", false), ("b.swift", 2, 1, "M", bStaged)],
+                                                     flags: [("a.swift", false, true, false, false), ("b.swift", bStaged, !bStaged, false, false)])
+            }
+        }
+        sheet.toggleSelection(sheet.trackedFiles[0])
+        sheet.message = "feat(app): add a"
+
+        let committed = await sheet.commitSelected(push: false)
+
+        XCTAssertFalse(committed)
+        XCTAssertEqual(HermesGitHost.writes, ["unstage (all)", "unstage (all)", "stage b.swift"])
+        XCTAssertTrue(bStaged, "The staged file is staged again")
+        XCTAssertNotEqual(sheet.actionErrorMessage,
+                          String(localized: "Git couldn’t finish this change, and the staged files couldn’t be restored."))
+        XCTAssertNotNil(sheet.actionErrorMessage)
+    }
+
+    /// A quick commit still running when the chat leaves the folder (`retire()`) finishes without
+    /// a result to show: no later phase, no push, and nothing for the toast.
+    @MainActor
+    func testAHermesQuickCommitFinishingAfterAFolderChangeShowsNothing() async throws {
+        let git = HermesGitHost.client(writeMessage: { _, _, _ in "chore: tidy" }) { request in
+            request.url?.path == "/api/git/review/commit" ? .park : Self.threeChanges(request)
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(
+            session: SessionSummary(), server: URL(string: "https://webui.example")!, git: git
+        )
+        await availability.load()
+        HermesHostFixture.onPark = { Task { @MainActor in
+            availability.retire()
+            HermesHostFixture.releaseParked()
+        } }
+        var phases: [GitCommitPhase] = []
+
+        let outcome = await availability.quickCommit(push: true) { phases.append($0) }
+
+        XCTAssertEqual(outcome, .retired)
+        XCTAssertEqual(phases, [.generatingMessage, .committing])
+        XCTAssertNil(availability.actionErrorMessage)
+        XCTAssertEqual(HermesGitHost.writes, ["stage a.swift", "stage c.txt", #"commit "chore: tidy""#])
+    }
+
+    /// A push still running when the chat leaves the folder finishes without a result to show.
+    @MainActor
+    func testAHermesPushFinishingAfterAFolderChangeShowsNothing() async throws {
+        let git = HermesGitHost.client { request in
+            request.url?.path == "/api/git/review/push" ? .park : Self.threeChanges(request)
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(
+            session: SessionSummary(), server: URL(string: "https://webui.example")!, git: git
+        )
+        await availability.load()
+        HermesHostFixture.onPark = { Task { @MainActor in
+            availability.retire()
+            HermesHostFixture.releaseParked(.json(400, .object(["detail": .string("rejected")])))
+        } }
+
+        let pushed = await availability.performRemoteAction(.push)
+
+        XCTAssertFalse(pushed)
+        XCTAssertTrue(availability.isRetired)
+        XCTAssertNil(availability.actionErrorMessage)
+        XCTAssertNil(availability.lastActionMessage)
+    }
+
     /// webui's writes keep their presentation (#1115): a failed one doesn't read the status
     /// again, and the sheet shows no commit sha.
     @MainActor

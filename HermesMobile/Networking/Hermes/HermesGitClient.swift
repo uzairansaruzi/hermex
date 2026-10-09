@@ -206,9 +206,11 @@ import Foundation
         }
     }
 
-    /// Unstages each staged file, one request per file.
+    /// Unstages each staged file, one request per file. A rename is refused: the host's row names
+    /// only its new path, so its old path's deletion would stay staged.
     func unstage(_ files: [GitFile]) async throws -> GitStatus? {
         try await writing(files) { root, rows, dispatch in
+            guard !rows.contains(where: Self.isRename) else { throw HermesGitRefusal.renamedUnstage }
             for row in rows where row.staged == true {
                 try await self.write(.gitUnstage(repository: root, file: row.path ?? ""), dispatch)
             }
@@ -249,9 +251,11 @@ import Foundation
     /// stage the selection, commit, then stage again the files that were staged before. `git add`
     /// puts back a whole file only, so the sequence is refused before it starts while a staged
     /// file also has worktree edits, or may have (a row past the status cap), or is a rename,
-    /// whose old path the host's row doesn't name; and before the first commit, where the host
-    /// can't unstage everything. A failure before the commit stages those files again and throws;
-    /// one staging them again after it is reported with the commit (`stagingNotRestored`).
+    /// whose old path the host's row doesn't name; while a staged file's path isn't one file to
+    /// stage again (`rows(for:in:)`); and before the first commit, where the host can't unstage
+    /// everything. A failure once any write went out, whose lost reply may hide that it ran,
+    /// stages those files again and throws; one staging them again after the commit is reported
+    /// with it (`stagingNotRestored`).
     private func commitSelected(_ files: [GitFile], message: String, root: String,
                                 dispatch: @escaping Dispatch) async throws -> GitCommitResponse {
         let current = try await currentStatus(root)
@@ -265,21 +269,20 @@ import Foundation
         guard !staged.contains(where: { $0.unstaged != false || Self.isRename($0) }) else {
             throw HermesGitRefusal.partlyStagedSelection
         }
+        let restaged = try Self.rows(for: staged, in: rows).compactMap(\.path)
         guard Self.text(try Self.json(try await send(.gitHead(repository: root)))["sha"]) != nil else {
             throw HermesGitRefusal.firstCommitSelected
         }
-        let restaged = staged.compactMap(\.path)
-        var changedIndex = false
+        let sentBefore = sentWrites
         do {
             try await write(.gitUnstage(repository: root, file: nil), dispatch)
-            changedIndex = true
             for path in selected { try await write(.gitStage(repository: root, file: path), dispatch) }
             // With nothing staged the host would stage everything instead.
             let summary = try Self.json(try await send(.gitStatus(repository: root)))
             guard (summary["staged"].integer ?? 0) > 0 else { throw HermesGitRefusal.nothingStaged }
             try await write(.gitCommit(repository: root, message: message), dispatch, deadline: .provisioning)
         } catch {
-            guard changedIndex else { throw error }
+            guard sentWrites > sentBefore else { throw error }
             do {
                 try await write(.gitUnstage(repository: root, file: nil), dispatch)
                 for path in restaged { try await write(.gitStage(repository: root, file: path), dispatch) }
@@ -392,12 +395,19 @@ import Foundation
         return root
     }
 
-    /// One write, sent only while `dispatch` passes. A refusal reads as `HermesGitRefusal.failed`,
-    /// never git's output.
+    /// One write, sent only while `dispatch` passes and counted in `sentWrites` as it goes out. A
+    /// refusal reads as `HermesGitRefusal.failed`, never git's output.
     private func write(_ rest: HermesREST, _ dispatch: @escaping Dispatch,
                        deadline: HermesConnection.Deadline = .standard) async throws {
-        _ = try await send(rest, deadline: deadline, refusal: HermesGitRefusal.failed, validateDispatch: dispatch)
+        _ = try await send(rest, deadline: deadline, refusal: HermesGitRefusal.failed) { [weak self] in
+            try dispatch()
+            self?.sentWrites += 1
+        }
     }
+
+    /// Writes that went out. A write whose reply is lost may still have run, so Commit Selected
+    /// restores the index once any of its writes went out.
+    private var sentWrites = 0
 
     /// The root of the repository holding the chat's folder, resolved once; nil outside one.
     private func repositoryRoot() async throws -> String? {
@@ -446,6 +456,7 @@ enum HermesGitRefusal: LocalizedError, Equatable {
     case detachedHead
     case noMessage
     case renamedDiscard
+    case renamedUnstage
     /// A staged file is partly staged, may be (past the status cap), or is a rename.
     case partlyStagedSelection
     case firstCommitSelected
@@ -466,6 +477,7 @@ enum HermesGitRefusal: LocalizedError, Equatable {
         case .detachedHead: String(localized: "Cannot push from a detached HEAD")
         case .noMessage: String(localized: "No commit message could be generated.")
         case .renamedDiscard: String(localized: "Renamed files cannot be discarded from this panel")
+        case .renamedUnstage: String(localized: "Renamed files cannot be unstaged from this panel")
         case .partlyStagedSelection:
             String(localized: "Fully stage or fully unstage partly staged or renamed files before committing selected files")
         case .firstCommitSelected: String(localized: "Make the first commit with Commit, then commit selected files")

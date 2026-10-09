@@ -810,22 +810,23 @@ extension APIClientGitTests {
         XCTAssertEqual(HermesGitHost.writes, [])
     }
 
-    /// The host's row for a staged rename names only its new path, so a discard couldn't put the
-    /// old one back: it is refused before anything is sent, and neither file is touched.
+    /// The host's row for a staged rename names only its new path, so neither a discard nor an
+    /// unstage could reach the old one: both are refused before anything is sent, and the index
+    /// stays as it was.
     @MainActor
-    func testAHermesRenameDiscardIsRefusedBeforeAnythingIsSent() async throws {
+    func testAHermesRenameIsNeitherDiscardedNorUnstaged() async throws {
         let git = HermesGitHost.client { request in
-            HermesGitHost.repositoryReply(request, rows: [("new.txt", 0, 0, "R", true), ("a.swift", 1, 0, "M", false)],
-                                          flags: [("new.txt", true, false, false, false), ("a.swift", false, true, false, false)])
+            HermesGitHost.repositoryReply(request, rows: [("new.txt", 0, 0, "R", true), ("a.swift", 1, 0, "M", true)],
+                                          flags: [("new.txt", true, false, false, false), ("a.swift", true, false, false, false)])
         }
         let files = try await git.status()?.files ?? []
+        var refusals: [String] = []
 
-        do {
-            _ = try await git.discard(files, deleteUntracked: true)
-            XCTFail("Expected the rename to refuse the discard")
-        } catch {
-            XCTAssertEqual(error.localizedDescription, String(localized: "Renamed files cannot be discarded from this panel"))
-        }
+        do { _ = try await git.discard(files, deleteUntracked: true) } catch { refusals.append(error.localizedDescription) }
+        do { _ = try await git.unstage(files) } catch { refusals.append(error.localizedDescription) }
+
+        XCTAssertEqual(refusals, [String(localized: "Renamed files cannot be discarded from this panel"),
+                                  String(localized: "Renamed files cannot be unstaged from this panel")])
         XCTAssertEqual(HermesGitHost.writes, [])
     }
 

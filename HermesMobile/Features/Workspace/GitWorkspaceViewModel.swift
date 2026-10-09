@@ -93,6 +93,8 @@ final class GitWorkspaceAvailabilityViewModel {
     private(set) var actionErrorMessage: String?
     private(set) var lastActionMessage: String?
     private var hasLoaded = false
+    /// Set once the chat leaves this repository (`retire()`).
+    private(set) var isRetired = false
 
     init(session: SessionSummary, server: URL, git: (any GitDataClient)?, apiClient: APIClient? = nil) {
         self.session = session
@@ -104,6 +106,13 @@ final class GitWorkspaceAvailabilityViewModel {
     convenience init(session: SessionSummary, server: URL, apiClient: APIClient? = nil) {
         let client = apiClient ?? APIClient(baseURL: server)
         self.init(session: session, server: server, git: WebUIGitClient(session: session, apiClient: client), apiClient: client)
+    }
+
+    /// Called when the chat leaves this repository, as a Hermes chat does when its folder changes:
+    /// an action still running finishes without a result to show (`GitQuickCommitOutcome.retired`,
+    /// and no message for a remote action), so nothing from this repository appears under the next.
+    func retire() {
+        isRetired = true
     }
 
     /// Whether the menu can stage, commit and push: a repository client to write through.
@@ -238,12 +247,14 @@ final class GitWorkspaceAvailabilityViewModel {
 
         do {
             let response = try await call()
+            guard !isRetired else { return false }
             status = response.status ?? status
             lastActionMessage = response.message
             await loadBranches()
             await refreshGitInfo()
-            return response.ok != false
+            return !isRetired && response.ok != false
         } catch {
+            guard !isRetired else { return false }
             actionErrorMessage = friendlyMessage(for: error)
             if git?.isHermes == true { await refreshAfterExternalMutation() }
             return false
@@ -298,6 +309,7 @@ final class GitWorkspaceAvailabilityViewModel {
             _ = try await git.stage(filesToStage)
 
             let suggestion = try await git.suggestMessage(for: nil, avoiding: nil)
+            guard !isRetired else { return .retired }
             let message = (suggestion.message ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !message.isEmpty else {
                 actionErrorMessage = String(localized: "No commit message could be generated.")
@@ -306,6 +318,7 @@ final class GitWorkspaceAvailabilityViewModel {
 
             setCommitPhase(.committing, notify: onPhase)
             let commit = try await git.commit(message: message, only: nil)
+            guard !isRetired else { return .retired }
             status = commit.resolvedStatus ?? status
 
             // The commit has already landed on the server. A push failure from here must
@@ -328,6 +341,7 @@ final class GitWorkspaceAvailabilityViewModel {
 
             await loadBranches()
             await refreshGitInfo()
+            guard !isRetired else { return .retired }
 
             return .success(GitQuickCommitResult(
                 shortSHA: commit.shortSHA,
@@ -338,6 +352,7 @@ final class GitWorkspaceAvailabilityViewModel {
                 pushFailureMessage: pushFailureMessage
             ))
         } catch {
+            guard !isRetired else { return .retired }
             actionErrorMessage = friendlyMessage(for: error)
             if git.isHermes { await refreshAfterExternalMutation() }
             return .failure
@@ -479,6 +494,9 @@ enum GitQuickCommitOutcome: Equatable {
     /// the first 500. Quick-commit refuses rather than silently committing a partial set.
     case tooManyChanges
     case failure
+    /// The chat left the repository while it ran (`GitWorkspaceAvailabilityViewModel.retire()`):
+    /// nothing to show.
+    case retired
 }
 
 struct GitWriteAvailability: Equatable {

@@ -1530,20 +1530,24 @@ panel (#1113) and Git (#1114) read the same context.
   `.` or `..` path. Each write reads `git/status` and `review/list` again and acts on the rows
   matched by exact path, never trimmed: the host keeps an untracked name's spaces but trims a
   tracked one's, so a path listed twice is refused. A conflicted row (including a `U` past the
-  status cap) can't be staged or discarded; a rename can't be discarded (its row names only the
-  new path). A commit refuses with nothing staged (the host would `git add -A`) or with a
+  status cap) can't be staged or discarded; a rename can't be discarded or unstaged (its row
+  names only the new path). A commit refuses with nothing staged (the host would `git add -A`) or with a
   conflict; push refuses a detached HEAD, which the host skips silently. Discard unstages a staged
   row, then reverts it, which deletes an untracked or newly added file. "Commit selected" is a
   sequence (the host has no temporary index): unstage all, stage the selection, check something
   is staged, commit, stage the other staged files again. `git add` restores only whole files, so
   it is refused up front while a staged file is partly staged, may be (past the cap), or is a
-  rename, and before the first commit, where the host's file-less unstage fails; a failure before
-  the commit restores the staged files, and a failed restore is reported (before the commit as
+  rename, while a staged file's path is blank or listed twice, and before the first commit, where
+  the host's file-less unstage fails; a failure before the commit, once any of its writes went
+  out (a lost reply may hide that the reset ran), restores the staged files, and a failed restore
+  is reported (before the commit as
   its own refusal, after it as "Committed, but some files couldn’t be staged again." with the
   sha). After a commit `git/review/rev-parse` gives the sha (null before the first commit). Writes
   belong to the chat (`HermesChatTurnCoordinator.gitWriteDispatch`): a write begun while a turn
   runs, a message is sending or the screen shows cached data sends nothing, and each request
   checks again as it goes out, also stopping once the chat reattached or left the folder. A
+  folder change also retires the chat's Git state (`GitWorkspaceAvailabilityViewModel.retire()`),
+  so a quick commit or push still running there shows no toast or alert in the new folder. A
   suggested message is `commit-context`'s diff (or the selected files' `file-diff`s), sent to
   `llm.oneshot` with the `commit_message` template, `recent` as `recent_commits`, the chat's
   runtime as `session_id`, temperature 0.8 as Desktop sends it, and the last suggestion as
