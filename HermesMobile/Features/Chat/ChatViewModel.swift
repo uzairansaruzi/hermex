@@ -844,8 +844,9 @@ final class ChatViewModel {
     /// The level a Hermes host sends when the model takes less than the one picked (#1016).
     var composerSentReasoningEffort: String? { hermesSettings?.sentEffort }
 
+    /// The chat's workspace: a Hermes session's working folder as its host reports it (#1117).
     var selectedWorkspacePath: String? {
-        currentWorkspace
+        hermesTurn.map(\.cwd) ?? currentWorkspace
     }
 
     var selectedProfileTitle: String {
@@ -1203,6 +1204,10 @@ final class ChatViewModel {
     }
 
     func loadWorkspaceSuggestions(prefix: String) async {
+        if let hermesTurn, !isViewingCachedData {
+            await loadHermesFolderSuggestions(prefix: prefix, on: hermesTurn)
+            return
+        }
         guard !isViewingCachedData else {
             workspaceSuggestions = workspaceRoots.compactMap(\.path)
             return
@@ -1303,6 +1308,7 @@ final class ChatViewModel {
         if recordsInteraction {
             composerConfigurationInteractionGeneration &+= 1
         }
+        if hermesTurn != nil { return await selectHermesFolder(path) }
         let workspace = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !workspace.isEmpty else { return false }
 
@@ -1350,6 +1356,82 @@ final class ChatViewModel {
             composerConfigurationErrorMessage = error.localizedDescription
             return false
         }
+    }
+
+    // MARK: Hermes working folder (#1117)
+
+    /// A folder picked in a Hermes chat that has run, waiting for the user to confirm the move.
+    private(set) var pendingHermesFolder: String?
+    /// The folder picker's untyped list for a Hermes chat, kept while the user types a filter.
+    @ObservationIgnored private var hermesFolderChoices: [String] = []
+
+    /// A Hermes chat's folder pick: a new chat nothing ran in moves at once; any other asks first
+    /// (`pendingHermesFolder`), since the work so far stays in the old folder.
+    private func selectHermesFolder(_ path: String) async -> Bool {
+        var folder = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        while folder.count > 1, folder.hasSuffix("/") { folder.removeLast() }
+        guard let hermesTurn, !folder.isEmpty, folder != hermesTurn.cwd, canChangeHermesFolder() else { return false }
+        guard hermesTurn.isUnstarted else {
+            pendingHermesFolder = folder
+            return false
+        }
+        return await moveHermesFolder(folder, on: hermesTurn)
+    }
+
+    func cancelHermesFolderMove() { pendingHermesFolder = nil }
+
+    /// Moves a Hermes chat to the `folder` the user confirmed; false when it didn't move.
+    func confirmHermesFolderMove(_ folder: String) async -> Bool {
+        pendingHermesFolder = nil
+        guard let hermesTurn, canChangeHermesFolder() else { return false }
+        return await moveHermesFolder(folder, on: hermesTurn)
+    }
+
+    /// The client refuses a folder change while a reply runs, though the host would take it.
+    private func canChangeHermesFolder() -> Bool {
+        if isViewingCachedData {
+            composerConfigurationErrorMessage = String(localized: "Reconnect to the server to change workspace.")
+            return false
+        }
+        if activeStreamID != nil {
+            composerConfigurationErrorMessage = String(localized: "Wait for the current response to finish before changing workspace.")
+            return false
+        }
+        return true
+    }
+
+    private func moveHermesFolder(_ folder: String, on hermes: HermesChatTurnCoordinator) async -> Bool {
+        isUpdatingComposerConfiguration = true
+        composerConfigurationErrorMessage = nil
+        defer { isUpdatingComposerConfiguration = false }
+        do {
+            try await hermes.moveFolder(to: folder)
+            return true
+        } catch BotSettingFailure.rejected(4017, _) {
+            composerConfigurationErrorMessage = String(localized: "Hermes can't find the folder \(folder), so the session didn't move.")
+        } catch {
+            composerConfigurationErrorMessage = error.localizedDescription
+        }
+        return false
+    }
+
+    /// The folder picker's list for a Hermes chat: a typed path completes from the host's
+    /// folders; anything else filters the untyped list, read again each time the picker opens.
+    private func loadHermesFolderSuggestions(prefix: String, on hermes: HermesChatTurnCoordinator) async {
+        let typed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
+        if HermesFolderCompletion.completes(typed) {
+            let folders = await hermes.completeFolder(typed)
+            guard !Task.isCancelled else { return }
+            workspaceSuggestions = folders
+            return
+        }
+        if typed.isEmpty {
+            let choices = await hermes.folderChoices()
+            guard !Task.isCancelled else { return }
+            hermesFolderChoices = choices
+        }
+        workspaceSuggestions = typed.isEmpty ? hermesFolderChoices
+            : hermesFolderChoices.filter { $0.localizedCaseInsensitiveContains(typed) }
     }
 
     func switchProfile(

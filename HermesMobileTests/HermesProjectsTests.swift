@@ -318,6 +318,35 @@ import Observation
         )
     }
 
+    // MARK: Chat folder picker (#1117)
+
+    /// A chat's folder picker offers its current folder first, then the user's project folders,
+    /// then the folders the Profile's recent sessions worked in, each once. Automatic lanes and
+    /// rows another Profile names are left out.
+    func testFolderChoicesAreCurrentThenProjectsThenRecentFolders() {
+        let projects = HermesProjectTree(reply: tree([
+            node("p_launch", "Launch", path: "/Users/me/launch", sessions: []),
+            node("/Users/me/src/app", "app", path: "/Users/me/src/app", sessions: [], isAuto: true),
+            node("p_notes", "Notes", path: "/Users/me/notes", sessions: []),
+            node(HermesProjectTree.noProjectID, "Home", path: nil, sessions: [], isNoProject: true)
+        ]))
+        let recent = [
+            HermesSessionRow(id: "a", cwd: "/Users/me/src/app", profile: "work"),
+            HermesSessionRow(id: "b", cwd: "/Users/me/launch", profile: "work"),
+            HermesSessionRow(id: "c", cwd: "/Users/me/elsewhere", profile: "default"),
+            HermesSessionRow(id: "d", cwd: "/Users/me/src/app", profile: "work"),
+            HermesSessionRow(id: "e", profile: "work"),
+            HermesSessionRow(id: "f", cwd: "/tmp/scratch")
+        ]
+
+        XCTAssertEqual(
+            HermesFolderCompletion.choices(current: "/Users/me/notes", projects: projects, sessions: recent, profile: "work"),
+            ["/Users/me/notes", "/Users/me/launch", "/Users/me/src/app", "/tmp/scratch"]
+        )
+        XCTAssertEqual(HermesFolderCompletion.choices(current: nil, projects: nil, sessions: [], profile: "work"), [],
+                       "a host that answers nothing offers nothing")
+    }
+
     // MARK: Fixtures
 
     private func makeList(_ connection: HermesConnection) -> SessionListViewModel {

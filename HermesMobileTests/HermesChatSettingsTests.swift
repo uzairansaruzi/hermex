@@ -331,6 +331,97 @@ import Observation
         XCTAssertEqual(defaults.string(forKey: HermesProfilePreference.key(for: other)), "research")
     }
 
+    // MARK: Working folder (#1117)
+
+    /// The folder picker lists the chat's Profile's folders, read under that Profile only, with
+    /// the chat's own folder first; a typed path completes through the host's folders.
+    func testTheFolderPickerListsTheProfilesFoldersAndCompletesATypedPath() async {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/Users/me/notes")]))
+        await waitUntil("folder") { chat.model.selectedWorkspacePath == "/Users/me/notes" }
+        chat.host.always("projects.tree", .init(result: .object(["projects": .array([
+            .object(["id": .string("p_launch"), "label": .string("Launch"), "path": .string("/Users/me/launch"),
+                     "isAuto": .bool(false), "isNoProject": .bool(false), "sessionIds": .array([])])
+        ])])))
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/sessions" else { return nil }
+            return .json(200, .object(["sessions": .array([
+                .object(["id": .string("a"), "cwd": .string("/Users/me/src/app"), "profile": .string("work")]),
+                .object(["id": .string("b"), "cwd": .string("/Users/me/notes"), "profile": .string("work")])
+            ])]))
+        }
+
+        await chat.model.loadWorkspaceSuggestions(prefix: "")
+        XCTAssertEqual(chat.model.workspaceSuggestions, ["/Users/me/notes", "/Users/me/launch", "/Users/me/src/app"])
+        XCTAssertEqual(chat.writes("projects.tree"), [["profile": .string("work")]])
+        let listed = HermesHostFixture.requests.filter { $0.url?.path == "/api/sessions" }.compactMap { request in
+            request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems?
+                .first { $0.name == "profile" }?.value
+        }
+        XCTAssertEqual(listed, ["work"])
+
+        chat.host.always("complete.path", .init(result: .object(["items": .array([
+            .object(["text": .string("~/src/"), "display": .string("src/"), "meta": .string("dir")])
+        ])])))
+        await chat.model.loadWorkspaceSuggestions(prefix: "~/")
+        XCTAssertEqual(chat.model.workspaceSuggestions, ["~/src/"])
+        XCTAssertEqual(chat.writes("complete.path"), [["word": .string("~/"), "profile": .string("work")]])
+    }
+
+    /// A new chat nothing ran in moves at once: one `session.workspace.move` on its stored key,
+    /// and the chip and header take the folder the host answers.
+    func testANewChatMovesAtOnce() async {
+        let chat = await openChat()
+        chat.host.always("session.workspace.move", .init(result: .object([
+            "cwd": .string("/Users/me/launch"), "branch": .null, "git_repo_root": .null
+        ])))
+
+        let moved = await chat.model.selectWorkspacePath("/Users/me/launch/")
+        XCTAssertTrue(moved)
+        XCTAssertNil(chat.model.pendingHermesFolder)
+        XCTAssertEqual(chat.writes("session.workspace.move"), [[
+            "session_key": .string("tip"), "cwd": .string("/Users/me/launch"), "profile": .string("work")
+        ]])
+        XCTAssertEqual(chat.model.selectedWorkspacePath, "/Users/me/launch")
+    }
+
+    /// A stored chat asks first, and sends nothing until confirmed. A folder the host lacks
+    /// (4017) says so, and the chat stays where it was.
+    func testAStoredChatAsksFirstAndAMissingFolderSaysSo() async {
+        let chat = await openChat(target: .session(profile: "work", key: "tip"))
+        chat.receive(event(1, "session.info", ["cwd": .string("/Users/me/notes")]))
+        await waitUntil("folder") { chat.model.selectedWorkspacePath == "/Users/me/notes" }
+
+        let asked = await chat.model.selectWorkspacePath("/Users/me/gone")
+        XCTAssertFalse(asked)
+        XCTAssertEqual(chat.model.pendingHermesFolder, "/Users/me/gone")
+        XCTAssertEqual(chat.writes("session.workspace.move"), [])
+
+        chat.model.cancelHermesFolderMove()
+        XCTAssertNil(chat.model.pendingHermesFolder)
+
+        chat.host.next("session.workspace.move", .init(error: 4017, message: "working directory does not exist: /Users/me/gone"))
+        let moved = await chat.model.confirmHermesFolderMove("/Users/me/gone")
+        XCTAssertFalse(moved)
+        XCTAssertEqual(chat.model.composerConfigurationErrorMessage,
+                       "Hermes can't find the folder /Users/me/gone, so the session didn't move.")
+        XCTAssertEqual(chat.writes("session.workspace.move").count, 1)
+        XCTAssertEqual(chat.model.selectedWorkspacePath, "/Users/me/notes")
+    }
+
+    /// While a reply runs the chat refuses a folder change, though the host would take it.
+    func testAFolderChangeWaitsForTheRunningReply() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        await waitUntil("running") { chat.model.activeStreamID != nil }
+
+        let moved = await chat.model.selectWorkspacePath("/Users/me/launch")
+        XCTAssertFalse(moved)
+        XCTAssertEqual(chat.model.composerConfigurationErrorMessage,
+                       "Wait for the current response to finish before changing workspace.")
+        XCTAssertEqual(chat.writes("session.workspace.move"), [])
+    }
+
     // MARK: Fixture
 
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
@@ -393,8 +484,9 @@ import Observation
         }
     }
 
-    /// A new chat in Profile `work`, attached on `runtime`, with its catalog read.
-    private func openChat() async -> Chat {
+    /// A chat in Profile `work`, a new one unless `target` names a stored one, attached on
+    /// `runtime`, with its catalog read.
+    private func openChat(target: ConversationTarget = .new(profile: "work")) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.create", .init(result: .object([
@@ -412,7 +504,7 @@ import Observation
         ])])))
         let client = BotClient(http: host.connection(Self.connection))
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
-                                        target: .new(profile: "work"), wire: client)
+                                        target: target, wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
         let drafts = ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60))
         let model = ChatViewModel(

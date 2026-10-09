@@ -271,9 +271,9 @@ struct MessageComposerView: View {
     let onSelectGitBranch: (GitCheckoutTarget) -> Void
     let onCreateGitBranch: (GitCheckoutTarget) -> Void
     let onRefreshGitBranches: () -> Void
-    /// False on a Hermes session (#1010): the workspace selector and voice notes stay hidden
-    /// until their phases land. The + menu, dictation, the context indicator and the branch
-    /// picker (#1116) stay.
+    /// False on a Hermes session (#1010): voice notes stay hidden until their phase lands, and
+    /// the workspace picker takes a typed path (#1117). The + menu, dictation, the context
+    /// indicator and the branch picker (#1116) stay.
     var showsSessionControls = true
     /// The commands the `/` panel lists and runs: a Hermes chat's own and its host's (#1036).
     var slashScope = SlashCommandScope.webui
@@ -282,8 +282,9 @@ struct MessageComposerView: View {
     /// Asks the host to complete a host command's argument: the draft up to the caret, or nil
     /// once the caret leaves one. Called again on each change; a newer call replaces it.
     var onCompleteHostSlashArgument: (String?) async -> Void = { _ in }
-    /// A Hermes session's model and Profile chips (#1015), shown while the rest of
-    /// `showsSessionControls` stays hidden.
+    /// A Hermes session's model, folder and Profile chips (#1015, #1117), shown while the rest
+    /// of `showsSessionControls` stays hidden. Its folder picker takes a typed path, which the
+    /// host checks.
     var showsModelAndProfileControls = false
     /// A configuration change that has not landed yet, such as a model the host applies
     /// after the running response. Shown below any configuration error.
@@ -770,6 +771,7 @@ struct MessageComposerView: View {
         }
         .sheet(isPresented: $showsWorkspaceSheet, onDismiss: restoreFocusAfterPresentationIfNeeded) {
             ComposerWorkspacePickerSheet(
+                allowsCustomPath: !showsSessionControls,
                 workspaceRoots: workspaceRoots,
                 selectedWorkspacePath: displayedWorkspacePath,
                 suggestions: workspaceSuggestions,
@@ -965,7 +967,7 @@ struct MessageComposerView: View {
                 if showsSessionControls || showsModelAndProfileControls {
                     modelEffortControl
 
-                    if showsSessionControls { workspaceSelector }
+                    workspaceSelector
 
                     profileSelector
 

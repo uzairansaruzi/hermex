@@ -524,7 +524,8 @@ struct ChatView: View {
             workspaceRoots: viewModel.workspaceRoots,
             selectedWorkspacePath: viewModel.selectedWorkspacePath,
             workspaceSuggestions: viewModel.workspaceSuggestions,
-            workspaceManagementServer: server,
+            // A Hermes host has no workspace registry to manage (#1117).
+            workspaceManagementServer: isHermesSession ? nil : server,
             personalitySuggestions: viewModel.personalitySuggestions,
             skillSuggestions: viewModel.composerSkillSuggestions,
             hasLoadedSkillSuggestions: viewModel.hasLoadedSkillSlashSuggestions,
@@ -538,7 +539,7 @@ struct ChatView: View {
             supportsReasoningEffort: viewModel.supportsReasoningEffort,
             showsReasoningControl: viewModel.showsReasoningEffortControl,
             isUpdatingConfiguration: viewModel.isUpdatingComposerConfiguration
-                || viewModel.hermesSettings?.controls.isApplying == true,
+                || viewModel.hermesSettings?.controls.isApplying == true || viewModel.pendingHermesFolder != nil,
             pendingAttachments: viewModel.pendingAttachments,
             // An in-flight draft restore counts as an upload in progress: until
             // it finishes, the composer does not yet hold the attachments the
@@ -1232,6 +1233,24 @@ struct ChatView: View {
                 settings: viewModel.hermesSettings, profile: viewModel.selectedProfileTitle,
                 onConfirm: confirmHermesPersonality
             ))
+            // A Hermes chat's folder change asks first, in Move to Project's words (#1117).
+            .alert(
+                Text(verbatim: viewModel.pendingHermesFolder.map { String(localized: "Move to \($0.lastPathComponentFallback)?") } ?? ""),
+                isPresented: Binding(get: { viewModel.pendingHermesFolder != nil },
+                                     set: { if !$0 { viewModel.cancelHermesFolderMove() } }),
+                presenting: viewModel.pendingHermesFolder
+            ) { folder in
+                Button("Cancel", role: .cancel) {}
+                Button("Move") {
+                    Task {
+                        if await viewModel.confirmHermesFolderMove(folder) {
+                            ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
+                        }
+                    }
+                }
+            } message: { folder in
+                Text(verbatim: String(localized: "Hermes will work in \(folder) from now on. Files aren't moved."))
+            }
             .modifier(StopConfirmationModifier(isPresented: $showsStopConfirmation) {
                 Task { await stopStream() }
             })
