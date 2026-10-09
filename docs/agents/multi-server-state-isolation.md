@@ -96,7 +96,8 @@ to `CacheStore`. Two consequences:
   newest cached page, read-only, before the attach, until the first newest
   read replaces it; an attach that finds another root than the preview's drops
   it. An archived Bot Chat, opened by its key, reads and writes the same copy
-  under its row's lineage root. Deleting the bot or discarding its connection
+  under its row's lineage root, including a legacy compression chain listed
+  under its tip's "Bot Chat (continued)" title. Deleting the bot or discarding its connection
   removes its copy, and a clear or removal revokes the writes of chats already
   attached until they attach again (`CacheStore.hermesCacheEpoch`).
   `HermesOfflineCacheTests` covers the root, the list and server isolation.

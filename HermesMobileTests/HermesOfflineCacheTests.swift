@@ -470,6 +470,31 @@ import XCTest
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello."])
     }
 
+    /// A legacy compressed Bot Chat lists under its tip's "Bot Chat (continued)" title, keeping
+    /// its root's hidden flag and naming the root as `_lineage_root_id`; it shares the bot's
+    /// cache too. A hidden chain under any other title stays on its own scope.
+    func testAnArchivedContinuedBotChatShowsItsBotsCachedTranscriptOffline() async throws {
+        let context = try makeContext()
+        let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
+                             target: .canonicalChat(profile: "default"))
+        await visit.model.loadMessages(modelContext: context)
+
+        let archived = HermesSessionRow(id: "tip", title: "Bot Chat (continued)", archived: true, hidden: true, lineageRootID: "root")
+        let opened = try XCTUnwrap(archived.summary(in: "default").hermesChat(on: server, connection: connection, listedIn: "default"))
+        XCTAssertEqual(opened.target, .session(profile: "default", key: "tip"))
+        XCTAssertEqual(opened.botChatRoot, "root")
+        let offline = HermesOfflineWire(rows: [])
+        offline.connectFailure = URLError(.cannotConnectToHost)
+        let chat = makeChat(offline, target: opened.target, botChatRoot: opened.botChatRoot)
+        await chat.model.loadMessages(modelContext: context)
+
+        XCTAssertTrue(chat.model.isViewingCachedData)
+        XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello."])
+
+        let other = HermesSessionRow(id: "tip", title: "Notes (continued)", archived: true, hidden: true, lineageRootID: "root")
+        XCTAssertNil(other.summary(in: "default").hermesChat(on: server, connection: connection, listedIn: "default")?.botChatRoot)
+    }
+
     /// A clear while a Bot Chat's read is out leaves the cache empty when the read lands; the
     /// next attach caches again.
     func testAReadUnderWayDuringAClearLeavesTheCacheEmpty() async throws {
