@@ -368,6 +368,38 @@ import Observation
         XCTAssertEqual(chat.writes("complete.path"), [["word": .string("~/"), "profile": .string("work")]])
     }
 
+    /// A filter typed while the picker's first read is still out cancels that read, as the
+    /// sheet's `.task(id:)` does; the filter then reads the folders itself and shows the matches.
+    func testAFilterTypedBeforeTheFirstReadStillShowsMatchingFolders() async {
+        let chat = await openChat()
+        chat.host.always("projects.tree", .init(result: .object(["projects": .array([
+            .object(["id": .string("p_launch"), "label": .string("Launch"), "path": .string("/Users/me/launch"),
+                     "isAuto": .bool(false), "isNoProject": .bool(false), "sessionIds": .array([])])
+        ])])))
+        var pages = 0
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/sessions" else { return nil }
+            pages += 1
+            guard pages > 1 else { return .park }
+            return .json(200, .object(["sessions": .array([
+                .object(["id": .string("a"), "cwd": .string("/Users/me/launchpad"), "profile": .string("work")]),
+                .object(["id": .string("b"), "cwd": .string("/Users/me/notes"), "profile": .string("work")]),
+                .object(["id": .string("c"), "cwd": .string("/Users/me/launch-research"), "profile": .string("research")])
+            ])]))
+        }
+        let parked = expectation(description: "first read held")
+        HermesHostFixture.onPark = { parked.fulfill() }
+
+        let first = Task { await chat.model.loadWorkspaceSuggestions(prefix: "") }
+        await fulfillment(of: [parked], timeout: 5)
+        first.cancel()
+        await chat.model.loadWorkspaceSuggestions(prefix: "launch")
+        await first.value
+
+        XCTAssertEqual(chat.model.workspaceSuggestions, ["/Users/me/launch", "/Users/me/launchpad"])
+        XCTAssertEqual(chat.writes("projects.tree"), [["profile": .string("work")], ["profile": .string("work")]])
+    }
+
     /// A new chat nothing ran in moves at once: one `session.workspace.move` on its stored key,
     /// and the chip and header take the folder the host answers.
     func testANewChatMovesAtOnce() async {

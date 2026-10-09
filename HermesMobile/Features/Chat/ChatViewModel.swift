@@ -1362,8 +1362,9 @@ final class ChatViewModel {
 
     /// A folder picked in a Hermes chat that has run, waiting for the user to confirm the move.
     private(set) var pendingHermesFolder: String?
-    /// The folder picker's untyped list for a Hermes chat, kept while the user types a filter.
-    @ObservationIgnored private var hermesFolderChoices: [String] = []
+    /// The folder picker's untyped list for a Hermes chat, kept while the user types a filter;
+    /// nil until a read for the open picker finishes.
+    @ObservationIgnored private var hermesFolderChoices: [String]?
 
     /// A Hermes chat's folder pick: a new chat nothing ran in moves at once; any other asks first
     /// (`pendingHermesFolder`), since the work so far stays in the old folder.
@@ -1423,6 +1424,7 @@ final class ChatViewModel {
 
     /// The folder picker's list for a Hermes chat: a typed path completes from the host's
     /// folders; anything else filters the untyped list, read again each time the picker opens.
+    /// A filter typed before that read finishes cancels it, so the filter reads the list itself.
     private func loadHermesFolderSuggestions(prefix: String, on hermes: HermesChatTurnCoordinator) async {
         let typed = prefix.trimmingCharacters(in: .whitespacesAndNewlines)
         if HermesFolderCompletion.completes(typed) {
@@ -1431,13 +1433,16 @@ final class ChatViewModel {
             workspaceSuggestions = folders
             return
         }
-        if typed.isEmpty {
-            let choices = await hermes.folderChoices()
+        if typed.isEmpty { hermesFolderChoices = nil }
+        let choices: [String]
+        if let hermesFolderChoices {
+            choices = hermesFolderChoices
+        } else {
+            choices = await hermes.folderChoices()
             guard !Task.isCancelled else { return }
             hermesFolderChoices = choices
         }
-        workspaceSuggestions = typed.isEmpty ? hermesFolderChoices
-            : hermesFolderChoices.filter { $0.localizedCaseInsensitiveContains(typed) }
+        workspaceSuggestions = typed.isEmpty ? choices : choices.filter { $0.localizedCaseInsensitiveContains(typed) }
     }
 
     func switchProfile(
