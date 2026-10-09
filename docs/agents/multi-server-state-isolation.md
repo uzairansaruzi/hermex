@@ -98,8 +98,9 @@ to `CacheStore`. Two consequences:
   it. An archived Bot Chat, opened by its key, keeps its own copy under
   `hermes-bot-archive|<connection UUID>|<Profile>|<lineage root>`, including a
   legacy compression chain listed under its tip's "Bot Chat (continued)" title,
-  and reads its bot's copy of that root while it has none; its newest read
-  drops the rows the host cut from that copy too. It never becomes the
+  and reads its bot's copy of that root while it has none. Each copy's newest
+  read drops the rows the host cut from the other copy of the same root too,
+  writing nothing there, so an undo seen in either chat stays undone. It never becomes the
   bot's preview, and the bot's attach on another root leaves it. Deleting the
   bot or discarding its connection removes both copies, and a clear or removal revokes the writes of chats already
   attached until they attach again (`CacheStore.hermesCacheEpoch`).

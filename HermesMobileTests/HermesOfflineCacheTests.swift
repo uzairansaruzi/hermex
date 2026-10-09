@@ -540,6 +540,25 @@ import XCTest
         XCTAssertEqual(archived.model.messages, [])
     }
 
+    /// A Bot Chat whose newest read finds its exchange undone drops it from an archived Bot
+    /// Chat's copy of the same root too, so the archive shows nothing offline.
+    func testABotChatsEmptyReadDropsAnArchivesCopyOfTheUndoneRows() async throws {
+        let context = try makeContext()
+        await makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
+                       target: .session(profile: "default", key: "tip"), botChatRoot: "root")
+            .model.loadMessages(modelContext: context)
+        let undone = makeChat(HermesOfflineWire(rows: []), target: .canonicalChat(profile: "default"))
+        await undone.model.loadMessages(modelContext: context)
+        XCTAssertEqual(undone.model.messages, [])
+
+        let offline = HermesOfflineWire(rows: [])
+        offline.connectFailure = URLError(.cannotConnectToHost)
+        let archived = makeChat(offline, target: .session(profile: "default", key: "tip"), botChatRoot: "root")
+        await archived.model.loadMessages(modelContext: context)
+        XCTAssertFalse(archived.model.isViewingCachedData)
+        XCTAssertEqual(archived.model.messages, [])
+    }
+
     /// A clear while a Bot Chat's read is out leaves the cache empty when the read lands; the
     /// next attach caches again.
     func testAReadUnderWayDuringAClearLeavesTheCacheEmpty() async throws {

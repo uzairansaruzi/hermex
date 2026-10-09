@@ -243,9 +243,9 @@ extension CacheStore {
     }
 
     /// Drops the rows cached under `scope` that the newest read covered and no longer holds, as
-    /// `cacheHermesMessages` does, without writing the read's rows or touching what stays. An
-    /// archived Bot Chat's read prunes its bot's copy of the same root, which it shows when it
-    /// has none of its own, so an undo the archive saw can't come back from there.
+    /// `cacheHermesMessages` does, without writing the read's rows or touching what stays. A Bot
+    /// Chat's read prunes the other copy of the same root, its bot's or an archive's, so an undo
+    /// one chat saw can't come back offline in the other.
     @MainActor
     static func dropHermesMessagesTheHostCut(
         from messages: [ChatMessage],
