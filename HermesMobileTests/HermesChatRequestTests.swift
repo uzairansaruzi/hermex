@@ -58,6 +58,56 @@ import XCTest
         XCTAssertEqual(chat.writes("approval.respond").count, 1)
     }
 
+    /// A malformed `resolved` is no verdict: the card stays, warns, can be tapped again on
+    /// purpose, and the answer is never resent on its own.
+    func testAMalformedResolvedKeepsTheCardWarnsAndIsNotResent() async throws {
+        for reply: BotJSON in [.object([:]), .object(["resolved": .string("1")]), .object(["resolved": .number(1.5)]),
+                               .object(["resolved": .number(-1)]), .object(["resolved": .null])] {
+            let chat = await openChat()
+            chat.host.always("approval.respond", .init(result: reply))
+            chat.receive(approvalRequest(id: "srq-a1", requestID: "q-1"))
+            let taken = await chat.requests.respond(try action(chat), choice: .once)
+            XCTAssertFalse(taken, "\(reply)")
+            XCTAssertEqual(chat.requests.onScreen?.requestID, "q-1", "card kept for \(reply)")
+            XCTAssertEqual(chat.requests.errorMessage,
+                           "Answer outcome unknown. Check this bot in Desktop before answering again.", "\(reply)")
+            XCTAssertEqual(chat.writes("approval.respond").count, 1, "never resent for \(reply)")
+            XCTAssertTrue(chat.requests.mayAnswer, "a deliberate second tap stays possible")
+            // The host settling it elsewhere still retires the card.
+            chat.receive(event(2, "request.cancel", ["id": .string("srq-a1"), "method": .string("approval"),
+                                                    "reason": .string("resolved")]))
+            XCTAssertNil(chat.requests.onScreen, "reconciled by the host's cancel for \(reply)")
+        }
+    }
+
+    /// The uncertain warning belongs to its request: once the host retires that card, the next
+    /// approval shows no warning about an answer nobody gave it.
+    func testTheUncertainWarningLeavesWithItsRequestAndNeverReachesTheNextCard() async throws {
+        let chat = await openChat()
+        chat.host.always("approval.respond", .init(result: .object([:])))
+        chat.receive(approvalRequest(id: "srq-a1", requestID: "q-1"))
+        _ = await chat.requests.respond(try action(chat), choice: .once)
+        XCTAssertNotNil(chat.requests.errorMessage)
+        chat.receive(event(1, "request.cancel", ["id": .string("srq-a1"), "method": .string("approval"),
+                                                "reason": .string("resolved")]))
+        XCTAssertNil(chat.requests.errorMessage, "the warning left with its card")
+        chat.receive(approvalRequest(id: "srq-a2", requestID: "q-2"))
+        XCTAssertEqual(chat.requests.onScreen?.requestID, "q-2")
+        XCTAssertNil(chat.requests.errorMessage, "a fresh card carries no warning")
+    }
+
+    /// Skip all only counts a confirmed release; an uncertain one keeps the card.
+    func testSkipAllIsNotSuccessWhenTheReleaseIsUncertain() async throws {
+        let chat = await openChat()
+        chat.host.next("config.set", .init(result: .object(["key": .string("yolo"), "value": .string("1"), "scope": .string("session")])))
+        chat.host.always("approval.respond", .init(result: .object([:])))
+        chat.receive(approvalRequest(id: "srq-a1", requestID: "q-1"))
+        let skipped = await chat.requests.skipApprovals(try action(chat))
+        XCTAssertFalse(skipped)
+        XCTAssertEqual(chat.requests.onScreen?.requestID, "q-1")
+        XCTAssertEqual(chat.writes("approval.respond").count, 1)
+    }
+
     /// A refused answer leaves the card answerable with the reason; nothing is retried.
     func testARefusedAnswerKeepsTheCardAndIsNotRetried() async throws {
         let chat = await openChat()

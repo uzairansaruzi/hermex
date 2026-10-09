@@ -287,6 +287,21 @@ import XCTest
         model.suspend()
     }
 
+    /// A reply whose count is missing, not an integer, or negative says nothing about
+    /// whether the answer took effect. It must not read as answered elsewhere.
+    func testAMalformedResolvedCountIsUncertainNotAlreadyResolved() async {
+        for reply: BotJSON in [.object([:]), .object(["resolved": .string("1")]),
+                               .object(["resolved": .number(1.5)]), .object(["resolved": .number(-1)]),
+                               .object(["resolved": .null])] {
+            let wire = BotFixtureWire(); wire.attention = true; wire.approvalReply = reply
+            let model = await blocked(on: wire)
+            await model.respond(action(model), choice: .once)
+            XCTAssertEqual(model.requestResolution?.outcome, .uncertain, "\(reply)")
+            XCTAssertEqual(wire.calls.filter { $0.0 == "approval.respond" }.count, 1, "never resent")
+            model.suspend()
+        }
+    }
+
     /// The host unblocked nothing: Desktop answered first, or it timed out. That is
     /// an action failure, not a delivery failure, and the card must go inert.
     func testResolvedZeroReportsAlreadyAnsweredAndDisablesTheCard() async {
