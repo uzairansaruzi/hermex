@@ -655,12 +655,19 @@ enum HermesREST: Equatable, Sendable {
     }
 
     /// Whether the host's branch sanitizer leaves `name` as it is (`_sanitize_branch` at the pin):
-    /// word characters, `.`, `/` and `-` only, no run of `-`, `/` or `.`, and none of those three
-    /// at either end.
+    /// Python word characters (letters, numerals, `_`), `.`, `/` and `-` only, no run of `-`, `/`
+    /// or `.`, and none of those three at either end. Checked per scalar, not per Character: the
+    /// host strips a combining mark, so "cafe" + U+0301 would switch to "cafe".
     static func isBranchName(_ name: String) -> Bool {
-        guard let first = name.first, let last = name.last, !"-./".contains(first), !"-./".contains(last) else { return false }
-        return name.allSatisfy { $0.isLetter || $0.isNumber || "_./-".contains($0) }
-            && !["--", "//", ".."].contains { name.contains($0) }
+        let scalars = name.unicodeScalars
+        guard let first = scalars.first, let last = scalars.last,
+              !"-./".unicodeScalars.contains(first), !"-./".unicodeScalars.contains(last) else { return false }
+        return scalars.allSatisfy { scalar in
+            switch scalar.properties.generalCategory {
+            case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter: true
+            default: scalar.properties.numericType != nil || "_./-".unicodeScalars.contains(scalar)
+            }
+        } && !["--", "//", ".."].contains { name.contains($0) }
     }
 
     /// A Git review write at `repository`, its `file` literal (`isGitFile`); nil only unstages.

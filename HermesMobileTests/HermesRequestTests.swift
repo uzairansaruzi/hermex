@@ -280,12 +280,20 @@ final class HermesRequestTests: XCTestCase {
     /// would change, which could reach another branch, is refused before anything is sent (#1116).
     func testABranchSwitchSendsOnlyANameTheHostKeeps() throws {
         let base = URL(string: "https://hermes.example")!
-        for name in ["", "feat+x", "my branch", "-x", "x/", ".x", "a..b", "a//b", "a--b", "a@{1}", "x~1"] {
+        // A decomposed accent (U+0301) or zero-width joiner is stripped by the host, so "cafe\u{301}"
+        // would switch to "cafe"; the precomposed "café" and other letters and numerals pass.
+        for name in ["", "feat+x", "my branch", "-x", "x/", ".x", "a..b", "a//b", "a--b", "a@{1}", "x~1",
+                     "cafe\u{301}", "a\u{200D}b", "x\u{903}"] {
             XCTAssertThrowsError(try HermesREST.gitSwitchBranch(repository: "/r", branch: name).request(base: base), name)
         }
         XCTAssertThrowsError(try HermesREST.gitSwitchBranch(repository: "", branch: "dev").request(base: base))
-        for name in ["dev", "feature/x-1", "release_2.0", "café"] {
-            XCTAssertNoThrow(try HermesREST.gitSwitchBranch(repository: "/r", branch: name).request(base: base), name)
+        for name in ["dev", "feature/x-1", "release_2.0", "caf\u{E9}", "x\u{663}", "\u{216B}", "\u{2B0}x"] {
+            let request = try HermesREST.gitSwitchBranch(repository: "/r", branch: name).request(base: base)
+            let body = try JSONDecoder().decode(BotJSON.self, from: XCTUnwrap(request.httpBody))
+            // String equality is canonical, so compare scalars: the name goes out unnormalized.
+            guard case .object(let fields) = body, case .string(let sent) = fields["branch"] else { return XCTFail(name) }
+            XCTAssertEqual(fields["path"], .string("/r"))
+            XCTAssertEqual(Array(sent.unicodeScalars), Array(name.unicodeScalars), name)
         }
     }
 
