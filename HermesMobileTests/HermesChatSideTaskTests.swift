@@ -211,6 +211,27 @@ import Observation
         XCTAssertEqual(chat.sideTasks.automations.map(\.status), ["paused", "paused"])
     }
 
+    /// A heartbeat replaced after the confirmation but before the socket write stops the Pause
+    /// there: the replacement is never paused, and the menu keeps showing it.
+    func testAPauseStopsAtDispatchWhenItsHeartbeatIsReplaced() async throws {
+        let chat = await openChat(control: Self.control(heartbeat: "active"))
+        await waitUntil("read") { !chat.sideTasks.automations.isEmpty }
+        let heartbeat = try XCTUnwrap(chat.sideTasks.automations.first)
+        chat.host.always("session.control", .init(result: .object(["control": Self.control(heartbeat: "paused")])))
+        let replacement = Self.control(heartbeat: "active", heartbeatPrompt: "summarize the news")
+        // Fires as the Pause begins, after the confirmation's own check and before the socket write.
+        withObservationTracking { _ = chat.sideTasks.isChangingAutomation } onChange: {
+            MainActor.assumeIsolated { chat.receive(self.event(1, "session.control.update", ["control": replacement])) }
+        }
+
+        chat.sideTasks.ask(heartbeat)
+        await chat.model.confirmHermesAutomation(heartbeat)
+        XCTAssertEqual(chat.writes("session.control"), [])
+        XCTAssertEqual(chat.sideTasks.automations.map(\.title), ["summarize the news"])
+        XCTAssertEqual(chat.sideTasks.automations.map(\.status), ["active"])
+        XCTAssertEqual(chat.model.sendErrorMessage, BotFailure.stale.localizedDescription)
+    }
+
     /// A Pause asked for before a reattach is discarded with its confirmation, never sent.
     func testAReattachDiscardsAPendingPause() async throws {
         let chat = await openChat(control: Self.control(loop: "active"))
@@ -443,7 +464,7 @@ import Observation
 
     /// A control snapshot as the pin's `_snapshot_control` builds it; a nil part is cleared.
     private static func control(goal: String? = nil, status: String = "active", loop: String? = nil,
-                                heartbeat: String? = nil) -> BotJSON {
+                                heartbeat: String? = nil, heartbeatPrompt: String = "tidy the inbox") -> BotJSON {
         let goalRow: BotJSON = goal.map {
             .object(["title": .string($0), "status": .string(status), "turns_used": .number(0), "max_turns": .number(20)])
         } ?? .null
@@ -452,7 +473,7 @@ import Observation
                      "interval_seconds": .number(600), "ticks_fired": .number(2), "deferred_by_goal": .bool(false)])
         } ?? .null
         let heartbeatRow: BotJSON = heartbeat.map {
-            .object(["prompt": .string("tidy the inbox"), "status": .string($0), "interval_seconds": .number(1800),
+            .object(["prompt": .string(heartbeatPrompt), "status": .string($0), "interval_seconds": .number(1800),
                      "fire_count": .number(4)])
         } ?? .null
         return .object(["goal": goalRow, "loop": loopRow, "heartbeat": heartbeatRow, "revision": .string("r2")])

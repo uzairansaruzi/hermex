@@ -157,7 +157,8 @@ enum HermesSideTaskFailure: Error, Equatable {
     /// Sends the asked Pause or Resume once, confirmed, as `session.control` and shows the
     /// snapshot the host answers with, unless a control frame came first. Throws
     /// `BotFailure.stale`, sending nothing, when the chat reattached or the state changed since
-    /// the ask, and `NotSent` when it never went out. A refusal carries the host's message.
+    /// the ask, up to the socket write, and `NotSent` when it never went out. A refusal carries
+    /// the host's message.
     func confirmAutomation(_ control: BotSessionControl) async throws {
         pendingAutomation = nil
         guard pendingAttempt == engine.generation, automations.contains(control), let action = control.action,
@@ -166,7 +167,15 @@ enum HermesSideTaskFailure: Error, Equatable {
         defer { isChangingAutomation = false }
         let revision = controlRevision
         let profile = engine.target.profile
-        let reply = try await write { .sessionControl(sessionID: $0, profile: profile, action: action) }
+        let reply: BotJSON
+        do {
+            reply = try await write({ .sessionControl(sessionID: $0, profile: profile, action: action) }) { [weak self] in
+                // The host acts on the session's current loop or heartbeat, not the one confirmed.
+                guard self?.automations.contains(control) == true else { throw BotFailure.stale }
+            }
+        } catch is HermesChatTurnCoordinator.NotSent where !automations.contains(control) {
+            throw BotFailure.stale
+        }
         guard reply["control"].fields != nil else { throw BotSettingFailure.unknownOutcome }
         guard controlRevision == revision else { return }
         controlRevision += 1
@@ -336,16 +345,20 @@ enum HermesSideTaskFailure: Error, Equatable {
         }
     }
 
-    /// One write bound to the attached runtime. Throws `NotSent` when it never went out. A
-    /// 4001 means the host reaped the runtime, whether it arrives plain or, from `/goal`, as
-    /// a setting refusal; the chat reattaches either way.
-    private func write(_ call: (String) -> HermesCall) async throws -> BotJSON {
+    /// One write bound to the attached runtime. `stillCurrent` adds the caller's checks at the
+    /// socket write. Throws `NotSent` when it never went out. A 4001 means the host reaped the
+    /// runtime, whether it arrives plain or, from `/goal`, as a setting refusal; the chat
+    /// reattaches either way.
+    private func write(_ call: (String) -> HermesCall, stillCurrent: (() throws -> Void)? = nil) async throws -> BotJSON {
         guard engine.connectionState == .connected, let runtime = engine.runtime else {
             throw HermesChatTurnCoordinator.NotSent(underlying: BotFailure.transport)
         }
         var dispatched = false
         do {
-            return try await engine.write(call(runtime), attempt: engine.generation, runtime: runtime) { dispatched = true }
+            return try await engine.write(call(runtime), attempt: engine.generation, runtime: runtime) {
+                try stillCurrent?()
+                dispatched = true
+            }
         } catch {
             if Self.isReaped(error) { onNeedsReattach() }
             throw dispatched ? error : HermesChatTurnCoordinator.NotSent(underlying: error)
