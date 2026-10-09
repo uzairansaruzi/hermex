@@ -433,7 +433,8 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
 
     /// Changes rows come from `review/list` (counts, status letter, staged) joined by path with
     /// `status.files`' flags, which the host lists in its own order. The badge reads the branch,
-    /// ahead/behind and dirty count from the status, and a Hermes chat has writes but no branches.
+    /// ahead/behind and dirty count from the status, and a Hermes chat has writes and branches
+    /// but no fetch or pull.
     @MainActor
     func testHermesChangesJoinReviewRowsWithStatusFlagsByPath() async throws {
         let git = HermesGitHost.client { request in
@@ -456,12 +457,12 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
 
         XCTAssertTrue(availability.hasRepository)
         XCTAssertTrue(availability.supportsWrites)
-        XCTAssertFalse(availability.supportsBranches)
+        XCTAssertTrue(availability.supportsBranches)
+        XCTAssertFalse(availability.supportsSync)
         XCTAssertEqual(availability.currentBranchName, "feature/x")
         XCTAssertEqual(availability.gitInfo?.ahead, 2)
         XCTAssertEqual(availability.gitInfo?.behind, 1)
         XCTAssertEqual(availability.gitInfo?.dirty, 5)
-        XCTAssertNil(availability.branches)
         let presentation = GitToolbarPresentation(hasRepository: true, isLoading: false, info: availability.gitInfo,
                                                   status: availability.status, statusFailed: false)
         XCTAssertEqual(presentation.accessibilityValue, String(localized: "Local changes exist and remote branch moved ahead"))
@@ -473,7 +474,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(files.map { $0.additions ?? -1 }, [1, 4, 5, 0, 3])
         XCTAssertEqual(changes.status?.changedCount, 5)
         XCTAssertEqual(changes.status?.branch, "feature/x")
-        XCTAssertEqual(HermesGitHost.requests.filter { $0.url?.path == "/api/git/branches" }.count, 0)
     }
 
     /// The host caps `status.files` at 200 but lists every change in `review/list`, so a change
@@ -1790,4 +1790,92 @@ extension GitWorkspaceViewModelTests {
 /// The commit sheet a test's message writer reaches, set once both exist.
 @MainActor private final class SheetReference {
     var sheet: GitCommitViewModel?
+}
+
+// MARK: - Hermes branches (#1116)
+
+extension GitWorkspaceViewModelTests {
+    /// A Hermes chat on `branch` whose host lists local `main` and `dev` and the remote-only
+    /// `origin/feature/x`, with no uncommitted change unless `dirty`.
+    private static func branchHost(_ request: URLRequest, branch: String, dirty: Bool = false) -> HermesHostFixture.Reply? {
+        HermesGitHost.repositoryReply(request, branch: branch,
+                                      rows: dirty ? [("notes.txt", 1, 0, "?", false)] : [],
+                                      flags: dirty ? [("notes.txt", false, true, true, false)] : [],
+                                      branches: [("main", false), ("dev", false), ("origin/feature/x", true)])
+    }
+
+    /// The picker lists the host's local branches, then its remote-only ones, and switches to
+    /// either. A remote row goes out by its short name, which `git switch` makes a tracking
+    /// branch of; the status and branches are read again after each switch.
+    @MainActor
+    func testAHermesSwitchSendsARemoteBranchByItsShortNameAndRefreshes() async throws {
+        nonisolated(unsafe) var current = "main"
+        let git = HermesGitHost.client { request in
+            if request.url?.path == "/api/git/branch/switch" {
+                current = HermesCronFixture.body(request)["branch"].text ?? current
+                return .json(200, .object(["branch": .string(current)]))
+            }
+            return Self.branchHost(request, branch: current)
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(
+            session: SessionSummary(), server: URL(string: "https://webui.example")!, git: git
+        )
+        await availability.load()
+        let local = availability.branches?.local?.compactMap(\.name)
+        let remote = availability.branches?.remote?.compactMap(\.name)
+        let branchReads = HermesGitHost.requests.filter { $0.url?.path == "/api/git/branches" }.count
+
+        let toRemote = await availability.checkout(GitCheckoutTarget(ref: "origin/feature/x", mode: .remote, track: true))
+        let remoteLabel = availability.currentBranchName
+        let toLocal = await availability.checkout(GitCheckoutTarget(ref: "dev", mode: .local))
+
+        XCTAssertTrue(availability.supportsBranches)
+        XCTAssertEqual(local, ["main", "dev"])
+        XCTAssertEqual(remote, ["origin/feature/x"])
+        XCTAssertEqual(toRemote, .success)
+        XCTAssertEqual(toLocal, .success)
+        XCTAssertEqual(remoteLabel, "feature/x")
+        XCTAssertEqual(availability.currentBranchName, "dev")
+        XCTAssertEqual(availability.status?.branch, "dev")
+        XCTAssertEqual(HermesGitHost.writes, ["switch feature/x", "switch dev"])
+        XCTAssertEqual(HermesGitHost.requests.filter { $0.url?.path == "/api/git/branches" }.count, branchReads + 2)
+        XCTAssertNil(availability.actionErrorMessage)
+    }
+
+    /// Any uncommitted change, an untracked file included, blocks the switch rather than let
+    /// `git switch` carry it across (Decision, 2026-10-08): nothing is sent and the picker says why.
+    @MainActor
+    func testAHermesSwitchWithUncommittedChangesIsRefused() async throws {
+        let git = HermesGitHost.client { Self.branchHost($0, branch: "main", dirty: true) }
+        let availability = GitWorkspaceAvailabilityViewModel(
+            session: SessionSummary(), server: URL(string: "https://webui.example")!, git: git
+        )
+        await availability.load()
+
+        let outcome = await availability.checkout(GitCheckoutTarget(ref: "dev", mode: .local))
+
+        XCTAssertEqual(outcome, .failure)
+        XCTAssertEqual(availability.actionErrorMessage, String(localized: "Commit or discard first."))
+        XCTAssertEqual(HermesGitHost.writes, [])
+        XCTAssertEqual(availability.currentBranchName, "main")
+    }
+
+    /// A switch is a write the chat owns, as #1115's are: refused while its turn runs.
+    @MainActor
+    func testAHermesSwitchWaitsForTheRunningTurn() async throws {
+        let chat = HermesGitChatStub()
+        let git = HermesGitHost.client(writeOwner: chat.owner) { Self.branchHost($0, branch: "main") }
+        let availability = GitWorkspaceAvailabilityViewModel(
+            session: SessionSummary(), server: URL(string: "https://webui.example")!, git: git
+        )
+        await availability.load()
+        chat.turnRunning = true
+
+        let outcome = await availability.checkout(GitCheckoutTarget(ref: "dev", mode: .local))
+
+        XCTAssertEqual(outcome, .failure)
+        XCTAssertEqual(availability.actionErrorMessage,
+                       String(localized: "Wait for the active response to finish before changing this repository."))
+        XCTAssertEqual(HermesGitHost.writes, [])
+    }
 }

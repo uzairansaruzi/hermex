@@ -271,9 +271,9 @@ struct MessageComposerView: View {
     let onSelectGitBranch: (GitCheckoutTarget) -> Void
     let onCreateGitBranch: (GitCheckoutTarget) -> Void
     let onRefreshGitBranches: () -> Void
-    /// False on a Hermes session (#1010): the workspace selector, the branch picker and voice
-    /// notes stay hidden until their phases land. The + menu, dictation and the context
-    /// indicator stay.
+    /// False on a Hermes session (#1010): the workspace selector and voice notes stay hidden
+    /// until their phases land. The + menu, dictation, the context indicator and the branch
+    /// picker (#1116) stay.
     var showsSessionControls = true
     /// The commands the `/` panel lists and runs: a Hermes chat's own and its host's (#1036).
     var slashScope = SlashCommandScope.webui
@@ -969,7 +969,7 @@ struct MessageComposerView: View {
 
                     profileSelector
 
-                    if showsSessionControls { gitBranchPicker }
+                    gitBranchPicker
                 }
 
                 voiceControlButton
@@ -1155,8 +1155,8 @@ struct MessageComposerView: View {
     @ViewBuilder
     private var gitBranchPicker: some View {
         // One "Git Actions" toggle covers every git control in chat (#189), so the
-        // branch chip goes with the toolbar menu rather than lingering alone. It switches
-        // branches through webui's routes, so a Hermes chat (#1114) has none.
+        // branch chip goes with the toolbar menu rather than lingering alone. A Hermes chat
+        // switches but can't create a branch (#1116).
         if showsGitControls, gitViewModel.hasRepository, gitViewModel.supportsBranches {
             GitBranchPickerButton(
                 currentBranch: gitViewModel.currentBranchName,
@@ -1164,6 +1164,7 @@ struct MessageComposerView: View {
                 isLoading: gitViewModel.isLoadingBranches,
                 isSwitching: gitViewModel.isSwitchingBranch,
                 isDisabled: isReadOnly || isWaitingForStream,
+                allowsCreate: gitViewModel.supportsSync,
                 onSelect: onSelectGitBranch,
                 onCreate: onCreateGitBranch,
                 onRefresh: onRefreshGitBranches

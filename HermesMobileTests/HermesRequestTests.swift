@@ -276,6 +276,19 @@ final class HermesRequestTests: XCTestCase {
         }
     }
 
+    /// The host rewrites a branch name before `git switch` (`_sanitize_branch`), so a name it
+    /// would change, which could reach another branch, is refused before anything is sent (#1116).
+    func testABranchSwitchSendsOnlyANameTheHostKeeps() throws {
+        let base = URL(string: "https://hermes.example")!
+        for name in ["", "feat+x", "my branch", "-x", "x/", ".x", "a..b", "a//b", "a--b", "a@{1}", "x~1"] {
+            XCTAssertThrowsError(try HermesREST.gitSwitchBranch(repository: "/r", branch: name).request(base: base), name)
+        }
+        XCTAssertThrowsError(try HermesREST.gitSwitchBranch(repository: "", branch: "dev").request(base: base))
+        for name in ["dev", "feature/x-1", "release_2.0", "café"] {
+            XCTAssertNoThrow(try HermesREST.gitSwitchBranch(repository: "/r", branch: name).request(base: base), name)
+        }
+    }
+
     func testEveryRESTRequestKeepsItsMethodPathQueryAndBody() throws {
         let base = URL(string: "https://hermes.example:9120")!
         let json = ["Content-Type": "application/json"]
@@ -359,6 +372,9 @@ final class HermesRequestTests: XCTestCase {
             (.gitHead(repository: "/r/a+b"), "GET", "https://hermes.example:9120/api/git/review/rev-parse?path=/r/a%2Bb", nil, [:]),
             (.gitCommitContext(repository: "/r"), "GET", "https://hermes.example:9120/api/git/review/commit-context?path=/r",
              nil, [:]),
+            (.gitBranches(repository: "/r/a+b"), "GET", "https://hermes.example:9120/api/git/branches?path=/r/a%2Bb", nil, [:]),
+            (.gitSwitchBranch(repository: "/r", branch: "feature/x"), "POST", "https://hermes.example:9120/api/git/branch/switch",
+             .object(["path": .string("/r"), "branch": .string("feature/x")]), json),
             (.config(profile: "research"), "GET", "https://hermes.example:9120/api/config?profile=research", nil, [:]),
             (.profileSoul(name: "research"), "GET", "https://hermes.example:9120/api/profiles/research/soul", nil, [:]),
             (.setProfileSoul(name: "research", content: "Be direct."), "PUT", "https://hermes.example:9120/api/profiles/research/soul",

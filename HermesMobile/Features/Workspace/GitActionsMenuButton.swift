@@ -5,10 +5,9 @@ struct GitActionsMenuButton: View {
     let isEnabled: Bool
     let fetchDisabled: Bool
     let writesDisabled: Bool
-    /// Shows the branch as a row and leaves out Fetch and Pull, for a repository without
-    /// branches or sync (`GitWriteAvailability.hidesBranchesAndSync`), whose branch the
-    /// composer's picker doesn't show.
-    var hidesBranchesAndSync = false
+    /// Shows the branch and its distance from upstream as a row and leaves out Fetch and Pull,
+    /// for a repository without sync (`GitWriteAvailability.hidesSync`).
+    var hidesSync = false
     let isRunningAction: Bool
     let onTap: () -> Void
     let onChanges: () -> Void
@@ -25,7 +24,7 @@ struct GitActionsMenuButton: View {
 
     var body: some View {
         Menu {
-            if hidesBranchesAndSync, let branch = presentation.branchSummary {
+            if hidesSync, let branch = presentation.branchSummary {
                 Section {
                     Label(branch, systemImage: "arrow.triangle.branch")
                 }
@@ -74,7 +73,7 @@ struct GitActionsMenuButton: View {
             .disabled(writesDisabled || isRunningAction)
         }
 
-        if !hidesBranchesAndSync {
+        if !hidesSync {
             Section("Update") {
                 HapticButton(feedbackStyle: .medium, action: onFetch) {
                     Label("Fetch", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")

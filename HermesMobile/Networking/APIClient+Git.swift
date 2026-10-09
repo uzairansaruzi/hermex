@@ -1,10 +1,10 @@
 import Foundation
 import Observation
 
-/// The repository one chat's Git menu, Changes sheet, commit sheet, diffs and turn-changes card
-/// read (#1114) and change (#1115): webui's session routes (`WebUIGitClient`) or a Hermes host's
-/// repository routes (`HermesGitClient`). Branches, fetch and pull are webui-only and stay on
-/// `APIClient`. File paths are repository-relative, as `GitFile.path` carries them.
+/// The repository one chat's Git menu, Changes sheet, commit sheet, diffs, turn-changes card and
+/// branch picker read (#1114) and change (#1115, #1116): webui's session routes (`WebUIGitClient`)
+/// or a Hermes host's repository routes (`HermesGitClient`). Fetch and pull are webui-only and
+/// stay on `APIClient`. File paths are repository-relative, as `GitFile.path` carries them.
 protocol GitDataClient: Sendable {
     /// The toolbar's badge data; nil, or `isGit == false`, outside a repository.
     func info() async throws -> GitInfo?
@@ -33,6 +33,12 @@ protocol GitDataClient: Sendable {
     /// A suggested message for what is staged, or for `files`. `previous` is the last suggestion,
     /// which a client that can ask for a different one avoids.
     func suggestMessage(for files: [GitFile]?, avoiding previous: String?) async throws -> GitCommitMessageResponse
+
+    /// The branch picker's local and remote branches.
+    func branches() async throws -> GitBranches?
+    /// Switches to `target`'s branch, or creates one (`newBranch`). With `stashingChanges` webui
+    /// stashes uncommitted changes first; a Hermes host refuses any (#1116).
+    func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool) async throws -> GitCheckoutResponse
 }
 
 extension GitDataClient {
@@ -117,6 +123,15 @@ struct WebUIGitClient: GitDataClient {
     func suggestMessage(for files: [GitFile]?, avoiding previous: String?) async throws -> GitCommitMessageResponse {
         guard let files else { return try await apiClient.gitCommitMessage(sessionID: sessionID) }
         return try await apiClient.gitCommitMessageSelected(sessionID: sessionID, paths: Self.paths(files))
+    }
+
+    func branches() async throws -> GitBranches? {
+        try await apiClient.gitBranches(sessionID: sessionID).branches
+    }
+
+    func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool) async throws -> GitCheckoutResponse {
+        stashingChanges ? try await apiClient.gitStashCheckout(sessionID: sessionID, target: target)
+            : try await apiClient.gitCheckout(sessionID: sessionID, target: target)
     }
 
     /// The server paths for `files`, skipping any without one.

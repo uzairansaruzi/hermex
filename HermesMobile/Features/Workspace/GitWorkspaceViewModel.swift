@@ -68,8 +68,9 @@ final class GitWorkspaceViewModel {
 /// Lightweight toolbar probe for whether a chat's workspace is a git repository.
 /// The toolbar stays hidden unless the server confirms `is_git == true`.
 ///
-/// Reads, commits and pushes go through `git` (#1114, #1115). Branches, fetch and pull go to
-/// webui's session routes and need `session`'s ID, so a Hermes chat, which has none, has none.
+/// Reads, commits, pushes and branch switches go through `git` (#1114, #1115, #1116). Fetch and
+/// pull go to webui's session routes and need `session`'s ID, so a Hermes chat, which has none,
+/// has none.
 @Observable
 final class GitWorkspaceAvailabilityViewModel {
     private let session: SessionSummary
@@ -118,9 +119,12 @@ final class GitWorkspaceAvailabilityViewModel {
     /// Whether the menu can stage, commit and push: a repository client to write through.
     var supportsWrites: Bool { git != nil }
 
-    /// Whether branches, fetch and pull are available: webui's routes, which take its session
-    /// ID. False on a Hermes chat.
-    var supportsBranches: Bool { session.sessionId != nil }
+    /// Whether the composer's branch picker lists and switches branches.
+    var supportsBranches: Bool { git != nil }
+
+    /// Whether fetch, pull, New Branch and stash-and-switch are available: webui's routes, which
+    /// take its session ID. False on a Hermes chat.
+    var supportsSync: Bool { session.sessionId != nil }
 
     @MainActor
     func loadIfNeeded() async {
@@ -200,44 +204,46 @@ final class GitWorkspaceAvailabilityViewModel {
 
     @MainActor
     func loadBranches() async {
-        guard let sessionID = session.sessionId, hasRepository, !isLoadingBranches else { return }
+        guard let git, hasRepository, !isLoadingBranches else { return }
         isLoadingBranches = true
         branchesError = nil
         do {
-            branches = try await apiClient.gitBranches(sessionID: sessionID).branches
+            branches = try await git.branches()
         } catch {
             branchesError = error
         }
         isLoadingBranches = false
     }
 
+    /// Switches branches, then reads the status and branches again. A failed Hermes switch reads
+    /// them again too; one finishing after `retire()` has nothing to show (`.retired`).
     @MainActor
     func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool = false) async -> GitCheckoutOutcome {
-        guard let sessionID = session.sessionId, !isSwitchingBranch else { return .failure }
+        guard let git, !isSwitchingBranch else { return .failure }
         isSwitchingBranch = true
         actionErrorMessage = nil
         defer { isSwitchingBranch = false }
 
         do {
-            let response = if stashingChanges {
-                try await apiClient.gitStashCheckout(sessionID: sessionID, target: target)
-            } else {
-                try await apiClient.gitCheckout(sessionID: sessionID, target: target)
-            }
+            let response = try await git.checkout(target, stashingChanges: stashingChanges)
+            guard !isRetired else { return .retired }
             apply(response)
             await refreshGitInfo()
             // Reload the branch list so the picker + composer pill reflect the new
             // current branch (a freshly created branch isn't in the cached list yet).
             await loadBranches()
+            guard !isRetired else { return .retired }
             lastActionMessage = response.message
             if response.restoreFailed == true {
                 actionErrorMessage = response.restoreError ?? String(localized: "The branch changed, but the saved changes could not be restored.")
             }
             return .success
         } catch let error as APIError where error.serverCode == "dirty_worktree" && !stashingChanges {
-            return .requiresStash
+            return isRetired ? .retired : .requiresStash
         } catch {
+            guard !isRetired else { return .retired }
             actionErrorMessage = friendlyMessage(for: error)
+            if git.isHermes { await refreshAfterExternalMutation() }
             return .failure
         }
     }
@@ -461,6 +467,8 @@ enum GitCheckoutOutcome: Equatable {
     case success
     case requiresStash
     case failure
+    /// The chat left the repository while the switch ran: nothing to show.
+    case retired
 }
 
 /// The visible phases of the one-tap commit pipeline (issue #315, Slice C). Staging
@@ -514,9 +522,9 @@ enum GitQuickCommitOutcome: Equatable {
 struct GitWriteAvailability: Equatable {
     let isStreaming: Bool
     let isViewingCachedData: Bool
-    /// A Hermes chat's repository has no branch switching, fetch or pull (#1114, #1115): those
-    /// entries are hidden, not disabled.
-    var hidesBranchesAndSync = false
+    /// A Hermes chat's repository has no fetch or pull (#1114, #1115): those entries are
+    /// hidden, not disabled.
+    var hidesSync = false
 
     var writesDisabled: Bool { isStreaming || isViewingCachedData }
     var fetchDisabled: Bool { isViewingCachedData }
@@ -546,7 +554,7 @@ struct GitToolbarPresentation: Equatable {
     var changesAreEnabled: Bool { !isLoading && (status != nil || statusFailed) }
 
     /// The branch, with the Changes header's "↑ahead ↓behind" once it has moved from its
-    /// upstream, for a menu without a branch picker (a Hermes chat's). Nil without a branch.
+    /// upstream, for a menu without fetch or pull (a Hermes chat's). Nil without a branch.
     var branchSummary: String? {
         guard hasRepository, let branch = info?.branch ?? status?.branch, !branch.isEmpty else { return nil }
         let ahead = info?.ahead ?? status?.ahead ?? 0

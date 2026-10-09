@@ -856,6 +856,82 @@ extension APIClientGitTests {
     }
 }
 
+// MARK: - Hermes branches (#1116)
+
+/// `git/branches` and `git/branch/switch` as the host answers them at the pin (ca678285,
+/// `web_git.py` `branch_list`, `branch_switch`).
+extension APIClientGitTests {
+    /// The list is read at the root, also from a subfolder, and split by `isRemote`: local heads,
+    /// then remote-tracking refs with no local head. The current branch comes from the status.
+    @MainActor
+    func testAHermesBranchListIsReadAtTheRootAndSplitIntoLocalAndRemote() async throws {
+        let git = HermesGitHost.client(cwd: HermesGitHost.repository + "/Sources") { request in
+            HermesGitHost.repositoryReply(request, branches: [("main", false), ("dev", false), ("origin/feature/x", true)])
+        }
+
+        let branches = try await git.branches()
+
+        XCTAssertEqual(HermesGitHost.requests.map(HermesGitHost.describe).last,
+                       "/api/git/branches path=\(HermesGitHost.repository)")
+        XCTAssertEqual(branches?.local?.compactMap(\.name), ["main", "dev"])
+        XCTAssertEqual(branches?.remote?.compactMap(\.name), ["origin/feature/x"])
+        XCTAssertNil(branches?.current)
+    }
+
+    /// A local row switches by its name, a remote row by its short name, at the root. The host's
+    /// refusal reads as the write-failure copy, never git's output.
+    @MainActor
+    func testAHermesSwitchNamesTheBranchAtTheRoot() async throws {
+        let git = HermesGitHost.client(cwd: HermesGitHost.repository + "/Sources") { request in
+            switch HermesCronFixture.body(request)["branch"].text {
+            case "taken": .json(400, .object(["detail": .string("fatal: 'taken' is already used by worktree at '/x'")]))
+            case let branch?: .json(200, .object(["branch": .string(branch)]))
+            case nil: HermesGitHost.repositoryReply(request)
+            }
+        }
+
+        let local = try await git.checkout(GitCheckoutTarget(ref: "dev", mode: .local), stashingChanges: false)
+        _ = try await git.checkout(GitCheckoutTarget(ref: "origin/feature/x", mode: .remote, track: true), stashingChanges: false)
+        var refusal: String?
+        do { _ = try await git.checkout(GitCheckoutTarget(ref: "taken", mode: .local), stashingChanges: false) } catch {
+            refusal = error.localizedDescription
+        }
+
+        let switches = HermesGitHost.requests.filter { $0.url?.path == "/api/git/branch/switch" }.map(HermesCronFixture.body)
+        XCTAssertEqual(switches, ["dev", "feature/x", "taken"].map {
+            .object(["path": .string(HermesGitHost.repository), "branch": .string($0)])
+        })
+        XCTAssertEqual(local.currentBranch, "dev")
+        XCTAssertEqual(local.resolvedStatus?.isGit, true)
+        XCTAssertEqual(refusal, String(localized: "Git couldn’t finish this change on your Hermes host."))
+    }
+
+    /// Nothing is sent for a dirty tree, a name the host would rewrite, a new branch or a stash,
+    /// none of which a Hermes picker offers but the first.
+    @MainActor
+    func testAHermesSwitchIsRefusedBeforeItIsSent() async throws {
+        nonisolated(unsafe) var dirty = true
+        let git = HermesGitHost.client { request in
+            HermesGitHost.repositoryReply(request, rows: dirty ? [("a.swift", 1, 0, "M", true)] : [],
+                                          flags: dirty ? [("a.swift", true, false, false, false)] : [])
+        }
+        var refusals: [HermesGitRefusal?] = []
+        func attempt(_ target: GitCheckoutTarget, stashing: Bool = false) async {
+            do { _ = try await git.checkout(target, stashingChanges: stashing) } catch { refusals.append(error as? HermesGitRefusal) }
+        }
+
+        await attempt(GitCheckoutTarget(ref: "dev", mode: .local))
+        HermesHostFixture.script { dirty = false }
+        await attempt(GitCheckoutTarget(ref: "feat+x", mode: .local))
+        await attempt(GitCheckoutTarget(ref: "origin", mode: .remote, track: true))
+        await attempt(GitCheckoutTarget(ref: "main", mode: .local, newBranch: "dev"))
+        await attempt(GitCheckoutTarget(ref: "dev", mode: .local), stashing: true)
+
+        XCTAssertEqual(refusals, [.uncommittedSwitch, .failed, .failed, .failed, .failed])
+        XCTAssertEqual(HermesGitHost.writes, [])
+    }
+}
+
 /// The chat that owns a test repository's writes (`HermesGitClient.WriteOwner`): a turn is
 /// running, or starts once `turnStartsAfterDispatches` requests have gone out.
 @MainActor final class HermesGitChatStub {
@@ -897,14 +973,21 @@ enum HermesGitHost {
 
     /// The host's reply for a repository at `root` whose uncommitted changes are `rows`
     /// (`review/list`) and whose status flags are `flags` (`status.files`, capped at 200 by the host).
-    /// `unborn` is a repository before its first commit, with no HEAD.
+    /// `unborn` is a repository before its first commit, with no HEAD. `branches` is `git/branches`'
+    /// list, local heads first, as the host sorts it.
     static func repositoryReply(
         _ request: URLRequest, root: String? = repository, branch: String = "main", detached: Bool = false,
         unborn: Bool = false, ahead: Int = 0, behind: Int = 0,
         rows: [(path: String, added: Int, removed: Int, status: String, staged: Bool)] = [],
-        flags: [(path: String, staged: Bool, unstaged: Bool, untracked: Bool, conflicted: Bool)] = []
+        flags: [(path: String, staged: Bool, unstaged: Bool, untracked: Bool, conflicted: Bool)] = [],
+        branches: [(name: String, isRemote: Bool)] = []
     ) -> HermesHostFixture.Reply? {
         switch request.url?.path {
+        case "/api/git/branches":
+            return .json(200, .object(["branches": .array(branches.map {
+                .object(["name": .string($0.name), "checkedOut": .bool(!$0.isRemote && $0.name == branch),
+                         "isDefault": .bool($0.name == "main"), "isRemote": .bool($0.isRemote), "worktreePath": .null])
+            })]))
         case "/api/fs/git-root":
             return .json(200, .object(["root": root.map(BotJSON.string) ?? .null]))
         case "/api/git/status":
@@ -943,7 +1026,7 @@ enum HermesGitHost {
     static let contextDiff = diffText(for: "staged.swift")
     static let recentSubjects = "feat(app): add the list\nfix(app): keep the row"
 
-    /// The writes sent, in order, as `stage a.swift`, `unstage (all)` or `commit "message"`, each
+    /// The writes sent, in order, as `stage a.swift`, `unstage (all)`, `commit "message"` or `switch dev`, each
     /// followed by ` path=…` unless it named the repository root. A file sent without its
     /// `:(literal)` prefix shows as `glob:a.swift`.
     @MainActor static var writes: [String] {
@@ -952,7 +1035,7 @@ enum HermesGitHost {
             let route = request.url?.lastPathComponent ?? ""
             let file = body["file"].text.map { $0.hasPrefix(":(literal)") ? String($0.dropFirst(10)) : "glob:" + $0 }
             let detail = file ?? body["message"].text.map { "\"\($0)\"" + (body["push"].flag == false ? "" : " push") }
-                ?? (route == "unstage" ? "(all)" : nil)
+                ?? body["branch"].text ?? (route == "unstage" ? "(all)" : nil)
             let root = body["path"].text == repository ? nil : "path=\(body["path"].text ?? "none")"
             return ([route] + [detail, root].compactMap { $0 }).joined(separator: " ")
         }

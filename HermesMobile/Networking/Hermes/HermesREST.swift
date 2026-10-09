@@ -200,6 +200,15 @@ enum HermesREST: Equatable, Sendable {
     /// `{diff, recent}`: what a commit would take (the staged diff, else everything against HEAD,
     /// with untracked names appended) and the last ten subjects, for a commit message.
     case gitCommitContext(repository: String)
+    /// `{branches: [{name, checkedOut, isDefault, isRemote, worktreePath}]}` (#1116): local heads
+    /// first, then remote-tracking refs (`origin/name`) with no local head; empty before the first
+    /// commit.
+    case gitBranches(repository: String)
+    /// `git switch branch`; `{branch}`, or 400 `{detail}`. The host rewrites the name first
+    /// (`isBranchName`), so one it would change, which could name another branch, is refused
+    /// here. A remote ref (`origin/name`) would fail, so a remote row goes out by its short name,
+    /// which git turns into a tracking branch.
+    case gitSwitchBranch(repository: String, branch: String)
     /// Replaces or creates the file at a host path, atomically; `{ok, path, byteSize}`. It never
     /// creates folders: a missing parent is 400 "Parent directory does not exist".
     case fsWriteText(path: String, content: String)
@@ -467,6 +476,12 @@ enum HermesREST: Equatable, Sendable {
             return try Self.pathQuery(base, "api/git/review/rev-parse", [URLQueryItem(name: "path", value: repository)])
         case .gitCommitContext(let repository):
             return try Self.pathQuery(base, "api/git/review/commit-context", [URLQueryItem(name: "path", value: repository)])
+        case .gitBranches(let repository):
+            return try Self.pathQuery(base, "api/git/branches", [URLQueryItem(name: "path", value: repository)])
+        case .gitSwitchBranch(let repository, let branch):
+            guard !repository.isEmpty, Self.isBranchName(branch) else { throw BotFailure.invalidAddress }
+            return try Self.send("POST", base.appendingPathComponent("api/git/branch/switch"),
+                                 ["path": .string(repository), "branch": .string(branch)])
         case .fsWriteText(let path, let content):
             return try Self.send("POST", base.appendingPathComponent("api/fs/write-text"),
                                  ["path": .string(path), "content": .string(content)])
@@ -637,6 +652,15 @@ enum HermesREST: Equatable, Sendable {
         var parts = file.split(separator: "/", omittingEmptySubsequences: false)
         if parts.count > 1, parts.last == "" { parts.removeLast() }
         return parts.allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
+    }
+
+    /// Whether the host's branch sanitizer leaves `name` as it is (`_sanitize_branch` at the pin):
+    /// word characters, `.`, `/` and `-` only, no run of `-`, `/` or `.`, and none of those three
+    /// at either end.
+    static func isBranchName(_ name: String) -> Bool {
+        guard let first = name.first, let last = name.last, !"-./".contains(first), !"-./".contains(last) else { return false }
+        return name.allSatisfy { $0.isLetter || $0.isNumber || "_./-".contains($0) }
+            && !["--", "//", ".."].contains { name.contains($0) }
     }
 
     /// A Git review write at `repository`, its `file` literal (`isGitFile`); nil only unstages.

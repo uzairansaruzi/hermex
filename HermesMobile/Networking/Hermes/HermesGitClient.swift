@@ -12,7 +12,8 @@ import Foundation
 /// everything first, and a push on a detached HEAD does nothing. So every write names one exact
 /// file (`HermesREST.isGitFile`), reads the rows it acts on again, and the guards live here,
 /// ahead of the request (`HermesGitRefusal`); each request also asks the owning chat first
-/// (`WriteOwner`). Each successful write answers the status read again.
+/// (`WriteOwner`). Each successful write answers the status read again. A branch switch (#1116)
+/// is a write too, refused while the tree has any uncommitted change.
 ///
 /// Neither the root nor git's own output (a refusal's `detail`, which can name host paths) reaches
 /// the screen or a log. Checked at the `HERMES_AGENT_TESTED_SHA` pin (ca678285) in
@@ -349,6 +350,46 @@ import Foundation
         return GitCommitMessageResponse(ok: true, message: message, truncated: diff.count > Self.messageDiffCharacters)
     }
 
+    // MARK: - Branches (#1116)
+
+    /// `git/branches`' local heads, then its remote-tracking refs without one. The current branch
+    /// is the status's (`info()`), so `current` is left out.
+    func branches() async throws -> GitBranches? {
+        guard let root = try await repositoryRoot() else { return nil }
+        let rows = try Self.json(try await send(.gitBranches(repository: root)))["branches"].list ?? []
+        let refs = { (remote: Bool) in
+            rows.filter { ($0["isRemote"].flag == true) == remote }.compactMap { row in
+                Self.text(row["name"]).map {
+                    GitBranchRef(name: $0, sha: nil, updated: nil, updatedRelative: nil, author: nil, subject: nil,
+                                 upstream: nil, ahead: nil, behind: nil)
+                }
+            }
+        }
+        return GitBranches(isGit: true, current: nil, detached: nil, head: nil, local: refs(false), remote: refs(true),
+                           upstream: nil, ahead: nil, behind: nil)
+    }
+
+    /// Switches to a listed branch with `git switch`. A remote row (`origin/name`) goes out as
+    /// `name`, which git makes a tracking branch of. Refused while the tree has any uncommitted
+    /// change, untracked files included, which `git switch` would carry across: there is no
+    /// stash on Hermes. Creating a branch isn't offered on Hermes either, and a name the host
+    /// would rewrite (`HermesREST.isBranchName`) is refused.
+    func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool) async throws -> GitCheckoutResponse {
+        let ref = target.ref
+        let branch = target.mode == .local ? ref : ref.firstIndex(of: "/").map { String(ref[ref.index(after: $0)...]) }
+        guard let branch, HermesREST.isBranchName(branch), target.newBranch == nil, !stashingChanges else {
+            throw HermesGitRefusal.failed
+        }
+        let dispatch = try beginWrite()
+        let root = try await writableRoot()
+        let summary = try Self.json(try await send(.gitStatus(repository: root)))
+        guard summary["changed"].integer == 0 else { throw HermesGitRefusal.uncommittedSwitch }
+        try await write(.gitSwitchBranch(repository: root, branch: branch), dispatch, deadline: .provisioning)
+        return GitCheckoutResponse(ok: true, message: nil, status: try? await status(), git: nil, branches: nil,
+                                   currentBranch: branch, stashName: nil, stashed: nil, restoredStash: nil,
+                                   restoreFailed: nil, restoreError: nil, restoreStash: nil)
+    }
+
     /// A file a revert deletes: untracked, or new in the index.
     private nonisolated static func isNew(_ file: GitFile) -> Bool {
         file.untracked == true || file.changeKind == .added
@@ -472,6 +513,8 @@ enum HermesGitRefusal: LocalizedError, Equatable {
     case turnRunning
     /// A Commit Selected that failed before its commit couldn't stage the files again either.
     case restoreFailed
+    /// A branch switch with uncommitted changes (#1116).
+    case uncommittedSwitch
     /// The host refused it, or it names no single file; git's own output isn't shown.
     case failed
 
@@ -491,6 +534,7 @@ enum HermesGitRefusal: LocalizedError, Equatable {
         case .firstCommitSelected: String(localized: "Make the first commit with Commit, then commit selected files")
         case .turnRunning: String(localized: "Wait for the active response to finish before changing this repository.")
         case .restoreFailed: String(localized: "Git couldn’t finish this change, and the staged files couldn’t be restored.")
+        case .uncommittedSwitch: String(localized: "Commit or discard first.")
         case .failed: String(localized: "Git couldn’t finish this change on your Hermes host.")
         }
     }

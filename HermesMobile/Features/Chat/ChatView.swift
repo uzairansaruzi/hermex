@@ -1286,7 +1286,7 @@ struct ChatView: View {
         GitWriteAvailability(
             isStreaming: viewModel.activeStreamID != nil,
             isViewingCachedData: viewModel.isViewingCachedData,
-            hidesBranchesAndSync: !gitAvailabilityViewModel.supportsBranches
+            hidesSync: !gitAvailabilityViewModel.supportsSync
         )
     }
 
@@ -1346,7 +1346,7 @@ struct ChatView: View {
             isEnabled: !viewModel.isViewingCachedData,
             fetchDisabled: gitWriteAvailability.fetchDisabled,
             writesDisabled: gitWriteAvailability.writesDisabled,
-            hidesBranchesAndSync: gitWriteAvailability.hidesBranchesAndSync,
+            hidesSync: gitWriteAvailability.hidesSync,
             isRunningAction: gitAvailabilityViewModel.isRunningGitAction,
             onTap: {
                 HapticButtonHaptics.tap(isEnabled: isHapticsEnabled)
@@ -1485,12 +1485,18 @@ struct ChatView: View {
         }
     }
 
+    /// Runs on the repository it started in, and shows nothing once a folder change retired it.
+    /// A Hermes switch with uncommitted changes fails with "Commit or discard first." (#1116);
+    /// only webui offers the stash.
     @MainActor
     private func performGitCheckout(_ target: GitCheckoutTarget, stashingChanges: Bool = false) async {
-        let outcome = await gitAvailabilityViewModel.checkout(target, stashingChanges: stashingChanges)
-        if outcome == .requiresStash {
+        let git = gitAvailabilityViewModel
+        let outcome = await git.checkout(target, stashingChanges: stashingChanges)
+        if outcome == .retired {
+            return
+        } else if outcome == .requiresStash {
             gitAlert = .dirtyCheckout(target)
-        } else if let message = gitAvailabilityViewModel.actionErrorMessage {
+        } else if let message = git.actionErrorMessage {
             // Surface real failures and partial successes (branch switched but the
             // stashed changes could not be restored) — the view model sets
             // actionErrorMessage in both cases and clears it on every new checkout.
@@ -1530,7 +1536,7 @@ struct ChatView: View {
     /// webui pushes to the configured upstream. A Hermes host pushes there too, or to origin as
     /// the branch's new upstream when it has none (#1115), so its copy names the branch and both.
     private var pushConfirmationMessage: String {
-        guard !gitAvailabilityViewModel.supportsBranches else {
+        guard !gitAvailabilityViewModel.supportsSync else {
             return String(localized: "Push the current branch to its configured upstream remote?")
         }
         let branch = gitAvailabilityViewModel.currentBranchName
@@ -2248,8 +2254,7 @@ struct ChatView: View {
     }
 
     /// A fresh Git state for the chat's repository: webui's session, or a Hermes chat's folder
-    /// while Files can read it (#1114), which has no branches, fetch or pull. Without one, Git
-    /// stays hidden.
+    /// while Files can read it (#1114), which has no fetch or pull. Without one, Git stays hidden.
     private func loadInitialGitAvailability() async {
         let availabilityViewModel = if isHermesSession {
             GitWorkspaceAvailabilityViewModel(
