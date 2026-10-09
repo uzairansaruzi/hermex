@@ -575,6 +575,174 @@ import SwiftUI
         XCTAssertEqual(HermesHostFixture.requests.last { $0.url?.path == "/api/profiles/active" }?.httpMethod, "GET")
     }
 
+    // MARK: Plan and outcome (#1139)
+
+    /// The host's plan reads tolerantly: blank and malformed items drop, an item with no id
+    /// gets its position, and an unknown status reads as pending.
+    func testAPlanParsesTolerantlyAndSkipsMalformedItems() {
+        let plan = HermesPlan(.object([
+            "revision": .number(3),
+            "todos": .array([
+                .object(["id": .string("a"), "content": .string("Archive newsletters"), "status": .string("completed")]),
+                .object(["content": .string("Draft replies"), "status": .string("in_progress")]),
+                .object(["id": .string("c"), "content": .string(" "), "status": .string("pending")]),
+                .string("garbage"),
+                .object(["id": .string("d"), "content": .string("Report"), "status": .string("weird")])
+            ])
+        ]))
+        XCTAssertEqual(plan?.revision, 3)
+        XCTAssertEqual(plan?.items.map(\.content), ["Archive newsletters", "Draft replies", "Report"])
+        XCTAssertEqual(plan?.items[1].id, "plan-1")
+        XCTAssertEqual(plan?.completedCount, 1)
+        XCTAssertEqual(plan?.current?.content, "Draft replies")
+        XCTAssertFalse(plan?.isFinished ?? true)
+        XCTAssertNil(HermesPlan(.object(["revision": .number(1), "todos": .array([])])))
+        XCTAssertNil(HermesPlan(.object(["todos": .string("nope")])))
+        XCTAssertNil(HermesPlan(.null))
+    }
+
+    /// A turn that calls `todo` pins its plan while it runs. Once every step is done, or the turn
+    /// ends, the plan settles at the top of that turn, by the prompt row the host saved, and a
+    /// later turn that leaves the plan alone does not take it.
+    func testAPlanPinsWhileItsTurnRunsAndSettlesIntoThatTurn() async throws {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "todo.updated", todos(revision: 1, ["completed", "completed", "in_progress", "pending", "pending"])))
+        let pinned = try XCTUnwrap(activity.pinnedPlan, "an open plan pins while its turn runs")
+        XCTAssertEqual(pinned.completedCount, 2)
+        XCTAssertEqual(pinned.items.count, 5)
+        XCTAssertEqual(pinned.current?.content, "Step 3")
+        XCTAssertNil(activity.settledPlan, "a pinned plan is not also in the transcript")
+
+        chat.receive(event(3, "todo.updated", todos(revision: 2, ["completed", "completed", "completed", "cancelled", "completed"])))
+        XCTAssertNil(activity.pinnedPlan, "a finished plan leaves the strip while the turn still runs")
+        XCTAssertEqual(activity.settledPlan?.plan.revision, 2)
+        XCTAssertEqual(activity.settledPlan?.isInNewestTurn, true)
+
+        chat.receive(event(4, "message.complete", ["status": .string("complete"), "text": .string("Done."),
+                                                   "persisted_turn": .object(["row_ids": .array([.number(7), .number(8)]),
+                                                                              "complete": .bool(false), "user_row_id": .number(7)])]))
+        chat.receive(event(5, "session.info", ["running": .bool(false)]))
+        XCTAssertEqual(activity.settledPlan?.rowID, 7, "the plan keeps its turn's saved prompt")
+
+        chat.receive(event(6, "message.start"))
+        XCTAssertNil(activity.pinnedPlan)
+        XCTAssertEqual(activity.settledPlan?.rowID, 7)
+        XCTAssertEqual(activity.settledPlan?.isInNewestTurn, false, "the new turn did not touch the plan")
+    }
+
+    /// A plan whose turn ends with steps still open settles too, showing where it stopped.
+    func testAnOpenPlanSettlesWhenItsTurnEnds() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "todo.updated", todos(revision: 1, ["completed", "in_progress", "pending"])))
+        chat.receive(event(3, "message.complete", ["status": .string("complete"), "text": .string("Stopping here.")]))
+        chat.receive(event(4, "session.info", ["running": .bool(false)]))
+        XCTAssertNil(chat.turn.activity.pinnedPlan)
+        XCTAssertEqual(chat.turn.activity.settledPlan?.plan.current?.content, "Step 2")
+        XCTAssertEqual(chat.turn.activity.settledPlan?.isInNewestTurn, true)
+    }
+
+    /// An older revision never replaces a newer one, and an empty list at revision 1 or later is
+    /// the host clearing the plan: it goes from the strip and the transcript, and an older
+    /// revision does not bring it back.
+    func testAnOlderPlanRevisionNeverReplacesANewerOneAndAHostClearRemovesIt() async {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "todo.updated", todos(revision: 2, ["in_progress", "pending"])))
+        chat.receive(event(3, "todo.updated", todos(revision: 1, ["pending"], prefix: "Stale")))
+        XCTAssertEqual(activity.pinnedPlan?.items.map(\.content), ["Step 1", "Step 2"])
+
+        chat.receive(event(4, "todo.updated", todos(revision: 3, [])))
+        XCTAssertNil(activity.pinnedPlan, "a host clear removes the strip")
+        XCTAssertNil(activity.settledPlan, "and the row")
+
+        chat.receive(event(5, "todo.updated", todos(revision: 2, ["pending"], prefix: "Stale")))
+        XCTAssertNil(activity.pinnedPlan, "an older revision never undoes the clear")
+    }
+
+    /// A reattach restores the plan from the snapshot's `todo_state`, revision-monotonic; a new
+    /// runtime starts its revisions again, so the plan the old one had is dropped.
+    func testTheAttachSnapshotRestoresThePlanAndANewRuntimeDropsIt() async {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        await reattach(chat, resume(running: true).replacing("todo_state", with: .object(todos(revision: 4, ["completed", "in_progress"]))))
+        XCTAssertEqual(activity.pinnedPlan?.revision, 4, "a running turn's plan pins after a reattach")
+        XCTAssertEqual(activity.pinnedPlan?.current?.content, "Step 2")
+
+        await reattach(chat, resume(running: true).replacing("todo_state", with: .object(todos(revision: 3, ["pending"], prefix: "Stale"))))
+        XCTAssertEqual(activity.pinnedPlan?.revision, 4, "an older snapshot never replaces it")
+
+        await reattach(chat, resume(running: true, runtime: "runtime-2"))
+        XCTAssertNil(activity.pinnedPlan, "a new runtime drops the old one's plan")
+        XCTAssertNil(activity.settledPlan)
+
+        await reattach(chat, resume(running: true, runtime: "runtime-2")
+            .replacing("todo_state", with: .object(todos(revision: 1, ["in_progress"], prefix: "Fresh"))))
+        XCTAssertEqual(activity.pinnedPlan?.items.map(\.content), ["Fresh 1"], "its revisions count from the start again")
+    }
+
+    /// A failed turn says why in its outcome row, not as error text: the host's surface, its
+    /// reset time and raw error. Once the turn settles, one live-state read takes the prompt the
+    /// host kept for Retry, which nothing sends on its own. The next turn clears the row.
+    func testAFailedTurnShowsItsOutcomeAndNeverRetriesOnItsOwn() async throws {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        chat.receive(event(1, "message.start"))
+        chat.host.next("session.resume", .init(result: resume(running: false, inflight: Self.failedInflight)))
+        chat.receive(event(2, "message.complete", Self.rateLimitedCompletion))
+        XCTAssertNotNil(chat.model.activeStreamID, "the turn waits for session.info")
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+
+        let failure = try XCTUnwrap(activity.failure)
+        XCTAssertEqual(HermesTurnOutcomeRow.title(for: failure), "The model provider is rate-limiting requests")
+        XCTAssertEqual(failure.error, "HTTP 429: Number of request tokens has exceeded your per-minute rate limit")
+        XCTAssertEqual(failure.surface?.resetsAt, Date(timeIntervalSince1970: 1_900_000_000))
+        XCTAssertTrue(failure.offersRetry)
+        XCTAssertNil(chat.model.sendErrorMessage, "the outcome row says it, not an error line")
+        XCTAssertEqual(chat.model.latestRunOutcome?.ending, .failed)
+
+        await waitUntil("the retained prompt read") { activity.retryTarget != nil }
+        XCTAssertEqual(activity.retryTarget, .init(rowID: 7, text: "Summarize the logs\n\n@file:/a/notes.txt"))
+        XCTAssertEqual(chat.writes("prompt.submit").count, 0, "nothing resends on its own")
+
+        chat.receive(event(4, "message.start"))
+        XCTAssertNil(activity.failure, "the next turn clears the row")
+        XCTAssertNil(activity.retryTarget)
+    }
+
+    /// A warning on a turn that succeeded shows the host's words. It survives a reattach and
+    /// goes when the next turn starts.
+    func testAWarningShowsTheHostsWordsUntilTheNextTurn() async {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        let warning = "The session database was locked; this reply exists only in this view."
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "message.complete", ["status": .string("complete"), "text": .string("Done."),
+                                                   "warning": .string(warning)]))
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+        XCTAssertEqual(activity.notice?.warning, warning)
+        XCTAssertNil(activity.failure)
+
+        await reattach(chat, resume(running: false), latest: 3)
+        XCTAssertEqual(activity.notice?.warning, warning, "a continuous reattach keeps it")
+
+        chat.receive(event(4, "message.start"))
+        XCTAssertNil(activity.notice)
+    }
+
+    /// A failure the host retained while the chat was away shows on attach, with the host's raw
+    /// prompt and the saved row dated from the turn's start for Retry.
+    func testAFailureTheHostRetainedShowsOnAttach() async {
+        let chat = await openChat(history: [userRow("Summarize the logs")])
+        await reattach(chat, resume(running: false, inflight: Self.failedInflight))
+        XCTAssertEqual(chat.turn.activity.failure?.surface?.code, "rate_limit")
+        XCTAssertNil(chat.model.sendErrorMessage)
+        XCTAssertEqual(chat.turn.activity.retryTarget, .init(rowID: 1, text: "Summarize the logs\n\n@file:/a/notes.txt"))
+    }
+
     // MARK: Fixture
 
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
@@ -633,6 +801,42 @@ import SwiftUI
         await model.loadMessages()
         XCTAssertEqual(engine.connectionState, .connected)
         return Chat(model: model, turn: turn, host: host, client: client, liveActivity: liveActivity)
+    }
+
+    /// A failed turn's retained `inflight`, as `session.resume` carries it (`_fail_inflight_turn`).
+    private static let failedInflight: [String: BotJSON] = [
+        "user": .string("Summarize the logs\n\n@file:/a/notes.txt"), "assistant": .string(""),
+        "error": .string("HTTP 429: Number of request tokens has exceeded your per-minute rate limit"),
+        "status": .string("error"), "recoverable": .bool(true),
+        "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"),
+                                  "retryable": .bool(true), "resets_at": .number(1_900_000_000)])
+    ]
+
+    /// A rate-limited turn's `message.complete` (`_complete_turn_payload`), whose prompt row the host saved as 7.
+    private static let rateLimitedCompletion: [String: BotJSON] = [
+        "status": .string("error"), "text": .string("HTTP 429: Number of request tokens has exceeded your per-minute rate limit"),
+        "error": .string("HTTP 429: Number of request tokens has exceeded your per-minute rate limit"),
+        "recoverable": .bool(true),
+        "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"),
+                                  "retryable": .bool(true), "resets_at": .number(1_900_000_000)]),
+        "persisted_turn": .object(["row_ids": .array([.number(7)]), "complete": .bool(false), "user_row_id": .number(7)])
+    ]
+
+    /// A `todo.updated` payload or `todo_state` at `revision`: one item per status, named
+    /// `<prefix> <n>`.
+    private func todos(revision: Int, _ statuses: [String], prefix: String = "Step") -> [String: BotJSON] {
+        ["revision": .number(Double(revision)), "todos": .array(statuses.enumerated().map { index, status in
+            .object(["id": .string("\(prefix)-\(index)"), "content": .string("\(prefix) \(index + 1)"), "status": .string(status)])
+        })]
+    }
+
+    /// Leaves and comes back: the replay holds nothing past `latest`, and every snapshot is `snapshot`.
+    private func reattach(_ chat: Chat, _ snapshot: BotJSON, latest: Int = 0) async {
+        chat.model.suspendStreamForBackground()
+        chat.host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: latest)))
+        chat.host.always("session.resume", .init(result: snapshot))
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
     }
 
     /// Feeds a turn through seq 3, then `frame`, which breaks the order: the chat reattaches,

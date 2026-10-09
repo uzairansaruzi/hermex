@@ -113,14 +113,14 @@ import SwiftUI
                         }
                         // How the last turn ended sits under it, before any plan or request.
                         if model.turnFailure != nil || model.turnNotice?.warning != nil {
-                            BotTurnOutcomeRow(
+                            HermesTurnOutcomeRow(
                                 failure: model.turnFailure, notice: model.turnNotice,
                                 offersRetry: model.offersRetry, mayRetry: model.mayRetry,
                                 onRetry: { Task { await model.retryFailedTurn() } }
                             )
                         }
                         if let plan = model.plan {
-                            BotPlanRowView(plan: plan).id("bot-plan")
+                            HermesPlanRowView(plan: plan).id("bot-plan")
                         }
                         // The blocking request sits where the work stopped, so the
                         // command reads under the tool row that asked for it.

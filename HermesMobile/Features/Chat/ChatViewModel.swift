@@ -2917,6 +2917,9 @@ final class ChatViewModel {
         }
     }
 
+    /// A Hermes session's plan and how its last turn ended (#1139). Nil on a webui session.
+    var hermesActivity: HermesChatActivity? { hermesTurn?.activity }
+
     /// A new chat in `profile` on this Hermes session's server and connection (#1015).
     func newHermesSessionChat(profile: String) -> HermesSessionChat? {
         hermesTurn.map { HermesSessionChat(server: $0.engine.server, connection: $0.engine.connection,
@@ -5778,6 +5781,26 @@ final class ChatViewModel {
         return .executed(message: nil)
     }
 
+    /// Retry on a failed Hermes turn's outcome row (#1139) can go now: the chat is connected and
+    /// idle, and nothing else is on its way.
+    var mayRetryHermesTurn: Bool {
+        guard let hermesTurn, hermesTurn.activity.retryTarget != nil else { return false }
+        return hermesTurn.engine.connectionState == .connected && activeStreamID == nil && !isStartingChat
+            && !isHermesSubmissionUncertain && !isViewingCachedData
+    }
+
+    /// Retry on the outcome row: the host's raw prompt (`inflight.user`) again, cut at the
+    /// failed prompt's row, once, from a tap (#937). It never touches the draft. A refusal says
+    /// why; one the host can't cut (4018) also hides Retry for that row and rereads.
+    func retryHermesFailedTurn() async {
+        guard mayRetryHermesTurn, let hermes = hermesTurn, let target = hermes.activity.retryTarget else { return }
+        stopListening()
+        sendErrorMessage = await rewindHermesTranscript(
+            before: target.rowID, sending: target.text, on: hermes,
+            reconnect: String(localized: "Reconnect to the server to retry messages."), retrying: true
+        )
+    }
+
     /// `/undo`: `session.undo` on the runtime, then the newest rows replace the transcript.
     private func undoHermesExchange(on hermes: HermesChatTurnCoordinator) async -> SlashCommandExecutionResult {
         let reconnect = String(localized: "Reconnect to the server to undo messages.")
@@ -5797,25 +5820,30 @@ final class ChatViewModel {
     /// Cuts a Hermes session's transcript before the saved prompt `rowID` and sends `text` in
     /// its place, once. Once the host takes it, the prompt shows where the cut was, the rows and
     /// cards it replaced go, and the turn streams after it; the turn's end re-reads the newest
-    /// rows. Returns why it failed, with nothing cut, or nil.
+    /// rows. `retrying` is Retry on the last turn, which failed: a prompt the chat still shows
+    /// unsaved is cut as its row, and a 4018 hides Retry. Returns why it failed, with nothing
+    /// cut, or nil.
     private func rewindHermesTranscript(before rowID: Int, sending text: String, on hermes: HermesChatTurnCoordinator,
-                                        reconnect: String) async -> String? {
+                                        reconnect: String, retrying: Bool = false) async -> String? {
         guard !isHermesSubmissionUncertain else { return reconnect }
         sendErrorMessage = nil
         lastError = nil
-        let cut = messages.firstIndex { $0.rowID == rowID }.map { Set(messages[$0...].map(\.id)) } ?? []
+        let first = messages.firstIndex { $0.rowID == rowID } ?? (retrying ? messages.lastIndex(where: Self.opensHermesTurn) : nil)
+        let cut = first.map { Set(messages[$0...].map(\.id)) } ?? []
         isStartingChat = true
         defer { isStartingChat = false }
         do {
             try await hermes.rewind(before: rowID, text: text)
         } catch {
+            if retrying, case BotSettingFailure.rejected(4018, _) = error { hermes.retryWasRefused(at: rowID) }
             return hermesHistoryFailure(error, on: hermes, reconnect: reconnect)
         }
         // Rows the turn's first frames added stay after the prompt.
         let start = messages.firstIndex { cut.contains($0.id) } ?? messages.endIndex
         var next = messages.filter { !cut.contains($0.id) }
-        next.insert(ChatMessage(role: "user", content: text, timestamp: Date().timeIntervalSince1970,
-                                messageId: "local-\(UUID().uuidString)"), at: min(start, next.endIndex))
+        next.insert(HermesChatTurnCoordinator.displayed(ChatMessage(role: "user", content: text, timestamp: Date().timeIntervalSince1970,
+                                                                    messageId: "local-\(UUID().uuidString)")),
+                    at: min(start, next.endIndex))
         messages = next
         transcriptRevision &+= 1
         // A card without an anchor follows the last row, which the cut always takes.

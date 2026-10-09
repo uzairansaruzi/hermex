@@ -461,6 +461,21 @@ without a result is read once from `GET /api/sessions/bg_<id>/messages?profile=`
 reply that is not a tool call; a 404 or none reads unavailable). A completion that beats its
 ask's reply is kept until the task id is known. Nothing is resent.
 
+Its plan and how its last turn ended are `HermesChatActivity` (#1139), which the coordinator
+only forwards frames and snapshots to. The plan is `HermesPlanState`, shared with Bot Chat:
+`todo.updated` and a snapshot's `todo_state`, revision-monotonic, an empty list at revision
+1 or later clears it, and a new runtime drops it, since its revisions start again. While its
+turn runs with a step open it pins above the composer (`HermesPlanStrip`: under the run-status
+pill, over the request card and `/btw` panel; hidden on the offline cache's copy); once every
+step is done or the turn ends it settles as `HermesPlanRowView` after that turn's prompt, by
+`persisted_turn.user_row_id` or, while the turn is the newest, the last prompt shown. The
+outcome row is Bot Chat's (`HermesTurnOutcomeRow`, below) under the last turn: a failed
+`message.complete` gives the failure and notice, and once the turn settles one `session.resume`
+(no messages) reads the retained `inflight.user` for Retry; on attach the snapshot's `inflight`
+rebuilds it, its prompt row the history's last prompt dated at or after `started_at`. Retry is
+the chat's rewind (`promptRewind`) with that text, from a tap only. A failed turn shows no
+error line.
+
 Its host requests are `HermesChatRequests` (#1011), on the Bot request model below and the
 engine's `answer`. An approval takes the Sessions overlay with only the host's choices
 (`ApprovalScope.Host.hermes`); a question or a sudo or secret prompt takes the
@@ -547,7 +562,7 @@ Settings → Chat → Message Timestamps. A settled reply's footer also holds it
 Copy button. Neither Bot Chat nor rooms draw dated gap separators (#1147).
 Later footer parts join this row rather than adding one.
 
-A failed turn gets an outcome row under it (`BotTurnOutcomeRow`, #878), after
+A failed turn gets an outcome row under it (`HermesTurnOutcomeRow`, #878), after
 any live reply and before the plan and request card. Its failure half is
 `BotConversation.turnFailure`, decoded by `HermesTurnOutcome` from the
 snapshot's retained `inflight` (`error`, `error_surface {layer, code,
@@ -612,7 +627,7 @@ in `BotTurnActivity`: `tool.start`/`tool.complete` keyed by `tool_id`,
 `reasoning.delta`, keyed `notification.show`/`clear`, and `review.summary`
 memory notes, bounded to 64 rows, 32 KB of reasoning and 8 notices.
 `todo.updated` and the snapshot's `todo_state` feed a revision-monotonic
-`BotPlan`. `status.update` and `thinking.delta` feed `workStatus`, a transient
+`HermesPlanState`, which an empty list at revision 1 or later clears (#1139). `status.update` and `thinking.delta` feed `workStatus`, a transient
 status line each frame replaces (`thinking.delta` is spinner text, not
 reasoning; an empty one clears it). `reasoning.available` carried the final
 answer text live, so it is consumed and never shown as reasoning; the settled

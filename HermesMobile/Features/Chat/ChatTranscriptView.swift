@@ -119,6 +119,12 @@ struct ChatTranscriptView: View {
     /// Non-nil draws the "Forked from" row above everything else (#873).
     var forkOrigin: ForkOrigin? = nil
     var onOpenForkParent: () -> Void = {}
+    /// A Hermes chat's settled plan (#1139), drawn right after the row
+    /// `settledPlanAfterRenderID` names: the prompt that opens the plan's turn.
+    var settledPlan: HermesPlan? = nil
+    var settledPlanAfterRenderID: String? = nil
+    /// How a Hermes chat's last turn ended (#1139), under that turn.
+    var turnOutcome: HermesTurnOutcomeRow? = nil
 
     var body: some View {
         if isLoading && messages.isEmpty {
@@ -384,11 +390,17 @@ struct ChatTranscriptView: View {
                    compressionReferenceCard.afterRenderID == transcriptMessage.renderID {
                     compressionReferenceCardView(compressionReferenceCard)
                 }
+
+                if let settledPlan, settledPlanAfterRenderID == transcriptMessage.renderID {
+                    HermesPlanRowView(plan: settledPlan)
+                        .id("hermes-plan")
+                }
             }
 
             transcriptLooseBlocks
             liveResponseBlocks
             workingRow
+            turnOutcome
             if let requestWithdrawal {
                 BotRequestWithdrawalNote(withdrawal: requestWithdrawal)
             }

@@ -383,6 +383,9 @@ struct ChatView: View {
     /// Measured height of the run-status pill, which wraps at accessibility
     /// text sizes. Seeded with its one-line height at the default size.
     @State private var activeRunStatusHeight: CGFloat = 28
+    /// Measured height of a Hermes chat's pinned plan line (#1139); its open list overlays
+    /// the transcript instead.
+    @State private var planStripHeight: CGFloat = 30
     /// Measured height of the pinned notice stack, which grows with each
     /// notice and with Dynamic Type.
     @State private var pinnedNoticeStackHeight: CGFloat = 0
@@ -1806,6 +1809,14 @@ struct ChatView: View {
                     approvalBypassStatusPill
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
+
+                // Nearest the composer and its request card, under the run-status pill (#1139).
+                if let pinnedPlan {
+                    HermesPlanStrip(plan: pinnedPlan) { height in
+                        planStripHeight = height
+                    }
+                    .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+                }
             }
             .padding(.horizontal)
             .frame(maxWidth: composerMaximumWidth)
@@ -1815,7 +1826,35 @@ struct ChatView: View {
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: activeRunStatusPresentation)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerLocalNotices)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsApprovalBypassStatus)
+            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: pinnedPlan == nil)
         }
+    }
+
+    /// A Hermes chat's running plan, pinned above the composer while it has an open step
+    /// (#1139). Hidden on the offline cache's copy.
+    private var pinnedPlan: HermesPlan? {
+        viewModel.isViewingCachedData ? nil : viewModel.hermesActivity?.pinnedPlan
+    }
+
+    /// The prompt row a Hermes chat's settled plan follows: its turn's saved prompt, or, while
+    /// that turn is the newest, the last prompt shown (#1139). Nil hides the row.
+    private var settledPlanAfterRenderID: String? {
+        guard let settled = viewModel.hermesActivity?.settledPlan else { return nil }
+        let rows = displayedTranscriptMessages
+        if let rowID = settled.rowID, let row = rows.last(where: { $0.message.rowID == rowID }) { return row.renderID }
+        guard settled.isInNewestTurn else { return nil }
+        return rows.last { $0.message.role == "user" && !$0.message.isSteerMessage }?.renderID
+    }
+
+    /// How a Hermes chat's last turn ended, under it (#1139): the failure with Retry and the
+    /// billing page, or the host's warning.
+    private var hermesTurnOutcome: HermesTurnOutcomeRow? {
+        guard let activity = viewModel.hermesActivity, activity.failure != nil || activity.notice?.warning != nil else { return nil }
+        return HermesTurnOutcomeRow(
+            failure: activity.failure, notice: activity.notice,
+            offersRetry: activity.retryTarget != nil, mayRetry: viewModel.mayRetryHermesTurn,
+            onRetry: { Task { await viewModel.retryHermesFailedTurn() } }
+        )
     }
 
     /// Reports the bypass; on a Hermes session it also turns off the session's own flag
@@ -1948,7 +1987,10 @@ struct ChatView: View {
                 turnDiffPresentation = .turnFiles(turnChangesRecapSummary?.diffFiles ?? [file], initial: file)
             },
             forkOrigin: shownForkOrigin,
-            onOpenForkParent: openForkParent
+            onOpenForkParent: openForkParent,
+            settledPlan: viewModel.hermesActivity?.settledPlan?.plan,
+            settledPlanAfterRenderID: settledPlanAfterRenderID,
+            turnOutcome: hermesTurnOutcome
         )
         // Off the main body chain, which is at the type-checker's limit.
         .onChange(of: viewModel.latestRunOutcome) {
@@ -2116,6 +2158,9 @@ struct ChatView: View {
         if showsApprovalBypassStatus {
             height += approvalBypassStatusSpacerHeight
         }
+        if pinnedPlan != nil {
+            height += planStripHeight
+        }
 
         let visibleItemCount = composerAccessoryVisibleItemCount
         if visibleItemCount > 1 {
@@ -2133,6 +2178,9 @@ struct ChatView: View {
             count += 1
         }
         if showsApprovalBypassStatus {
+            count += 1
+        }
+        if pinnedPlan != nil {
             count += 1
         }
         return count
