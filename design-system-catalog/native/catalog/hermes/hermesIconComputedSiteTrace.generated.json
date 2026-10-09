@@ -1,0 +1,2115 @@
+{
+  "provenanceConvention": "Call-graph anchors identify the computed site's nearest stable Swift declaration; resolvedNames are traced through that value flow and are not an exhaustive call-site list.",
+  "entries": [
+    {
+      "site": "HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift:338",
+      "resolvedNames": [
+        "brain.head.profile",
+        "checkmark",
+        "checkmark.shield",
+        "doc.text",
+        "exclamationmark",
+        "hourglass",
+        "magnifyingglass",
+        "questionmark.bubble",
+        "sparkle",
+        "terminal",
+        "text.bubble",
+        "wrench.and.screwdriver",
+        "xmark"
+      ],
+      "traceMethod": "call-graph from HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift#AgentRunIslandCompactMark::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift:352",
+      "resolvedNames": [
+        "brain.head.profile",
+        "checkmark",
+        "checkmark.shield",
+        "doc.text",
+        "exclamationmark",
+        "hourglass",
+        "magnifyingglass",
+        "questionmark.bubble",
+        "sparkle",
+        "terminal",
+        "text.bubble",
+        "wrench.and.screwdriver",
+        "xmark"
+      ],
+      "traceMethod": "call-graph from HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift#AgentRunStatusDot::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Auth/AppLockWindow.swift:181",
+      "resolvedNames": [
+        "faceid",
+        "lock",
+        "touchid"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Auth/AppLockWindow.swift#AppLockView::private var locked: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Auth/AppLockWindow.swift:200",
+      "resolvedNames": [],
+      "traceMethod": "direct",
+      "status": "no-symbol"
+    },
+    {
+      "site": "HermesMobile/Auth/AppLockWindow.swift:218",
+      "resolvedNames": [
+        "faceid",
+        "lock",
+        "touchid"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Auth/AppLockWindow.swift:254",
+      "resolvedNames": [
+        "faceid",
+        "lock",
+        "touchid"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Auth/AppLockWindow.swift#AppLockButton::let systemImage: String?",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Auth/AppLockWindow.swift:265",
+      "resolvedNames": [
+        "faceid",
+        "lock",
+        "touchid"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Auth/AppLockWindow.swift#AppLockButton::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Config/AppTheme.swift:865",
+      "resolvedNames": [
+        "arrow.turn.up.right",
+        "stop.circle",
+        "text.append"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotActivityViews.swift:60",
+      "resolvedNames": [
+        "checkmark.circle.fill",
+        "circle",
+        "circle.lefthalf.filled",
+        "xmark.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotActivityViews.swift#BotPlanRowView::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotArtifactMessageView.swift:356",
+      "resolvedNames": [
+        "doc",
+        "photo",
+        "waveform"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotChatComposerView.swift:640",
+      "resolvedNames": [
+        "mic.badge.plus",
+        "mic.fill",
+        "waveform"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotChatComposerView.swift#BotComposerPillView::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotCreateView.swift:204",
+      "resolvedNames": [
+        "checkmark.circle.fill",
+        "exclamationmark.circle",
+        "questionmark.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotCreateView.swift#BotCreateView::private var results: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotCreateView.swift:260",
+      "resolvedNames": [
+        "cpu",
+        "face.smiling"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotCreateView.swift#BotCreateView::private func navigationRow(_ title: String, subtitle: String?, value: String, systemImage: String,",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotCreateView.swift:264",
+      "resolvedNames": [
+        "cpu",
+        "face.smiling"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotCreateView.swift#BotCreateView::private func navigationRow(_ title: String, subtitle: String?, value: String, systemImage: String,",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotDelegatedWorkView.swift:194",
+      "resolvedNames": [
+        "checkmark",
+        "exclamationmark.triangle.fill"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotDelegatedWorkView.swift:298",
+      "resolvedNames": [
+        "checkmark.circle.fill",
+        "exclamationmark.triangle.fill"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotMessageActions.swift:48",
+      "resolvedNames": [],
+      "traceMethod": "direct",
+      "status": "no-symbol"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotPendingRequest.swift:723",
+      "resolvedNames": [
+        "clock",
+        "stop.circle"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotPendingRequestCard.swift:147",
+      "resolvedNames": [
+        "checkmark.circle.fill",
+        "lock.open",
+        "star.fill",
+        "xmark.circle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotPendingRequestCard.swift#BotApprovalRequestBody::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotPendingRequestCard.swift:288",
+      "resolvedNames": [
+        "checkmark.square.fill",
+        "circle",
+        "largecircle.fill.circle",
+        "square"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotPendingRequestCard.swift#BotQuestionRequestBody::private func choiceButton(_ choice: BotQuestionRequest.Choice, in item: BotQuestionRequest.Question) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotPendingRequestCard.swift:401",
+      "resolvedNames": [
+        "123.rectangle.fill",
+        "key.fill",
+        "lock.fill",
+        "lock.shield.fill",
+        "person.badge.key.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotPendingRequestCard.swift#BotCredentialRequestBody::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotPendingRequestCard.swift:649",
+      "resolvedNames": [
+        "checkmark.circle.fill",
+        "clock.badge.exclamationmark",
+        "exclamationmark.circle.fill"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotPendingRequestCard.swift:768",
+      "resolvedNames": [
+        "desktopcomputer",
+        "exclamationmark.triangle.fill",
+        "key.fill",
+        "lock.shield.fill",
+        "questionmark.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotPendingRequestCard.swift#BotRequestHeader::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotPendingRequestCard.swift:775",
+      "resolvedNames": [
+        "desktopcomputer",
+        "exclamationmark.triangle.fill",
+        "key.fill",
+        "lock.shield.fill",
+        "questionmark.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotPendingRequestCard.swift#BotRequestHeader::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotPendingRequestCard.swift:794",
+      "resolvedNames": [
+        "clock",
+        "stop.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotPendingRequestCard.swift#BotRequestWithdrawalNote::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotProfileEditorView.swift:253",
+      "resolvedNames": [
+        "arrow.clockwise.circle",
+        "checkmark.circle.fill",
+        "exclamationmark.circle",
+        "questionmark.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotProfileEditorView.swift#BotProfileEditorView::private var saveResults: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotProfileEditorView.swift:269",
+      "resolvedNames": [
+        "server.rack",
+        "sparkles",
+        "wrench.and.screwdriver"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotProfileEditorView.swift#BotProfileEditorView::private func capabilityRow(_ field: BotProfileEditor.Field, systemImage: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotProfileEditorView.swift:272",
+      "resolvedNames": [
+        "server.rack",
+        "sparkles",
+        "wrench.and.screwdriver"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotProfileEditorView.swift#BotProfileEditorView::private func capabilityRow(_ field: BotProfileEditor.Field, systemImage: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotProfileEditorView.swift:326",
+      "resolvedNames": [
+        "cpu",
+        "face.smiling",
+        "server.rack",
+        "sparkles",
+        "wrench.and.screwdriver"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotProfileEditorView.swift#BotProfileEditorView::private func navigationRow(_ title: String, subtitle: String?, value: String, systemImage: String,",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotProfileEditorView.swift:330",
+      "resolvedNames": [
+        "cpu",
+        "face.smiling",
+        "server.rack",
+        "sparkles",
+        "wrench.and.screwdriver"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotProfileEditorView.swift#BotProfileEditorView::private func navigationRow(_ title: String, subtitle: String?, value: String, systemImage: String,",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotPromptMode.swift:19",
+      "resolvedNames": [
+        "arrow.turn.up.right",
+        "arrow.up",
+        "stop.circle",
+        "text.append"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotRoomComposerView.swift:68",
+      "resolvedNames": [
+        "arrow.up",
+        "stop.fill"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotRoomCreateView.swift:24",
+      "resolvedNames": [
+        "chevron.backward",
+        "xmark"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotsInboxView.swift:350",
+      "resolvedNames": [
+        "pin",
+        "pin.slash"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotsInboxView.swift:361",
+      "resolvedNames": [
+        "eye",
+        "eye.slash"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotsInboxView.swift:442",
+      "resolvedNames": [
+        "pin",
+        "pin.slash"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotsInboxView.swift:448",
+      "resolvedNames": [
+        "eye",
+        "eye.slash"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotsInboxView.swift:477",
+      "resolvedNames": [
+        "pin",
+        "pin.slash"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotsInboxView.swift:482",
+      "resolvedNames": [
+        "eye",
+        "eye.slash"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotsInboxView.swift:503",
+      "resolvedNames": [
+        "pin",
+        "pin.slash"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotsInboxView.swift:508",
+      "resolvedNames": [
+        "eye",
+        "eye.slash"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotTurnOutcomeRow.swift:70",
+      "resolvedNames": [
+        "exclamationmark.triangle.fill",
+        "xmark.circle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotTurnOutcomeRow.swift#BotTurnOutcomeRow::private func block(systemImage: String, tint: Color, title: String, detail: String?, resetsAt: Date?,",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/BotTurnOutcomeRow.swift:74",
+      "resolvedNames": [
+        "exclamationmark.triangle.fill",
+        "xmark.circle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/BotTurnOutcomeRow.swift#BotTurnOutcomeRow::private func block(systemImage: String, tint: Color, title: String, detail: String?, resetsAt: Date?,",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/HermexPushSectionView.swift:219",
+      "resolvedNames": [
+        "checkmark.circle.fill",
+        "circle",
+        "circle.dashed"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/HermexPushSectionView.swift:314",
+      "resolvedNames": [
+        "arrow.clockwise.circle.fill",
+        "arrow.up.circle.fill",
+        "checkmark.circle.fill",
+        "circle.dashed",
+        "exclamationmark.triangle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/HermexPushSectionView.swift#HermexPushSectionView::@ViewBuilder private func callout(_ symbol: String, tint: Color, title: Text, message: Text,",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Bots/HermexPushSectionView.swift:362",
+      "resolvedNames": [
+        "arrow.clockwise.circle.fill",
+        "arrow.up.circle.fill",
+        "circle.dashed",
+        "exclamationmark.triangle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Bots/HermexPushSectionView.swift#HermexPushSectionView::private func captionLine(_ symbol: String, tint: Color, text: String, textTint: Color) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ApprovalRequestOverlay.swift:162",
+      "resolvedNames": [
+        "checkmark.circle.fill",
+        "lock.open",
+        "star.fill",
+        "xmark.circle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ApprovalRequestOverlay.swift#ApprovalRequestOverlay::private func approvalButton(_ choice: ApprovalChoice) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/CameraPickerView.swift:492",
+      "resolvedNames": [
+        "arrow.triangle.2.circlepath.camera",
+        "chevron.left"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/CameraPickerView.swift#HermexAttachmentCameraPanel::private func cameraControl(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/CameraPickerView.swift:498",
+      "resolvedNames": [
+        "arrow.triangle.2.circlepath.camera",
+        "chevron.left"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/CameraPickerView.swift#HermexAttachmentCameraPanel::private func cameraControl(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatAttachmentPreviewView.swift:205",
+      "resolvedNames": [
+        "doc.questionmark",
+        "photo"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerAttachmentStripView.swift:102",
+      "resolvedNames": [
+        "doc",
+        "photo"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatComposerAttachmentStripView.swift#ComposerAttachmentPillPreview::private func placeholderTile(systemName: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerAttachmentStripView.swift:103",
+      "resolvedNames": [
+        "doc",
+        "photo"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatComposerAttachmentStripView.swift#ComposerAttachmentPillPreview::private func placeholderTile(systemName: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerAttachmentStripView.swift:265",
+      "resolvedNames": [
+        "archivebox",
+        "doc",
+        "doc.richtext",
+        "doc.text",
+        "tablecells"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatComposerAttachmentStripView.swift#ComposerAttachmentThumbnailView::private var fileBadge: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerPresentation.swift:62",
+      "resolvedNames": [
+        "arrow.turn.up.right",
+        "arrow.up",
+        "stop.circle",
+        "text.append"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatComposerPresentation.swift#SendChoice::var systemImage: String { get }",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerPresentation.swift:96",
+      "resolvedNames": [
+        "arrow.turn.up.right",
+        "arrow.up",
+        "stop.circle",
+        "text.append"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatComposerPresentation.swift#SendChoiceCard::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerSelectorControls.swift:325",
+      "resolvedNames": [
+        "arrow.turn.up.right",
+        "bolt",
+        "folder",
+        "person.crop.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatComposerSelectorControls.swift#ComposerInlineControlLabel::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerSelectorControls.swift:333",
+      "resolvedNames": [
+        "arrow.turn.up.right",
+        "bolt",
+        "folder",
+        "person.crop.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatComposerSelectorControls.swift#ComposerInlineControlLabel::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerSelectorSheets.swift:118",
+      "resolvedNames": [
+        "checkmark.circle.fill",
+        "folder"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerSendGate.swift:60",
+      "resolvedNames": [
+        "arrow.turn.up.right",
+        "arrow.up",
+        "stop.circle",
+        "stop.fill",
+        "text.append"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerView.swift:1041",
+      "resolvedNames": [
+        "arrow.turn.up.right",
+        "arrow.up",
+        "stop.circle",
+        "stop.fill",
+        "text.append"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatComposerView.swift#MessageComposerView::private var actionButtonLabel: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerVoiceControls.swift:14",
+      "resolvedNames": [
+        "exclamationmark.triangle",
+        "mic.badge.plus",
+        "mic.fill",
+        "waveform"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatComposerVoiceControls.swift#ComposerVoiceStatusView::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerVoiceControls.swift:177",
+      "resolvedNames": [
+        "chevron.up",
+        "xmark.circle.fill"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerVoiceControls.swift:6",
+      "resolvedNames": [
+        "exclamationmark.triangle",
+        "mic.badge.plus",
+        "mic.fill",
+        "waveform"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatComposerVoiceControls.swift#ComposerVoiceStatus::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatComposerVoiceControls.swift:70",
+      "resolvedNames": [
+        "mic",
+        "mic.fill",
+        "stop.circle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatComposerVoiceControls.swift#ComposerVoiceControlButton::private var label: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatGoalControls.swift:40",
+      "resolvedNames": [
+        "checkmark.circle",
+        "pause.circle",
+        "target",
+        "xmark.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatGoalControls.swift#GoalControlsMenu::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatGoalControls.swift:61",
+      "resolvedNames": [
+        "checkmark.circle",
+        "list.bullet.clipboard",
+        "pause.circle",
+        "play.circle",
+        "xmark.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatGoalControls.swift#GoalControlsMenu::private func commandButton(_ title: String, systemImage: String, command: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatGoalControls.swift:65",
+      "resolvedNames": [
+        "checkmark.circle",
+        "list.bullet.clipboard",
+        "pause.circle",
+        "play.circle",
+        "xmark.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatGoalControls.swift#GoalControlsMenu::private func commandButton(_ title: String, systemImage: String, command: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatMessageActions.swift:120",
+      "resolvedNames": [
+        "arrow.clockwise",
+        "arrow.triangle.branch",
+        "doc.on.doc",
+        "pencil",
+        "speaker.slash",
+        "speaker.wave.2"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatMessageActions.swift#ChatMessageActionMenu::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatMessageActions.swift:137",
+      "resolvedNames": [
+        "speaker.slash",
+        "speaker.wave.2"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatMessageActions.swift:35",
+      "resolvedNames": [
+        "arrow.clockwise",
+        "arrow.triangle.branch",
+        "doc.on.doc",
+        "pencil",
+        "speaker.slash",
+        "speaker.wave.2"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatMessageActions.swift#ChatMessageActionItem::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatMessageActions.swift:78",
+      "resolvedNames": [
+        "arrow.clockwise",
+        "arrow.triangle.branch",
+        "doc.on.doc",
+        "pencil",
+        "speaker.slash",
+        "speaker.wave.2"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ChatMessageActions.swift#Array::func uiMenu() -> UIMenu {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatMessageMeta.swift:143",
+      "resolvedNames": [
+        "checkmark",
+        "doc.on.doc"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ChatView.swift:175",
+      "resolvedNames": [
+        "pause.fill",
+        "play.fill"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ComposerChipRendering.swift:167",
+      "resolvedNames": [
+        "hammer",
+        "quote.opening"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ComposerChipRendering.swift#ComposerChipRenderer::private static func iconImage(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/CustomAttachmentPicker.swift:1002",
+      "resolvedNames": [
+        "arrow.turn.up.right",
+        "arrow.up",
+        "camera",
+        "paperclip",
+        "photo.on.rectangle.angled",
+        "stop.circle",
+        "text.append"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/CustomAttachmentPicker.swift#HermexAttachmentMenuRow::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/CustomAttachmentPicker.swift:1008",
+      "resolvedNames": [
+        "arrow.turn.up.right",
+        "arrow.up",
+        "camera",
+        "paperclip",
+        "photo.on.rectangle.angled",
+        "stop.circle",
+        "text.append"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/CustomAttachmentPicker.swift#HermexAttachmentMenuRow::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/CustomAttachmentPicker.swift:619",
+      "resolvedNames": [
+        "camera",
+        "paperclip",
+        "photo.on.rectangle.angled"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/CustomAttachmentPicker.swift#HermexAttachmentPickerView::private func menuRow(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/CustomAttachmentPicker.swift:623",
+      "resolvedNames": [
+        "camera",
+        "paperclip",
+        "photo.on.rectangle.angled"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/CustomAttachmentPicker.swift#HermexAttachmentPickerView::private func menuRow(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/CustomAttachmentPicker.swift:777",
+      "resolvedNames": [
+        "chevron.left"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/CustomAttachmentPicker.swift#HermexAttachmentPickerView::private func roundControl(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/CustomAttachmentPicker.swift:783",
+      "resolvedNames": [
+        "chevron.left"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/CustomAttachmentPicker.swift#HermexAttachmentPickerView::private func roundControl(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ImageLightboxView.swift:240",
+      "resolvedNames": [
+        "photo",
+        "square.and.arrow.up",
+        "xmark"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ImageLightboxView.swift#ImageLightboxActionButton::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ImageLightboxView.swift:246",
+      "resolvedNames": [
+        "photo",
+        "square.and.arrow.up",
+        "xmark"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ImageLightboxView.swift#ImageLightboxActionButton::init(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ImageLightboxView.swift:259",
+      "resolvedNames": [
+        "photo",
+        "square.and.arrow.up",
+        "xmark"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ImageLightboxView.swift#ImageLightboxActionButton::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/InlineAudioPlayerView.swift:68",
+      "resolvedNames": [
+        "pause.fill",
+        "play.fill"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/MarkdownRenderer.swift:505",
+      "resolvedNames": [
+        "arrow.left.and.right",
+        "arrow.turn.down.left"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/MarkdownRenderer.swift:605",
+      "resolvedNames": [
+        "chevron.down",
+        "chevron.up"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/MarkerMessageCardView.swift:67",
+      "resolvedNames": [
+        "arrow.down.right.and.arrow.up.left",
+        "checklist",
+        "star"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/MarkerMessageCardView.swift#MarkerMessageCardView::private func header(summary: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/MarkerMessageCardView.swift:86",
+      "resolvedNames": [
+        "chevron.down",
+        "chevron.up"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/MessageBubbleView.swift:322",
+      "resolvedNames": [
+        "checkmark.circle.fill",
+        "command.circle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/MessageBubbleView.swift#MessageBubbleView::private func localStatusRow(iconName: String, iconColor: Color) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/MessageBubbleView.swift:409",
+      "resolvedNames": [
+        "chevron.down",
+        "chevron.up"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/MessageBubbleView.swift:740",
+      "resolvedNames": [
+        "archivebox",
+        "doc",
+        "doc.richtext",
+        "doc.text",
+        "tablecells"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/MessageBubbleView.swift#GridAttachmentCell::private var fileCell: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/SlashCommandAutocompleteView.swift:292",
+      "resolvedNames": [
+        "bolt.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/SlashCommandAutocompleteView.swift#SlashCommandAutocompleteView::private func rowContent(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ToolActivityGroupView.swift:88",
+      "resolvedNames": [
+        "chevron.down",
+        "chevron.up"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ToolCallLogRowView.swift:190",
+      "resolvedNames": [
+        "chevron.down",
+        "chevron.up"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/ToolCallLogRowView.swift:23",
+      "resolvedNames": [
+        "arrow.triangle.branch",
+        "book",
+        "brain",
+        "bubble.left",
+        "checklist",
+        "clock",
+        "doc.text",
+        "eye",
+        "globe",
+        "list.bullet",
+        "magnifyingglass",
+        "pencil.line",
+        "play",
+        "powerplug",
+        "terminal",
+        "wrench"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/ToolCallLogRowView.swift#ToolCallLogRowView::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/TranscriptLogRowView.swift:162",
+      "resolvedNames": [
+        "chevron.down",
+        "chevron.up"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/TranscriptMediaView.swift:565",
+      "resolvedNames": [
+        "doc",
+        "photo",
+        "play.rectangle",
+        "waveform"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/TranscriptMediaView.swift#TranscriptMediaUnavailableChip::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/TranscriptMediaView.swift:823",
+      "resolvedNames": [
+        "doc.questionmark",
+        "photo",
+        "play.rectangle",
+        "waveform"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Chat/TranscriptMediaView.swift#TranscriptMediaPreviewView::private func unavailableContent(_ message: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Chat/TranscriptTurnFolding.swift:248",
+      "resolvedNames": [
+        "chevron.down",
+        "chevron.up"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift:645",
+      "resolvedNames": [
+        "exclamationmark.triangle",
+        "rectangle.portrait.slash",
+        "rectangle.stack.badge.minus"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanCardDetailView.swift#KanbanCardDetailContent::private func unavailable(title: LocalizedStringKey, detail: LocalizedStringKey, systemImage: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanCardDetailView.swift:647",
+      "resolvedNames": [
+        "exclamationmark.triangle",
+        "rectangle.portrait.slash",
+        "rectangle.stack.badge.minus"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanCardDetailView.swift#KanbanCardDetailContent::private func unavailable(title: LocalizedStringKey, detail: LocalizedStringKey, systemImage: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:1174",
+      "resolvedNames": [
+        "checkmark.circle.fill",
+        "circle"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:1373",
+      "resolvedNames": [
+        "line.3.horizontal.decrease.circle",
+        "rectangle.stack"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:1461",
+      "resolvedNames": [
+        "bolt.horizontal.circle",
+        "bolt.horizontal.circle.fill",
+        "exclamationmark.circle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanLabView.swift#KanbanStatusFocusView::private var toolbarContent: some ToolbarContent {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:1499",
+      "resolvedNames": [
+        "line.3.horizontal.decrease.circle",
+        "line.3.horizontal.decrease.circle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanLabView.swift#KanbanStatusFocusView::private var toolbarContent: some ToolbarContent {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:1506",
+      "resolvedNames": [
+        "ellipsis.circle",
+        "ellipsis.circle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanLabView.swift#KanbanStatusFocusView::private var toolbarContent: some ToolbarContent {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:1517",
+      "resolvedNames": [
+        "exclamationmark.triangle",
+        "lock",
+        "server.rack",
+        "wifi.exclamationmark"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanLabView.swift#KanbanStatusFocusView::private func unavailableContent(title: String, detail: String, systemImage: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:1519",
+      "resolvedNames": [
+        "exclamationmark.triangle",
+        "lock",
+        "server.rack",
+        "wifi.exclamationmark"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanLabView.swift#KanbanStatusFocusView::private func unavailableContent(title: String, detail: String, systemImage: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:1746",
+      "resolvedNames": [
+        "pencil"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanLabView.swift#KanbanBoardManagementView::private func boardActionsMenu(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:1755",
+      "resolvedNames": [
+        "checkmark.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanLabView.swift#KanbanBoardManagementView::private func boardActionsMenu(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:1763",
+      "resolvedNames": [
+        "archivebox"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanLabView.swift#KanbanBoardManagementView::private func boardActionsMenu(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:2154",
+      "resolvedNames": [
+        "clock",
+        "clock.badge.exclamationmark",
+        "exclamationmark.triangle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanLabView.swift#KanbanCardSummaryView::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:2233",
+      "resolvedNames": [
+        "bubble.left",
+        "building.2",
+        "link",
+        "person"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanLabView.swift#KanbanCardSummaryView::private func metadataLabel(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:2237",
+      "resolvedNames": [
+        "bubble.left",
+        "building.2",
+        "link",
+        "person"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanLabView.swift#KanbanCardSummaryView::private func metadataLabel(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:2323",
+      "resolvedNames": [
+        "archivebox",
+        "checkmark.circle",
+        "pencil"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:486",
+      "resolvedNames": [
+        "arrow.triangle.2.circlepath",
+        "checkmark.circle.fill",
+        "clock.badge.exclamationmark",
+        "questionmark.circle.fill",
+        "xmark.circle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Kanban/KanbanLabView.swift#KanbanStatusFocusView::private func dispatchSummary(_ dispatch: KanbanDispatchState) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:647",
+      "resolvedNames": [
+        "checkmark.circle.fill",
+        "exclamationmark.triangle.fill"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:689",
+      "resolvedNames": [
+        "questionmark.circle",
+        "xmark.circle"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Kanban/KanbanLabView.swift:773",
+      "resolvedNames": [
+        "archivebox",
+        "exclamationmark.circle"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Memory/MemoryView.swift:129",
+      "resolvedNames": [
+        "brain",
+        "person.crop.circle",
+        "sparkles"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Memory/MemoryView.swift#MemorySectionHeader::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Memory/MemoryView.swift:297",
+      "resolvedNames": [
+        "brain",
+        "person.crop.circle",
+        "sparkles"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Onboarding/OnboardingComponents.swift:107",
+      "resolvedNames": [
+        "key.fill",
+        "link"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Onboarding/OnboardingComponents.swift#OnboardingField::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Onboarding/OnboardingComponents.swift:113",
+      "resolvedNames": [
+        "key.fill",
+        "link"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Onboarding/OnboardingComponents.swift#OnboardingField::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Onboarding/OnboardingComponents.swift:140",
+      "resolvedNames": [
+        "arrow.triangle.2.circlepath",
+        "checkmark.circle.fill",
+        "exclamationmark.triangle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Onboarding/OnboardingComponents.swift#OnboardingStatusBanner::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Onboarding/OnboardingComponents.swift:151",
+      "resolvedNames": [
+        "arrow.triangle.2.circlepath",
+        "checkmark.circle.fill",
+        "exclamationmark.triangle.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Onboarding/OnboardingComponents.swift#OnboardingStatusBanner::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Onboarding/OnboardingComponents.swift:197",
+      "resolvedNames": [
+        "iphone.and.arrow.forward",
+        "terminal"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Onboarding/OnboardingComponents.swift#OnboardingStepHeader::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Onboarding/OnboardingComponents.swift:259",
+      "resolvedNames": [
+        "checkmark",
+        "doc.on.doc"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Onboarding/OnboardingComponents.swift:5",
+      "resolvedNames": [
+        "lock.shield.fill",
+        "network"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Onboarding/OnboardingComponents.swift#HeroBadge::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Onboarding/OnboardingComponents.swift:82",
+      "resolvedNames": [
+        "checkmark",
+        "doc.on.doc"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Onboarding/OnboardingComponents.swift:9",
+      "resolvedNames": [
+        "lock.shield.fill",
+        "network"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Onboarding/OnboardingComponents.swift#HeroBadge::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Onboarding/OnboardingFeaturesPage.swift:56",
+      "resolvedNames": [
+        "bubble.left.and.bubble.right.fill",
+        "checkmark.shield.fill",
+        "list.bullet.rectangle.portrait.fill",
+        "mic.fill",
+        "server.rack"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Onboarding/OnboardingFeaturesPage.swift#OnboardingFeatureRow::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/SessionList/SessionListComponents.swift:1003",
+      "resolvedNames": [
+        "checkmark",
+        "tray"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/SessionList/SessionListComponents.swift:1020",
+      "resolvedNames": [
+        "checkmark",
+        "folder"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/SessionList/SessionListComponents.swift:1097",
+      "resolvedNames": [
+        "checkmark",
+        "server.rack"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/SessionList/SessionListComponents.swift:1558",
+      "resolvedNames": [
+        "exclamationmark.triangle",
+        "folder",
+        "person.crop.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/SessionList/SessionListComponents.swift#CompactStatusRow::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/SessionList/SessionListComponents.swift:1562",
+      "resolvedNames": [
+        "exclamationmark.triangle",
+        "folder",
+        "person.crop.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/SessionList/SessionListComponents.swift#CompactStatusRow::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/SessionList/SessionListComponents.swift:1582",
+      "resolvedNames": [
+        "bubble.left",
+        "calendar.badge.clock",
+        "exclamationmark.triangle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/SessionList/SessionListComponents.swift#SessionListStatusRow::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/SessionList/SessionListComponents.swift:1587",
+      "resolvedNames": [
+        "bubble.left",
+        "calendar.badge.clock",
+        "exclamationmark.triangle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/SessionList/SessionListComponents.swift#SessionListStatusRow::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/SessionList/SessionListComponents.swift:888",
+      "resolvedNames": [
+        "envelope.badge",
+        "envelope.open"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/ArchivedSessionsView.swift:182",
+      "resolvedNames": [
+        "archivebox",
+        "exclamationmark.triangle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/ArchivedSessionsView.swift#ArchivedStatusRow::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/ArchivedSessionsView.swift:186",
+      "resolvedNames": [
+        "archivebox",
+        "exclamationmark.triangle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/ArchivedSessionsView.swift#ArchivedStatusRow::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/ProvidersView.swift:232",
+      "resolvedNames": [
+        "checkmark.seal.fill",
+        "key.slash"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:1153",
+      "resolvedNames": [
+        "arrow.up.circle",
+        "checkmark.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsView::private func updateNoteRow(systemImage: String, tint: Color, text: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:1155",
+      "resolvedNames": [
+        "arrow.up.circle",
+        "checkmark.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsView::private func updateNoteRow(systemImage: String, tint: Color, text: String) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:1219",
+      "resolvedNames": [
+        "clock",
+        "exclamationmark.triangle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsView::private func updateMessageRow(systemImage: String, tint: Color) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:1221",
+      "resolvedNames": [
+        "clock",
+        "exclamationmark.triangle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsView::private func updateMessageRow(systemImage: String, tint: Color) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:1731",
+      "resolvedNames": [
+        "arrow.up.message",
+        "circle.lefthalf.filled",
+        "mic",
+        "text.alignleft"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsPickerRow::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:1739",
+      "resolvedNames": [
+        "arrow.up.message",
+        "circle.lefthalf.filled",
+        "mic",
+        "text.alignleft"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsPickerRow::init(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:1753",
+      "resolvedNames": [
+        "arrow.up.message",
+        "circle.lefthalf.filled",
+        "mic",
+        "text.alignleft"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsPickerRow::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:1761",
+      "resolvedNames": [
+        "arrow.up.message",
+        "circle.lefthalf.filled",
+        "mic",
+        "text.alignleft"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsPickerRow::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:1785",
+      "resolvedNames": [
+        "arrow.triangle.branch",
+        "arrow.turn.down.left",
+        "arrow.up.message",
+        "bell",
+        "brain",
+        "brain.head.profile",
+        "calendar.badge.clock",
+        "chart.bar",
+        "chevron.left.forwardslash.chevron.right",
+        "circle.lefthalf.filled",
+        "clock",
+        "clock.arrow.2.circlepath",
+        "cpu",
+        "eye.slash",
+        "faceid",
+        "folder",
+        "folder.badge.gearshape",
+        "gauge.with.dots.needle.67percent",
+        "hammer",
+        "iphone.radiowaves.left.and.right",
+        "keyboard.chevron.compact.down",
+        "lock",
+        "mic",
+        "number",
+        "paintbrush.pointed",
+        "person.crop.circle",
+        "rectangle.compress.vertical",
+        "rectangle.expand.vertical",
+        "rectangle.split.3x1",
+        "sparkles",
+        "terminal",
+        "text.alignleft",
+        "text.alignright",
+        "touchid",
+        "waveform",
+        "wrench.and.screwdriver"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsRowLabel::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:1789",
+      "resolvedNames": [
+        "arrow.triangle.branch",
+        "arrow.turn.down.left",
+        "arrow.up.message",
+        "bell",
+        "brain",
+        "brain.head.profile",
+        "calendar.badge.clock",
+        "chart.bar",
+        "chevron.left.forwardslash.chevron.right",
+        "circle.lefthalf.filled",
+        "clock",
+        "clock.arrow.2.circlepath",
+        "cpu",
+        "eye.slash",
+        "faceid",
+        "folder",
+        "folder.badge.gearshape",
+        "gauge.with.dots.needle.67percent",
+        "hammer",
+        "iphone.radiowaves.left.and.right",
+        "keyboard.chevron.compact.down",
+        "lock",
+        "mic",
+        "number",
+        "paintbrush.pointed",
+        "person.crop.circle",
+        "rectangle.compress.vertical",
+        "rectangle.expand.vertical",
+        "rectangle.split.3x1",
+        "sparkles",
+        "terminal",
+        "text.alignleft",
+        "text.alignright",
+        "touchid",
+        "waveform",
+        "wrench.and.screwdriver"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsRowLabel::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:1906",
+      "resolvedNames": [
+        "archivebox",
+        "bell.badge",
+        "cpu",
+        "cup.and.saucer",
+        "gearshape",
+        "hand.raised",
+        "heart",
+        "key.horizontal",
+        "ladybug",
+        "list.bullet.rectangle",
+        "person.badge.key",
+        "person.crop.circle",
+        "plus.circle",
+        "questionmark.circle",
+        "square.grid.2x2",
+        "star",
+        "text.bubble",
+        "waveform.path.ecg"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsAccessoryRow::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:1956",
+      "resolvedNames": [
+        "archivebox",
+        "bell.badge",
+        "cpu",
+        "cup.and.saucer",
+        "gearshape",
+        "hand.raised",
+        "heart",
+        "key.horizontal",
+        "ladybug",
+        "list.bullet.rectangle",
+        "person.badge.key",
+        "person.crop.circle",
+        "plus.circle",
+        "questionmark.circle",
+        "square.grid.2x2",
+        "star",
+        "text.bubble",
+        "waveform.path.ecg"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsAccessoryRow::private var leadingLabel: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:1970",
+      "resolvedNames": [
+        "arrow.up.forward",
+        "chevron.forward"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsAccessoryRow::private var accessoryIcon: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:2018",
+      "resolvedNames": [
+        "arrow.triangle.branch",
+        "arrow.turn.down.left",
+        "bell",
+        "brain",
+        "brain.head.profile",
+        "calendar.badge.clock",
+        "chart.bar",
+        "chevron.left.forwardslash.chevron.right",
+        "clock",
+        "clock.arrow.2.circlepath",
+        "cpu",
+        "eye.slash",
+        "faceid",
+        "folder",
+        "folder.badge.gearshape",
+        "gauge.with.dots.needle.67percent",
+        "hammer",
+        "iphone.radiowaves.left.and.right",
+        "keyboard.chevron.compact.down",
+        "lock",
+        "number",
+        "paintbrush.pointed",
+        "person.crop.circle",
+        "rectangle.compress.vertical",
+        "rectangle.expand.vertical",
+        "rectangle.split.3x1",
+        "sparkles",
+        "terminal",
+        "text.alignright",
+        "touchid",
+        "waveform",
+        "wrench.and.screwdriver"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsToggleRow::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:2023",
+      "resolvedNames": [
+        "arrow.triangle.branch",
+        "arrow.turn.down.left",
+        "bell",
+        "brain",
+        "brain.head.profile",
+        "calendar.badge.clock",
+        "chart.bar",
+        "chevron.left.forwardslash.chevron.right",
+        "clock",
+        "clock.arrow.2.circlepath",
+        "cpu",
+        "eye.slash",
+        "faceid",
+        "folder",
+        "folder.badge.gearshape",
+        "gauge.with.dots.needle.67percent",
+        "hammer",
+        "iphone.radiowaves.left.and.right",
+        "keyboard.chevron.compact.down",
+        "lock",
+        "number",
+        "paintbrush.pointed",
+        "person.crop.circle",
+        "rectangle.compress.vertical",
+        "rectangle.expand.vertical",
+        "rectangle.split.3x1",
+        "sparkles",
+        "terminal",
+        "text.alignright",
+        "touchid",
+        "waveform",
+        "wrench.and.screwdriver"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#SettingsToggleRow::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:2041",
+      "resolvedNames": [
+        "faceid",
+        "lock",
+        "touchid"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Settings/SettingsView.swift#AppLockSettingsRow::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Settings/SettingsView.swift:2336",
+      "resolvedNames": [
+        "bell.badge",
+        "person.badge.key"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/ActionToast.swift:10",
+      "resolvedNames": [
+        "archivebox"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/ActionToast.swift:162",
+      "resolvedNames": [
+        "archivebox"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/ActionToast.swift#ActionToastView::private func message(_ toast: ActionToast) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/AdaptiveGlassDebugFixture.swift:77",
+      "resolvedNames": [
+        "sparkles",
+        "square.on.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/AdaptiveGlassDebugFixture.swift#AdaptiveGlassDebugFixture::private func sampleCard(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/AdaptiveGlassDebugFixture.swift:81",
+      "resolvedNames": [
+        "sparkles",
+        "square.on.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/AdaptiveGlassDebugFixture.swift#AdaptiveGlassDebugFixture::private func sampleCard(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/AttachmentTile.swift:15",
+      "resolvedNames": [
+        "archivebox",
+        "doc",
+        "doc.richtext",
+        "doc.text",
+        "tablecells"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/HermexAvatar.swift:15",
+      "resolvedNames": [
+        "exclamationmark.triangle",
+        "folder"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/HermexAvatar.swift#HermexAvatar::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/HermexAvatar.swift:8",
+      "resolvedNames": [
+        "exclamationmark.triangle",
+        "folder"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/HermexAvatar.swift#HermexAvatar::let systemImage: String",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/HermexBanner.swift:127",
+      "resolvedNames": [
+        "checkmark.circle",
+        "exclamationmark.triangle",
+        "info.circle",
+        "wifi.slash",
+        "xmark.octagon"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/HermexBanner.swift#HermexBanner::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/HermexBanner.swift:166",
+      "resolvedNames": [
+        "xmark"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/HermexBanner.swift#HermexBanner::private func actionView(_ action: Action) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/HermexButton.swift:242",
+      "resolvedNames": [
+        "xmark"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/HermexButton.swift#HermexButton::private var contentLabel: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/HermexButton.swift:245",
+      "resolvedNames": [],
+      "traceMethod": "direct",
+      "status": "no-symbol"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/HermexButton.swift:249",
+      "resolvedNames": [],
+      "traceMethod": "direct",
+      "status": "no-symbol"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/HermexContentUnavailable.swift:109",
+      "resolvedNames": [
+        "exclamationmark.triangle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/HermexContentUnavailable.swift#HermexContentUnavailable::private var label: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/HermexContentUnavailable.swift:40",
+      "resolvedNames": [
+        "exclamationmark.triangle"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/HermexPopoverMenu.swift:498",
+      "resolvedNames": [
+        "archivebox",
+        "pencil",
+        "pin",
+        "plus.square.on.square",
+        "square.and.arrow.up",
+        "trash"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/HermexPopoverMenu.swift#HermexPopoverMenu::private func icon(for action: HermexPopoverMenuAction) -> some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/HermexPopoverMenu.swift:63",
+      "resolvedNames": [
+        "archivebox",
+        "pencil",
+        "pin",
+        "plus.square.on.square",
+        "square.and.arrow.up",
+        "trash"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/HermexPopoverMenu.swift#HermexPopoverMenuAction::let systemImage: String?",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/HermexPopoverMenu.swift:71",
+      "resolvedNames": [
+        "archivebox",
+        "pencil",
+        "pin",
+        "plus.square.on.square",
+        "square.and.arrow.up",
+        "trash"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/HermexPopoverMenu.swift#HermexPopoverMenuAction::init(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/HermexToast.swift:52",
+      "resolvedNames": [
+        "checkmark.circle",
+        "exclamationmark.triangle",
+        "info.circle",
+        "xmark.octagon"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/HermexToast.swift#HermexToast::var body: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/ListItem.swift:202",
+      "resolvedNames": [
+        "chevron.down",
+        "chevron.up"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Shared/ListItem.swift#ListItem::private var trailingIndicator: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/ModelPickerSheet.swift:301",
+      "resolvedNames": [
+        "star",
+        "star.fill"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/ModelPickerSheet.swift:419",
+      "resolvedNames": [
+        "chevron.down",
+        "chevron.up"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/ModelPickerSheet.swift:446",
+      "resolvedNames": [
+        "star",
+        "star.slash"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Shared/Tag.swift:100",
+      "resolvedNames": [],
+      "traceMethod": "direct",
+      "status": "no-symbol"
+    },
+    {
+      "site": "HermesMobile/Features/Skills/SkillsView.swift:155",
+      "resolvedNames": [
+        "checkmark.circle",
+        "pause.circle"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Tasks/TaskDetailHeaderCard.swift:142",
+      "resolvedNames": [
+        "pause.fill",
+        "play.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Tasks/TaskDetailHeaderCard.swift#TaskDetailHeaderCard::private var actionFooter: some View {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Tasks/TaskDetailHeaderCard.swift:171",
+      "resolvedNames": [
+        "pause.fill",
+        "play.circle",
+        "play.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Tasks/TaskDetailHeaderCard.swift#TaskDetailHeaderCard::private func footerButton(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Tasks/TaskDetailHeaderCard.swift:181",
+      "resolvedNames": [
+        "pause.fill",
+        "play.circle",
+        "play.fill"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Tasks/TaskDetailHeaderCard.swift#TaskDetailHeaderCard::private func footerButton(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Tasks/TaskDetailView.swift:273",
+      "resolvedNames": [
+        "pause.fill",
+        "play.circle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Tasks/TaskDetailView.swift#TaskDetailView::private var toolbarContent: some ToolbarContent {",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Workspace/FileBrowserView.swift:206",
+      "resolvedNames": [
+        "chevron.down",
+        "chevron.forward"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Workspace/FileBrowserView.swift:267",
+      "resolvedNames": [
+        "folder",
+        "link"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Workspace/FileBrowserView.swift:69",
+      "resolvedNames": [
+        "folder",
+        "magnifyingglass"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Workspace/GitBranchPickerView.swift:162",
+      "resolvedNames": [
+        "arrow.triangle.branch",
+        "checkmark"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Workspace/GitCommitView.swift:157",
+      "resolvedNames": [
+        "minus.circle",
+        "plus.circle",
+        "trash"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Workspace/GitCommitView.swift#GitCommitView::private func batchButton(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Workspace/GitCommitView.swift:170",
+      "resolvedNames": [
+        "minus.circle",
+        "plus.circle",
+        "trash"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Workspace/GitCommitView.swift#GitCommitView::private func batchButton(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Workspace/GitCommitView.swift:290",
+      "resolvedNames": [
+        "checkmark.circle.fill",
+        "circle"
+      ],
+      "traceMethod": "direct",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Workspace/GitTurnChangesCard.swift:83",
+      "resolvedNames": [
+        "arrow.up.right",
+        "chevron.down"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Workspace/GitTurnChangesCard.swift#GitTurnChangesCard::private func headerButton(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Workspace/GitTurnChangesCard.swift:89",
+      "resolvedNames": [
+        "arrow.up.right",
+        "chevron.down"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Workspace/GitTurnChangesCard.swift#GitTurnChangesCard::private func headerButton(",
+      "status": "traced"
+    },
+    {
+      "site": "HermesMobile/Features/Workspace/GitWorkspaceView.swift:147",
+      "resolvedNames": [
+        "exclamationmark.triangle"
+      ],
+      "traceMethod": "call-graph from HermesMobile/Features/Workspace/GitWorkspaceView.swift#GitWorkspaceView::private func unavailable(",
+      "status": "traced"
+    }
+  ]
+}

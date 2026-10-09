@@ -614,6 +614,10 @@ import XCTest
         let rootView = try XCTUnwrap(window.rootViewController?.view)
         XCTAssertTrue(overlay.superview === rootView.superview)
         XCTAssertFalse(overlay.isDescendant(of: rootView))
+        // The attachment picker's own local same-window overlay must still stop at the keyboard
+        // layout guide's top so the composer beneath it stays reachable, not fill the whole root view.
+        XCTAssertEqual(overlay.frame.maxY, rootView.keyboardLayoutGuide.layoutFrame.minY, accuracy: 0.5,
+                        "The attachment overlay must stop at the keyboard layout guide's top, not the root view's bottom")
 
         model.isPresented = false
         await settle(window)
@@ -1379,7 +1383,8 @@ import XCTest
             .object(["role": .string("assistant"), "text": .string("Three messages need a reply.")])
         ]
         let model = make(wire)
-        let window = try show(NavigationStack { BotChatView(model: model) }
+        let focus = ComposerFixtureFocus()
+        let window = try show(NavigationStack { BotComposerFixture(model: model, focus: focus) }
             .environment(\.scenePhase, .inactive)
             .environment(\.dynamicTypeSize, .accessibility1)
             .preferredColorScheme(.dark))
@@ -1387,11 +1392,12 @@ import XCTest
         await model.recover()
         await settle(window)
         let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
-        XCTAssertTrue(editor.becomeFirstResponder())
+        focus.isFocused = true
         await settle(window)
+        XCTAssertTrue(editor.isFirstResponder, "the transcript-owned focus binding must focus the composer")
         editor.insertText("Draft a short reply.")
         await settle(window)
-        XCTAssertTrue(editor.isFirstResponder)
+        XCTAssertTrue(editor.isFirstResponder, "editing at an accessibility text size must not drop composer focus")
         XCTAssertEqual(model.draft, "Draft a short reply.")
         XCTAssertTrue(wire.calls.allSatisfy { $0.0 != "prompt.submit" && $0.0 != "session.interrupt" })
     }

@@ -3,14 +3,17 @@
 # the String Catalog (ci/check_string_catalog.py). Pushes to master run the
 # full suite too: PRs need not be up to date to merge, so two green PRs can
 # still break master together. PRs limited to docs
-# (markdown, docs/, community files) and local tooling (scripts/) skip the
-# macOS runner entirely. The tooling tests (scripts/tests, ci/) run on Linux for
-# every PR and push, so a tooling-only change still gets tested.
+# (markdown, docs/, community files), local tooling (scripts/), and the
+# design-system-catalog/ (its own Node/TypeScript contracts run in the
+# Design System Contract job below, not the macOS suite) skip the macOS
+# runner. The tooling tests (scripts/tests, ci/) and the Design System
+# Contract job both run on Linux for every PR and push, so a tooling- or
+# catalog-only change still gets tested.
 #
 # The required branch-protection check is "CI Gate", not "Build and Test":
 # a skipped required check would block merges forever, so the gate always
-# runs and passes when the tooling tests passed and the suite either succeeded
-# or was legitimately skipped.
+# runs and passes when the tooling tests and Design System Contract passed
+# and the suite either succeeded or was legitimately skipped.
 #
 # Uses no repository secrets, so PRs from forks get green CI too.
 #
@@ -64,8 +67,9 @@ jobs:
           # (including workflow, project, and config changes). scripts/ is
           # local tooling that no build phase or iOS step calls (the tooling
           # job only runs its tests); take it off the allowlist if that ever
-          # changes.
-          app_changes=$(echo "${files}" | grep -vE '^(docs/.*|scripts/.*|LICENSE|\.gitignore|\.github/ISSUE_TEMPLATE/.*|\.github/CODEOWNERS|\.github/dependabot\.yml|\.github/FUNDING\.yml|.*\.md)$' || true)
+          # changes. design-system-catalog/ stays off the macOS path too:
+          # its checks run in their own Design System Contract job below.
+          app_changes=$(echo "${files}" | grep -vE '^(docs/.*|scripts/.*|design-system-catalog/.*|LICENSE|\.gitignore|\.github/ISSUE_TEMPLATE/.*|\.github/CODEOWNERS|\.github/dependabot\.yml|\.github/FUNDING\.yml|.*\.md)$' || true)
           if [[ -n "${app_changes}" ]]; then
             echo "App-affecting changes detected — running the full suite:"
             echo "${app_changes}"
@@ -225,9 +229,56 @@ jobs:
           python3 -m unittest discover -s ci -p 'test_*.py'
           ruby ci/select_testflight_build_number_test.rb
 
+  design_system:
+    name: Design System Contract
+    runs-on: ubuntu-latest
+    # Installing the catalog's Expo/React Native dependencies (native-preview/package-lock.json)
+    # needs more headroom than the Python-only Tooling Tests job.
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Check the catalog's repository-location contract
+        run: python3 -m unittest scripts.tests.test_design_system_catalog_repository -v
+
+      - name: Run the foundation-only Design System adoption audit's fixture tests
+        run: python3 -m unittest scripts.tests.test_hermex_design_system_adoption_audit -v
+
+      - name: Run the foundation-only Design System adoption audit
+        run: python3 scripts/hermex_design_system_adoption_audit.py
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: design-system-catalog/native-preview/package-lock.json
+
+      - name: Install design-system-catalog dependencies
+        run: npm ci --prefix design-system-catalog/native-preview
+
+      - name: Check hermex-manifest.json freshness against the live catalog source
+        run: node design-system-catalog/scripts/generate-hermex-manifest.mjs --check
+
+      - name: Run design-system-catalog Node contract test
+        run: node --test design-system-catalog/test/hermes-catalog.test.mjs
+
+      - name: Run the design-system-guide lookup/receipt contract tests
+        run: python3 -m unittest scripts.tests.test_design_system_guide -v
+
+      - name: Typecheck design-system-catalog/native-preview
+        run: |
+          set -euo pipefail
+          # native/catalog/hermes's imports only resolve against native-preview's
+          # node_modules through this repo-root symlink; it is gitignored and
+          # created here at runtime, never committed. See design-system-catalog/README.md.
+          ln -s native-preview/node_modules design-system-catalog/node_modules
+          (cd design-system-catalog/native-preview && npx tsc --noEmit)
+
   gate:
     name: CI Gate
-    needs: [changes, test, tooling]
+    needs: [changes, test, tooling, design_system]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -238,12 +289,17 @@ jobs:
           echo "changes: ${{ needs.changes.result }}"
           echo "test: ${{ needs.test.result }}"
           echo "tooling: ${{ needs.tooling.result }}"
+          echo "design_system: ${{ needs.design_system.result }}"
           if [[ "${{ needs.changes.result }}" != "success" ]]; then
             echo "Path detection failed — failing the gate." >&2
             exit 1
           fi
           if [[ "${{ needs.tooling.result }}" != "success" ]]; then
             echo "Tooling tests did not pass — failing the gate." >&2
+            exit 1
+          fi
+          if [[ "${{ needs.design_system.result }}" != "success" ]]; then
+            echo "Design System Contract did not pass — failing the gate." >&2
             exit 1
           fi
           case "${{ needs.test.result }}" in

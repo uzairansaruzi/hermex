@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "icon": "star.fill",
+  "sizes": [
+    {
+      "pointSize": 12,
+      "file": "star.fill-12pt.png"
+    },
+    {
+      "pointSize": 16,
+      "file": "star.fill-16pt.png"
+    },
+    {
+      "pointSize": 20,
+      "file": "star.fill-20pt.png"
+    },
+    {
+      "pointSize": 24,
+      "file": "star.fill-24pt.png"
+    },
+    {
+      "pointSize": 32,
+      "file": "star.fill-32pt.png"
+    }
+  ]
+}
