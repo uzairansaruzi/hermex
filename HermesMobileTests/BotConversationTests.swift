@@ -174,18 +174,6 @@ import Vision
                         drafts: drafts ?? ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)), reconnectDelay: reconnectDelay)
     }
 
-    func testQuickReplyFillsOnlyAnEmptyDraftAndNeverSends() async {
-        let wire = BotFixtureWire()
-        let model = make(wire); await model.recover()
-        XCTAssertTrue(model.maySend)
-        model.applyQuickReply(BotQuickReply(text: "Run the tests"))
-        XCTAssertEqual(model.draft, "Run the tests")
-        model.applyQuickReply(BotQuickReply(text: "Continue"))
-        XCTAssertEqual(model.draft, "Run the tests", "A draft the user already has is left alone")
-        XCTAssertFalse(wire.calls.contains { ["prompt.submit", "session.steer", "session.redirect", "command.dispatch"].contains($0.0) })
-        model.suspend()
-    }
-
     func testTransientDisconnectAutomaticallyRecoversWithoutResending() async {
         for failure in [BotFailure.transport, .rejected(503), .rejected(429)] {
             let wire = BotFixtureWire()
@@ -1582,201 +1570,6 @@ import Vision
         let visibleText = request.results?.compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ") ?? ""
         XCTAssertTrue(visibleText.contains("VISIBLE LIVE OUTPUT"), "Live response must be visible at the latest edge, got: \(visibleText)")
     }
-
-    // MARK: - Tapbacks (#761)
-
-    private static let reactedRow: BotJSON = .object([
-        "role": .string("assistant"), "text": .string("Done"), "row_id": .number(7)
-    ])
-
-    private static func reactions(_ entries: [(String, String)]) -> BotJSON {
-        .array(entries.map { .object(["emoji": .string($0.0), "author": .string($0.1), "at": .number(1)]) })
-    }
-
-    private func reactCalls(_ wire: BotFixtureWire) -> [[String: BotJSON]] {
-        wire.calls.filter { $0.0 == "message.react" }.map(\.1)
-    }
-
-    func testReactSendsYourIntentAndPaintsOnlyTheHostsReply() async throws {
-        let wire = BotFixtureWire(); wire.history = [Self.reactedRow]
-        let model = make(wire); await model.recover()
-        var duringWrite: [[BotReaction]] = []
-        wire.react = { params in
-            // Not optimistic: the row is untouched and inert until the host answers.
-            duringWrite.append(model.messages[0].botReactions)
-            XCTAssertFalse(model.mayReact(to: model.messages[0]))
-            let emoji = params["emoji"]?.text
-            return .object(["row_id": .number(7), "reactions": emoji.map { Self.reactions([($0, "user"), ("‼️", "agent")]) }
-                                ?? Self.reactions([("‼️", "agent")])])
-        }
-
-        await model.react(to: model.messages[0], emoji: "👍")
-        XCTAssertEqual(model.messages[0].botReactions, [.init(emoji: "👍", author: .user), .init(emoji: "‼️", author: .agent)])
-        await model.react(to: model.messages[0], emoji: "❤️")
-        XCTAssertEqual(model.messages[0].botReactions.first, .init(emoji: "❤️", author: .user))
-        // Picking the emoji you already have sends the intent, never the emoji again.
-        await model.react(to: model.messages[0], emoji: "❤️")
-        XCTAssertEqual(model.messages[0].botReactions, [.init(emoji: "‼️", author: .agent)])
-        // Nothing of yours to remove: no write.
-        await model.react(to: model.messages[0], emoji: nil)
-
-        let calls = reactCalls(wire)
-        XCTAssertEqual(calls.map { $0["emoji"] }, [.string("👍"), .string("❤️"), .null])
-        XCTAssertEqual(duringWrite, [
-            [], [.init(emoji: "👍", author: .user), .init(emoji: "‼️", author: .agent)],
-            [.init(emoji: "❤️", author: .user), .init(emoji: "‼️", author: .agent)]
-        ])
-        XCTAssertTrue(calls.allSatisfy { Set($0.keys) == ["session_id", "row_id", "emoji"] })
-        XCTAssertTrue(calls.allSatisfy { $0["session_id"] == .string("runtime") && $0["row_id"] == .number(7) })
-        XCTAssertTrue(model.mayReact(to: model.messages[0]))
-        XCTAssertNil(model.errorMessage)
-        model.suspend()
-    }
-
-    func testASecondTapWhileAWriteIsInFlightSendsNothing() async throws {
-        let wire = BotFixtureWire(); wire.history = [Self.reactedRow]
-        let model = make(wire); await model.recover()
-        wire.react = { _ in
-            await model.react(to: model.messages[0], emoji: "😂")
-            return .object(["row_id": .number(7), "reactions": Self.reactions([("👍", "user")])])
-        }
-
-        await model.react(to: model.messages[0], emoji: "👍")
-
-        XCTAssertEqual(reactCalls(wire).count, 1)
-        XCTAssertEqual(model.messages[0].botReactions, [.init(emoji: "👍", author: .user)])
-        model.suspend()
-    }
-
-    func testRejectedReactLeavesTheRowUnchangedAndSaysSo() async throws {
-        let wire = BotFixtureWire(); wire.history = [Self.reactedRow]
-        let model = make(wire); await model.recover()
-        wire.react = { _ in throw BotFailure.rejected(4040) }
-
-        await model.react(to: model.messages[0], emoji: "👍")
-
-        XCTAssertEqual(reactCalls(wire).count, 1)
-        XCTAssertEqual(model.messages[0].botReactions, [])
-        XCTAssertEqual(model.errorMessage, "Could not update the reaction.")
-        XCTAssertEqual(model.connectionState, .connected)
-        XCTAssertTrue(model.mayReact(to: model.messages[0]))
-        model.suspend()
-    }
-
-    func testALostReplyIsNeverResentAndTheNextSnapshotDecides() async throws {
-        let wire = BotFixtureWire(); wire.history = [Self.reactedRow]
-        let model = make(wire, reconnectDelay: { _ in throw CancellationError() })
-        await model.recover()
-        wire.react = { _ in throw BotFailure.transport }
-
-        await model.react(to: model.messages[0], emoji: "👍")
-
-        XCTAssertEqual(model.messages[0].botReactions, [])
-        XCTAssertEqual(model.errorMessage, "Could not update the reaction.")
-        XCTAssertFalse(model.mayReact(to: model.messages[0]))
-
-        // The write landed after all; the reconnect's snapshot shows it.
-        wire.history = [.object(["role": .string("assistant"), "text": .string("Done"), "row_id": .number(7),
-                                 "display_metadata": .object(["reactions": Self.reactions([("👍", "user")])])])]
-        await model.recover()
-        XCTAssertEqual(model.messages[0].botReactions, [.init(emoji: "👍", author: .user)])
-        XCTAssertEqual(reactCalls(wire).count, 1)
-        model.suspend()
-    }
-
-    func testASnapshotReadBeforeTheReactReplyKeepsTheReaction() async throws {
-        let wire = BotFixtureWire(); wire.history = [Self.reactedRow]
-        let model = make(wire); await model.recover()
-        wire.react = { _ in .object(["row_id": .number(7), "reactions": Self.reactions([("👍", "user")])]) }
-        // The full resume a completed turn asks for is still reading older history
-        // when the react lands; its reply lists the row without your 👍.
-        wire.history = [Self.reactedRow, .object(["role": .string("assistant"), "text": .string("Next"), "row_id": .number(8)])]
-        let applied = expectation(description: "stale full snapshot applied")
-        wire.beforeResume = {
-            wire.beforeResume = nil
-            await model.react(to: model.messages[0], emoji: "👍")
-            withObservationTracking { _ = model.messages } onChange: { applied.fulfill() }
-        }
-        wire.onEvent?(typed(1, "message.complete"))
-        await fulfillment(of: [applied], timeout: 3)
-
-        XCTAssertEqual(model.messages.map(\.content), ["Done", "Next"])
-        XCTAssertEqual(model.messages[0].botReactions, [.init(emoji: "👍", author: .user)])
-        // So a second 👍 sends the removal the user means, never the emoji the host would toggle.
-        await model.react(to: model.messages[0], emoji: "👍")
-        XCTAssertEqual(reactCalls(wire).map { $0["emoji"] }, [.string("👍"), .null])
-
-        // A snapshot requested after the replies is the host's word again.
-        wire.history = [Self.reactedRow]
-        let settled = expectation(description: "fresh full snapshot applied")
-        withObservationTracking { _ = model.messages } onChange: { settled.fulfill() }
-        wire.onEvent?(typed(2, "message.complete"))
-        await fulfillment(of: [settled], timeout: 3)
-        XCTAssertEqual(model.messages.map(\.botReactions), [[]])
-        model.suspend()
-    }
-
-    func testAReplyForAReplacedConnectionIsDropped() async throws {
-        let wire = BotFixtureWire(); wire.history = [Self.reactedRow]
-        let model = make(wire); await model.recover()
-        wire.react = { _ in
-            model.suspend()
-            return .object(["row_id": .number(7), "reactions": Self.reactions([("👍", "user")])])
-        }
-
-        await model.react(to: model.messages[0], emoji: "👍")
-
-        XCTAssertEqual(reactCalls(wire).count, 1)
-        XCTAssertEqual(model.messages[0].botReactions, [])
-        XCTAssertNil(model.errorMessage)
-        XCTAssertFalse(model.mayReact(to: model.messages[0]))
-    }
-
-    func testTheAgentsLiveReactionPatchesItsRowOnly() async throws {
-        let wire = BotFixtureWire(); wire.running = true
-        wire.history = [Self.reactedRow, .object(["role": .string("user"), "text": .string("Thanks"), "row_id": .number(8)])]
-        let model = make(wire); await model.recover()
-
-        wire.onEvent?(typed(1, "message.reaction", .object([
-            "row_id": .number(8), "reactions": Self.reactions([("❤️", "agent")]), "role": .string("user")
-        ])))
-        wire.onEvent?(typed(2, "message.reaction", .object([
-            "row_id": .number(99), "reactions": Self.reactions([("👎", "agent")]), "role": .string("user")
-        ])))
-
-        XCTAssertEqual(model.messages.map(\.botReactions), [[], [.init(emoji: "❤️", author: .agent)]])
-        model.suspend()
-    }
-
-    func testALateAgentReactionEventKeepsYourNewerReaction() async throws {
-        let wire = BotFixtureWire(); wire.running = true; wire.history = [Self.reactedRow]
-        let model = make(wire); await model.recover()
-        wire.react = { _ in .object(["row_id": .number(7), "reactions": Self.reactions([("‼️", "agent"), ("❤️", "user")])]) }
-        await model.react(to: model.messages[0], emoji: "❤️")
-
-        // The agent's tool wrote before your react but its event lands after the reply.
-        wire.onEvent?(typed(1, "message.reaction", .object([
-            "row_id": .number(7), "reactions": Self.reactions([("‼️", "agent")]), "role": .string("assistant")
-        ])))
-
-        XCTAssertEqual(Set(model.messages[0].botReactions), [.init(emoji: "‼️", author: .agent), .init(emoji: "❤️", author: .user)])
-        model.suspend()
-    }
-
-    func testLiveRowsAndAnOfflineChatCannotReact() async throws {
-        let wire = BotFixtureWire(); wire.running = true
-        wire.history = [Self.reactedRow]
-        wire.inflight = .object(["assistant": .string("Working")])
-        let model = make(wire)
-        XCTAssertFalse(model.mayReact(to: ChatMessage(role: "assistant", content: "x", timestamp: nil, messageId: "m", rowID: 7)))
-        await model.recover()
-        let live = try XCTUnwrap(model.liveMessages.first)
-        XCTAssertNil(live.rowID)
-        XCTAssertFalse(model.mayReact(to: live))
-        XCTAssertTrue(model.mayReact(to: model.messages[0]))
-        model.suspend()
-        XCTAssertFalse(model.mayReact(to: model.messages[0]))
-    }
 }
 
 /// Reattaching over the shared socket (#901): live frames that land while the chat
@@ -2165,8 +1958,6 @@ actor BotMemoryDrafts: ChatDraftPersisting {
     var dispatchFailure: BotFailure?
     var promptReply: BotJSON?
     var stopFailure: BotFailure?
-    /// What `message.react` answers; nil means the host does not have it.
-    var react: (([String: BotJSON]) async throws -> BotJSON)?
     var beforeDispatch: ((String) -> Void)?
     var beforeSubmit: (() async -> Void)?
     var beforeResume: (() async -> Void)?
@@ -2246,9 +2037,6 @@ actor BotMemoryDrafts: ChatDraftPersisting {
         case "session.interrupt":
             if let stopFailure { throw stopFailure }
             return .object(["interrupted": .bool(true)])
-        case "message.react":
-            guard let react else { throw BotFailure.unsupported }
-            return try await react(params)
         default:
             if let settingsCall { return settingsCall(method, params) }
             throw BotFailure.unsupported

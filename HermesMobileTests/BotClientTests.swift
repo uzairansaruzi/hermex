@@ -700,46 +700,6 @@ import XCTest
         XCTAssertEqual(socket.sentTextFrames, 1)
     }
 
-    func testReactAllowlistAdmitsYourOwnReactionAndRejectsEverythingElse() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: return (404, .null)
-            }
-        }
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [BotHTTPFixture.self]
-        let socket = BotScriptedSocket()
-        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
-        try await client.connect()
-        defer { client.close() }
-
-        _ = try await client.call(.messageReact(sessionID: "runtime", rowID: 42, emoji: "👍"))
-        _ = try await client.call(.messageReact(sessionID: "runtime", rowID: 42, emoji: nil))
-        XCTAssertEqual(socket.sentRequests.map { $0["params"] }, [
-            .object(["session_id": .string("runtime"), "row_id": .number(42), "emoji": .string("👍")]),
-            .object(["session_id": .string("runtime"), "row_id": .number(42), "emoji": .null])
-        ])
-
-        // `author`, `newest_role`, a non-integer row and a non-string emoji have no typed shape.
-        let rejected: [HermesCall] = [
-            .messageReact(sessionID: "runtime", rowID: 42, emoji: "  "),
-            .messageReact(sessionID: "", rowID: 42, emoji: "👍")
-        ]
-        for call in rejected {
-            do {
-                _ = try await client.call(call)
-                XCTFail("Invalid message.react call dispatched: \(call)")
-            } catch {
-                XCTAssertEqual(error as? BotFailure, .unsupported)
-            }
-        }
-        XCTAssertEqual(socket.sentTextFrames, 2)
-    }
-
     func testCancelCompletionKeepsSocketAvailableWithoutResendingIt() async throws {
         BotHTTPFixture.handler = { request in
             switch request.url!.path {

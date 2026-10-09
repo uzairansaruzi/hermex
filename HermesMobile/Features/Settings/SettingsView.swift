@@ -108,7 +108,6 @@ struct SettingsView: View {
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsChatFilesButton = true
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsChatGitControls = true
     @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
-    @AppStorage(BotQuickReplyStore.storageKey) private var storedQuickReplies = ""
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -247,25 +246,6 @@ struct SettingsView: View {
                     SettingsFootnote(String(localized: "Long-press Send to choose for one message."))
 
                     SettingsDivider()
-
-                    if isBotModeEnabled {
-                        NavigationLink {
-                            BotQuickRepliesEditorView()
-                        } label: {
-                            let count = BotQuickReplyStore.decode(storedQuickReplies).count
-                            SettingsAccessoryRow(
-                                title: String(localized: "Quick Replies"),
-                                value: count > 0 ? count.formatted() : nil,
-                                systemImage: "text.bubble"
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Opens the quick replies editor.")
-
-                        SettingsFootnote(String(localized: "Short replies above the Bot Chat composer. A tap fills the draft."))
-
-                        SettingsDivider()
-                    }
 
                     SettingsPickerRow(
                         title: String(localized: "Dictation Provider"),

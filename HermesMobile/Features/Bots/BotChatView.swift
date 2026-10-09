@@ -67,7 +67,7 @@ import SwiftUI
                     let livePrompt = model.liveMessages.first(where: { $0.role == "user" })
                     let times = BotTranscriptTimes(
                         messages: model.messages, start: window.start(count: model.messages.count),
-                        livePrompt: livePrompt, turnStartedAt: model.turnStartedAt, isMidTurn: isStreaming
+                        hasLivePrompt: livePrompt != nil, isMidTurn: isStreaming
                     )
                     let folds = turnFolds(windowStart: times.start, hasLivePrompt: livePrompt != nil)
                     VStack(alignment: .leading, spacing: 8) {
@@ -90,10 +90,6 @@ import SwiftUI
                             if fold?.hidesActivity != true {
                                 settledActivity(anchoredTo: message.id).transition(transition)
                             }
-                            // A pause stays dated even when the reply after it folds.
-                            if times.gapStarts.contains(message.id), let timestamp = message.timestamp {
-                                TranscriptTimeSeparator(timestamp: timestamp)
-                            }
                             if fold?.hidesBubble != true {
                                 BotArtifactMessageView(message: message, model: model,
                                                        footerTime: times.footerTimes[message.id])
@@ -104,9 +100,6 @@ import SwiftUI
                         settledActivity(anchoredTo: nil)
                         // The live turn reads like a settled one: prompt, work, then reply.
                         if let prompt = livePrompt {
-                            if let startedAt = times.livePromptSeparator {
-                                TranscriptTimeSeparator(timestamp: startedAt)
-                            }
                             BotArtifactMessageView(message: prompt, model: model)
                         }
                         if model.liveActivity.hasTurnWork {
@@ -487,34 +480,24 @@ struct BotChatTitlePillFallback: ViewModifier {
     }
 }
 
-/// Where the Bot transcript shows times, worked out once per body over the
-/// window with comparisons only. Gap separators ignore Message Timestamps
-/// (D22); the per-message footer follows it. User messages and turn-ending
-/// replies carry a time, as in Sessions: a reply with visible text ends its
-/// turn when the next drawn settled row past any steer is a user message or a
-/// delegation delivery, or when it is the last and no turn is still running
-/// past it. Steer rows, delegation cards and the live turn get none. The live
-/// prompt is dated only by the host's turn start, never the phone clock.
+/// Which Bot transcript rows carry a footer time, worked out once per body over
+/// the window with comparisons only; the footer follows Message Timestamps.
+/// User messages and turn-ending replies carry the host's time, as in Sessions:
+/// a reply with visible text ends its turn when the next drawn settled row past
+/// any steer is a user message or a delegation delivery, or when it is the last
+/// and no turn is still running past it. Steer rows, delegation cards and the
+/// live turn get none.
 struct BotTranscriptTimes {
     let start: Int
-    let gapStarts: Set<String>
     /// Footer times by message ID, for the window's settled rows.
     let footerTimes: [String: Double]
-    let livePromptSeparator: Double?
 
-    private static let livePromptID = "live-user"
-
-    init(messages: [ChatMessage], start: Int, livePrompt: ChatMessage?, turnStartedAt: Double?, isMidTurn: Bool) {
+    init(messages: [ChatMessage], start: Int, hasLivePrompt: Bool, isMidTurn: Bool) {
         self.start = start
         let window = messages[start...]
-        var rows = window.map { (id: $0.id, timestamp: $0.timestamp) }
-        if livePrompt != nil { rows.append((id: Self.livePromptID, timestamp: turnStartedAt)) }
-        let starts = TranscriptTimeline.gapStarts(rows)
-        gapStarts = starts
-        livePromptSeparator = starts.contains(Self.livePromptID) ? turnStartedAt : nil
 
         // A live prompt means the settled rows all belong to earlier turns.
-        let lastTurnIsSettled = !isMidTurn || livePrompt != nil
+        let lastTurnIsSettled = !isMidTurn || hasLivePrompt
         var times: [String: Double] = [:]
         for index in window.indices {
             let message = messages[index]

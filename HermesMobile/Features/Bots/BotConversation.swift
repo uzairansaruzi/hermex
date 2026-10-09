@@ -3,8 +3,8 @@ import Observation
 
 /// One bot's Bot Chat for one screen lifetime: a `HermesConversation` on the Profile's
 /// `.canonicalChat` attaches, replays and reconnects; this owner turns its snapshots and
-/// frames into the transcript and adds what only Bots have: mentions, reactions, slash
-/// commands, file search, delegated work and chat controls.
+/// frames into the transcript and adds what only Bots have: mentions, slash commands,
+/// file search, delegated work and chat controls.
 @MainActor @Observable final class BotConversation {
     typealias ConnectionState = HermesConversation.ConnectionState
     enum TurnState { case unknown, idle, submitting, running, needsAttention, stopping, uncertain, interrupted }
@@ -157,16 +157,6 @@ import Observation
     @ObservationIgnored private var envelopeStoppedHere: BotRequestWithdrawal.Envelope?
     /// The last action the host confirmed, for the chat view's haptic.
     private(set) var feedback: BotFeedback?
-    /// Rows with a `message.react` in flight. Their footer controls stay inert
-    /// and `react` drops any other Tapback for them until the reply, so a late
-    /// reply never overwrites a newer choice.
-    private(set) var reactingRowIDs: Set<Int> = []
-    /// Reaction lists the host sent (a `message.react` reply or a live
-    /// `message.reaction`), by row, stamped with `reactionRevision`. A full
-    /// snapshot requested before a list arrived may have read the older one,
-    /// so it keeps these rows' newer lists; a later snapshot drops them.
-    @ObservationIgnored private var reactionPatches: [Int: (revision: Int, reactions: JSONValue)] = [:]
-    @ObservationIgnored private var reactionRevision = 0
     /// On once a snapshot shows the turn busy, so the snapshot that settles it
     /// idle plays one completion. A Stop, an interruption, a new runtime and
     /// `suspend()` turn it off: a stopped turn, one that ended while the app was
@@ -176,8 +166,8 @@ import Observation
     private var tip: String? { engine.storedKey }
     private var generation: Int { engine.generation }
     private var turnRevision = 0
-    /// The host's start time for the current turn, in Unix seconds; the only
-    /// date the live prompt has until the turn settles.
+    /// The host's start time for the current turn, in Unix seconds, which the
+    /// Live Activity's working phase counts from.
     private(set) var turnStartedAt: Double?
     private var confirmedWorkingStart: Date?
     private var clockRevision = 0
@@ -210,7 +200,7 @@ import Observation
     /// the replay's `open_requests` is older than what is on screen.
     @ObservationIgnored private var replayRequestsRevision = 0
     /// The revisions when the attach's full snapshot was asked for, which it is applied against.
-    @ObservationIgnored private var attachRevisions = (requests: 0, clock: 0, reaction: 0)
+    @ObservationIgnored private var attachRevisions = (requests: 0, clock: 0)
     private var refreshTask: Task<Void, Never>?
     /// True from `recover()` until `suspend()`: the screen wants this chat connected,
     /// whether it is, is reconnecting, or failed and shows why.
@@ -461,13 +451,6 @@ import Observation
         drafts.setDraft(text, for: draftKey)
     }
 
-    /// A tapped quick-reply chip. It fills an empty draft and never sends: Send
-    /// stays the user's second, deliberate tap. A draft already started is left alone.
-    func applyQuickReply(_ reply: BotQuickReply) {
-        guard draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        editDraft(reply.text)
-    }
-
     /// Reads this connection's skills once it is connected.
     ///
     /// The composer drives this, because its `/` panel is the only thing that
@@ -514,70 +497,6 @@ import Observation
         let reply = try await request(.completePath(word: BotFilePathSearch.word(for: query), sessionID: runtime,
                                                     profile: profile.id), owner: generation)
         return BotFilePathSearch.matches(from: reply)
-    }
-
-    /// Whether the settled row can take a Tapback now. Live rows have no
-    /// `rowID`, and a chat still reconnecting shows its rows read-only.
-    func mayReact(to message: ChatMessage) -> Bool {
-        guard connectionState == .connected, runtime != nil, let rowID = message.rowID else { return false }
-        return !reactingRowIDs.contains(rowID)
-    }
-
-    /// Sets your Tapback on one settled row, or clears it with nil. Picking
-    /// the emoji you already have also clears it: the host toggles a repeat,
-    /// so the phone always sends the intent (null) rather than the emoji again.
-    /// Not optimistic: the row changes only from the host's reply, which lists
-    /// the row's reactions in full. A rejected call leaves the row as it was
-    /// and says so; a lost reply is never resent, and the next full snapshot
-    /// shows what the host kept.
-    func react(to message: ChatMessage, emoji: String?) async {
-        guard mayReact(to: message), let rowID = message.rowID, let runtime,
-              let current = messages.first(where: { $0.rowID == rowID }) else { return }
-        let mine = current.botReactions.first { $0.author == .user }?.emoji
-        let intent = emoji == mine ? nil : emoji
-        guard intent != nil || mine != nil else { return }
-        let owner = generation
-        reactingRowIDs.insert(rowID)
-        defer { if generation == owner { reactingRowIDs.remove(rowID) } }
-        do {
-            let reply = try await engine.write(.messageReact(sessionID: runtime, rowID: rowID, emoji: intent),
-                                               attempt: owner, runtime: runtime)
-            guard reply["row_id"].integer == rowID, reply["reactions"].list != nil else { throw BotFailure.unsupported }
-            applyReactions(rowID: rowID, reply["reactions"])
-        } catch {
-            guard generation == owner, !Task.isCancelled, error as? BotFailure != .stale else { return }
-            if case BotFailure.rejected = error {
-                // The host answered over a live socket: nothing changed.
-            } else if error as? BotFailure == .unsupported {
-                // An unreadable reply: the write may have landed. Re-read, never resend.
-                fullSnapshotNeeded = true; snapshotDirty = true; scheduleRefresh()
-            } else {
-                engine.disconnect(error)
-            }
-            errorMessage = String(localized: "Could not update the reaction.")
-        }
-    }
-
-    /// Puts the host's reaction list on the row it names; an unknown row is ignored.
-    /// With `author`, only that author's entries are taken and the row keeps the
-    /// rest: the agent's live event is written on another host thread and can
-    /// land after a newer `message.react` reply, so it must not replace yours.
-    private func applyReactions(rowID: Int?, _ reactions: BotJSON, author: BotReaction.Author? = nil) {
-        guard let rowID, case .array(let incoming) = reactions.jsonValue,
-              let index = messages.firstIndex(where: { $0.rowID == rowID }) else { return }
-        var list = incoming
-        if let author {
-            func isTheirs(_ entry: JSONValue) -> Bool {
-                guard case .object(let fields) = entry, case .string(let name)? = fields["author"] else { return false }
-                return name == author.rawValue
-            }
-            let kept: [JSONValue]
-            if case .array(let current)? = messages[index].displayMetadata?["reactions"] { kept = current } else { kept = [] }
-            list = kept.filter { !isTheirs($0) } + incoming.filter(isTheirs)
-        }
-        reactionRevision += 1
-        reactionPatches[rowID] = (reactionRevision, .array(list))
-        messages[index] = messages[index].replacingBotReactions(.array(list))
     }
 
     /// Ask Hermex on a passage selected in the transcript. Durable straight
@@ -696,7 +615,7 @@ import Observation
     }
 
     private func applySnapshot(_ snapshot: BotJSON, full: Bool, settingsRevision: Int? = nil, requestsRevision: Int? = nil,
-                               clockRevision: Int, reactionRevision: Int) throws {
+                               clockRevision: Int) throws {
         defer { syncLiveActivity() }
         guard engine.isCurrent(snapshot), let running = snapshot["running"].flag,
               snapshot["hydrating"].flag != true else { throw BotFailure.unsupported }
@@ -704,11 +623,7 @@ import Observation
         if full {
             guard let history = snapshot["messages"].list, snapshot["messages_omitted"].flag != true else { throw BotFailure.unsupported }
             let projected = BotTranscriptProjection.project(history: history, root: root ?? "")
-            reactionPatches = reactionPatches.filter { $0.value.revision > reactionRevision }
-            messages = reactionPatches.isEmpty ? projected.messages : projected.messages.map { message in
-                guard let rowID = message.rowID, let patch = reactionPatches[rowID] else { return message }
-                return message.replacingBotReactions(patch.reactions)
-            }
+            messages = projected.messages
             settledActivity = projected.activity
             if let historyCache, let profileID = engine.target.historyIndexProfile, let root, let tip {
                 historyCacheTask?.cancel()
@@ -1398,11 +1313,9 @@ import Observation
                     let settingsRevision = self.chatControls.snapshotRevision
                     let requestsRevision = self.requestRevision
                     let clockRevision = self.clockRevision
-                    let reactionRevision = self.reactionRevision
                     let reply = try await self.engine.resume(full: full, attempt: owner)
                     try self.applySnapshot(reply, full: full, settingsRevision: settingsRevision,
-                                           requestsRevision: requestsRevision, clockRevision: clockRevision,
-                                           reactionRevision: reactionRevision)
+                                           requestsRevision: requestsRevision, clockRevision: clockRevision)
                     if self.snapshotDirty { try await Task.sleep(for: .milliseconds(250)) }
                 }
                 self.refreshTask = nil
@@ -1448,7 +1361,6 @@ extension BotConversation: HermesConversationOwner {
         refreshTask?.cancel(); refreshTask = nil
         localOperation = false; submittingPrompt = nil
         serverRequests = []; connectionOperation = nil; answeringRequestID = nil
-        reactingRowIDs = []; reactionPatches = [:]
         turn = .unknown
         syncLiveActivity()
     }
@@ -1497,13 +1409,13 @@ extension BotConversation: HermesConversationOwner {
         applyReplay(reply, frames: frames)
         // The full read that follows covers whatever asked for one before it, including
         // a refresh the disconnect cancelled; only what arrives after it schedules another.
-        attachRevisions = (requestRevision, clockRevision, reactionRevision)
+        attachRevisions = (requestRevision, clockRevision)
         snapshotDirty = false; fullSnapshotNeeded = false
     }
 
     func conversationDidReadSnapshot(_ snapshot: BotJSON, runtime: String, attempt: Int) async throws {
         try applySnapshot(snapshot, full: true, requestsRevision: attachRevisions.requests,
-                          clockRevision: attachRevisions.clock, reactionRevision: attachRevisions.reaction)
+                          clockRevision: attachRevisions.clock)
         try check(attempt)
         let controlsContext = BotChatControls.Context(connectionID: connection.id, profile: profile.id,
                                                       runtime: runtime, generation: attempt)
@@ -1535,12 +1447,6 @@ extension BotConversation: HermesConversationOwner {
         let type = event["type"].text ?? ""
         // A newer frame than any snapshot already in flight, like a live request.
         if applyConnectionEvent(type: type, payload: event["payload"]) { requestRevision += 1 }
-        // The agent's `react_to_message` tool paints its Tapback live; only the
-        // agent's entry is taken from the payload, so it changes nothing else.
-        if type == "message.reaction" {
-            applyReactions(rowID: event["payload"]["row_id"].integer, event["payload"]["reactions"], author: .agent)
-            if !discontinuity { return }
-        }
         if ["subagent.spawn_requested", "subagent.start", "subagent.progress",
             "subagent.tool", "subagent.complete"].contains(type) {
             delegatedWork.noteSubagentEvent()
