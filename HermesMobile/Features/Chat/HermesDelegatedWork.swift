@@ -4,7 +4,7 @@ import Observation
 /// One live worker projected by the direct-Hermes gateway. The initializer is
 /// intentionally tolerant: a future host may add fields or omit presentation
 /// details, while identity remains the minimum needed to show a row.
-struct BotDelegatedWorker: Identifiable, Equatable, Sendable {
+struct HermesDelegatedWorker: Identifiable, Equatable, Sendable {
     struct Identity: Equatable, Hashable, Sendable {
         let subagentID: String
         let startedAt: Double?
@@ -48,8 +48,8 @@ struct BotDelegatedWorker: Identifiable, Equatable, Sendable {
     }
 }
 
-struct BotDelegatedTail: Equatable, Sendable {
-    let worker: BotDelegatedWorker.Identity
+struct HermesDelegatedTail: Equatable, Sendable {
+    let worker: HermesDelegatedWorker.Identity
     let available: Bool
     let text: String
     let truncated: Bool
@@ -58,7 +58,7 @@ struct BotDelegatedTail: Equatable, Sendable {
 /// A durable async-delegation delivery projected from transcript display
 /// metadata. The report itself stays opaque so future host formatting remains
 /// readable without Hermex having to parse server-authored prose.
-struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
+struct HermesDelegationCompletion: Identifiable, Equatable, Sendable {
     static let displayKind = "async_delegation_complete"
     static let maximumDisplayCount = 999
 
@@ -114,35 +114,40 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
     }
 }
 
-/// Owns live delegated-work inspection for exactly one Bot conversation
-/// transport generation. It refreshes only on connect, an explicit user action,
-/// or coalesced subagent lifecycle events; worker tails are always opt-in reads.
-@MainActor @Observable final class BotDelegatedWork {
+/// Owns live delegated-work inspection for one `HermesConversation` attach: Bot
+/// Chat's, or a Hermes chat's through `HermesChatActivity` (#1140). It refreshes
+/// only on connect, an explicit user action, or coalesced subagent lifecycle
+/// events, never on a timer; worker tails are always opt-in reads.
+@MainActor @Observable final class HermesDelegatedWork {
     enum Availability: Equatable { case unknown, supported, unsupported }
 
     struct Context: Equatable, Sendable {
         let connectionID: UUID
         let runtime: String
+        /// The attach's `HermesConversation.generation`.
         let generation: Int
     }
 
     struct InterruptAction: Identifiable, Equatable, Sendable {
         let id = UUID()
         let context: Context
-        let worker: BotDelegatedWorker.Identity
+        let worker: HermesDelegatedWorker.Identity
     }
 
     static let maximumWorkers = 64
     static let maximumTailBytes = 16 * 1024
 
     private(set) var availability = Availability.unknown
-    private(set) var workers: [BotDelegatedWorker] = []
+    private(set) var workers: [HermesDelegatedWorker] = []
     private(set) var omittedWorkerCount = 0
+    /// Every live worker, the omitted included. Stored apart from `workers`, whose rows change
+    /// with each tool a worker calls, so a toolbar reading it redraws only when the count does.
+    private(set) var activeCount = 0
     private(set) var isRefreshing = false
-    private(set) var loadingTail: BotDelegatedWorker.Identity?
-    private(set) var tail: BotDelegatedTail?
-    private(set) var interruptingWorker: BotDelegatedWorker.Identity?
-    private(set) var interruptedWorker: BotDelegatedWorker.Identity?
+    private(set) var loadingTail: HermesDelegatedWorker.Identity?
+    private(set) var tail: HermesDelegatedTail?
+    private(set) var interruptingWorker: HermesDelegatedWorker.Identity?
+    private(set) var interruptedWorker: HermesDelegatedWorker.Identity?
     private(set) var errorMessage: String?
 
     @ObservationIgnored private let wire: any BotTransport
@@ -158,7 +163,6 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
         self.wire = wire
     }
 
-    var activeCount: Int { workers.count + omittedWorkerCount }
     var hasWorkers: Bool { !workers.isEmpty }
 
     func connect(_ next: Context) async {
@@ -177,6 +181,7 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
         availability = .unknown
         workers = []
         omittedWorkerCount = 0
+        countWorkers()
         isRefreshing = false
         loadingTail = nil
         tail = nil
@@ -204,6 +209,7 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
                 availability = .unsupported
                 workers = []
                 omittedWorkerCount = 0
+                countWorkers()
                 tail = nil
                 errorMessage = nil
             } else if error as? BotFailure != .stale {
@@ -232,7 +238,7 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
         }
     }
 
-    func loadTail(for worker: BotDelegatedWorker) async {
+    func loadTail(for worker: HermesDelegatedWorker) async {
         guard let owner = context, current(worker.identity) != nil else { return }
         let requestID = UUID()
         tailRequestID = requestID
@@ -249,7 +255,7 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
                   let text = reply["text"].text,
                   let hostTruncated = reply["truncated"].flag else { throw BotFailure.unsupported }
             let bounded = Self.boundedTail(text)
-            tail = BotDelegatedTail(worker: worker.identity, available: available,
+            tail = HermesDelegatedTail(worker: worker.identity, available: available,
                                     text: available ? bounded.text : "",
                                     truncated: available && (hostTruncated || bounded.wasTruncated))
             loadingTail = nil
@@ -266,7 +272,7 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
         tail = nil
     }
 
-    func prepareInterrupt(_ worker: BotDelegatedWorker) -> InterruptAction? {
+    func prepareInterrupt(_ worker: HermesDelegatedWorker) -> InterruptAction? {
         guard let context, worker.canInterrupt, interruptingWorker == nil,
               current(worker.identity) != nil else { return nil }
         return InterruptAction(context: context, worker: worker.identity)
@@ -313,26 +319,32 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
         }
     }
 
-    private func fetchWorkers(_ owner: Context) async throws -> [BotDelegatedWorker] {
+    private func fetchWorkers(_ owner: Context) async throws -> [HermesDelegatedWorker] {
         guard owns(owner) else { throw BotFailure.stale }
         let reply = try await wire.call(.subagentList(sessionID: owner.runtime)) { [weak self] in
             guard let self, self.owns(owner) else { throw BotFailure.stale }
         }
         guard owns(owner), let rows = reply["subagents"].list else { throw BotFailure.unsupported }
-        return rows.compactMap(BotDelegatedWorker.init)
+        return rows.compactMap(HermesDelegatedWorker.init)
     }
 
-    private func install(_ received: [BotDelegatedWorker]) {
+    private func install(_ received: [HermesDelegatedWorker]) {
         let bounded = Array(received.prefix(Self.maximumWorkers))
         workers = Self.hierarchyOrder(bounded)
         omittedWorkerCount = max(0, received.count - bounded.count)
+        countWorkers()
         onWorkersChanged?()
         if let tail, current(tail.worker) == nil { self.tail = nil }
         if let loadingTail, current(loadingTail) == nil { self.loadingTail = nil }
         if let interruptedWorker, current(interruptedWorker) == nil { self.interruptedWorker = nil }
     }
 
-    private func current(_ identity: BotDelegatedWorker.Identity) -> BotDelegatedWorker? {
+    private func countWorkers() {
+        let count = workers.count + omittedWorkerCount
+        if count != activeCount { activeCount = count }
+    }
+
+    private func current(_ identity: HermesDelegatedWorker.Identity) -> HermesDelegatedWorker? {
         workers.first { $0.identity == identity }
     }
 
@@ -340,12 +352,12 @@ struct BotDelegationCompletion: Identifiable, Equatable, Sendable {
         context == owner && !Task.isCancelled
     }
 
-    private static func hierarchyOrder(_ workers: [BotDelegatedWorker]) -> [BotDelegatedWorker] {
+    private static func hierarchyOrder(_ workers: [HermesDelegatedWorker]) -> [HermesDelegatedWorker] {
         let ids = Set(workers.map(\.subagentID))
         let roots = workers.filter { $0.parentID == nil || !ids.contains($0.parentID ?? "") }
-        var result: [BotDelegatedWorker] = []
-        var visited = Set<BotDelegatedWorker.Identity>()
-        func append(_ worker: BotDelegatedWorker) {
+        var result: [HermesDelegatedWorker] = []
+        var visited = Set<HermesDelegatedWorker.Identity>()
+        func append(_ worker: HermesDelegatedWorker) {
             guard visited.insert(worker.identity).inserted else { return }
             result.append(worker)
             for child in workers where child.parentID == worker.subagentID { append(child) }

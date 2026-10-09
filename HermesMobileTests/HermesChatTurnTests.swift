@@ -518,10 +518,11 @@ import SwiftUI
         await chat.model.reconnectStreamIfNeeded()
         chat.model.flushPendingStreamingContent()
         XCTAssertEqual(chat.model.messages.map(\.content), ["Write a haiku", "Autumn moonlight"])
-        // Each attach's goal, model-catalog, Profile (#1015) and command-catalog (#1036) reads
-        // run off its path and can land anywhere in this; they are not the reattach.
+        // Each attach's goal, model-catalog, Profile (#1015), command-catalog (#1036) and worker
+        // (#1140) reads run off its path and can land anywhere in this; they are not the reattach.
         let methods = chat.host.requests.dropFirst(leaving).compactMap { $0["method"].text }
-        XCTAssertEqual(methods.filter { !["session.control.read", "model.options", "profiles.list", "commands.catalog"].contains($0) },
+        XCTAssertEqual(methods.filter { !["session.control.read", "model.options", "profiles.list", "commands.catalog",
+                                          "subagent.list"].contains($0) },
                        ["session.resume", "session.events.since", "session.resume"], "reattaching only reads")
         XCTAssertEqual(chat.writes("prompt.submit").count, 1)
         XCTAssertNotNil(chat.model.activeStreamID)
@@ -889,6 +890,48 @@ import SwiftUI
         XCTAssertEqual(chat.turn.activity.retryTarget, .init(rowID: 1, text: "Summarize the logs\n\n@file:/a/notes.txt", showsPrompt: false))
     }
 
+    // MARK: Delegated work
+
+    /// The worker count lists the session's workers once it connects, then again only on the
+    /// lifecycle frames that change the roster, which coalesce into one read; leaving drops it,
+    /// so the toolbar button goes with the connection (#1140).
+    func testDelegatedWorkListsOnConnectAndOnLifecycleFramesOnly() async {
+        let chat = await openChat(subagents: [worker("tests"), worker("docs")])
+        let work = chat.turn.activity.delegatedWork
+        await waitUntil("listed on connect") { work.activeCount == 2 }
+        XCTAssertEqual(chat.writes("subagent.list").map { $0["session_id"]?.text }, ["runtime"])
+
+        chat.host.always("subagent.list", .init(result: .object(["subagents": .array([worker("docs")])])))
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "subagent.complete", ["subagent_id": .string("tests"), "status": .string("completed")]))
+        chat.receive(event(3, "subagent.progress", ["subagent_id": .string("docs")]))
+        await waitUntil("listed after the lifecycle frames") { work.activeCount == 1 }
+        XCTAssertEqual(work.workers.map(\.subagentID), ["docs"])
+        XCTAssertEqual(chat.writes("subagent.list").count, 2, "two lifecycle frames are one read")
+
+        chat.model.suspendStreamForBackground()
+        XCTAssertEqual(work.activeCount, 0, "a chat that left shows no workers")
+    }
+
+    /// A completion delivery from the history is the card's typed delivery, with the host's report.
+    func testADelegationDeliveryFromTheHistoryIsItsCompletionCard() async throws {
+        let delivery: BotJSON = .object([
+            "id": .number(2), "role": .string("user"), "timestamp": .number(1_790_000_100),
+            "content": .string("[ASYNC DELEGATION BATCH COMPLETE]\n--- RESULT ---\nTests rewritten; docs updated."),
+            "display_kind": .string("async_delegation_complete"),
+            "display_metadata": .object(["task_count": .number(2), "completed_count": .number(2),
+                                         "failed_count": .number(0), "duration_seconds": .number(41),
+                                         "delegation_id": .string("dlg_7f3a")])
+        ])
+        let chat = await openChat(history: [userRow("Split the work"), delivery])
+        let completion = try XCTUnwrap(HermesDelegationCompletion(try XCTUnwrap(chat.model.messages.last)))
+        XCTAssertEqual(completion.taskCount, 2)
+        XCTAssertEqual(completion.completedCount, 2)
+        XCTAssertEqual(completion.durationSeconds, 41)
+        XCTAssertEqual(completion.delegationID, "dlg_7f3a")
+        XCTAssertTrue(completion.report.hasSuffix("Tests rewritten; docs updated."))
+    }
+
     // MARK: Fixture
 
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
@@ -922,9 +965,11 @@ import SwiftUI
 
     private func openChat(runtime: String = "runtime", key: String = "tip", profile: String = "default",
                           target: ConversationTarget? = nil, drafts: ChatDraftStore? = nil,
-                          history: [BotJSON] = [], snapshot: BotJSON? = nil, rpcDeadline: Duration = .seconds(30)) async -> Chat {
+                          history: [BotJSON] = [], snapshot: BotJSON? = nil, subagents: [BotJSON] = [],
+                          rpcDeadline: Duration = .seconds(30)) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
+        host.always("subagent.list", .init(result: .object(["subagents": .array(subagents), "delegations": .array([])])))
         host.always("session.resume", .init(result: snapshot ?? resume(running: false, runtime: runtime, key: key, profile: profile)))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
         // The reduced reply `session.create` gives a session that has not started.
@@ -1041,12 +1086,15 @@ import SwiftUI
         return activity
     }
 
-    /// Waits on observation, never a clock, until `condition` holds.
+    /// Waits on observation, never a clock, until `condition` holds; fails once nothing it reads
+    /// changes for 5 s.
     private func waitUntil(_ description: String, _ condition: @escaping @MainActor () -> Bool) async {
         while !condition() {
-            let changed = expectation(description: description)
+            let changed = XCTestExpectation(description: description)
             withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            await fulfillment(of: [changed], timeout: 5)
+            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
+                return XCTFail("Nothing changed while waiting: \(description)")
+            }
         }
     }
 
@@ -1068,6 +1116,12 @@ import SwiftUI
         .object(["items": .array(rows.map { text, meta in
             .object(["text": .string(text), "display": .string(text), "meta": .string(meta)])
         })])
+    }
+
+    /// A live worker as `subagent.list` reports it.
+    private func worker(_ id: String) -> BotJSON {
+        .object(["subagent_id": .string(id), "goal": .string("Work on \(id)"), "depth": .number(0),
+                 "started_at": .number(1_790_000_010), "status": .string("running")])
     }
 
     /// A saved prompt as a transcript page carries it (#1047), saved at `at`.

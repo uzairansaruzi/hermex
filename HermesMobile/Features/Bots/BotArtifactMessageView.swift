@@ -36,8 +36,8 @@ struct BotArtifactMessageView: View {
     @ViewBuilder
     private var content: some View {
         Group {
-            if let completion = BotDelegationCompletion(message) {
-                BotDelegationCompletionCard(completion: completion)
+            if let completion = HermesDelegationCompletion(message) {
+                HermesDelegationCompletionCard(completion: completion)
             } else if message.role == "user" {
                 userContent
             } else if isLive {

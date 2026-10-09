@@ -52,7 +52,7 @@ import XCTest
             (ChatMessage(role: "user", content: "Prompt", timestamp: nil, messageId: nil), false),
             (ChatMessage(role: "assistant", content: "Streaming", timestamp: nil, messageId: nil), true),
             (ChatMessage(role: "delegation_completion", content: "Result", timestamp: nil, messageId: nil), false),
-            (ChatMessage(role: "assistant", content: "Delegated result", timestamp: nil, messageId: nil, displayKind: BotDelegationCompletion.displayKind), false),
+            (ChatMessage(role: "assistant", content: "Delegated result", timestamp: nil, messageId: nil, displayKind: HermesDelegationCompletion.displayKind), false),
             (ChatMessage(role: "tool", content: "Tool result", timestamp: nil, messageId: nil), false),
             (ChatMessage(role: "assistant", content: nil, timestamp: nil, messageId: nil), false),
             (ChatMessage(role: "assistant", content: "", timestamp: nil, messageId: nil), false),

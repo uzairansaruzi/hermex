@@ -19,7 +19,7 @@ enum BotMessageActions {
         copy: @escaping (String) -> Void = { UIPasteboard.general.string = $0 }
     ) -> (() -> Void)? {
         guard !isLive, message.role == "assistant",
-              message.displayKind != BotDelegationCompletion.displayKind else { return nil }
+              message.displayKind != HermesDelegationCompletion.displayKind else { return nil }
         return items(copyText: message.content, isHapticsEnabled: isHapticsEnabled, copy: copy).first?.perform
     }
 

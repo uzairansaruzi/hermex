@@ -86,10 +86,11 @@ struct HermesPlanState: Equatable {
     }
 }
 
-/// A Hermes chat's plan and how its last turn ended (#1139). `HermesChatTurnCoordinator` owns
-/// it and only forwards its frames and snapshots here; `ChatView` draws the plan pinned above
-/// the composer while its turn runs (`pinnedPlan`), then at the top of that turn
-/// (`settledPlan`), and the outcome row under the failed or warned turn. Never cached.
+/// A Hermes chat's plan, how its last turn ended (#1139), and its delegated workers (#1140).
+/// `HermesChatTurnCoordinator` owns it and only forwards its frames and snapshots here;
+/// `ChatView` draws the plan pinned above the composer while its turn runs (`pinnedPlan`),
+/// then at the top of that turn (`settledPlan`), the outcome row under the failed or warned
+/// turn, and the workers button while `delegatedWork` counts any. Never cached.
 @MainActor @Observable final class HermesChatActivity {
     /// A plan out of the strip, at the top of its turn: after that turn's prompt.
     struct SettledPlan: Equatable {
@@ -127,6 +128,13 @@ struct HermesPlanState: Equatable {
         var rowID: Int?
         /// The chat showed the turn's prompt itself.
         let showsPrompt: Bool
+    }
+
+    /// The session's live workers, listed over the chat's own socket.
+    let delegatedWork: HermesDelegatedWork
+
+    init(wire: any BotTransport) {
+        delegatedWork = HermesDelegatedWork(wire: wire)
     }
 
     private var planState = HermesPlanState()

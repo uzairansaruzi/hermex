@@ -489,6 +489,15 @@ the two reads saves a later prompt, and Retry is then not offered. A row once fo
 for that same `started_at`. Retry is the
 chat's rewind (`promptRewind`) with that text, from a tap only. A failed turn shows no error line.
 
+Its delegated workers are `HermesChatActivity.delegatedWork` (#1140), Bot Chat's
+`HermesDelegatedWork` (below) on the chat's own socket and attach: listed once connected, on a tap
+of the button or the sheet's refresh, and after coalesced `subagent.*` lifecycle frames, never
+polled; a reset or leaving drops it. While it counts a worker, `ChatView` shows its own glass
+toolbar button after the action cluster (`person.2` and a plain count; hidden on the offline
+cache's copy) that opens `HermesDelegatedWorkView`. A history row with
+`display_kind: "async_delegation_complete"` draws as `HermesDelegationCompletionCard`; live, it
+arrives with the newest rows the delivery's turn re-reads when it ends.
+
 Its host requests are `HermesChatRequests` (#1011), on the Bot request model below and the
 engine's `answer`. An approval takes the Sessions overlay with only the host's choices
 (`ApprovalScope.Host.hermes`); a question or a sudo or secret prompt takes the

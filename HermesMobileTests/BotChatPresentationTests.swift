@@ -1515,7 +1515,7 @@ import XCTest
             content: report,
             timestamp: nil,
             messageId: "delivery",
-            displayKind: BotDelegationCompletion.displayKind,
+            displayKind: HermesDelegationCompletion.displayKind,
             displayMetadata: [
                 "delegation_id": .string("deleg_fixture"),
                 "task_count": .number(2),
@@ -1524,10 +1524,10 @@ import XCTest
                 "duration_seconds": .number(8.48)
             ]
         )
-        let completion = try XCTUnwrap(BotDelegationCompletion(message))
+        let completion = try XCTUnwrap(HermesDelegationCompletion(message))
 
         let card = try show(VStack {
-            BotDelegationCompletionCard(completion: completion)
+            HermesDelegationCompletionCard(completion: completion)
                 .padding(16)
             Spacer()
         })
@@ -1538,7 +1538,7 @@ import XCTest
         XCTAssertFalse(compact.contains("Unique full worker result body"), compact)
         close(card)
 
-        let sheet = try show(BotDelegationResultsSheet(completion: completion))
+        let sheet = try show(HermesDelegationResultsSheet(completion: completion))
         sheet.overrideUserInterfaceStyle = .dark
         defer { close(sheet) }
         await settle(sheet)
