@@ -1814,7 +1814,8 @@ extension GitWorkspaceViewModelTests {
 
     /// The picker lists the host's local branches, then its remote-only ones, and switches to
     /// either. A remote row goes out by its short name, which `git switch` makes a tracking
-    /// branch of; the status and branches are read again after each switch.
+    /// branch of, once a fresh branch list shows the name is only its; the status and branches
+    /// are read again after each switch.
     @MainActor
     func testAHermesSwitchSendsARemoteBranchByItsShortNameAndRefreshes() async throws {
         nonisolated(unsafe) var current = "main"
@@ -1846,7 +1847,7 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(availability.currentBranchName, "dev")
         XCTAssertEqual(availability.status?.branch, "dev")
         XCTAssertEqual(HermesGitHost.writes, ["switch feature/x", "switch dev"])
-        XCTAssertEqual(HermesGitHost.requests.filter { $0.url?.path == "/api/git/branches" }.count, branchReads + 2)
+        XCTAssertEqual(HermesGitHost.requests.filter { $0.url?.path == "/api/git/branches" }.count, branchReads + 3)
         XCTAssertNil(availability.actionErrorMessage)
     }
 

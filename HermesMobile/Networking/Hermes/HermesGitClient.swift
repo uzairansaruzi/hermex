@@ -371,24 +371,42 @@ import Foundation
     }
 
     /// Switches to a listed branch with `git switch`. A remote row (`origin/name`) goes out as
-    /// `name`, which git makes a tracking branch of. Refused while the tree has any uncommitted
-    /// change, untracked files included, which `git switch` would carry across: there is no
-    /// stash on Hermes. Creating a branch isn't offered on Hermes either, and a name the host
-    /// would rewrite (`HermesREST.isBranchName`) is refused.
+    /// `name`, which git makes a tracking branch of. The host can't name the remote, so a remote
+    /// row is refused unless the host lists it, now, as the only branch called `name`: another
+    /// remote's `name` would leave git to refuse or pick `checkout.defaultRemote`, and a local
+    /// `name` would be switched to instead. Refused while the tree has any uncommitted change,
+    /// untracked files included, which `git switch` would carry across: there is no stash on
+    /// Hermes. Creating a branch isn't offered on Hermes either, and a name the host would
+    /// rewrite (`HermesREST.isBranchName`) is refused.
     func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool) async throws -> GitCheckoutResponse {
-        let ref = target.ref
-        let branch = target.mode == .local ? ref : ref.firstIndex(of: "/").map { String(ref[ref.index(after: $0)...]) }
+        let remote = target.mode != .local
+        let branch = remote ? Self.shortName(target.ref) : target.ref
         guard let branch, HermesREST.isBranchName(branch), target.newBranch == nil, !stashingChanges else {
             throw HermesGitRefusal.failed
         }
         let dispatch = try beginWrite()
         let root = try await writableRoot()
+        if remote {
+            let rows = try Self.json(try await send(.gitBranches(repository: root)))["branches"].list ?? []
+            let named = rows.filter { row in
+                Self.text(row["name"]).flatMap { row["isRemote"].flag == true ? Self.shortName($0) : $0 } == branch
+            }
+            guard named.count == 1, named[0]["isRemote"].flag == true, Self.text(named[0]["name"]) == target.ref else {
+                throw HermesGitRefusal.failed
+            }
+        }
         let summary = try Self.json(try await send(.gitStatus(repository: root)))
         guard summary["changed"].integer == 0 else { throw HermesGitRefusal.uncommittedSwitch }
         try await write(.gitSwitchBranch(repository: root, branch: branch), dispatch, deadline: .provisioning)
         return GitCheckoutResponse(ok: true, message: nil, status: try? await status(), git: nil, branches: nil,
                                    currentBranch: branch, stashName: nil, stashed: nil, restoredStash: nil,
                                    restoreFailed: nil, restoreError: nil, restoreStash: nil)
+    }
+
+    /// A remote-tracking ref's branch name, the part after its remote (`origin/feature/x` is
+    /// `feature/x`), as `git/branches` matches it to local heads; nil without a remote part.
+    private nonisolated static func shortName(_ ref: String) -> String? {
+        ref.firstIndex(of: "/").map { String(ref[ref.index(after: $0)...]) }
     }
 
     /// A file a revert deletes: untracked, or new in the index.

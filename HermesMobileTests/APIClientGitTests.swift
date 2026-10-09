@@ -886,7 +886,7 @@ extension APIClientGitTests {
             switch HermesCronFixture.body(request)["branch"].text {
             case "taken": .json(400, .object(["detail": .string("fatal: 'taken' is already used by worktree at '/x'")]))
             case let branch?: .json(200, .object(["branch": .string(branch)]))
-            case nil: HermesGitHost.repositoryReply(request)
+            case nil: HermesGitHost.repositoryReply(request, branches: [("dev", false), ("origin/feature/x", true)])
             }
         }
 
@@ -929,6 +929,30 @@ extension APIClientGitTests {
 
         XCTAssertEqual(refusals, [.uncommittedSwitch, .failed, .failed, .failed, .failed])
         XCTAssertEqual(HermesGitHost.writes, [])
+    }
+
+    /// The host takes only a remote row's short name and lets git pick the remote, so a row is
+    /// switched only while it is the one listed branch of that name: two remotes' `feature`, or a
+    /// stale `origin/dev` once `dev` is local, send nothing.
+    @MainActor
+    func testAHermesRemoteSwitchIsRefusedWhenItsShortNameIsAmbiguous() async throws {
+        let git = HermesGitHost.client { request in
+            if request.url?.path == "/api/git/branch/switch" {
+                return .json(200, .object(["branch": HermesCronFixture.body(request)["branch"]]))
+            }
+            return HermesGitHost.repositoryReply(request, branches: [
+                ("main", false), ("dev", false), ("origin/feature", true), ("upstream/feature", true), ("origin/solo", true),
+            ])
+        }
+        var refusals: [HermesGitRefusal?] = []
+        for ref in ["origin/feature", "upstream/feature", "origin/dev", "origin/solo"] {
+            do {
+                _ = try await git.checkout(GitCheckoutTarget(ref: ref, mode: .remote, track: true), stashingChanges: false)
+            } catch { refusals.append(error as? HermesGitRefusal) }
+        }
+
+        XCTAssertEqual(refusals, [.failed, .failed, .failed])
+        XCTAssertEqual(HermesGitHost.writes, ["switch solo"])
     }
 }
 
