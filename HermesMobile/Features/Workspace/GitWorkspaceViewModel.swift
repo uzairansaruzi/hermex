@@ -245,7 +245,7 @@ final class GitWorkspaceAvailabilityViewModel {
             return response.ok != false
         } catch {
             actionErrorMessage = friendlyMessage(for: error)
-            await refreshAfterExternalMutation()
+            if git?.isHermes == true { await refreshAfterExternalMutation() }
             return false
         }
     }
@@ -339,7 +339,7 @@ final class GitWorkspaceAvailabilityViewModel {
             ))
         } catch {
             actionErrorMessage = friendlyMessage(for: error)
-            await refreshAfterExternalMutation()
+            if git.isHermes { await refreshAfterExternalMutation() }
             return .failure
         }
     }
@@ -350,8 +350,8 @@ final class GitWorkspaceAvailabilityViewModel {
     }
 
     /// Re-fetch info, status and branches after the advanced staging sheet mutates the
-    /// working tree, or a write here fails partway, so the toolbar badge and Changes row stay
-    /// in sync.
+    /// working tree, or a Hermes write here fails partway, so the toolbar badge and Changes row
+    /// stay in sync.
     @MainActor
     func refreshAfterExternalMutation() async {
         await refreshGitInfo()
@@ -539,8 +539,8 @@ enum GitCommitOperation: Equatable {
 ///
 /// Self-contained per repository client: it loads its own status so the sheet always reflects
 /// the current working tree, and owns the file selection, commit-message field, and the
-/// stage / unstage / discard / suggest / commit operations. A failed write reads the status
-/// again, since it can have changed part of the tree.
+/// stage / unstage / discard / suggest / commit operations. A failed Hermes write reads the
+/// status again, since it can have changed part of the tree (`GitDataClient.isHermes`).
 @MainActor
 @Observable
 final class GitCommitViewModel {
@@ -574,6 +574,9 @@ final class GitCommitViewModel {
     convenience init(session: SessionSummary, server: URL, apiClient: APIClient? = nil) {
         self.init(git: WebUIGitClient(session: session, apiClient: apiClient ?? APIClient(baseURL: server)))
     }
+
+    /// The last commit's sha, which the sheet shows for a Hermes repository.
+    var shownCommitSHA: String? { git?.isHermes == true ? lastCommitSHA : nil }
 
     var trackedFiles: [GitFile] { status?.trackedFiles ?? [] }
     var stagedFiles: [GitFile] { trackedFiles.filter { $0.staged == true } }
@@ -691,6 +694,10 @@ final class GitCommitViewModel {
             let response = try await commitCall(git, messageToSend)
             status = response.resolvedStatus ?? status
             lastCommitSHA = response.shortSHA
+            // A Hermes Commit Selected landed but left some other staged files unstaged.
+            let restoreWarning = response.stagingNotRestored
+                ? String(localized: "Committed, but some files couldn’t be staged again.") : nil
+            actionErrorMessage = restoreWarning
             // The commit has already landed. If a requested push then fails, still run the
             // success cleanup (clear message/selection, bump committedRevision so the caller
             // refreshes the toolbar) and surface the push error in the sheet banner.
@@ -701,8 +708,8 @@ final class GitCommitViewModel {
                 } catch {
                     // The commit already landed; only the push failed. Phrase it as a
                     // partial success so the banner doesn't read as a failed commit.
-                    actionErrorMessage = String(localized: "Committed, but the push failed.")
-                        + " " + gitWriteFriendlyMessage(for: error)
+                    actionErrorMessage = [restoreWarning, String(localized: "Committed, but the push failed.")
+                        + " " + gitWriteFriendlyMessage(for: error)].compactMap { $0 }.joined(separator: " ")
                 }
             }
             message = ""
@@ -713,7 +720,7 @@ final class GitCommitViewModel {
             return true
         } catch {
             actionErrorMessage = gitWriteFriendlyMessage(for: error)
-            await reloadAfterFailedWrite(git)
+            if git.isHermes { await reloadAfterFailedWrite(git) }
             return false
         }
     }
@@ -732,7 +739,7 @@ final class GitCommitViewModel {
             pruneSelectionToCurrentFiles()
         } catch {
             actionErrorMessage = gitWriteFriendlyMessage(for: error)
-            await reloadAfterFailedWrite(git)
+            if git.isHermes { await reloadAfterFailedWrite(git) }
         }
     }
 

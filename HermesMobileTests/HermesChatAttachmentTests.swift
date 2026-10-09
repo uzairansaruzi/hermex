@@ -406,6 +406,26 @@ import UIKit
                                URLQueryItem(name: "session_id", value: "tip")])
     }
 
+    /// The chat owns its repository's Git writes (#1115): none goes out while a turn runs, and a
+    /// client made for a folder the chat has since left writes nothing at all.
+    func testGitWritesWaitForTheTurnAndStopAtAFolderMove() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
+        let git = try XCTUnwrap(chat.model.hermesWorkspaceGit)
+        _ = HermesHostFixture.configuration { HermesGitHost.repositoryReply($0, root: "/work/app") }
+        var refusals: [String] = []
+
+        chat.receive(event(2, "message.start"))
+        do { _ = try await git.push() } catch { refusals.append(error.localizedDescription) }
+        chat.receive(event(3, "message.complete", ["status": .string("complete")]))
+        chat.receive(event(4, "session.info", ["cwd": .string("/work/moved"), "terminal_backend": .string("local")]))
+        do { _ = try await git.push() } catch { refusals.append(error.localizedDescription) }
+
+        XCTAssertEqual(refusals, [String(localized: "Wait for the active response to finish before changing this repository."),
+                                  BotFailure.stale.localizedDescription])
+        XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path.hasPrefix("/api/git/") == true }, [])
+    }
+
     /// A MEDIA reference's inline audio, video or file in a reply downloads from the host by
     /// the path the reply wrote, under the session's Profile and stored key, so the host
     /// resolves it against the session; webui's `/api/media` is never asked.

@@ -309,6 +309,13 @@ struct GitCommitResponse: Decodable, Equatable {
     let paths: [String]?
     let status: GitStatus?
     let git: GitStatus?
+    /// Set by a Hermes Commit Selected (#1115) whose commit landed but which couldn't stage the
+    /// other staged files again. Never decoded.
+    var stagingNotRestored = false
+
+    enum CodingKeys: String, CodingKey {
+        case ok, commit, paths, status, git
+    }
 
     var resolvedStatus: GitStatus? { status ?? git }
     /// Short SHA produced by the commit, trimmed for display.

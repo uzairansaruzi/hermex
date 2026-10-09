@@ -1624,8 +1624,11 @@ final class ChatViewModel {
     var hermesWorkspaceFiles: HermesWorkspaceFileClient? { hermesTurn?.workspaceFiles }
 
     /// The repository holding `hermesWorkspace` (#1114), on the session's connection. Each read is a
-    /// new client, which resolves its root once, so keep one per folder.
-    var hermesWorkspaceGit: HermesGitClient? { hermesTurn?.workspaceGit }
+    /// new client, which resolves its root once, so keep one per folder. Its writes stop while a
+    /// turn runs or this chat shows cached data (#1115).
+    var hermesWorkspaceGit: HermesGitClient? {
+        hermesTurn?.workspaceGit { [weak self] in self?.isViewingCachedData ?? true }
+    }
 
     func attachmentRawData(path: String) async -> Data? {
         await attachmentCoordinator.attachmentRawData(path: path)

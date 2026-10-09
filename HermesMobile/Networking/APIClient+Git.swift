@@ -13,6 +13,10 @@ protocol GitDataClient: Sendable {
     func diff(for file: GitFile) async throws -> GitDiff?
     /// The row path a turn's tool names a file by, for the turn-changes card's join.
     @MainActor func rowPath(forToolPath path: String) -> String
+    /// A Hermes host's repository (#1115), whose writes answer only `{ok}`: a failed write reads
+    /// the status again and the commit sheet shows a commit's sha. webui's answers carry the
+    /// status, and its sheet keeps its presentation.
+    var isHermes: Bool { get }
 
     // Writes. Each answers the status after it when it has one.
     func stage(_ files: [GitFile]) async throws -> GitStatus?
@@ -30,6 +34,8 @@ protocol GitDataClient: Sendable {
 extension GitDataClient {
     /// webui's rows are relative to the chat's workspace, as its tools name files.
     @MainActor func rowPath(forToolPath path: String) -> String { path }
+
+    var isHermes: Bool { false }
 }
 
 /// `GitDataClient` over webui's session-scoped Git routes.

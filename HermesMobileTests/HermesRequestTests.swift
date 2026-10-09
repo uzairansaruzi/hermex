@@ -258,6 +258,24 @@ final class HermesRequestTests: XCTestCase {
         XCTAssertThrowsError(try HermesCall.completeSlash(text: "/approvals ", sessionID: "").params())
     }
 
+    /// The host hands a Git write's `file` to git as a pathspec, where `*` matches other files and
+    /// `.`, a blank or no file the whole tree (#1115): a file goes out literal, and one that isn't a
+    /// single path inside the repository is refused before anything is sent.
+    func testAGitWriteNamesOneExactFile() throws {
+        let base = URL(string: "https://hermes.example")!
+        for file in ["", " ", " \n", ".", "./", "a/./b", "a/..", "../a", "/a", "a//b"] {
+            XCTAssertThrowsError(try HermesREST.gitStage(repository: "/r", file: file).request(base: base), file)
+            XCTAssertThrowsError(try HermesREST.gitUnstage(repository: "/r", file: file).request(base: base), file)
+            XCTAssertThrowsError(try HermesREST.gitRevert(repository: "/r", file: file).request(base: base), file)
+        }
+        XCTAssertThrowsError(try HermesREST.gitRevert(repository: "", file: "a").request(base: base))
+        for file in ["*", " a.txt", "a.txt ", "Sources/", ":(glob)x"] {
+            let request = try HermesREST.gitRevert(repository: "/r", file: file).request(base: base)
+            let body = try request.httpBody.map { try JSONDecoder().decode(BotJSON.self, from: $0) }
+            XCTAssertEqual(body?["file"], .string(":(literal)" + file))
+        }
+    }
+
     func testEveryRESTRequestKeepsItsMethodPathQueryAndBody() throws {
         let base = URL(string: "https://hermes.example:9120")!
         let json = ["Content-Type": "application/json"]
@@ -327,13 +345,13 @@ final class HermesRequestTests: XCTestCase {
             (.filesMkdir(path: "/h/memories"), "POST", "https://hermes.example:9120/api/files/mkdir",
              .object(["path": .string("/h/memories")]), json),
             (.gitStage(repository: "/r/a+b", file: "Sources/A.swift"), "POST", "https://hermes.example:9120/api/git/review/stage",
-             .object(["path": .string("/r/a+b"), "file": .string("Sources/A.swift")]), json),
+             .object(["path": .string("/r/a+b"), "file": .string(":(literal)Sources/A.swift")]), json),
             (.gitUnstage(repository: "/r", file: "A.swift"), "POST", "https://hermes.example:9120/api/git/review/unstage",
-             .object(["path": .string("/r"), "file": .string("A.swift")]), json),
+             .object(["path": .string("/r"), "file": .string(":(literal)A.swift")]), json),
             (.gitUnstage(repository: "/r", file: nil), "POST", "https://hermes.example:9120/api/git/review/unstage",
              .object(["path": .string("/r")]), json),
             (.gitRevert(repository: "/r", file: "notes.txt"), "POST", "https://hermes.example:9120/api/git/review/revert",
-             .object(["path": .string("/r"), "file": .string("notes.txt")]), json),
+             .object(["path": .string("/r"), "file": .string(":(literal)notes.txt")]), json),
             (.gitCommit(repository: "/r", message: "fix: a"), "POST", "https://hermes.example:9120/api/git/review/commit",
              .object(["path": .string("/r"), "message": .string("fix: a"), "push": .bool(false)]), json),
             (.gitPush(repository: "/r"), "POST", "https://hermes.example:9120/api/git/review/push",

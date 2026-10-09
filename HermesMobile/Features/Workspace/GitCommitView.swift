@@ -91,15 +91,21 @@ struct GitCommitView: View {
             } description: {
                 Text(error)
             }
-        } else {
+        } else if let sha = viewModel.shownCommitSHA {
             ContentUnavailableView {
                 Label("No Changes", systemImage: "checkmark.circle")
             } description: {
                 VStack {
                     Text("Your working tree is clean.")
-                    if let sha = viewModel.lastCommitSHA { Text("Commit \(sha)") }
+                    Text("Commit \(sha)")
                 }
             }
+        } else {
+            ContentUnavailableView(
+                "No Changes",
+                systemImage: "checkmark.circle",
+                description: Text("Your working tree is clean.")
+            )
         }
     }
 
@@ -183,7 +189,7 @@ struct GitCommitView: View {
                 Label(error, systemImage: "exclamationmark.circle")
                     .font(AppFont.caption())
                     .foregroundStyle(.orange)
-            } else if let sha = viewModel.lastCommitSHA {
+            } else if let sha = viewModel.shownCommitSHA {
                 Label("Commit \(sha)", systemImage: "checkmark.seal")
                     .font(AppFont.caption())
                     .foregroundStyle(.secondary)
