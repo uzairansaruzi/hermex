@@ -106,14 +106,18 @@ struct HermesPlanState: Equatable {
         let text: String
     }
 
-    /// The turn a plan was last revised in, counted by `turnDidStart`, and its prompt's row.
+    /// The turn a plan was revised in, counted by `turnDidStart`, and its prompt's row.
     private struct PlanTurn: Equatable {
         let turn: Int
         var rowID: Int?
     }
 
     private var planState = HermesPlanState()
+    /// Nil for a plan no turn the chat saw is known to have revised, such as one a snapshot
+    /// restored: the host keeps one plan across turns. It is held for revision order only.
     private var planTurn: PlanTurn?
+    /// A new runtime dropped the plan, so the next snapshot's plan can't be placed in a turn.
+    private var planRuntimeIsNew = false
     private var turn = 0
     private var isTurnRunning = false
 
@@ -128,6 +132,8 @@ struct HermesPlanState: Equatable {
     private var failedPrompt: String?
     /// The host's row for the failed turn's prompt.
     private var failedPromptRowID: Int?
+    /// The failed turn's `inflight.started_at`, which ties its prompt's row to it.
+    private var failedTurnStartedAt: Double?
     /// A failed prompt's row the host refused to cut (4018): Retry hides for it.
     private var uncuttableRowID: Int?
 
@@ -138,7 +144,8 @@ struct HermesPlanState: Equatable {
     }
 
     /// The plan in the transcript: once it is finished or its turn ended. Nil while pinned,
-    /// cleared, or when its turn is older than the newest and its prompt's row is unknown.
+    /// cleared, when no turn is known to own it, or when its turn is older than the newest and
+    /// its prompt's row is unknown.
     var settledPlan: SettledPlan? {
         guard pinnedPlan == nil, let plan = planState.plan, let planTurn else { return nil }
         let isInNewestTurn = planTurn.turn == turn
@@ -159,7 +166,7 @@ struct HermesPlanState: Equatable {
         turn += 1
         isTurnRunning = true
         failure = nil; notice = nil
-        failedPrompt = nil; failedPromptRowID = nil
+        failedPrompt = nil; failedPromptRowID = nil; failedTurnStartedAt = nil
     }
 
     /// The running turn ended, however it ended: an open plan settles into it.
@@ -167,48 +174,66 @@ struct HermesPlanState: Equatable {
         isTurnRunning = false
     }
 
-    /// `todo.updated`, or a snapshot's `todo_state`. A revision places the plan in the newest
-    /// turn unless it is there already.
+    /// The running turn's `todo.updated`: the plan at that revision is this turn's, including
+    /// one a snapshot already restored.
     func receivePlan(_ json: BotJSON) {
+        guard applyRevision(json) || json["revision"].integer.map({ max(0, $0) }) == planState.revision else { return }
+        placePlan(inTurn: true)
+    }
+
+    /// True when `json` changed the plan held.
+    private func applyRevision(_ json: BotJSON) -> Bool {
         var next = planState
-        guard next.apply(json) else { return }
+        guard next.apply(json) else { return false }
         planState = next
-        if next.plan == nil {
-            planTurn = nil
+        return true
+    }
+
+    /// Places the plan held in the running turn, or, when `inTurn` is false, in no known turn.
+    private func placePlan(inTurn: Bool) {
+        if planState.plan == nil || !inTurn {
+            if planTurn != nil { planTurn = nil }
         } else if planTurn?.turn != turn {
             planTurn = PlanTurn(turn: turn)
         }
     }
 
     /// The running turn's `message.complete`: its failure, its notice, and the row the host
-    /// saved its prompt as (`persisted_turn.user_row_id`).
+    /// saved its prompt as (`persisted_turn.user_row_id`), where its plan settles. Retry's row
+    /// waits for the snapshot that names the failed turn (`readSnapshot`).
     func turnDidComplete(_ payload: BotJSON) {
-        let promptRowID = payload["persisted_turn"]["user_row_id"].integer
-        if let promptRowID, planTurn?.turn == turn { planTurn?.rowID = promptRowID }
+        if let promptRowID = payload["persisted_turn"]["user_row_id"].integer, planTurn?.turn == turn {
+            planTurn?.rowID = promptRowID
+        }
         let next = payload["status"].text == "error" ? HermesTurnOutcome(inflight: payload) : nil
         if next != failure { failure = next }
-        failedPrompt = nil
-        failedPromptRowID = next == nil ? nil : promptRowID
+        failedPrompt = nil; failedPromptRowID = nil; failedTurnStartedAt = nil
         notice = HermesTurnOutcome(complete: payload)
     }
 
     /// A `session.resume` snapshot: the retained failure and its raw prompt from `inflight`, and
-    /// the plan from `todo_state`. `promptRowID` is the failed prompt's saved row when the
-    /// chat's history holds it; `sameTurn` keeps the row already known for a failure the chat
-    /// saw live, when no other turn can have run since.
-    func readSnapshot(_ snapshot: BotJSON, promptRowID: Int?, sameTurn: Bool) {
+    /// the plan from `todo_state`. `promptRowID` is the saved row of the prompt dated from the
+    /// failed turn's `inflight.started_at`; without one, a row already known stays only for that
+    /// same turn. `followsTurn` says the snapshot's running turn is the one the chat followed
+    /// before it, so a plan revised since is that turn's; no other restored plan has a turn.
+    func readSnapshot(_ snapshot: BotJSON, promptRowID: Int?, followsTurn: Bool) {
         let inflight = snapshot["inflight"]
         let next = HermesTurnOutcome(inflight: inflight)
         if next != failure { failure = next }
+        let startedAt = next == nil ? nil : inflight["started_at"].number
         failedPrompt = next == nil ? nil : inflight["user"].text.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
-        failedPromptRowID = next == nil ? nil : promptRowID ?? (sameTurn ? failedPromptRowID : nil)
-        receivePlan(snapshot["todo_state"])
+        failedPromptRowID = next == nil ? nil
+            : promptRowID ?? (startedAt != nil && startedAt == failedTurnStartedAt ? failedPromptRowID : nil)
+        failedTurnStartedAt = startedAt
+        if applyRevision(snapshot["todo_state"]) { placePlan(inTurn: followsTurn && !planRuntimeIsNew) }
+        planRuntimeIsNew = false
     }
 
     /// A new runtime counts its plan's revisions from the start again: the old plan goes.
     func dropPlan() {
         planState = HermesPlanState()
         planTurn = nil
+        planRuntimeIsNew = true
     }
 
     /// Lost frames could hide a newer turn, so the live-only notice goes.

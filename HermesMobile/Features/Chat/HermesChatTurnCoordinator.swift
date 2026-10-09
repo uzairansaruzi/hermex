@@ -1070,42 +1070,51 @@ struct HermesChatTranscript: Equatable {
         if running, let startedAt, turnStartedAt == nil { adoptStart(startedAt) }
         // The same turn after a reattach: adopt its activity again, which is current once more.
         if continuing { startLiveActivity() }
-        readOutcome(snapshot, sameTurn: !lostFrames)
+        readOutcome(snapshot, in: history, followsTurn: continuing)
         if lostFrames { rebuild(from: snapshot, running: running) }
     }
 
     /// Takes the plan and the retained failure from a snapshot, with the failed prompt's saved
-    /// row when the history holds it. `sameTurn` says no turn can have run unseen since the
-    /// chat last saw one fail.
-    private func readOutcome(_ snapshot: BotJSON, sameTurn: Bool) {
+    /// row when `rows` hold it. `followsTurn` says the snapshot's running turn is the one the
+    /// chat was following.
+    private func readOutcome(_ snapshot: BotJSON, in rows: HermesTranscriptHistory, followsTurn: Bool) {
         let inflight = snapshot["inflight"]
         let promptRowID = inflight["error"] == .null ? nil
-            : savedPromptRowID(startedAt: inflight["started_at"].number ?? snapshot["turn_started_at"].number)
-        activity.readSnapshot(snapshot, promptRowID: promptRowID, sameTurn: sameTurn)
+            : savedPromptRowID(startedAt: inflight["started_at"].number ?? snapshot["turn_started_at"].number, in: rows)
+        activity.readSnapshot(snapshot, promptRowID: promptRowID, followsTurn: followsTurn)
     }
 
-    /// The saved prompt of the turn that began at `startedAt`: the history's last turn boundary,
-    /// when it is dated at or after that. Nil when the history holds no such row, or either is
-    /// undated, so Retry never cuts at an older prompt.
-    private func savedPromptRowID(startedAt: Double?) -> Int? {
+    /// The saved prompt of the turn that began at `startedAt`: the last turn boundary in `rows`,
+    /// when it is dated at or after that. Nil when they hold no such row, or either is undated,
+    /// so Retry never cuts at an older prompt.
+    private func savedPromptRowID(startedAt: Double?, in rows: HermesTranscriptHistory) -> Int? {
         guard let startedAt,
-              let prompt = HermesTranscriptProjection.project(history.rows, root: engine.storedKey ?? "").messages
+              let prompt = HermesTranscriptProjection.project(rows.rows, root: engine.storedKey ?? "").messages
                 .last(where: BotTranscriptProjection.isTurnBoundary),
               let stamp = prompt.timestamp, stamp >= startedAt else { return nil }
         return prompt.rowID
     }
 
     /// After a turn's `message.complete` failed and the turn settled, one live-state read takes
-    /// the failure the host retained and the prompt it received, which Retry resends (#937). A
-    /// read the attach or another turn outlived is dropped; one that fails leaves Retry hidden.
-    /// A replayed failure needs none: the attach's own snapshot follows.
+    /// the failure the host retained and the prompt it received, which Retry resends (#937).
+    /// The snapshot names the failed turn, which may be a later one than this chat saw, so its
+    /// prompt's row comes from the newest rows, dated from that turn's start: the host saves a
+    /// prompt before its turn can fail. A read the attach or another turn outlived is dropped;
+    /// one that fails leaves Retry hidden. A replayed failure needs none: the attach's own
+    /// snapshot follows.
     private func readFailedTurn() {
         guard engine.connectionState == .connected else { return }
         let attempt = engine.generation, turns = turnsStarted
         Task { [weak self] in
             guard let reply = try? await self?.engine.resume(full: false, attempt: attempt), let self,
                   attempt == self.engine.generation, turns == self.turnsStarted, self.engine.isCurrent(reply) else { return }
-            self.readOutcome(reply, sameTurn: true)
+            var rows = self.history
+            if HermesTurnOutcome(inflight: reply["inflight"])?.offersRetry == true,
+               let fresh = try? await self.newestRows(attempt: attempt) {
+                rows.mergeNewest(fresh.rows, reachedStart: fresh.reachedStart)
+            }
+            guard attempt == self.engine.generation, turns == self.turnsStarted else { return }
+            self.readOutcome(reply, in: rows, followsTurn: false)
         }
     }
 

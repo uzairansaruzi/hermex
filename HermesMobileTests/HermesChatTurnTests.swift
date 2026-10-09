@@ -663,25 +663,51 @@ import SwiftUI
         XCTAssertNil(activity.pinnedPlan, "an older revision never undoes the clear")
     }
 
-    /// A reattach restores the plan from the snapshot's `todo_state`, revision-monotonic; a new
-    /// runtime starts its revisions again, so the plan the old one had is dropped.
+    /// A reattach to the turn the chat was following restores that turn's plan from the
+    /// snapshot's `todo_state`, revision-monotonic; a new runtime starts its revisions again, so
+    /// the plan the old one had is dropped, and the new one's own revision pins.
     func testTheAttachSnapshotRestoresThePlanAndANewRuntimeDropsIt() async {
         let chat = await openChat()
         let activity = chat.turn.activity
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "todo.updated", todos(revision: 1, ["in_progress", "pending"])))
         await reattach(chat, resume(running: true).replacing("todo_state", with: .object(todos(revision: 4, ["completed", "in_progress"]))))
-        XCTAssertEqual(activity.pinnedPlan?.revision, 4, "a running turn's plan pins after a reattach")
+        XCTAssertEqual(activity.pinnedPlan?.revision, 4, "the followed turn's plan pins after a reattach")
         XCTAssertEqual(activity.pinnedPlan?.current?.content, "Step 2")
 
         await reattach(chat, resume(running: true).replacing("todo_state", with: .object(todos(revision: 3, ["pending"], prefix: "Stale"))))
         XCTAssertEqual(activity.pinnedPlan?.revision, 4, "an older snapshot never replaces it")
 
-        await reattach(chat, resume(running: true, runtime: "runtime-2"))
-        XCTAssertNil(activity.pinnedPlan, "a new runtime drops the old one's plan")
+        await reattach(chat, resume(running: true, runtime: "runtime-2")
+            .replacing("todo_state", with: .object(todos(revision: 1, ["in_progress"], prefix: "Restored"))))
+        XCTAssertNil(activity.pinnedPlan, "a new runtime drops the old one's plan, and can't place the one it restored")
         XCTAssertNil(activity.settledPlan)
 
-        await reattach(chat, resume(running: true, runtime: "runtime-2")
-            .replacing("todo_state", with: .object(todos(revision: 1, ["in_progress"], prefix: "Fresh"))))
+        chat.receive(event(1, "todo.updated", todos(revision: 2, ["in_progress"], prefix: "Fresh"), runtime: "runtime-2"))
         XCTAssertEqual(activity.pinnedPlan?.items.map(\.content), ["Fresh 1"], "its revisions count from the start again")
+    }
+
+    /// Reopening a chat restores the session's plan, which the host keeps across turns, so it may
+    /// be any earlier turn's: it is not drawn under the newest prompt.
+    func testAPlanRestoredOnOpenIsNotDrawnUnderTheNewestPrompt() async {
+        let chat = await openChat(snapshot: resume(running: false)
+            .replacing("todo_state", with: .object(todos(revision: 2, ["completed", "completed"]))))
+        XCTAssertNil(chat.turn.activity.settledPlan, "no turn is known to own the restored plan")
+        XCTAssertNil(chat.turn.activity.pinnedPlan)
+    }
+
+    /// Opening a chat while a turn runs does not pin a restored plan the turn never revised; the
+    /// turn's own revision does.
+    func testARunningTurnPinsOnlyAPlanItRevised() async {
+        let chat = await openChat(snapshot: resume(running: true)
+            .replacing("todo_state", with: .object(todos(revision: 2, ["completed", "in_progress"], prefix: "Earlier"))))
+        let activity = chat.turn.activity
+        XCTAssertNotNil(chat.model.activeStreamID)
+        XCTAssertNil(activity.pinnedPlan, "the running turn may not own the restored plan")
+        XCTAssertNil(activity.settledPlan)
+
+        chat.receive(event(1, "todo.updated", todos(revision: 3, ["in_progress", "pending"])))
+        XCTAssertEqual(activity.pinnedPlan?.revision, 3, "its own revision pins")
     }
 
     /// A failed turn says why in its outcome row, not as error text: the host's surface, its
@@ -690,6 +716,7 @@ import SwiftUI
     func testAFailedTurnShowsItsOutcomeAndNeverRetriesOnItsOwn() async throws {
         let chat = await openChat()
         let activity = chat.turn.activity
+        serveHistory([userRow("Summarize the logs", id: 7)])
         chat.receive(event(1, "message.start"))
         chat.host.next("session.resume", .init(result: resume(running: false, inflight: Self.failedInflight)))
         chat.receive(event(2, "message.complete", Self.rateLimitedCompletion))
@@ -711,6 +738,24 @@ import SwiftUI
         chat.receive(event(4, "message.start"))
         XCTAssertNil(activity.failure, "the next turn clears the row")
         XCTAssertNil(activity.retryTarget)
+    }
+
+    /// The failure read can name a later turn than the one this chat saw fail, such as one another
+    /// client started that the host failed before it began. Retry then offers that turn's prompt,
+    /// dated from its start, never the earlier prompt's row, whose cut would take both turns.
+    func testRetryCutsAtThePromptOfTheTurnTheFailureReadNames() async {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        serveHistory([userRow("First", id: 7), userRow("Second", id: 9, at: 1_790_000_100)])
+        var later = Self.failedInflight
+        later["user"] = .string("Second"); later["started_at"] = .number(1_790_000_100)
+        chat.host.next("session.resume", .init(result: resume(running: false, inflight: later)))
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "message.complete", Self.rateLimitedCompletion))
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+
+        await waitUntil("the retained prompt read") { activity.retryTarget != nil }
+        XCTAssertEqual(activity.retryTarget, .init(rowID: 9, text: "Second"), "the named turn's prompt, at its own row")
     }
 
     /// A warning on a turn that succeeded shows the host's words. It survives a reattach and
@@ -776,10 +821,10 @@ import SwiftUI
 
     private func openChat(runtime: String = "runtime", key: String = "tip", profile: String = "default",
                           target: ConversationTarget? = nil, drafts: ChatDraftStore? = nil,
-                          history: [BotJSON] = [], rpcDeadline: Duration = .seconds(30)) async -> Chat {
+                          history: [BotJSON] = [], snapshot: BotJSON? = nil, rpcDeadline: Duration = .seconds(30)) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
-        host.always("session.resume", .init(result: resume(running: false, runtime: runtime, key: key, profile: profile)))
+        host.always("session.resume", .init(result: snapshot ?? resume(running: false, runtime: runtime, key: key, profile: profile)))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
         // The reduced reply `session.create` gives a session that has not started.
         host.always("session.create", .init(result: .object([
@@ -906,9 +951,9 @@ import SwiftUI
         })])
     }
 
-    /// A saved prompt as a transcript page carries it (#1047).
-    private func userRow(_ text: String) -> BotJSON {
-        .object(["id": .number(1), "role": .string("user"), "content": .string(text), "timestamp": .number(1_790_000_000)])
+    /// A saved prompt as a transcript page carries it (#1047), saved at `at`.
+    private func userRow(_ text: String, id: Int = 1, at timestamp: Double = 1_790_000_000) -> BotJSON {
+        .object(["id": .number(Double(id)), "role": .string("user"), "content": .string(text), "timestamp": .number(timestamp)])
     }
 
     /// Serves `rows` as session `key`'s settled history, every page the same.
@@ -927,7 +972,7 @@ import SwiftUI
         ]
         if running { reply["turn_started_at"] = .number(1_790_000_000) }
         if var inflight {
-            inflight["started_at"] = .number(1_790_000_000)
+            inflight["started_at"] = inflight["started_at"] ?? .number(1_790_000_000)
             reply["inflight"] = .object(inflight)
         }
         return .object(reply)

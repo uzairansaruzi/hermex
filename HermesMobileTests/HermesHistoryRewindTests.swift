@@ -250,6 +250,18 @@ import Observation
         XCTAssertNotNil(chat.model.activeStreamID)
     }
 
+    /// A failure whose `message.complete` names no saved row, as an agent that failed to start
+    /// sends it, still offers Retry: the host saved the prompt at submit, so the chat finds it in
+    /// the newest rows, dated from the failed turn's start, and cuts there.
+    func testRetryAfterAFailureWithNoReceiptCutsAtThePromptTheHostSaved() async throws {
+        let chat = await openChat(threeTurns)
+        try await failTurn(chat, prompt: "Fourth", receipt: false)
+
+        await chat.model.retryHermesFailedTurn()
+        XCTAssertEqual(chat.writes("prompt.submit").dropFirst().map { [$0["text"], $0["truncate_before_row_id"]] },
+                       [[.string(Self.rawFailedPrompt), .number(7)]])
+    }
+
     /// A busy host (4009) says to wait and changes nothing; Retry stays. A row the host can no
     /// longer cut (4018) hides Retry for that row, and the chat reads the session again.
     func testARetryRefusalSaysWhyAndA4018HidesRetry() async throws {
@@ -264,11 +276,12 @@ import Observation
         XCTAssertNotNil(chat.model.hermesActivity?.retryTarget, "Retry stays")
 
         chat.host.next("prompt.submit", .init(error: 4018, message: "target user message is no longer in session history"))
+        let reads = HermesHostFixture.count("/api/sessions/tip/messages")
         await chat.model.retryHermesFailedTurn()
         XCTAssertEqual(chat.model.sendErrorMessage, "This message can’t be changed any more.")
         XCTAssertNil(chat.model.hermesActivity?.retryTarget, "the same cut would fail again")
         await waitUntil("reread") { chat.model.messages.last?.rowID == 7 }
-        XCTAssertEqual(HermesHostFixture.count("/api/sessions/tip/messages"), 2, "the chat read the session again")
+        XCTAssertEqual(HermesHostFixture.count("/api/sessions/tip/messages"), reads + 1, "the chat read the session again")
         XCTAssertNotNil(chat.model.hermesActivity?.failure, "the outcome stays; only Retry goes")
         XCTAssertNil(chat.model.hermesActivity?.retryTarget, "a reread does not bring it back")
         XCTAssertEqual(chat.writes("prompt.submit").count, 3)
@@ -355,8 +368,9 @@ import Observation
     private static let rawFailedPrompt = "Fourth\n\n@file:/a/notes.txt"
 
     /// Sends `prompt` and fails its turn on a rate limit: the host saved the prompt as row 7 and
-    /// keeps the failure, which the chat reads once the turn settles.
-    private func failTurn(_ chat: Chat, prompt: String) async throws {
+    /// keeps the failure, which the chat reads once the turn settles. Without a `receipt` the
+    /// failure's `message.complete` names no saved row.
+    private func failTurn(_ chat: Chat, prompt: String, receipt: Bool = true) async throws {
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
         _ = await chat.model.sendMessage(prompt)
         let failed = BotJSON.object([
@@ -370,11 +384,14 @@ import Observation
         chat.host.always("session.resume", .init(result: failed))
         chat.transcript.rows = threeTurns + [row(7, "user", Self.rawFailedPrompt)]
         chat.receive(event(1, "message.start"))
-        chat.receive(event(2, "message.complete", [
+        var completion: [String: BotJSON] = [
             "status": .string("error"), "text": .string("HTTP 429"), "error": .string("HTTP 429"), "recoverable": .bool(true),
-            "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"), "retryable": .bool(true)]),
-            "persisted_turn": .object(["row_ids": .array([.number(7)]), "complete": .bool(false), "user_row_id": .number(7)])
-        ]))
+            "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"), "retryable": .bool(true)])
+        ]
+        if receipt {
+            completion["persisted_turn"] = .object(["row_ids": .array([.number(7)]), "complete": .bool(false), "user_row_id": .number(7)])
+        }
+        chat.receive(event(2, "message.complete", completion))
         chat.receive(event(3, "session.info", ["running": .bool(false)]))
         await waitUntil("Retry offered") { chat.model.hermesActivity?.retryTarget != nil }
         XCTAssertTrue(chat.model.mayRetryHermesTurn)
