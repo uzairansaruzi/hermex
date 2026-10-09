@@ -7876,7 +7876,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
     }
 
     func hermesWorkspaceDidChange() {
-        // `session.info` reports a move the host already applied, so an open `@` panel asks again.
+        // The host already applied the move, so an open `@` panel asks again.
         resetFileChipReferences(reloadingOpenQuery: true)
     }
 }

@@ -37,8 +37,9 @@ import SwiftData
     func hermesBackgroundDidChange(_ task: HermesBackgroundTask)
     /// The session's goal, as its control snapshot reports it; nil once cleared (#1013).
     func hermesGoalDidChange(_ goal: SubmittedGoal?)
-    /// `session.info` named another working folder or terminal backend, such as after a Move to
-    /// Project: every `@path` found in the old one no longer means anything (#1113).
+    /// `session.info` or the composer's folder picker (#1117) named another working folder or
+    /// terminal backend, such as after a Move to Project: every `@path` found in the old one no
+    /// longer means anything (#1113).
     func hermesWorkspaceDidChange()
 }
 
@@ -528,7 +529,8 @@ struct HermesChatTranscript: Equatable {
 
     /// Moves this session to `folder` with `session.workspace.move`, Move to Project's call: the
     /// host works there from now on, a live runtime included, and no file moves. `cwd` takes the
-    /// folder the host answers. Throws the host's refusal as `BotSettingFailure` (a folder it
+    /// folder the host answers, which leaves the old folder's chips behind as a `session.info`
+    /// move does. Throws the host's refusal as `BotSettingFailure` (a folder it
     /// lacks is 4017), `.stale` once the attach or runtime it was picked under is gone, and
     /// `ReplyRunning` when a turn started before it went out: the host would move a live turn.
     func moveFolder(to folder: String) async throws {
@@ -538,7 +540,7 @@ struct HermesChatTranscript: Equatable {
                                            attempt: engine.generation, runtime: runtime) { [weak self] in
             guard let self, self.isIdle, !self.hostRunning else { throw ReplyRunning() }
         }
-        if let moved = Self.words(reply["cwd"]), moved != cwd { cwd = moved }
+        noteWorkspace(folder: Self.words(reply["cwd"]), backend: nil)
     }
 
     /// Keys this session's thumbnails in the process-wide `TranscriptImageCache`: its
@@ -996,17 +998,23 @@ struct HermesChatTranscript: Equatable {
     }
 
     /// Keeps the working folder, terminal backend and model a `session.info` or a snapshot's
-    /// `info` reports. An unchanged folder or backend is not written again, so a repeated
-    /// report invalidates nothing; a changed one tells the chat, which drops its `@path` chips.
+    /// `info` reports.
     private func noteInfo(_ info: BotJSON) {
-        let folder = Self.words(info["cwd"]).flatMap { $0 == cwd ? nil : $0 }
-        let backend = Self.words(info["terminal_backend"]).flatMap { $0 == terminalBackend ? nil : $0 }
-        if let folder { cwd = folder }
-        if let backend { terminalBackend = backend }
-        if folder != nil || backend != nil { delegate?.hermesWorkspaceDidChange() }
+        noteWorkspace(folder: Self.words(info["cwd"]), backend: Self.words(info["terminal_backend"]))
         if let model = Self.words(info["model"]), let provider = Self.words(info["provider"]) {
             reportedModel = HermesCall.Model(id: model, provider: provider)
         }
+    }
+
+    /// Keeps a reported working folder and terminal backend, from `session.info` or a folder move
+    /// (#1117). An unchanged one is not written again, so a repeated report invalidates nothing;
+    /// a changed one tells the chat, which drops its `@path` chips.
+    private func noteWorkspace(folder: String?, backend: String?) {
+        let folder = folder.flatMap { $0 == cwd ? nil : $0 }
+        let backend = backend.flatMap { $0 == terminalBackend ? nil : $0 }
+        if let folder { cwd = folder }
+        if let backend { terminalBackend = backend }
+        if folder != nil || backend != nil { delegate?.hermesWorkspaceDidChange() }
     }
 
     /// Settles the turn against an attach's snapshot, then rebuilds the transcript from the

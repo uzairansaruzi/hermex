@@ -2173,7 +2173,8 @@ nothing can have run in (no prompt reached the socket, whatever its reply, no tu
 saved rows) moves at once: the host re-homes its live runtime and the first prompt's row inherits
 the folder. Any other asks first in Move to Project's words. The client refuses while a reply
 runs, though the host would move it mid-turn, and checks again at the socket write, since another
-client can start a turn meanwhile. 4017 says the folder doesn't exist.
+client can start a turn meanwhile. 4017 says the folder doesn't exist. A move is a `cwd` change
+like any other: Files, the `@path` chips and Git leave the old folder (#1112–#1116).
 
 **Accepted host limitation (#479):** in the compatibility pin's
 `tui_gateway/methods_config_set.py`, `_set_reasoning` and `_set_fast` fall back to

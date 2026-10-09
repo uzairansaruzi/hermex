@@ -426,6 +426,36 @@ import UIKit
         XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path.hasPrefix("/api/git/") == true }, [])
     }
 
+    /// A move made from the composer's folder picker (#1117) leaves the old folder behind as a
+    /// `session.info` move does: Files reads the new folder (#1112), the `@path` chips go
+    /// (#1113), and a Git client made for the old folder writes nothing (#1115). The host's
+    /// `session.info` echo of the same folder changes nothing more.
+    func testAComposerFolderMoveLeavesTheOldFolderBehind() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
+        chat.model.recordFileChipReference("picked.md")
+        let git = try XCTUnwrap(chat.model.hermesWorkspaceGit)
+        _ = HermesHostFixture.configuration { HermesGitHost.repositoryReply($0, root: "/work/app") }
+        chat.host.always("session.workspace.move", .init(result: .object(["cwd": .string("/work/moved")])))
+
+        let moved = await chat.model.confirmHermesFolderMove("/work/moved")
+
+        XCTAssertTrue(moved)
+        XCTAssertEqual(chat.model.hermesWorkspace?.cwd, "/work/moved")
+        XCTAssertEqual(chat.model.fileChipPaths, [])
+        do {
+            _ = try await git.push()
+            XCTFail("a client for the old folder pushed")
+        } catch {
+            XCTAssertEqual(error.localizedDescription, BotFailure.stale.localizedDescription)
+        }
+        XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path.hasPrefix("/api/git/") == true }, [])
+
+        chat.model.recordFileChipReference("new.md")
+        chat.receive(event(2, "session.info", ["cwd": .string("/work/moved"), "terminal_backend": .string("local")]))
+        XCTAssertEqual(chat.model.fileChipPaths, ["new.md"], "an echo of the folder already moved to drops nothing")
+    }
+
     /// A MEDIA reference's inline audio, video or file in a reply downloads from the host by
     /// the path the reply wrote, under the session's Profile and stored key, so the host
     /// resolves it against the session; webui's `/api/media` is never asked.
