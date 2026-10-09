@@ -56,6 +56,9 @@ struct HermesSessionChat: Hashable, Identifiable {
     /// chat asks the host whether it is a branch of it, for its "Forked from" row (#1051). Nil
     /// asks nothing.
     var parentKey: String? = nil
+    /// An archived Bot Chat's canonical root, its row's lineage root: the chat shares its bot's
+    /// Bot Chat offline cache (#1144). Nil for any other session.
+    var botChatRoot: String? = nil
 
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }

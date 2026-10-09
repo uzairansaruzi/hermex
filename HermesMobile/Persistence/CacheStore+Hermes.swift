@@ -286,12 +286,49 @@ extension CacheStore {
         profile: String,
         in context: ModelContext
     ) throws {
-        let serverURLString = serverURL.absoluteString
         let prefix = hermesBotChatScopePrefix(connectionID: connectionID, profile: profile)
-        let kept = prefix + root
+        try removeHermesBotChats(serverURL: serverURL, prefix: prefix, except: prefix + root, in: context)
+    }
+
+    /// Removes the Bot Chat transcripts cached on `connectionID`, only `profile`'s when given: a
+    /// deleted Profile's, or a discarded connection's. A chat's write already under way can't put
+    /// them back (`hermesCacheEpoch`).
+    @MainActor
+    static func removeHermesBotChats(serverURL: URL, connectionID: UUID, profile: String? = nil, in context: ModelContext) throws {
+        revokeHermesWriters(serverURL: serverURL)
+        let prefix = profile.map { hermesBotChatScopePrefix(connectionID: connectionID, profile: $0) }
+            ?? "hermes-bot|\(connectionID.uuidString)|"
+        try removeHermesBotChats(serverURL: serverURL, prefix: prefix, except: nil, in: context)
+    }
+
+    @MainActor
+    private static func removeHermesBotChats(serverURL: URL, prefix: String, except kept: String?, in context: ModelContext) throws {
+        let serverURLString = serverURL.absoluteString
+        // No scope is empty, so an empty `kept` keeps nothing.
+        let kept = kept ?? ""
         try context.delete(model: CachedMessage.self, where: #Predicate {
             $0.serverURLString == serverURLString && $0.sessionID.starts(with: prefix) && $0.sessionID != kept
         })
         try context.save()
+    }
+
+    // MARK: Writers
+
+    /// Each server's Hermes cache epoch. Clearing the server's cache, or removing a Profile's or
+    /// connection's Bot Chats, moves it on, so a write that began before can't put back what
+    /// went (#628).
+    @MainActor private static var hermesEpochs: [String: Int] = [:]
+
+    /// The epoch a Hermes chat takes at each attach, before its reads. The chat writes to the
+    /// cache only while it is still the server's.
+    @MainActor
+    static func hermesCacheEpoch(serverURL: URL) -> Int {
+        hermesEpochs[serverURL.absoluteString, default: 0]
+    }
+
+    /// Ends every Hermes chat's writes to `serverURL`'s cache until its next attach.
+    @MainActor
+    static func revokeHermesWriters(serverURL: URL) {
+        hermesEpochs[serverURL.absoluteString, default: 0] &+= 1
     }
 }

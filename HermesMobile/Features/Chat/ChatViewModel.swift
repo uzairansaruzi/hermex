@@ -380,8 +380,15 @@ final class ChatViewModel {
     /// while its host can't be reached (#1054), and a Bot Chat's before its attach (#1144),
     /// from the chat's first load.
     @ObservationIgnored private var hermesCache: ModelContext?
-    /// The lineage root this Hermes session's cached transcript is kept under, once found.
+    /// The root this Hermes chat's cached transcript is kept under, once found: a session's
+    /// lineage root, or a Bot Chat's canonical root, which its attach confirms or replaces.
     @ObservationIgnored private var hermesCacheRoot: String?
+    /// An archived Bot Chat, opened by its key, shares its bot's Bot Chat cache under this
+    /// canonical root (#1144). Nil for any other chat.
+    @ObservationIgnored var hermesBotChatRoot: String?
+    /// The cache epoch this chat's attach took (`CacheStore.hermesCacheEpoch`): its writes are
+    /// dropped once a clear or removal moves the server's on, until the next attach.
+    @ObservationIgnored private var hermesCacheEpoch: Int?
     private func applyCompressionAnchorMetadata(from session: SessionDetail?) {
         compressionAnchorMetadata = CompressionAnchorMetadata(from: session)
         recomputeCompressionReferenceCard()
@@ -7818,25 +7825,27 @@ extension ChatViewModel: HermesChatTurnDelegate {
         showCachedHermesTranscript(after: error)
     }
 
-    /// A Bot Chat's attach found its canonical root. A cached transcript kept under another
-    /// root belonged to a Bot Chat since made again: it leaves the cache, and the screen if
-    /// it shows there.
+    /// The attach found the chat's root, before its reads: the chat writes to the cache under
+    /// the epoch it takes now. A Bot Chat's canonical root settles its cache's. A cached copy
+    /// shown from another root, a Bot Chat since made again, leaves the screen, and every
+    /// other root's leaves the cache.
     func hermesDidIdentify(root: String) {
-        guard let hermesCache, let engine = hermesTurn?.engine, case .canonicalChat(let profile) = engine.target else { return }
-        do {
-            guard let cached = try CacheStore.cachedHermesBotChatRoot(serverURL: engine.server, connectionID: engine.connection.id,
-                                                                      profile: profile, in: hermesCache),
-                  cached != root else { return }
-            if isViewingCachedData {
+        guard let hermesCache, let engine = hermesTurn?.engine else { return }
+        if case .canonicalChat(let profile) = engine.target {
+            if hermesCacheRoot != root, isViewingCachedData {
                 messages = []
                 transcriptRevision &+= 1
                 isViewingCachedData = false
             }
-            try CacheStore.removeHermesBotChats(exceptRoot: root, serverURL: engine.server, connectionID: engine.connection.id,
-                                                profile: profile, in: hermesCache)
-        } catch {
-            cacheErrorMessage = error.localizedDescription
+            hermesCacheRoot = root
+            do {
+                try CacheStore.removeHermesBotChats(exceptRoot: root, serverURL: engine.server, connectionID: engine.connection.id,
+                                                    profile: profile, in: hermesCache)
+            } catch {
+                cacheErrorMessage = error.localizedDescription
+            }
         }
+        hermesCacheEpoch = CacheStore.hermesCacheEpoch(serverURL: engine.server)
     }
 
     /// A chat with nothing on screen whose host can't be reached, to attach or to read its
@@ -7880,7 +7889,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
 
     /// Writes the settled history a Hermes transcript holds to the offline cache (#1054).
     private func cacheHermesHistory(_ transcript: HermesChatTranscript) {
-        guard let scope = hermesCacheScope() else { return }
+        guard let scope = hermesCacheScope(), hermesCacheEpoch == CacheStore.hermesCacheEpoch(serverURL: scope.server) else { return }
         do {
             try CacheStore.cacheHermesMessages(transcript.messages, newestCoverage: transcript.newestCoverage,
                                                serverURL: scope.server, scope: scope.scope, in: scope.context)
@@ -7893,21 +7902,27 @@ extension ChatViewModel: HermesChatTurnDelegate {
     /// session's is its Profile and lineage root, which the list's cached row names for its
     /// key, else the key, settled once found, so a key the host later moves keeps the same
     /// place. A Bot Chat's is its connection, Profile and canonical root: the one its attach
-    /// found, else the one cached last. Nil without a cache, for a new session until the host
-    /// names its key, and for a Bot Chat with neither root.
+    /// found, else a deep link's, else the one cached last. An archived Bot Chat's is its bot's
+    /// Bot Chat's, under the root its row names. Nil without a cache, for a new session until
+    /// the host names its key, and for a Bot Chat with no root.
     private func hermesCacheScope() -> (context: ModelContext, server: URL, scope: String)? {
         guard let hermesCache, let engine = hermesTurn?.engine else { return nil }
         switch engine.target {
         case .session(let profile, let key):
+            if let hermesBotChatRoot {
+                return (hermesCache, engine.server,
+                        CacheStore.hermesBotChatScope(connectionID: engine.connection.id, profile: profile, root: hermesBotChatRoot))
+            }
             let root = hermesCacheRoot
                 ?? (try? CacheStore.hermesLineageRoot(forKey: key, profile: profile, serverURL: engine.server, in: hermesCache))
                 ?? key
             hermesCacheRoot = root
             return (hermesCache, engine.server, CacheStore.hermesScope(profile: profile, lineageRoot: root))
         case .canonicalChat(let profile):
-            guard let root = engine.root
+            guard let root = hermesCacheRoot ?? engine.root
                 ?? (try? CacheStore.cachedHermesBotChatRoot(serverURL: engine.server, connectionID: engine.connection.id,
                                                             profile: profile, in: hermesCache)) else { return nil }
+            hermesCacheRoot = root
             return (hermesCache, engine.server,
                     CacheStore.hermesBotChatScope(connectionID: engine.connection.id, profile: profile, root: root))
         case .new:

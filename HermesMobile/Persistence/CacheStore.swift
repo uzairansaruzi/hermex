@@ -226,9 +226,10 @@ enum CacheStore {
     /// leaving every other configured server's offline data intact (#18). Backs
     /// the Settings "Clear Offline Cache" action (active server) and the purge
     /// of a server's cache when it is removed, so a removed/reset server never
-    /// leaves orphaned rows behind.
+    /// leaves orphaned rows behind. A Hermes chat's write already under way can't put them back.
     @MainActor
     static func clearCache(for serverURL: URL, in context: ModelContext) throws {
+        revokeHermesWriters(serverURL: serverURL)
         let serverURLString = serverURL.absoluteString
 
         let sessionDescriptor = FetchDescriptor<CachedSession>(

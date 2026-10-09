@@ -426,7 +426,82 @@ import XCTest
         XCTAssertNotNil(chat.model.errorMessage)
     }
 
+    /// The preview's root decides, not the cache at attach time: a preview whose rows went while
+    /// the connect was held still leaves the screen when the attach finds another root, though
+    /// that root's history read fails.
+    func testANewCanonicalRootDiscardsAPreviewWhoseRowsWentMeanwhile() async throws {
+        let context = try makeContext()
+        let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), target: .canonicalChat(profile: "default"))
+        await visit.model.loadMessages(modelContext: context)
+
+        let wire = HermesOfflineWire(rows: [])
+        wire.canonicalRoot = "remade"
+        wire.messagesFailure = BotFailure.rejected(502)
+        let connected = Gate()
+        wire.connectGate = connected
+        let chat = makeChat(wire, target: .canonicalChat(profile: "default"))
+        let load = Task { await chat.model.loadMessages(modelContext: context) }
+        await waitUntil("the cached transcript shows") { !chat.model.messages.isEmpty }
+        try CacheStore.clearCache(for: server, in: context)
+        connected.open()
+        await load.value
+
+        XCTAssertFalse(chat.model.isViewingCachedData)
+        XCTAssertEqual(chat.model.messages, [])
+    }
+
+    /// An archived Bot Chat opens by its key, and offline shows the transcript its bot's Bot Chat
+    /// cached, with nothing cached under that key.
+    func testAnArchivedBotChatShowsItsBotsCachedTranscriptOffline() async throws {
+        let context = try makeContext()
+        let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
+                             target: .canonicalChat(profile: "default"))
+        await visit.model.loadMessages(modelContext: context)
+
+        let archived = HermesSessionRow(id: "tip", title: HermesCall.botChatTitle, archived: true, hidden: true, lineageRootID: "root")
+        let opened = try XCTUnwrap(archived.summary(in: "default").hermesChat(on: server, connection: connection, listedIn: "default"))
+        XCTAssertEqual(opened.target, .session(profile: "default", key: "tip"))
+        let offline = HermesOfflineWire(rows: [])
+        offline.connectFailure = URLError(.cannotConnectToHost)
+        let chat = makeChat(offline, target: opened.target, botChatRoot: opened.botChatRoot)
+        await chat.model.loadMessages(modelContext: context)
+
+        XCTAssertTrue(chat.model.isViewingCachedData)
+        XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello."])
+    }
+
+    /// A clear while a Bot Chat's read is out leaves the cache empty when the read lands; the
+    /// next attach caches again.
+    func testAReadUnderWayDuringAClearLeavesTheCacheEmpty() async throws {
+        let context = try makeContext()
+        let wire = HermesOfflineWire(rows: [row(1, "user", "Hi")])
+        let read = Gate()
+        wire.messagesGate = read
+        let asked = expectation(description: "the history read is out")
+        asked.assertForOverFulfill = false
+        wire.onRead = { asked.fulfill() }
+        let chat = makeChat(wire, target: .canonicalChat(profile: "default"))
+        let load = Task { await chat.model.loadMessages(modelContext: context) }
+        await fulfillment(of: [asked], timeout: 5)
+        try CacheStore.clearCache(for: server, in: context)
+        read.open()
+        await load.value
+
+        XCTAssertEqual(chat.model.messages.map(\.content), ["Hi"])
+        XCTAssertEqual(try botChatMessages(in: context), [])
+
+        await makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), target: .canonicalChat(profile: "default"))
+            .model.loadMessages(modelContext: context)
+        XCTAssertEqual(try botChatMessages(in: context), ["Hi"])
+    }
+
     // MARK: Fixture
+
+    /// The cached transcript of `default`'s Bot Chat at root `root`.
+    private func botChatMessages(in context: ModelContext) throws -> [String?] {
+        try CacheStore.cachedHermesMessages(serverURL: server, scope: CacheStore.hermesBotChatScope(connectionID: connection.id,
+                                            profile: "default", root: "root"), in: context, limit: 100).map(\.content)
+    }
 
     private func makeContext() throws -> ModelContext {
         ModelContext(try ModelContainer(for: CachedSession.self, CachedMessage.self,
@@ -446,9 +521,10 @@ import XCTest
         let reconnect: Gate
     }
 
-    /// A chat on `target`, session `tip` in `default` unless given, over `wire`.
+    /// A chat on `target`, session `tip` in `default` unless given, over `wire`; an archived Bot
+    /// Chat's with `botChatRoot`.
     private func makeChat(_ wire: HermesOfflineWire, target: ConversationTarget = .session(profile: "default", key: "tip"),
-                          server: URL? = nil) -> Chat {
+                          server: URL? = nil, botChatRoot: String? = nil) -> Chat {
         let gate = Gate()
         let server = server ?? self.server
         let engine = HermesConversation(server: server, connection: connection, target: target,
@@ -458,6 +534,7 @@ import XCTest
             draftStore: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)),
             backend: .hermes(HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true }))
         )
+        model.hermesBotChatRoot = botChatRoot
         return Chat(model: model, reconnect: gate)
     }
 
@@ -502,7 +579,8 @@ import XCTest
 /// transcript page. As the Profile's Bot Chat, its lookup finds `canonicalRoot` at `tip`.
 /// `connectFailure` stands for a host it can't reach, or one that refuses; `connectGate` holds
 /// the connect until opened; `replayFailure` stands for a socket lost once the host named the
-/// runtime, `messagesFailure` for a transcript read that fails.
+/// runtime, `messagesFailure` for a transcript read that fails. `onRead` reports each transcript
+/// read, which `messagesGate` holds until opened.
 @MainActor private final class HermesOfflineWire: BotTransport {
     var replayEpoch: String? = "epoch"
     var onEvent: ((BotJSON) -> Void)?
@@ -513,6 +591,8 @@ import XCTest
     var connectFailure: Error?
     var replayFailure: Error?
     var messagesFailure: Error?
+    var messagesGate: Gate?
+    var onRead: (() -> Void)?
     var rows: [BotJSON]
     private(set) var methods: [String] = []
 
@@ -542,6 +622,8 @@ import XCTest
     }
 
     func sessionMessages(_ key: String, profile: String, offset: Int?) async throws -> [BotJSON]? {
+        onRead?()
+        await messagesGate?.wait()
         if let messagesFailure { throw messagesFailure }
         return offset == 0 ? rows : []
     }

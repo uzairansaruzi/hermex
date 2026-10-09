@@ -1,8 +1,10 @@
 import SwiftUI
+import SwiftData
 import Observation
 
 @MainActor struct BotConnectionView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @State private var setup: BotConnectionSetup
     @State private var operation: Task<Void, Never>?
     @State private var confirmingRemoval = false
@@ -132,6 +134,7 @@ import Observation
             if !isRoot { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         }
         .task {
+            setup.offlineCache = modelContext
             if !loaded {
                 loaded = true
                 setup.load()
@@ -323,6 +326,9 @@ extension BotHostStatus {
     @ObservationIgnored private let store: BotConnectionStore
     @ObservationIgnored private let makeWire: (BotConnection) -> any BotTransport
     @ObservationIgnored private let discard: (BotConnection) async -> Void
+    /// The offline cache, from the screen: a replaced or removed connection's Bot Chat
+    /// transcripts leave it too (#1144).
+    @ObservationIgnored var offlineCache: ModelContext?
     @ObservationIgnored private var client: (any BotTransport)?
     @ObservationIgnored private let probe: (URL, HermesHeaders) async -> Result<BotHostStatus, BotHostProbeFailure>
     @ObservationIgnored private let relay: (URL) -> URL?
@@ -470,8 +476,7 @@ extension BotHostStatus {
             // cancellation check. Old-account cleanup must finish even if the
             // sheet disappears afterwards; a committed replacement is success.
             if let old, old.id != candidate.id {
-                let discard = discard
-                await Task { await discard(old) }.value
+                await discardData(of: old)
                 notificationRelay = relay(server)
             }
             return true
@@ -494,16 +499,23 @@ extension BotHostStatus {
             let old = saved
             try store.remove(server: server)
             saved = nil
-            if let old {
-                let discard = discard
-                await Task { await discard(old) }.value
-            }
+            if let old { await discardData(of: old) }
             return true
         } catch {
             guard attempt == id, !Task.isCancelled else { return false }
             errorMessage = String(localized: "Could not remove saved sign-in details.")
             return false
         }
+    }
+
+    /// Drops what this phone kept for a connection replaced or removed. Its offline cache rows
+    /// go at once; the rest in a task the sheet's dismissal can't cancel.
+    private func discardData(of old: BotConnection) async {
+        if let offlineCache {
+            try? CacheStore.removeHermesBotChats(serverURL: server, connectionID: old.id, in: offlineCache)
+        }
+        let discard = discard
+        await Task { await discard(old) }.value
     }
 
     /// Generic instructions only: no credentials or configured host is copied.

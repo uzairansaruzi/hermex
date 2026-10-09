@@ -1101,6 +1101,40 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try fetchCachedMessages(in: context).map(\.sessionID), ["hermes|default|b"])
     }
 
+    /// A deleted Profile takes only its own Bot Chat on that connection, and a discarded
+    /// connection every one of its own: other connections', servers' and sessions' stay.
+    func testRemovingABotOrAConnectionTakesOnlyItsBotChats() throws {
+        let context = try makeContext()
+        let mac = UUID(), laptop = UUID()
+        let other = URL(string: "https://other.example")!
+        for (server, connection, profile) in [(hermesServer, mac, "triage"), (hermesServer, mac, "keep"),
+                                              (hermesServer, laptop, "triage"), (other, mac, "triage")] {
+            try CacheStore.cacheHermesMessages([hermesMessage(1)], newestCoverage: .all, serverURL: server,
+                                               scope: CacheStore.hermesBotChatScope(connectionID: connection, profile: profile, root: "root"),
+                                               in: context)
+        }
+        try CacheStore.cacheHermesMessages([hermesMessage(1)], newestCoverage: .all, serverURL: hermesServer, profile: "triage",
+                                           lineageRoot: "root", in: context)
+        let root = { (server: URL, connection: UUID, profile: String) in
+            try CacheStore.cachedHermesBotChatRoot(serverURL: server, connectionID: connection, profile: profile, in: context)
+        }
+        let session = { try CacheStore.cachedHermesMessages(serverURL: self.hermesServer, profile: "triage", lineageRoot: "root",
+                                                            in: context, limit: 100).count }
+
+        try CacheStore.removeHermesBotChats(serverURL: hermesServer, connectionID: mac, profile: "triage", in: context)
+        XCTAssertNil(try root(hermesServer, mac, "triage"))
+        XCTAssertEqual(try root(hermesServer, mac, "keep"), "root")
+        XCTAssertEqual(try root(hermesServer, laptop, "triage"), "root")
+        XCTAssertEqual(try root(other, mac, "triage"), "root")
+        XCTAssertEqual(try session(), 1)
+
+        try CacheStore.removeHermesBotChats(serverURL: hermesServer, connectionID: mac, in: context)
+        XCTAssertNil(try root(hermesServer, mac, "keep"))
+        XCTAssertEqual(try root(hermesServer, laptop, "triage"), "root")
+        XCTAssertEqual(try root(other, mac, "triage"), "root")
+        XCTAssertEqual(try session(), 1)
+    }
+
     /// A newest read after a rewind holds the rows before the cut and the new turn: the cut rows
     /// inside its row ids go, and rows an older page brought on an earlier visit keep their
     /// place before it.
