@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>$(DEVELOPMENT_LANGUAGE)</string>
+    <key>CFBundleDisplayName</key>
+    <string>Hermex</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$(MARKETING_VERSION)</string>
+    <key>CFBundleVersion</key>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>hermex.watch.record</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>hermex-watch</string>
+			</array>
+		</dict>
+	</array>
+	<key>HermexWatchAppGroupIdentifier</key>
+    <string>$(APP_GROUP_IDENTIFIER).watch</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Hermex records a short voice note on your watch. Your iPhone transcribes it and sends the recording to your Hermes session.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Hermex sends a photo you pick on Apple Watch to the session through your iPhone.</string>
+    <key>WKApplication</key>
+    <true/>
+    <key>WKCompanionAppBundleIdentifier</key>
+    <string>$(APP_BUNDLE_IDENTIFIER)</string>
+    <key>WKSupportsAlwaysOnDisplay</key>
+    <true/>
+</dict>
+</plist>

@@ -93,11 +93,11 @@ struct ComposerChipMetrics: Equatable {
     /// from `body`, which runs again on every parent update — including each
     /// token of a live stream. Baking there uncached would burn a render pass
     /// per frame for a picture that never changed.
-    private static let cache = NSCache<CacheKey, UIImage>()
+    private static let cache = NSCache<ComposerChipCacheKey, UIImage>()
 
     /// Retain image-valued keys and hash every component. NSArray's own hash
     /// only reflects its count, which would put every chip in the same bucket.
-    private final class CacheKey: NSObject {
+    private final class ComposerChipCacheKey: NSObject {
         let values: [NSObject]
         init(_ values: [NSObject]) { self.values = values }
         override var hash: Int {
@@ -106,7 +106,7 @@ struct ComposerChipMetrics: Equatable {
             return hasher.finalize()
         }
         override func isEqual(_ object: Any?) -> Bool {
-            guard let other = object as? CacheKey else { return false }
+            guard let other = object as? ComposerChipCacheKey else { return false }
             return values == other.values
         }
     }
@@ -131,7 +131,7 @@ struct ComposerChipMetrics: Equatable {
             (maximumWidth.map(String.init(describing:)) ?? "unbounded") as NSString,
             (usesAccentIcon ? "accent" : "secondary") as NSString
         ]
-        let key = CacheKey(values)
+        let key = ComposerChipCacheKey(values)
 
         if let cached = cache.object(forKey: key) {
             return cached

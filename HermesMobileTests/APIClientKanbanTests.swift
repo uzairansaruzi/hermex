@@ -911,6 +911,17 @@ final class APIClientKanbanTests: APIClientTestCase {
     """
 }
 
+final class KanbanColumnDecodeTests: XCTestCase {
+    func testScalarInTheCardArrayDoesNotStallTheColumn() throws {
+        let json = """
+        {"name":"todo","tasks":["nope",1,null,[true],{"id":"c1","title":"Ok","status":"todo"}]}
+        """.data(using: .utf8)!
+        let column = try JSONDecoder().decode(KanbanColumn.self, from: json)
+        XCTAssertEqual(column.cards?.count, 1)
+        XCTAssertEqual(column.cards?.first?.cardID, "c1")
+    }
+}
+
 private func XCTAssertThrowsErrorAsync<T>(
     _ expression: @autoclosure () async throws -> T,
     _ errorHandler: (Error) -> Void = { _ in }

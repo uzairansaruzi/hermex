@@ -1,4 +1,5 @@
 import XCTest
+import WatchShared
 @testable import HermesMobile
 
 final class ChatHapticsTests: XCTestCase {

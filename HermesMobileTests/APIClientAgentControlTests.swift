@@ -4,6 +4,7 @@ import ImageIO
 import SwiftData
 import UIKit
 import UniformTypeIdentifiers
+import WatchShared
 @testable import HermesMobile
 
 final class APIClientAgentControlTests: APIClientTestCase {

@@ -554,6 +554,7 @@ struct KanbanColumn: Decodable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case name
         case cards = "tasks"
+        case alternateCards = "cards"
     }
 
     init(name: String?, cards: [KanbanCard]?) {
@@ -564,7 +565,59 @@ struct KanbanColumn: Decodable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = container.decodeLossyStringIfPresent(forKey: .name)
-        cards = try? container.decodeIfPresent([KanbanCard].self, forKey: .cards)
+        cards = Self.cards(in: container, key: .cards) ?? Self.cards(in: container, key: .alternateCards)
+    }
+
+    /// One bad Card must not drop the rest of the column.
+    private static func cards(
+        in container: KeyedDecodingContainer<CodingKeys>,
+        key: CodingKeys
+    ) -> [KanbanCard]? {
+        guard var array = try? container.nestedUnkeyedContainer(forKey: key) else { return nil }
+        var decoded: [KanbanCard] = []
+        while !array.isAtEnd {
+            if let card = try? array.decode(KanbanCard.self) {
+                decoded.append(card)
+                continue
+            }
+            // A failed decode does not advance the container. The fallback has
+            // to succeed for a scalar, or this loop never reaches the next card.
+            guard (try? array.decode(DiscardedKanbanValue.self)) != nil else { break }
+        }
+        return decoded
+    }
+}
+
+/// Consumes one JSON value of any shape so a bad card does not stall the column.
+private struct DiscardedKanbanValue: Decodable {
+    init(from decoder: Decoder) throws {
+        if var unkeyed = try? decoder.unkeyedContainer() {
+            while !unkeyed.isAtEnd {
+                _ = try unkeyed.decode(DiscardedKanbanValue.self)
+            }
+            return
+        }
+        if let keyed = try? decoder.container(keyedBy: DiscardedKanbanKey.self) {
+            for key in keyed.allKeys {
+                _ = try keyed.decode(DiscardedKanbanValue.self, forKey: key)
+            }
+            return
+        }
+        let single = try decoder.singleValueContainer()
+        if single.decodeNil() { return }
+        if (try? single.decode(Bool.self)) != nil { return }
+        if (try? single.decode(Double.self)) != nil { return }
+        if (try? single.decode(String.self)) != nil { return }
+    }
+}
+
+private struct DiscardedKanbanKey: CodingKey {
+    var stringValue: String
+    var intValue: Int?
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) {
+        self.stringValue = "\(intValue)"
+        self.intValue = intValue
     }
 }
 
@@ -592,6 +645,7 @@ struct KanbanCard: Decodable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case cardID = "id"
+        case taskID = "taskId"
         case title, body, tenant, priority, commentCount, linkCounts, age, ageSeconds
         case status
         case assignee
@@ -648,6 +702,7 @@ struct KanbanCard: Decodable, Equatable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         cardID = container.decodeLossyStringIfPresent(forKey: .cardID)
+            ?? container.decodeLossyStringIfPresent(forKey: .taskID)
         title = container.decodeLossyStringIfPresent(forKey: .title)
         status = container.decodeLossyStringIfPresent(forKey: .status).map(KanbanStatus.init(rawValue:))
         assignee = container.decodeLossyStringIfPresent(forKey: .assignee)

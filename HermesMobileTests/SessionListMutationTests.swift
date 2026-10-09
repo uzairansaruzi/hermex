@@ -996,6 +996,11 @@ final class SessionListMutationTests: XCTestCase {
             case "/api/sessions":
                 loadCount += 1
                 return apiTestJSONResponse(self.sessionListJSON(forLoadCount: loadCount), for: request)
+            case "/api/settings":
+                // An archived or empty reload is not a sidebar row, so the
+                // client asks whether agent sessions are hidden. This test is
+                // not about that gate.
+                return apiTestJSONResponse(#"{"show_cli_sessions": true}"#, for: request)
             case "/api/session/pin":
                 mutationPaths.append("/api/session/pin")
                 let body = try XCTUnwrap(apiTestJSONBody(from: request))
@@ -3233,6 +3238,24 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertTrue(visibility.shows(SessionSummary(sessionId: "normal")))
     }
 
+    /// Hermes desktop chats arrive stamped `is_cli_session` because they live in
+    /// the agent database. The CLI toggle must not be what empties the sidebar.
+    func testAutomatedVisibilityKeepsHermesDesktopChatsWhenCliIsHidden() {
+        let visibility = AutomatedSessionVisibility(showsCron: true, showsCli: false)
+        let desktop = SessionSummary(
+            sessionId: "20260930_032120_ed17d8",
+            title: "Desktop chat",
+            messageCount: 89,
+            isCliSession: true,
+            sourceTag: "desktop",
+            rawSource: "desktop",
+            sourceLabel: "Desktop"
+        )
+        XCTAssertTrue(desktop.isHermesDesktopSession)
+        XCTAssertTrue(visibility.shows(desktop))
+        XCTAssertFalse(visibility.shows(SessionSummary(sessionId: "cli-1", isCliSession: true, sourceTag: "cli")))
+    }
+
     func testAutomatedVisibilityAppliesClaudeCodeChildPreferenceUnderCliParent() {
         let claudeCode = SessionSummary(
             sessionId: "claude-code",
@@ -3769,7 +3792,8 @@ final class SessionListMutationTests: XCTestCase {
                   "pinned": true,
                   "archived": false
                 }
-              ]
+              ],
+              "other_profile_count": 0
             }
             """
         case 3:
@@ -3782,7 +3806,8 @@ final class SessionListMutationTests: XCTestCase {
                   "pinned": true,
                   "archived": true
                 }
-              ]
+              ],
+              "other_profile_count": 0
             }
             """
         case 4:
@@ -3795,13 +3820,15 @@ final class SessionListMutationTests: XCTestCase {
                   "project_id": "project-1",
                   "archived": false
                 }
-              ]
+              ],
+              "other_profile_count": 0
             }
             """
         case 5:
             return """
             {
-              "sessions": []
+              "sessions": [],
+              "other_profile_count": 0
             }
             """
         default:
@@ -3814,7 +3841,8 @@ final class SessionListMutationTests: XCTestCase {
                   "pinned": false,
                   "archived": false
                 }
-              ]
+              ],
+              "other_profile_count": 0
             }
             """
         }

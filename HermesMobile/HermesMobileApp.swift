@@ -83,6 +83,9 @@ struct HermesMobileApp: App {
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
 
     init() {
+        // Activate before the scene appears so a watch message can launch
+        // Hermex in the background while the iPhone stays locked.
+        PhoneWatchConnectivityHost.shared.activate()
         // Record installation age even before a server has been configured.
         _ = RatingPromptState.shared
         NetworkPathMonitor.shared.start()
@@ -98,9 +101,11 @@ struct HermesMobileApp: App {
                 NavigationStack {
                     StreamingLabView()
                 }
+                .onAppear { PhoneWatchConnectivityHost.shared.activate() }
             } else {
                 ContentView(authManager: authManager)
                     .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+                    .onAppear { PhoneWatchConnectivityHost.shared.activate() }
                     // Signs in from `HERMEX_DEV_*` launch environment variables
                     // (`scripts/sim-login`); a no-op when they are absent.
                     .task(id: authManager.state) { await DevAutoLogin.run(authManager: authManager) }
@@ -114,6 +119,7 @@ struct HermesMobileApp: App {
             #else
             ContentView(authManager: authManager)
                 .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+                .onAppear { PhoneWatchConnectivityHost.shared.activate() }
             #endif
         }
         .modelContainer(for: [CachedSession.self, CachedMessage.self])

@@ -29,6 +29,13 @@ final class ContractReadinessTests: XCTestCase {
                 query: ["include_archived": "1"]
             ),
             .init(
+                name: "sessions across profiles",
+                method: "GET",
+                endpoint: .sessions(allProfiles: true),
+                path: "/api/sessions",
+                query: ["all_profiles": "1"]
+            ),
+            .init(
                 name: "session search",
                 method: "GET",
                 endpoint: .sessionsSearch(query: "billing plan", content: true, depth: 5),

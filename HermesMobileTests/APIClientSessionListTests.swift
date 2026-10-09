@@ -272,6 +272,283 @@ final class APIClientSessionListTests: APIClientTestCase {
         )
     }
 
+    func testSessionsAllProfilesQueryAndOtherProfileCount() async throws {
+        let client = makeClient { request in
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+            XCTAssertEqual(query, ["all_profiles": "1"])
+            return apiTestJSONResponse("""
+            {
+              "sessions": [{ "session_id": "other-1", "title": "On builder" }],
+              "other_profile_count": 0,
+              "active_profile": "default",
+              "all_profiles": true
+            }
+            """, for: request)
+        }
+
+        let response = try await client.sessions(allProfiles: true)
+        XCTAssertEqual(response.sessions?.first?.sessionId, "other-1")
+        XCTAssertEqual(response.otherProfileCount, 0)
+        XCTAssertEqual(response.activeProfile, "default")
+        XCTAssertEqual(response.allProfiles, true)
+    }
+
+    /// The active profile can be empty while other profiles hold the conversations
+    /// (`other_profile_count`). Both the phone list and the watch backend go
+    /// through `sidebarSessions`, so one refetch covers both surfaces.
+    func testSidebarSessionsRefetchesAllProfilesWhenTheActiveProfileIsEmpty() async throws {
+        let client = makeClient { request in
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+            if query["all_profiles"] == "1" {
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    { "session_id": "builder-1", "title": "Watch layout", "message_count": 4 }
+                  ],
+                  "other_profile_count": 0,
+                  "all_profiles": true
+                }
+                """, for: request)
+            }
+            XCTAssertTrue(query.isEmpty)
+            return apiTestJSONResponse("""
+            {
+              "sessions": [],
+              "other_profile_count": 6,
+              "active_profile": "default"
+            }
+            """, for: request)
+        }
+
+        let response = try await client.sidebarSessions()
+        XCTAssertEqual(response.sessions?.compactMap(\.sessionId), ["builder-1"])
+        XCTAssertEqual(response.allProfiles, true)
+    }
+
+    func testSidebarSessionsKeepsTheActiveProfileWhenItAlreadyHasRows() async throws {
+        let client = makeClient { request in
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertNil(components?.query)
+            return apiTestJSONResponse("""
+            {
+              "sessions": [{ "session_id": "here", "title": "Planning", "message_count": 2 }],
+              "other_profile_count": 4
+            }
+            """, for: request)
+        }
+
+        let response = try await client.sidebarSessions()
+        XCTAssertEqual(response.sessions?.first?.sessionId, "here")
+        XCTAssertEqual(response.otherProfileCount, 4)
+        XCTAssertNil(response.allProfiles)
+    }
+
+    /// Servers that omit `other_profile_count` used to skip the all-profiles
+    /// refetch, so an empty Default page stayed empty.
+    func testSidebarSessionsRefetchesAllProfilesWhenTheHiddenCountIsMissing() async throws {
+        let client = makeClient { request in
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+            if query["all_profiles"] == "1" {
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    { "session_id": "other-titled", "title": "Ship the watch", "message_count": 3 }
+                  ],
+                  "all_profiles": true
+                }
+                """, for: request)
+            }
+            XCTAssertTrue(query.isEmpty)
+            return apiTestJSONResponse("""
+            {
+              "sessions": [],
+              "active_profile": "default"
+            }
+            """, for: request)
+        }
+
+        let response = try await client.sidebarSessions()
+        XCTAssertEqual(response.sessions?.compactMap(\.sessionId), ["other-titled"])
+        XCTAssertEqual(response.sessions?.first?.title, "Ship the watch")
+        XCTAssertNil(response.otherProfileCount)
+        XCTAssertEqual(response.allProfiles, true)
+    }
+
+    func testSidebarSessionsDoesNotRefetchWhenTheServerCountsZeroHiddenRows() async throws {
+        let client = makeClient { request in
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            XCTAssertNil(components?.queryItems?.first { $0.name == "all_profiles" })
+            return apiTestJSONResponse("""
+            {
+              "sessions": [],
+              "other_profile_count": 0,
+              "active_profile": "default"
+            }
+            """, for: request)
+        }
+
+        let response = try await client.sidebarSessions(revealAgentSessions: false)
+        XCTAssertEqual(response.sessions ?? [], [])
+        XCTAssertEqual(response.otherProfileCount, 0)
+        XCTAssertNil(response.allProfiles)
+    }
+
+    /// Hermes desktop keeps chats in the agent database. WebUI hides that
+    /// database until `show_cli_sessions` is on, which defaults off, so an
+    /// empty sidebar is not the same thing as "no sessions yet".
+    func testSidebarSessionsOpensTheAgentSessionGateWhenThePageIsEmpty() async throws {
+        var calls: [String] = []
+        let client = makeClient { request in
+            let path = try XCTUnwrap(request.url).path
+            let method = request.httpMethod ?? "GET"
+            calls.append("\(method) \(path)")
+
+            if path == "/api/settings", method == "POST" {
+                let body = try XCTUnwrap(apiTestBodyData(from: request))
+                let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Bool])
+                XCTAssertEqual(json["show_cli_sessions"], true)
+                return apiTestJSONResponse(#"{"show_cli_sessions": true}"#, for: request)
+            }
+            if path == "/api/settings" {
+                return apiTestJSONResponse(#"{"show_cli_sessions": false}"#, for: request)
+            }
+
+            let sessionGets = calls.filter { $0 == "GET /api/sessions" }.count
+            if sessionGets >= 2 {
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    {
+                      "session_id": "20260930_032120_ed17d8",
+                      "title": "Desktop chat",
+                      "message_count": 12,
+                      "is_cli_session": true,
+                      "session_source": "desktop"
+                    }
+                  ],
+                  "other_profile_count": 0,
+                  "cli_count": 1
+                }
+                """, for: request)
+            }
+            return apiTestJSONResponse("""
+            {
+              "sessions": [],
+              "other_profile_count": 0,
+              "active_profile": "default",
+              "all_profiles": false
+            }
+            """, for: request)
+        }
+
+        let response = try await client.sidebarSessions()
+
+        XCTAssertEqual(response.sessions?.map(\.sessionId), ["20260930_032120_ed17d8"])
+        XCTAssertEqual(response.sessions?.first?.messageCount, 12)
+        XCTAssertEqual(response.cliCount, 1)
+        XCTAssertEqual(calls, [
+            "GET /api/sessions",
+            "GET /api/settings",
+            "POST /api/settings",
+            "GET /api/sessions"
+        ])
+    }
+
+    func testSidebarSessionsRestoresTheAgentSessionGateWhenNothingWasHidden() async throws {
+        var posted: [Bool] = []
+        let client = makeClient { request in
+            let path = try XCTUnwrap(request.url).path
+            let method = request.httpMethod ?? "GET"
+            if path == "/api/settings", method == "POST" {
+                let body = try XCTUnwrap(apiTestBodyData(from: request))
+                let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Bool])
+                let enabled = try XCTUnwrap(json["show_cli_sessions"])
+                posted.append(enabled)
+                return apiTestJSONResponse(
+                    #"{"show_cli_sessions": \#(enabled)}"#,
+                    for: request
+                )
+            }
+            if path == "/api/settings" {
+                return apiTestJSONResponse(#"{"show_cli_sessions": false}"#, for: request)
+            }
+            return apiTestJSONResponse("""
+            {
+              "sessions": [],
+              "other_profile_count": 0
+            }
+            """, for: request)
+        }
+
+        let response = try await client.sidebarSessions()
+
+        XCTAssertEqual(response.sessions ?? [], [])
+        XCTAssertEqual(posted, [true, false])
+    }
+
+    func testSidebarSessionsRestoresTheAgentSessionGateWhenTheRefetchFails() async throws {
+        var sessionGets = 0
+        var posted: [Bool] = []
+        let client = makeClient { request in
+            let path = try XCTUnwrap(request.url).path
+            let method = request.httpMethod ?? "GET"
+            if path == "/api/settings", method == "POST" {
+                let body = try XCTUnwrap(apiTestBodyData(from: request))
+                let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Bool])
+                let enabled = try XCTUnwrap(json["show_cli_sessions"])
+                posted.append(enabled)
+                return apiTestJSONResponse(
+                    #"{"show_cli_sessions": \#(enabled)}"#,
+                    for: request
+                )
+            }
+            if path == "/api/settings" {
+                return apiTestJSONResponse(#"{"show_cli_sessions": false}"#, for: request)
+            }
+            sessionGets += 1
+            if sessionGets >= 2 {
+                return apiTestJSONResponse(#"{"detail":"unavailable"}"#, for: request, status: 500)
+            }
+            return apiTestJSONResponse("""
+            {
+              "sessions": [],
+              "other_profile_count": 0
+            }
+            """, for: request)
+        }
+
+        let response = try await client.sidebarSessions()
+
+        XCTAssertEqual(response.sessions ?? [], [])
+        XCTAssertEqual(posted, [true, false])
+    }
+
+    func testDisplayTitleKeepsAZeroMessageRowAndAttentionObjectCounts() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let session = try decoder.decode(
+            SessionSummary.self,
+            from: Data("""
+            {
+              "session_id": "goal-1",
+              "title": "Untitled",
+              "display_title": "Ship the watch",
+              "message_count": 0,
+              "attention": { "kind": "clarify", "count": 1, "severity": "question" }
+            }
+            """.utf8)
+        )
+
+        XCTAssertEqual(session.title, "Ship the watch")
+        XCTAssertTrue(session.shouldAppearInSessionList)
+        XCTAssertEqual(session.attentionCount, 1)
+        XCTAssertTrue(session.signalsAttention)
+        XCTAssertTrue(session.belongsOnSidebar(includeArchived: false))
+    }
+
     // MARK: Hermes (#1046)
 
     /// The Sessions list sends every list parameter: the host's defaults order by creation,

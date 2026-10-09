@@ -1,0 +1,21 @@
+import Foundation
+
+enum CommandValidationError: Error, Equatable { case invalidDate, expired, scopeMismatch, blankPayload, tooLarge }
+
+public struct CommandID: Hashable, Codable, Sendable { public let rawValue: UUID; public init(rawValue: UUID) { self.rawValue = rawValue } }
+public struct CommandContext: Hashable, Codable, Sendable {
+    public let stableCommandID: CommandID; public let scope: ServerScope; public let expectedRevision: Revision; public let createdAt: Date; public let expiresAt: Date
+    public init(stableCommandID:CommandID,scope:ServerScope,expectedRevision:Revision,createdAt:Date,expiresAt:Date)throws{guard createdAt.timeIntervalSinceReferenceDate.isFinite,expiresAt.timeIntervalSinceReferenceDate.isFinite,createdAt<expiresAt else{throw CommandValidationError.invalidDate};self.stableCommandID=stableCommandID;self.scope=scope;self.expectedRevision=expectedRevision;self.createdAt=createdAt;self.expiresAt=expiresAt}
+    private enum CodingKeys:String,CodingKey{case stableCommandID,scope,expectedRevision,createdAt,expiresAt}
+    public init(from decoder:Decoder)throws{let c=try decoder.container(keyedBy:CodingKeys.self);try self.init(stableCommandID:c.decode(CommandID.self,forKey:.stableCommandID),scope:c.decode(ServerScope.self,forKey:.scope),expectedRevision:c.decode(Revision.self,forKey:.expectedRevision),createdAt:c.decode(Date.self,forKey:.createdAt),expiresAt:c.decode(Date.self,forKey:.expiresAt))}
+}
+public enum WatchMutationOperation: Hashable, Codable, Sendable {
+    case createSession(scope:ServerScope,profileID:ProfileID?,workspaceHandle:WorkspaceHandle?)
+    case send(session:SessionKey,text:String);case stop(run:RunKey);case respondApproval(approval:ApprovalKey,choice:ApprovalChoice);case respondClarification(clarification:ClarificationKey,answer:String);case controlTask(task:TaskKey,action:TaskControl);case sendBot(bot:BotKey,text:String);case interruptBot(bot:BotKey)
+    public var kind:WatchOperationKind{switch self{case .createSession:return .createSession;case .send:return .send;case .stop:return .stop;case .respondApproval:return .respondApproval;case .respondClarification:return .respondClarification;case .controlTask:return .controlTask;case .sendBot:return .sendBot;case .interruptBot:return .interruptBot}}
+    public static let currentlyEnabledKinds:Set<WatchOperationKind>=[.createSession,.send,.stop,.controlTask,.sendBot,.interruptBot]
+    public var scope:ServerScope{switch self{case .createSession(let s,_,_):return s;case .send(let k,_):return k.scope;case .stop(let k):return k.session.scope;case .respondApproval(let k,_):return k.session.scope;case .respondClarification(let k,_):return k.session.scope;case .controlTask(let k,_):return k.scope;case .sendBot(let k,_),.interruptBot(let k):return k.scope}}
+    func validate()throws{let text:String?;switch self{case .send(_,let value),.respondClarification(_,let value),.sendBot(_,let value):text=value;default:text=nil};if let text{guard !text.allSatisfy(\.isWhitespace)else{throw CommandValidationError.blankPayload};guard text.utf8.count<=16_384 else{throw CommandValidationError.tooLarge}}}
+    public init(from decoder:Decoder)throws{let raw=try WatchMutationOperationWire(from:decoder).value;try raw.validate();self=raw}
+}
+private enum WatchMutationOperationWire:Codable{case createSession(scope:ServerScope,profileID:ProfileID?,workspaceHandle:WorkspaceHandle?);case send(session:SessionKey,text:String);case stop(run:RunKey);case respondApproval(approval:ApprovalKey,choice:ApprovalChoice);case respondClarification(clarification:ClarificationKey,answer:String);case controlTask(task:TaskKey,action:TaskControl);case sendBot(bot:BotKey,text:String);case interruptBot(bot:BotKey);var value:WatchMutationOperation{switch self{case .createSession(let a,let b,let c):return.createSession(scope:a,profileID:b,workspaceHandle:c);case .send(let a,let b):return.send(session:a,text:b);case .stop(let a):return.stop(run:a);case .respondApproval(let a,let b):return.respondApproval(approval:a,choice:b);case .respondClarification(let a,let b):return.respondClarification(clarification:a,answer:b);case .controlTask(let a,let b):return.controlTask(task:a,action:b);case .sendBot(let a,let b):return.sendBot(bot:a,text:b);case .interruptBot(let a):return.interruptBot(bot:a)}}}

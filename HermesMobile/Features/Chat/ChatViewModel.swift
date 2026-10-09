@@ -3,6 +3,7 @@ import AVFoundation
 import MediaPlayer
 import Observation
 import SwiftData
+import WatchShared
 
 enum ListenPlaybackPhase: Equatable {
     case idle

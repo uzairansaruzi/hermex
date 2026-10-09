@@ -1,4 +1,5 @@
 import UIKit
+import WatchShared
 
 enum ChatHapticFeedback: Equatable {
     case lightImpact

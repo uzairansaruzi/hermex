@@ -326,6 +326,7 @@ extension SessionSummary {
         isCliSession = cachedSession.isCliSession
         userMessageCount = cachedSession.userMessageCount
         hasPendingUserMessage = cachedSession.hasPendingUserMessage
+        attentionCount = nil
         pendingStartedAt = cachedSession.pendingStartedAt
         worktreePath = cachedSession.worktreePath
         sourceTag = cachedSession.sourceTag

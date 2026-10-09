@@ -7,23 +7,35 @@ struct SessionsResponse: Decodable {
     /// on every response regardless of `include_archived` (issue #17). Optional so
     /// older servers that omit it decode fine.
     let archivedCount: Int?
+    /// Rows the active-profile filter hid (`other_profile_count`). Nil on
+    /// servers that predate profile scoping. Zero when the request already
+    /// asked for every profile.
+    let otherProfileCount: Int?
+    let activeProfile: String?
+    let allProfiles: Bool?
     let serverTime: Double?
     let serverTz: String?
 
     enum CodingKeys: String, CodingKey {
-        case sessions, cliCount, archivedCount, serverTime, serverTz
+        case sessions, cliCount, archivedCount, otherProfileCount, activeProfile, allProfiles, serverTime, serverTz
     }
 
     init(
         sessions: [SessionSummary]? = nil,
         cliCount: Int? = nil,
         archivedCount: Int? = nil,
+        otherProfileCount: Int? = nil,
+        activeProfile: String? = nil,
+        allProfiles: Bool? = nil,
         serverTime: Double? = nil,
         serverTz: String? = nil
     ) {
         self.sessions = sessions
         self.cliCount = cliCount
         self.archivedCount = archivedCount
+        self.otherProfileCount = otherProfileCount
+        self.activeProfile = activeProfile
+        self.allProfiles = allProfiles
         self.serverTime = serverTime
         self.serverTz = serverTz
     }
@@ -33,6 +45,9 @@ struct SessionsResponse: Decodable {
         sessions = SessionSummary.decodingRowsIndependently(from: container, forKey: .sessions)
         cliCount = container.decodeLossyIntIfPresent(forKey: .cliCount)
         archivedCount = container.decodeLossyIntIfPresent(forKey: .archivedCount)
+        otherProfileCount = container.decodeLossyIntIfPresent(forKey: .otherProfileCount)
+        activeProfile = container.decodeLossyStringIfPresent(forKey: .activeProfile)
+        allProfiles = container.decodeLossyBoolIfPresent(forKey: .allProfiles)
         serverTime = container.decodeLossyDoubleIfPresent(forKey: .serverTime)
         serverTz = container.decodeLossyStringIfPresent(forKey: .serverTz)
     }
@@ -204,6 +219,17 @@ struct SessionStatusResponse: Decodable, Equatable {
     let error: String?
 }
 
+private struct SessionListAttention: Decodable {
+    let count: Int?
+
+    enum CodingKeys: String, CodingKey { case count }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        count = container.decodeLossyIntIfPresent(forKey: .count)
+    }
+}
+
 struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     /// What a Hermes server's row (#1046) carries beyond a webui one. Never decoded: only
     /// `HermesSessionRow` makes it.
@@ -250,6 +276,10 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     let isCliSession: Bool?
     let userMessageCount: Int?
     let hasPendingUserMessage: Bool?
+    /// `attention.count` from the sidebar payload, when upstream sends the
+    /// object (`kind` / `count` / `severity`) instead of a bool. Nil when the
+    /// row has no attention summary.
+    let attentionCount: Int?
     let pendingStartedAt: Double?
     let worktreePath: String?
     let sourceTag: String?
@@ -291,6 +321,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         isCliSession: Bool? = nil,
         userMessageCount: Int? = nil,
         hasPendingUserMessage: Bool? = nil,
+        attentionCount: Int? = nil,
         pendingStartedAt: Double? = nil,
         worktreePath: String? = nil,
         sourceTag: String? = nil,
@@ -326,6 +357,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         self.isCliSession = isCliSession
         self.userMessageCount = userMessageCount
         self.hasPendingUserMessage = hasPendingUserMessage
+        self.attentionCount = attentionCount
         self.pendingStartedAt = pendingStartedAt
         self.worktreePath = worktreePath
         self.sourceTag = sourceTag
@@ -347,7 +379,9 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         case pinned, archived, projectId, profile
         case inputTokens, outputTokens, estimatedCost
         case activeStreamId, isStreaming, isCliSession
-        case userMessageCount, hasPendingUserMessage, pendingStartedAt, worktreePath
+        case userMessageCount, hasPendingUserMessage, attention, pendingStartedAt, worktreePath
+        case displayTitle
+        case stateDbTitle = "_state_db_title"
         case sourceTag, rawSource, sessionSource, sourceLabel
         case parentSessionId, relationshipType, readOnly, isReadOnly, matchType, matchPreview
     }
@@ -365,7 +399,11 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         sessionId = container.decodeLossyStringIfPresent(forKey: .sessionId)
-        title = container.decodeLossyStringIfPresent(forKey: .title)
+        title = Self.preferredSidebarTitle(
+            title: container.decodeLossyStringIfPresent(forKey: .title),
+            display: container.decodeLossyStringIfPresent(forKey: .displayTitle),
+            stateDatabase: container.decodeLossyStringIfPresent(forKey: .stateDbTitle)
+        )
         workspace = container.decodeLossyStringIfPresent(forKey: .workspace)
         model = container.decodeLossyStringIfPresent(forKey: .model)
         modelProvider = container.decodeLossyStringIfPresent(forKey: .modelProvider)
@@ -385,6 +423,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         isCliSession = container.decodeLossyBoolIfPresent(forKey: .isCliSession)
         userMessageCount = container.decodeLossyIntIfPresent(forKey: .userMessageCount)
         hasPendingUserMessage = container.decodeLossyBoolIfPresent(forKey: .hasPendingUserMessage)
+        attentionCount = Self.attentionCount(from: container)
         pendingStartedAt = container.decodeLossyDoubleIfPresent(forKey: .pendingStartedAt)
         worktreePath = container.decodeLossyStringIfPresent(forKey: .worktreePath)
         sourceTag = container.decodeLossyStringIfPresent(forKey: .sourceTag)
@@ -449,6 +488,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         } else {
             hasPendingUserMessage = nil
         }
+        attentionCount = nil
         pendingStartedAt = detail.pendingStartedAt
         worktreePath = detail.worktreePath
         sourceTag = detail.sourceTag
@@ -490,6 +530,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
             isCliSession: imported.isCliSession ?? isCliSession,
             userMessageCount: imported.userMessageCount ?? userMessageCount,
             hasPendingUserMessage: imported.hasPendingUserMessage ?? hasPendingUserMessage,
+            attentionCount: imported.attentionCount ?? attentionCount,
             pendingStartedAt: imported.pendingStartedAt ?? pendingStartedAt,
             worktreePath: imported.worktreePath ?? worktreePath,
             sourceTag: imported.sourceTag ?? sourceTag,
@@ -531,6 +572,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
             isCliSession: isCliSession,
             userMessageCount: userMessageCount,
             hasPendingUserMessage: hasPendingUserMessage,
+            attentionCount: attentionCount,
             pendingStartedAt: pendingStartedAt,
             worktreePath: worktreePath,
             sourceTag: sourceTag,
@@ -570,6 +612,15 @@ extension SessionSummary {
         [sourceTag, rawSource]
             .compactMap(Self.normalizedSourceMarker)
             .contains("claude_code")
+    }
+
+    /// Hermes desktop writes these chats into the agent database. WebUI then
+    /// serves them with `is_cli_session: true` and a `desktop` source. They are
+    /// the user's conversations, not an optional CLI import.
+    var isHermesDesktopSession: Bool {
+        [sourceTag, rawSource, sessionSource, sourceLabel]
+            .compactMap(Self.normalizedSourceMarker)
+            .contains("desktop")
     }
 
     /// Delegated children are runner-owned and view-only. Upstream has also
@@ -665,16 +716,57 @@ extension SessionSummary {
             .contains("cron")
     }
 
+    /// The wrist and the phone list share this. A clarify or approval summary
+    /// (`attention.count`) counts even when `has_pending_user_message` is absent.
+    var signalsAttention: Bool {
+        hasPendingUserMessage == true || (attentionCount ?? 0) > 0
+    }
+
+    func belongsOnSidebar(includeArchived: Bool) -> Bool {
+        guard Self.nonEmpty(sessionId) != nil else { return false }
+        if includeArchived { return archived == true }
+        return archived != true && shouldAppearInSessionList
+    }
+
+    /// Sidebar label. Upstream's list row carries `title`, a derived
+    /// `display_title` (first user message, delegated goals), and sometimes
+    /// `_state_db_title`. A placeholder `title` with a real display title used
+    /// to look like an empty Untitled row and get filtered off the phone.
+    static func preferredSidebarTitle(title: String?, display: String?, stateDatabase: String?) -> String? {
+        for candidate in [display, title, stateDatabase] {
+            if let value = nonEmpty(candidate), !isPlaceholderTitle(value) {
+                return value
+            }
+        }
+        return nonEmpty(title) ?? nonEmpty(display) ?? nonEmpty(stateDatabase)
+    }
+
+    private static func isPlaceholderTitle(_ value: String) -> Bool {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "untitled" || normalized == "untitled session"
+    }
+
+    private static func attentionCount(from container: KeyedDecodingContainer<CodingKeys>) -> Int? {
+        if let summary = try? container.decodeIfPresent(SessionListAttention.self, forKey: .attention),
+           let count = summary.count {
+            return count
+        }
+        if container.decodeLossyBoolIfPresent(forKey: .attention) == true {
+            return 1
+        }
+        return nil
+    }
+
     private var hasPlaceholderTitle: Bool {
-        guard let normalizedTitle = Self.nonEmpty(title)?.lowercased() else { return true }
-        return normalizedTitle == "untitled" || normalizedTitle == "untitled session"
+        guard let normalizedTitle = Self.nonEmpty(title) else { return true }
+        return Self.isPlaceholderTitle(normalizedTitle)
     }
 
     private var hasSidebarState: Bool {
         pinned == true
             || isStreaming == true
             || Self.nonEmpty(activeStreamId) != nil
-            || hasPendingUserMessage == true
+            || signalsAttention
             || pendingStartedAt != nil
             || Self.nonEmpty(worktreePath) != nil
     }
@@ -727,13 +819,15 @@ struct AutomatedSessionVisibility: Equatable {
 
     /// Whether `session` should remain visible under these toggles.
     ///
-    /// `isCliSession` is server-computed (`is_cli_session_row`, re-stamped onto
-    /// every row by `_normalize_sidebar_source_flags` in `api/routes.py`); cron
-    /// detection is client-side (`SessionSummary.isCronSession`).
+    /// `isCliSession` is server-computed. WebUI stamps it on every row it reads
+    /// from the agent database, including Hermes desktop chats. Those chats are
+    /// the sidebar when the user lives in Hermes itself; hiding them with the
+    /// CLI toggle leaves the phone on "No sessions yet". Cron detection stays
+    /// client-side (`SessionSummary.isCronSession`).
     func shows(_ session: SessionSummary) -> Bool {
         if session.isDelegatedSubagentSession, !showsSubagents { return false }
         if session.isCronSession, !showsCron { return false }
-        if session.isCliSession == true, !showsCli { return false }
+        if session.isCliSession == true, !session.isHermesDesktopSession, !showsCli { return false }
         if session.isClaudeCodeSession, !showsClaudeCode { return false }
         return true
     }

@@ -22,13 +22,25 @@ Hermex connects to servers wherever they live: on the same Mac over `localhost`,
 
 ### 4. Multi-surface
 
-Hermex has 3 key app surfaces: **the app**, **the share extension**, and **the Live Activity widget**.
+Hermex has 4 app surfaces: **the app**, **the share extension**, **the Live Activity widget**, and **the watch companion**.
 
 **The app** is the main surface. It is a native SwiftUI app, not a web wrapper, and should behave like a first-rate iOS app across navigation, gestures, keyboard input, accessibility, backgrounding, deep links, App Intents, and notifications.
 
 **The share extension** (`HermesShareExtension`) lets users send files and text from other apps into a session. It stages imports through the app group and hands off to the main app.
 
 **The Live Activity widget** (`HermesLiveActivityWidget`) shows streaming progress on the Lock Screen and Dynamic Island and routes taps back into the app. Both extensions are separate Xcode targets with their own membership of shared models and resources.
+
+**The watch companion** (`HermexWatchApp`) is a phone-proxied on-the-go control surface, not a tiny iPhone. The watch never talks to `hermes-webui`. It sends `WatchShared` envelopes to the iPhone over WatchConnectivity; `PhoneCompanionBroker` maps registry, sessions, transcripts, create, send, voice notes, photos, stop, profile switch, and the glances onto the existing `APIClient`. The home surface is **Now**: the preferred session card, then reply controls — type through the system keyboard, speak a voice note (record on watch, cancel or send; iPhone transcribes via `/api/transcribe`, uploads the clip, and sends transcript + attachment), attach a photo, listen to the last reply, and stop a watch-started run. Below Now sit **glances**: Sessions, Tasks, Kanban, Usage, Profile, Skills, Memory, and Projects. Glances read, except the actions a wrist can finish in one tap: Profile switches the active profile, Tasks can run, pause, or resume, Skills can be turned on or off, and a Kanban card can move to another column. Editing schedules, card text, skills, or memory, workspace and file browsing, bots, settings, and approvals stay on iPhone. Approvals stay default-rejected on this pin. Complications read a redacted widget snapshot from the watch app group. Keep first-run copy truthful: if the phone is not reachable, stay on "Set up on iPhone".
+
+Design the watch to Apple's watchOS guidance, not as a shrunken iPhone:
+
+- One screen answers one wrist question. Put the answer or the primary action first; push detail one level down at most (Now → list → detail).
+- The primary action is a full-width capsule; secondary actions are equal-width icon-only buttons with VoiceOver labels and hints. No labels that wrap inside a button.
+- Every action that records or sends has a visible way out before it commits (Cancel on a recording), and leaving a screen releases the microphone.
+- Each glance owns its loading, empty, and error state with Try again. Never surface one screen's failure on another.
+- Clip long text on the phone side to wrist size and the wire limits in `WatchShared`; the full version is on iPhone.
+- Color carries meaning only (orange running, yellow needs you, red record/error, green done). Always-On hides controls. Haptics confirm send, stop, cancel, and failure.
+- Verify layout on a watch simulator with the screenshot fixture (`HERMEX_WATCH_SCREENSHOT_FIXTURE`) and the `HermexWatchApp` UI tests before calling watch UI work done.
 
 ## A note from Uzair
 

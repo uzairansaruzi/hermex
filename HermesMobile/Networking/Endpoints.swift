@@ -5,7 +5,7 @@ enum Endpoint {
     case authStatus
     case login
     case logout
-    case sessions(includeArchived: Bool = false, archivedLimit: Int? = nil)
+    case sessions(includeArchived: Bool = false, archivedLimit: Int? = nil, allProfiles: Bool = false)
     case sessionsSearch(query: String, content: Bool, depth: Int)
     case session(id: String, includeMessages: Bool, messageLimit: Int?, messageBefore: Int?, expandRenderable: Bool = false)
     case sessionStatus(id: String)
@@ -407,16 +407,24 @@ enum Endpoint {
 
     var queryItems: [URLQueryItem] {
         switch self {
-        case let .sessions(includeArchived, archivedLimit):
+        case let .sessions(includeArchived, archivedLimit, allProfiles):
             // Opt-in (issue #17): the server's default response excludes archived
             // rows, so the main list request stays byte-identical when off.
             // `archived_limit` only means something alongside `include_archived=1`
             // (`_query_positive_int` in upstream routes.py), so it is only sent then.
-            guard includeArchived else { return [] }
-
-            var items = [URLQueryItem(name: "include_archived", value: "1")]
-            if let archivedLimit {
-                items.append(URLQueryItem(name: "archived_limit", value: "\(archivedLimit)"))
+            // `all_profiles=1` is the same opt-in the web sidebar uses
+            // (`_all_profiles_query_flag`). Without it the handler keeps only the
+            // active profile, and `other_profile_count` is how the client learns
+            // that more rows exist.
+            var items: [URLQueryItem] = []
+            if includeArchived {
+                items.append(URLQueryItem(name: "include_archived", value: "1"))
+                if let archivedLimit {
+                    items.append(URLQueryItem(name: "archived_limit", value: "\(archivedLimit)"))
+                }
+            }
+            if allProfiles {
+                items.append(URLQueryItem(name: "all_profiles", value: "1"))
             }
             return items
         case let .sessionsSearch(query, content, depth):

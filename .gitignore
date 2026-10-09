@@ -14,6 +14,10 @@ Package.resolved
 !HermesMobile.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 .swiftpm/
 
+# Python
+__pycache__/
+*.pyc
+
 # macOS
 .DS_Store
 

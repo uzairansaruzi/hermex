@@ -1516,6 +1516,7 @@ import XCTest
         XCTAssertTrue(shown.contains("Ran"), shown)
         XCTAssertTrue(shown.contains("Thinking"), shown)
         XCTAssertTrue(shown.contains("Updated"), shown)
+        XCTAssertTrue(shown.contains("reply-delivery.md"), shown)
         XCTAssertTrue(shown.contains("Plan"), shown)
         XCTAssertTrue(shown.contains("1 of 2"), shown)
         defaults.set(false, forKey: key)
@@ -1523,9 +1524,50 @@ import XCTest
         let hidden = try screenshot(window, name: "bot-activity-cards-off")
         XCTAssertFalse(hidden.contains("Thinking"), hidden)
         XCTAssertFalse(hidden.contains("Updated"), hidden)
+        XCTAssertFalse(hidden.contains("reply-delivery.md"), hidden)
         XCTAssertTrue(hidden.contains("Plan"), "work progress stays visible with cards off: " + hidden)
     }
 
+    func testObservedConditionWaiterCompletesWhenAlreadyReady() {
+        let state = BotPresentationReadinessFixture()
+        state.isReady = true
+        var completions = 0
+        let waiter = BotObservedConditionWaiter(condition: { state.isReady }) {
+            completions += 1
+        }
+
+        waiter.start()
+
+        XCTAssertEqual(completions, 1)
+    }
+
+    func testObservedConditionWaiterRearmsAfterChange() async {
+        let state = BotPresentationReadinessFixture()
+        let changed = expectation(description: "Observed readiness change")
+        let waiter = BotObservedConditionWaiter(condition: { state.isReady }) {
+            changed.fulfill()
+        }
+        waiter.start()
+
+        state.isReady = true
+
+        await fulfillment(of: [changed], timeout: 1)
+    }
+
+    func testObservedConditionWaiterCancellationPreventsLateCompletion() async {
+        let state = BotPresentationReadinessFixture()
+        let late = expectation(description: "Cancelled waiter stays cancelled")
+        late.isInverted = true
+        let waiter = BotObservedConditionWaiter(condition: { state.isReady }) {
+            late.fulfill()
+        }
+        waiter.start()
+        waiter.cancel()
+
+        state.isReady = true
+
+        await fulfillment(of: [late], timeout: 0.1)
+    }
     func testDelegationCompletionCardKeepsTheFullReportInItsSheet() async throws {
         let report = """
         [ASYNC DELEGATION BATCH COMPLETE — deleg_fixture]
@@ -1772,6 +1814,23 @@ import XCTest
         return text
     }
 
+    private func waitUntilObserved(
+        _ description: String,
+        timeout: TimeInterval = 3,
+        condition: @escaping @MainActor () -> Bool
+    ) async -> Bool {
+        let ready = XCTestExpectation(description: description)
+        let waiter = BotObservedConditionWaiter(condition: condition) { ready.fulfill() }
+        waiter.start()
+        let result = await XCTWaiter.fulfillment(of: [ready], timeout: timeout)
+        waiter.cancel()
+        guard result == .completed else {
+            XCTFail("Timed out waiting for \(description)")
+            return false
+        }
+        return true
+    }
+
     @discardableResult
     private func screenshot(_ window: UIWindow, name: String) throws -> String {
         try recognizedText(in: capture(window, name: name, scale: 1))
@@ -1807,6 +1866,45 @@ import XCTest
         attachment.lifetime = .deleteOnSuccess
         add(attachment)
         return image
+    }
+}
+
+@MainActor @Observable private final class BotPresentationReadinessFixture {
+    var isReady = false
+}
+
+@MainActor private final class BotObservedConditionWaiter {
+    private let condition: @MainActor () -> Bool
+    private let completion: @MainActor () -> Void
+    private var active = false
+
+    init(condition: @escaping @MainActor () -> Bool, completion: @escaping @MainActor () -> Void) {
+        self.condition = condition
+        self.completion = completion
+    }
+
+    func start() {
+        guard !active else { return }
+        active = true
+        arm()
+    }
+
+    func cancel() {
+        active = false
+    }
+
+    private func arm() {
+        guard active else { return }
+        let ready = withObservationTracking {
+            condition()
+        } onChange: { [weak self] in
+            // Observation fires before the mutation commits. Re-entering the main
+            // actor lets the value settle before checking and re-arming.
+            Task { @MainActor [weak self] in self?.arm() }
+        }
+        guard ready, active else { return }
+        active = false
+        completion()
     }
 }
 

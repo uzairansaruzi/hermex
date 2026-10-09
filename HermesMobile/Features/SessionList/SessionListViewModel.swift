@@ -405,7 +405,9 @@ final class SessionListViewModel {
         }
 
         do {
-            let response = try await client.sessions()
+            let response = try await client.sidebarSessions(
+                revealAgentSessions: SessionRowDisplaySettings.showsCliSessions(for: server)
+            )
             guard revision == returnRevision else { return false }
             let allSessions = response.sessions ?? []
             let visibleSessions = allSessions

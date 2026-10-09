@@ -1,11 +1,5 @@
 import Foundation
-
-enum ApprovalChoice: String, Codable, CaseIterable, Equatable {
-    case once
-    case session
-    case always
-    case deny
-}
+import WatchShared
 
 struct ApprovalPendingResponse: Decodable, Equatable {
     let pending: PendingApproval?

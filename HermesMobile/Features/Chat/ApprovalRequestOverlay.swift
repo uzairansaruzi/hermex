@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import WatchShared
 
 /// What the approval overlay shows. A webui server's approval always offers all four
 /// choices; a Hermes session's offers only the ones its host computed (#1011).

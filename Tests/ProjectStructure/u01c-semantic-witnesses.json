@@ -1,0 +1,1579 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "type": "AlertKind",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_AlertKind",
+      "swift_type": "AlertKind",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "AlertSource",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_AlertSource",
+      "swift_type": "AlertSource",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "ApprovalChoice",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_ApprovalChoice",
+      "swift_type": "ApprovalChoice",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "ApprovalKey",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_ApprovalKey",
+      "swift_type": "ApprovalKey",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "BotKey",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_BotKey",
+      "swift_type": "BotKey",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "BotPhoneDestination",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_BotPhoneDestination",
+      "swift_type": "BotPhoneDestination",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "BoundedCollection",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_BoundedCollection",
+      "swift_type": "BoundedCollection<String>",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "BoundedPage",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_BoundedPage",
+      "swift_type": "BoundedPage<Int>",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "CacheKey",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/RouteTests.swift",
+      "witness": "semanticCoverage_CacheKey",
+      "swift_type": "CacheKey",
+      "roundtrip_exception": "behavior-only derived cache identity",
+      "negative_exception": "behavior-only derived cache identity",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ]
+    },
+    {
+      "type": "ClarificationKey",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_ClarificationKey",
+      "swift_type": "ClarificationKey",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "CommandContext",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CommandsTests.swift",
+      "witness": "semanticCoverage_CommandContext",
+      "swift_type": "CommandContext",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "CommandID",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CommandsTests.swift",
+      "witness": "semanticCoverage_CommandID",
+      "swift_type": "CommandID",
+      "negative_exception": "opaque UUID newtype has no type-owned invalid domain value",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip"
+      ]
+    },
+    {
+      "type": "CommandReceipt",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ReceiptsTests.swift",
+      "witness": "semanticCoverage_CommandReceipt",
+      "swift_type": "CommandReceipt<EmptyValue>",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "ContractLimits",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_ContractLimits",
+      "swift_type": "ContractLimits",
+      "roundtrip_exception": "static constants have no value to encode",
+      "negative_exception": "static constants have no value to encode",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ]
+    },
+    {
+      "type": "DiagnosticsSource",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DiagnosticsTests.swift",
+      "witness": "semanticCoverage_DiagnosticsSource",
+      "swift_type": "DiagnosticsSource",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "DirectAccessState",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_DirectAccessState",
+      "swift_type": "DirectAccessState",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "DraftHandle",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_DraftHandle",
+      "swift_type": "DraftHandle",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "EmptyValue",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ReceiptsTests.swift",
+      "witness": "semanticCoverage_EmptyValue",
+      "swift_type": "EmptyValue",
+      "negative_exception": "unit payload has no invalid domain value",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip"
+      ]
+    },
+    {
+      "type": "Freshness",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/FreshnessTests.swift",
+      "witness": "semanticCoverage_Freshness",
+      "swift_type": "Freshness",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "FreshnessValidationError",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/FreshnessTests.swift",
+      "witness": "semanticCoverage_FreshnessValidationError",
+      "swift_type": "FreshnessValidationError",
+      "roundtrip_exception": "error taxonomy is asserted through thrown behavior",
+      "negative_exception": "error taxonomy is asserted through thrown behavior",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ]
+    },
+    {
+      "type": "Generation",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_Generation",
+      "swift_type": "Generation",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "GitDiffKind",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_GitDiffKind",
+      "swift_type": "GitDiffKind",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "GitPhoneDestination",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift",
+      "witness": "semanticCoverage_GitPhoneDestination",
+      "swift_type": "GitPhoneDestination",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "HTTPCookiePropertyRecord",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CredentialContractTests.swift",
+      "witness": "semanticCoverage_HTTPCookiePropertyRecord",
+      "swift_type": "HTTPCookiePropertyRecord",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "HeaderCredentialRecord",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CredentialContractTests.swift",
+      "witness": "semanticCoverage_HeaderCredentialRecord",
+      "swift_type": "HeaderCredentialRecord",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "IdentityValidationError",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_IdentityValidationError",
+      "swift_type": "IdentityValidationError",
+      "roundtrip_exception": "error taxonomy is asserted through thrown behavior",
+      "negative_exception": "error taxonomy is asserted through thrown behavior",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ]
+    },
+    {
+      "type": "InsightKey",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_InsightKey",
+      "swift_type": "InsightKey",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "InsightPhoneDestination",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift",
+      "witness": "semanticCoverage_InsightPhoneDestination",
+      "swift_type": "InsightPhoneDestination",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "InsightsDays",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_InsightsDays",
+      "swift_type": "InsightsDays",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "InstallationEpoch",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_InstallationEpoch",
+      "swift_type": "InstallationEpoch",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "MediaHandle",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_MediaHandle",
+      "swift_type": "MediaHandle",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "MemoryKey",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_MemoryKey",
+      "swift_type": "MemoryKey",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "MemoryPhoneDestination",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift",
+      "witness": "semanticCoverage_MemoryPhoneDestination",
+      "swift_type": "MemoryPhoneDestination",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "MutationReceipt",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ReceiptsTests.swift",
+      "witness": "semanticCoverage_MutationReceipt",
+      "swift_type": "MutationReceipt",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "OriginBinding",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_OriginBinding",
+      "swift_type": "OriginBinding",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "PageRequest",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_PageRequest",
+      "swift_type": "PageRequest",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "PathHandle",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_PathHandle",
+      "swift_type": "PathHandle",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "PrivateExchangeIdentity",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/PrivateExchangeTests.swift",
+      "witness": "semanticCoverage_PrivateExchangeIdentity",
+      "swift_type": "PrivateExchangeIdentity",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip"
+      ],
+      "negative_exception": "identity has no independently invalid value; incompatibility is enforced by PrivateExchangeRequest witness"
+    },
+    {
+      "type": "PrivateExchangeKind",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/PrivateExchangeTests.swift",
+      "witness": "semanticCoverage_PrivateExchangeKind",
+      "swift_type": "PrivateExchangeKind",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "PrivateExchangePayload",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/PrivateExchangeTests.swift",
+      "witness": "semanticCoverage_PrivateExchangePayload",
+      "swift_type": "PrivateExchangePayload",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "PrivateExchangePurpose",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/PrivateExchangeTests.swift",
+      "witness": "semanticCoverage_PrivateExchangePurpose",
+      "swift_type": "PrivateExchangePurpose",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "PrivateExchangeRequest",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/PrivateExchangeTests.swift",
+      "witness": "semanticCoverage_PrivateExchangeRequest",
+      "swift_type": "PrivateExchangeRequest",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "PrivateExchangeResult",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/PrivateExchangeTests.swift",
+      "witness": "semanticCoverage_PrivateExchangeResult",
+      "swift_type": "PrivateExchangeResult",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "ProfileID",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_ProfileID",
+      "swift_type": "ProfileID",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "ReceiptPhase",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ReceiptsTests.swift",
+      "witness": "semanticCoverage_ReceiptPhase",
+      "swift_type": "ReceiptPhase",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "RedactedDisplayName",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/WidgetSnapshotTests.swift",
+      "witness": "semanticCoverage_RedactedDisplayName",
+      "swift_type": "RedactedDisplayName",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "RedactedRoute",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/RouteTests.swift",
+      "witness": "semanticCoverage_RedactedRoute",
+      "swift_type": "RedactedRoute",
+      "roundtrip_exception": "redacted in-memory route is intentionally not Codable",
+      "negative_exception": "redacted in-memory route is intentionally not Codable",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ]
+    },
+    {
+      "type": "RedactedWidgetSnapshot",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/WidgetSnapshotTests.swift",
+      "witness": "semanticCoverage_RedactedWidgetSnapshot",
+      "swift_type": "RedactedWidgetSnapshot",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "RedactionContext",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/RedactionTests.swift",
+      "witness": "semanticCoverage_RedactionContext",
+      "swift_type": "RedactionContext",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "RegistryEntry",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/FreshnessTests.swift",
+      "witness": "semanticCoverage_RegistryEntry",
+      "swift_type": "RegistryEntry",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "RegistrySnapshot",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/FreshnessTests.swift",
+      "witness": "semanticCoverage_RegistrySnapshot",
+      "swift_type": "RegistrySnapshot",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "RegistryValidationError",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/FreshnessTests.swift",
+      "witness": "semanticCoverage_RegistryValidationError",
+      "swift_type": "RegistryValidationError",
+      "roundtrip_exception": "error taxonomy is asserted through thrown behavior",
+      "negative_exception": "error taxonomy is asserted through thrown behavior",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ]
+    },
+    {
+      "type": "Revision",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_Revision",
+      "swift_type": "Revision",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "RouteValidationError",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/RouteTests.swift",
+      "witness": "semanticCoverage_RouteValidationError",
+      "swift_type": "RouteValidationError",
+      "roundtrip_exception": "error taxonomy is asserted through thrown behavior",
+      "negative_exception": "error taxonomy is asserted through thrown behavior",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ]
+    },
+    {
+      "type": "RunKey",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_RunKey",
+      "swift_type": "RunKey",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "SanitizedDiagnosticCode",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DiagnosticsTests.swift",
+      "witness": "semanticCoverage_SanitizedDiagnosticCode",
+      "swift_type": "SanitizedDiagnosticCode",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "ScopeDecision",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ScopeFenceTests.swift",
+      "witness": "semanticCoverage_ScopeDecision",
+      "swift_type": "ScopeDecision",
+      "roundtrip_exception": "in-memory decision enum is intentionally not Codable",
+      "negative_exception": "in-memory decision enum is intentionally not Codable",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ]
+    },
+    {
+      "type": "ScopeFence",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ScopeFenceTests.swift",
+      "witness": "semanticCoverage_ScopeFence",
+      "swift_type": "ScopeFence",
+      "roundtrip_exception": "stateful validation value is intentionally not Codable",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ],
+      "negative_exception": "negative error paths are row-owned by ScopeFenceError witness"
+    },
+    {
+      "type": "ScopeFenceError",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ScopeFenceTests.swift",
+      "witness": "semanticCoverage_ScopeFenceError",
+      "swift_type": "ScopeFenceError",
+      "roundtrip_exception": "error taxonomy is asserted through thrown behavior",
+      "negative_exception": "error taxonomy is asserted through thrown behavior",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ]
+    },
+    {
+      "type": "ScopedSnapshot",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/FreshnessTests.swift",
+      "witness": "semanticCoverage_ScopedSnapshot",
+      "swift_type": "ScopedSnapshot<String>",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "ServerID",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_ServerID",
+      "swift_type": "ServerID",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "ServerScope",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_ServerScope",
+      "swift_type": "ServerScope",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "SessionCollection",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_SessionCollection",
+      "swift_type": "SessionCollection",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "SessionKey",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_SessionKey",
+      "swift_type": "SessionKey",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "SessionPhoneDestination",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift",
+      "witness": "semanticCoverage_SessionPhoneDestination",
+      "swift_type": "SessionPhoneDestination",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "SettingsPhoneDestination",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift",
+      "witness": "semanticCoverage_SettingsPhoneDestination",
+      "swift_type": "SettingsPhoneDestination",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "SkillKey",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_SkillKey",
+      "swift_type": "SkillKey",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "SkillPhoneDestination",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift",
+      "witness": "semanticCoverage_SkillPhoneDestination",
+      "swift_type": "SkillPhoneDestination",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "SourceTextCategory",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/RedactionTests.swift",
+      "witness": "semanticCoverage_SourceTextCategory",
+      "swift_type": "SourceTextCategory",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "TaskControl",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_TaskControl",
+      "swift_type": "TaskControl",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "TaskKey",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_TaskKey",
+      "swift_type": "TaskKey",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "TaskPhoneDestination",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift",
+      "witness": "semanticCoverage_TaskPhoneDestination",
+      "swift_type": "TaskPhoneDestination",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchAlertProjection",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchAlertProjection",
+      "swift_type": "WatchAlertProjection",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchAlertRoute",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchAlertRoute",
+      "swift_type": "WatchAlertRoute",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchApproval",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchApproval",
+      "swift_type": "WatchApproval",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchAttentionHead",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchAttentionHead",
+      "swift_type": "WatchAttentionHead<WatchApproval>",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip"
+      ],
+      "negative_exception": "negative generic initializer is asserted with explicit WatchAttentionHead<WatchApproval>; checker cannot resolve generic inference textually"
+    },
+    {
+      "type": "WatchAuthMode",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchAuthMode",
+      "swift_type": "WatchAuthMode",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchBotActivity",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchBotActivity",
+      "swift_type": "WatchBotActivity",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchBotApprovalProjection",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchBotApprovalProjection",
+      "swift_type": "WatchBotApprovalProjection",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchBotClarificationForm",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchBotClarificationForm",
+      "swift_type": "WatchBotClarificationForm",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchBotClarificationProjection",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchBotClarificationProjection",
+      "swift_type": "WatchBotClarificationProjection",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchBotClarificationQuestion",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchBotClarificationQuestion",
+      "swift_type": "WatchBotClarificationQuestion",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchBotConversation",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchBotConversation",
+      "swift_type": "WatchBotConversation",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchBotEvent",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchBotEvent",
+      "swift_type": "WatchBotEvent",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchBotHistoryAvailability",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchBotHistoryAvailability",
+      "swift_type": "WatchBotHistoryAvailability",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchBotSummary",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchBotSummary",
+      "swift_type": "WatchBotSummary",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchClarification",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchClarification",
+      "swift_type": "WatchClarification",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchCompanionServicing",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ServiceBoundaryTests.swift",
+      "witness": "semanticCoverage_WatchCompanionServicing",
+      "swift_type": "WatchCompanionServicing",
+      "roundtrip_exception": "protocol contract is exercised by a conforming fake",
+      "negative_exception": "protocol contract is exercised by a conforming fake",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ]
+    },
+    {
+      "type": "WatchComposerOptions",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchComposerOptions",
+      "swift_type": "WatchComposerOptions",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchCredentialRecord",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CredentialContractTests.swift",
+      "witness": "semanticCoverage_WatchCredentialRecord",
+      "swift_type": "WatchCredentialRecord",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchCredentialTransferEnvelope",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CredentialContractTests.swift",
+      "witness": "semanticCoverage_WatchCredentialTransferEnvelope",
+      "swift_type": "WatchCredentialTransferEnvelope",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchDiagnosticsProjection",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DiagnosticsTests.swift",
+      "witness": "semanticCoverage_WatchDiagnosticsProjection",
+      "swift_type": "WatchDiagnosticsProjection",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchFilePreview",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchFilePreview",
+      "swift_type": "WatchFilePreview",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchGitAggregate",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchGitAggregate",
+      "swift_type": "WatchGitAggregate",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchHandoffRoute",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift",
+      "witness": "semanticCoverage_WatchHandoffRoute",
+      "swift_type": "WatchHandoffRoute",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchInsightsAggregate",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchInsightsAggregate",
+      "swift_type": "WatchInsightsAggregate",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchMediaDescriptor",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchMediaDescriptor",
+      "swift_type": "WatchMediaDescriptor",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchMediaPayload",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchMediaPayload",
+      "swift_type": "WatchMediaPayload",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchMemoryDocument",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchMemoryDocument",
+      "swift_type": "WatchMemoryDocument",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchMemorySection",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchMemorySection",
+      "swift_type": "WatchMemorySection",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchMessageRole",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchMessageRole",
+      "swift_type": "WatchMessageRole",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchMutationOperation",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CommandsTests.swift",
+      "witness": "semanticCoverage_WatchMutationOperation",
+      "swift_type": "WatchMutationOperation",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchMutationRequest",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/TransportEnvelopeTests.swift",
+      "witness": "semanticCoverage_WatchMutationRequest",
+      "swift_type": "WatchMutationRequest",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchOperationKind",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/OperationsTests.swift",
+      "witness": "semanticCoverage_WatchOperationKind",
+      "swift_type": "WatchOperationKind",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchOperationResult",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/OperationResultsTests.swift",
+      "witness": "semanticCoverage_WatchOperationResult",
+      "swift_type": "WatchOperationResult",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchReadOperation",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/OperationsTests.swift",
+      "witness": "semanticCoverage_WatchReadOperation",
+      "swift_type": "WatchReadOperation",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchReceiptLedger",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ReceiptsTests.swift",
+      "witness": "semanticCoverage_WatchReceiptLedger",
+      "swift_type": "WatchReceiptLedger",
+      "roundtrip_exception": "protocol contract is exercised by a conforming actor fake",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ],
+      "negative_exception": "protocol has no throwing validation contract; fake covers unknown receipt and state transitions"
+    },
+    {
+      "type": "WatchRedactor",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/RedactionTests.swift",
+      "witness": "semanticCoverage_WatchRedactor",
+      "swift_type": "WatchRedactor",
+      "roundtrip_exception": "static redaction utility has no value to encode",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ],
+      "negative_exception": "negative calls use utility methods rather than initializer/decode and are asserted in witness"
+    },
+    {
+      "type": "WatchRequestEnvelope",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/TransportEnvelopeTests.swift",
+      "witness": "semanticCoverage_WatchRequestEnvelope",
+      "swift_type": "WatchRequestEnvelope",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchResponseEnvelope",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/TransportEnvelopeTests.swift",
+      "witness": "semanticCoverage_WatchResponseEnvelope",
+      "swift_type": "WatchResponseEnvelope",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchRouteTarget",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift",
+      "witness": "semanticCoverage_WatchRouteTarget",
+      "swift_type": "WatchRouteTarget",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchRunEvent",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchRunEvent",
+      "swift_type": "WatchRunEvent",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchRunPhase",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchRunPhase",
+      "swift_type": "WatchRunPhase",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchRunState",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchRunState",
+      "swift_type": "WatchRunState",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchServerDescriptor",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchServerDescriptor",
+      "swift_type": "WatchServerDescriptor",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchSessionSummary",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchSessionSummary",
+      "swift_type": "WatchSessionSummary",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchSkillContent",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchSkillContent",
+      "swift_type": "WatchSkillContent",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchSkillDetail",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchSkillDetail",
+      "swift_type": "WatchSkillDetail",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchSkillSummary",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchSkillSummary",
+      "swift_type": "WatchSkillSummary",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchStreamOperation",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/OperationsTests.swift",
+      "witness": "semanticCoverage_WatchStreamOperation",
+      "swift_type": "WatchStreamOperation",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchTaskRun",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchTaskRun",
+      "swift_type": "WatchTaskRun",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchTaskRunDetail",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchTaskRunDetail",
+      "swift_type": "WatchTaskRunDetail",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchTaskSummary",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchTaskSummary",
+      "swift_type": "WatchTaskSummary",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchTranscript",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchTranscript",
+      "swift_type": "WatchTranscript",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchTranscriptBlock",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchTranscriptBlock",
+      "swift_type": "WatchTranscriptBlock",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchTransportFailure",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ReceiptsTests.swift",
+      "witness": "semanticCoverage_WatchTransportFailure",
+      "swift_type": "WatchTransportFailure",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WatchWorkspaceEntry",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift",
+      "witness": "semanticCoverage_WatchWorkspaceEntry",
+      "swift_type": "WatchWorkspaceEntry",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WidgetValidationError",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/WidgetSnapshotTests.swift",
+      "witness": "semanticCoverage_WidgetValidationError",
+      "swift_type": "WidgetValidationError",
+      "roundtrip_exception": "error taxonomy is asserted through thrown behavior",
+      "negative_exception": "error taxonomy is asserted through thrown behavior",
+      "requires": [
+        "compile",
+        "assertion",
+        "behavior"
+      ]
+    },
+    {
+      "type": "WorkspaceHandle",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift",
+      "witness": "semanticCoverage_WorkspaceHandle",
+      "swift_type": "WorkspaceHandle",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    },
+    {
+      "type": "WorkspacePhoneDestination",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift",
+      "witness": "semanticCoverage_WorkspacePhoneDestination",
+      "swift_type": "WorkspacePhoneDestination",
+      "requires": [
+        "compile",
+        "assertion",
+        "roundtrip",
+        "negative"
+      ]
+    }
+  ]
+}

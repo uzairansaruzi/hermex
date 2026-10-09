@@ -1,0 +1,655 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "type": "AlertKind",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "AlertSource",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "ApprovalChoice",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "ApprovalKey",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "BotKey",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "BotPhoneDestination",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "BoundedCollection",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "BoundedPage",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "CacheKey",
+      "source": "Packages/WatchShared/Sources/WatchShared/Route.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/RouteTests.swift"
+    },
+    {
+      "type": "ClarificationKey",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "CommandContext",
+      "source": "Packages/WatchShared/Sources/WatchShared/Commands.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CommandsTests.swift"
+    },
+    {
+      "type": "CommandID",
+      "source": "Packages/WatchShared/Sources/WatchShared/Commands.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CommandsTests.swift"
+    },
+    {
+      "type": "CommandReceipt",
+      "source": "Packages/WatchShared/Sources/WatchShared/Receipts.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ReceiptsTests.swift"
+    },
+    {
+      "type": "ContractLimits",
+      "source": "Packages/WatchShared/Sources/WatchShared/ContractLimits.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "DiagnosticsSource",
+      "source": "Packages/WatchShared/Sources/WatchShared/Diagnostics.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DiagnosticsTests.swift"
+    },
+    {
+      "type": "DirectAccessState",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "DraftHandle",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "EmptyValue",
+      "source": "Packages/WatchShared/Sources/WatchShared/Receipts.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ReceiptsTests.swift"
+    },
+    {
+      "type": "Freshness",
+      "source": "Packages/WatchShared/Sources/WatchShared/Freshness.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/FreshnessTests.swift"
+    },
+    {
+      "type": "FreshnessValidationError",
+      "source": "Packages/WatchShared/Sources/WatchShared/Freshness.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/FreshnessTests.swift"
+    },
+    {
+      "type": "Generation",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "GitDiffKind",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "GitPhoneDestination",
+      "source": "Packages/WatchShared/Sources/WatchShared/Route.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift"
+    },
+    {
+      "type": "HTTPCookiePropertyRecord",
+      "source": "Packages/WatchShared/Sources/WatchShared/CredentialContract.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CredentialContractTests.swift"
+    },
+    {
+      "type": "HeaderCredentialRecord",
+      "source": "Packages/WatchShared/Sources/WatchShared/CredentialContract.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CredentialContractTests.swift"
+    },
+    {
+      "type": "IdentityValidationError",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "InsightKey",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "InsightPhoneDestination",
+      "source": "Packages/WatchShared/Sources/WatchShared/Route.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift"
+    },
+    {
+      "type": "InsightsDays",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "InstallationEpoch",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "MediaHandle",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "MemoryKey",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "MemoryPhoneDestination",
+      "source": "Packages/WatchShared/Sources/WatchShared/Route.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift"
+    },
+    {
+      "type": "MutationReceipt",
+      "source": "Packages/WatchShared/Sources/WatchShared/Receipts.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ReceiptsTests.swift"
+    },
+    {
+      "type": "OriginBinding",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "PageRequest",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "PathHandle",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "PrivateExchangeIdentity",
+      "source": "Packages/WatchShared/Sources/WatchShared/PrivateExchange.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/PrivateExchangeTests.swift"
+    },
+    {
+      "type": "PrivateExchangeKind",
+      "source": "Packages/WatchShared/Sources/WatchShared/PrivateExchange.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/PrivateExchangeTests.swift"
+    },
+    {
+      "type": "PrivateExchangePayload",
+      "source": "Packages/WatchShared/Sources/WatchShared/PrivateExchange.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/PrivateExchangeTests.swift"
+    },
+    {
+      "type": "PrivateExchangePurpose",
+      "source": "Packages/WatchShared/Sources/WatchShared/PrivateExchange.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/PrivateExchangeTests.swift"
+    },
+    {
+      "type": "PrivateExchangeRequest",
+      "source": "Packages/WatchShared/Sources/WatchShared/PrivateExchange.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/PrivateExchangeTests.swift"
+    },
+    {
+      "type": "PrivateExchangeResult",
+      "source": "Packages/WatchShared/Sources/WatchShared/PrivateExchange.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/PrivateExchangeTests.swift"
+    },
+    {
+      "type": "ProfileID",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "ReceiptPhase",
+      "source": "Packages/WatchShared/Sources/WatchShared/Receipts.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ReceiptsTests.swift"
+    },
+    {
+      "type": "RedactedDisplayName",
+      "source": "Packages/WatchShared/Sources/WatchShared/WidgetSnapshot.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/WidgetSnapshotTests.swift"
+    },
+    {
+      "type": "RedactedRoute",
+      "source": "Packages/WatchShared/Sources/WatchShared/Route.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/RouteTests.swift"
+    },
+    {
+      "type": "RedactedWidgetSnapshot",
+      "source": "Packages/WatchShared/Sources/WatchShared/WidgetSnapshot.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/WidgetSnapshotTests.swift"
+    },
+    {
+      "type": "RedactionContext",
+      "source": "Packages/WatchShared/Sources/WatchShared/Redaction.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/RedactionTests.swift"
+    },
+    {
+      "type": "RegistryEntry",
+      "source": "Packages/WatchShared/Sources/WatchShared/Freshness.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/FreshnessTests.swift"
+    },
+    {
+      "type": "RegistrySnapshot",
+      "source": "Packages/WatchShared/Sources/WatchShared/Freshness.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/FreshnessTests.swift"
+    },
+    {
+      "type": "RegistryValidationError",
+      "source": "Packages/WatchShared/Sources/WatchShared/Freshness.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/FreshnessTests.swift"
+    },
+    {
+      "type": "Revision",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "RouteValidationError",
+      "source": "Packages/WatchShared/Sources/WatchShared/Route.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/RouteTests.swift"
+    },
+    {
+      "type": "RunKey",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "SanitizedDiagnosticCode",
+      "source": "Packages/WatchShared/Sources/WatchShared/Diagnostics.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DiagnosticsTests.swift"
+    },
+    {
+      "type": "ScopeDecision",
+      "source": "Packages/WatchShared/Sources/WatchShared/ScopeFence.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ScopeFenceTests.swift"
+    },
+    {
+      "type": "ScopeFence",
+      "source": "Packages/WatchShared/Sources/WatchShared/ScopeFence.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ScopeFenceTests.swift"
+    },
+    {
+      "type": "ScopeFenceError",
+      "source": "Packages/WatchShared/Sources/WatchShared/ScopeFence.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ScopeFenceTests.swift"
+    },
+    {
+      "type": "ScopedSnapshot",
+      "source": "Packages/WatchShared/Sources/WatchShared/Freshness.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/FreshnessTests.swift"
+    },
+    {
+      "type": "ServerID",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "ServerScope",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "SessionCollection",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "SessionKey",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "SessionPhoneDestination",
+      "source": "Packages/WatchShared/Sources/WatchShared/Route.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift"
+    },
+    {
+      "type": "SettingsPhoneDestination",
+      "source": "Packages/WatchShared/Sources/WatchShared/Route.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift"
+    },
+    {
+      "type": "SkillKey",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "SkillPhoneDestination",
+      "source": "Packages/WatchShared/Sources/WatchShared/Route.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift"
+    },
+    {
+      "type": "SourceTextCategory",
+      "source": "Packages/WatchShared/Sources/WatchShared/Redaction.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/RedactionTests.swift"
+    },
+    {
+      "type": "TaskControl",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "TaskKey",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "TaskPhoneDestination",
+      "source": "Packages/WatchShared/Sources/WatchShared/Route.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift"
+    },
+    {
+      "type": "WatchAlertProjection",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchAlertRoute",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchApproval",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchAttentionHead",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchAuthMode",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchBotActivity",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchBotApprovalProjection",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchBotClarificationForm",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchBotClarificationProjection",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchBotClarificationQuestion",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchBotConversation",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchBotEvent",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchBotHistoryAvailability",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchBotSummary",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchClarification",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchCompanionServicing",
+      "source": "Packages/WatchShared/Sources/WatchShared/ServiceBoundary.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ServiceBoundaryTests.swift"
+    },
+    {
+      "type": "WatchComposerOptions",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchCredentialRecord",
+      "source": "Packages/WatchShared/Sources/WatchShared/CredentialContract.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CredentialContractTests.swift"
+    },
+    {
+      "type": "WatchCredentialTransferEnvelope",
+      "source": "Packages/WatchShared/Sources/WatchShared/CredentialContract.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CredentialContractTests.swift"
+    },
+    {
+      "type": "WatchDiagnosticsProjection",
+      "source": "Packages/WatchShared/Sources/WatchShared/Diagnostics.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DiagnosticsTests.swift"
+    },
+    {
+      "type": "WatchFilePreview",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchGitAggregate",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchHandoffRoute",
+      "source": "Packages/WatchShared/Sources/WatchShared/Route.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift"
+    },
+    {
+      "type": "WatchInsightsAggregate",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchMediaDescriptor",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchMediaPayload",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchMemoryDocument",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchMemorySection",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchMessageRole",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchMutationOperation",
+      "source": "Packages/WatchShared/Sources/WatchShared/Commands.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/CommandsTests.swift"
+    },
+    {
+      "type": "WatchMutationRequest",
+      "source": "Packages/WatchShared/Sources/WatchShared/TransportEnvelope.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/TransportEnvelopeTests.swift"
+    },
+    {
+      "type": "WatchOperationKind",
+      "source": "Packages/WatchShared/Sources/WatchShared/Operations.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/OperationsTests.swift"
+    },
+    {
+      "type": "WatchOperationResult",
+      "source": "Packages/WatchShared/Sources/WatchShared/OperationResults.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/OperationResultsTests.swift"
+    },
+    {
+      "type": "WatchReadOperation",
+      "source": "Packages/WatchShared/Sources/WatchShared/Operations.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/OperationsTests.swift"
+    },
+    {
+      "type": "WatchReceiptLedger",
+      "source": "Packages/WatchShared/Sources/WatchShared/Receipts.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ReceiptsTests.swift"
+    },
+    {
+      "type": "WatchRedactor",
+      "source": "Packages/WatchShared/Sources/WatchShared/Redaction.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/RedactionTests.swift"
+    },
+    {
+      "type": "WatchRequestEnvelope",
+      "source": "Packages/WatchShared/Sources/WatchShared/TransportEnvelope.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/TransportEnvelopeTests.swift"
+    },
+    {
+      "type": "WatchResponseEnvelope",
+      "source": "Packages/WatchShared/Sources/WatchShared/TransportEnvelope.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/TransportEnvelopeTests.swift"
+    },
+    {
+      "type": "WatchRouteTarget",
+      "source": "Packages/WatchShared/Sources/WatchShared/Route.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift"
+    },
+    {
+      "type": "WatchRunEvent",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchRunPhase",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchRunState",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchServerDescriptor",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchSessionSummary",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchSkillContent",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchSkillDetail",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchSkillSummary",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchStreamOperation",
+      "source": "Packages/WatchShared/Sources/WatchShared/Operations.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/OperationsTests.swift"
+    },
+    {
+      "type": "WatchTaskRun",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchTaskRunDetail",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchTaskSummary",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchTranscript",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchTranscriptBlock",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WatchTransportFailure",
+      "source": "Packages/WatchShared/Sources/WatchShared/Receipts.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ReceiptsTests.swift"
+    },
+    {
+      "type": "WatchWorkspaceEntry",
+      "source": "Packages/WatchShared/Sources/WatchShared/DTOs.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/DTOTests.swift"
+    },
+    {
+      "type": "WidgetValidationError",
+      "source": "Packages/WatchShared/Sources/WatchShared/WidgetSnapshot.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/WidgetSnapshotTests.swift"
+    },
+    {
+      "type": "WorkspaceHandle",
+      "source": "Packages/WatchShared/Sources/WatchShared/Identity.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/IdentityTests.swift"
+    },
+    {
+      "type": "WorkspacePhoneDestination",
+      "source": "Packages/WatchShared/Sources/WatchShared/Route.swift",
+      "test": "Packages/WatchShared/Tests/WatchSharedTests/ExtendedRouteTests.swift"
+    }
+  ]
+}
