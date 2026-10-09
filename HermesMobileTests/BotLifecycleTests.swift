@@ -77,7 +77,8 @@ import XCTest
             "expression": .string("happy"), "custom": .bool(true), "imageKind": .string("shape")
         ])
         XCTAssertEqual(wire.calls[3].1, ["profile": .string("home-hunter"), "title": .string("Bot Chat"),
-                                         "hidden": .bool(true), "follow_profile_config": .bool(true)])
+                                         "hidden": .bool(true), "follow_profile_config": .bool(true),
+                                         "source": .string("hermex")])
         XCTAssertEqual(wire.calls[4].1, ["session_id": .string("runtime-1"), "title": .string("Bot Chat")])
         XCTAssertEqual(creator.phase, .created)
         XCTAssertEqual(created, ["home-hunter"])
