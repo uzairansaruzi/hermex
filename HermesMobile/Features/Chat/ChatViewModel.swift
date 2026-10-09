@@ -1732,8 +1732,12 @@ final class ChatViewModel {
         hermesTurn?.workspaceGit { [weak self] in self?.isViewingCachedData ?? true }
     }
 
+    /// A sent attachment's original bytes for its inline audio player: a Hermes session downloads
+    /// from its host under the preview cap (#1143), a webui chat through the server's file API.
+    /// Nil when it can't load, including on a detached Hermes chat.
     func attachmentRawData(path: String) async -> Data? {
-        await attachmentCoordinator.attachmentRawData(path: path)
+        guard let hermesTurn else { return await attachmentCoordinator.attachmentRawData(path: path) }
+        return try? await hermesTurn.attachmentData(path: path)
     }
 
     /// A transcript MEDIA image's inline thumbnail: a Hermes session's from its host (#1112), a
