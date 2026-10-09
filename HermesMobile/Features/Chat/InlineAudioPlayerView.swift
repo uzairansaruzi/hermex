@@ -11,6 +11,9 @@ struct InlineAudioPlayerView: View {
     let title: String
     /// Lazily fetches the raw audio bytes; returns `nil` on failure.
     let load: () async -> Data?
+    /// Opens the clip's file preview from a trailing button, shown whether or not
+    /// playback works; nil hides the button.
+    var onOpen: (() -> Void)? = nil
 
     @State private var model = InlineAudioPlayerModel()
 
@@ -28,6 +31,18 @@ struct InlineAudioPlayerView: View {
                     scrubber
                     timeRow
                 }
+            }
+
+            if let onOpen {
+                Button(action: onOpen) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 40)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.chatTactile(.icon))
+                .accessibilityLabel(String(localized: "Open attachment \(title)"))
             }
         }
         .padding(.horizontal, 12)

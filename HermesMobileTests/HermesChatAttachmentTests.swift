@@ -414,6 +414,50 @@ import UIKit
         XCTAssertEqual(HermesHostFixture.requests.count, before)
     }
 
+    /// A just-sent audio chip has no host path yet, so it stays a file cell and nothing
+    /// downloads it by its display name; a chip with its host path plays inline. A webui
+    /// chip still plays by name, as older sessions saved uploads to the workspace root.
+    func testAHermesAudioChipPlaysInlineOnlyFromItsHostPath() async throws {
+        let chat = await openChat()
+        chat.host.always("file.attach", .init(result: .object([
+            "attached": .bool(true), "path": .string("/home/u/.hermes/attachments/\(Self.uuid)-memo.m4a"),
+            "ref_text": .string("@file:/home/u/.hermes/attachments/\(Self.uuid)-memo.m4a")
+        ])))
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        await chat.model.uploadAttachment(data: Data("audio".utf8), filename: "memo.m4a")
+        let sent = await chat.model.sendMessage("Listen")
+        XCTAssertTrue(sent)
+        let optimistic = try XCTUnwrap(chat.model.messages.last?.attachments?.first)
+        XCTAssertNil(optimistic.path)
+        var loaded: [String] = []
+        let hermes = AttachmentAudioSource(load: { loaded.append($0); return nil }, isHost: true)
+        let webui = AttachmentAudioSource(load: { _ in nil }, isHost: false)
+
+        XCTAssertFalse(hermes.playsInline(optimistic))
+        XCTAssertTrue(hermes.playsInline(MessageAttachment(name: "memo.m4a", path: "/home/u/.hermes/attachments/memo.m4a")))
+        XCTAssertTrue(webui.playsInline(MessageAttachment(name: "memo.m4a")))
+        XCTAssertFalse(hermes.playsInline(MessageAttachment(name: "notes.txt", path: "/home/u/notes.txt")))
+        XCTAssertEqual(loaded, [])
+    }
+
+    /// A Hermes chip's inline player keeps the chip's Open action (Quick Look, Save and
+    /// Share, #1030), handing over the chip itself; a webui player has none.
+    func testAHermesAudioPlayerOpensTheChipsPreview() throws {
+        let chip = MessageAttachment(name: "memo.m4a", path: "/home/u/.hermes/attachments/memo.m4a", mime: "audio/mp4")
+        var opened: [(MessageAttachment, Data?)] = []
+        let onPreview: (MessageAttachment, Data?) -> Void = { opened.append(($0, $1)) }
+        let hermes = AttachmentAudioSource(load: { _ in nil }, isHost: true)
+        let webui = AttachmentAudioSource(load: { _ in nil }, isHost: false)
+
+        let open = try XCTUnwrap(hermes.openAction(for: chip, localData: Data("local".utf8), onPreview: onPreview))
+        open()
+
+        XCTAssertEqual(opened.map(\.0), [chip])
+        XCTAssertEqual(opened.map(\.1), [Data("local".utf8)])
+        XCTAssertNil(webui.openAction(for: chip, localData: nil, onPreview: onPreview))
+        XCTAssertNil(hermes.openAction(for: chip, localData: nil, onPreview: nil))
+    }
+
     /// Thumbnails are cached per connection and Profile: neither shows the other's.
     func testTheThumbnailNamespaceSeparatesConnectionsAndProfiles() {
         let other = BotConnection(id: UUID(), name: "Mac", address: Self.connection.address,

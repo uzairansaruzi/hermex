@@ -23,7 +23,7 @@ struct MessageBubbleView: View {
     let textOnly: Bool
     let message: ChatMessage
     let loadAttachmentImage: ((String) async -> Data?)?
-    let loadAttachmentData: ((String) async -> Data?)?
+    let attachmentAudio: AttachmentAudioSource?
     let loadTranscriptMediaImage: ((TranscriptMediaReference) async -> Data?)?
     let loadTranscriptMediaData: ((TranscriptMediaReference) async -> Data?)?
     /// Server (and session) identity for in-memory image caches. Required so
@@ -42,7 +42,7 @@ struct MessageBubbleView: View {
     init(
         message: ChatMessage,
         loadAttachmentImage: ((String) async -> Data?)? = nil,
-        loadAttachmentData: ((String) async -> Data?)? = nil,
+        attachmentAudio: AttachmentAudioSource? = nil,
         loadTranscriptMediaImage: ((TranscriptMediaReference) async -> Data?)? = nil,
         loadTranscriptMediaData: ((TranscriptMediaReference) async -> Data?)? = nil,
         transcriptMediaCacheNamespace: String,
@@ -58,7 +58,7 @@ struct MessageBubbleView: View {
         self.textOnly = textOnly
         self.message = message
         self.loadAttachmentImage = loadAttachmentImage
-        self.loadAttachmentData = loadAttachmentData
+        self.attachmentAudio = attachmentAudio
         self.loadTranscriptMediaImage = loadTranscriptMediaImage
         self.loadTranscriptMediaData = loadTranscriptMediaData
         self.transcriptMediaCacheNamespace = transcriptMediaCacheNamespace
@@ -443,13 +443,13 @@ struct MessageBubbleView: View {
     }
 
     // Audio attachments render as full-width Telegram-style player bars stacked
-    // above the square image/file grid; everything else stays in the grid. With
-    // no way to load the bytes (no `loadAttachmentData`), audio stays a file cell.
+    // above the square image/file grid; everything else stays in the grid. Audio
+    // that `attachmentAudio` can't play (none given, or a Hermes chip with no host
+    // path yet) stays a file cell.
     private var attachmentPreviews: some View {
         let allItems = attachmentsWithPreviews
-        let playsAudio = loadAttachmentData != nil
-        let audioItems = allItems.filter { playsAudio && $0.attachment.inferredIsAudio }
-        let gridItems = allItems.filter { !playsAudio || !$0.attachment.inferredIsAudio }
+        let audioItems = allItems.filter { attachmentAudio?.playsInline($0.attachment) == true }
+        let gridItems = allItems.filter { attachmentAudio?.playsInline($0.attachment) != true }
         let columns = 2
         let spacing: CGFloat = 8
         let cellSize: CGFloat = 118
@@ -460,7 +460,10 @@ struct MessageBubbleView: View {
                 let attachment = audioItems[index].attachment
                 InlineAudioPlayerView(
                     title: audioDisplayName(for: attachment),
-                    load: audioLoader(for: attachment)
+                    load: audioLoader(for: attachment),
+                    onOpen: attachmentAudio?.openAction(
+                        for: attachment, localData: audioItems[index].localData, onPreview: onPreviewAttachment
+                    )
                 )
                 // Identity follows the attachment, not the row position. The
                 // transcript bubble's id is positional (`transcript:<index>`),
@@ -537,10 +540,10 @@ struct MessageBubbleView: View {
             if let name = attachment.name, !name.isEmpty { return name }
             return nil
         }()
-        let loadAttachmentData = loadAttachmentData
+        let load = attachmentAudio?.load
         return {
-            guard let resolvedPath, let loadAttachmentData else { return nil }
-            return await loadAttachmentData(resolvedPath)
+            guard let resolvedPath, let load else { return nil }
+            return await load(resolvedPath)
         }
     }
 
@@ -637,6 +640,33 @@ private extension [TranscriptMediaSegment] {
             }
             return false
         }
+    }
+}
+
+/// Where a sent message's attachment row gets its inline audio. Without one, audio
+/// attachments are file cells.
+struct AttachmentAudioSource {
+    /// Downloads an attachment's bytes by its path (or, on webui, an older chip's name).
+    let load: (String) async -> Data?
+    /// A Hermes chat's chips live on its host (#1143): audio plays inline only from the
+    /// chip's host path, since a name is no host path and a just-sent chip has none yet,
+    /// and the player keeps the chip's Open action for Quick Look, Save and Share.
+    let isHost: Bool
+
+    /// Whether `attachment` draws as an inline player rather than a file cell.
+    func playsInline(_ attachment: MessageAttachment) -> Bool {
+        guard attachment.inferredIsAudio else { return false }
+        return !isHost || attachment.path?.isEmpty == false
+    }
+
+    /// The inline player's Open button: the chip's preview on a Hermes chat, none on webui.
+    func openAction(
+        for attachment: MessageAttachment,
+        localData: Data?,
+        onPreview: ((MessageAttachment, Data?) -> Void)?
+    ) -> (() -> Void)? {
+        guard isHost, let onPreview else { return nil }
+        return { onPreview(attachment, localData) }
     }
 }
 
