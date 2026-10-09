@@ -7890,12 +7890,18 @@ extension ChatViewModel: HermesChatTurnDelegate {
         return true
     }
 
-    /// Writes the settled history a Hermes transcript holds to the offline cache (#1054).
+    /// Writes the settled history a Hermes transcript holds to the offline cache (#1054). An
+    /// archived Bot Chat's newest read also drops what the host cut from its bot's copy of the
+    /// same root, which it shows when its own is empty, without writing there.
     private func cacheHermesHistory(_ transcript: HermesChatTranscript) {
         guard let scope = hermesCacheScope(), hermesCacheEpoch == CacheStore.hermesCacheEpoch(serverURL: scope.server) else { return }
         do {
             try CacheStore.cacheHermesMessages(transcript.messages, newestCoverage: transcript.newestCoverage,
                                                serverURL: scope.server, scope: scope.scope, in: scope.context)
+            if let shared = scope.shared, let coverage = transcript.newestCoverage {
+                try CacheStore.dropHermesMessagesTheHostCut(from: transcript.messages, newestCoverage: coverage,
+                                                            serverURL: scope.server, scope: shared, in: scope.context)
+            }
         } catch {
             cacheErrorMessage = error.localizedDescription
         }
@@ -7907,8 +7913,9 @@ extension ChatViewModel: HermesChatTurnDelegate {
     /// place. A Bot Chat's is its connection, Profile and canonical root: the one its attach
     /// found, else a deep link's, else the one cached last. An archived Bot Chat's is its own,
     /// under the root its row names, apart from its bot's so it never becomes that chat's
-    /// preview; `shared`, its bot's copy of the same root, is read when it has none. Nil without
-    /// a cache, for a new session until the host names its key, and for a Bot Chat with no root.
+    /// preview; `shared`, its bot's copy of the same root, is read when it has none, and loses
+    /// the rows the archive's newest read found cut. Nil without a cache, for a new session
+    /// until the host names its key, and for a Bot Chat with no root.
     private func hermesCacheScope() -> (context: ModelContext, server: URL, scope: String, shared: String?)? {
         guard let hermesCache, let engine = hermesTurn?.engine else { return nil }
         switch engine.target {

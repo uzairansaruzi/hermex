@@ -225,27 +225,9 @@ extension CacheStore {
         defer { performanceSignposter.endInterval("Cache Write", signpost, "rows=\(held.count, privacy: .public)") }
 
         let serverURLString = serverURL.absoluteString
-        let cached = try context.fetch(FetchDescriptor<CachedMessage>(predicate: #Predicate {
-            $0.serverURLString == serverURLString && $0.sessionID == scope
-        }))
-        let cachedByKey = Dictionary(cached.map { ($0.cacheKey, $0) }, uniquingKeysWith: { first, _ in first })
         let key = { (id: Int) in hermesMessageKey(serverURL: serverURL, scope: scope, rowID: id) }
-        let heldKeys = Set(held.map { key($0.id) })
-
-        // Where the newest read's part starts in the cache's order.
-        let covered: Int? = switch newestCoverage {
-        case .all?: Int.min
-        case .from(let ids)?: ids.lazy.compactMap { cachedByKey[key($0)]?.sortIndex }.first
-        case nil: nil
-        }
-        var start = 0
-        for row in cached where !heldKeys.contains(row.cacheKey) {
-            if let covered, row.sortIndex > covered {
-                context.delete(row)
-            } else {
-                start = max(start, row.sortIndex + 1)
-            }
-        }
+        let (cachedByKey, start) = try dropHermesMessagesTheHostCut(keeping: Set(held.map { key($0.id) }), newestCoverage: newestCoverage,
+                                                                    serverURL: serverURL, scope: scope, in: context)
         var written = Set<String>()
         for (offset, row) in held.enumerated() {
             let rowKey = key(row.id)
@@ -258,6 +240,59 @@ extension CacheStore {
             }
         }
         try saveAndTrim(context, now: cachedAt)
+    }
+
+    /// Drops the rows cached under `scope` that the newest read covered and no longer holds, as
+    /// `cacheHermesMessages` does, without writing the read's rows or touching what stays. An
+    /// archived Bot Chat's read prunes its bot's copy of the same root, which it shows when it
+    /// has none of its own, so an undo the archive saw can't come back from there.
+    @MainActor
+    static func dropHermesMessagesTheHostCut(
+        from messages: [ChatMessage],
+        newestCoverage: HermesNewestCoverage,
+        serverURL: URL,
+        scope: String,
+        in context: ModelContext
+    ) throws {
+        let held = Set(messages.compactMap { $0.rowID.map { hermesMessageKey(serverURL: serverURL, scope: scope, rowID: $0) } })
+        _ = try dropHermesMessagesTheHostCut(keeping: held, newestCoverage: newestCoverage, serverURL: serverURL,
+                                             scope: scope, in: context)
+        try context.save()
+    }
+
+    /// Deletes the rows under `scope` outside `held` in the part the newest read covered: after
+    /// the first of its rows the cache holds, or anywhere once it reached the first row. Returns
+    /// the cached rows by key and the sort index after the older rows that stay.
+    @MainActor
+    private static func dropHermesMessagesTheHostCut(
+        keeping held: Set<String>,
+        newestCoverage: HermesNewestCoverage?,
+        serverURL: URL,
+        scope: String,
+        in context: ModelContext
+    ) throws -> (cachedByKey: [String: CachedMessage], start: Int) {
+        let serverURLString = serverURL.absoluteString
+        let cached = try context.fetch(FetchDescriptor<CachedMessage>(predicate: #Predicate {
+            $0.serverURLString == serverURLString && $0.sessionID == scope
+        }))
+        let cachedByKey = Dictionary(cached.map { ($0.cacheKey, $0) }, uniquingKeysWith: { first, _ in first })
+        let key = { (id: Int) in hermesMessageKey(serverURL: serverURL, scope: scope, rowID: id) }
+
+        // Where the newest read's part starts in the cache's order.
+        let covered: Int? = switch newestCoverage {
+        case .all?: Int.min
+        case .from(let ids)?: ids.lazy.compactMap { cachedByKey[key($0)]?.sortIndex }.first
+        case nil: nil
+        }
+        var start = 0
+        for row in cached where !held.contains(row.cacheKey) {
+            if let covered, row.sortIndex > covered {
+                context.delete(row)
+            } else {
+                start = max(start, row.sortIndex + 1)
+            }
+        }
+        return (cachedByKey, start)
     }
 
     // MARK: Bot Chat
