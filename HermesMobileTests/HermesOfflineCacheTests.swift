@@ -495,6 +495,33 @@ import XCTest
         XCTAssertNil(other.summary(in: "default").hermesChat(on: server, connection: connection, listedIn: "default")?.botChatRoot)
     }
 
+    /// An older archived Bot Chat visited online keeps its own copy: the bot's Bot Chat still
+    /// previews its canonical root offline, and its next attach leaves the archive's copy.
+    func testAnOlderArchivedBotChatNeitherPreviewsForNorGoesWithItsBot() async throws {
+        let context = try makeContext()
+        await makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
+                       target: .canonicalChat(profile: "default")).model.loadMessages(modelContext: context)
+        await makeChat(HermesOfflineWire(rows: [row(1, "user", "Old question"), row(2, "assistant", "Old answer.")]),
+                       target: .session(profile: "default", key: "old-tip"), botChatRoot: "old")
+            .model.loadMessages(modelContext: context)
+
+        let offline = HermesOfflineWire(rows: [])
+        offline.connectFailure = URLError(.cannotConnectToHost)
+        let bot = makeChat(offline, target: .canonicalChat(profile: "default"))
+        await bot.model.loadMessages(modelContext: context)
+        XCTAssertTrue(bot.model.isViewingCachedData)
+        XCTAssertEqual(bot.model.messages.map(\.content), ["Hi", "Hello."])
+
+        await makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
+                       target: .canonicalChat(profile: "default")).model.loadMessages(modelContext: context)
+        let archivedOffline = HermesOfflineWire(rows: [])
+        archivedOffline.connectFailure = URLError(.cannotConnectToHost)
+        let archived = makeChat(archivedOffline, target: .session(profile: "default", key: "old-tip"), botChatRoot: "old")
+        await archived.model.loadMessages(modelContext: context)
+        XCTAssertTrue(archived.model.isViewingCachedData)
+        XCTAssertEqual(archived.model.messages.map(\.content), ["Old question", "Old answer."])
+    }
+
     /// A clear while a Bot Chat's read is out leaves the cache empty when the read lands; the
     /// next attach caches again.
     func testAReadUnderWayDuringAClearLeavesTheCacheEmpty() async throws {

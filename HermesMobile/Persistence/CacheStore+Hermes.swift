@@ -20,7 +20,9 @@ import SwiftData
 /// `hermes-bot|<connection>|<Profile>|<canonical root>`: the root `identify` finds is its
 /// identity, which a compaction that moves its stored key leaves in place. A webui server's
 /// list reads and sweeps every session row of its server, so the chat finds its root again
-/// from its message rows, not from a session row.
+/// from its message rows, not from a session row. An archived Bot Chat keeps its own copy under
+/// `hermes-bot-archive|<connection>|<Profile>|<root>`, so it never becomes its bot's preview
+/// or goes when its bot's chat finds another root.
 extension CacheStore {
     /// A Hermes session's scope: the message rows' `sessionID`, and the tail of every key.
     static func hermesScope(profile: String, lineageRoot: String) -> String {
@@ -44,8 +46,14 @@ extension CacheStore {
         hermesBotChatScopePrefix(connectionID: connectionID, profile: profile) + root
     }
 
-    private static func hermesBotChatScopePrefix(connectionID: UUID, profile: String) -> String {
-        "hermes-bot|\(connectionID.uuidString)|\(profile)|"
+    /// An archived Bot Chat's own scope on `connectionID`, under its row's lineage root.
+    static func hermesArchivedBotChatScope(connectionID: UUID, profile: String, root: String) -> String {
+        hermesBotChatScopePrefix(connectionID: connectionID, profile: profile, archived: true) + root
+    }
+
+    /// Every Bot Chat scope of `profile` on `connectionID`, or of every Profile when nil.
+    private static func hermesBotChatScopePrefix(connectionID: UUID, profile: String?, archived: Bool = false) -> String {
+        "\(archived ? "hermes-bot-archive" : "hermes-bot")|\(connectionID.uuidString)|" + (profile.map { "\($0)|" } ?? "")
     }
 
     // MARK: Sessions
@@ -290,15 +298,16 @@ extension CacheStore {
         try removeHermesBotChats(serverURL: serverURL, prefix: prefix, except: prefix + root, in: context)
     }
 
-    /// Removes the Bot Chat transcripts cached on `connectionID`, only `profile`'s when given: a
-    /// deleted Profile's, or a discarded connection's. A chat's write already under way can't put
-    /// them back (`hermesCacheEpoch`).
+    /// Removes the Bot Chat transcripts cached on `connectionID`, archived ones' included, only
+    /// `profile`'s when given: a deleted Profile's, or a discarded connection's. A chat's write
+    /// already under way can't put them back (`hermesCacheEpoch`).
     @MainActor
     static func removeHermesBotChats(serverURL: URL, connectionID: UUID, profile: String? = nil, in context: ModelContext) throws {
         revokeHermesWriters(serverURL: serverURL)
-        let prefix = profile.map { hermesBotChatScopePrefix(connectionID: connectionID, profile: $0) }
-            ?? "hermes-bot|\(connectionID.uuidString)|"
-        try removeHermesBotChats(serverURL: serverURL, prefix: prefix, except: nil, in: context)
+        for archived in [false, true] {
+            let prefix = hermesBotChatScopePrefix(connectionID: connectionID, profile: profile, archived: archived)
+            try removeHermesBotChats(serverURL: serverURL, prefix: prefix, except: nil, in: context)
+        }
     }
 
     @MainActor

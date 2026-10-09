@@ -216,7 +216,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         let preview: String?
         /// A bot's canonical Bot Chat, which the Sessions list opens in that bot (#1053).
         var isBotChat = false
-        /// The root of the Bot Chat whose cached transcript this row shares (#1144).
+        /// The Bot Chat root this row's chat caches under, falling back to its bot's copy (#1144).
         var botChatRoot: String? = nil
     }
 

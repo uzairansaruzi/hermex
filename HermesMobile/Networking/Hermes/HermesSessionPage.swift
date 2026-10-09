@@ -57,8 +57,8 @@ struct HermesSessionRow: Decodable, Equatable {
     /// A bot's canonical Bot Chat (#1048): hidden, under its exact title.
     var isBotChat: Bool { hidden == true && title == HermesCall.botChatTitle }
 
-    /// The canonical root whose cached transcript this row shares with its bot's Bot Chat
-    /// (#1144): an `isBotChat` row's identity, or the root of a legacy compression chain the host
+    /// The Bot Chat root this row's chat caches under, reading its bot's Bot Chat's copy of it
+    /// while it has none of its own (#1144): an `isBotChat` row's identity, or the root of a legacy compression chain the host
     /// lists under its tip's "Bot Chat (continued)" title, keeping the root's `hidden`. Nil
     /// for any other row.
     var botChatRoot: String? {

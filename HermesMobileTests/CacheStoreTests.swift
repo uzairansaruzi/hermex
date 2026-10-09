@@ -1101,8 +1101,9 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try fetchCachedMessages(in: context).map(\.sessionID), ["hermes|default|b"])
     }
 
-    /// A deleted Profile takes only its own Bot Chat on that connection, and a discarded
-    /// connection every one of its own: other connections', servers' and sessions' stay.
+    /// A deleted Profile takes only its own Bot Chat on that connection, archived copies included,
+    /// and a discarded connection every one of its own: other connections', servers' and
+    /// sessions' stay.
     func testRemovingABotOrAConnectionTakesOnlyItsBotChats() throws {
         let context = try makeContext()
         let mac = UUID(), laptop = UUID()
@@ -1113,6 +1114,11 @@ final class CacheStoreTests: XCTestCase {
                                                scope: CacheStore.hermesBotChatScope(connectionID: connection, profile: profile, root: "root"),
                                                in: context)
         }
+        for profile in ["triage", "keep"] {
+            try CacheStore.cacheHermesMessages([hermesMessage(1)], newestCoverage: .all, serverURL: hermesServer,
+                                               scope: CacheStore.hermesArchivedBotChatScope(connectionID: mac, profile: profile, root: "old"),
+                                               in: context)
+        }
         try CacheStore.cacheHermesMessages([hermesMessage(1)], newestCoverage: .all, serverURL: hermesServer, profile: "triage",
                                            lineageRoot: "root", in: context)
         let root = { (server: URL, connection: UUID, profile: String) in
@@ -1120,16 +1126,23 @@ final class CacheStoreTests: XCTestCase {
         }
         let session = { try CacheStore.cachedHermesMessages(serverURL: self.hermesServer, profile: "triage", lineageRoot: "root",
                                                             in: context, limit: 100).count }
+        let archived = { (profile: String) in
+            try CacheStore.cachedHermesMessages(serverURL: self.hermesServer, scope: CacheStore.hermesArchivedBotChatScope(
+                connectionID: mac, profile: profile, root: "old"), in: context, limit: 100).count
+        }
 
         try CacheStore.removeHermesBotChats(serverURL: hermesServer, connectionID: mac, profile: "triage", in: context)
         XCTAssertNil(try root(hermesServer, mac, "triage"))
+        XCTAssertEqual(try archived("triage"), 0)
         XCTAssertEqual(try root(hermesServer, mac, "keep"), "root")
+        XCTAssertEqual(try archived("keep"), 1)
         XCTAssertEqual(try root(hermesServer, laptop, "triage"), "root")
         XCTAssertEqual(try root(other, mac, "triage"), "root")
         XCTAssertEqual(try session(), 1)
 
         try CacheStore.removeHermesBotChats(serverURL: hermesServer, connectionID: mac, in: context)
         XCTAssertNil(try root(hermesServer, mac, "keep"))
+        XCTAssertEqual(try archived("keep"), 0)
         XCTAssertEqual(try root(hermesServer, laptop, "triage"), "root")
         XCTAssertEqual(try root(other, mac, "triage"), "root")
         XCTAssertEqual(try session(), 1)
