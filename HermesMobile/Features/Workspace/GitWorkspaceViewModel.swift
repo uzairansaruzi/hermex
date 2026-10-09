@@ -182,9 +182,13 @@ final class GitWorkspaceAvailabilityViewModel {
         return trimmed.isEmpty ? String(localized: "Branch") : trimmed
     }
 
-    var isRunningGitAction: Bool {
-        isSwitchingBranch || runningRemoteAction != nil || commitPhase != nil
+    @MainActor var isRunningGitAction: Bool {
+        isSwitchingBranch || runningRemoteAction != nil || commitPhase != nil || isWriteLocked
     }
+
+    /// True while a write on this repository holds its `GitWriteLock`: this menu's, or the commit
+    /// sheet's. Always false on webui.
+    @MainActor var isWriteLocked: Bool { git?.writeLock?.isHeld == true }
 
     /// True while a quick-commit pipeline (menu row or inline turn button) is running.
     var isCommitting: Bool { commitPhase != nil }
@@ -240,10 +244,13 @@ final class GitWorkspaceAvailabilityViewModel {
 
     @MainActor
     func performRemoteAction(_ action: GitRemoteAction) async -> Bool {
-        guard let call = remoteCall(action), runningRemoteAction == nil else { return false }
+        guard let call = remoteCall(action), runningRemoteAction == nil, git?.writeLock?.acquire() ?? true else { return false }
         runningRemoteAction = action
         actionErrorMessage = nil
-        defer { runningRemoteAction = nil }
+        defer {
+            runningRemoteAction = nil
+            git?.writeLock?.release()
+        }
 
         do {
             let response = try await call()
@@ -279,7 +286,8 @@ final class GitWorkspaceAvailabilityViewModel {
     /// turn-end button. Stages every non-ignored change, asks the server to suggest a
     /// commit message from the staged diff, commits, and optionally pushes. `onPhase`
     /// lets the caller drive the stacked progress toast; `commitPhase` mirrors the same
-    /// state for the inline button while it runs.
+    /// state for the inline button while it runs. Refused, quietly, while the commit sheet
+    /// writes to a Hermes repository (`GitWriteLock`).
     @MainActor
     func quickCommit(push: Bool, onPhase: ((GitCommitPhase) -> Void)? = nil) async -> GitQuickCommitOutcome {
         guard let git, commitPhase == nil else { return .failure }
@@ -299,9 +307,13 @@ final class GitWorkspaceAvailabilityViewModel {
             return .tooManyChanges
         }
 
+        guard git.writeLock?.acquire() ?? true else { return .failure }
         actionErrorMessage = nil
         setCommitPhase(.generatingMessage, notify: onPhase)
-        defer { commitPhase = nil }
+        defer {
+            commitPhase = nil
+            git.writeLock?.release()
+        }
 
         do {
             // Stage everything first so this one-tap action commits all local changes,
@@ -558,7 +570,8 @@ enum GitCommitOperation: Equatable {
 /// Self-contained per repository client: it loads its own status so the sheet always reflects
 /// the current working tree, and owns the file selection, commit-message field, and the
 /// stage / unstage / discard / suggest / commit operations. A failed Hermes write reads the
-/// status again, since it can have changed part of the tree (`GitDataClient.isHermes`).
+/// status again, since it can have changed part of the tree (`GitDataClient.isHermes`), and
+/// none starts while the Git menu writes to the same repository (`GitWriteLock`).
 @MainActor
 @Observable
 final class GitCommitViewModel {
@@ -601,7 +614,9 @@ final class GitCommitViewModel {
     var hasChanges: Bool { !trackedFiles.isEmpty }
     var hasStagedChanges: Bool { !stagedFiles.isEmpty }
     var hasSelection: Bool { !selectedPaths.isEmpty }
-    var isBusy: Bool { busyOperation != nil }
+    /// True while this sheet runs an operation, or the Git menu's quick commit or push holds the
+    /// repository's `GitWriteLock`.
+    var isBusy: Bool { busyOperation != nil || git?.writeLock?.isHeld == true }
     var trimmedMessage: String { message.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     func isSelected(_ file: GitFile) -> Bool { selectedPaths.contains(file.id) }
@@ -705,9 +720,13 @@ final class GitCommitViewModel {
             actionErrorMessage = String(localized: "Enter a commit message first.")
             return false
         }
+        guard git.writeLock?.acquire() ?? true else { return false }
         busyOperation = .committing
         actionErrorMessage = nil
-        defer { busyOperation = nil }
+        defer {
+            busyOperation = nil
+            git.writeLock?.release()
+        }
         do {
             let response = try await commitCall(git, messageToSend)
             status = response.resolvedStatus ?? status
@@ -748,10 +767,13 @@ final class GitCommitViewModel {
         files: [GitFile],
         _ call: @escaping (any GitDataClient, [GitFile]) async throws -> GitStatus?
     ) async {
-        guard let git, busyOperation == nil, !files.isEmpty else { return }
+        guard let git, busyOperation == nil, !files.isEmpty, git.writeLock?.acquire() ?? true else { return }
         busyOperation = operation
         actionErrorMessage = nil
-        defer { busyOperation = nil }
+        defer {
+            busyOperation = nil
+            git.writeLock?.release()
+        }
         do {
             status = try await call(git, files) ?? status
             pruneSelectionToCurrentFiles()

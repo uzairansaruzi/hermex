@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// The repository one chat's Git menu, Changes sheet, commit sheet, diffs and turn-changes card
 /// read (#1114) and change (#1115): webui's session routes (`WebUIGitClient`) or a Hermes host's
@@ -17,6 +18,9 @@ protocol GitDataClient: Sendable {
     /// the status again and the commit sheet shows a commit's sha. webui's answers carry the
     /// status, and its sheet keeps its presentation.
     var isHermes: Bool { get }
+    /// Held while one of this repository's writes runs, so the chat's Git menu and commit sheet
+    /// never write under each other (#1115). Nil on webui, whose writes are unchanged.
+    @MainActor var writeLock: GitWriteLock? { get }
 
     // Writes. Each answers the status after it when it has one.
     func stage(_ files: [GitFile]) async throws -> GitStatus?
@@ -36,6 +40,26 @@ extension GitDataClient {
     @MainActor func rowPath(forToolPath path: String) -> String { path }
 
     var isHermes: Bool { false }
+
+    @MainActor var writeLock: GitWriteLock? { nil }
+}
+
+/// One Hermes repository's write in flight (#1115). The Git menu's quick commit and push and the
+/// commit sheet's stage, unstage, discard and commit each hold it from start to finish, a quick
+/// commit's message wait included, and the other surface's write controls are disabled meanwhile.
+@MainActor @Observable final class GitWriteLock {
+    private(set) var isHeld = false
+
+    /// Takes the lock; false, with nothing taken, while another write holds it.
+    func acquire() -> Bool {
+        guard !isHeld else { return false }
+        isHeld = true
+        return true
+    }
+
+    func release() {
+        isHeld = false
+    }
 }
 
 /// `GitDataClient` over webui's session-scoped Git routes.

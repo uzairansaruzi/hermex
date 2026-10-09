@@ -34,6 +34,8 @@ import Foundation
     private let http: HermesConnection
     private let writeMessage: MessageWriter?
     private let writeOwner: WriteOwner?
+    /// Shared by everything that writes through this client: the chat's Git menu and commit sheet.
+    let writeLock: GitWriteLock?
     /// The repository root, once `fs/git-root` has found one. Never shown, logged or persisted.
     private var root: String?
 
@@ -50,6 +52,7 @@ import Foundation
         self.http = http
         self.writeMessage = writeMessage
         self.writeOwner = writeOwner
+        self.writeLock = GitWriteLock()
     }
 
     /// A Hermes host's writes answer only `{ok}`: a failed one reads the status again, and a
@@ -318,7 +321,9 @@ import Foundation
 
     /// A commit message from the host's model, as Desktop drafts one: `commit-context`'s diff of
     /// what would commit, or the selected files' whole changes, with its recent subjects to match.
-    /// `avoiding` is the last suggestion, so Regenerate gives a different one.
+    /// `avoiding` is the last suggestion, so Regenerate gives a different one. Before the first
+    /// commit a selected new file's whole change is empty, so it is sent as its current content,
+    /// as `diff(for:)` shows it.
     func suggestMessage(for files: [GitFile]?, avoiding previous: String?) async throws -> GitCommitMessageResponse {
         guard let writeMessage else { throw HermesGitRefusal.noMessage }
         let root = try await writableRoot()
@@ -327,7 +332,10 @@ import Foundation
         if let files {
             diff = ""
             for file in files where diff.count < Self.selectedDiffCharacters {
-                diff += try Self.json(try await send(.gitFileDiff(repository: root, file: file.path ?? file.displayPath)))["diff"].text ?? ""
+                let path = file.path ?? file.displayPath
+                let change = try Self.json(try await send(.gitFileDiff(repository: root, file: path)))["diff"].text ?? ""
+                diff += change.isEmpty && file.changeKind == .added
+                    ? try await currentContent(of: path, root: root).diff ?? "" : change
             }
             diff = String(diff.prefix(Self.selectedDiffCharacters))
         }

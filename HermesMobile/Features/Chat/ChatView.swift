@@ -1390,7 +1390,7 @@ struct ChatView: View {
         ) else { return nil }
         return ChatInlineCommitContext(
             runningPhase: gitAvailabilityViewModel.commitPhase,
-            isDisabled: gitWriteAvailability.writesDisabled
+            isDisabled: gitWriteAvailability.writesDisabled || gitAvailabilityViewModel.isWriteLocked
         )
     }
 
@@ -1426,7 +1426,7 @@ struct ChatView: View {
     @MainActor
     private func performQuickCommit(push: Bool) async {
         let git = gitAvailabilityViewModel
-        guard !git.isCommitting else { return }
+        guard !git.isCommitting, !git.isWriteLocked else { return }
 
         let branch = git.currentBranchName
         gitToastState.showProgress(GitActionProgress(

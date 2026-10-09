@@ -1547,8 +1547,11 @@ panel (#1113) and Git (#1114) read the same context.
   runs, a message is sending or the screen shows cached data sends nothing, and each request
   checks again as it goes out, also stopping once the chat reattached or left the folder. A
   folder change also retires the chat's Git state (`GitWorkspaceAvailabilityViewModel.retire()`),
-  so a quick commit or push still running there shows no toast or alert in the new folder. A
-  suggested message is `commit-context`'s diff (or the selected files' `file-diff`s), sent to
+  so a quick commit or push still running there shows no toast or alert in the new folder. The
+  Git menu and the commit sheet share one `GitWriteLock` per repository: while either writes (a
+  quick commit's message wait included), the other's write controls are disabled and its writes
+  refused. A suggested message is `commit-context`'s diff (or the selected files' `file-diff`s,
+  a new file's current content before the first commit, when that is empty), sent to
   `llm.oneshot` with the `commit_message` template, `recent` as `recent_commits`, the chat's
   runtime as `session_id`, temperature 0.8 as Desktop sends it, and the last suggestion as
   `avoid` on Regenerate. Every write reads the status again, and so does a failed one (webui's

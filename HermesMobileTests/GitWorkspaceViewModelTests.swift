@@ -1651,6 +1651,105 @@ extension GitWorkspaceViewModelTests {
         XCTAssertNil(availability.lastActionMessage)
     }
 
+    /// While a quick commit waits for its message, the commit sheet on the same repository is busy
+    /// and sends nothing, so the quick commit commits what it staged.
+    @MainActor
+    func testTheHermesSheetWritesNothingWhileAQuickCommitWaitsForItsMessage() async throws {
+        let reference = SheetReference()
+        nonisolated(unsafe) var duringMessage: (busy: Bool, committed: Bool, writes: [String])?
+        let git = HermesGitHost.client(writeMessage: { _, _, _ in
+            if let sheet = reference.sheet {
+                sheet.toggleSelection(sheet.trackedFiles[1])
+                sheet.message = "feat(app): only b"
+                await sheet.unstageSelectedOrAll()
+                await sheet.discardSelectedOrAll(deleteUntracked: true)
+                let committed = await sheet.commitSelected(push: false)
+                duringMessage = (sheet.isBusy, committed, HermesGitHost.writes)
+            }
+            return "chore: tidy"
+        }) { Self.threeChanges($0) }
+        let availability = GitWorkspaceAvailabilityViewModel(
+            session: SessionSummary(), server: URL(string: "https://webui.example")!, git: git
+        )
+        await availability.load()
+        let commitSheet = GitCommitViewModel(git: git)
+        await commitSheet.load()
+        reference.sheet = commitSheet
+
+        let outcome = await availability.quickCommit(push: false)
+
+        XCTAssertEqual(duringMessage?.busy, true)
+        XCTAssertEqual(duringMessage?.committed, false)
+        XCTAssertEqual(duringMessage?.writes, ["stage a.swift", "stage c.txt"])
+        guard case .success = outcome else { return XCTFail("Expected success, got \(outcome)") }
+        XCTAssertEqual(HermesGitHost.writes, ["stage a.swift", "stage c.txt", #"commit "chore: tidy""#])
+        XCTAssertFalse(commitSheet.isBusy)
+    }
+
+    /// While the commit sheet commits, the Git menu's quick commit and push are disabled and send
+    /// nothing.
+    @MainActor
+    func testAHermesQuickCommitAndPushWaitForTheSheetsCommit() async throws {
+        let git = HermesGitHost.client(writeMessage: { _, _, _ in "chore: tidy" }) { request in
+            request.url?.path == "/api/git/review/commit" ? .park : Self.threeChanges(request)
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(
+            session: SessionSummary(), server: URL(string: "https://webui.example")!, git: git
+        )
+        await availability.load()
+        let sheet = GitCommitViewModel(git: git)
+        await sheet.load()
+        sheet.message = "feat(app): b"
+        nonisolated(unsafe) var duringCommit: (running: Bool, outcome: GitQuickCommitOutcome, pushed: Bool)?
+        HermesHostFixture.onPark = { Task { @MainActor in
+            let running = availability.isRunningGitAction
+            let outcome = await availability.quickCommit(push: true)
+            let pushed = await availability.performRemoteAction(.push)
+            duringCommit = (running, outcome, pushed)
+            HermesHostFixture.releaseParked()
+        } }
+
+        let committed = await sheet.commit(push: false)
+
+        XCTAssertTrue(committed)
+        XCTAssertEqual(duringCommit?.running, true)
+        XCTAssertEqual(duringCommit?.outcome, .failure)
+        XCTAssertEqual(duringCommit?.pushed, false)
+        XCTAssertEqual(HermesGitHost.writes, [#"commit "feat(app): b""#])
+        XCTAssertFalse(availability.isRunningGitAction)
+    }
+
+    /// Before the first commit `file-diff` is empty, so a selected new file's message is written
+    /// from its current content, as its diff shows it.
+    @MainActor
+    func testAHermesSuggestionBeforeTheFirstCommitSendsANewFilesContent() async throws {
+        nonisolated(unsafe) var asked: [String] = []
+        let sheet = await hermesCommitSheet(writeMessage: { diff, _, _ in
+            asked.append(diff)
+            return "feat(app): add notes"
+        }) { request in
+            switch request.url?.path {
+            case "/api/git/file-diff":
+                return .json(200, .object(["diff": .string("")]))
+            case "/api/fs/read-text":
+                return .json(200, .object(["binary": .bool(false), "byteSize": .number(13), "truncated": .bool(false),
+                                           "text": .string("first\nsecond\n")]))
+            default:
+                return HermesGitHost.repositoryReply(request, unborn: true, rows: [("notes.txt", 2, 0, "A", true)],
+                                                     flags: [("notes.txt", true, false, false, false)])
+            }
+        }
+        sheet.toggleSelection(sheet.trackedFiles[0])
+
+        await sheet.suggestMessage()
+
+        XCTAssertNil(sheet.actionErrorMessage)
+        XCTAssertEqual(sheet.message, "feat(app): add notes")
+        XCTAssertEqual(asked, ["diff --git a/notes.txt b/notes.txt\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1,2 @@\n+first\n+second\n"])
+        XCTAssertEqual(HermesHostFixture.requests.last.map(HermesGitHost.describe),
+                       "/api/fs/read-text path=\(HermesGitHost.repository)/notes.txt")
+    }
+
     /// webui's writes keep their presentation (#1115): a failed one doesn't read the status
     /// again, and the sheet shows no commit sha.
     @MainActor
@@ -1686,4 +1785,9 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(sheet.lastCommitSHA, "abc1234")
         XCTAssertNil(sheet.shownCommitSHA)
     }
+}
+
+/// The commit sheet a test's message writer reaches, set once both exist.
+@MainActor private final class SheetReference {
+    var sheet: GitCommitViewModel?
 }
