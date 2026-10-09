@@ -421,8 +421,8 @@
 		B5A220000000000000000003 /* MarkerMessageCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A220000000000000000004 /* MarkerMessageCardView.swift */; };
 		C22300000000000000000001 /* CompressionAnchorResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22300000000000000000002 /* CompressionAnchorResolver.swift */; };
 		C22300000000000000000003 /* CompressionAnchorResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22300000000000000000004 /* CompressionAnchorResolverTests.swift */; };
-		C21200000000000000000001 /* StreamingWordDrain.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21200000000000000000002 /* StreamingWordDrain.swift */; };
-		C21200000000000000000003 /* StreamingWordDrainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21200000000000000000004 /* StreamingWordDrainTests.swift */; };
+		C21200000000000000000001 /* StreamingRevealGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21200000000000000000002 /* StreamingRevealGate.swift */; };
+		C21200000000000000000003 /* StreamingRevealGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21200000000000000000004 /* StreamingRevealGateTests.swift */; };
 		C21200000000000000000005 /* ChatViewModelStreamingPaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C21200000000000000000006 /* ChatViewModelStreamingPaceTests.swift */; };
 		C23400000000000000000011 /* ProviderGlyphGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000012 /* ProviderGlyphGalleryView.swift */; };
 		C14900000000000000000001 /* Kanban.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000002 /* Kanban.swift */; };
@@ -1125,8 +1125,8 @@
 		B5A220000000000000000004 /* MarkerMessageCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkerMessageCardView.swift; sourceTree = "<group>"; };
 		C22300000000000000000002 /* CompressionAnchorResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompressionAnchorResolver.swift; sourceTree = "<group>"; };
 		C22300000000000000000004 /* CompressionAnchorResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompressionAnchorResolverTests.swift; sourceTree = "<group>"; };
-		C21200000000000000000002 /* StreamingWordDrain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingWordDrain.swift; sourceTree = "<group>"; };
-		C21200000000000000000004 /* StreamingWordDrainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingWordDrainTests.swift; sourceTree = "<group>"; };
+		C21200000000000000000002 /* StreamingRevealGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingRevealGate.swift; sourceTree = "<group>"; };
+		C21200000000000000000004 /* StreamingRevealGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingRevealGateTests.swift; sourceTree = "<group>"; };
 		C21200000000000000000006 /* ChatViewModelStreamingPaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModelStreamingPaceTests.swift; sourceTree = "<group>"; };
 		C23400000000000000000012 /* ProviderGlyphGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderGlyphGalleryView.swift; sourceTree = "<group>"; };
 		C14900000000000000000002 /* Kanban.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kanban.swift; sourceTree = "<group>"; };
@@ -1524,7 +1524,7 @@
 				C25420000000000000000002 /* SteerMessageTests.swift */,
 				C22600000000000000000004 /* StreamReconnectContractTests.swift */,
 				C22300000000000000000004 /* CompressionAnchorResolverTests.swift */,
-				C21200000000000000000004 /* StreamingWordDrainTests.swift */,
+				C21200000000000000000004 /* StreamingRevealGateTests.swift */,
 				C21200000000000000000006 /* ChatViewModelStreamingPaceTests.swift */,
 				C1490000000000000000000A /* APIClientKanbanTests.swift */,
 				C1490000000000000000000C /* KanbanFeatureStateTests.swift */,
@@ -1935,7 +1935,7 @@
 				B5A220000000000000000002 /* ChatMarkerMessageClassifier.swift */,
 				B5A220000000000000000004 /* MarkerMessageCardView.swift */,
 				C22300000000000000000002 /* CompressionAnchorResolver.swift */,
-				C21200000000000000000002 /* StreamingWordDrain.swift */,
+				C21200000000000000000002 /* StreamingRevealGate.swift */,
 				454454454454454454454401 /* ResponseTextSelection.swift */,
 				454454454454454454454411 /* ResponseSelectionInput.swift */,
 				D1FF76200000000000000001 /* MarkdownDiffCodeBlock.swift */,
@@ -2710,7 +2710,7 @@
 				B5A220000000000000000001 /* ChatMarkerMessageClassifier.swift in Sources */,
 				B5A220000000000000000003 /* MarkerMessageCardView.swift in Sources */,
 				C22300000000000000000001 /* CompressionAnchorResolver.swift in Sources */,
-				C21200000000000000000001 /* StreamingWordDrain.swift in Sources */,
+				C21200000000000000000001 /* StreamingRevealGate.swift in Sources */,
 				1A2B3C4D5E6F7000000000E4 /* FileBrowserView.swift in Sources */,
 				1A2B3C4D5E6F7000000000E6 /* FileBrowserViewModel.swift in Sources */,
 				1F16000000000000000000B1 /* FileTree.swift in Sources */,
@@ -2956,7 +2956,7 @@
 				C25420000000000000000001 /* SteerMessageTests.swift in Sources */,
 				C22600000000000000000003 /* StreamReconnectContractTests.swift in Sources */,
 				C22300000000000000000003 /* CompressionAnchorResolverTests.swift in Sources */,
-				C21200000000000000000003 /* StreamingWordDrainTests.swift in Sources */,
+				C21200000000000000000003 /* StreamingRevealGateTests.swift in Sources */,
 				C21200000000000000000005 /* ChatViewModelStreamingPaceTests.swift in Sources */,
 				C14900000000000000000009 /* APIClientKanbanTests.swift in Sources */,
 				C1490000000000000000000B /* KanbanFeatureStateTests.swift in Sources */,

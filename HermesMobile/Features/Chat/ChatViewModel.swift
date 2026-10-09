@@ -305,7 +305,10 @@ final class ChatViewModel {
     /// one it was sent under; every other load discards it.
     @ObservationIgnored private var initialSessionPrefetch: InitialSessionPrefetch?
     @ObservationIgnored private var pendingStreamingScrollTriggerTask: Task<Void, Never>?
-    @ObservationIgnored private var pendingAssistantTokenChunks: [String] = []
+    @ObservationIgnored private var pendingAssistantText = ""
+    /// Whether the last reveal tick held a trailing fragment back; the next tick
+    /// releases it even without new whitespace (`StreamingRevealGate`).
+    @ObservationIgnored private var heldStreamingFragmentLastTick = false
     @ObservationIgnored private var pendingReasoningChunks: [String] = []
     @ObservationIgnored private var pendingStreamingContentFlushTask: Task<Void, Never>?
     private(set) var completedToolCallGroups: [ToolCallGroup] = []
@@ -573,16 +576,13 @@ final class ChatViewModel {
     private let steeringConfirmationDismissDelay: @Sendable () async throws -> Void
     @ObservationIgnored private var steeringConfirmationDismissTask: Task<Void, Never>?
     // Real-time window over which rapid streaming updates coalesce into a single
-    // scroll trigger / first content flush. Injectable so tests can drive
-    // coalescing deterministically; production keeps the 16ms default.
+    // scroll trigger. Injectable so tests can drive coalescing deterministically;
+    // production keeps the 16ms default.
     private let streamingScrollCoalescingDelayNanoseconds: UInt64
-    // Display pacing for streamed assistant text (issue #212): after the first
-    // coalesced flush, buffered tokens are revealed word-by-word at this cadence,
-    // with the per-tick quota scaling up so the display never trails the live
-    // stream by more than the max lag. Pacing affects display timing only — the
-    // buffer and final content are untouched. Injectable for tests.
-    private let streamingWordRevealCadenceNanoseconds: UInt64
-    private let streamingMaxRevealLagNanoseconds: UInt64
+    // Waits out one streaming reveal tick (50ms in production, #1126): buffered
+    // tokens and reasoning show at most once per tick. Injectable so tests drive
+    // ticks deterministically.
+    private let streamingRevealTick: @Sendable () async throws -> Void
     private var speechSynthesizer: (any ChatSpeechSynthesizing)?
     private var speechDelegate: SpeechSynthesizerDelegate?
     // Identity of the utterance currently being spoken. A stale finish/cancel callback
@@ -677,8 +677,9 @@ final class ChatViewModel {
             try await Task.sleep(nanoseconds: 3_000_000_000)
         },
         streamingScrollCoalescingDelayNanoseconds: UInt64 = 16_000_000,
-        streamingWordRevealCadenceNanoseconds: UInt64 = 48_000_000,
-        streamingMaxRevealLagNanoseconds: UInt64 = 1_000_000_000,
+        streamingRevealTick: @escaping @Sendable () async throws -> Void = {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        },
         speechSynthesizerFactory: @escaping () -> any ChatSpeechSynthesizing = { AVSpeechSynthesizer() },
         listenAudioSession: (any ListenAudioSessionControlling)? = nil,
         listenRemoteControlCenter: (any ListenRemoteControlControlling)? = nil,
@@ -740,8 +741,7 @@ final class ChatViewModel {
         self.pollingIntervals = pollingIntervals
         self.steeringConfirmationDismissDelay = steeringConfirmationDismissDelay
         self.streamingScrollCoalescingDelayNanoseconds = streamingScrollCoalescingDelayNanoseconds
-        self.streamingWordRevealCadenceNanoseconds = streamingWordRevealCadenceNanoseconds
-        self.streamingMaxRevealLagNanoseconds = streamingMaxRevealLagNanoseconds
+        self.streamingRevealTick = streamingRevealTick
         self.speechSynthesizerFactory = speechSynthesizerFactory
         self.listenAudioSession = listenAudioSession ?? ListenAudioSessionController()
         self.listenRemoteControlCenter = listenRemoteControlCenter ?? ListenRemoteControlController()
@@ -901,35 +901,31 @@ final class ChatViewModel {
         pendingStreamingScrollTriggerTask = nil
     }
 
-    private func scheduleStreamingContentFlush(afterNanoseconds delay: UInt64? = nil) {
+    private func scheduleStreamingContentFlush() {
         guard pendingStreamingContentFlushTask == nil else { return }
 
         let expectedSessionID = sessionID
-        let resolvedDelay = delay ?? streamingScrollCoalescingDelayNanoseconds
+        let tick = streamingRevealTick
         pendingStreamingContentFlushTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: resolvedDelay)
-            guard let self else { return }
+            try? await tick()
+            // A cancelled tick was already replaced or flushed; it must not clear
+            // the task slot a newer tick owns.
+            guard let self, !Task.isCancelled else { return }
 
             self.pendingStreamingContentFlushTask = nil
-            guard !Task.isCancelled, self.sessionID == expectedSessionID else { return }
+            guard self.sessionID == expectedSessionID else { return }
 
-            self.drainStreamingContentTick()
+            self.revealStreamingContentTick()
         }
     }
 
-    /// One paced flush tick: drains a word-cadence quota of buffered assistant
-    /// text (reasoning still flushes whole — pacing applies to assistant content
-    /// only) and reschedules itself at the word cadence while a backlog remains.
-    /// Completion paths (done/cancel/error/interim/snapshot) bypass pacing via
+    /// One reveal tick: shows buffered assistant text through `StreamingRevealGate`
+    /// and all buffered reasoning, then reschedules only while a fragment is held.
+    /// Completion paths (done/cancel/error/interim/snapshot) skip the gate via
     /// `flushPendingStreamingContent()`, which cancels any scheduled tick.
-    private func drainStreamingContentTick() {
+    private func revealStreamingContentTick() {
         var didMutate = false
-        let quota = StreamingWordDrain.drainQuota(
-            backlogUnitCount: StreamingWordDrain.unitCount(in: pendingAssistantTokenChunks.joined()),
-            cadenceNanoseconds: streamingWordRevealCadenceNanoseconds,
-            maxLagNanoseconds: streamingMaxRevealLagNanoseconds
-        )
-        if flushAssistantTokens(maxWordUnits: quota) {
+        if flushAssistantTokens(throughRevealGate: true) {
             didMutate = true
         }
         if flushReasoningChunks() {
@@ -940,8 +936,8 @@ final class ChatViewModel {
             scheduleStreamingScrollTrigger()
         }
 
-        if !pendingAssistantTokenChunks.isEmpty {
-            scheduleStreamingContentFlush(afterNanoseconds: streamingWordRevealCadenceNanoseconds)
+        if heldStreamingFragmentLastTick {
+            scheduleStreamingContentFlush()
         }
     }
 
@@ -952,7 +948,8 @@ final class ChatViewModel {
 
     private func resetPendingStreamingContentBuffers() {
         cancelPendingStreamingContentFlush()
-        pendingAssistantTokenChunks = []
+        pendingAssistantText = ""
+        heldStreamingFragmentLastTick = false
         pendingReasoningChunks = []
         // Chunks are deduplicated at append time, so the replay matched-prefix
         // counters can reference unflushed content; dropping the buffers makes them
@@ -6735,7 +6732,7 @@ final class ChatViewModel {
         if isActiveStreamReplayConnection {
             let messageID = ensureStreamingAssistantMessage()
             let flushedContent = messages.first(where: { $0.messageId == messageID })?.content ?? ""
-            let effectiveContent = flushedContent + pendingAssistantTokenChunks.joined()
+            let effectiveContent = flushedContent + pendingAssistantText
             remainder = deduplicatedReplayToken(token, existingContent: effectiveContent)
         } else {
             _ = ensureStreamingAssistantMessage()
@@ -6743,7 +6740,7 @@ final class ChatViewModel {
         }
         guard !remainder.isEmpty else { return false }
 
-        pendingAssistantTokenChunks.append(remainder)
+        pendingAssistantText += remainder
         scheduleStreamingContentFlush()
         // Replayed text is catch-up, not new work: reattaching to a running
         // stream must not pulse for every token that already happened.
@@ -6755,23 +6752,27 @@ final class ChatViewModel {
     }
 
     @discardableResult
-    private func flushAssistantTokens(maxWordUnits: Int? = nil) -> Bool {
-        guard !pendingAssistantTokenChunks.isEmpty else { return false }
+    private func flushAssistantTokens(throughRevealGate: Bool = false) -> Bool {
+        guard !pendingAssistantText.isEmpty else { return false }
 
-        // Chunks were deduplicated at append time, so flushing is pure concatenation.
-        // A word-unit limit moves only the head of the buffer into the visible
-        // message; the tail stays pending, keeping the replay-dedup invariant that
-        // flushed + pending text is the full received content.
-        let pendingText = pendingAssistantTokenChunks.joined()
+        // Tokens were deduplicated at append time, so flushing is pure concatenation.
+        // The reveal gate moves only the head of the buffer into the visible
+        // message; the held fragment stays pending, keeping the replay-dedup
+        // invariant that flushed + pending text is the full received content.
         let appendedContent: String
-        if let maxWordUnits {
-            let (head, tail) = StreamingWordDrain.splitAtUnitBoundary(pendingText, unitCount: maxWordUnits)
-            guard !head.isEmpty else { return false }
-            appendedContent = head
-            pendingAssistantTokenChunks = tail.isEmpty ? [] : [tail]
+        if throughRevealGate {
+            let (shown, held) = StreamingRevealGate.cut(
+                pendingAssistantText,
+                heldPreviousTick: heldStreamingFragmentLastTick
+            )
+            pendingAssistantText = held
+            heldStreamingFragmentLastTick = !held.isEmpty
+            guard !shown.isEmpty else { return false }
+            appendedContent = shown
         } else {
-            appendedContent = pendingText
-            pendingAssistantTokenChunks = []
+            appendedContent = pendingAssistantText
+            pendingAssistantText = ""
+            heldStreamingFragmentLastTick = false
         }
 
         let messageID = ensureStreamingAssistantMessage()
