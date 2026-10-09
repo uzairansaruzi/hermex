@@ -826,7 +826,7 @@ struct HermesChatTranscript: Equatable {
         activeRunStartedAt = Self.date(startedAt) ?? Date()
         activeStreamID = "hermes:\(engine.storedKey ?? ""):\(startedAt.map { String($0) } ?? UUID().uuidString)"
         hostTurnStartedAt = nil
-        activity.turnDidStart()
+        activity.turnDidStart(showsPrompt: prompt != nil || isSubmittingSend)
         delegate?.hermesTurnDidStart(prompt: prompt)
         delegate?.streamCoordinatorDidStartConnection(isReplay: false)
         liveActivity = engine.storedKey.map { key in
@@ -1059,6 +1059,8 @@ struct HermesChatTranscript: Equatable {
         // Ahead of the turn below, so its Live Activity starts under the session's title.
         if let title = snapshot["info"]["title"].text, !title.isEmpty { applyTitle(title) }
         let lostFrames = engine.replayWasReset || needsRebuild
+        // The start of the turn this chat was following, which the snapshot may say has ended.
+        let followedStart = activeStreamID == nil ? nil : turnStartedAt
         if activeStreamID != nil, !running || (startedAt != nil && turnStartedAt != nil && startedAt != turnStartedAt) {
             // The turn this chat was following ended while it was away; the outcome row says how.
             let failed = HermesTurnOutcome(inflight: snapshot["inflight"]) != nil
@@ -1070,29 +1072,36 @@ struct HermesChatTranscript: Equatable {
         if running, let startedAt, turnStartedAt == nil { adoptStart(startedAt) }
         // The same turn after a reattach: adopt its activity again, which is current once more.
         if continuing { startLiveActivity() }
-        readOutcome(snapshot, in: history, followsTurn: continuing)
+        readOutcome(snapshot, in: history, followsTurn: continuing, endedTurnStartedAt: running ? nil : followedStart)
         if lostFrames { rebuild(from: snapshot, running: running) }
     }
 
     /// Takes the plan and the retained failure from a snapshot, with the failed prompt's saved
     /// row when `rows` hold it. `followsTurn` says the snapshot's running turn is the one the
-    /// chat was following.
-    private func readOutcome(_ snapshot: BotJSON, in rows: HermesTranscriptHistory, followsTurn: Bool) {
+    /// chat was following. `endedTurnStartedAt` is the start of a followed turn the snapshot
+    /// says ended: its plan stays its own when `rows` hold its prompt and none after it.
+    private func readOutcome(_ snapshot: BotJSON, in rows: HermesTranscriptHistory, followsTurn: Bool,
+                             endedTurnStartedAt: Double? = nil) {
         let inflight = snapshot["inflight"]
         let promptRowID = inflight["error"] == .null ? nil
             : savedPromptRowID(startedAt: inflight["started_at"].number ?? snapshot["turn_started_at"].number, in: rows)
-        activity.readSnapshot(snapshot, promptRowID: promptRowID, followsTurn: followsTurn)
+        let endedPromptRowID = savedPromptRowID(startedAt: endedTurnStartedAt, in: rows)
+        activity.readSnapshot(snapshot, promptRowID: promptRowID, followsTurn: followsTurn || endedPromptRowID != nil,
+                              followedPromptRowID: endedPromptRowID)
     }
 
     /// The saved prompt of the turn that began at `startedAt`: the last turn boundary in `rows`,
-    /// when it is dated at or after that. Nil when they hold no such row, or either is undated,
-    /// so Retry never cuts at an older prompt.
+    /// when it is dated at or after that and the one before it is dated earlier. Nil when they
+    /// hold no such row, a later turn saved its prompt too, or a date is missing, so Retry never
+    /// cuts at another turn's prompt and a plan never settles under one.
     private func savedPromptRowID(startedAt: Double?, in rows: HermesTranscriptHistory) -> Int? {
-        guard let startedAt,
-              let prompt = HermesTranscriptProjection.project(rows.rows, root: engine.storedKey ?? "").messages
-                .last(where: BotTranscriptProjection.isTurnBoundary),
-              let stamp = prompt.timestamp, stamp >= startedAt else { return nil }
-        return prompt.rowID
+        guard let startedAt else { return nil }
+        let messages = HermesTranscriptProjection.project(rows.rows, root: engine.storedKey ?? "").messages
+        guard let last = messages.lastIndex(where: BotTranscriptProjection.isTurnBoundary),
+              let stamp = messages[last].timestamp, stamp >= startedAt else { return nil }
+        if let previous = messages[..<last].last(where: BotTranscriptProjection.isTurnBoundary),
+           previous.timestamp.map({ $0 < startedAt }) != true { return nil }
+        return messages[last].rowID
     }
 
     /// After a turn's `message.complete` failed and the turn settled, one live-state read takes

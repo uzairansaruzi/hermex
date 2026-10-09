@@ -94,10 +94,11 @@ struct HermesPlanState: Equatable {
     /// A plan out of the strip, at the top of its turn: after that turn's prompt.
     struct SettledPlan: Equatable {
         let plan: HermesPlan
-        /// The host's row for the turn's prompt, once `message.complete` named it.
+        /// The host's row for the turn's prompt, once `message.complete` or the history named it.
         let rowID: Int?
-        /// The plan's turn is the newest one, so its prompt is the transcript's last.
-        let isInNewestTurn: Bool
+        /// The plan's turn is the newest and the chat showed its prompt, so that prompt is the
+        /// transcript's last. Never for a turn another client started, which shows none.
+        let followsLastPrompt: Bool
     }
 
     /// What Retry resends, the host's raw `inflight.user`, cut before the failed prompt's row.
@@ -110,6 +111,8 @@ struct HermesPlanState: Equatable {
     private struct PlanTurn: Equatable {
         let turn: Int
         var rowID: Int?
+        /// The chat showed the turn's prompt itself.
+        let showsPrompt: Bool
     }
 
     private var planState = HermesPlanState()
@@ -120,6 +123,8 @@ struct HermesPlanState: Equatable {
     private var planRuntimeIsNew = false
     private var turn = 0
     private var isTurnRunning = false
+    /// The chat showed the newest turn's prompt itself (`turnDidStart`).
+    private var turnShowsPrompt = false
 
     /// The failure the host retained for the last turn: from its `message.complete`, then from
     /// every snapshot's `inflight`, so a reattach rebuilds the same row. Nil after a success
@@ -144,13 +149,13 @@ struct HermesPlanState: Equatable {
     }
 
     /// The plan in the transcript: once it is finished or its turn ended. Nil while pinned,
-    /// cleared, when no turn is known to own it, or when its turn is older than the newest and
-    /// its prompt's row is unknown.
+    /// cleared, when no turn is known to own it, or when its prompt's row is unknown and the
+    /// last prompt shown may be another turn's.
     var settledPlan: SettledPlan? {
         guard pinnedPlan == nil, let plan = planState.plan, let planTurn else { return nil }
-        let isInNewestTurn = planTurn.turn == turn
-        guard isInNewestTurn || planTurn.rowID != nil else { return nil }
-        return SettledPlan(plan: plan, rowID: planTurn.rowID, isInNewestTurn: isInNewestTurn)
+        let followsLastPrompt = planTurn.turn == turn && planTurn.showsPrompt
+        guard followsLastPrompt || planTurn.rowID != nil else { return nil }
+        return SettledPlan(plan: plan, rowID: planTurn.rowID, followsLastPrompt: followsLastPrompt)
     }
 
     /// Retry's resend and cut, when the host says retrying can help, it kept the prompt, and
@@ -161,10 +166,13 @@ struct HermesPlanState: Equatable {
         return RetryTarget(rowID: rowID, text: text)
     }
 
-    /// A turn started: the last turn's outcome goes.
-    func turnDidStart() {
+    /// A turn started: the last turn's outcome goes. `showsPrompt` when the chat shows the
+    /// turn's prompt itself, as for its own send or a prompt it queued; not for a turn another
+    /// client started.
+    func turnDidStart(showsPrompt: Bool) {
         turn += 1
         isTurnRunning = true
+        turnShowsPrompt = showsPrompt
         failure = nil; notice = nil
         failedPrompt = nil; failedPromptRowID = nil; failedTurnStartedAt = nil
     }
@@ -189,12 +197,15 @@ struct HermesPlanState: Equatable {
         return true
     }
 
-    /// Places the plan held in the running turn, or, when `inTurn` is false, in no known turn.
-    private func placePlan(inTurn: Bool) {
+    /// Places the plan held in the newest turn, whose prompt the host saved as `promptRowID`
+    /// when known, or, when `inTurn` is false, in no known turn.
+    private func placePlan(inTurn: Bool, promptRowID: Int? = nil) {
         if planState.plan == nil || !inTurn {
             if planTurn != nil { planTurn = nil }
         } else if planTurn?.turn != turn {
-            planTurn = PlanTurn(turn: turn)
+            planTurn = PlanTurn(turn: turn, rowID: promptRowID, showsPrompt: turnShowsPrompt)
+        } else if let promptRowID, planTurn?.rowID != promptRowID {
+            planTurn?.rowID = promptRowID
         }
     }
 
@@ -214,9 +225,11 @@ struct HermesPlanState: Equatable {
     /// A `session.resume` snapshot: the retained failure and its raw prompt from `inflight`, and
     /// the plan from `todo_state`. `promptRowID` is the saved row of the prompt dated from the
     /// failed turn's `inflight.started_at`; without one, a row already known stays only for that
-    /// same turn. `followsTurn` says the snapshot's running turn is the one the chat followed
-    /// before it, so a plan revised since is that turn's; no other restored plan has a turn.
-    func readSnapshot(_ snapshot: BotJSON, promptRowID: Int?, followsTurn: Bool) {
+    /// same turn. `followsTurn` says the snapshot's plan is the newest turn's, the one the chat
+    /// followed before it: still running, or ended with no turn since, its prompt saved as
+    /// `followedPromptRowID`. So a plan revised since is that turn's; no other restored plan
+    /// has a turn.
+    func readSnapshot(_ snapshot: BotJSON, promptRowID: Int?, followsTurn: Bool, followedPromptRowID: Int? = nil) {
         let inflight = snapshot["inflight"]
         let next = HermesTurnOutcome(inflight: inflight)
         if next != failure { failure = next }
@@ -225,7 +238,9 @@ struct HermesPlanState: Equatable {
         failedPromptRowID = next == nil ? nil
             : promptRowID ?? (startedAt != nil && startedAt == failedTurnStartedAt ? failedPromptRowID : nil)
         failedTurnStartedAt = startedAt
-        if applyRevision(snapshot["todo_state"]) { placePlan(inTurn: followsTurn && !planRuntimeIsNew) }
+        if applyRevision(snapshot["todo_state"]) {
+            placePlan(inTurn: followsTurn && !planRuntimeIsNew, promptRowID: followedPromptRowID)
+        }
         planRuntimeIsNew = false
     }
 

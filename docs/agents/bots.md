@@ -466,19 +466,24 @@ only forwards frames and snapshots to. The plan is `HermesPlanState`, shared wit
 `todo.updated` and a snapshot's `todo_state`, revision-monotonic, an empty list at revision
 1 or later clears it, and a new runtime drops it, since its revisions start again. The host
 keeps one plan across turns, so a plan belongs to a turn only when that turn's `todo.updated`
-revised it, or a snapshot revised it while the chat followed the same running turn; a plan a
-snapshot restored otherwise (reopening the chat, a new runtime) is held for revision order but
-not drawn. While its turn runs with a step open it pins above the composer (`HermesPlanStrip`:
-under the run-status pill, over the request card and `/btw` panel; hidden on the offline cache's
-copy); once every step is done or the turn ends it settles as `HermesPlanRowView` after that
-turn's prompt, by `persisted_turn.user_row_id` or, while the turn is the newest, the last prompt
-shown. The outcome row is Bot Chat's (`HermesTurnOutcomeRow`, below) under the last turn: a
+revised it, or a snapshot revised it while the chat followed that turn: still running, or ended
+while the chat was away with its prompt the only one the history saved since it began, which
+places the plan. A plan a snapshot restored otherwise (reopening the chat, a new runtime, another
+turn since) is held for revision order but not drawn. While its turn runs with a step open it pins
+above the composer (`HermesPlanStrip`: under the run-status pill, over the request card and `/btw`
+panel; hidden on the offline cache's copy); once every step is done or the turn ends it settles as
+`HermesPlanRowView` after that turn's prompt, by `persisted_turn.user_row_id` or, while the turn is
+the newest and the chat showed its prompt (its own send or a prompt it queued), the last prompt
+shown. A turn another client started shows no prompt here, so its plan settles only by its row.
+The outcome row is Bot Chat's (`HermesTurnOutcomeRow`, below) under the last turn: a
 failed `message.complete` gives the failure and notice, and once the turn settles one
 `session.resume` (no messages) reads the retained `inflight.user` for Retry, then the newest rows
 for its prompt's row. That snapshot can name a later turn than the one the chat saw fail, and a
 failure's `message.complete` may carry no receipt, so the row is always the history's last prompt
 dated at or after the snapshot's `inflight.started_at` (the host saves a prompt at submit, before
-its turn can fail), and a row once found stays only for that same `started_at`. Retry is the
+its turn can fail), and only when the prompt before it is dated earlier: a turn submitted between
+the two reads saves a later prompt, and Retry is then not offered. A row once found stays only
+for that same `started_at`. Retry is the
 chat's rewind (`promptRewind`) with that text, from a tap only. A failed turn shows no error line.
 
 Its host requests are `HermesChatRequests` (#1011), on the Bot request model below and the
