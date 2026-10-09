@@ -422,6 +422,38 @@ import Observation
         XCTAssertEqual(chat.writes("session.workspace.move"), [])
     }
 
+    /// A turn that starts (from another client, say) after the chat checked it was idle stops
+    /// the move at the socket: the host never gets it, and the chat says to wait.
+    func testAFolderMoveStopsAtDispatchWhenATurnStarts() async {
+        let chat = await openChat(target: .session(profile: "work", key: "tip"))
+        chat.host.always("session.workspace.move", .init(result: .object(["cwd": .string("/Users/me/launch")])))
+        // Fires as the move begins, after the chat's own idle check and before the socket write.
+        withObservationTracking { _ = chat.model.isUpdatingComposerConfiguration } onChange: {
+            MainActor.assumeIsolated { chat.receive(self.event(1, "message.start")) }
+        }
+
+        let moved = await chat.model.confirmHermesFolderMove("/Users/me/launch")
+        XCTAssertFalse(moved)
+        XCTAssertNotNil(chat.model.activeStreamID)
+        XCTAssertEqual(chat.writes("session.workspace.move"), [])
+        XCTAssertEqual(chat.model.composerConfigurationErrorMessage,
+                       "Wait for the current response to finish before changing workspace.")
+    }
+
+    /// A new chat's first prompt that went out counts as work even when its reply never came
+    /// back, so a later pick asks first.
+    func testANewChatWhosePromptWentOutAsksFirst() async {
+        let chat = await openChat()
+        chat.host.next("prompt.submit", .init(error: 5000, message: "reply lost"))
+        _ = try? await chat.turn.submit("hi", mode: .send)
+        XCTAssertEqual(chat.writes("prompt.submit").count, 1)
+
+        let moved = await chat.model.selectWorkspacePath("/Users/me/launch")
+        XCTAssertFalse(moved)
+        XCTAssertEqual(chat.model.pendingHermesFolder, "/Users/me/launch")
+        XCTAssertEqual(chat.writes("session.workspace.move"), [])
+    }
+
     // MARK: Fixture
 
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,

@@ -1394,10 +1394,14 @@ final class ChatViewModel {
             return false
         }
         if activeStreamID != nil {
-            composerConfigurationErrorMessage = String(localized: "Wait for the current response to finish before changing workspace.")
+            composerConfigurationErrorMessage = Self.waitToChangeWorkspace
             return false
         }
         return true
+    }
+
+    private static var waitToChangeWorkspace: String {
+        String(localized: "Wait for the current response to finish before changing workspace.")
     }
 
     private func moveHermesFolder(_ folder: String, on hermes: HermesChatTurnCoordinator) async -> Bool {
@@ -1409,6 +1413,8 @@ final class ChatViewModel {
             return true
         } catch BotSettingFailure.rejected(4017, _) {
             composerConfigurationErrorMessage = String(localized: "Hermes can't find the folder \(folder), so the session didn't move.")
+        } catch is HermesChatTurnCoordinator.ReplyRunning {
+            composerConfigurationErrorMessage = Self.waitToChangeWorkspace
         } catch {
             composerConfigurationErrorMessage = error.localizedDescription
         }

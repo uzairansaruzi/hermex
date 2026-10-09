@@ -162,6 +162,8 @@ struct HermesChatTranscript: Equatable {
     /// The host accepted a prompt on this chat; until then a new session's draft keeps the
     /// new-session key.
     @ObservationIgnored private var promptAccepted = false
+    /// A prompt reached the socket on this chat, whatever its reply: the host may have run it.
+    @ObservationIgnored private var promptSent = false
     /// The chat opened as a new session (`.new`), which the host keeps no row for until its
     /// first accepted prompt.
     private let opensNew: Bool
@@ -333,7 +335,7 @@ struct HermesChatTranscript: Equatable {
         let reply: BotJSON
         do {
             reply = try await engine.write(mode.call(runtime: runtime, text: prompt), attempt: attempt,
-                                           runtime: runtime) { dispatched = true }
+                                           runtime: runtime) { dispatched = true; self.promptSent = true }
         } catch {
             // A reaped runtime (4001): reattach to the stored key, which reads only.
             if case BotFailure.rejected(4001) = error { reattach() }
@@ -497,8 +499,12 @@ struct HermesChatTranscript: Equatable {
 
     // MARK: Working folder (#1117)
 
-    /// A new chat nothing has run in yet: a folder change there moves no work, so it needn't ask.
-    var isUnstarted: Bool { opensNew && !promptAccepted }
+    /// A new chat nothing can have run in yet: no prompt went out, no turn started and the host
+    /// keeps no rows for it. A folder change there moves no work, so it needn't ask.
+    var isUnstarted: Bool { opensNew && !promptSent && turnsStarted == 0 && history.rows.isEmpty }
+
+    /// A folder move found a reply running at the socket write, and never went out.
+    struct ReplyRunning: Error {}
 
     /// The folders the composer's folder picker offers before anything is typed: this folder,
     /// the Profile's project folders (`projects.tree`), then the folders on the first page of its
@@ -523,12 +529,15 @@ struct HermesChatTranscript: Equatable {
     /// Moves this session to `folder` with `session.workspace.move`, Move to Project's call: the
     /// host works there from now on, a live runtime included, and no file moves. `cwd` takes the
     /// folder the host answers. Throws the host's refusal as `BotSettingFailure` (a folder it
-    /// lacks is 4017), and `.stale` once the attach or runtime it was picked under is gone.
+    /// lacks is 4017), `.stale` once the attach or runtime it was picked under is gone, and
+    /// `ReplyRunning` when a turn started before it went out: the host would move a live turn.
     func moveFolder(to folder: String) async throws {
         guard engine.connectionState == .connected, let runtime = engine.runtime, let key = engine.storedKey
         else { throw BotFailure.stale }
         let reply = try await engine.write(.sessionWorkspaceMove(profile: engine.target.profile, storedKey: key, cwd: folder),
-                                           attempt: engine.generation, runtime: runtime)
+                                           attempt: engine.generation, runtime: runtime) { [weak self] in
+            guard let self, self.isIdle, !self.hostRunning else { throw ReplyRunning() }
+        }
         if let moved = Self.words(reply["cwd"]), moved != cwd { cwd = moved }
     }
 

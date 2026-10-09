@@ -2169,9 +2169,11 @@ out) and the `cwd`s on the first page of the Profile's Sessions list, each once;
 or `~/` completes through `complete.path {word, profile}` outside a session, and any other text
 filters the list. A pick is Move to Project's `session.workspace.move {session_key, cwd,
 profile}`, not Bot Chat's `session.cwd.set`, so the stored row keeps the folder. A new chat
-nothing ran in moves at once (the host re-homes its live runtime and the first prompt's row
-inherits the folder); any other asks first in Move to Project's words. The client refuses while
-a reply runs, though the host would move it mid-turn. 4017 says the folder doesn't exist.
+nothing can have run in (no prompt reached the socket, whatever its reply, no turn started, no
+saved rows) moves at once: the host re-homes its live runtime and the first prompt's row inherits
+the folder. Any other asks first in Move to Project's words. The client refuses while a reply
+runs, though the host would move it mid-turn, and checks again at the socket write, since another
+client can start a turn meanwhile. 4017 says the folder doesn't exist.
 
 **Accepted host limitation (#479):** in the compatibility pin's
 `tui_gateway/methods_config_set.py`, `_set_reasoning` and `_set_fast` fall back to
