@@ -932,6 +932,40 @@ import SwiftUI
         XCTAssertTrue(completion.report.hasSuffix("Tests rewritten; docs updated."))
     }
 
+    /// A delivery the host starts on its own (`_notif_submit`) draws its card when that turn ends:
+    /// the turn's saved rows come back in the newest-rows read, the delivery's typed row among
+    /// them, above the reply it prompted (#1140).
+    func testALiveDelegationDeliveryDrawsItsCompletionCardWhenItsTurnEnds() async throws {
+        let report = "[ASYNC DELEGATION BATCH COMPLETE]\n--- RESULT ---\nTests rewritten; docs updated."
+        let earlier = [userRow("Split the work"), assistantRow("Started two workers.", id: 2)]
+        let chat = await openChat(history: earlier)
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "message.delta", ["text": .string("Both workers finished.")]))
+        chat.receive(event(3, "message.complete", ["status": .string("complete"), "text": .string("Both workers finished."),
+                                                   "persisted_turn": .object([
+                                                       "row_ids": .array([.number(3), .number(4)]), "complete": .bool(true),
+                                                       "user_row_id": .number(3), "final_assistant_row_id": .number(4)
+                                                   ])]))
+        serveHistory(earlier + [
+            .object(["id": .number(3), "role": .string("user"), "timestamp": .number(1_790_000_100),
+                     "content": .string(report), "display_kind": .string("async_delegation_complete"),
+                     "display_metadata": .object(["task_count": .number(2), "completed_count": .number(2),
+                                                  "failed_count": .number(0), "duration_seconds": .number(41),
+                                                  "delegation_id": .string("dlg_7f3a")])]),
+            assistantRow("Both workers finished.", id: 4, at: 1_790_000_140)
+        ])
+        chat.receive(event(4, "session.info", ["running": .bool(false)]))
+        await waitUntil("the turn's saved rows") { chat.model.messages.last?.rowID == 4 }
+
+        XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 3, 4])
+        let completion = try XCTUnwrap(HermesDelegationCompletion(chat.model.messages[2]), "the delivery is its card")
+        XCTAssertEqual(completion.report, report, "the card carries the full report")
+        XCTAssertEqual(completion.taskCount, 2)
+        XCTAssertEqual(completion.completedCount, 2)
+        XCTAssertEqual(completion.delegationID, "dlg_7f3a")
+        XCTAssertEqual(chat.model.messages.last?.content, "Both workers finished.")
+    }
+
     // MARK: Fixture
 
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
@@ -1133,6 +1167,11 @@ import SwiftUI
     private func promptRow(_ text: String, rowID: Int) -> TranscriptMessage {
         TranscriptMessage(loadedIndex: rowID, renderID: "row-\(rowID)", anchorID: "anchor-\(rowID)",
                           message: ChatMessage(role: "user", content: text, timestamp: 1, messageId: "m\(rowID)", rowID: rowID))
+    }
+
+    /// A saved reply as a transcript page carries it, saved at `at`.
+    private func assistantRow(_ text: String, id: Int, at timestamp: Double = 1_790_000_010) -> BotJSON {
+        .object(["id": .number(Double(id)), "role": .string("assistant"), "content": .string(text), "timestamp": .number(timestamp)])
     }
 
     /// Serves `rows` as session `key`'s settled history, every page the same.
