@@ -787,6 +787,7 @@ Skip leaves the bot waiting until every row is connected or skipped; Continue
 releases it at once, and Guide or Queue sends Continue first so the message
 does not wait behind the blocked tool. One answer to an operation is out at a time: a
 Hermes chat's card waits while Continue is out, and Send waits while a row's answer is.
+A Continue whose operation was replaced before the write is not sent, and the message is held.
 `4004` means the operation had already
 settled. Setup values stay in the row's view state and are cleared on send.
 Try again on a failed managed row (`connectors.connect {reconnect}`) and

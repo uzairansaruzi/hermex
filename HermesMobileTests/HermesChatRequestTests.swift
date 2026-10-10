@@ -607,6 +607,32 @@ import XCTest
         XCTAssertEqual(other.writes("connection.respond").count, 1)
     }
 
+    /// A new operation replacing the card between a Steer's Continue and its socket write
+    /// gets no Continue for the old one, and the message is held rather than sent behind the
+    /// new operation.
+    func testAContinueForAReplacedOperationIsNeverSent() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "connection.request", operation(seq: 1)))
+        chat.host.next("connection.respond", .init(error: 4004))
+        chat.host.next("prompt.submit", .init(result: .object(["status": .string("queued")])))
+        let replaced = event(3, "connection.request", operation("op-2", seq: 1))
+        // Fires as Continue begins, after it read the operation and before the socket write.
+        withObservationTracking { _ = chat.requests.answeringRequestID } onChange: {
+            MainActor.assumeIsolated { chat.receive(replaced) }
+        }
+
+        do {
+            _ = try await chat.turn.submit("Then the docs", mode: .queue)
+            XCTFail("A Queue must not go out behind the operation that replaced the card")
+        } catch {
+            XCTAssertTrue(error is HermesChatTurnCoordinator.NotSent, "\(error)")
+        }
+        XCTAssertEqual(chat.writes("connection.respond"), [])
+        XCTAssertEqual(chat.writes("prompt.submit"), [])
+        XCTAssertEqual(connectionOnScreen(chat)?.opID, "op-2")
+    }
+
     /// A Continue whose reply is lost holds the message: it is never sent, and nothing is retried.
     func testALostContinueHoldsTheMessage() async {
         let chat = await openChat(rpcDeadline: .milliseconds(50))

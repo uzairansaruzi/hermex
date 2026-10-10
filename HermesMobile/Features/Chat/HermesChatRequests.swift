@@ -278,7 +278,7 @@ import Observation
     /// settled) lets the message go; a lost reply warns on the card, as a lost row answer
     /// does, then throws, and the message is held. It shares the card's one answer at a time
     /// (`answeringRequestID`): an answer still out holds the message, and the card waits while
-    /// Continue is out.
+    /// Continue is out. An operation that changed before the write holds the message too.
     func continueConnection(runtime: String, attempt: Int) async throws {
         guard let opID = connection?.opID else { return }
         guard answeringRequestID == nil else { throw BotFailure.stale }
@@ -286,7 +286,10 @@ import Observation
         defer { if answeringRequestID == opID { answeringRequestID = nil } }
         do {
             let reply = try await engine.write(.connectionRespond(sessionID: runtime, opID: opID, answer: .continueWithout),
-                                               attempt: attempt, runtime: runtime)
+                                               attempt: attempt, runtime: runtime) { [weak self] in
+                // Releasing a replaced operation would leave the new one blocking the message.
+                guard let self, self.connection?.opID == opID else { throw BotFailure.stale }
+            }
             if reply["settled"].flag == true { closeConnection(opID) }
         } catch BotFailure.rejected {
         } catch {
