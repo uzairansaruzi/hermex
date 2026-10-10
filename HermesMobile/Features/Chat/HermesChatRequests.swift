@@ -522,7 +522,10 @@ import Observation
         applyConnection(frame, opens: true)
     }
 
+    /// An operation this build cannot read takes the held one's place, as a readable one
+    /// would, so the old card never stays answerable.
     private func holdUnreadableConnection(_ payload: BotJSON) {
+        connection = nil
         unreadableConnectionID = payload["op_id"].text
         hasUnreadableConnection = true
     }

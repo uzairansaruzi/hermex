@@ -444,6 +444,20 @@ import XCTest
         XCTAssertNil(chat.requests.onScreen, "a settled operation never comes back")
     }
 
+    /// A new operation this build cannot read replaces the live card, as a readable one would:
+    /// the old card leaves rather than staying answerable, and the chat still waits.
+    func testAnUnreadableRequestReplacesTheLiveCard() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "connection.request", operation(seq: 1)))
+        XCTAssertEqual(connectionOnScreen(chat)?.opID, "op-1")
+
+        chat.receive(event(3, "connection.request", ["op_id": .string("op-2")]))
+        XCTAssertNil(chat.requests.onScreen)
+        XCTAssertFalse(chat.requests.mayAnswer)
+        XCTAssertTrue(chat.model.isWaitingForUser)
+    }
+
     /// Another operation's settled frame leaves the live card as it was.
     func testAnotherOperationSettlingLeavesTheLiveCardOpen() async {
         let chat = await openChat()
