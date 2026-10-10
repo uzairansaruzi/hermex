@@ -599,7 +599,7 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         }
     }
 
-    private static func wavData() -> Data {
+    static func wavData() -> Data {
         let sampleRate: UInt32 = 8_000
         let channelCount: UInt16 = 1
         let bitsPerSample: UInt16 = 16

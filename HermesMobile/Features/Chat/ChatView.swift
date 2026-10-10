@@ -1880,9 +1880,11 @@ struct ChatView: View {
             loadAttachmentImage: { path in
                 await viewModel.attachmentImageData(path: path)
             },
-            loadAttachmentData: isHermesSession ? nil : { path in
-                await viewModel.attachmentRawData(path: path)
-            },
+            attachmentAudio: AttachmentAudioSource(
+                load: { path in await viewModel.attachmentRawData(path: path) },
+                isHost: isHermesSession,
+                loadKey: viewModel.attachmentLoadKey
+            ),
             loadTranscriptMediaImage: { reference in
                 await viewModel.transcriptMediaThumbnailData(for: reference)
             },

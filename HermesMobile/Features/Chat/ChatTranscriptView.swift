@@ -77,9 +77,8 @@ struct ChatTranscriptView: View {
     let isEditingMessage: Bool
     let isForkingMessage: Bool
     let loadAttachmentImage: (String) async -> Data?
-    /// Raw bytes for an attachment's inline audio player; nil where the chat cannot
-    /// fetch them (a Hermes session, #1012), which shows audio as a file cell.
-    let loadAttachmentData: ((String) async -> Data?)?
+    /// Where attachment rows get their inline audio; nil shows audio as file cells.
+    let attachmentAudio: AttachmentAudioSource?
     let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
     let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let transcriptMediaCacheNamespace: String
@@ -362,7 +361,7 @@ struct ChatTranscriptView: View {
                     isEditingMessage: isEditingMessage,
                     isForkingMessage: isForkingMessage,
                     loadAttachmentImage: loadAttachmentImage,
-                    loadAttachmentData: loadAttachmentData,
+                    attachmentAudio: attachmentAudio,
                     loadTranscriptMediaImage: loadTranscriptMediaImage,
                     loadTranscriptMediaData: loadTranscriptMediaData,
                     transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
@@ -599,7 +598,7 @@ struct StreamingFollowTrigger: View {
     }
 }
 
-private struct ChatTranscriptMessageBlock: View, Equatable {
+struct ChatTranscriptMessageBlock: View, Equatable {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let transcriptMessage: TranscriptMessage
@@ -630,7 +629,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let isEditingMessage: Bool
     let isForkingMessage: Bool
     let loadAttachmentImage: (String) async -> Data?
-    let loadAttachmentData: ((String) async -> Data?)?
+    let attachmentAudio: AttachmentAudioSource?
     let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
     let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let transcriptMediaCacheNamespace: String
@@ -675,6 +674,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.isRegeneratingMessage == rhs.isRegeneratingMessage &&
             lhs.isEditingMessage == rhs.isEditingMessage &&
             lhs.isForkingMessage == rhs.isForkingMessage &&
+            lhs.attachmentAudio == rhs.attachmentAudio &&
             lhs.transcriptMediaCacheNamespace == rhs.transcriptMediaCacheNamespace
     }
 
@@ -755,7 +755,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     isEditingMessage: isEditingMessage,
                     isForkingMessage: isForkingMessage,
                     loadAttachmentImage: loadAttachmentImage,
-                    loadAttachmentData: loadAttachmentData,
+                    attachmentAudio: attachmentAudio,
                     loadTranscriptMediaImage: loadTranscriptMediaImage,
                     loadTranscriptMediaData: loadTranscriptMediaData,
                     transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
@@ -844,7 +844,7 @@ private struct ChatTranscriptMessageRow: View {
     let isEditingMessage: Bool
     let isForkingMessage: Bool
     let loadAttachmentImage: (String) async -> Data?
-    let loadAttachmentData: ((String) async -> Data?)?
+    let attachmentAudio: AttachmentAudioSource?
     let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
     let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let transcriptMediaCacheNamespace: String
@@ -903,7 +903,7 @@ private struct ChatTranscriptMessageRow: View {
         MessageBubbleView(
             message: message,
             loadAttachmentImage: loadAttachmentImage,
-            loadAttachmentData: loadAttachmentData,
+            attachmentAudio: attachmentAudio,
             loadTranscriptMediaImage: loadTranscriptMediaImage,
             loadTranscriptMediaData: loadTranscriptMediaData,
             transcriptMediaCacheNamespace: transcriptMediaCacheNamespace,
