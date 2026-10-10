@@ -290,22 +290,22 @@ struct HermesChatTranscript: Equatable {
     /// would not deliver them.
     var mentions: BotMentions? { policy.offersMentions ? settings.mentions : nil }
 
-    /// The turn in Bot Chat's terms, which `BotWorkingBeat` reads: unknown while not connected,
-    /// so a reconnect inside a turn starts no new beat.
-    var botTurn: BotConversation.TurnState {
+    /// The turn as `BotWorkingBeat` reads it: unknown while not connected, so a reconnect
+    /// inside a turn starts no new beat.
+    var botTurn: BotTurnState {
         guard engine.connectionState == .connected else { return .unknown }
         if activeStreamID != nil { return requests.isWaiting ? .needsAttention : .running }
         return activity.failure != nil ? .interrupted : .idle
     }
 
-    /// The pill's face, as Bot Chat's title shows it (#757): working, waiting on the user,
-    /// failed while the host keeps the turn's error, and at rest otherwise, disconnected included.
-    var titleFace: BotConversation.TitleFace {
+    /// The pill's face (#757): working, waiting on the user, failed while the host keeps the
+    /// turn's error, and at rest otherwise, disconnected included.
+    var titleFace: BotTitleFace {
         switch botTurn {
         case .needsAttention: return .waiting
         case .interrupted: return .failed
-        case .running, .stopping: return .working
-        case .unknown, .idle, .submitting, .uncertain: return .resting
+        case .running: return .working
+        case .unknown, .idle: return .resting
         }
     }
 
@@ -415,7 +415,7 @@ struct HermesChatTranscript: Equatable {
         let mentionNote = mentions?.annotation(for: text) ?? ""
         let startsBefore = turnsStarted
         if mode == .send { isSubmittingSend = true }
-        // As in Bot Chat, a stop withdrawal while Stop & send is in flight is this phone's doing.
+        // A stop withdrawal while Stop & send is in flight is this phone's doing.
         if mode == .redirect { requests.isStoppingHere = true }
         defer {
             if mode == .send { isSubmittingSend = false }
@@ -454,8 +454,8 @@ struct HermesChatTranscript: Equatable {
         return outcome
     }
 
-    /// Uploads a send's files in order on the attach and runtime it captured, as Bot Chat
-    /// does (`docs/agents/bots.md` § attachments), and returns their references: an
+    /// Uploads a send's files in order on the attach and runtime it captured
+    /// (`docs/agents/bots.md` § attachments), and returns their references: an
     /// image's vision-tool line pair after image-upload, a document's `file.attach`
     /// `ref_text` verbatim. The first failure, a cancel or a reattach ends it, so a
     /// partial set is never submitted. Files already stored stay on the host.
@@ -501,7 +501,7 @@ struct HermesChatTranscript: Equatable {
     func cancelAttachmentUpload() { attachmentUpload?.cancel() }
 
     /// A sent file's bytes from the host, by the path its chip keeps (#1030), for the chip's
-    /// thumbnail and preview. Downloads through this attach as Bot Chat does
+    /// thumbnail and preview. Downloads through this attach
     /// (`HermesREST.downloadArtifact` with the session's Profile and stored key), so the
     /// host resolves a relative `@file:` path against the session. Throws `.stale` while
     /// detached, and for a result that lands after a reattach or a cancel. `limit` caps a
@@ -581,8 +581,8 @@ struct HermesChatTranscript: Equatable {
         return reply["text"].text ?? ""
     }
 
-    /// One query's rows for the composer's `@` panel and its `@path` check (#1113), as Bot Chat
-    /// asks them: `complete.path` on the attached runtime, which completes against the
+    /// One query's rows for the composer's `@` panel and its `@path` check (#1113):
+    /// `complete.path` on the attached runtime, which completes against the
     /// session's working folder and ranks and caps its own rows. Throws `.stale` while
     /// detached, and for a reply that lands after a reattach; an unanswered one fails only
     /// itself, never the chat's connection.
@@ -985,7 +985,7 @@ struct HermesChatTranscript: Equatable {
             guard let text = payload["text"].text, !text.isEmpty else { return }
             ensureTurn()
             // With excerpts off the status still moves on to writing, off a wait the user
-            // answered, as in Bot Chat (#489).
+            // answered (#489).
             drivenLiveActivity?.update(showsLiveActivityExcerpts ? .token(text) : .responding)
             delegate?.streamCoordinatorAppendToken(text)
         case "message.interim":
@@ -1188,9 +1188,9 @@ struct HermesChatTranscript: Equatable {
     private func savedPromptRowID(startedAt: Double?, in rows: HermesTranscriptHistory) -> Int? {
         guard let startedAt else { return nil }
         let messages = HermesTranscriptProjection.project(rows.rows, root: engine.storedKey ?? "").messages
-        guard let last = messages.lastIndex(where: BotTranscriptProjection.isTurnBoundary),
+        guard let last = messages.lastIndex(where: HermesTranscriptProjection.isTurnBoundary),
               let stamp = messages[last].timestamp, stamp >= startedAt else { return nil }
-        if let previous = messages[..<last].last(where: BotTranscriptProjection.isTurnBoundary),
+        if let previous = messages[..<last].last(where: HermesTranscriptProjection.isTurnBoundary),
            previous.timestamp.map({ $0 < startedAt }) != true { return nil }
         return messages[last].rowID
     }
@@ -1206,7 +1206,7 @@ struct HermesChatTranscript: Equatable {
         guard engine.connectionState == .connected else { return }
         let attempt = engine.generation, turns = turnsStarted
         Task { [weak self] in
-            guard let reply = try? await self?.engine.resume(full: false, attempt: attempt), let self,
+            guard let reply = try? await self?.engine.resume(attempt: attempt), let self,
                   attempt == self.engine.generation, turns == self.turnsStarted, self.engine.isCurrent(reply) else { return }
             var rows = self.history
             if HermesTurnOutcome(inflight: reply["inflight"])?.offersRetry == true,
@@ -1401,7 +1401,7 @@ struct HermesChatTranscript: Equatable {
     // MARK: Live Activity
 
     /// The manager while it still drives this turn's activity. One a webui run or a bot took
-    /// over is never touched, as in Bot Chat (`BotLiveActivityFeed`).
+    /// over is never touched (`BotLiveActivityFeed`).
     private var drivenLiveActivity: (any AgentLiveActivityManaging)? {
         guard let liveActivities, let id = liveActivity?.sessionID, liveActivities.drivenSessionID == id else { return nil }
         return liveActivities
@@ -1469,7 +1469,7 @@ struct HermesChatTranscript: Equatable {
     }
 
     /// Shows the open requests as waiting, once per change: an approval on screen as an
-    /// approval, any other request as a question, as Bot Chat does. Answering moves nothing;
+    /// approval, any other request as a question. Answering moves nothing;
     /// the turn's next work does.
     private func syncLiveActivityWaiting() {
         let waiting: AgentLiveActivityEvent?
@@ -1481,7 +1481,7 @@ struct HermesChatTranscript: Equatable {
         if let waiting { drivenLiveActivity?.update(waiting) }
     }
 
-    /// Writes a bot's count chips to its activity, as Bot Chat does (#584): the plan's step and
+    /// Writes a bot's count chips to its activity (#584): the plan's step and
     /// the live workers, on a plan or roster change and when the activity is adopted. The
     /// manager drops an unchanged list. A session's activity keeps its own chips.
     private func syncBotWorkSummary() {
@@ -1538,7 +1538,7 @@ struct HermesChatTranscript: Equatable {
     /// Whether the snapshot's saved rows already hold the in-flight prompt: the last turn
     /// boundary is dated at or after the turn began, or, undated, shows the same.
     private static func holdsPrompt(_ prompt: ChatMessage, in messages: [ChatMessage], startedAt: Double?) -> Bool {
-        guard let settled = messages.last(where: BotTranscriptProjection.isTurnBoundary) else { return false }
+        guard let settled = messages.last(where: HermesTranscriptProjection.isTurnBoundary) else { return false }
         guard let startedAt, let stamp = settled.timestamp else {
             return settled.content == prompt.content && settled.attachments == prompt.attachments
         }
@@ -1549,7 +1549,7 @@ struct HermesChatTranscript: Equatable {
     /// goes (#523), the reference lines a Hermex send appends become chips and the host's
     /// context footer goes (`MessageAttachment.hermesReferences`), so the text shows no host
     /// path. Each chip keeps the path it names for `attachmentData` (#1030); chips show only
-    /// their name. Every other row is returned as it is. Bot Chat reads the rule itself.
+    /// their name. Every other row is returned as it is.
     static func displayed(_ message: ChatMessage) -> ChatMessage {
         guard message.role == "user", let content = message.content else { return message }
         // The host appends its context footer after the note, so the footer goes first.
@@ -1572,7 +1572,7 @@ struct HermesChatTranscript: Equatable {
         ToolStreamEvent(
             eventType: completed ? "tool.complete" : "tool.start",
             name: payload["name"].text,
-            preview: completed ? BotTurnActivity.resultPreview(payload["result"]) : nil,
+            preview: completed ? payload["result"].toolResultPreview : nil,
             args: payload["args"].argumentDictionary,
             duration: completed ? payload["duration_s"].number : nil,
             isError: nil,
@@ -1686,9 +1686,6 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         }
         frames.forEach(apply)
     }
-
-    /// The settled history comes from REST pages (#1047), so the snapshot is live state only.
-    var readsSnapshotHistory: Bool { false }
 
     /// A rebuild reads the newest history rows first, while the engine still holds the frames.
     func conversationDidReadSnapshot(_ snapshot: BotJSON, runtime: String, attempt: Int) async throws {

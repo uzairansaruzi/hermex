@@ -1873,8 +1873,7 @@ struct ChatView: View {
                 // Bot Chat's pill in Reconnect's slot (#942): the composer's error line still
                 // says why, and the chat never signs in again on its own while it shows.
                 if viewModel.hermesNeedsSignIn {
-                    BotComposerPillView(pill: .updateSignIn, onReconnect: {}, onUpdateSignIn: { updateHermesSignIn() },
-                                        onShowRequest: {}, onCancelUpload: {}, onDismissError: {})
+                    BotComposerPillView(pill: .updateSignIn, onUpdateSignIn: { updateHermesSignIn() })
                         .onGeometryChange(for: CGFloat.self) { proxy in
                             proxy.size.height
                         } action: { height in
@@ -3433,7 +3432,7 @@ struct ChatView: View {
     private func validateAttachmentSize(for url: URL) throws {
         let values = try url.resourceValues(forKeys: [.fileSizeKey])
         guard let size = values.fileSize,
-              size > (isHermesSession ? BotAttachmentDraft.maximumFileBytes : PendingAttachment.maximumUploadBytes)
+              size > (isHermesSession ? BotAttachmentUpload.maximumFileBytes : PendingAttachment.maximumUploadBytes)
         else {
             return
         }

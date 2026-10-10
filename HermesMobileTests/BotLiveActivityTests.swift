@@ -1,8 +1,8 @@
 import XCTest
 @testable import HermesMobile
 
-/// #489: a bot's Live Activity. The feed and the conversation's snapshot are tested
-/// at their own seams; ActivityKit itself is unreachable in unit tests.
+/// #489: a bot's Live Activity. The feed and its snapshots are tested at their own seams
+/// (a Hermes chat's turn is `HermesChatLiveActivityTests`); ActivityKit is unreachable here.
 @MainActor final class BotLiveActivityTests: XCTestCase {
     private let server = URL(string: "https://webui.example")!
     private let profile = BotProfile(.object(["name": .string("inbox-triage")]))!
@@ -182,25 +182,6 @@ import XCTest
                                     .clearResponseExcerpt, .toolStarted(name: "search_mail"), .workSummary([])])
     }
 
-    func testAHostErrorEndsAsFailedAndAStopAsCancelled() async {
-        let failed = BotFixtureWire(); failed.inflight = .object(["error": .string("boom")])
-        let broken = conversation(failed)
-        await broken.recover()
-        XCTAssertEqual(broken.liveActivitySnapshot.phase, .finished(.failed))
-        broken.suspend()
-
-        let stopped = BotFixtureWire()
-        stopped.transformResume = { snapshot in
-            guard case .object(var fields) = snapshot else { return snapshot }
-            fields["status"] = .string("interrupted")
-            return .object(fields)
-        }
-        let halted = conversation(stopped)
-        await halted.recover()
-        XCTAssertEqual(halted.liveActivitySnapshot.phase, .finished(.cancelled))
-        halted.suspend()
-    }
-
     func testRepeatedSnapshotsAreCoalesced() {
         let spy = BotLiveActivitySpy()
         let feed = feed(spy)
@@ -209,117 +190,6 @@ import XCTest
         feed.sync(same, profile: profile)
         XCTAssertEqual(spy.started.count, 1)
         XCTAssertEqual(spy.events, [.reasoning(""), .workSummary(["3 tools"])])
-    }
-
-    // MARK: Conversation snapshot
-
-    private func conversation(_ wire: BotFixtureWire, feed: BotLiveActivityFeed? = nil) -> BotConversation {
-        BotConversation(server: server,
-                        connection: BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
-                                                  username: "user", password: "fixture"),
-                        profile: profile, wire: wire,
-                        drafts: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)),
-                        liveActivityFeed: feed, reconnectDelay: { _ in })
-    }
-
-    // #676: the snapshot reads a bounded head of the reply, but leading whitespace
-    // does not use up that head.
-    func testReplyExcerptSkipsLeadingWhitespaceBeforeTheBoundedHead() async {
-        let wire = BotFixtureWire(); wire.running = true
-        let reply = String(repeating: " \n", count: 3_000) + "Hello"
-        wire.inflight = .object(["started_at": .number(100), "assistant": .string(reply)])
-        let model = conversation(wire)
-        await model.recover()
-
-        XCTAssertEqual(model.liveActivitySnapshot.work, .responding("Hello"))
-    }
-
-    func testRunningTurnProjectsBoundedCountsAndSuspendGoesStale() async {
-        let wire = BotFixtureWire(); wire.running = true
-        wire.inflight = .object(["started_at": .number(100), "assistant": .string("secret reply")])
-        wire.todoState = .object(["revision": .number(1), "todos": .array([
-            .object(["id": .string("a"), "content": .string("Read mail"), "status": .string("completed")]),
-            .object(["id": .string("b"), "content": .string("Sort mail"), "status": .string("in_progress")])
-        ])])
-        let spy = BotLiveActivitySpy()
-        let model = conversation(wire, feed: feed(spy))
-        await model.recover()
-
-        let live = model.liveActivitySnapshot
-        XCTAssertEqual(live.phase, .working(turn: "100.0", startedAt: Date(timeIntervalSince1970: 100)))
-        XCTAssertEqual(live.chips, ["Plan 2 of 2"])
-        XCTAssertEqual(live.destination.conversation, "root")
-        XCTAssertEqual(live.agentSessionID, "tip")
-        XCTAssertEqual(spy.started.first?.bot.pushSessionID, "tip")
-        XCTAssertEqual(spy.started.map(\.turn), ["100.0"])
-        // Previews are off in this feed, so the reply never left the conversation.
-        XCTAssertFalse(spy.events.contains { if case .interimAssistant = $0 { true } else { false } })
-
-        model.suspend()
-        XCTAssertEqual(model.liveActivitySnapshot.phase, .disconnected)
-        XCTAssertEqual(spy.staleCount, 1)
-
-        // A callback from the closed socket changes nothing.
-        wire.onEvent?(.object(["session_id": .string("runtime"), "seq": .number(1), "type": .string("message.delta")]))
-        XCTAssertEqual(spy.staleCount, 1)
-        XCTAssertEqual(spy.started.count, 1)
-    }
-
-    func testPushUsesTheStoredAgentSessionInsteadOfTheGatewayRuntimeOrRoot() async {
-        let wire = BotFixtureWire()
-        wire.root = "canonical-chat"
-        wire.tip = "agent-session-after-compression"
-        wire.runtimeID = "gateway-runtime"
-        wire.running = true
-        wire.inflight = .object(["started_at": .number(100)])
-        let spy = BotLiveActivitySpy()
-        let model = conversation(wire, feed: feed(spy))
-        await model.recover()
-
-        // Hermes constructs the agent with session_id=session_key. Its plugin
-        // hooks use that stored ID, whereas RPC replies identify the runtime.
-        XCTAssertEqual(spy.started.first?.bot.pushSessionID, wire.tip)
-        XCTAssertNotEqual(spy.started.first?.bot.pushSessionID, model.runtime)
-        XCTAssertEqual(model.liveActivitySnapshot.destination.conversation, wire.root)
-        model.suspend()
-    }
-
-    func testPushSessionFollowsTheResolvedAgentSessionOnReconnect() async {
-        let wire = BotFixtureWire()
-        wire.running = true
-        wire.inflight = .object(["started_at": .number(100)])
-        let spy = BotLiveActivitySpy()
-        let model = conversation(wire, feed: feed(spy))
-        await model.recover()
-        model.suspend()
-
-        wire.tip = "next-agent-session"
-        wire.runtimeID = "next-gateway-runtime"
-        await model.recover()
-        XCTAssertEqual(spy.started.map { $0.bot.pushSessionID }, ["tip", "next-agent-session"])
-        model.suspend()
-    }
-
-    func testWorkThatFinishedWhileAwayEndsTheActivityOnReturn() async {
-        let wire = BotFixtureWire(); wire.running = true
-        wire.inflight = .object(["started_at": .number(100)])
-        let spy = BotLiveActivitySpy()
-        let model = conversation(wire, feed: feed(spy))
-        await model.recover()
-        model.suspend()
-
-        wire.running = false; wire.inflight = .null
-        await model.recover()
-        XCTAssertEqual(spy.ended, [.complete])
-        model.suspend()
-    }
-
-    func testABlockedBotSaysWhatItIsWaitingFor() async {
-        let wire = BotFixtureWire(); wire.running = true; wire.attention = true
-        let model = conversation(wire)
-        await model.recover()
-        XCTAssertEqual(model.liveActivitySnapshot.work, .waitingForApproval)
-        model.suspend()
     }
 
     func testPureDecisionCoversStartUpdateWaitEndAndOwnership() throws {

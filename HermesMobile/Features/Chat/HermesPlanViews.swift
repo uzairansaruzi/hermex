@@ -2,8 +2,8 @@ import SwiftUI
 import UIKit
 
 /// The agent's plan as one log row: `Plan`, then `2 of 5 · current step`. Expanding lists
-/// every item with its state; long-press copies the list. Bot Chat shows it under the turn;
-/// a Hermes chat at the top of the plan's turn once it leaves the strip (#1139). It shows
+/// every item with its state; long-press copies the list. A Hermes chat shows it at the top
+/// of the plan's turn once it leaves the strip (#1139). It shows
 /// whatever the Thinking and Tool Cards setting says.
 struct HermesPlanRowView: View {
     let plan: HermesPlan

@@ -63,9 +63,7 @@ struct BotServerRequest: Equatable {
         } else if let kind = BotCredentialRequest.Kind(rawValue: method) {
             pending = .credential(BotCredentialRequest(
                 kind: kind, requestID: id,
-                envVar: Self.trimmed(params["env_var"]), prompt: Self.trimmed(params["prompt"]),
-                displayName: Self.trimmed(params["display_name"]), origin: Self.trimmed(params["origin"]),
-                site: Self.trimmed(params["site"]), hint: Self.trimmed(params["hint"])
+                envVar: Self.trimmed(params["env_var"]), prompt: Self.trimmed(params["prompt"])
             ))
         } else if let kind = BotDesktopTaskRequest.Kind(rawValue: method) {
             pending = .desktopTask(BotDesktopTaskRequest(kind: kind, requestID: id))
@@ -240,9 +238,9 @@ struct BotQuestionRequest: Equatable {
     }
 }
 
-/// A value only the person can supply: the Mac's administrator password, a
-/// secret the bot asked for by name, or what its password vault needs to sign
-/// in (a password manager's master password, a login to save, a one-time code).
+/// A value only the person can supply: the Mac's administrator password, or a
+/// secret the bot asked for by name. Password-vault prompts (`vault.*`) are not
+/// read: they stay open requests with no card, never answered from the phone (#1148).
 ///
 /// Answers carry `{value}` through `request.answer`. An empty value skips
 /// without retaining a secret.
@@ -250,18 +248,12 @@ struct BotCredentialRequest: Equatable {
     /// The server request method.
     enum Kind: String, Equatable, CaseIterable {
         case sudo, secret
-        case vaultUnlock = "vault.unlock_prompt"
-        case vaultSaveLogin = "vault.save_login"
-        case vaultCode = "vault.code"
 
         /// What skipping costs, so declining is an informed choice too.
         var skipConsequence: String {
             switch self {
             case .sudo: return String(localized: "Skip to let the command fail instead.")
             case .secret: return String(localized: "Skip to continue without it.")
-            case .vaultUnlock: return String(localized: "Skip to continue without unlocking it.")
-            case .vaultSaveLogin: return String(localized: "Skip to continue without saving a login.")
-            case .vaultCode: return String(localized: "Skip to continue without the code.")
             }
         }
     }
@@ -272,29 +264,11 @@ struct BotCredentialRequest: Equatable {
     let envVar: String?
     /// `secret` only: the host's own words for what it wants.
     let prompt: String?
-    /// `vault.unlock_prompt` only: the password manager to unlock, such as 1Password.
-    var displayName: String? = nil
-    /// `vault.save_login` only: the sign-in page's origin, which the login is saved for.
-    var origin: String? = nil
-    /// `vault.save_login` and `vault.code`: the site's host name.
-    var site: String? = nil
-    /// `vault.code` only: the host's own words about the code.
-    var hint: String? = nil
 
-    /// The card's title, naming the password manager or site when the host sent one.
     var title: String {
         switch kind {
         case .sudo: return String(localized: "Administrator password needed")
         case .secret: return String(localized: "Secret needed")
-        case .vaultUnlock:
-            guard let displayName else { return String(localized: "Unlock password manager") }
-            return String(localized: "Unlock \(displayName)")
-        case .vaultSaveLogin:
-            guard let site else { return String(localized: "Save a login?") }
-            return String(localized: "Save a login for \(site)?")
-        case .vaultCode:
-            guard let site else { return String(localized: "Verification code") }
-            return String(localized: "Verification code for \(site)")
         }
     }
 
@@ -305,23 +279,12 @@ struct BotCredentialRequest: Equatable {
             return String(localized: "A command on this Mac needs an administrator password to run.")
         case .secret:
             return prompt ?? String(localized: "This bot needs a secret value to carry on.")
-        case .vaultUnlock:
-            guard let displayName else {
-                return String(localized: "This bot needs a password manager unlocked to sign in for you.")
-            }
-            return String(localized: "This bot needs \(displayName) unlocked to sign in for you.")
-        case .vaultSaveLogin:
-            return String(localized: "The bot reached this sign-in page and has no login for it.")
-        case .vaultCode:
-            return hint ?? String(localized: "The site asked for a sign-in code.")
         }
     }
 
     /// Where the value ends up, stated before it is typed. `sudo` is used for the
     /// one command and never written down; `secret` is saved on the host under
-    /// `envVar`; an unlock goes to the password manager's own CLI; a login is
-    /// saved in Hermes's own vault on the host, not the user's password manager;
-    /// a code is typed into the page. None is ever stored by Hermex.
+    /// `envVar`. Neither is ever stored by Hermex.
     var handling: String {
         switch kind {
         case .sudo:
@@ -331,27 +294,7 @@ struct BotCredentialRequest: Equatable {
                 return String(localized: "Saved on this bot's Mac. Hermex never saves it.")
             }
             return String(localized: "Saved on this bot's Mac as \(envVar). Hermex never saves it.")
-        case .vaultUnlock:
-            guard let displayName else {
-                return String(localized: "Goes straight to the password manager on this bot's Mac to unlock it for this chat. Hermex never saves it.")
-            }
-            return String(localized: "Goes straight to \(displayName) on this bot's Mac to unlock it for this chat. Hermex never saves it.")
-        case .vaultSaveLogin:
-            return String(localized: "Saved in Hermes's password vault on this bot's Mac, then filled into the page. The model never sees the password, and Hermex never saves it.")
-        case .vaultCode:
-            return String(localized: "Typed into the page on this bot's Mac. The model never sees it, and Hermex never saves it.")
         }
-    }
-
-    /// The `value` a save-login answer carries: one JSON-encoded string holding
-    /// `{identifier, password}`, which is how the host's vault reads it. Nil
-    /// unless both are filled, because the host reads a login missing either as
-    /// declined.
-    static func saveLoginValue(identifier: String, password: String) -> String? {
-        let identifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !identifier.isEmpty, !password.isEmpty,
-              let data = try? JSONEncoder().encode(["identifier": identifier, "password": password]) else { return nil }
-        return String(decoding: data, as: UTF8.self)
     }
 }
 
@@ -370,7 +313,7 @@ struct BotDesktopTaskRequest: Equatable {
         case previewAct = "preview.act"
 
         /// What is happening, in the user's words rather than the wire name, naming the bot in
-        /// Bot Chat and Hermes in a regular chat (#1141).
+        /// a bot's chat and Hermes in any other chat (#1141).
         func title(_ subject: HermesRequestSubject) -> String {
             switch (self, subject) {
             case (.terminalRead, .bot): return String(localized: "This bot is reading a terminal on the Mac.")
@@ -636,7 +579,7 @@ struct BotRequestResolution: Equatable {
     /// answer after checking Desktop is the user's call, not a replay.
     var blocksFurtherAnswers: Bool { outcome != .uncertain }
 
-    /// What the card says, naming the bot in Bot Chat and Hermes Desktop in a regular chat.
+    /// What the card says, naming the bot in a bot's chat and Hermes Desktop in any other chat.
     func message(_ subject: HermesRequestSubject) -> String {
         switch (outcome, subject) {
         case (.answered, _): return String(localized: "Answer sent.")
@@ -647,7 +590,7 @@ struct BotRequestResolution: Equatable {
     }
 }
 
-/// A request the host withdrew while it was on screen, and why (#892). Bot Chat
+/// A request the host withdrew while it was on screen, and why (#892). The chat
 /// leaves `message` where the card stood, so the bot's next words make sense.
 ///
 /// Only the family and the host's reason are kept: nothing the request carried

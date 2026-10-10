@@ -1,14 +1,14 @@
 import SwiftUI
 
 /// Why the last Hermes turn failed, or a warning about how it ended, drawn under the
-/// turn in every Hermes chat and in Bot Chat (design C, #878; #1139). A failure shows
+/// turn in every Hermes chat (design C, #878; #1139). A failure shows
 /// its title, the host's raw error, when a rate limit resets, and Retry or the billing
 /// page; a warning shows the host's own sentence. Static: nothing animates, and a
 /// passed reset time simply drops on the next redraw.
 struct HermesTurnOutcomeRow: View {
-    /// The host-retained failure (`HermesChatActivity.failure`, `BotConversation.turnFailure`).
+    /// The host-retained failure (`HermesChatActivity.failure`).
     let failure: HermesTurnOutcome?
-    /// The live-only billing link and warning (`HermesChatActivity.notice`, `BotConversation.turnNotice`).
+    /// The live-only billing link and warning (`HermesChatActivity.notice`).
     let notice: HermesTurnOutcome?
     let offersRetry: Bool
     let mayRetry: Bool

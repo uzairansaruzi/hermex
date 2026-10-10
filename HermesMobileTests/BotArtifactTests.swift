@@ -165,32 +165,6 @@ import UniformTypeIdentifiers
         XCTAssertNil(model.errorMessage)
     }
 
-    func testSwitchDuringDownloadRejectsStaleBytesAndEqualProfileOnOtherConnection() async throws {
-        let wire = BotFixtureWire()
-        let connection = BotConnection(id: UUID(), name: "Fixture", address: address, username: "u", password: "p")
-        let profile = BotProfile(.object(["name": .string("inbox-triage")]))!
-        let model = BotConversation(server: address, connection: connection, profile: profile, wire: wire,
-                                    drafts: ChatDraftStore(persistence: BotMemoryDrafts()))
-        await model.recover()
-        let scope = try XCTUnwrap(model.artifactContext)
-        XCTAssertEqual(scope.sessionID, "tip")
-        let started = expectation(description: "download started")
-        var finish: CheckedContinuation<Data, Never>?
-        wire.downloadArtifact = { _, received in
-            XCTAssertEqual(received, scope)
-            return await withCheckedContinuation { continuation in finish = continuation; started.fulfill() }
-        }
-        let pending = Task { try await model.artifactData(path: "same.pdf", context: scope) }
-        await fulfillment(of: [started], timeout: 2)
-        model.suspend()
-        finish?.resume(returning: Data("old server".utf8))
-        do { _ = try await pending.value; XCTFail("Stale data must not be published") }
-        catch { XCTAssertEqual(error as? BotFailure, .stale) }
-        await model.recover()
-        do { _ = try await model.artifactData(path: "same.pdf", context: context()); XCTFail("Other connection must fail") }
-        catch { XCTAssertEqual(error as? BotFailure, .stale) }
-        model.suspend()
-    }
 }
 
 final class BotArtifactHTTPFixture: URLProtocol {

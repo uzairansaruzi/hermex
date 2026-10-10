@@ -163,8 +163,6 @@ struct HermesDelegationCompletion: Identifiable, Equatable, Sendable {
         self.wire = wire
     }
 
-    var hasWorkers: Bool { !workers.isEmpty }
-
     func connect(_ next: Context) async {
         disconnect()
         context = next

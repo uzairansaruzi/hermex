@@ -191,15 +191,45 @@ struct BotAvatarMarkView: View {
     }
 }
 
+/// What a bot's chat title face shows for the current turn (#757). Waiting and failed
+/// override the pinned expression, since a pin is only the resting face; every other
+/// surface keeps the pin. Only `.working` moves beyond a blink.
+enum BotTitleFace {
+    case resting, working, waiting, failed
+
+    /// The eyes that replace the pinned expression, or nil to keep it.
+    var expression: BotAvatarExpression? {
+        switch self {
+        case .waiting: return .curious
+        case .failed: return .sad
+        case .resting, .working: return nil
+        }
+    }
+
+    /// The motion for an active scene: only work sways (from `beatStart`); every other
+    /// face just blinks, so a pending approval never runs the 15 fps beat.
+    func motion(beatStart: Date) -> BotFaceMotion {
+        self == .working ? .working(since: beatStart) : .idle
+    }
+
+    /// What VoiceOver adds after the bot's name; nil when the face shows no state.
+    var accessibilityValue: String? {
+        switch self {
+        case .waiting: return String(localized: "Needs attention")
+        case .failed: return String(localized: "Turn failed")
+        case .resting, .working: return nil
+        }
+    }
+}
+
 /// A bot's chat title (#757): its face and name in one pill beside Back, and the way into the
-/// bot's profile. Bot Chat and a bot's chat in `ChatView` (#1145) both draw it. The face shows
-/// the turn's state (`TitleFace`) and stays hidden from VoiceOver, which hears the state as
-/// the pill's value instead.
+/// bot's profile. The face shows the turn's state (`BotTitleFace`) and stays hidden from
+/// VoiceOver, which hears the state as the pill's value instead.
 struct BotChatTitlePill: View {
     let profile: BotProfile
     let avatar: UIImage?
     let motion: BotFaceMotion
-    let face: BotConversation.TitleFace
+    let face: BotTitleFace
     let onOpen: () -> Void
 
     var body: some View {

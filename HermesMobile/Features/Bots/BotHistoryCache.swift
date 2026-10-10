@@ -1,8 +1,9 @@
 import CryptoKit
 import Foundation
 
-/// A bounded, disposable index of settled conversations this phone has loaded.
-/// All disk access and text matching run on the actor, away from SwiftUI rendering.
+/// A bounded, disposable index of the room history this phone has loaded, which room
+/// search reads; a bot's chat is the host's to search (#1146). All disk access and text
+/// matching run on the actor, away from SwiftUI rendering.
 actor BotHistoryCache {
     nonisolated let recent = BotRecentTranscripts()
     struct Scope: Codable, Hashable, Sendable {
@@ -44,10 +45,8 @@ actor BotHistoryCache {
     struct Snapshot: Codable, Equatable, Identifiable, Sendable {
         let id: UUID
         let scope: Scope
-        let profileID: String
+        /// The room's name; the key predates rooms being the only snapshots.
         let profileName: String?
-        let root: String
-        let tip: String
         let savedAt: Date
         let messages: [Message]
         var roomID: String? = nil
@@ -99,34 +98,8 @@ actor BotHistoryCache {
     /// A nil directory is an isolated memory cache, used by fixtures.
     init(directory: URL? = nil) { self.directory = directory }
 
-    /// Replace the whole saved projection: undo, compression and changed roots
-    /// must never leave old rows searchable under a refreshed canonical chat.
-    func replace(scope: Scope, profileID: String, profileName: String? = nil, root: String, tip: String,
-                 messages: [ChatMessage], receivedAt: Date = Date()) throws {
-        try Task.checkCancellation()
-        guard !removed.contains(scope), receivedAt > (clearedAt[scope.serverKey] ?? .distantPast) else { return }
-        try load()
-        if let previous = snapshots.first(where: { $0.scope == scope && $0.roomID == nil && $0.profileID == profileID }),
-           previous.savedAt > receivedAt { return }
-        var seen: Set<String> = []
-        let rows = messages.suffix(Self.maximumMessages).compactMap { message -> Message? in
-            guard let role = message.role, ["user", "assistant"].contains(role),
-                  let text = message.content, !text.isEmpty,
-                  text.utf8.count <= Self.maximumMessageBytes, seen.insert(message.id).inserted else { return nil }
-            return Message(id: message.id, role: role, text: text, displayKind: message.displayKind)
-        }
-        if let previous = snapshots.first(where: { $0.scope == scope && $0.roomID == nil && $0.profileID == profileID }),
-           previous.root == root, previous.tip == tip, previous.messages == rows,
-           receivedAt.timeIntervalSince(previous.savedAt) < 60 { return }
-        snapshots.removeAll { $0.scope == scope && $0.roomID == nil && $0.profileID == profileID }
-        if !rows.isEmpty {
-            snapshots.append(Snapshot(id: UUID(), scope: scope, profileID: profileID, profileName: profileName, root: root,
-                                      tip: tip, savedAt: receivedAt, messages: rows))
-        }
-        try persist(prune(now: receivedAt))
-    }
-
-    func search(_ query: String, scope: Scope, profileIDs: Set<String>?, roomIDs: Set<String>? = [], now: Date = Date()) throws -> [Hit] {
+    /// Matches in `roomIDs`' saved history, newest first; nil searches every room.
+    func search(_ query: String, scope: Scope, roomIDs: Set<String>?, now: Date = Date()) throws -> [Hit] {
         try Task.checkCancellation()
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return [] }
@@ -136,8 +109,8 @@ actor BotHistoryCache {
         persistPruning(previousCount: previousCount)
         var hits: [Hit] = []
         for snapshot in snapshots.reversed() where snapshot.scope == scope
-            && (snapshot.roomID.map { roomIDs?.contains($0) ?? true }
-                ?? (profileIDs?.contains(snapshot.profileID) ?? true)) && now.timeIntervalSince(snapshot.savedAt) < Self.lifetime {
+            && snapshot.roomID.map { roomIDs?.contains($0) ?? true } == true
+            && now.timeIntervalSince(snapshot.savedAt) < Self.lifetime {
             for message in snapshot.messages.reversed() {
                 try Task.checkCancellation()
                 guard let range = message.text.range(of: query, options: .caseInsensitive) else { continue }
@@ -184,8 +157,7 @@ actor BotHistoryCache {
             boundary = max(boundary, rows[rows.count - Self.maximumMessages - 1].seq ?? boundary)
             rows = Array(rows.suffix(Self.maximumMessages))
         }
-        let next = Snapshot(id: previous?.id ?? UUID(), scope: scope, profileID: "", profileName: room.name,
-            root: "", tip: "", savedAt: max(previous?.savedAt ?? receivedAt, receivedAt), messages: rows,
+        let next = Snapshot(id: previous?.id ?? UUID(), scope: scope, profileName: room.name, savedAt: max(previous?.savedAt ?? receivedAt, receivedAt), messages: rows,
             roomID: key.roomID, cursor: overlaps ? max(previous?.cursor ?? 0, cursor) : cursor,
             earlierBoundary: boundary)
         let cursorOnly = previous.map { $0.messages == next.messages && $0.earlierBoundary == next.earlierBoundary
@@ -214,7 +186,7 @@ actor BotHistoryCache {
 
     /// Room IDs are permanently retired by expiry/disband. Revoke late page writes too.
     func removeRoom(_ key: BotRoomKey) throws {
-        recent.remove { $0 == .room(key) }
+        recent.remove { $0 == .init(key) }
         let scope = Scope(server: key.server, connectionID: key.connectionID)
         removedRooms.insert(.init(scope: scope, id: key.roomID))
         try load()
@@ -224,10 +196,7 @@ actor BotHistoryCache {
 
     /// Call only with a complete authoritative room list, never a partial page.
     func retainRooms(_ ids: Set<String>, scope: Scope) throws {
-        recent.remove {
-            guard $0.scope == scope, case .room(let id) = $0.conversation else { return false }
-            return !ids.contains(id)
-        }
+        recent.remove { $0.scope == scope && !ids.contains($0.roomID) }
         try load()
         let removed = snapshots.compactMap { snapshot -> String? in
             guard snapshot.scope == scope, let id = snapshot.roomID, !ids.contains(id) else { return nil }
@@ -251,15 +220,6 @@ actor BotHistoryCache {
         try persist()
     }
 
-    /// Drops one deleted bot's snapshots. The scope stays writable for the other bots.
-    func removeProfile(server: URL, connectionID: UUID, profileID: String) throws {
-        recent.remove { $0 == .bot(server: server, connectionID: connectionID, profile: profileID) }
-        let scope = Scope(server: server, connectionID: connectionID)
-        try load()
-        snapshots.removeAll { $0.scope == scope && $0.roomID == nil && $0.profileID == profileID }
-        try persist()
-    }
-
     func removeServer(_ server: URL, activeConnectionID: UUID?) throws {
         let key = Scope.key(server)
         recent.remove { $0.scope.serverKey == key }
@@ -278,9 +238,11 @@ actor BotHistoryCache {
         let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size <= Self.maximumBytes * 2 else { return }
         snapshots = try JSONDecoder().decode([Snapshot].self, from: Data(contentsOf: file))
+        // Bot Chat's snapshots (no room) predate #1148; nothing reads them any more.
+        let previousCount = snapshots.count
+        snapshots.removeAll { $0.roomID == nil }
         // The newest saved timestamp dates the last write, so a relaunch does not rewrite on its first cursor-only poll.
         lastRoomWriteAt = snapshots.map(\.savedAt).max() ?? .distantPast
-        let previousCount = snapshots.count
         prune(now: Date())
         persistPruning(previousCount: previousCount)
     }
@@ -323,61 +285,22 @@ actor BotHistoryCache {
     }
 }
 
-/// Recent rendered values, separate from the lossy on-disk search index. The lock
-/// covers every access because screens read synchronously before their first frame,
-/// while the history actor invalidates entries. Snapshots contain value types only:
-/// no clients, callbacks, approval state, or credentials cross this boundary.
+/// Each recent room's rendered window, separate from the lossy on-disk search index, so
+/// reopening a room draws its last window before the first poll. The lock covers every
+/// access because screens read synchronously before their first frame, while the history
+/// actor invalidates entries. Logs are value types: no clients, callbacks, approval state,
+/// or credentials cross this boundary.
 final class BotRecentTranscripts: @unchecked Sendable {
-    /// A Bot Chat by Profile, a room, or a Hermes session by Profile and stored key.
-    enum Conversation: Hashable { case bot(String), room(String), session(profile: String, key: String) }
     struct Key: Hashable {
         let scope: BotHistoryCache.Scope
-        let conversation: Conversation
-        static func bot(server: URL, connectionID: UUID, profile: String) -> Key {
-            Key(scope: .init(server: server, connectionID: connectionID), conversation: .bot(profile))
-        }
-        static func session(server: URL, connectionID: UUID, profile: String, key: String) -> Key {
-            Key(scope: .init(server: server, connectionID: connectionID), conversation: .session(profile: profile, key: key))
-        }
-        static func room(_ room: BotRoomKey) -> Key {
-            Key(scope: .init(server: room.server, connectionID: room.connectionID), conversation: .room(room.roomID))
-        }
-    }
-    struct Bot {
-        let root: String
-        let messages: [ChatMessage]
-        let activity: [BotSettledActivity]
-
-        init(root: String, messages: [ChatMessage], activity: [BotSettledActivity]) {
-            self.root = root
-            self.messages = Array(messages.suffix(500))
-            let ids = Set(self.messages.map(\.id))
-            self.activity = Array(activity.filter { $0.anchorMessageID.map(ids.contains) ?? true }.suffix(500))
-        }
-    }
-    enum Snapshot {
-        case bot(Bot), room(BotRoomLog)
-        var cost: Int {
-            switch self {
-            case .bot(let bot):
-                let messages = bot.messages.reduce(0) { total, row in
-                    total + 256 + (row.content?.utf8.count ?? 0) + (row.reasoning?.utf8.count ?? 0)
-                        + JSONValue.object(row.displayMetadata ?? [:]).recentCost
-                }
-                let activity = bot.activity.reduce(0) { total, row in
-                    total + 128 + (row.reasoning?.utf8.count ?? 0) + row.toolCalls.reduce(0) { total, tool in
-                        total + 256 + (tool.preview?.utf8.count ?? 0) + JSONValue.object(tool.args ?? [:]).recentCost
-                    }
-                }
-                return 2 * (messages + activity)
-            case .room(let log):
-                return 2 * log.events.reduce(0) { $0 + 256 + $1.payload.jsonValue.recentCost + $1.actor.jsonValue.recentCost }
-            }
+        let roomID: String
+        init(_ room: BotRoomKey) {
+            scope = .init(server: room.server, connectionID: room.connectionID); roomID = room.roomID
         }
     }
     private struct Entry {
         var owner: UUID
-        var snapshot: Snapshot?
+        var log: BotRoomLog?
         var cost: Int
         var access: UInt64
     }
@@ -391,11 +314,11 @@ final class BotRecentTranscripts: @unchecked Sendable {
         self.maximumEntries = maximumEntries; self.maximumBytes = maximumBytes
     }
 
-    func snapshot(for key: Key) -> Snapshot? {
+    func log(for key: Key) -> BotRoomLog? {
         lock.withLock {
             guard var entry = entries[key] else { return nil }
             access &+= 1; entry.access = access; entries[key] = entry
-            return entry.snapshot
+            return entry.log
         }
     }
 
@@ -404,20 +327,20 @@ final class BotRecentTranscripts: @unchecked Sendable {
     func begin(_ key: Key) -> UUID {
         lock.withLock {
             let owner = UUID(); access &+= 1
-            entries[key] = Entry(owner: owner, snapshot: entries[key]?.snapshot,
+            entries[key] = Entry(owner: owner, log: entries[key]?.log,
                                  cost: entries[key]?.cost ?? 0, access: access)
             prune()
             return owner
         }
     }
 
-    func save(_ snapshot: Snapshot, for key: Key, owner: UUID) {
-        let cost = snapshot.cost
+    func save(_ log: BotRoomLog, for key: Key, owner: UUID) {
+        let cost = 2 * log.events.reduce(0) { $0 + 256 + $1.payload.jsonValue.recentCost + $1.actor.jsonValue.recentCost }
         lock.withLock {
             guard entries[key]?.owner == owner else { return }
             guard cost <= maximumBytes else { entries.removeValue(forKey: key); return }
             access &+= 1
-            entries[key] = Entry(owner: owner, snapshot: snapshot, cost: cost, access: access)
+            entries[key] = Entry(owner: owner, log: log, cost: cost, access: access)
             prune()
         }
     }

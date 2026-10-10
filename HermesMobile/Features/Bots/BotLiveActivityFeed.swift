@@ -32,7 +32,7 @@ struct BotLiveActivitySnapshot: Equatable {
     /// ephemeral RPC `session_id` or the canonical chat root.
     var agentSessionID: String? = nil
 
-    /// A bot's count chips (#584), the same in Bot Chat and a bot's chat in `ChatView`: the
+    /// A bot's count chips (#584) in a bot's chat in `ChatView`: the
     /// plan's step while one is open, then the live workers and the turn's tools. Counts only.
     static func countChips(plan: HermesPlan?, workers: Int, tools: Int = 0) -> [String] {
         var chips: [String] = []

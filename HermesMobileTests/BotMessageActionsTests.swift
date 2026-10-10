@@ -1,15 +1,8 @@
 import XCTest
 @testable import HermesMobile
 
+/// A room message's long-press menu.
 @MainActor final class BotMessageActionsTests: XCTestCase {
-    private let server = URL(string: "https://webui.example")!
-    private var connection: BotConnection {
-        BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!, username: "user", password: "fixture")
-    }
-    private var profile: BotProfile { BotProfile(.object(["name": .string("inbox-triage")]))! }
-
-    // MARK: - The menu
-
     func testBotMessageOffersCopyAndNothingElse() {
         let items = BotMessageActions.items(copyText: "A reply", isHapticsEnabled: false, copy: { _ in })
 
@@ -32,107 +25,5 @@ import XCTest
     func testMessageWithNothingToCopyHasNoMenu() {
         XCTAssertTrue(BotMessageActions.items(copyText: nil, isHapticsEnabled: false, copy: { _ in }).isEmpty)
         XCTAssertTrue(BotMessageActions.items(copyText: "  \n ", isHapticsEnabled: false, copy: { _ in }).isEmpty)
-    }
-
-    func testSettledReplyFooterCopiesOriginalMarkdownWithoutAHostRowID() throws {
-        let markdown = "  **Reply**\n\n```swift\nlet value = 1\n```\n"
-        var copied: [String] = []
-        let action = try XCTUnwrap(BotMessageActions.footerCopy(
-            message: ChatMessage(role: "assistant", content: markdown, timestamp: nil, messageId: nil), isLive: false,
-            isHapticsEnabled: false, copy: { copied.append($0) }
-        ))
-
-        action()
-
-        XCTAssertEqual(copied, [markdown])
-    }
-
-    func testFooterCopyExcludesPromptsLiveRepliesDelegationAndEmptyText() {
-        let excluded: [(ChatMessage, Bool)] = [
-            (ChatMessage(role: "user", content: "Prompt", timestamp: nil, messageId: nil), false),
-            (ChatMessage(role: "assistant", content: "Streaming", timestamp: nil, messageId: nil), true),
-            (ChatMessage(role: "delegation_completion", content: "Result", timestamp: nil, messageId: nil), false),
-            (ChatMessage(role: "assistant", content: "Delegated result", timestamp: nil, messageId: nil, displayKind: HermesDelegationCompletion.displayKind), false),
-            (ChatMessage(role: "tool", content: "Tool result", timestamp: nil, messageId: nil), false),
-            (ChatMessage(role: "assistant", content: nil, timestamp: nil, messageId: nil), false),
-            (ChatMessage(role: "assistant", content: "", timestamp: nil, messageId: nil), false),
-            (ChatMessage(role: "assistant", content: "  \n\t", timestamp: nil, messageId: nil), false)
-        ]
-        var copied: [String] = []
-        for (message, isLive) in excluded {
-            let action = BotMessageActions.footerCopy(message: message, isLive: isLive,
-                                                     isHapticsEnabled: false, copy: { copied.append($0) })
-            XCTAssertNil(action, "No footer Copy for \(message.role), live=\(isLive), text=\(message.content.debugDescription)")
-            action?()
-        }
-        XCTAssertEqual(copied, [])
-    }
-
-    // MARK: - Ask Hermex
-
-    func testAskHermexQuotesIntoTheDraftAndSurvivesReopening() async throws {
-        let drafts = ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(0))
-        let model = make(BotFixtureWire(), drafts: drafts)
-        await model.recover()
-
-        model.quotePassage("  The failing line is in the reducer.  ")
-        model.editDraft("Why?")
-        XCTAssertEqual(model.quotes.map(\.text), ["The failing line is in the reducer."])
-        try await drafts.flush()
-        model.suspend()
-
-        let stored = await drafts.draft(for: model.draftKey)
-        let saved = try XCTUnwrap(stored)
-        XCTAssertEqual(saved.quotes.map(\.text), ["The failing line is in the reducer."])
-        XCTAssertEqual(saved.text, "Why?")
-    }
-
-    func testQuoteShipsAsMarkdownAheadOfTheTypedTextAndClearsOnSend() async throws {
-        let wire = BotFixtureWire()
-        let model = make(wire)
-        await model.recover()
-
-        model.quotePassage("first line\nsecond line")
-        model.editDraft("What does this mean?")
-        await model.send()
-
-        let sent = try XCTUnwrap(wire.calls.first { $0.0 == "prompt.submit" }?.1["text"]?.text)
-        XCTAssertTrue(sent.hasPrefix("> first line\n> second line\n\nWhat does this mean?"), sent)
-        XCTAssertTrue(model.quotes.isEmpty)
-        XCTAssertEqual(model.draft, "")
-        model.suspend()
-    }
-
-    func testAQuoteAloneIsSendableAndIsRemovableOneAtATime() async throws {
-        let model = make(BotFixtureWire())
-        await model.recover()
-
-        XCTAssertFalse(model.hasSendableInput)
-        model.quotePassage("keep me")
-        model.quotePassage("drop me")
-        XCTAssertTrue(model.hasSendableInput)
-
-        model.removeQuote(try XCTUnwrap(model.quotes.last?.id))
-
-        XCTAssertEqual(model.quotes.map(\.text), ["keep me"])
-        XCTAssertNotNil(model.preparePrompt(.send))
-        model.suspend()
-    }
-
-    func testAnEmptySelectionNeverBecomesAQuote() async {
-        let model = make(BotFixtureWire())
-        await model.recover()
-
-        model.quotePassage("   \n  ")
-
-        XCTAssertTrue(model.quotes.isEmpty)
-        XCTAssertFalse(model.hasSendableInput)
-        model.suspend()
-    }
-
-    private func make(_ wire: BotFixtureWire, drafts: ChatDraftStore? = nil) -> BotConversation {
-        BotConversation(server: server, connection: connection, profile: profile, wire: wire,
-                        drafts: drafts ?? ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)),
-                        reconnectDelay: { _ in })
     }
 }

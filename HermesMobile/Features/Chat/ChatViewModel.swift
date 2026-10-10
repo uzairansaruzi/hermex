@@ -863,7 +863,7 @@ final class ChatViewModel {
     /// A Hermes session's Fast mode (#1142); nil hides the chip, as on a webui session.
     var composerFastMode: Bool? { hermesSettings?.fast }
 
-    /// Whether that Fast mode can change now, as Bot Chat's chip reads it (#1142).
+    /// Whether that Fast mode can change now (#1142).
     var composerMayChangeFastMode: Bool { hermesSettings?.mayChangeFast == true }
 
     /// Turns a Hermes session's Fast mode on or off for this chat (#1142); false when it
@@ -1555,7 +1555,7 @@ final class ChatViewModel {
         let selectedEffort = effort.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !selectedEffort.isEmpty else { return false }
 
-        // A Hermes session sends it for this chat alone, as Bot Chat does (#1016).
+        // A Hermes session sends it for this chat alone (#1016).
         if let hermesSettings {
             guard selectedEffort != hermesSettings.controls.effort else { return false }
             return await hermesSettings.select(effort: selectedEffort)

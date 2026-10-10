@@ -1,8 +1,9 @@
 import Foundation
 import Observation
 
-/// One conversation's controls. Every read, confirmation and socket write belongs
-/// to one connection generation and runtime; disconnect invalidates them together.
+/// One Hermes chat's model, effort and Fast controls (`HermesChatSettings`). Every read,
+/// confirmation and socket write belongs to one connection generation and runtime;
+/// disconnect invalidates them together.
 @MainActor @Observable final class BotChatControls {
     struct Context: Equatable {
         let connectionID: UUID
@@ -11,7 +12,7 @@ import Observation
         let generation: Int
     }
     enum Change: Equatable {
-        case model(ModelCatalogOption), effort(String), fast(Bool), workspace(String), control(BotSessionControl)
+        case model(ModelCatalogOption), effort(String), fast(Bool)
     }
     struct Action: Identifiable, Equatable {
         let id = UUID()
@@ -26,11 +27,8 @@ import Observation
     }
 
     private(set) var catalog = HermesModelCatalog(.null)
-    private(set) var workspace: String?
     private(set) var effort: String?
     private(set) var fast: Bool?
-    private(set) var usage = BotChatUsage(.null)
-    private(set) var controls: [BotSessionControl] = []
     private(set) var pendingModel: ModelCatalogOption?
     private(set) var confirmation: Confirmation?
     private(set) var errorMessage: String?
@@ -47,15 +45,6 @@ import Observation
     private var consumed = Set<UUID>()
     private var wire: (any BotTransport)?
     private var lastContext: Context?
-    private var idle = false
-    private(set) var snapshotRevision = 0
-    /// False for a Hermes session's composer (#1015), which reads only the model catalog:
-    /// its goal and side work read `session.control` on their own (`HermesChatSideTasks`).
-    private let readsSessionControl: Bool
-
-    init(readsSessionControl: Bool = true) {
-        self.readsSessionControl = readsSessionControl
-    }
 
     var showsFast: Bool {
         guard fast != nil, let active = catalog.active else { return false }
@@ -72,8 +61,6 @@ import Observation
     var mayChangeFast: Bool { mayChangeModel && showsFast }
 
     var mayChangeModel: Bool { context != nil && !isApplying && !isLoading && !unavailable.contains("model.options") && !unavailable.contains("config.set") && catalog.active != nil }
-    var mayChangeWorkspace: Bool { context != nil && idle && !isApplying && !unavailable.contains("session.cwd.set") }
-    var mayControl: Bool { context != nil && !isApplying && !unavailable.contains("session.control") }
 
     func connect(_ context: Context, wire: any BotTransport) async {
         disconnect()
@@ -82,8 +69,7 @@ import Observation
         }
         if lastContext?.runtime != context.runtime { pendingModel = nil }
         lastContext = context
-        catalog = HermesModelCatalog(.null); controls = []
-        workspace = nil; effort = nil; fast = nil; usage = BotChatUsage(.null); idle = false
+        catalog = HermesModelCatalog(.null); effort = nil; fast = nil
         self.context = context; self.wire = wire
         await reload()
     }
@@ -98,12 +84,10 @@ import Observation
         consumed.removeAll()
     }
 
-    func snapshot(_ info: BotJSON, idle: Bool) {
-        self.idle = idle
-        workspace = info["cwd"].text
+    /// A `session.info`'s effort and Fast mode.
+    func snapshot(_ info: BotJSON) {
         effort = info["reasoning_effort"].text
         fast = info["fast"].flag
-        usage = BotChatUsage(info["usage"])
         if let pendingModel, let reported = info["model"].text, reported != pendingModel.id {
             // Desktop may replace/cancel the queued choice, or the next turn may
             // resolve an alias to a canonical model. Do not keep an obsolete badge.
@@ -132,28 +116,21 @@ import Observation
         let revision = readRevision
         isLoading = true
         defer { if context == owner && revision == readRevision { isLoading = false } }
-        var reads: [HermesCall] = [.modelOptions(sessionID: owner.runtime, profile: owner.profile)]
-        if readsSessionControl { reads.append(.sessionControlRead(sessionID: owner.runtime, profile: owner.profile)) }
-        for call in reads where !unavailable.contains(call.method) {
-            do {
-                let result = try await wire.call(call)
-                guard context == owner, revision == readRevision, !Task.isCancelled else { return }
-                if case .modelOptions = call {
-                    guard result["providers"].list != nil else { throw BotFailure.unsupported }
-                    catalog = HermesModelCatalog(result)
-                    if let pendingModel, catalog.active?.matchesSelection(modelID: pendingModel.id, providerID: pendingModel.providerID) == true {
-                        self.pendingModel = nil
-                    }
-                } else {
-                    guard result["control"].fields != nil else { throw BotFailure.unsupported }
-                    controls = BotSessionControl.read(result["control"])
-                }
-            } catch {
-                guard context == owner, revision == readRevision, !Task.isCancelled else { return }
-                // A -32601 needs nothing here: the connection has recorded it.
-                if isRefused(error) { refused.insert(call.method) }
-                else if !isUnsupported(error) { errorMessage = error.localizedDescription }
+        let call = HermesCall.modelOptions(sessionID: owner.runtime, profile: owner.profile)
+        guard !unavailable.contains(call.method) else { return }
+        do {
+            let result = try await wire.call(call)
+            guard context == owner, revision == readRevision, !Task.isCancelled else { return }
+            guard result["providers"].list != nil else { throw BotFailure.unsupported }
+            catalog = HermesModelCatalog(result)
+            if let pendingModel, catalog.active?.matchesSelection(modelID: pendingModel.id, providerID: pendingModel.providerID) == true {
+                self.pendingModel = nil
             }
+        } catch {
+            guard context == owner, revision == readRevision, !Task.isCancelled else { return }
+            // A -32601 needs nothing here: the connection has recorded it.
+            if isRefused(error) { refused.insert(call.method) }
+            else if !isUnsupported(error) { errorMessage = error.localizedDescription }
         }
     }
 
@@ -186,30 +163,22 @@ import Observation
             call = .configSet(sessionID: runtime, profile: profile, setting: .reasoning(value))
         case .fast(let enabled):
             call = .configSet(sessionID: runtime, profile: profile, setting: .fast(enabled))
-        case .workspace(let path):
-            guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            call = .sessionCwdSet(sessionID: runtime, profile: profile, cwd: path)
-        case .control(let control):
-            guard let name = control.action else { return }
-            call = .sessionControl(sessionID: runtime, profile: profile, action: name)
         }
         errorMessage = nil; confirmation = nil; isApplying = true; activeAction = action.id
         // A read started before this write must not overwrite its authoritative response.
-        readRevision += 1; snapshotRevision += 1; isLoading = false
+        readRevision += 1; isLoading = false
         var dispatched = false
         defer { if activeAction == action.id { isApplying = false; activeAction = nil } }
         do {
             let result = try await wire.call(call, validateDispatch: { [weak self] in
                 guard let self, self.context == action.context, self.activeAction == action.id,
                       !Task.isCancelled else { throw BotFailure.stale }
-                if case .workspace = action.change, !self.idle { throw BotFailure.stale }
-                if case .control(let control) = action.change, !self.controls.contains(control) { throw BotFailure.stale }
                 if case .configSet = call, self.catalog.active != action.expectedModel { throw BotFailure.stale }
                 dispatched = true
                 self.consumed.insert(action.id)
             })
             guard context == action.context, activeAction == action.id, !Task.isCancelled else { return }
-            readRevision += 1; snapshotRevision += 1; isLoading = false
+            readRevision += 1; isLoading = false
             switch action.change {
             case .model(let option):
                 guard result["key"].text == "model", result["scope"].text == "session",
@@ -227,12 +196,6 @@ import Observation
             case .fast(let enabled):
                 guard result["key"].text == "fast", result["value"].text == (enabled ? "fast" : "normal") else { throw BotSettingFailure.unknownOutcome }
                 fast = enabled
-            case .workspace:
-                guard let cwd = result["cwd"].text, !cwd.isEmpty else { throw BotSettingFailure.unknownOutcome }
-                workspace = cwd
-            case .control:
-                guard result["control"].fields != nil else { throw BotSettingFailure.unknownOutcome }
-                controls = BotSessionControl.read(result["control"])
             }
         } catch {
             guard context == action.context, activeAction == action.id, !Task.isCancelled else { return }
@@ -248,8 +211,6 @@ import Observation
         case .model: return mayChangeModel
         case .effort(let value): return mayChangeEffort && HermesModelCatalog.effortLevels.contains(value)
         case .fast: return mayChangeFast
-        case .workspace: return mayChangeWorkspace
-        case .control(let control): return mayControl && controls.contains(control) && control.action != nil
         }
     }
     /// The host can't do this here: it refused (`isRefused`) or lacks the method (-32601).

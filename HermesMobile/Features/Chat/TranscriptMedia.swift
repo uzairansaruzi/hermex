@@ -90,10 +90,6 @@ struct TranscriptMediaReference: Equatable, Identifiable {
         mediaKind == .image
     }
 
-    var isAudioCandidate: Bool {
-        mediaKind == .audio
-    }
-
     var isVideoCandidate: Bool {
         mediaKind == .video
     }
