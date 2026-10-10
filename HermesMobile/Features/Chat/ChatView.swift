@@ -1288,11 +1288,6 @@ struct ChatView: View {
             )
             .notificationOfferAlert($pendingNotificationOffer)
             .modifier(HermesModelConfirmationModifier(controls: viewModel.hermesSettings?.controls))
-            .modifier(HermesAutomationConfirmationModifier(
-                sideTasks: viewModel.hermesSideTasks, onConfirm: { control in
-                    Task { await viewModel.confirmHermesAutomation(control) }
-                }
-            ))
             .modifier(HermesPersonalityConfirmationModifier(
                 settings: viewModel.hermesSettings, profile: viewModel.selectedProfileTitle,
                 onConfirm: confirmHermesPersonality
@@ -2469,6 +2464,12 @@ struct ChatView: View {
                 || viewModel.hermesSideTasks?.canChangeAutomations == false,
             onChangeAutomation: { viewModel.hermesSideTasks?.ask($0) }
         )
+        // On the menu, so the iPad popover points at the Goal button.
+        .modifier(HermesAutomationConfirmationModifier(
+            sideTasks: viewModel.hermesSideTasks, onConfirm: { control in
+                Task { await viewModel.confirmHermesAutomation(control) }
+            }
+        ))
     }
 
     private var isGoalActionDisabled: Bool {
