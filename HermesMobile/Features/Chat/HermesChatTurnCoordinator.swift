@@ -246,7 +246,7 @@ struct HermesChatTranscript: Equatable {
         self.isNetworkAvailable = isNetworkAvailable
         requests = HermesChatRequests(engine: engine)
         sideTasks = HermesChatSideTasks(engine: engine)
-        settings = HermesChatSettings(engine: engine)
+        settings = HermesChatSettings(engine: engine, loadsAvatars: policy == .botChat)
         slashCommands = HermesSlashCommands(engine: engine, policy: policy)
         activity = HermesChatActivity(wire: engine.wire)
         draftKey = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id)

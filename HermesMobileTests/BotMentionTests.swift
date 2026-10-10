@@ -220,6 +220,10 @@ final class BotMentionTests: XCTestCase {
         .object(["name": .string("default")]),
         .object(["name": .string("helper"), "ui_meta": .object(["hermes-bots": .object(["title": .string("Inbox Triage")])])])
     ])])
+    /// The same roster, both bots with pictures.
+    private static let pictured: BotJSON = .object(["profiles": .array(["default", "helper"].map {
+        .object(["name": .string($0), "has_avatar": .bool(true)])
+    })])
 
     /// Every prompt mode sends the typed text with Desktop's identification note after it, while
     /// the chat shows the typed text: the optimistic row, and the queued prompt's receipt.
@@ -281,6 +285,19 @@ final class BotMentionTests: XCTestCase {
         XCTAssertEqual(chat.writes("prompt.submit").last?["text"], .string("@inbox-triage sort today"))
     }
 
+    /// A Bot Chat opened straight from its row, never through the Bots inbox, loads the roster's
+    /// pictures itself, for its pill and its `@` panel. A session loads none.
+    func testABotChatLoadsItsRostersPictures() async throws {
+        let chat = await openChat(target: .canonicalChat(profile: "default"), roster: Self.pictured)
+        await waitUntil("the pictures") { chat.turn.settings.avatars.count == 2 }
+        XCTAssertEqual(chat.turn.settings.avatars.keys.sorted(), ["default", "helper"])
+        XCTAssertEqual(chat.writes("profiles.get_asset").compactMap { $0["name"]?.text }, ["default", "helper"])
+
+        let session = await openChat(target: .session(profile: "default", key: "tip"), roster: Self.pictured)
+        XCTAssertEqual(session.writes("profiles.get_asset"), [])
+        XCTAssertTrue(session.turn.settings.avatars.isEmpty)
+    }
+
     private struct Chat {
         let model: ChatViewModel
         let turn: HermesChatTurnCoordinator
@@ -291,8 +308,8 @@ final class BotMentionTests: XCTestCase {
         }
     }
 
-    /// An idle chat on runtime `runtime` at tip `tip`, once its roster has been read.
-    private func openChat(target: ConversationTarget) async -> Chat {
+    /// An idle chat on runtime `runtime` at tip `tip`, once its `roster` has been read.
+    private func openChat(target: ConversationTarget, roster: BotJSON = HermesChatMentionTests.roster) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: .object([
@@ -300,7 +317,8 @@ final class BotMentionTests: XCTestCase {
             "messages": .array([]), "info": .object(["profile_name": .string("default")])
         ])))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
-        host.always("profiles.list", .init(result: Self.roster))
+        host.always("profiles.list", .init(result: roster))
+        host.always("profiles.get_asset", .init(result: .object(["found": .bool(true), "data": .string(botAvatarDataURL(side: 4))])))
         let client = BotClient(http: host.connection(Self.connection))
         _ = HermesHostFixture.configuration { request in
             request.url?.path == "/api/sessions/tip/messages" ? .json(200, .object(["messages": .array([])])) : nil

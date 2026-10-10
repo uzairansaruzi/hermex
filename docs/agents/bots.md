@@ -541,10 +541,12 @@ Regenerate and Fork From Here are not offered (the outcome row's Retry stays); t
 shows the bot's Profile and picks no other. `/btw`, `/background`, `/goal`, `/yolo` and
 `/compress` run as in a session. The title is the bot's pill (`HermesBotChatPill` over Bot
 Chat's `BotChatTitlePill`): the roster row from the chat's `profiles.list` read (a bare row for
-the Profile until it answers), the avatar `BotAvatarStore` already holds, and the face from the
+the Profile until it answers), the avatar from `HermesChatSettings.avatars` (what the shared
+`BotAvatarStore` holds at once, then each picture that read's `profiles.get_asset` pass fetches,
+so a chat opened straight from Archived needs no Bots inbox visit), and the face from the
 turn (`HermesChatTurnCoordinator.titleFace`, with the beat rules below). A tap opens
-`BotProfileEditorView`; closing it reads the roster again. The same roster gives the composer's
-`@` panel this connection's other bots above its files, and the editor their chips; every send
+`BotProfileEditorView`; closing it reads the roster again. The same roster and pictures give the
+composer's `@` panel this connection's other bots above its files, and the editor their chips; every send
 mode appends Desktop's note to the typed text's mentions and the chat shows the text without it
 (the optimistic row, the snapshot's in-flight prompt and the queued receipt). A session sends
 `@` text as typed. A restored prompt drops the host's context footer and reference lines before

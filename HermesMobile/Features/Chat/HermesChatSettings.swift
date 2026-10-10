@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 /// The Profile a new Hermes session starts in, remembered per server (#1015). It is client
 /// state: never written to the host, whose `POST /api/profiles/active` would move the CLI's
@@ -78,6 +79,12 @@ enum HermesProfilePreference {
     private(set) var bots: [BotProfile] = []
     /// Those bots as `@`mention completions, without this chat's own Profile; built once per read.
     private(set) var mentions: BotMentions
+    /// A Bot Chat's bots' pictures by Profile, for its pill and `@` panel, from the shared
+    /// `BotAvatarStore`: what it already holds at once, then each fetched picture as it arrives.
+    /// Empty for a session, which loads none.
+    private(set) var avatars: [String: UIImage] = [:]
+    /// Loads `avatars` after each roster read: only a Bot Chat's.
+    private let loadsAvatars: Bool
     /// Called after each `profiles.list` read lands, so a Bot Chat's activity takes the bot's look.
     @ObservationIgnored var onRosterRead: (() -> Void)?
     /// A `/personality` name waiting for the user to confirm the Profile-wide change.
@@ -88,8 +95,9 @@ enum HermesProfilePreference {
     @ObservationIgnored private var latestInfo: (info: BotJSON, idle: Bool)?
     private let engine: HermesConversation
 
-    init(engine: HermesConversation) {
+    init(engine: HermesConversation, loadsAvatars: Bool = false) {
         self.engine = engine
+        self.loadsAvatars = loadsAvatars
         profile = engine.target.profile
         mentions = BotMentions(roster: [], excluding: profile)
     }
@@ -132,6 +140,14 @@ enum HermesProfilePreference {
         bots = rows.compactMap(BotProfile.init)
         mentions = BotMentions(roster: bots, excluding: profile)
         onRosterRead?()
+        guard loadsAvatars else { return }
+        // A chat opened straight from its row never passes the Bots inbox, which loads them too.
+        // A newer attach ends the pass, as its own read loads them again.
+        let store = BotAvatarStore.shared, connectionID = engine.connection.id
+        await store.refresh(bots, connectionID: connectionID, using: engine.wire,
+                            validateDispatch: { [engine] in try engine.check(attempt) }) {
+            avatars = store.images(connectionID: connectionID)
+        }
     }
 
     func disconnect() { controls.disconnect() }

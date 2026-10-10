@@ -244,7 +244,7 @@ struct HermesBotChatPill: View {
             let face = turn.titleFace
             BotChatTitlePill(
                 profile: profile,
-                avatar: BotAvatarStore.shared.images(connectionID: turn.engine.connection.id)[profile.id],
+                avatar: turn.settings.avatars[profile.id],
                 motion: scenePhase == .active ? face.motion(beatStart: workingBeat.start) : .still,
                 face: face, onOpen: onOpen
             )

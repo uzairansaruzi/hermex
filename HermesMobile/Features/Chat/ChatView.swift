@@ -576,7 +576,7 @@ struct ChatView: View {
             searchFilePaths: viewModel.offersFilePathSearch ? { await viewModel.searchFilePaths($0) } : nil,
             chipFilePaths: viewModel.fileChipPaths,
             botMentions: viewModel.hermesBotChat?.mentions,
-            mentionAvatars: viewModel.hermesBotChat.map { BotAvatarStore.shared.images(connectionID: $0.engine.connection.id) } ?? [:],
+            mentionAvatars: viewModel.hermesBotChat?.settings.avatars ?? [:],
             filePathSearch: viewModel.filePathSearch,
             uploadAttachmentErrorMessage: viewModel.uploadAttachmentErrorMessage,
             steerFailure: viewModel.steerFailureMessage.map { message in
@@ -1901,7 +1901,7 @@ struct ChatView: View {
         if let botChat = viewModel.hermesBotChat, let profile = botChat.botProfile {
             let connection = botChat.engine.connection
             BotProfileEditorView(server: botChat.engine.server, connection: connection, profile: profile,
-                                 avatar: BotAvatarStore.shared.images(connectionID: connection.id)[profile.id])
+                                 avatar: botChat.settings.avatars[profile.id])
                 .id(connection.id.uuidString + profile.id)
         }
     }
