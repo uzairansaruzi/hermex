@@ -369,19 +369,30 @@ struct BotDesktopTaskRequest: Equatable {
         case previewRead = "preview.read"
         case previewAct = "preview.act"
 
-        /// What is happening, in the user's words rather than the wire name.
-        var title: String {
-            switch self {
-            case .terminalRead: return String(localized: "This bot is reading a terminal on the Mac.")
-            case .windowRead: return String(localized: "This bot is reading a window on the Mac.")
-            case .previewRead: return String(localized: "This bot is reading the preview pane on the Mac.")
-            case .previewAct: return String(localized: "This bot is using the preview pane on the Mac.")
-            case .tour: return String(localized: "This bot is running a tour in Hermes Desktop.")
+        /// What is happening, in the user's words rather than the wire name, naming the bot in
+        /// Bot Chat and Hermes in a regular chat (#1141).
+        func title(_ subject: HermesRequestSubject) -> String {
+            switch (self, subject) {
+            case (.terminalRead, .bot): return String(localized: "This bot is reading a terminal on the Mac.")
+            case (.windowRead, .bot): return String(localized: "This bot is reading a window on the Mac.")
+            case (.previewRead, .bot): return String(localized: "This bot is reading the preview pane on the Mac.")
+            case (.previewAct, .bot): return String(localized: "This bot is using the preview pane on the Mac.")
+            case (.tour, .bot): return String(localized: "This bot is running a tour in Hermes Desktop.")
+            case (.terminalRead, .hermes): return String(localized: "Hermes is reading a terminal on the Mac.")
+            case (.windowRead, .hermes): return String(localized: "Hermes is reading a window on the Mac.")
+            case (.previewRead, .hermes): return String(localized: "Hermes is reading the preview pane on the Mac.")
+            case (.previewAct, .hermes): return String(localized: "Hermes is using the preview pane on the Mac.")
+            case (.tour, .hermes): return String(localized: "Hermes is running a tour in Hermes Desktop.")
             }
         }
 
-        var detail: String {
-            String(localized: "Hermes Desktop answers this by itself, and the bot carries on without it if it cannot. There is nothing to do here or at the Mac.")
+        func detail(_ subject: HermesRequestSubject) -> String {
+            switch subject {
+            case .bot:
+                return String(localized: "Hermes Desktop answers this by itself, and the bot carries on without it if it cannot. There is nothing to do here or at the Mac.")
+            case .hermes:
+                return String(localized: "Hermes Desktop answers this by itself, and Hermes carries on without it if it cannot. There is nothing to do here or at the Mac.")
+            }
         }
     }
 
@@ -625,11 +636,13 @@ struct BotRequestResolution: Equatable {
     /// answer after checking Desktop is the user's call, not a replay.
     var blocksFurtherAnswers: Bool { outcome != .uncertain }
 
-    var message: String {
-        switch outcome {
-        case .answered: return String(localized: "Answer sent.")
-        case .alreadyResolved: return String(localized: "This request was already answered or has expired.")
-        case .uncertain: return String(localized: "Answer outcome unknown. Check this bot in Desktop before answering again.")
+    /// What the card says, naming the bot in Bot Chat and Hermes Desktop in a regular chat.
+    func message(_ subject: HermesRequestSubject) -> String {
+        switch (outcome, subject) {
+        case (.answered, _): return String(localized: "Answer sent.")
+        case (.alreadyResolved, _): return String(localized: "This request was already answered or has expired.")
+        case (.uncertain, .bot): return String(localized: "Answer outcome unknown. Check this bot in Desktop before answering again.")
+        case (.uncertain, .hermes): return String(localized: "Answer outcome unknown. Check Hermes Desktop before answering again.")
         }
     }
 }

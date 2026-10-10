@@ -1163,8 +1163,8 @@ import XCTest
             HermesRequestInset(
                 request: .credential(BotCredentialRequest(kind: .sudo, requestID: "srq-s1", envVar: nil, prompt: nil)),
                 identity: "default on Mac", maximumExpandedHeight: 600, isEnabled: true, isAnswering: false,
-                isStopping: false, isHapticsEnabled: false, onAnswer: { _ in }, onSkip: {}, onCredential: { _ in },
-                onStop: {}, onDismissKeyboard: {}, onFootprintChange: { _ in }
+                isStopping: false, resolution: nil, isHapticsEnabled: false, onAnswer: { _ in }, onSkip: {},
+                onCredential: { _ in }, onConnection: { _ in }, onStop: {}, onDismissKeyboard: {}, onFootprintChange: { _ in }
             )
             .padding(.horizontal, 16)
             .padding(.bottom, 80)
@@ -1188,8 +1188,9 @@ import XCTest
                 HermesRequestInset(
                     request: .credential(BotCredentialRequest(kind: .sudo, requestID: "srq-s1", envVar: nil, prompt: nil)),
                     identity: "default on Mac", maximumExpandedHeight: height, isEnabled: true, isAnswering: false,
-                    isStopping: false, isHapticsEnabled: false, onAnswer: { _ in }, onSkip: {}, onCredential: { _ in },
-                    onStop: {}, onDismissKeyboard: { collapses[height, default: 0] += 1 }, onFootprintChange: { _ in }
+                    isStopping: false, resolution: nil, isHapticsEnabled: false, onAnswer: { _ in }, onSkip: {},
+                    onCredential: { _ in }, onConnection: { _ in }, onStop: {},
+                    onDismissKeyboard: { collapses[height, default: 0] += 1 }, onFootprintChange: { _ in }
                 )
                 .padding(.horizontal, 16)
                 .padding(.bottom, 80)

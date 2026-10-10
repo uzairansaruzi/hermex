@@ -265,6 +265,7 @@ struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.hermesUpdateSignIn) private var updateHermesSignIn
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(AppHaptics.streamingPulseIsEnabledKey) private var isStreamingPulseEnabled = false
     @AppStorage(SessionChatPreferences.dismissKeyboardKey) private var dismissKeyboardAfterSend = false
@@ -386,6 +387,9 @@ struct ChatView: View {
     /// Measured height of a Hermes chat's pinned plan line (#1139); its open list overlays
     /// the transcript instead.
     @State private var planStripHeight: CGFloat = 30
+    /// Measured height of a Hermes chat's Update sign-in pill (#942), which wraps at
+    /// accessibility text sizes.
+    @State private var updateSignInPillHeight: CGFloat = 36
     /// The delegated-work sheet a Hermes chat's workers button opens (#1140).
     @State private var showsDelegatedWork = false
     /// Measured height of the pinned notice stack, which grows with each
@@ -1732,7 +1736,8 @@ struct ChatView: View {
         )?.kind
     }
 
-    /// A Hermes session's question, or sudo or secret prompt, in the clarification's slot (#1011).
+    /// A Hermes session's question, sudo or secret prompt, Desktop task or connection operation,
+    /// in the clarification's slot (#1011, #1141).
     private func hermesRequestInset(
         _ request: BotPendingRequest,
         requests: HermesChatRequests,
@@ -1745,6 +1750,7 @@ struct ChatView: View {
             isEnabled: requests.mayAnswer,
             isAnswering: requests.answeringRequestID != nil,
             isStopping: viewModel.isCancellingStream,
+            resolution: requests.onScreenResolution,
             isHapticsEnabled: isHapticsEnabled,
             onAnswer: { answers in
                 guard let action = requests.prepareAnswer() else { return }
@@ -1763,6 +1769,11 @@ struct ChatView: View {
                 guard let action = requests.prepareAnswer() else { return }
                 Task { await requests.answerCredential(action, value: value) }
             },
+            onConnection: { answer in
+                // Typed setup values go straight from the row to the dispatch.
+                guard let action = requests.prepareAnswer() else { return }
+                Task { await requests.respondToConnection(action, answer) }
+            },
             onStop: {
                 Task { await cancelStream() }
             },
@@ -1777,8 +1788,8 @@ struct ChatView: View {
         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
     }
 
-    /// The Hermes request the clarification slot shows: a question, or a sudo or secret
-    /// prompt. An approval takes the overlay instead.
+    /// The Hermes request the clarification slot shows: a question, a sudo or secret prompt, a
+    /// Desktop task or a connection operation. An approval takes the overlay instead.
     private var hermesInsetRequest: BotPendingRequest? {
         guard let request = viewModel.hermesRequests?.onScreen else { return nil }
         if case .approval = request { return nil }
@@ -1827,6 +1838,19 @@ struct ChatView: View {
                         planStripHeight = height
                     }
                     .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+                }
+
+                // Bot Chat's pill in Reconnect's slot (#942): the composer's error line still
+                // says why, and the chat never signs in again on its own while it shows.
+                if viewModel.hermesNeedsSignIn {
+                    BotComposerPillView(pill: .updateSignIn, onReconnect: {}, onUpdateSignIn: { updateHermesSignIn() },
+                                        onShowRequest: {}, onCancelUpload: {}, onDismissError: {})
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.height
+                        } action: { height in
+                            updateSignInPillHeight = height
+                        }
+                        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
             }
             .padding(.horizontal)
@@ -2182,6 +2206,9 @@ struct ChatView: View {
         if pinnedPlan != nil {
             height += planStripHeight
         }
+        if viewModel.hermesNeedsSignIn {
+            height += updateSignInPillHeight
+        }
 
         let visibleItemCount = composerAccessoryVisibleItemCount
         if visibleItemCount > 1 {
@@ -2202,6 +2229,9 @@ struct ChatView: View {
             count += 1
         }
         if pinnedPlan != nil {
+            count += 1
+        }
+        if viewModel.hermesNeedsSignIn {
             count += 1
         }
         return count

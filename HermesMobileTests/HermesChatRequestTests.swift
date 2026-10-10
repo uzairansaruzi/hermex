@@ -246,12 +246,11 @@ import XCTest
         XCTAssertTrue(chat.requests.mayAnswer, "the live prompt is still answerable")
     }
 
-    /// Vault prompts (#943), Desktop's own tasks and unknown methods get no card and no answer
-    /// here, though the session still waits on them.
+    /// Vault prompts (#943) and unknown methods get no card and no answer here, though the
+    /// session still waits on them.
     func testRequestsThisChatMustNotAnswerGetNoCardButStillWait() async {
         let chat = await openChat()
         chat.receive(request("vault.unlock_prompt", id: "srq-v1", ["display_name": .string("1Password")]))
-        chat.receive(request("terminal.read", id: "srq-t1"))
         chat.receive(request("display.install.sudo", id: "srq-d1"))
         XCTAssertNil(chat.requests.onScreen)
         XCTAssertNil(chat.requests.prepareAnswer())
@@ -261,6 +260,181 @@ import XCTest
             isStartingChat: false, hasActiveStream: true, activeStreamRecoveryState: .idle, isCancellingStream: false,
             isScrolledNearBottom: false, activeRunStartedAt: nil, isWaitingForUser: chat.model.isWaitingForUser
         )?.label(now: Date()), "Waiting for you")
+    }
+
+    // MARK: Desktop tasks and connections (#1141)
+
+    /// A Desktop task shows its card with Stop and is never answered from here: the card is
+    /// inert, stopping loses nothing, and its withdrawal leaves no note.
+    func testADesktopTaskShowsItsCardAndIsNeverAnswered() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(request("terminal.read", id: "srq-t1"))
+        guard case .desktopTask(let task)? = chat.requests.onScreen else { return XCTFail("Expected the Desktop task on screen") }
+        XCTAssertEqual(task.kind, .terminalRead)
+        XCTAssertNil(chat.requests.prepareAnswer())
+        XCTAssertFalse(chat.requests.mayAnswer)
+        XCTAssertTrue(chat.model.isWaitingForUser)
+        XCTAssertFalse(chat.model.stopNeedsConfirmation, "stopping loses nothing Desktop's own task holds")
+
+        chat.receive(event(2, "request.cancel", ["id": .string("srq-t1"), "method": .string("terminal.read"),
+                                                 "reason": .string("timeout")]))
+        XCTAssertNil(chat.requests.onScreen)
+        XCTAssertNil(chat.requests.withdrawal, "Desktop's own task leaves silently")
+        XCTAssertEqual(chat.writes("request.answer"), [])
+    }
+
+    /// `connection.request` shows one row per app in the host's order, duplicates dropped; an
+    /// update moves the rows only when its `seq` is newer; the settled frame closes the card,
+    /// and a late request for that operation cannot bring it back.
+    func testAConnectionOperationOpensMovesForwardAndSettles() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "connection.request", operation(seq: 1, targets: [
+            BotConnectionFixture.gmail(), BotConnectionFixture.github(), BotConnectionFixture.gmail(state: "connected")
+        ])))
+        XCTAssertEqual(connectionOnScreen(chat)?.targets.map(\.name), ["gmail", "github"])
+        XCTAssertEqual(connectionOnScreen(chat)?.targets.first?.state, .pending)
+        XCTAssertTrue(chat.model.isWaitingForUser)
+
+        chat.receive(event(3, "connection.update", operation(seq: 3, targets: [
+            BotConnectionFixture.gmail(state: "connected"), BotConnectionFixture.github()
+        ])))
+        chat.receive(event(4, "connection.update", operation(seq: 2, targets: [
+            BotConnectionFixture.gmail(state: "failed"), BotConnectionFixture.github()
+        ])))
+        XCTAssertEqual(connectionOnScreen(chat)?.targets.first?.state, .connected, "an older seq moves nothing")
+
+        chat.receive(event(5, "connection.update", operation(seq: 4, settled: true)))
+        XCTAssertNil(chat.requests.onScreen)
+        XCTAssertFalse(chat.model.isWaitingForUser)
+        chat.receive(event(6, "connection.request", operation(seq: 5)))
+        XCTAssertNil(chat.requests.onScreen, "a settled operation never comes back")
+    }
+
+    /// An attach restores the operation from `pending_connection`; one this build cannot read
+    /// still waits, with no card; a resume that omits it clears it.
+    func testPendingConnectionRestoresOnAttachAndClearsWhenOmitted() async {
+        let chat = await openChat(pendingConnection: .object(operation(seq: 2)))
+        XCTAssertEqual(connectionOnScreen(chat)?.opID, "op-1")
+        XCTAssertTrue(chat.model.isWaitingForUser)
+
+        chat.model.suspendStreamForBackground()
+        chat.host.always("session.resume", .init(result: resume(pendingConnection: .object(["op_id": .string("op-2")]))))
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertNil(chat.requests.onScreen)
+        XCTAssertTrue(chat.model.isWaitingForUser, "an operation with no readable row still waits")
+
+        chat.model.suspendStreamForBackground()
+        chat.host.always("session.resume", .init(result: resume()))
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertNil(chat.requests.onScreen)
+        XCTAssertFalse(chat.model.isWaitingForUser)
+    }
+
+    /// A row's answer goes out once as `connection.respond` by the session's owner and `op_id`;
+    /// the card stays until the host says the operation settled. A move the card does not
+    /// offer is never sent.
+    func testConnectionAnswersAreSentOnceAndTheCardStaysUntilSettled() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "connection.request", operation(seq: 1)))
+        chat.host.next("connection.respond", .init(result: .object(["status": .string("ok"), "settled": .bool(false)])))
+        chat.host.next("connection.respond", .init(result: .object(["status": .string("ok"), "settled": .bool(true)])))
+
+        let notOffered = await chat.requests.respondToConnection(try action(chat), .connect(target: "github", env: [:]))
+        XCTAssertFalse(notOffered, "a required value is missing")
+        let skipped = await chat.requests.respondToConnection(try action(chat), .skip(target: "gmail"))
+        XCTAssertTrue(skipped)
+        XCTAssertEqual(connectionOnScreen(chat)?.opID, "op-1", "other rows are still open")
+        let released = await chat.requests.respondToConnection(try action(chat), .continueWithout)
+        XCTAssertTrue(released)
+        XCTAssertEqual(chat.writes("connection.respond"), [
+            ["owner": .object(["type": .string("session"), "session_id": .string("runtime")]), "op_id": .string("op-1"),
+             "result": .object(["targets": .array([.object(["name": .string("gmail"), "status": .string("skipped")])])])],
+            ["owner": .object(["type": .string("session"), "session_id": .string("runtime")]), "op_id": .string("op-1"),
+             "result": .object(["settled_by": .string("continue")])]
+        ])
+        XCTAssertNil(chat.requests.onScreen)
+        XCTAssertFalse(chat.model.isWaitingForUser)
+    }
+
+    /// 4004: the host no longer holds the operation. The chat reads the session again, and a
+    /// card that read still lists stays inert; nothing is sent again.
+    func testAnOperationTheHostNoLongerHoldsGoesInertAndIsReadAgain() async throws {
+        let chat = await openChat(pendingConnection: .object(operation(seq: 1)))
+        chat.host.next("connection.respond", .init(error: 4004))
+        let resumes = chat.writes("session.resume").count
+
+        let taken = await chat.requests.respondToConnection(try action(chat), .skip(target: "gmail"))
+        XCTAssertFalse(taken)
+        XCTAssertFalse(chat.requests.mayAnswer)
+        await chat.turn.activate()
+        XCTAssertGreaterThan(chat.writes("session.resume").count, resumes, "the chat read the session again")
+        XCTAssertEqual(connectionOnScreen(chat)?.opID, "op-1")
+        XCTAssertEqual(chat.requests.onScreenResolution?.outcome, .alreadyResolved)
+        XCTAssertFalse(chat.requests.mayAnswer)
+        XCTAssertNil(chat.requests.prepareAnswer())
+        XCTAssertEqual(chat.writes("connection.respond").count, 1)
+    }
+
+    /// A lost reply warns on the card the reconnect restores, and is never resent.
+    func testALostConnectionAnswerWarnsAndIsNeverResent() async throws {
+        let chat = await openChat(pendingConnection: .object(operation(seq: 1)), rpcDeadline: .milliseconds(50))
+        chat.host.withhold("connection.respond")
+        let taken = await chat.requests.respondToConnection(try action(chat), .skip(target: "gmail"))
+        XCTAssertFalse(taken)
+
+        // Reattach now rather than on the backoff.
+        await chat.model.networkPathDidChange()
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+        XCTAssertEqual(connectionOnScreen(chat)?.opID, "op-1", "the host still holds it")
+        XCTAssertEqual(chat.requests.onScreenResolution?.outcome, .uncertain)
+        XCTAssertTrue(chat.requests.mayAnswer, "a deliberate second answer is the user's call")
+        XCTAssertEqual(chat.writes("connection.respond").count, 1)
+    }
+
+    /// Steer and Queue release an open operation with `settled_by: "continue"` before their
+    /// message, as Desktop does; a refused Continue still sends it; Interrupt sends no Continue.
+    func testGuideAndQueueContinueFirstAndInterruptDoesNot() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "connection.request", operation(seq: 1)))
+        chat.host.next("connection.respond", .init(result: .object(["status": .string("ok"), "settled": .bool(true)])))
+        chat.host.next("session.steer", .init(result: .object(["status": .string("queued")])))
+        _ = try await chat.turn.submit("Use the work account", mode: .steer)
+        XCTAssertEqual(chat.host.requests.compactMap { $0["method"].text }.filter { ["connection.respond", "session.steer"].contains($0) },
+                       ["connection.respond", "session.steer"])
+        XCTAssertEqual(chat.writes("connection.respond").first?["result"], .object(["settled_by": .string("continue")]))
+        XCTAssertNil(chat.requests.onScreen)
+
+        chat.receive(event(3, "connection.request", operation("op-2", seq: 1)))
+        chat.host.next("connection.respond", .init(error: 4004))
+        chat.host.next("prompt.submit", .init(result: .object(["status": .string("queued")])))
+        let queued = try await chat.turn.submit("Then the docs", mode: .queue)
+        XCTAssertEqual(queued, .followUpQueued, "a refused Continue still sends the message")
+        XCTAssertEqual(chat.writes("connection.respond").count, 2)
+
+        chat.receive(event(4, "connection.request", operation("op-3", seq: 1)))
+        chat.host.next("session.redirect", .init(result: .object(["status": .string("redirected")])))
+        _ = try await chat.turn.submit("Stop and summarize", mode: .redirect)
+        XCTAssertEqual(chat.writes("connection.respond").count, 2, "Interrupt sends no Continue")
+    }
+
+    /// A Continue whose reply is lost holds the message: it is never sent, and nothing is retried.
+    func testALostContinueHoldsTheMessage() async {
+        let chat = await openChat(rpcDeadline: .milliseconds(50))
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "connection.request", operation(seq: 1)))
+        chat.host.withhold("connection.respond")
+        do {
+            _ = try await chat.turn.submit("Then the docs", mode: .queue)
+            XCTFail("A lost Continue must not send the message")
+        } catch {
+            XCTAssertTrue(error is HermesChatTurnCoordinator.NotSent, "\(error)")
+        }
+        XCTAssertEqual(chat.writes("connection.respond").count, 1)
+        XCTAssertEqual(chat.writes("prompt.submit"), [])
     }
 
     // MARK: Withdrawal
@@ -388,13 +562,14 @@ import XCTest
         }
     }
 
-    private func openChat(runtime: String = "runtime", openRequests: [BotJSON] = [],
-                          info: [String: BotJSON] = [:]) async -> Chat {
+    private func openChat(runtime: String = "runtime", openRequests: [BotJSON] = [], info: [String: BotJSON] = [:],
+                          pendingConnection: BotJSON? = nil, rpcDeadline: Duration = .seconds(30)) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
-        host.always("session.resume", .init(result: resume(runtime: runtime, openRequests: openRequests, info: info)))
+        host.always("session.resume", .init(result: resume(runtime: runtime, openRequests: openRequests, info: info,
+                                                           pendingConnection: pendingConnection)))
         host.always("session.events.since", .init(result: replay(runtime: runtime, openRequests: openRequests)))
-        let client = BotClient(http: host.connection(Self.connection))
+        let client = BotClient(http: host.connection(Self.connection, rpcDeadline: rpcDeadline))
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: .session(profile: "default", key: "tip"), wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
@@ -456,7 +631,7 @@ import XCTest
     }
 
     private func resume(runtime: String = "runtime", running: Bool = true, openRequests: [BotJSON] = [],
-                        info: [String: BotJSON] = [:]) -> BotJSON {
+                        info: [String: BotJSON] = [:], pendingConnection: BotJSON? = nil) -> BotJSON {
         var info = info
         info["profile_name"] = .string("default")
         var reply: [String: BotJSON] = [
@@ -465,6 +640,20 @@ import XCTest
         ]
         if running { reply["turn_started_at"] = .number(1_790_000_000) }
         if !openRequests.isEmpty { reply["open_requests"] = .array(openRequests) }
+        if let pendingConnection { reply["pending_connection"] = pendingConnection }
         return .object(reply)
+    }
+
+    /// A `manage_connections` frame's payload for this session (`BotConnectionFixture`'s shape).
+    private func operation(_ id: String = "op-1", seq: Int, settled: Bool? = nil,
+                           targets: [BotJSON] = [BotConnectionFixture.gmail(), BotConnectionFixture.github()]) -> [String: BotJSON] {
+        var payload = BotConnectionFixture.operation(id, seq: seq, settled: settled, targets: targets).fields ?? [:]
+        payload["owner"] = .object(["type": .string("session"), "session_id": .string("runtime")])
+        return payload
+    }
+
+    private func connectionOnScreen(_ chat: Chat) -> BotConnectionOperation? {
+        if case .connection(let operation)? = chat.requests.onScreen { return operation }
+        return nil
     }
 }

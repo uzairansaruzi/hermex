@@ -7,7 +7,10 @@ import UIKit
 /// Placement is the only thing Bot-specific here: the surfaces, choice buttons,
 /// decision buttons and copy are the Sessions approval and clarification
 /// vocabulary. `isEnabled` false is a resolved, expired or in-flight request:
-/// the card stays readable and stops acting.
+/// the card stays readable and stops acting. A Hermes chat's request slot shows
+/// it too, with `subject` naming Hermes where Bot Chat names the bot (#1141); the
+/// Desktop-task and connection bodies are the Hermes chat's own
+/// (`HermesRequestCards.swift`).
 ///
 /// Only the Desktop-task body has no input, because its answer is data only
 /// Hermes Desktop holds. Everything else — approvals, questions, sudo, secret
@@ -33,6 +36,8 @@ struct BotPendingRequestCard: View {
     let onStop: () -> Void
     /// One row's answer, or Continue, for a connection operation.
     let onConnection: (BotConnectionOperation.Answer) -> Void
+    /// Who the copy says is waiting.
+    var subject: HermesRequestSubject = .bot
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -56,17 +61,17 @@ struct BotPendingRequestCard: View {
                 // timed-out sudo prompt must never ride along into a secret.
                 .id(credential.requestID)
             case .desktopTask(let task):
-                BotDesktopTaskRequestBody(task: task, identity: identity, canStop: canStop, onStop: onStop)
+                HermesDesktopTaskRequestBody(task: task, identity: identity, subject: subject, canStop: canStop, onStop: onStop)
             case .connection(let operation):
-                BotConnectionRequestBody(
-                    operation: operation, identity: identity, isEnabled: isEnabled,
+                HermesConnectionRequestBody(
+                    operation: operation, identity: identity, subject: subject, isEnabled: isEnabled,
                     isAnswering: isAnswering, onConnection: onConnection
                 )
                 // Typed setup values belong to one operation's rows.
                 .id(operation.opID)
             }
             if let resolution {
-                Text(resolution.message)
+                Text(resolution.message(subject))
                     .font(.caption)
                     .foregroundStyle(resolution.outcome == .answered ? .secondary : Color.red)
                     .fixedSize(horizontal: false, vertical: true)
@@ -91,7 +96,7 @@ struct BotPendingRequestCard: View {
         case .credential(let credential):
             summary = credential.title
         case .desktopTask(let task):
-            summary = task.kind.title
+            summary = task.kind.title(subject)
         case .connection:
             summary = String(localized: "Connect apps")
         }
@@ -111,7 +116,7 @@ private struct BotApprovalRequestBody: View {
     let onApprove: (BotApprovalRequest.Choice) -> Void
 
     var body: some View {
-        BotRequestHeader(
+        HermesRequestHeader(
             systemImage: "exclamationmark.triangle.fill", tint: .yellow,
             title: String(localized: "Approval required"), identity: identity
         )
@@ -227,7 +232,7 @@ private struct BotQuestionRequestBody: View {
     }
 
     var body: some View {
-        BotRequestHeader(
+        HermesRequestHeader(
             systemImage: "questionmark.circle", tint: .secondary,
             title: question.questions.count > 1
                 ? String(localized: "\(question.questions.count) questions")
@@ -398,7 +403,7 @@ private struct BotCredentialRequestBody: View {
     private var canEdit: Bool { isEnabled && !isAnswering }
 
     var body: some View {
-        BotRequestHeader(systemImage: symbol, tint: .secondary, title: credential.title, identity: identity)
+        HermesRequestHeader(systemImage: symbol, tint: .secondary, title: credential.title, identity: identity)
         Text(credential.detail)
             .font(.subheadline)
             .foregroundStyle(.primary)
@@ -490,297 +495,6 @@ private struct BotCredentialRequestBody: View {
         value = ""
         identifier = ""
         onCredential(outgoing)
-    }
-}
-
-/// A request only Hermes Desktop answers: work its renderer does by itself,
-/// with no answer a person gives. The host releases the bot on its own
-/// deadline, so the card reports the wait and keeps Stop for the user who does
-/// not want to wait it out.
-private struct BotDesktopTaskRequestBody: View {
-    let task: BotDesktopTaskRequest
-    let identity: String
-    let canStop: Bool
-    let onStop: () -> Void
-
-    var body: some View {
-        BotRequestHeader(
-            systemImage: "desktopcomputer", tint: .secondary,
-            title: String(localized: "Hermes Desktop is handling this"), identity: identity
-        )
-        Text(task.kind.title)
-            .font(.subheadline)
-            .foregroundStyle(.primary)
-            .fixedSize(horizontal: false, vertical: true)
-        Text(task.kind.detail)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        Button(role: .destructive, action: onStop) {
-            Label("Stop current work", systemImage: "stop.fill").frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.chatDecision(.destructive))
-        .disabled(!canStop)
-    }
-}
-
-/// A `manage_connections` operation: one row per app, in the host's order, each
-/// with only the moves the host allows for its kind and state. Continue without
-/// is the one control that releases the bot whatever the rows say, so it stays
-/// until the settled frame removes the card. The deadline is the host's, shown
-/// in whole minutes and redrawn once a minute, never animated.
-private struct BotConnectionRequestBody: View {
-    let operation: BotConnectionOperation
-    let identity: String
-    let isEnabled: Bool
-    let isAnswering: Bool
-    let onConnection: (BotConnectionOperation.Answer) -> Void
-
-    var body: some View {
-        BotRequestHeader(systemImage: "link", tint: .secondary, title: String(localized: "Connect apps"), identity: identity)
-        VStack(alignment: .leading, spacing: 4) {
-            TimelineView(.everyMinute) { context in
-                let minutes = BotConnectionOperation.minutesLeft(until: operation.deadline, now: context.date)
-                // The system's own unit wording, so every language gets its plural right.
-                let left = Duration.seconds(minutes * 60).formatted(.units(allowed: [.minutes], width: .abbreviated))
-                Text("Waiting · \(left) left")
-                    .font(.subheadline.weight(.semibold))
-            }
-            Text("The bot is paused until each app is connected or skipped.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        ForEach(operation.targets) { target in
-            BotConnectionTargetRow(target: target, isEnabled: isEnabled, isAnswering: isAnswering,
-                                   onConnection: onConnection)
-        }
-        Button { onConnection(.continueWithout) } label: {
-            Text("Continue without").frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.chatDecision(.secondary))
-        .disabled(!isEnabled || isAnswering)
-        Text("Releases the bot now. Apps not connected stay off for this reply.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-/// One app in a connection operation. A managed connector opens its sign-in in
-/// the browser; an MCP enable or install connects here with a field per value it
-/// still needs; an MCP sign-in only finishes at the Mac. Setup values live in
-/// this row's state alone, are masked when secret, and are dropped the moment
-/// they are handed over.
-private struct BotConnectionTargetRow: View {
-    let target: BotConnectionOperation.Target
-    let isEnabled: Bool
-    let isAnswering: Bool
-    let onConnection: (BotConnectionOperation.Answer) -> Void
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var values: [String: String] = [:]
-
-    private var canAct: Bool { isEnabled && !isAnswering }
-
-    private var env: [String: String] { target.env(from: values) }
-
-    private var canConnect: Bool { canAct && target.accepts(env) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(target.name)
-                        .font(.callout.weight(.semibold))
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.secondary) }
-                }
-                Spacer(minLength: 8)
-                stateLabel
-            }
-            ForEach(notes, id: \.self) { note in
-                Text(note)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            guidance
-            if target.canConnect {
-                ForEach(target.requiredEnv) { field in envField(field) }
-            }
-            if target.canSkip || target.canConnect || target.linkToOpen != nil {
-                buttons
-            }
-        }
-        .pendingRequestBlockSurface()
-        .accessibilityElement(children: .contain)
-    }
-
-    /// Only MCP rows say what they are; a connector row's name is the whole story.
-    private var subtitle: String? {
-        guard target.kind == .mcp else { return nil }
-        switch target.action {
-        case .install: return String(localized: "MCP server · Install")
-        case .enable: return String(localized: "MCP server · Enable")
-        case .authorize: return String(localized: "MCP server · Sign in")
-        default: return String(localized: "MCP server")
-        }
-    }
-
-    /// The host's own words for the row, most specific first, each once.
-    private var notes: [String] {
-        var seen = Set<String>()
-        return [target.discoveryError, target.detail, target.instructions].compactMap { $0 }.filter { seen.insert($0).inserted }
-    }
-
-    private var stateLabel: some View {
-        let (title, symbol, tint): (String, String?, Color) = switch target.state {
-        case .pending, .initiated: (String(localized: "Waiting"), nil, .secondary)
-        case .connected: (String(localized: "Connected"), "checkmark.circle.fill", .green)
-        case .skipped: (String(localized: "Skipped"), nil, .secondary)
-        case .failed: (String(localized: "Failed"), "exclamationmark.circle.fill", .red)
-        case .expired: (String(localized: "Expired"), "clock.badge.exclamationmark", .red)
-        case .notConnected: (String(localized: "Not connected"), nil, .secondary)
-        case .unavailable: (String(localized: "Unavailable"), nil, .secondary)
-        case nil: (String(localized: "Unknown"), nil, .secondary)
-        }
-        return HStack(spacing: 4) {
-            if let symbol { Image(systemName: symbol).accessibilityHidden(true) }
-            Text(title)
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(tint)
-        .fixedSize()
-    }
-
-    /// Where this row finishes, when that is not the obvious button.
-    @ViewBuilder private var guidance: some View {
-        if target.finishesOnTheMac {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Finish on the Mac.").font(.caption.weight(.semibold))
-                Text("This sign-in returns to a browser on the Mac, so it can’t complete on iPhone.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        } else if target.linkToOpen != nil {
-            Text("Opens in your browser. Hermes notices when you finish.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        } else if target.canSkip, !target.canConnect, target.state == .failed || target.state == .expired {
-            // Trying again from here is deferred; asking the bot covers it.
-            Text("Skip it and ask the bot to try again.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var buttons: some View {
-        let layout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
-        return layout {
-            if let url = target.linkToOpen {
-                // The browser, not an in-app sheet: the user's saved sign-ins are
-                // there, and the host notices the new account without a callback.
-                // Opened directly, so the transcript's link router never takes it.
-                Button { UIApplication.shared.open(url) } label: {
-                    Label("Open link", systemImage: "safari").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.chatDecision(.primary))
-                .disabled(!isEnabled)
-                .accessibilityLabel(Text("Open link for \(target.name)"))
-            } else if target.canConnect {
-                Button(action: connect) {
-                    Text("Connect").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.chatDecision(.primary))
-                .disabled(!canConnect)
-                .accessibilityLabel(Text("Connect \(target.name)"))
-            }
-            if target.canSkip {
-                Button { onConnection(.skip(target: target.name)) } label: {
-                    Text("Skip").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.chatDecision(.secondary))
-                .disabled(!canAct)
-                .accessibilityLabel(Text("Skip \(target.name)"))
-            }
-        }
-    }
-
-    private func envField(_ field: BotConnectionOperation.EnvField) -> some View {
-        // At accessibility sizes the badge goes under the name, so a long
-        // variable name keeps the line to itself instead of breaking mid-word.
-        let header = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: 6))
-        return VStack(alignment: .leading, spacing: 6) {
-            header {
-                Text(verbatim: field.name)
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                if field.isSecret {
-                    Text("secret").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-                } else if !field.isRequired {
-                    Text("optional").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-                }
-            }
-            if let prompt = field.prompt {
-                Text(prompt)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Group {
-                if field.isSecret {
-                    SecureField("Secret value", text: binding(for: field))
-                        .textContentType(.password)
-                } else {
-                    TextField(String(localized: "Value"), text: binding(for: field))
-                }
-            }
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .submitLabel(.go)
-            .onSubmit(connect)
-            .pendingRequestFieldSurface()
-            .disabled(!canAct)
-            .accessibilityLabel(Text(verbatim: field.name))
-        }
-    }
-
-    private func binding(for field: BotConnectionOperation.EnvField) -> Binding<String> {
-        Binding(get: { field.value(in: values) }, set: { values[field.name] = $0 })
-    }
-
-    private func connect() {
-        guard canConnect else { return }
-        let outgoing = env
-        // Dropped from the view as it is handed over; the model never holds it.
-        values = [:]
-        onConnection(.connect(target: target.name, env: outgoing))
-    }
-}
-
-private struct BotRequestHeader: View {
-    let systemImage: String
-    let tint: Color
-    let title: String
-    let identity: String
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: systemImage)
-                .foregroundStyle(tint)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.headline)
-                Text(identity).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-        }
     }
 }
 

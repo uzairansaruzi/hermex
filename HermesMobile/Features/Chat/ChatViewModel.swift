@@ -2883,12 +2883,17 @@ final class ChatViewModel {
     /// which the stop would discard or deny.
     var stopNeedsConfirmation: Bool { hermesTurn?.stopNeedsConfirmation == true }
 
-    /// A Hermes session's host requests (#1011): its approvals, questions, and sudo and secret
-    /// prompts. Nil on a webui session, whose prompts are `approvalPrompt` and `clarificationPrompt`.
+    /// A Hermes session's host requests (#1011, #1141): its approvals, questions, sudo and
+    /// secret prompts, Desktop tasks and connection operations. Nil on a webui session, whose
+    /// prompts are `approvalPrompt` and `clarificationPrompt`.
     var hermesRequests: HermesChatRequests? { hermesTurn?.requests }
 
     /// A Hermes session is parked on one of its host's requests.
     var isWaitingForUser: Bool { hermesRequests?.isWaiting == true }
+
+    /// The host refused a Hermes session's saved password (#884, #942): the chat offers Update
+    /// sign-in and never signs in again on its own.
+    var hermesNeedsSignIn: Bool { hermesTurn?.needsSignIn == true }
 
     /// A Hermes session's goal, loop and heartbeat (#1142), `/btw` question and `/background`
     /// tasks (#1013). Nil on a webui session.

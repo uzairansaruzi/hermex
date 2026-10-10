@@ -171,8 +171,9 @@ import XCTest
         for (method, kind) in expected {
             XCTAssertEqual(BotServerRequest(frame(method))?.pending,
                            .desktopTask(BotDesktopTaskRequest(kind: kind, requestID: "srq-1")))
-            XCTAssertFalse(kind.title.isEmpty)
-            XCTAssertFalse(kind.detail.isEmpty)
+            // A regular Hermes chat names Hermes where Bot Chat names the bot (#1141).
+            XCTAssertNotEqual(kind.title(.hermes), kind.title(.bot))
+            XCTAssertNotEqual(kind.detail(.hermes), kind.detail(.bot))
         }
     }
 
@@ -745,8 +746,6 @@ import XCTest
         wire.onEvent?(task)
         XCTAssertEqual(model.pendingRequest,
                        .desktopTask(BotDesktopTaskRequest(kind: .terminalRead, requestID: "term-1")))
-        guard case .desktopTask(let request)? = model.pendingRequest else { return XCTFail("Expected a Desktop task") }
-        XCTAssertFalse(request.kind.title.isEmpty)
         // Not because the phone is withheld: the answer is the renderer's buffer.
         XCTAssertFalse(model.pendingRequest?.isAnswerable ?? true)
         XCTAssertFalse(model.mayAnswer)
