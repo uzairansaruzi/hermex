@@ -1387,6 +1387,27 @@ import Vision
         model.suspend()
     }
 
+    /// Reactions are not shown: a continuous `message.reaction` owes no snapshot
+    /// read, and one after a gap still rereads like any frame past the gap.
+    func testAContinuousReactionOwesNoReadButOneAfterAGapRereads() async {
+        let wire = BotFixtureWire()
+        let model = make(wire); await model.recover()
+        XCTAssertFalse(model.snapshotDirty)
+        let reaction = BotJSON.object(["row_id": .number(7), "role": .string("assistant"), "reactions": .array([
+            .object(["emoji": .string("👍"), "author": .string("agent")])
+        ])])
+        wire.onEvent?(typed(1, "message.reaction", reaction))
+        XCTAssertFalse(model.snapshotDirty, "a continuous reaction never schedules a snapshot read")
+
+        let reread = expectation(description: "the gap's reread")
+        wire.beforeResume = { reread.fulfill() }
+        let resumes = wire.calls.filter { $0.0 == "session.resume" }.count
+        wire.onEvent?(typed(9, "message.reaction", reaction))
+        await fulfillment(of: [reread], timeout: 5)
+        XCTAssertEqual(wire.calls.filter { $0.0 == "session.resume" }.count, resumes + 1)
+        model.suspend()
+    }
+
     /// `message.delta` arrives once per token and carries text the snapshot owns.
     /// Touching the activity reducer for it would notify observers anyway and
     /// redraw the whole Bot Chat screen at the token rate, live or replayed.

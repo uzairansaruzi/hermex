@@ -192,7 +192,8 @@ import Observation
     /// every tap; the user sends the prompt again from the composer.
     private var uncuttableRowID: Int?
     private var snapshotIsBusy: Bool?
-    private var snapshotDirty = false
+    /// A snapshot read is owed: a stream event set it and the read has not started.
+    private(set) var snapshotDirty = false
     private var fullSnapshotNeeded = false
     /// The host's replay ring per session: frames held past it make the reattach a gap.
     static let heldFrameLimit = HermesConversation.heldFrameLimit
@@ -1447,6 +1448,8 @@ extension BotConversation: HermesConversationOwner {
         let type = event["type"].text ?? ""
         // A newer frame than any snapshot already in flight, like a live request.
         if applyConnectionEvent(type: type, payload: event["payload"]) { requestRevision += 1 }
+        // Reactions are not shown, so a continuous one changes nothing worth a read.
+        if type == "message.reaction", !discontinuity { return }
         if ["subagent.spawn_requested", "subagent.start", "subagent.progress",
             "subagent.tool", "subagent.complete"].contains(type) {
             delegatedWork.noteSubagentEvent()
