@@ -63,6 +63,18 @@ final class BotMentionTests: XCTestCase {
         XCTAssertEqual(mentions.resolve(ignored + "\n@RESEARCH please @research").map(\.id), ["research"])
     }
 
+    func testFileReferencesAreNotMentionsButPunctuatedMentionsAre() {
+        let mentions = BotMentions(roster: [bot("docs"), bot("research")], excluding: "dev")
+        for path in ["@docs/plan.md", "@docs/", "@docs.md", "@docs\\plan.md", "@docs-v2/x", "@research.swift"] {
+            XCTAssertTrue(mentions.annotation(for: "see \(path) please").isEmpty, path)
+        }
+        XCTAssertEqual(mentions.resolve("@docs, look at @research.").map(\.id), ["docs", "research"])
+        XCTAssertEqual(mentions.resolve("ask @research: then (@docs) @docs!").map(\.id), ["research", "docs"])
+        XCTAssertEqual(mentions.resolve("@docs? @research's notes").map(\.id), ["docs", "research"])
+        XCTAssertEqual(mentions.resolve("open @docs/plan.md then ask @docs...").map(\.id), ["docs"])
+        XCTAssertTrue(mentions.resolve("me@docs.io").isEmpty)
+    }
+
     func testExactAnnotationBytesAndMentionOrder() {
         let mentions = BotMentions(roster: [bot("research", title: "Research Buddy"), bot("default")], excluding: "dev")
         let suffix = ". If they want one of these agents contacted, compose your own message and send it with your message_agent tool (agents on other connected machines are reachable too — the Desktop relays it); never forward the user’s text verbatim. If this session has no message_agent tool, agent messaging is unavailable here — say so.]"
