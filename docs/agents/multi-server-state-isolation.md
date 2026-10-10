@@ -89,6 +89,22 @@ to `CacheStore`. Two consequences:
   chat its newest cached page, read-only under the offline banner, until a read
   succeeds. Sign-out, server removal and `clearCache(for:)` take the Hermes
   rows with the server's others.
+- **A bot's Bot Chat (#1144)** caches its transcript only, never a list row
+  (a webui server's list reads and sweeps every session row of its server),
+  under `hermes-bot|<connection UUID>|<Profile>|<canonical root>`, which a
+  compaction that moves its stored key leaves in place. Its chat shows the
+  newest cached page, read-only, before the attach, until the first newest
+  read replaces it; an attach that finds another root than the preview's drops
+  it. An archived Bot Chat, opened by its key, keeps its own copy under
+  `hermes-bot-archive|<connection UUID>|<Profile>|<lineage root>`, including a
+  legacy compression chain listed under its tip's "Bot Chat (continued)" title,
+  and reads its bot's copy of that root while it has none. Each copy's newest
+  read drops the rows the host cut from the other copy of the same root too,
+  writing nothing there, so an undo seen in either chat stays undone. It never becomes the
+  bot's preview, and the bot's attach on another root leaves it. Deleting the
+  bot or discarding its connection removes both copies, and a clear or removal revokes the writes of chats already
+  attached until they attach again (`CacheStore.hermesCacheEpoch`).
+  `HermesOfflineCacheTests` covers the root, the list and server isolation.
 
 ## Retained draft attachments
 

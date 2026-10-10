@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// The Bots inbox: pushed from a webui server's session list, or the Bots side of a Hermes
@@ -6,6 +7,7 @@ import SwiftUI
 /// filter holds hidden bots and section order, and new chat makes a bot or a group chat.
 @MainActor struct BotsInboxView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var modelContext
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     let server: URL
     private let home: HermesHome?
@@ -595,7 +597,10 @@ extension BotsInboxView {
             }
             // The subscription lives while the inbox is on screen and the app is not in the
             // background; returning, refreshing and reconnecting all go through the same open().
-            .task(id: revision) { await inbox.open(); hasSettled = true; openPendingDestination() }
+            .task(id: revision) {
+                inbox.offlineCache = modelContext
+                await inbox.open(); hasSettled = true; openPendingDestination()
+            }
             .onChange(of: inbox.link) { openPendingDestination() }
             .onChange(of: pendingDestination) { openPendingDestination() }
             .onChange(of: selection.profile) { if selection.profile == nil { selection.conversation = nil } }

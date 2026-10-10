@@ -57,6 +57,16 @@ struct HermesSessionRow: Decodable, Equatable {
     /// A bot's canonical Bot Chat (#1048): hidden, under its exact title.
     var isBotChat: Bool { hidden == true && title == HermesCall.botChatTitle }
 
+    /// The Bot Chat root this row's chat caches under, reading its bot's Bot Chat's copy of it
+    /// while it has none of its own (#1144): an `isBotChat` row's identity, or the root of a legacy compression chain the host
+    /// lists under its tip's "Bot Chat (continued)" title, keeping the root's `hidden`. Nil
+    /// for any other row.
+    var botChatRoot: String? {
+        guard hidden == true else { return nil }
+        if title == HermesCall.botChatTitle { return identity }
+        return title == HermesCall.botChatTitle + " (continued)" ? lineageRootID : nil
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, title, preview, pinned, archived, unread, hidden, model, cwd, profile
         case lastActive = "last_active", startedAt = "started_at", messageCount = "message_count"
@@ -105,7 +115,8 @@ struct HermesSessionRow: Decodable, Equatable {
             workspace: cwd, model: model, messageCount: messageCount, createdAt: startedAt, lastMessageAt: lastActive,
             pinned: pinned, archived: archived, projectId: project, profile: profile, parentSessionId: parentSessionID,
             hermes: SessionSummary.Hermes(lineageRoot: identity, unread: unread == true,
-                                          preview: MessageAttachment.hermesTitle(preview), isBotChat: isBotChat)
+                                          preview: MessageAttachment.hermesTitle(preview), isBotChat: isBotChat,
+                                          botChatRoot: botChatRoot)
         )
     }
 }

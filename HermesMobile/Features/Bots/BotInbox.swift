@@ -1,4 +1,5 @@
 import Observation
+import SwiftData
 import UIKit
 
 /// The Bots inbox for one configured server: the roster, Desktop's pin, hidden and
@@ -219,6 +220,9 @@ import UIKit
     private let makeWire: @MainActor (BotConnection) -> any BotTransport
     /// Drops this phone's drafts and cached history for one deleted bot.
     private let purgeLocalState: @MainActor (UUID, String) async -> Void
+    /// The offline cache, from the inbox's screen: a deleted bot's Bot Chat transcript leaves
+    /// it too (#1144).
+    @ObservationIgnored var offlineCache: ModelContext?
     /// Minimum gap between event-driven roster reads; the host already floors
     /// `sessions.changed` at two seconds, this guards against a chattier one.
     private let reloadSpacing: Duration
@@ -445,6 +449,9 @@ import UIKit
         guard let connection else { return }
         seen.removeValue(forKey: profile); persistSeen()
         avatarStore.setImage(nil, connectionID: connection.id, profile: profile, revision: nil)
+        if let offlineCache {
+            try? CacheStore.removeHermesBotChats(serverURL: server, connectionID: connection.id, profile: profile, in: offlineCache)
+        }
         await purgeLocalState(connection.id, profile)
     }
 

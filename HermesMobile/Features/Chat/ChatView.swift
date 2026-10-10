@@ -458,7 +458,7 @@ struct ChatView: View {
         _draftMessage = State(initialValue: initialDraft)
         _draftQuotes = State(initialValue: initialQuotes)
         _initialAttachments = State(initialValue: initialAttachments)
-        _viewModel = State(initialValue: ChatViewModel(
+        let model = ChatViewModel(
             session: session,
             server: server,
             showsLiveActivityResponseExcerpts: UserDefaults.standard.bool(
@@ -469,7 +469,9 @@ struct ChatView: View {
             backend: hermesSession.map {
                 .hermes(HermesChatTurnCoordinator(server: $0.server, connection: $0.connection, target: $0.target))
             } ?? .webui
-        ))
+        )
+        model.hermesBotChatRoot = hermesSession?.botChatRoot
+        _viewModel = State(initialValue: model)
         _gitAvailabilityViewModel = State(initialValue: GitWorkspaceAvailabilityViewModel(
             session: session,
             server: server

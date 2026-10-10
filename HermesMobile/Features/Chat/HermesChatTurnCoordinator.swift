@@ -23,6 +23,8 @@ import SwiftData
     /// An attach failed with `error`; the engine may be retrying. A host it can't reach shows
     /// the offline cache's copy (#1054).
     func hermesAttachDidFail(_ error: Error)
+    /// The attach found the session's root: a Bot Chat's canonical root, or a session's key.
+    func hermesDidIdentify(root: String)
     func hermesApplyUsage(_ usage: ContextWindowSnapshot)
     /// The model `session.info` reports: the Profile's default unless the host says otherwise.
     func hermesApplyModel(_ model: String)
@@ -54,6 +56,9 @@ struct HermesSessionChat: Hashable, Identifiable {
     /// chat asks the host whether it is a branch of it, for its "Forked from" row (#1051). Nil
     /// asks nothing.
     var parentKey: String? = nil
+    /// An archived Bot Chat's root, its row's lineage root: the chat caches under it and reads
+    /// its bot's Bot Chat's copy of it while it has none (#1144). Nil for any other session.
+    var botChatRoot: String? = nil
 
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -1423,6 +1428,10 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
 }
 
 extension HermesChatTurnCoordinator: HermesConversationOwner {
+    func conversationDidIdentify(root: String) {
+        delegate?.hermesDidIdentify(root: root)
+    }
+
     func conversationDidReset() {
         requests.reset()
         settings.disconnect()
