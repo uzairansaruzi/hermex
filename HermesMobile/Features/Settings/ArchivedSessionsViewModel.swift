@@ -158,10 +158,18 @@ final class ArchivedSessionsViewModel {
 
     // MARK: Hermes (#1048)
 
-    /// The Hermes session a row opens, in the row's Profile.
+    /// The Hermes session a row opens, in the row's Profile. Nil for a Bot Chat row, which opens
+    /// in its bot (`hermesBot(for:)`).
     func hermesChat(for session: SessionSummary) -> HermesSessionChat? {
-        guard let hermes, let profile = hermesProfile else { return nil }
+        guard let hermes, let profile = hermesProfile, session.hermes?.isBotChat != true else { return nil }
         return session.hermesChat(on: server, connection: hermes.connection, listedIn: profile)
+    }
+
+    /// The bot whose Bot Chat this row is (#1146): it opens through the app's bot route, as a
+    /// Sessions search hit does, so the Bots tab owns that chat's replaced notice, Update sign-in
+    /// and read mark. Nil for any other row.
+    func hermesBot(for session: SessionSummary) -> BotDestination? {
+        hermes.flatMap { session.hermesBot(on: server, connectionID: $0.connection.id) }
     }
 
     /// Reads the next page of archived sessions, one at a time. A restore or delete moves the

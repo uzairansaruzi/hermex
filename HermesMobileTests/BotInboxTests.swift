@@ -88,6 +88,29 @@ import SwiftUI
         XCTAssertEqual(BotUnreadStore(defaults: defaults).load(connectionID: inbox.connection!.id), ["triage": 200])
     }
 
+    /// A bot's chat is searched on the host (#1146), Profile by Profile with the query: each
+    /// bot's Bot Chat is a hit with the matched text and who wrote it, and any other session the
+    /// Profile has, such as a room's, is not. An inbox that is not live asks nothing.
+    func testMessageSearchFindsEachBotsChatOnTheHost() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage"), row("research")])
+        wire.searchResults = [
+            "triage": [match("plan", title: "Plan", snippet: ">>>nimbus<<< plan", role: "user"),
+                       match("bot", title: "Bot Chat", snippet: "the >>>nimbus<<< cluster", role: "assistant")],
+            "research": [match("room", title: "Group: room-1", snippet: ">>>nimbus<<<", role: "user")]
+        ]
+        let inbox = try makeInbox(wires: [wire])
+        let offline = try await inbox.searchBotChats("nimbus")
+        XCTAssertEqual(offline, [])
+        XCTAssertTrue(wire.searches.isEmpty)
+
+        await inbox.open()
+        let hits = try await inbox.searchBotChats("nimbus")
+
+        XCTAssertEqual(hits, [BotInbox.BotChatHit(profileID: "triage", snippet: "the >>>nimbus<<< cluster", isFromUser: false)])
+        XCTAssertEqual(wire.searches.map(\.query), ["nimbus", "nimbus"])
+        XCTAssertEqual(wire.searches.map(\.profile), ["triage", "research"])
+    }
+
     func testReturningFromChatMarksTheNextRosterSeenOnce() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage", lastActive: 100)])
         let inbox = try makeInbox(wires: [wire])
@@ -1212,6 +1235,13 @@ import SwiftUI
     }
 
     /// A roster row whose canonical chat is `<name>-root`, resolved to `<name>-tip`, unless named.
+    /// One host search match, as `HermesSessionSearch` decodes it: a title of exactly "Bot Chat"
+    /// is that Profile's hidden Bot Chat.
+    private func match(_ id: String, title: String, snippet: String, role: String) -> HermesSessionSearchResult {
+        HermesSessionSearchResult(row: HermesSessionRow(id: id, title: title, hidden: title == "Bot Chat" ? true : nil),
+                                  snippet: snippet, role: role)
+    }
+
     private func row(_ name: String, lastActive: Double? = 100, preview: String = "hi", root: String? = nil, tip: String? = nil,
                      look: [String: BotJSON]? = nil, revision: Int? = nil) -> BotJSON {
         var fields: [String: BotJSON] = [
@@ -1291,6 +1321,9 @@ import SwiftUI
     var connectError: Error?
     private(set) var closed = 0
     private var held: [CheckedContinuation<Void, Never>] = []
+    /// `GET /api/sessions/search`'s matches per Profile, whatever the query.
+    var searchResults: [String: [HermesSessionSearchResult]] = [:]
+    private(set) var searches: [(query: String, profile: String)] = []
 
     init(roster: [BotJSON]) { self.roster = roster }
 
@@ -1307,6 +1340,11 @@ import SwiftUI
         guard let delete else { throw BotFailure.unsupported }
         try delete(name)
         deleted.append(name)
+    }
+
+    func searchSessions(query: String, profile: String) async throws -> [HermesSessionSearchResult] {
+        searches.append((query, profile))
+        return searchResults[profile] ?? []
     }
 
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {

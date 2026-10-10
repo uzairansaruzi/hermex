@@ -265,6 +265,34 @@ import UIKit
                     hidden: showsHidden || !search.isEmpty ? matching.filter(\.hidden) : [])
     }
 
+    /// A bot whose Bot Chat matched a message search on the host (#1146).
+    struct BotChatHit: Identifiable, Equatable {
+        let profileID: String
+        /// The host's FTS snippet, with `>>>` and `<<<` around each match; nil for an id match.
+        let snippet: String?
+        /// The matched message is the user's rather than the bot's.
+        let isFromUser: Bool
+        var id: String { profileID }
+    }
+
+    /// Searches each roster bot's Bot Chat on the host for `query` (#1146), Profile by Profile, as
+    /// the Sessions list does (`HermesREST.sessionSearch`); a Profile's other sessions, its rooms'
+    /// included, are not hits. Empty while the inbox is not live. A reply that lands after the
+    /// inbox closed or reconnected throws `BotFailure.stale`.
+    func searchBotChats(_ query: String) async throws -> [BotChatHit] {
+        guard link == .live, let client = wire, !query.isEmpty else { return [] }
+        var hits: [BotChatHit] = []
+        for profile in profiles.map(\.id) {
+            let results = try await client.searchSessions(query: query, profile: profile)
+            guard wire === client else { throw BotFailure.stale }
+            try Task.checkCancellation()
+            if let match = results.first(where: { $0.row.isBotChat }) {
+                hits.append(BotChatHit(profileID: profile, snippet: match.snippet, isFromUser: match.role == "user"))
+            }
+        }
+        return hits
+    }
+
     /// True when the canonical chat moved past what this device last showed.
     /// A row without a watermark reads as seen: the first roster load seeds it.
     func isUnread(_ profile: BotProfile) -> Bool {

@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// A server's archived sessions, with Unarchive (#17). On a Hermes server (#1048) they are one
-/// Profile's, hidden Bot Chats included, paged 100 at a time, with Delete as well.
+/// Profile's, hidden Bot Chats included, paged 100 at a time, with Delete as well. A Bot Chat row
+/// opens in its bot on the Bots tab (#1146).
 struct ArchivedSessionsView: View {
     let server: URL
     /// Forwarded to `ChatView` and used for load/unarchive failures so a 401
@@ -157,7 +158,9 @@ struct ArchivedSessionsView: View {
     private func archivedSessionRow(for session: SessionSummary) -> some View {
         HStack(spacing: 0) {
             Button {
-                if viewModel.isHermes {
+                if let bot = viewModel.hermesBot(for: session) {
+                    AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: bot))
+                } else if viewModel.isHermes {
                     openedHermesChat = viewModel.hermesChat(for: session)
                 } else {
                     openedSession = session

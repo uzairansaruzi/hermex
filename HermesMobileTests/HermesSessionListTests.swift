@@ -622,6 +622,22 @@ import Observation
         XCTAssertTrue(list.canToggleUnread(archived))
     }
 
+    /// A Profile's room sessions (`Group: <room id>`, and Desktop's `Group: <name> · …`) are never
+    /// a match (#1146): a regular chat opened on one fails to send or desyncs the room. The reply
+    /// has no `hidden`, so the title is the tell.
+    func testARoomSessionIsNeverASearchMatch() throws {
+        let reply = """
+        {"results": [
+          {"session_id": "room", "title": "Group: room-1", "snippet": ">>>nimbus<<<", "role": "user"},
+          {"session_id": "desktop-room", "title": "Group: Launch · Ops", "snippet": ">>>nimbus<<<", "role": "assistant"},
+          {"session_id": "bot", "title": "Bot Chat", "snippet": ">>>nimbus<<<", "role": "assistant"},
+          {"session_id": "plan", "title": "Plan", "snippet": ">>>nimbus<<<", "role": "user"}
+        ]}
+        """
+        let search = try JSONDecoder().decode(HermesSessionSearch.self, from: Data(reply.utf8))
+        XCTAssertEqual(search.results.map(\.row.id), ["bot", "plan"])
+    }
+
     /// No list read refreshes the host's matches, so a delete, archive or rename confirmed here
     /// shows on them: the deleted match leaves, the archived one is labeled, the renamed one
     /// shows its new title, and the host is not searched again.

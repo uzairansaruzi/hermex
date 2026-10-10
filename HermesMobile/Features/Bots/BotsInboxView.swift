@@ -339,12 +339,16 @@ import SwiftUI
         updatingSignIn = true; showingSetup = true
     }
 
-    private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
-        BotChatView(server: server, connection: connection, profile: profile, roster: inbox.profiles,
-                    avatars: inbox.avatars, conversation: selection.conversation, onConversationUnavailable: {
-                        selection.profile = nil
-                        toast = String(localized: "That conversation is no longer available.")
-                    }, onUpdateSignIn: { inbox.noteRejectedSignIn(connection); selection.profile = nil; updateSignIn() })
+    /// The selected bot's canonical Bot Chat in the regular chat (#1146), where every bot route
+    /// lands. A chat the bot replaced since a link named it comes back here and says so, and a
+    /// refused password comes back here to the inbox's sign-in form.
+    @ViewBuilder private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
+        if let chat = selection.chat(server: server, connection: connection) {
+            ChatView(hermesSession: chat, onChatReplaced: {
+                selection.profile = nil
+                toast = String(localized: "That conversation is no longer available.")
+            })
+            .modifier(HermesUpdateSignInModifier { inbox.noteRejectedSignIn(connection); selection.profile = nil; updateSignIn() })
             // A composite rather than a concatenation: a Profile name and a
             // conversation root are both arbitrary server strings, so joining them
             // could let two destinations share one identity and keep the wrong
@@ -352,6 +356,7 @@ import SwiftUI
             .id([profile.id, connection.id.uuidString, selection.conversation ?? ""])
             .onAppear { inbox.markSeen(profile) }
             .onDisappear { inbox.noteReturn(from: profile) }
+        }
     }
 
     @ViewBuilder private func editProfile(_ selection: BotProfileEditSelection) -> some View {

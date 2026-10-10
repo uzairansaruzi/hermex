@@ -530,9 +530,10 @@ value: "1"|"0", scope}` back), `session.info`'s `yolo` and `approval_mode`, and 
 redirect's steer during a tool are verified against `tui_gateway/methods_config_set.py`,
 `tui_gateway/server.py` and `agent/interrupt_control.py` at `ca678285`.
 
-A bot's Bot Chat opens in the main chat too (#1145): a `.canonicalChat` target, or a Bot Chat
-row Archived opens by its key, including a legacy chain's "Bot Chat (continued)" tip
-(`HermesSessionChat.botChatRoot`, the row's lineage root, which also scopes its cache). One
+A bot's Bot Chat opens in the main chat (#1145, #1146): a `.canonicalChat` target, or a Bot
+Chat row opened by its key (`HermesSessionChat.botChatRoot`, the row's lineage root, which also
+scopes its cache): a legacy chain's "Bot Chat (continued)" tip from Archived, or a "Forked from"
+parent, since Sessions and Archived send a Bot Chat row itself to its bot. One
 `HermesChatPolicy` keeps Bot Chat's rules (#1127 decision 3), read by `HermesSlashCommands`,
 the message menu and the composer: `/new` (and `/reset`), `/clear` (pointing at `/compress`),
 `/resume`, `/sessions`, `/branch`, `/fork`, `/title`, `/undo` and `/retry` are refused with
@@ -557,7 +558,20 @@ destination until #706: the Bot activity's tap looks the chat up by title, which
 deliberate archive out and finds a replacement instead, and the client cannot tell a deliberate
 archive from a recoverable one. A `linkedRoot` (a bot link's root) the bot has replaced calls
 `ChatView`'s `onChatReplaced` (#554); Update sign-in is `HermesUpdateSignInAction`. Rooms never
-open here.
+open here: a room's session (`HermesSessionRow.isRoomSession`, hidden and titled `Group: …`)
+is left out of search results and the Archived screen (#1127 decision 7, #1146).
+
+Every bot route ends in the Bots inbox (#1146): its row and pinned tile, a bot search result, a
+deep link, a push tap and a Live Activity tap set `BotInboxSelection`, a Sessions search hit
+and an Archived Bot Chat row go through the bot deep link first, and the selection's
+`chat(server:connection:)` opens `ChatView` on the bot's `.canonicalChat` with the link's
+root as `linkedRoot`. The inbox owns what follows: a replaced chat pops back with "That
+conversation is no longer available.", Update sign-in pops back to the inbox's sign-in form
+(it installs its own `HermesUpdateSignInModifier`), and the device-local read mark (#506) is
+set on open and return. A bot link closes the Hermes home's Settings, so one opened from an
+Archived screen under Settings lands on the inbox. A deliberately archived Bot Chat is not the
+bot's canonical chat (the title lookup leaves it out), so its row opens the bot's current chat;
+Unarchive brings it back first.
 
 `BotConversation` owns one server/connection/Profile view lifetime and is the engine's
 Bot Chat owner: it keeps the snapshot-driven transcript and the Bot features (mentions,
@@ -1347,9 +1361,10 @@ deep links are #706. Each action goes to the row's own Profile.
 - **Archived Sessions**, at the list's end and in Settings, is `ArchivedSessionsView` with a
   `HermesArchiveSource`: `GET /api/sessions?profile=&order=recent&archived=only&limit=100&offset=&exclude_sources=…`
   (no `min_messages`), paged as the list is. The hidden filter is off there, so archived
-  hidden Bot Chats are listed, as "Bot Chat · <Profile>"; the pinned back-fill still brings
-  unarchived pinned rows, so only `archived` rows are kept. Unarchive and Delete work as on
-  the list; a restored Bot Chat is back in the Bots inbox. From the list it shows the list's
+  hidden Bot Chats are listed, as "Bot Chat · <Profile>", and a room's sessions are not; the
+  pinned back-fill still brings unarchived pinned rows, so only `archived` rows are kept. A
+  Bot Chat row opens in its bot on the Bots tab (#1146). Unarchive and Delete work as on the
+  list; a restored Bot Chat is back in the Bots inbox. From the list it shows the list's
   Profile; from Settings, the server's pick, else the dashboard's `current`.
 
 Contract checked against `scripts/local-hermes` at the `HERMES_AGENT_TESTED_SHA` pin
@@ -1417,6 +1432,8 @@ no `pinned`, `unread`, `hidden` or `cwd`.
 - **Snippets.** A content match (one with a `role`) carries FTS `snippet()` text with `>>>`
   and `<<<` around each match; `SessionSearchExcerpt(hermesSnippet:)` bolds those spans and
   never shows the marks. An id match's snippet is only its preview and shows nothing.
+- **Rooms.** A room's session (hidden, titled `Group: …`) is never a match (#1146); the reply
+  has no `hidden`, so the title prefix alone drops it.
 - **Labels.** An archived match shows "Archived", opens as a session and offers no Archive;
   restoring stays on the Archived screen. The payload has no `hidden`, so a match titled
   exactly "Bot Chat" is that Profile's canonical Bot Chat ("Bot Chat · <Profile>"); it opens
@@ -2285,11 +2302,13 @@ cached. App termination discards all recent projections.
 
 The top-right search button opens a sheet with a focused search field and an
 All / Bots / Messages filter. Bot names use the current roster, including hidden
-bots when a query matches. Message search is entirely local: it searches saved
-user/assistant text from full, identity-validated Bot snapshots and user/member
-messages from group room pages this iPhone has loaded. It never uses webui history or calls a server search/resume endpoint.
-The coverage label is “Messages saved on this iPhone.” There is no initial server
-crawl, attachment indexing, or live-token indexing.
+bots when a query matches. A bot's chat is searched on the host (#1146):
+`BotInbox.searchBotChats` asks `HermesREST.sessionSearch` once per roster Profile while the
+inbox is live, keeps each Profile's Bot Chat match (who wrote it, and the FTS snippet), and a
+hit opens that bot's chat. Room messages stay local: user/member messages from group room
+pages this iPhone has loaded, under the label “Messages saved on this iPhone.” The cache's Bot
+snapshots are no longer searched or shown. There is no initial server crawl, attachment
+indexing, or live-token indexing.
 
 `BotHistoryCache` serializes disk access and matching off the main actor. It keeps
 one snapshot per configured server hash + connection UUID + Profile, including
