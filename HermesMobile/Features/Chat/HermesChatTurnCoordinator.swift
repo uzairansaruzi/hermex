@@ -1606,13 +1606,11 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     func conversationDidLoseFrames() { rebuildAfterGap() }
 
     /// Frames past the engine's hold are lost, and the release rebuilds again. A held
-    /// `request.cancel` or connection frame is newer than the `open_requests` and
-    /// `pending_connection` the attach is reading.
+    /// `request.cancel` is newer than the `open_requests` the attach is reading; held
+    /// connection frames apply after its `pending_connection`, once released.
     func conversation(didHold frame: BotJSON) {
         if heldFrames.count < HermesConversation.heldFrameLimit { heldFrames.append(frame) }
-        if ["request.cancel", "connection.request", "connection.update"].contains(frame["type"].text) {
-            requests.holdRequestFrame()
-        }
+        if frame["type"].text == "request.cancel" { requests.holdRequestFrame() }
     }
 
     func conversation(didReceiveRequest envelope: BotJSON) {
@@ -1621,6 +1619,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
 
     func conversationWillDisconnect() {
         requests.willLeave()
+        requests.disconnect()
         activity.delegatedWork.disconnect()
     }
 

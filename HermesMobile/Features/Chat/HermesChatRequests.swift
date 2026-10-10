@@ -34,7 +34,7 @@ import Observation
     /// This runtime's open requests, oldest first, one per envelope id.
     private(set) var open: [BotServerRequest] = [] { didSet { onOpenChange() } }
     /// The open `manage_connections` operation, live or restored from `pending_connection`.
-    /// Cleared by its settled frame, a snapshot without it, a stop or a new attach.
+    /// Cleared by its settled frame, a snapshot without it, a stop, a disconnect or a new attach.
     private(set) var connection: BotConnectionOperation? { didSet { onOpenChange() } }
     /// The host holds an operation this build cannot read (no id, deadline or readable row):
     /// the session waits with no card, until a settled frame or a snapshot says otherwise.
@@ -72,7 +72,8 @@ import Observation
     /// This phone's Stop or Stop & send is in flight: the host withdrawing the cards then is
     /// the user's own doing, so it leaves no note.
     @ObservationIgnored var isStoppingHere = false
-    /// Bumped by every request frame, so an `open_requests` read before one never replaces it.
+    /// Bumped by every request envelope and `request.cancel`, so an `open_requests` read
+    /// before one never replaces it.
     @ObservationIgnored private var revision = 0
     @ObservationIgnored private var replayRevision = 0
     @ObservationIgnored private var snapshotRevision = 0
@@ -243,7 +244,6 @@ import Observation
             guard action.generation == engine.generation, !Task.isCancelled else { return false }
             guard reply["status"].text == "ok", let settled = reply["settled"].flag else { throw BotFailure.unsupported }
             answeringRequestID = nil
-            revision += 1
             if settled { closeConnection(action.requestID) }
             return true
         } catch {
@@ -397,7 +397,6 @@ import Observation
     /// opens its operation in place of any held; an update replaces the held one only when its
     /// `seq` is newer; the settled frame closes it. Neither revives the last settled operation.
     func receiveConnection(_ payload: BotJSON, opens: Bool) {
-        revision += 1
         guard let frame = BotConnectionOperation(payload) else {
             if opens { hasUnreadableConnection = true } else if payload["settled"].flag == true { hasUnreadableConnection = false }
             return
@@ -405,8 +404,8 @@ import Observation
         applyConnection(frame, opens: opens)
     }
 
-    /// A `request.cancel` or connection frame the engine held while attaching: newer than any
-    /// `open_requests` or `pending_connection` in flight.
+    /// A `request.cancel` the engine held while attaching: newer than any `open_requests` in
+    /// flight.
     func holdRequestFrame() { revision += 1 }
 
     /// The host withdrew every request: a stop, from any client, which also settles an open
@@ -441,6 +440,13 @@ import Observation
         envelopeShownWhenLeft = envelopeOnScreen
     }
 
+    /// The socket dropped: the connection operation goes with it until the next attach's
+    /// `pending_connection` restores it. Its verdict and the last settled `op_id` stay, for
+    /// the card that attach restores.
+    func disconnect() {
+        connection = nil; hasUnreadableConnection = false
+    }
+
     /// A new attach or leaving dropped the connection, and the requests with it. The
     /// connection card's verdict stays for the card the next attach restores.
     func reset() {
@@ -471,12 +477,12 @@ import Observation
     /// The attach is about to read the full snapshot.
     func willReadSnapshot() { snapshotRevision = revision }
 
-    /// The snapshot's `open_requests`, `pending_connection` and `info.yolo`.
+    /// The snapshot's `open_requests`, `pending_connection` and `info.yolo`. The operation is
+    /// always restored: connection frames that land during the read are held and go out after
+    /// it in `seq` order, so they move or settle the restored operation instead of being lost.
     func didReadSnapshot(_ snapshot: BotJSON) {
-        if snapshotRevision == revision {
-            restore(snapshot["open_requests"])
-            restoreConnection(snapshot["pending_connection"])
-        }
+        if snapshotRevision == revision { restore(snapshot["open_requests"]) }
+        restoreConnection(snapshot["pending_connection"])
         applyBypass(snapshot["info"])
         if withdrawal != nil, onScreen != nil { withdrawal = nil }
     }

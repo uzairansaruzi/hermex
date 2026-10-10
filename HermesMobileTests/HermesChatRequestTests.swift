@@ -384,6 +384,9 @@ import XCTest
         chat.host.withhold("connection.respond")
         let taken = await chat.requests.respondToConnection(try action(chat), .skip(target: "gmail"))
         XCTAssertFalse(taken)
+        XCTAssertEqual(chat.turn.engine.connectionState, .disconnected)
+        XCTAssertNil(chat.requests.onScreen, "the card leaves with the socket")
+        XCTAssertFalse(chat.model.isWaitingForUser)
 
         // Reattach now rather than on the backoff.
         await chat.model.networkPathDidChange()
@@ -392,6 +395,66 @@ import XCTest
         XCTAssertEqual(chat.requests.onScreenResolution?.outcome, .uncertain)
         XCTAssertTrue(chat.requests.mayAnswer, "a deliberate second answer is the user's call")
         XCTAssertEqual(chat.writes("connection.respond").count, 1)
+    }
+
+    /// An operation this build cannot read stops holding the chat once the socket drops.
+    func testADisconnectClearsAnUnreadableOperationsWait() async {
+        let chat = await openChat(pendingConnection: .object(["op_id": .string("op-2")]))
+        XCTAssertTrue(chat.model.isWaitingForUser)
+
+        chat.turn.engine.disconnect(BotFailure.rejected(403))
+        XCTAssertFalse(chat.model.isWaitingForUser)
+    }
+
+    /// Back on a session whose operation opened before the replay cursor, a `connection.update`
+    /// the engine holds while the snapshot is read moves the restored card instead of losing
+    /// it, and the snapshot's `open_requests` still apply.
+    func testAnUpdateDuringTheSnapshotReadMovesTheRestoredOperation() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "connection.request", operation(seq: 1)))
+        chat.model.suspendStreamForBackground()
+
+        let question = request("clarify", id: "srq-c1", ["question": .string("Which file?")])
+        chat.host.always("session.events.since", .init(result: replay(latest: 2)))
+        chat.host.next("session.resume", .init(result: resume(pendingConnection: .object(operation(seq: 1)))))
+        chat.host.next("session.resume", .init(
+            result: resume(openRequests: [question], pendingConnection: .object(operation(seq: 1))),
+            before: [event(3, "connection.update", operation(seq: 2, targets: [
+                BotConnectionFixture.gmail(state: "connected"), BotConnectionFixture.github()
+            ]))]
+        ))
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+        XCTAssertEqual(chat.requests.open.map(\.id), ["srq-c1"], "a connection frame never holds back open_requests")
+        XCTAssertEqual(chat.requests.connection?.seq, 2)
+        XCTAssertEqual(chat.requests.connection?.targets.first?.state, .connected)
+
+        chat.receive(event(4, "connection.update", operation(seq: 3, targets: [
+            BotConnectionFixture.gmail(state: "connected"), BotConnectionFixture.github(state: "connected")
+        ])))
+        XCTAssertEqual(chat.requests.connection?.targets.map(\.state), [.connected, .connected], "later updates still land")
+    }
+
+    /// An operation that settles while the snapshot is read closes, though the snapshot still
+    /// lists it, and a late frame for it cannot bring it back.
+    func testAnOperationSettledDuringTheSnapshotReadStaysClosed() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "connection.request", operation(seq: 1)))
+        chat.model.suspendStreamForBackground()
+
+        chat.host.always("session.events.since", .init(result: replay(latest: 2)))
+        chat.host.next("session.resume", .init(result: resume(pendingConnection: .object(operation(seq: 1)))))
+        chat.host.next("session.resume", .init(result: resume(pendingConnection: .object(operation(seq: 1))),
+                                               before: [event(3, "connection.update", operation(seq: 2, settled: true))]))
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+        XCTAssertNil(chat.requests.onScreen)
+        XCTAssertFalse(chat.model.isWaitingForUser)
+
+        chat.receive(event(4, "connection.request", operation(seq: 3)))
+        XCTAssertNil(chat.requests.onScreen, "a settled operation never comes back")
     }
 
     /// Steer and Queue release an open operation with `settled_by: "continue"` before their
