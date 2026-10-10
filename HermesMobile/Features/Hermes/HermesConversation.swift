@@ -230,11 +230,10 @@ extension HermesConversationOwner {
     /// `session.info`'s `stored_session_id` reports. Later reads and writes use it; `root`, the
     /// draft's and the list's identity, stays, and the next attach resumes from the target's
     /// key, which the host follows to the same tip. Only while connected, since a replayed
-    /// frame can carry the key from before the move. A Bot Chat keeps its own tip rule
-    /// (`identify`).
+    /// frame can carry the key from before the move. A Bot Chat follows it too (#1145), so
+    /// `/compress` leaves it writable; its next attach still finds the tip by title (`identify`).
     func adoptStoredKey(_ key: String?) {
         guard let key, !key.isEmpty, key != storedKey, connectionState == .connected else { return }
-        if case .canonicalChat = target { return }
         storedKey = key
     }
 

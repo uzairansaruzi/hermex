@@ -74,6 +74,10 @@ enum HermesProfilePreference {
     let profile: String
     /// The host's Profiles, from the latest attach's `profiles.list`; empty until it answers.
     private(set) var profiles: [String] = []
+    /// The same read's rows as bots: a Bot Chat's pill (#1145).
+    private(set) var bots: [BotProfile] = []
+    /// Those bots as `@`mention completions, without this chat's own Profile; built once per read.
+    private(set) var mentions: BotMentions
     /// A `/personality` name waiting for the user to confirm the Profile-wide change.
     private(set) var pendingPersonality: String?
     /// The latest `session.info`'s requested effort and the level its route sends.
@@ -85,6 +89,7 @@ enum HermesProfilePreference {
     init(engine: HermesConversation) {
         self.engine = engine
         profile = engine.target.profile
+        mentions = BotMentions(roster: [], excluding: profile)
     }
 
     /// The model the chip shows: a pick waiting for the running response, else the
@@ -107,10 +112,23 @@ enum HermesProfilePreference {
                                      generation: attempt), wire: engine.wire)
         guard engine.generation == attempt else { return }
         if let latestInfo { controls.snapshot(latestInfo.info, idle: latestInfo.idle) }
+        await readProfiles(attempt: attempt)
+    }
+
+    /// Reads the host's Profiles again, as after the bot's profile editor closes. Nothing is
+    /// read while disconnected, and a failed read keeps the last list.
+    func refreshProfiles() async {
+        guard engine.connectionState == .connected else { return }
+        await readProfiles(attempt: engine.generation)
+    }
+
+    private func readProfiles(attempt: Int) async {
         guard let roster = try? await engine.request(.profilesList(includeSessions: false), attempt: attempt),
               let rows = roster["profiles"].list else { return }
         var seen = Set<String>()
         profiles = rows.compactMap { $0["name"].text }.filter { !$0.isEmpty && seen.insert($0).inserted }
+        bots = rows.compactMap(BotProfile.init)
+        mentions = BotMentions(roster: bots, excluding: profile)
     }
 
     func disconnect() { controls.disconnect() }

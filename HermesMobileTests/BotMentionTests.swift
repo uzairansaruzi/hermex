@@ -1,4 +1,5 @@
 import XCTest
+import Observation
 import UIKit
 @testable import HermesMobile
 
@@ -193,6 +194,104 @@ final class BotMentionTests: XCTestCase {
                         profile: BotProfile(.object(["name": .string("inbox-triage")]))!, roster: roster,
                         wire: wire, drafts: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)),
                         attachmentCopies: BotAttachmentCopies())
+    }
+}
+
+/// `@`mentions in a bot's Bot Chat opened in the main chat (#1145). The host delivers them only
+/// there (`tools/bot_mode_dm.py`), so a session sends `@` text as typed. Over #901's
+/// socket-level host, whose `profiles.list` is this connection's roster.
+@MainActor final class HermesChatMentionTests: XCTestCase {
+    private static let server = URL(string: "https://hermes.example")!
+    private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
+                                                  username: "user", password: "fixture")
+    private static let roster: BotJSON = .object(["profiles": .array([
+        .object(["name": .string("default")]),
+        .object(["name": .string("helper"), "ui_meta": .object(["hermes-bots": .object(["title": .string("Inbox Triage")])])])
+    ])])
+
+    /// Every prompt mode sends the typed text with Desktop's identification note after it, while
+    /// the chat shows the typed text: the optimistic row, and the queued prompt's receipt.
+    func testEveryPromptModeAnnotatesTheSendAndShowsTheTypedText() async throws {
+        let chat = await openChat(target: .canonicalChat(profile: "default"))
+        XCTAssertEqual(chat.turn.mentions?.completions(query: "").map(\.profile.id), ["helper"],
+                       "this connection's other bots, never the open one")
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("@inbox-triage sort today")
+        let sent = try XCTUnwrap(chat.writes("prompt.submit").last?["text"]?.text)
+        XCTAssertTrue(sent.hasPrefix("@inbox-triage sort today\n\n[@mentions resolved from the Bot Mode roster"))
+        XCTAssertTrue(sent.contains("@helper = agent profile \"helper\" (\"Inbox Triage\")"))
+        XCTAssertEqual(BotMentions.displayText(sent), "@inbox-triage sort today")
+        XCTAssertEqual(chat.model.messages.last?.content, "@inbox-triage sort today")
+
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("queued")])))
+        chat.host.always("session.steer", .init(result: .object(["status": .string("queued")])))
+        chat.host.always("session.redirect", .init(result: .object(["status": .string("queued")])))
+        for mode in [BotPromptMode.queue, .steer, .redirect] {
+            _ = try await chat.turn.submit("@helper \(mode)", mode: mode)
+            let method = mode.call(runtime: "", text: "").method
+            let text = try XCTUnwrap(chat.writes(method).last?["text"]?.text)
+            XCTAssertEqual(BotMentions.displayText(text), "@helper \(mode)")
+            XCTAssertNotEqual(text, "@helper \(mode)", "\(mode) carries the note")
+        }
+        XCTAssertEqual(chat.turn.queuedPrompt?.contains("[@mentions"), false, "the receipt shows what was typed")
+    }
+
+    /// A session sends `@` text exactly as typed: only a Bot Chat's host delivers a mention.
+    func testASessionSendsMentionsAsTyped() async throws {
+        let chat = await openChat(target: .session(profile: "default", key: "tip"))
+        XCTAssertNil(chat.turn.mentions)
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("@inbox-triage sort today")
+        XCTAssertEqual(chat.writes("prompt.submit").last?["text"], .string("@inbox-triage sort today"))
+    }
+
+    private struct Chat {
+        let model: ChatViewModel
+        let turn: HermesChatTurnCoordinator
+        let host: BotSocketHost
+
+        func writes(_ method: String) -> [[String: BotJSON]] {
+            host.requests.filter { $0["method"].text == method }.compactMap { $0["params"].fields }
+        }
+    }
+
+    /// An idle chat on runtime `runtime` at tip `tip`, once its roster has been read.
+    private func openChat(target: ConversationTarget) async -> Chat {
+        addTeardownBlock { HermesHostFixture.reset() }
+        let host = BotSocketHost()
+        host.always("session.resume", .init(result: .object([
+            "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
+            "messages": .array([]), "info": .object(["profile_name": .string("default")])
+        ])))
+        host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
+        host.always("profiles.list", .init(result: Self.roster))
+        let client = BotClient(http: host.connection(Self.connection))
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/sessions/tip/messages" ? .json(200, .object(["messages": .array([])])) : nil
+        }
+        let engine = HermesConversation(server: Self.server, connection: Self.connection, target: target, wire: client)
+        let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
+        let model = ChatViewModel(
+            session: SessionSummary(profile: "default"), server: Self.server, streamingScrollCoalescingDelayNanoseconds: 0,
+            draftStore: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)),
+            backend: .hermes(turn)
+        )
+        await model.loadMessages()
+        XCTAssertEqual(engine.connectionState, .connected)
+        await waitUntil("the roster") { turn.settings.profiles.count == 2 }
+        return Chat(model: model, turn: turn, host: host)
+    }
+
+    /// Waits on observation, never a clock, until `condition` holds.
+    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
+                           _ condition: @escaping @MainActor () -> Bool) async {
+        while !condition() {
+            let changed = XCTestExpectation(description: description)
+            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
+            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
+                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
+            }
+        }
     }
 }
 

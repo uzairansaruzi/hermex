@@ -168,6 +168,58 @@ import XCTest
         XCTAssertEqual(leaving.spy.staleCount, 0)
     }
 
+    // MARK: Bot Chat (#1145)
+
+    /// A bot's Bot Chat keeps the Bot identity (#709): its turn starts the bot's activity,
+    /// keyed by connection and Profile, whose tap opens the bot's chat and whose push id is the
+    /// stored key. No `hermes:` session activity starts, and the turn's ending ends the bot's.
+    func testABotChatsTurnDrivesTheBotsActivity() async throws {
+        let chat = await openChat(target: .canonicalChat(profile: "default"))
+        chat.receive(event(1, "session.info", ["running": .bool(true), "turn_started_at": .number(Self.startedAt)]))
+        chat.receive(event(2, "message.start"))
+        chat.receive(event(3, "tool.start", ["name": .string("terminal"), "tool_id": .string("t1")]))
+
+        let destination = BotDestination(server: Self.server, connectionID: Self.connection.id, profile: "default",
+                                         conversation: "root")
+        let url = try XCTUnwrap(HermesDeepLink.botURL(for: destination))
+        XCTAssertEqual(chat.spy.botStarts, [.init(key: "bot:\(Self.connection.id.uuidString):default", destinationURL: url,
+                                                  pushSessionID: "tip", title: "Hermes", turn: "1790000000.5",
+                                                  startedAt: Date(timeIntervalSince1970: Self.startedAt))])
+        XCTAssertEqual(chat.spy.starts, [], "never the interim hermes: identity")
+        XCTAssertEqual(chat.spy.events.last, .toolStarted(name: "terminal"))
+
+        chat.receive(event(4, "message.complete", ["text": .string("Done")]))
+        chat.receive(event(5, "session.info", ["running": .bool(false)]))
+        XCTAssertEqual(chat.spy.ends, [.init(status: .complete, activity: "Response complete")])
+    }
+
+    /// A Bot Chat's pill shows the turn as Bot Chat's title does (#757, #778): at rest while
+    /// idle, working while the turn runs, waiting while a request is open, failed while the host
+    /// keeps the turn's error, and at rest again once the socket drops. A session has no pill.
+    func testABotChatsPillFaceFollowsTheTurn() async {
+        let chat = await openChat(target: .canonicalChat(profile: "default"))
+        XCTAssertEqual(chat.turn.botProfile?.name, "Hermes", "the bare Profile row until a roster read answers")
+        XCTAssertEqual(chat.turn.titleFace, .resting)
+
+        chat.receive(event(1, "message.start"))
+        XCTAssertEqual(chat.turn.botTurn, .running)
+        XCTAssertEqual(chat.turn.titleFace, .working)
+        chat.receive(request("clarify", id: "srq-c1", ["question": .string("Which file?")]))
+        XCTAssertEqual(chat.turn.titleFace, .waiting)
+        chat.receive(event(2, "request.cancel", ["id": .string("srq-c1"), "method": .string("clarify")]))
+        XCTAssertEqual(chat.turn.titleFace, .working)
+        chat.receive(event(3, "message.complete", ["status": .string("error"), "error": .string("Model failed")]))
+        chat.receive(event(4, "session.info", ["running": .bool(false)]))
+        XCTAssertEqual(chat.turn.titleFace, .failed)
+
+        chat.model.suspendStreamForBackground()
+        XCTAssertEqual(chat.turn.botTurn, .unknown, "a reconnect inside the turn starts no new beat")
+        XCTAssertEqual(chat.turn.titleFace, .resting)
+
+        let session = await openChat()
+        XCTAssertNil(session.turn.botProfile)
+    }
+
     // MARK: Tap
 
     /// A Hermes session's activity has no destination until #706: no webui route is built,
@@ -191,8 +243,10 @@ import XCTest
                                                   username: "user", password: "fixture")
 
     /// A Hermes chat attached to session `tip` on Profile `default`, whose frames the test feeds.
+    /// A `.canonicalChat` target's title lookup finds root `root` at tip `tip`.
     private struct Chat {
         let model: ChatViewModel
+        let turn: HermesChatTurnCoordinator
         let host: BotSocketHost
         let client: BotClient
         let spy: Spy
@@ -203,7 +257,8 @@ import XCTest
         }
     }
 
-    private func openChat(snapshot: BotJSON? = nil, excerpts: Bool = false) async -> Chat {
+    private func openChat(snapshot: BotJSON? = nil, excerpts: Bool = false,
+                          target: ConversationTarget = .session(profile: "default", key: "tip")) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: snapshot ?? resume(running: false)))
@@ -211,7 +266,7 @@ import XCTest
         let client = BotClient(http: host.connection(Self.connection))
         // No automatic reconnect: a test reattaches when it says so.
         let engine = HermesConversation(server: Self.server, connection: Self.connection,
-                                        target: .session(profile: "default", key: "tip"), wire: client,
+                                        target: target, wire: client,
                                         reconnectDelay: { _ in throw CancellationError() })
         let spy = Spy()
         let turn = HermesChatTurnCoordinator(engine: engine, liveActivities: spy, isNetworkAvailable: { true })
@@ -224,7 +279,7 @@ import XCTest
         )
         await model.loadMessages()
         XCTAssertEqual(engine.connectionState, .connected)
-        return Chat(model: model, host: host, client: client, spy: spy)
+        return Chat(model: model, turn: turn, host: host, client: client, spy: spy)
     }
 
     private func event(_ seq: Int, _ type: String, _ payload: [String: BotJSON] = [:]) -> BotJSON {
@@ -267,7 +322,18 @@ import XCTest
         let activity: String
     }
 
+    /// A bot's activity as `startBot` asked for it.
+    struct BotStart: Equatable {
+        let key: String
+        let destinationURL: URL
+        let pushSessionID: String?
+        let title: String
+        let turn: String
+        let startedAt: Date
+    }
+
     private(set) var starts: [Start] = []
+    private(set) var botStarts: [BotStart] = []
     private(set) var events: [AgentLiveActivityEvent] = []
     private(set) var ends: [End] = []
     private(set) var staleCount = 0
@@ -276,6 +342,12 @@ import XCTest
     func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date) {
         starts.append(Start(sessionID: sessionID, server: server, title: sessionTitle, streamID: streamID, startedAt: startedAt))
         drivenSessionID = sessionID
+    }
+
+    func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date) {
+        botStarts.append(BotStart(key: bot.key, destinationURL: bot.destinationURL, pushSessionID: bot.pushSessionID,
+                                  title: title, turn: turn, startedAt: startedAt))
+        drivenSessionID = bot.key
     }
 
     func update(_ event: AgentLiveActivityEvent) { events.append(event) }

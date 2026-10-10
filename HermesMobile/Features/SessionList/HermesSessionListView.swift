@@ -682,12 +682,13 @@ extension SessionSummary {
     }
 
     /// The chat this Hermes row opens on `connection`, carrying the parent the row names, so a
-    /// branch shows its "Forked from" row (#1051), and a Bot Chat's root, so an archived one
-    /// shows its bot's cached transcript offline (#1144). Nil for a webui row.
+    /// branch shows its "Forked from" row (#1051). A Bot Chat row (Archived) opens as the bot's
+    /// chat, with its pill and rules (#1145), and carries its root, so it shows its bot's cached
+    /// transcript offline (#1144). Nil for a webui row.
     func hermesChat(on server: URL, connection: BotConnection, listedIn profile: String) -> HermesSessionChat? {
         hermesTarget(listedIn: profile).map {
             HermesSessionChat(server: server, connection: connection, target: $0, parentKey: parentSessionId,
-                              botChatRoot: hermes?.botChatRoot)
+                              botChatRoot: hermes?.botChatRoot, opensBotChat: hermes?.isBotChat == true)
         }
     }
 

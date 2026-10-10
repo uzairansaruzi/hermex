@@ -304,6 +304,9 @@ struct ChatView: View {
     /// Puts a new Hermes chat in this one's place: a Profile picked before anything was
     /// sent (#1015). Nil pushes it on top instead.
     let onReplaceHermesSession: ((HermesSessionChat) -> Void)?
+    /// The bot's chat a deep link named was replaced by a newer one (#554): the caller takes the
+    /// user back and says so. Only a `.canonicalChat` opened with a `linkedRoot` calls it (#1145).
+    let onHermesChatReplaced: (() -> Void)?
     /// A Hermes session's dictation goes to its host for its Profile (#1071).
     private let hermesTranscriber: ComposerTranscriber?
     /// Returns to the Sessions list under this Hermes chat, in the entry's Profile (this chat's)
@@ -392,6 +395,8 @@ struct ChatView: View {
     @State private var updateSignInPillHeight: CGFloat = 36
     /// The delegated-work sheet a Hermes chat's workers button opens (#1140).
     @State private var showsDelegatedWork = false
+    /// A bot's chat's pill opened the bot's profile (#1145).
+    @State private var showsBotProfileEditor = false
     /// Measured height of the pinned notice stack, which grows with each
     /// notice and with Dynamic Type.
     @State private var pinnedNoticeStackHeight: CGFloat = 0
@@ -447,7 +452,8 @@ struct ChatView: View {
         onConversationStarted: @escaping () -> Void = {},
         hermesSession: HermesSessionChat? = nil,
         onReplaceHermesSession: ((HermesSessionChat) -> Void)? = nil,
-        onOpenHermesSessions: ((HermesSessionListEntry) -> Void)? = nil
+        onOpenHermesSessions: ((HermesSessionListEntry) -> Void)? = nil,
+        onHermesChatReplaced: (() -> Void)? = nil
     ) {
         self.session = session
         self.server = server
@@ -462,6 +468,7 @@ struct ChatView: View {
         isHermesSession = hermesSession != nil
         hermesParentKey = hermesSession?.parentKey
         self.onReplaceHermesSession = onReplaceHermesSession
+        self.onHermesChatReplaced = onHermesChatReplaced
         hermesTranscriber = hermesSession.map { HermesTranscription.transcriber(for: $0) }
         self.onOpenHermesSessions = onOpenHermesSessions
         _draftMessage = State(initialValue: initialDraft)
@@ -475,9 +482,7 @@ struct ChatView: View {
             ),
             draftAttachmentStore: resolvedDraftAttachmentStore,
             draftStore: self.draftStore,
-            backend: hermesSession.map {
-                .hermes(HermesChatTurnCoordinator(server: $0.server, connection: $0.connection, target: $0.target))
-            } ?? .webui
+            backend: hermesSession.map { .hermes(HermesChatTurnCoordinator($0)) } ?? .webui
         )
         model.hermesBotChatRoot = hermesSession?.botChatRoot
         _viewModel = State(initialValue: model)
@@ -488,16 +493,20 @@ struct ChatView: View {
     }
 
     /// A Hermes session on its Profile (#1010). It has no webui session, so nothing here
-    /// reaches the webui API; connection errors show in the chat itself.
+    /// reaches the webui API; connection errors show in the chat itself. A bot's Bot Chat
+    /// (#1145) shows the bot's pill in place of the title, keeps Bot Chat's rules
+    /// (`HermesChatPolicy`) and calls `onChatReplaced` when its linked root was replaced. Update
+    /// sign-in goes through the environment's `HermesUpdateSignInAction`.
     init(hermesSession: HermesSessionChat, onReplace: ((HermesSessionChat) -> Void)? = nil,
-         onOpenSessions: ((HermesSessionListEntry) -> Void)? = nil) {
+         onOpenSessions: ((HermesSessionListEntry) -> Void)? = nil, onChatReplaced: (() -> Void)? = nil) {
         self.init(
             session: SessionSummary(profile: hermesSession.target.profile),
             server: hermesSession.server,
             onAPIError: { _ in },
             hermesSession: hermesSession,
             onReplaceHermesSession: onReplace,
-            onOpenHermesSessions: onOpenSessions
+            onOpenHermesSessions: onOpenSessions,
+            onHermesChatReplaced: onChatReplaced
         )
     }
 
@@ -566,6 +575,8 @@ struct ChatView: View {
             sessionID: session.sessionId,
             searchFilePaths: viewModel.offersFilePathSearch ? { await viewModel.searchFilePaths($0) } : nil,
             chipFilePaths: viewModel.fileChipPaths,
+            botMentions: viewModel.hermesBotChat?.mentions,
+            mentionAvatars: viewModel.hermesBotChat.map { BotAvatarStore.shared.images(connectionID: $0.engine.connection.id) } ?? [:],
             filePathSearch: viewModel.filePathSearch,
             uploadAttachmentErrorMessage: viewModel.uploadAttachmentErrorMessage,
             steerFailure: viewModel.steerFailureMessage.map { message in
@@ -955,8 +966,10 @@ struct ChatView: View {
         .overlay(alignment: .top) {
             GitActionToastOverlay(state: gitToastState)
         }
-        .navigationTitle(displayTitle)
+        .navigationTitle(viewModel.hermesBotChat?.botProfile?.name ?? displayTitle)
         .navigationBarTitleDisplayMode(.inline)
+        // A bot's pill names the chat; its title stays only for Back on screens pushed over it.
+        .toolbar(removing: viewModel.hermesBotChat == nil ? nil : .title)
         .modifier(ChatNavigationBackground(reduceTransparency: reduceTransparency))
         .accessibilityIdentifier("chat-detail:\(viewModel.displayTitle)")
         .pushPresence(viewModel.pushPresence)
@@ -1054,11 +1067,18 @@ struct ChatView: View {
     private var chatContent: some View {
         chatLifecycle
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    ChatToolbarTitleLabel(
-                        title: displayTitle,
-                        subtitle: headerSubtitle
-                    )
+                // A bot's chat swaps the title for the bot's pill (#1145).
+                if let botChat = viewModel.hermesBotChat {
+                    ToolbarItem(placement: .topBarLeading) {
+                        HermesBotChatPill(turn: botChat) { showsBotProfileEditor = true }
+                    }
+                } else {
+                    ToolbarItem(placement: .principal) {
+                        ChatToolbarTitleLabel(
+                            title: displayTitle,
+                            subtitle: headerSubtitle
+                        )
+                    }
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
@@ -1100,6 +1120,10 @@ struct ChatView: View {
             }
             .navigationDestination(item: $pushedHermesSessionList) { entry in
                 HermesSessionListView(entry: entry).id(entry.id)
+            }
+            .navigationDestination(isPresented: $showsBotProfileEditor) { botProfileEditor }
+            .onChange(of: showsBotProfileEditor) { _, isShown in
+                if !isShown, let botChat = viewModel.hermesBotChat { Task { await botChat.settings.refreshProfiles() } }
             }
             .sheet(item: $attachmentPreviewItem) { item in
                 ChatAttachmentPreviewView(
@@ -1169,6 +1193,10 @@ struct ChatView: View {
             .fullScreenCover(isPresented: $showsBtwFullScreen) { btwFullScreen }
             .onChange(of: viewModel.hermesSideTasks?.btw == nil) { _, isClosed in
                 if isClosed { showsBtwFullScreen = false }
+            }
+            .onChange(of: viewModel.hermesChatWasReplaced) { _, isStale in
+                // The link named a chat this bot has replaced: the caller reports it (#554).
+                if isStale { onHermesChatReplaced?() }
             }
             .sheet(isPresented: $showsDelegatedWork) {
                 if let work = viewModel.hermesActivity?.delegatedWork {
@@ -1864,6 +1892,17 @@ struct ChatView: View {
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerLocalNotices)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsApprovalBypassStatus)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: pinnedPlan == nil)
+        }
+    }
+
+    /// The bot's profile, from its pill (#1145). Closing it reads the roster again, so the pill
+    /// and the `@` roster show what was saved.
+    @ViewBuilder private var botProfileEditor: some View {
+        if let botChat = viewModel.hermesBotChat, let profile = botChat.botProfile {
+            let connection = botChat.engine.connection
+            BotProfileEditorView(server: botChat.engine.server, connection: connection, profile: profile,
+                                 avatar: BotAvatarStore.shared.images(connectionID: connection.id)[profile.id])
+                .id(connection.id.uuidString + profile.id)
         }
     }
 

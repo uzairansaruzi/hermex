@@ -827,8 +827,11 @@ final class ChatViewModel {
         hermesSettings?.profileOptions ?? profileOptions
     }
 
+    /// The Profile chip only shows its Profile: one Profile, or a Bot Chat's bot, whose chat
+    /// picks no other (#1145).
     var composerIsSingleProfileMode: Bool {
-        hermesSettings.map { $0.profiles.count <= 1 } ?? isSingleProfileMode
+        guard let hermesTurn else { return isSingleProfileMode }
+        return !hermesTurn.policy.picksProfile || hermesTurn.settings.profiles.count <= 1
     }
 
     /// A Hermes model pick the host applies after the running response (#1015).
@@ -839,6 +842,10 @@ final class ChatViewModel {
 
     /// A Hermes session's model and Profile controls (#1015). Nil on a webui session.
     var hermesSettings: HermesChatSettings? { hermesTurn?.settings }
+    /// A bot's Bot Chat's turns (#1145), for its pill, `@` roster and profile; nil otherwise.
+    var hermesBotChat: HermesChatTurnCoordinator? { hermesTurn?.policy == .botChat ? hermesTurn : nil }
+    /// The bot's chat a deep link named was replaced by a newer one (#554).
+    var hermesChatWasReplaced: Bool { hermesTurn?.engine.linkedRootIsStale == true }
 
     /// The effort chip's level: a Hermes session's `session.info` effort (#1016), else webui's.
     var composerReasoningEffort: String? {
@@ -2236,9 +2243,10 @@ final class ChatViewModel {
             message: message,
             visibleIndex: visibleIndex,
             messagesOffset: messagesOffset,
-            offersHistoryActions: hermesTurn == nil || hermesRewindableMessageIDs.contains(message.id),
-            // A Hermes branch counts to a row the host saved (#1051).
-            offersFork: hermesTurn == nil || message.rowID != nil
+            offersHistoryActions: hermesTurn.map { $0.policy.offersHistoryActions && hermesRewindableMessageIDs.contains(message.id) }
+                ?? true,
+            // A Hermes branch counts to a row the host saved (#1051). A Bot Chat offers neither (#1145).
+            offersFork: hermesTurn.map { $0.policy.offersHistoryActions && message.rowID != nil } ?? true
         )
     }
 
@@ -3953,9 +3961,10 @@ final class ChatViewModel {
     /// The host's slash commands in a Hermes chat (#1036); nil on webui.
     var hermesSlashCommands: HermesSlashCommands? { hermesTurn?.slashCommands }
 
-    /// The agent commands the composer offers: a Hermes host's catalog, or webui's list.
+    /// The agent commands the composer offers: a Hermes host's catalog, less what the chat
+    /// refuses (#1145), or webui's list.
     var composerAgentCommands: [AgentCommand] {
-        hermesTurn?.slashCommands.catalog.commands ?? agentCommands
+        hermesTurn?.slashCommands.commands ?? agentCommands
     }
 
     /// The skills the composer offers: a Hermes host's catalog, or webui's list.
@@ -3984,6 +3993,8 @@ final class ChatViewModel {
         let reply: HermesSlashReply
         do {
             switch slash.route(name) {
+            case .refused(let message):
+                return .unsupported(friendlyMessage: message)
             case .appOwned(let command):
                 return await executeSlashCommand(command, args: invocation.argument, modelContext: modelContext)
             case .held:

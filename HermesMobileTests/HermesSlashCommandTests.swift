@@ -146,6 +146,85 @@ import Observation
         XCTAssertEqual(opened.target, .new(profile: "default"))
     }
 
+    // MARK: Bot Chat (#1145)
+
+    /// A bot's Bot Chat is that bot's one conversation (#1127 decision 3): every command that
+    /// would start, open, rename, branch or rewind a chat is refused with copy before anything
+    /// is sent, aliases included, and `/clear` points at `/compress`.
+    func testABotChatRefusesCommandsThatLeaveOrRewriteIt() async {
+        let chat = await openChat(target: .canonicalChat(profile: "default"))
+        let refusals: [(String, String)] = [
+            ("/new", "A bot keeps one chat, so /new can’t start another."),
+            ("/reset", "A bot keeps one chat, so /reset can’t start another."),
+            ("/clear", "A bot keeps one chat, so /clear can’t start another. Run /compress to free up its context."),
+            ("/resume Launch plan", "A bot keeps one chat, so /resume can’t open another."),
+            ("/sessions", "A bot keeps one chat, so /sessions can’t open another."),
+            ("/branch Idea", "A bot’s chat can’t be forked."),
+            ("/fork", "A bot’s chat can’t be forked."),
+            ("/title Renamed", "A bot’s chat keeps the bot’s name."),
+            ("/undo", "A bot’s chat can’t be rewound."),
+            ("/retry", "A bot’s chat can’t be rewound.")
+        ]
+        let sent = chat.host.requests.count
+        for (line, copy) in refusals {
+            let result = await chat.model.runHermesSlashCommand(line)
+            XCTAssertEqual(result, .unsupported(friendlyMessage: copy), line)
+        }
+        XCTAssertEqual(chat.host.requests.dropFirst(sent).compactMap { $0["method"].text }, [], "nothing reaches the host")
+    }
+
+    /// The panel hides what a Bot Chat refuses, Hermex's and the host's alike, and keeps its side
+    /// commands (`/btw`, `/background`, `/goal`, `/yolo`, `/compress`). A session keeps them all.
+    func testABotChatsPanelOffersOnlyWhatItRuns() async {
+        let refused: Set<String> = ["new", "clear", "resume", "sessions", "branch", "fork", "title", "undo", "retry"]
+        let bot = await openChat(target: .canonicalChat(profile: "default"))
+        let builtins = Set((bot.model.hermesSlashCommands?.scope.builtins ?? []).map(\.name))
+        XCTAssertTrue(builtins.isDisjoint(with: refused), "\(builtins.intersection(refused))")
+        XCTAssertTrue(builtins.isSuperset(of: ["btw", "background", "goal", "yolo", "compress", "compact", "stop", "model"]))
+        let hostCommands = Set(bot.model.composerAgentCommands.map(\.name))
+        XCTAssertTrue(hostCommands.isDisjoint(with: refused), "\(hostCommands.intersection(refused))")
+        XCTAssertTrue(hostCommands.contains("context"))
+
+        let session = await openChat()
+        XCTAssertTrue(Set((session.model.hermesSlashCommands?.scope.builtins ?? []).map(\.name)).isSuperset(of: refused))
+        XCTAssertTrue(Set(session.model.composerAgentCommands.map(\.name)).isSuperset(of: ["new", "title", "branch"]))
+    }
+
+    /// A Bot Chat's saved rows offer no Edit, Regenerate or Fork From Here, and its Profile chip
+    /// starts no other chat; a session's same rows offer all three.
+    func testABotChatOffersNoRewindForkOrOtherProfile() async throws {
+        let rows = [Self.row(1, "user", "Hello"), Self.row(2, "assistant", "Hi there.")]
+        let profiles: BotJSON = .object(["profiles": .array([.object(["name": .string("default")]),
+                                                             .object(["name": .string("coder")])])])
+        let bot = await openChat(messages: rows, target: .canonicalChat(profile: "default"), profiles: profiles)
+        await waitUntil("the Profiles") { bot.turn.settings.profiles.count == 2 }
+        for (index, message) in bot.model.messages.enumerated() {
+            let context = try XCTUnwrap(bot.model.actionContext(for: message, visibleIndex: index))
+            XCTAssertFalse(context.offersHistoryActions, "Edit and Regenerate rewind the bot's one chat")
+            XCTAssertFalse(context.offersFork)
+        }
+        XCTAssertTrue(bot.model.composerIsSingleProfileMode, "the chip shows the bot's Profile and picks no other")
+
+        let session = await openChat(messages: rows, profiles: profiles)
+        await waitUntil("the Profiles") { session.turn.settings.profiles.count == 2 }
+        let context = try XCTUnwrap(session.model.actionContext(for: session.model.messages[0], visibleIndex: 0))
+        XCTAssertTrue(context.offersHistoryActions)
+        XCTAssertTrue(context.offersFork)
+        XCTAssertFalse(session.model.composerIsSingleProfileMode)
+    }
+
+    /// A Bot Chat row (Archived) opens by its key with Bot Chat's rules, so its compaction follows
+    /// the key as any session's does; every other row opens as a session.
+    func testABotChatRowOpensWithBotChatsRules() {
+        let bot = HermesSessionRow(id: "bot", title: "Bot Chat", hidden: true, profile: "default").summary(in: "default")
+        let opened = bot.hermesChat(on: URL(string: "https://hermes.example")!, connection: Self.connection, listedIn: "default")
+        XCTAssertEqual(opened?.target, .session(profile: "default", key: "bot"))
+        XCTAssertEqual(opened?.policy, .botChat)
+        let plain = HermesSessionRow(id: "a", title: "Plan").summary(in: "default")
+        XCTAssertEqual(plain.hermesChat(on: URL(string: "https://hermes.example")!, connection: Self.connection,
+                                        listedIn: "default")?.policy, .session)
+    }
+
     // MARK: Sessions (#1053)
 
     /// `/resume <name>` searches the chat's Profile for the name and opens the one session
@@ -337,6 +416,12 @@ import Observation
         }
     }
 
+    /// One saved transcript row on `tip` (#1047).
+    private static func row(_ id: Int, _ role: String, _ content: String) -> BotJSON {
+        .object(["id": .number(Double(id)), "session_id": .string("tip"), "role": .string(role),
+                 "content": .string(content), "timestamp": .number(1_790_000_000 + Double(id)), "active": .number(1)])
+    }
+
     /// One `GET /api/sessions/search` id match in the pin's shape (#1053).
     private static func searchResult(_ id: String, title: String) -> BotJSON {
         .object(["snippet": .string("Session ID: \(id)"), "role": .null, "session_id": .string(id), "id": .string(id),
@@ -346,8 +431,11 @@ import Observation
 
     /// A Hermes chat attached to an idle session on `runtime`, whose transcript page holds
     /// `messages` (#1047) and whose Profile's search answers `search` (#1053), with the
-    /// recorded catalog read unless `catalog` is false.
-    private func openChat(messages: [BotJSON] = [], search: [BotJSON] = [], catalog: Bool = true) async -> Chat {
+    /// recorded catalog read unless `catalog` is false. `profiles` answers `profiles.list`; a
+    /// `.canonicalChat` target's title lookup finds root `root` at tip `tip`.
+    private func openChat(messages: [BotJSON] = [], search: [BotJSON] = [], catalog: Bool = true,
+                          target: ConversationTarget = .session(profile: "default", key: "tip"),
+                          profiles: BotJSON? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: .object([
@@ -355,6 +443,7 @@ import Observation
             "messages": .array([]), "info": .object(["profile_name": .string("default")])
         ])))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
+        if let profiles { host.always("profiles.list", .init(result: profiles)) }
         if catalog, let reply = try? Self.fixture("commands.catalog") {
             host.always("commands.catalog", .init(result: reply))
         }
@@ -367,7 +456,7 @@ import Observation
             }
         }
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
-                                        target: .session(profile: "default", key: "tip"), wire: client)
+                                        target: target, wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
         let model = ChatViewModel(
             session: SessionSummary(profile: "default"), server: URL(string: "https://hermes.example")!,

@@ -425,7 +425,8 @@ On a host set to legacy rotation
 stored key, which `session.info` (and the compress reply's `info`) reports as
 `stored_session_id`: `HermesConversation.adoptStoredKey` takes it while connected, so later
 pages, uploads and titles follow it, while `root`, the draft key and the list row keep the
-original. `/clear` deletes nothing: it opens a new chat in this one's place,
+original. A bot's `.canonicalChat` follows it too (#1145, reversing #1099), so `/compress`
+leaves it writable; its next attach still finds the tip by title. `/clear` deletes nothing: it opens a new chat in this one's place,
 `ConversationTarget.new(profile:cwd:model:)` with the chip's model (the `model` and `provider`
 `session.info` reported while the chip's catalog is unread or failed) and the last reported `cwd`,
 whose first attach is `session.create {profile, cwd, model, provider}`; reasoning, personality
@@ -528,6 +529,26 @@ back in with fresh chats. The `config.set` yolo shape (`{key,
 value: "1"|"0", scope}` back), `session.info`'s `yolo` and `approval_mode`, and the
 redirect's steer during a tool are verified against `tui_gateway/methods_config_set.py`,
 `tui_gateway/server.py` and `agent/interrupt_control.py` at `ca678285`.
+
+A bot's Bot Chat opens in the main chat too (#1145): a `.canonicalChat` target, or a Bot Chat
+row Archived opens by its key (`HermesSessionChat.opensBotChat`). One `HermesChatPolicy` keeps
+Bot Chat's rules (#1127 decision 3), read by `HermesSlashCommands`, the message menu and the
+composer: `/new` (and `/reset`), `/clear` (pointing at `/compress`), `/resume`, `/sessions`,
+`/branch`, `/fork`, `/title`, `/undo` and `/retry` are refused with copy before anything is
+sent and left out of the panel, Hermex's and the host's alike; Edit, Regenerate and Fork From
+Here are not offered (the outcome row's Retry stays); the Profile chip shows the bot's Profile
+and picks no other. `/btw`, `/background`, `/goal`, `/yolo` and `/compress` run as in a session.
+The title is the bot's pill (`HermesBotChatPill` over Bot Chat's `BotChatTitlePill`): the
+roster row from the chat's `profiles.list` read (a bare row for the Profile until it answers),
+the avatar `BotAvatarStore` already holds, and the face from the turn
+(`HermesChatTurnCoordinator.titleFace`, with the beat rules below). A tap opens
+`BotProfileEditorView`; closing it reads the roster again. The same roster gives the composer's
+`@` panel this connection's other bots above its files, and the editor their chips; every send
+mode appends Desktop's note to the typed text's mentions and the chat shows the text without it
+(the optimistic row, the snapshot's in-flight prompt and the queued receipt). A session sends
+`@` text as typed. Its turns drive the Bot Live Activity (below). A `linkedRoot` (a bot link's
+root) the bot has replaced calls `ChatView`'s `onChatReplaced` (#554); Update sign-in is
+`HermesUpdateSignInAction`. Rooms never open here.
 
 `BotConversation` owns one server/connection/Profile view lifetime and is the engine's
 Bot Chat owner: it keeps the snapshot-driven transcript and the Bot features (mentions,
@@ -1900,7 +1921,11 @@ as a question. Leaving or a dropped socket marks it stale, and it checks
 (`AgentRunTapTarget` builds no route for the key), and the orphan reconciler skips it, so a
 leftover one ages out by its stale date. #706 slice 6.2 replaces the key with
 `<server>:<profile>:<lineage root>#<turn_started_at>` and adds the tap destination, push and
-cold-launch reconciliation.
+cold-launch reconciliation. A bot's Bot Chat in the main chat (#1145) keeps the Bot identity
+instead: `startBot` with `AgentRunActivityBot` for the bot's `BotDestination` at the canonical
+root, the stored key as its push session, the bot's name as the title (session titles never
+replace it), its rendered avatar, and one stream per `turn_started_at`, so a tap opens the
+bot's chat.
 
 The shared content state accepts both existing local fields and the relay's compact
 `v`, `status`, `tool`, `tool_calls`, `started_at`, `updated_at` shape. With no reply

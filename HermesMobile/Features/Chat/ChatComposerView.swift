@@ -217,6 +217,11 @@ struct MessageComposerView: View {
     /// `@path` references as chips; the view model owns the set so the sent
     /// transcript can draw the same ones.
     let chipFilePaths: Set<String>
+    /// A bot's chat's `@`mention roster (#1145): its bots lead the `@` panel and draw as chips in
+    /// the editor. Nil everywhere else.
+    var botMentions: BotMentions? = nil
+    /// Those bots' avatars, keyed by Profile, from this connection only.
+    var mentionAvatars: [String: UIImage] = [:]
     /// The `@` panel's rows and its directory listings. Owned by the view model
     /// so a folder listed to confirm a restored draft's references is not listed
     /// again the first time the panel opens.
@@ -368,7 +373,7 @@ struct MessageComposerView: View {
     /// Needs `searchFilePaths`, since every path the panel offers comes from
     /// the chat's own workspace.
     private var fileTrigger: ComposerFileTrigger? {
-        guard !isReadOnly, searchFilePaths != nil else { return nil }
+        guard !isReadOnly, searchFilePaths != nil || botMentions != nil else { return nil }
         return ComposerFileTrigger.detect(in: draftMessage, selection: composerSelection.range)
     }
 
@@ -461,6 +466,31 @@ struct MessageComposerView: View {
         ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
     }
 
+    /// A bot's chat's `@` panel (#1145), as Bot Chat draws it: this connection's other bots, then
+    /// the chat's workspace files. Its task asks for files, so the container stands while the
+    /// first answer is out; it shows once there is a row or a lookup in flight.
+    private func botAutocomplete(_ trigger: ComposerFileTrigger, mentions: BotMentions) -> some View {
+        let bots = mentions.completions(query: trigger.query)
+        return Group {
+            if !bots.isEmpty || !filePathSearch.matches.isEmpty || filePathSearch.isLoading {
+                BotAtAutocompleteView(
+                    botCompletions: bots, avatars: mentionAvatars,
+                    fileMatches: filePathSearch.matches, isLoadingFiles: filePathSearch.isLoading,
+                    onSelectBot: { item in
+                        let completed = trigger.applying("@" + item.tag + " ", to: draftMessage)
+                        editDraft(completed.draft)
+                        composerSelection = composerSelection.moved(to: completed.selection)
+                        ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
+                    },
+                    onSelectFile: applyFileCompletion
+                )
+                .padding(.horizontal)
+                .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+            }
+        }
+        .task(id: trigger.query) { await searchFilePaths?(trigger.query) }
+    }
+
     /// Swaps the `@…` at the caret for the picked entry.
     ///
     /// A file finishes the reference: `@path` plus a space, recorded so the
@@ -540,7 +570,9 @@ struct MessageComposerView: View {
                 }
 
                 Group {
-                    if let fileTrigger, let searchFilePaths {
+                    if let fileTrigger, let botMentions {
+                        botAutocomplete(fileTrigger, mentions: botMentions)
+                    } else if let fileTrigger, let searchFilePaths {
                         FilePathAutocompleteView(
                             query: fileTrigger.query,
                             search: filePathSearch,
@@ -928,6 +960,7 @@ struct MessageComposerView: View {
                     verticalPadding: 12,
                     chipSkills: skillSuggestions,
                     chipFilePaths: chipFilePaths,
+                    chipBots: botMentions?.chipReferences(avatars: mentionAvatars) ?? [:],
                     quotes: quotes,
                     onKeyboardSend: actionButtonTapped,
                     onPasteFileProviders: onPasteFileProviders,
