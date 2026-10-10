@@ -242,6 +242,17 @@ import Observation
         XCTAssertEqual(chat.spy.avatars.count, 2)
     }
 
+    /// A bot's picture arriving after its activity started draws the same activity again with
+    /// it: no second start, and the activity redraws to read the new image.
+    func testABotsPictureArrivingRedrawsItsRunningActivity() async throws {
+        let chat = await openChat(snapshot: resume(running: true), target: .canonicalChat(profile: "default"),
+                                  roster: Self.roster(title: "Inbox Triage", expression: nil, pictured: true), pictures: true)
+        await waitUntil("the picture") { chat.turn.settings.avatars["default"] != nil }
+        XCTAssertEqual(chat.spy.botStarts.count, 1)
+        XCTAssertEqual(chat.spy.avatarPhotos, [false, false, true], "drawn again once the picture arrived")
+        XCTAssertEqual(chat.spy.titles, ["Inbox Triage", "Inbox Triage"])
+    }
+
     /// A Bot Chat's activity keeps Bot Chat's count chips (#584): the plan's step and the live
     /// worker count, written as they change and clear, again once a reattach adopts the
     /// activity, and never to an activity another run took over. A session's activity gets none.
@@ -359,15 +370,20 @@ import Observation
 
     /// `roster` answers `profiles.list`; without one the read fails, so a Bot Chat keeps its
     /// bare Profile row. `subagents` answers `subagent.list`; without them the read fails.
+    /// `pictures` answers `profiles.get_asset` with an image.
     private func openChat(snapshot: BotJSON? = nil, excerpts: Bool = false,
                           target: ConversationTarget = .session(profile: "default", key: "tip"),
-                          botChatRoot: String? = nil, roster: BotJSON? = nil, subagents: [BotJSON]? = nil) async -> Chat {
+                          botChatRoot: String? = nil, roster: BotJSON? = nil, subagents: [BotJSON]? = nil,
+                          pictures: Bool = false) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: snapshot ?? resume(running: false)))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
         if let roster { host.always("profiles.list", .init(result: roster)) }
         if let subagents { host.always("subagent.list", .init(result: .object(["subagents": .array(subagents)]))) }
+        if pictures {
+            host.always("profiles.get_asset", .init(result: .object(["found": .bool(true), "data": .string(botAvatarDataURL(side: 4))])))
+        }
         let client = BotClient(http: host.connection(Self.connection))
         // No automatic reconnect: a test reattaches when it says so.
         let engine = HermesConversation(server: Self.server, connection: Self.connection,
@@ -375,7 +391,7 @@ import Observation
                                         reconnectDelay: { _ in throw CancellationError() })
         let spy = Spy()
         let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, liveActivities: spy,
-                                             writeBotAvatar: { profile, _ in spy.writeAvatar(profile) },
+                                             writeBotAvatar: { profile, destination in spy.writeAvatar(profile, destination) },
                                              isNetworkAvailable: { true })
         // The chat's own webui manager is the same spy, so any write it made would show too.
         let model = ChatViewModel(
@@ -401,11 +417,12 @@ import Observation
         return .object(["jsonrpc": .string("2.0"), "id": .string(id), "method": .string(method), "params": .object(params)])
     }
 
-    /// A roster whose `default` bot carries a saved name and a pinned face.
-    private static func roster(title: String, expression: String?) -> BotJSON {
+    /// A roster whose `default` bot carries a saved name and a pinned face, and a picture when
+    /// `pictured`.
+    private static func roster(title: String, expression: String?, pictured: Bool = false) -> BotJSON {
         var look: [String: BotJSON] = ["title": .string(title)]
         if let expression { look["expression"] = .string(expression) }
-        return .object(["profiles": .array([.object(["name": .string("default"),
+        return .object(["profiles": .array([.object(["name": .string("default"), "has_avatar": .bool(pictured),
                                                      "ui_meta": .object(["hermes-bots": .object(look)])])])])
     }
 
@@ -483,6 +500,8 @@ import Observation
     private(set) var starts: [Start] = []
     private(set) var botStarts: [BotStart] = []
     private(set) var avatars: [Avatar] = []
+    /// Whether the bot's fetched picture was there for each avatar drawn.
+    private(set) var avatarPhotos: [Bool] = []
     private(set) var events: [AgentLiveActivityEvent] = []
     private(set) var ends: [End] = []
     private(set) var staleCount = 0
@@ -509,9 +528,10 @@ import Observation
         events.compactMap { if case .workSummary(let chips) = $0 { chips } else { nil } }
     }
 
-    func writeAvatar(_ profile: BotProfile) -> String? {
+    func writeAvatar(_ profile: BotProfile, _ destination: BotDestination) -> String? {
         let look = BotProfileAppearance(profile: profile)
         avatars.append(Avatar(title: look.title, expression: look.expression))
+        avatarPhotos.append(BotAvatarStore.shared.images(connectionID: destination.connectionID)[profile.id] != nil)
         return "avatar.png"
     }
 

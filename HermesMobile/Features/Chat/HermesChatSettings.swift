@@ -87,6 +87,8 @@ enum HermesProfilePreference {
     private let loadsAvatars: Bool
     /// Called after each `profiles.list` read lands, so a Bot Chat's activity takes the bot's look.
     @ObservationIgnored var onRosterRead: (() -> Void)?
+    /// Called each time `avatars` changes, so a Bot Chat's activity draws the bot's picture.
+    @ObservationIgnored var onAvatarsChange: (() -> Void)?
     /// A `/personality` name waiting for the user to confirm the Profile-wide change.
     private(set) var pendingPersonality: String?
     /// The latest `session.info`'s requested effort and the level its route sends.
@@ -147,6 +149,7 @@ enum HermesProfilePreference {
         await store.refresh(bots, connectionID: connectionID, using: engine.wire,
                             validateDispatch: { [engine] in try engine.check(attempt) }) {
             avatars = store.images(connectionID: connectionID)
+            onAvatarsChange?()
         }
     }
 

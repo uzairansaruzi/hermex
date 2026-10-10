@@ -229,6 +229,8 @@ struct HermesChatTranscript: Equatable {
     @ObservationIgnored private let writeBotAvatar: (@MainActor (BotProfile, BotDestination) -> String?)?
     /// The look the bot's activity last drew its name and avatar from.
     @ObservationIgnored private var shownBotLook: BotProfileAppearance?
+    /// The fetched picture the bot's activity last drew its avatar from; nil for its drawn face.
+    @ObservationIgnored private var shownBotPhoto: ObjectIdentifier?
     @ObservationIgnored private var showsLiveActivityExcerpts = false
     /// The waiting state last shown for the open requests, so each change is written once.
     @ObservationIgnored private var shownWaiting: AgentLiveActivityEvent?
@@ -260,6 +262,7 @@ struct HermesChatTranscript: Equatable {
         sideTasks.onBackgroundChange = { [weak self] in self?.delegate?.hermesBackgroundDidChange($0) }
         sideTasks.onGoalChange = { [weak self] in self?.delegate?.hermesGoalDidChange($0) }
         settings.onRosterRead = { [weak self] in self?.botRosterDidChange() }
+        settings.onAvatarsChange = { [weak self] in self?.botPictureDidChange() }
         activity.delegatedWork.onWorkersChanged = { [weak self] in self?.syncBotWorkSummary() }
     }
 
@@ -1429,6 +1432,7 @@ struct HermesChatTranscript: Equatable {
         guard case .canonicalChat = engine.target, let profile = botProfile else { return nil }
         let destination = botDestination(profile)
         shownBotLook = BotProfileAppearance(profile: profile)
+        shownBotPhoto = settings.avatars[profile.id].map(ObjectIdentifier.init)
         guard var bot = AgentRunActivityBot(destination, avatarFile: writeBotAvatar?(profile, destination)) else { return nil }
         bot.pushSessionID = engine.storedKey
         return bot
@@ -1450,6 +1454,18 @@ struct HermesChatTranscript: Equatable {
         shownBotLook = look
         _ = writeBotAvatar?(profile, botDestination(profile))
         driven.update(.sessionTitle(look.title))
+    }
+
+    /// The bot's picture arrived or changed after its activity started, as when the chat opened
+    /// before the Bots inbox loaded it: the avatar is drawn again and the same activity redraws
+    /// to read it. Nothing for an activity this chat no longer drives.
+    private func botPictureDidChange() {
+        guard liveActivity?.bot != nil, let profile = botProfile, let driven = drivenLiveActivity else { return }
+        let photo = settings.avatars[profile.id].map(ObjectIdentifier.init)
+        guard photo != shownBotPhoto else { return }
+        shownBotPhoto = photo
+        _ = writeBotAvatar?(profile, botDestination(profile))
+        driven.update(.sessionTitle(BotProfileAppearance(profile: profile).title))
     }
 
     /// Shows the open requests as waiting, once per change: an approval on screen as an

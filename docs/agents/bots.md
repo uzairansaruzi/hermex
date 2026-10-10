@@ -552,7 +552,7 @@ mode appends Desktop's note to the typed text's mentions and the chat shows the 
 `@` text as typed. A restored prompt drops the host's context footer and reference lines before
 the note, so an attachment never exposes it. A `.canonicalChat`'s turns drive the Bot Live
 Activity (below), which takes the bot's name and avatar again when a roster read lands
-mid-turn. A row opened by its key keeps the session's `hermes:` activity, with no tap
+mid-turn, and draws its avatar again when the bot's picture arrives after the activity started. A row opened by its key keeps the session's `hermes:` activity, with no tap
 destination until #706: the Bot activity's tap looks the chat up by title, which leaves a
 deliberate archive out and finds a replacement instead, and the client cannot tell a deliberate
 archive from a recoverable one. A `linkedRoot` (a bot link's root) the bot has replaced calls
