@@ -1763,9 +1763,9 @@ the MVP complete. Simulator or isolated fixtures are not physical-phone evidence
 
 A working bot shows on the Lock Screen and Dynamic Island through the same
 `AgentLiveActivityManager` and widget as a webui run; there is no second manager
-(#489). A bot's chat (`HermesChatTurnCoordinator`) projects its turn into a
-`BotLiveActivitySnapshot` at its state choke points, and the shared `BotLiveActivityFeed`
-diffs those values into manager calls.
+(#489). A bot's chat (`HermesChatTurnCoordinator`) starts, updates and ends the manager
+itself, as a Hermes session does (below); it borrows `BotLiveActivity.writeAvatar` for the
+avatar and `BotLiveActivity.countChips` for the work counts.
 
 - **Identity.** `AgentRunActivityBot.key` is `bot:<connection UUID>:<Profile>` and
   stands in for the session id; the stream id adds the host's turn start. Equal
@@ -1795,18 +1795,17 @@ diffs those values into manager calls.
 - **Attention.** Entering an approval or a question alerts: a paired server's relay
   sends the banner, and otherwise the app's write carries an `AlertConfiguration` when
   it is not in the foreground (`AgentLiveActivityAlertPolicy`, #740). The alert stays
-  owed until a write actually lands, so the feed's same-tick chips write cannot drop
+  owed until a write actually lands, so a same-tick chips write cannot drop
   it, and an ask that arrives while ActivityKit is still creating the activity alerts
   on its first write. A repeated waiting event stays silent. On a paired server the
   run's finish or failure can also alert once, through the relay's final update, under
   the Replies and subagent-mute preferences (see Push previews and taps, #888).
-- **Ownership.** Before every stale or end call the feed checks
+- **Ownership.** Before every stale or end call the chat checks
   `drivenSessionID`, so an activity a webui run or another bot took over is never
   touched. Token rotation and retirement are serialized: an in-flight registration
   must be cleaned up before its replacement can register the same session. Ending,
   dismissal, and server unpairing retire registrations. Cold launch observes paired
   activities without resuming their chats; legacy/unpaired activities are removed.
-  `BotLiveActivityFeed.decision` is the pure start/update/end/wait decision.
 - **Privacy.** Chips are counts only (plan step, workers, tools). Reply text
   appears only behind the existing response-excerpt setting.
 - **Avatar.** The app renders the bot's photo or drawn face to one PNG under
@@ -1821,10 +1820,9 @@ its turn does, with the webui layouts. The key is the interim
 reattach, or the session reopened mid-turn, adopts the turn's activity. Only a session's
 first turn after an attach is sure to learn `turn_started_at` live; a later one uses the
 chat's own turn id, so reopening the session during it replaces the activity. Reply text
-follows the excerpt setting; with it off, the reply still moves the status on to writing,
-as in the Bot feed. An open approval shows as waiting for approval and any other request
+follows the excerpt setting; with it off, the reply still moves the status on to writing. An open approval shows as waiting for approval and any other request
 as a question. Leaving or a dropped socket marks it stale, and it checks
-`drivenSessionID` like the Bot feed. It has no push, a tap opens the app as it is
+`drivenSessionID` like a bot's chat. It has no push, a tap opens the app as it is
 (`AgentRunTapTarget` builds no route for the key), and the orphan reconciler skips it, so a
 leftover one ages out by its stale date. #706 slice 6.2 replaces the key with
 `<server>:<profile>:<lineage root>#<turn_started_at>` and adds the tap destination, push and

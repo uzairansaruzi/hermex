@@ -1,8 +1,9 @@
 import XCTest
 @testable import HermesMobile
 
-/// #489: a bot's Live Activity. The feed and its snapshots are tested at their own seams
-/// (a Hermes chat's turn is `HermesChatLiveActivityTests`); ActivityKit is unreachable here.
+/// #489: a bot's Live Activity: its identity, tap target, cold-launch ownership and relay
+/// content. A bot's chat driving it is `HermesChatLiveActivityTests`; ActivityKit is
+/// unreachable here.
 @MainActor final class BotLiveActivityTests: XCTestCase {
     private let server = URL(string: "https://webui.example")!
     private let profile = BotProfile(.object(["name": .string("inbox-triage")]))!
@@ -11,31 +12,7 @@ import XCTest
         BotDestination(server: server, connectionID: connectionID, profile: "inbox-triage", conversation: "root")
     }
 
-    private func snapshot(_ destination: BotDestination, _ phase: BotLiveActivitySnapshot.Phase,
-                          work: BotLiveActivitySnapshot.Work = .starting, chips: [String] = []) -> BotLiveActivitySnapshot {
-        BotLiveActivitySnapshot(destination: destination, title: "Inbox Triage", phase: phase, work: work, chips: chips)
-    }
-
-    private func feed(_ spy: BotLiveActivitySpy, showsExcerpts: Bool = false) -> BotLiveActivityFeed {
-        BotLiveActivityFeed(manager: spy, showsExcerpts: { showsExcerpts }, writeAvatar: { _, _ in "avatar.png" })
-    }
-
-    private let turn = BotLiveActivitySnapshot.Phase.working(turn: "100.0", startedAt: Date(timeIntervalSince1970: 100))
-
-    // MARK: Feed
-
-    func testWorkingTurnStartsABotActivityThatTapsBackToThatBot() throws {
-        let spy = BotLiveActivitySpy()
-        let target = destination()
-        feed(spy).sync(snapshot(target, turn, work: .tool("search_mail"), chips: ["Plan 2 of 5"]), profile: profile)
-
-        let started = try XCTUnwrap(spy.started.first)
-        XCTAssertEqual(spy.started.count, 1)
-        XCTAssertEqual(started.title, "Inbox Triage")
-        XCTAssertEqual(started.bot.avatarFile, "avatar.png")
-        XCTAssertEqual(HermesDeepLink.botDestination(from: started.bot.destinationURL), target)
-        XCTAssertEqual(spy.events, [.toolStarted(name: "search_mail"), .workSummary(["Plan 2 of 5"])])
-    }
+    // MARK: Identity and ownership
 
     /// A bot activity's tap (#1146) opens the bot's canonical chat in the regular chat, under the
     /// root the activity named, through the selection every bot route ends at.
@@ -63,38 +40,8 @@ import XCTest
         XCTAssertNotEqual(first.streamID(turn: "100.0"), first.streamID(turn: "200.0"))
     }
 
-    func testDisconnectMarksStaleAndReconnectInsideTheTurnReadoptsIt() {
-        let spy = BotLiveActivitySpy()
-        let feed = feed(spy)
-        let target = destination()
-        feed.sync(snapshot(target, turn), profile: profile)
-        feed.sync(snapshot(target, .disconnected), profile: profile)
-        XCTAssertEqual(spy.staleCount, 1)
-
-        feed.sync(snapshot(target, turn), profile: profile)
-        XCTAssertEqual(spy.started.map(\.turn), ["100.0", "100.0"])
-    }
-
-    func testCompletionEndsOnlyTheActivityThisBotStillOwns() {
-        let spy = BotLiveActivitySpy()
-        let feed = feed(spy)
-        let target = destination()
-        feed.sync(snapshot(target, turn), profile: profile)
-        // A webui run took the one activity over before the bot finished.
-        spy.drivenSessionID = "webui-session"
-        feed.sync(snapshot(target, .disconnected), profile: profile)
-        feed.sync(snapshot(target, .finished(.complete)), profile: profile)
-        XCTAssertEqual(spy.staleCount, 0)
-        XCTAssertTrue(spy.ended.isEmpty)
-
-        spy.drivenSessionID = AgentRunActivityBot(target)?.key
-        feed.sync(snapshot(target, .finished(.cancelled)), profile: profile)
-        XCTAssertEqual(spy.ended, [.cancelled])
-    }
-
     func testColdLaunchRestoresCompactPushOwnershipSoCompletedBotCanEndIt() throws {
-        let target = destination()
-        let bot = try XCTUnwrap(AgentRunActivityBot(target))
+        let bot = try XCTUnwrap(AgentRunActivityBot(destination()))
         let attributes = AgentRunActivityAttributes(sessionID: bot.key, sessionTitle: "Inbox Triage",
                                                     streamID: bot.streamID(turn: "100.0"),
                                                     startedAt: Date(timeIntervalSince1970: 100), bot: bot)
@@ -106,8 +53,7 @@ import XCTest
         XCTAssertEqual(manager.currentStateForTesting()?.sessionTitle, "Inbox Triage")
         XCTAssertNil(manager.activeConnectedStreamID, "A restored push activity does not own a foreground stream")
 
-        let feed = BotLiveActivityFeed(manager: manager, showsExcerpts: { false }, writeAvatar: { _, _ in nil })
-        feed.sync(snapshot(target, .finished(.complete)), profile: profile)
+        manager.end(status: .complete, activity: "Done", errorSummary: nil)
         XCTAssertTrue(try XCTUnwrap(manager.currentStateForTesting()).isFinal)
         XCTAssertNil(manager.drivenSessionID)
     }
@@ -148,63 +94,6 @@ import XCTest
 
         let legacy = AgentRunActivityAttributes(sessionID: "webui-session", sessionTitle: "Plan", startedAt: .now)
         XCTAssertNil(legacy.pushTarget)
-    }
-
-    func testAnIdleBotNeverStartsAnActivityAndUnknownStateSaysNothing() {
-        let spy = BotLiveActivitySpy()
-        let feed = feed(spy)
-        feed.sync(snapshot(destination(), .finished(.complete)), profile: profile)
-        feed.sync(snapshot(destination(), .unknown), profile: profile)
-        XCTAssertTrue(spy.started.isEmpty)
-        XCTAssertTrue(spy.ended.isEmpty)
-        XCTAssertTrue(spy.events.isEmpty)
-    }
-
-    func testReplyTextReachesTheActivityOnlyWhenPreviewsAreOn() {
-        let hidden = BotLiveActivitySpy()
-        feed(hidden).sync(snapshot(destination(), turn, work: .responding("private words")), profile: profile)
-        XCTAssertEqual(hidden.events, [.responding, .workSummary([])])
-
-        let shown = BotLiveActivitySpy()
-        feed(shown, showsExcerpts: true).sync(snapshot(destination(), turn, work: .responding("private words")), profile: profile)
-        XCTAssertEqual(shown.events, [.interimAssistant("private words"), .workSummary([])])
-    }
-
-    func testTurningPreviewsOffClearsTextAlreadyOnTheActivity() {
-        let spy = BotLiveActivitySpy()
-        var shows = true
-        let feed = BotLiveActivityFeed(manager: spy, showsExcerpts: { shows }, writeAvatar: { _, _ in nil })
-        let target = destination()
-        feed.sync(snapshot(target, turn, work: .responding("private words")), profile: profile)
-        shows = false
-        feed.sync(snapshot(target, turn, work: .tool("search_mail")), profile: profile)
-        XCTAssertEqual(spy.events, [.interimAssistant("private words"), .workSummary([]),
-                                    .clearResponseExcerpt, .toolStarted(name: "search_mail"), .workSummary([])])
-    }
-
-    func testRepeatedSnapshotsAreCoalesced() {
-        let spy = BotLiveActivitySpy()
-        let feed = feed(spy)
-        let same = snapshot(destination(), turn, work: .thinking, chips: ["3 tools"])
-        feed.sync(same, profile: profile)
-        feed.sync(same, profile: profile)
-        XCTAssertEqual(spy.started.count, 1)
-        XCTAssertEqual(spy.events, [.reasoning(""), .workSummary(["3 tools"])])
-    }
-
-    func testPureDecisionCoversStartUpdateWaitEndAndOwnership() throws {
-        let target = destination()
-        let key = try XCTUnwrap(AgentRunActivityBot(target)?.key)
-        let running = snapshot(target, turn)
-        XCTAssertEqual(BotLiveActivityFeed.decision(running, previous: nil, drivenSessionID: nil), .start)
-        XCTAssertEqual(BotLiveActivityFeed.decision(running, previous: running, drivenSessionID: key), .update)
-        XCTAssertEqual(BotLiveActivityFeed.decision(snapshot(target, .unknown), previous: running, drivenSessionID: key), .wait)
-        XCTAssertEqual(BotLiveActivityFeed.decision(snapshot(target, .disconnected), previous: running, drivenSessionID: key), .stale)
-        XCTAssertEqual(BotLiveActivityFeed.decision(snapshot(target, .finished(.failed)), previous: running, drivenSessionID: key), .end(.failed))
-        XCTAssertEqual(BotLiveActivityFeed.decision(snapshot(target, .finished(.complete)), previous: running, drivenSessionID: "other"), .wait)
-        var changedAgentSession = running
-        changedAgentSession.agentSessionID = "compressed-agent-session"
-        XCTAssertEqual(BotLiveActivityFeed.decision(changedAgentSession, previous: running, drivenSessionID: key), .start)
     }
 
     func testRelayContentDecodesWithoutLocalFieldsAndUsesAttributeIdentity() throws {
@@ -517,25 +406,5 @@ import XCTest
 
     private func decodedActivity(_ data: Data) throws -> AgentRunActivityAttributes.ContentState {
         try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self, from: data)
-    }
-}
-
-@MainActor private final class BotLiveActivitySpy: AgentLiveActivityManaging {
-    struct Start { let bot: AgentRunActivityBot; let title: String; let turn: String }
-    var started: [Start] = []
-    var events: [AgentLiveActivityEvent] = []
-    var ended: [AgentRunActivityStatus] = []
-    var staleCount = 0
-    var drivenSessionID: String?
-
-    func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date) {}
-    func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date) {
-        started.append(Start(bot: bot, title: title, turn: turn))
-        drivenSessionID = bot.key
-    }
-    func update(_ event: AgentLiveActivityEvent) { events.append(event) }
-    func markStale() { staleCount += 1 }
-    func end(status: AgentRunActivityStatus, activity: String, errorSummary: String?) {
-        ended.append(status); drivenSessionID = nil
     }
 }

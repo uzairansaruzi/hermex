@@ -273,7 +273,7 @@ struct HermesChatTranscript: Equatable {
                                              linkedRoot: chat.linkedRoot,
                                              wire: BotClient(saved: chat.connection, server: chat.server)),
                   botChatRoot: chat.botChatRoot, liveActivities: AgentLiveActivityManager.shared,
-                  writeBotAvatar: BotLiveActivityFeed.writeAvatar)
+                  writeBotAvatar: BotLiveActivity.writeAvatar)
     }
 
     // MARK: Bot Chat (#1145)
@@ -1401,7 +1401,7 @@ struct HermesChatTranscript: Equatable {
     // MARK: Live Activity
 
     /// The manager while it still drives this turn's activity. One a webui run or a bot took
-    /// over is never touched (`BotLiveActivityFeed`).
+    /// over is never touched.
     private var drivenLiveActivity: (any AgentLiveActivityManaging)? {
         guard let liveActivities, let id = liveActivity?.sessionID, liveActivities.drivenSessionID == id else { return nil }
         return liveActivities
@@ -1486,7 +1486,7 @@ struct HermesChatTranscript: Equatable {
     /// manager drops an unchanged list. A session's activity keeps its own chips.
     private func syncBotWorkSummary() {
         guard liveActivity?.bot != nil, let driven = drivenLiveActivity else { return }
-        driven.update(.workSummary(BotLiveActivitySnapshot.countChips(plan: activity.plan,
+        driven.update(.workSummary(BotLiveActivity.countChips(plan: activity.plan,
                                                                       workers: activity.delegatedWork.activeCount)))
     }
 
