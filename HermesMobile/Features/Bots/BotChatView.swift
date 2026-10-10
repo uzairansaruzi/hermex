@@ -227,18 +227,9 @@ import SwiftUI
             // The bot's face and name sit in one pill beside Back, and that pill is the
             // way into its profile. iOS 26 draws the toolbar glass; older systems get a material.
             ToolbarItem(placement: .topBarLeading) {
-                Button { showingProfileEditor = true } label: {
-                    HStack(spacing: 8) {
-                        BotAvatarView(profile: model.profile,
-                                      avatar: BotAvatarStore.shared.images(connectionID: model.connection.id)[model.profile.id],
-                                      size: 30, motion: titleFaceMotion, expression: model.titleFace.expression)
-                        Text(model.profile.name).font(.headline).foregroundStyle(.primary).lineLimit(1)
-                    }
-                    .modifier(BotChatTitlePillFallback())
-                }
-                .accessibilityLabel(model.profile.name)
-                .accessibilityValue(model.titleFace.accessibilityValue ?? "")
-                .accessibilityHint(Text("Opens this bot’s profile."))
+                BotChatTitlePill(profile: model.profile,
+                                 avatar: BotAvatarStore.shared.images(connectionID: model.connection.id)[model.profile.id],
+                                 motion: titleFaceMotion, face: model.titleFace) { showingProfileEditor = true }
             }
             if model.delegatedWork.hasWorkers {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -467,18 +458,6 @@ import SwiftUI
     }
 }
 
-
-/// Before iOS 26 the toolbar draws no glass of its own, so the pill supplies a material.
-struct BotChatTitlePillFallback: ViewModifier {
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 26, *) {
-            content
-        } else {
-            content.padding(.leading, 4).padding(.trailing, 12).padding(.vertical, 4)
-                .background(.regularMaterial, in: Capsule())
-        }
-    }
-}
 
 /// Which Bot transcript rows carry a footer time, worked out once per body over
 /// the window with comparisons only; the footer follows Message Timestamps.

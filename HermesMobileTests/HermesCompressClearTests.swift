@@ -167,6 +167,30 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["session_id"] }, [.string("runtime")])
     }
 
+    /// A bot's Bot Chat follows the new key too (#1145, reversing #1099's "never for a Bot
+    /// Chat"), so `/compress` leaves it writable: later pages read the new key, while the
+    /// canonical root, the bot's draft key and the next attach's title lookup stay as they were.
+    func testABotChatFollowsItsRotatedStoredKeyAndKeepsSending() async {
+        let chat = await openChat(threeTurns, target: .canonicalChat(profile: "default"))
+        let draftKey = chat.model.hermesDraftKey
+        XCTAssertEqual(draftKey, .bot(server: URL(string: "https://hermes.example")!, connectionID: Self.connection.id,
+                                      profile: "default"))
+        chat.host.always("session.compress", .init(result: compressed(removed: 4, storedKey: "tip-2"), before: [
+            event(1, "session.info", ["stored_session_id": .string("tip-2"), "running": .bool(false)])
+        ]))
+        chat.pages["tip-2"] = compactedTurns
+
+        _ = await chat.model.runHermesSlashCommand("/compress")
+
+        XCTAssertEqual(chat.turn.engine.storedKey, "tip-2")
+        XCTAssertEqual(chat.turn.engine.root, "root", "the canonical root the title lookup found")
+        XCTAssertEqual(chat.model.hermesDraftKey, draftKey)
+        XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [7, 8, 3, 4, 10, 11], "the new key's page")
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("Keep going")
+        XCTAssertEqual(chat.writes("prompt.submit").map { $0["session_id"] }, [.string("runtime")])
+    }
+
     /// The host's own compaction mid-turn reports the new key the same way.
     func testAutoCompressionMidTurnAdoptsTheRotatedKey() async {
         let chat = await openChat(threeTurns)
@@ -310,8 +334,10 @@ import Observation
     }
 
     /// A chat attached to an idle session `tip` on runtime `runtime`, whose settled rows are
-    /// `rows`. `info` is the snapshot's `session.info`; `catalog` answers `model.options`.
-    private func openChat(_ rows: [BotJSON], info: [String: BotJSON] = [:], catalog: BotJSON? = nil) async -> Chat {
+    /// `rows`. `info` is the snapshot's `session.info`; `catalog` answers `model.options`. A
+    /// `.canonicalChat` target's title lookup finds root `root` at tip `tip`.
+    private func openChat(_ rows: [BotJSON], info: [String: BotJSON] = [:], catalog: BotJSON? = nil,
+                          target: ConversationTarget = .session(profile: "default", key: "tip")) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: .object([
@@ -330,7 +356,7 @@ import Observation
             return .json(200, .object(["session_id": .string(parts[3]), "messages": .array(rows)]))
         }
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
-                                        target: .session(profile: "default", key: "tip"), wire: client)
+                                        target: target, wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
         let model = ChatViewModel(
             session: SessionSummary(profile: "default"), server: URL(string: "https://hermes.example")!,

@@ -52,8 +52,57 @@ struct HermesSlashCatalog: Equatable {
     }
 }
 
+/// What a Hermes chat in `ChatView` lets the user do (#1145). A bot's Bot Chat is that bot's one
+/// conversation (#1127 decision 3): nothing in it starts or opens another chat, renames it,
+/// branches it or rewinds it, and its Profile chip picks no other Profile. Its side commands
+/// (`/btw`, `/background`, `/goal`, `/yolo`, `/compress`) run as in any session. The slash
+/// commands, the message menu and the composer all read this one value.
+enum HermesChatPolicy: Equatable {
+    case session
+    /// A bot's Bot Chat: its canonical chat, or a Bot Chat row opened by its key.
+    case botChat
+
+    /// A Bot Chat's own target is `.canonicalChat`; a session target is one only when opened from
+    /// a Bot Chat row, which names its `botChatRoot`.
+    init(target: ConversationTarget, botChatRoot: String? = nil) {
+        if case .canonicalChat = target { self = .botChat } else { self = botChatRoot == nil ? .session : .botChat }
+    }
+
+    /// Why `/name` (typed, after any alias resolved to `canonical`) does not run here, or nil
+    /// when it does. A refused command is also left out of the composer's panel.
+    func refusal(typed name: String, canonical: String) -> String? {
+        guard self == .botChat else { return nil }
+        // `/reset` and `/fork` are the host's aliases, named too for a catalog not read yet.
+        switch canonical.lowercased() {
+        case "new", "reset":
+            return String(localized: "A bot keeps one chat, so /\(name) can’t start another.")
+        case "clear":
+            return String(localized: "A bot keeps one chat, so /\(name) can’t start another. Run /compress to free up its context.")
+        case "resume", "sessions":
+            return String(localized: "A bot keeps one chat, so /\(name) can’t open another.")
+        case "branch", "fork":
+            return String(localized: "A bot’s chat can’t be forked.")
+        case "title":
+            return String(localized: "A bot’s chat keeps the bot’s name.")
+        case "undo", "retry":
+            return String(localized: "A bot’s chat can’t be rewound.")
+        default:
+            return nil
+        }
+    }
+
+    /// Edit, Regenerate and Fork From Here; Retry under a failed turn stays, as in Bot Chat.
+    var offersHistoryActions: Bool { self == .session }
+    /// The Profile chip starts a new chat in the Profile it picks.
+    var picksProfile: Bool { self == .session }
+    /// The host delivers `@`mentions only in a Bot Chat (`tools/bot_mode_dm.py`).
+    var offersMentions: Bool { self == .botChat }
+}
+
 /// Where a typed `/name` goes in a Hermes chat (#1036), in this order.
 enum HermesSlashRoute: Equatable {
+    /// Not in this chat (`HermesChatPolicy`): the copy says why, and nothing is sent.
+    case refused(String)
     /// One of Hermex's own commands (`SlashCommandCatalog.hermesCommands`), by its handler.
     case appOwned(SlashCommand)
     /// Held until #702 slice 2.3: it would rewrite history or move chats behind the phone's back.
@@ -164,8 +213,16 @@ struct HermesSlashCompletion: Equatable {
     private(set) var catalog = HermesSlashCatalog() {
         didSet { scope.hostCommands = catalog.hostArgumentNames }
     }
-    /// What the composer's panel offers: Hermex's own commands first, then the catalog's.
-    private(set) var scope = SlashCommandScope(builtins: SlashCommandCatalog.hermesCommands, isHermes: true)
+    /// What the composer's panel offers: Hermex's own commands first, then the catalog's, both
+    /// without what the chat's policy refuses.
+    private(set) var scope: SlashCommandScope
+    /// The catalog's commands the panel lists: those the chat's policy does not refuse.
+    var commands: [AgentCommand] {
+        guard policy == .botChat else { return catalog.commands }
+        return catalog.commands.filter { command in
+            command.name.map { policy.refusal(typed: $0, canonical: $0) == nil } ?? true
+        }
+    }
     /// The newest argument suggestions; nil while none apply.
     private(set) var completion: HermesSlashCompletion?
     /// How long typing must pause before an argument is completed. Tests shorten it.
@@ -173,10 +230,15 @@ struct HermesSlashCompletion: Equatable {
     @ObservationIgnored private var completionRevision = 0
     /// The host reaped the runtime (4001): reattach to the stored key.
     @ObservationIgnored var onNeedsReattach: () -> Void = {}
+    let policy: HermesChatPolicy
     private let engine: HermesConversation
 
-    init(engine: HermesConversation) {
+    init(engine: HermesConversation, policy: HermesChatPolicy = .session) {
         self.engine = engine
+        self.policy = policy
+        scope = SlashCommandScope(builtins: SlashCommandCatalog.hermesCommands.filter {
+            policy.refusal(typed: $0.name, canonical: $0.name) == nil
+        }, isHermes: true)
     }
 
     /// Reads the catalog for `runtime`. A reply for an attach that is no longer current is
@@ -188,11 +250,12 @@ struct HermesSlashCompletion: Equatable {
         catalog = HermesSlashCatalog(reply)
     }
 
-    /// Where `/name` goes. Hermex's own commands and the held ones resolve without a
-    /// catalog; an alias resolves to its command first.
+    /// Where `/name` goes. What the chat's policy refuses, Hermex's own commands and the held
+    /// ones resolve without a catalog; an alias resolves to its command first.
     func route(_ name: String) -> HermesSlashRoute {
         let typed = name.lowercased()
         let canonical = catalog.command(named: typed)?.lowercased() ?? typed
+        if let refusal = policy.refusal(typed: name, canonical: canonical) { return .refused(refusal) }
         if let command = SlashCommandCatalog.hermesCommand(named: typed) ?? SlashCommandCatalog.hermesCommand(named: canonical) {
             return .appOwned(command)
         }

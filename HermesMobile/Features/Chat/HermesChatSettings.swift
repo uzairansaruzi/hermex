@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 
 /// The Profile a new Hermes session starts in, remembered per server (#1015). It is client
 /// state: never written to the host, whose `POST /api/profiles/active` would move the CLI's
@@ -74,6 +75,20 @@ enum HermesProfilePreference {
     let profile: String
     /// The host's Profiles, from the latest attach's `profiles.list`; empty until it answers.
     private(set) var profiles: [String] = []
+    /// The same read's rows as bots: a Bot Chat's pill (#1145).
+    private(set) var bots: [BotProfile] = []
+    /// Those bots as `@`mention completions, without this chat's own Profile; built once per read.
+    private(set) var mentions: BotMentions
+    /// A Bot Chat's bots' pictures by Profile, for its pill and `@` panel, from the shared
+    /// `BotAvatarStore`: what it already holds at once, then each fetched picture as it arrives.
+    /// Empty for a session, which loads none.
+    private(set) var avatars: [String: UIImage] = [:]
+    /// Loads `avatars` after each roster read: only a Bot Chat's.
+    private let loadsAvatars: Bool
+    /// Called after each `profiles.list` read lands, so a Bot Chat's activity takes the bot's look.
+    @ObservationIgnored var onRosterRead: (() -> Void)?
+    /// Called each time `avatars` changes, so a Bot Chat's activity draws the bot's picture.
+    @ObservationIgnored var onAvatarsChange: (() -> Void)?
     /// A `/personality` name waiting for the user to confirm the Profile-wide change.
     private(set) var pendingPersonality: String?
     /// The latest `session.info`'s requested effort and the level its route sends.
@@ -82,9 +97,11 @@ enum HermesProfilePreference {
     @ObservationIgnored private var latestInfo: (info: BotJSON, idle: Bool)?
     private let engine: HermesConversation
 
-    init(engine: HermesConversation) {
+    init(engine: HermesConversation, loadsAvatars: Bool = false) {
         self.engine = engine
+        self.loadsAvatars = loadsAvatars
         profile = engine.target.profile
+        mentions = BotMentions(roster: [], excluding: profile)
     }
 
     /// The model the chip shows: a pick waiting for the running response, else the
@@ -107,10 +124,33 @@ enum HermesProfilePreference {
                                      generation: attempt), wire: engine.wire)
         guard engine.generation == attempt else { return }
         if let latestInfo { controls.snapshot(latestInfo.info, idle: latestInfo.idle) }
+        await readProfiles(attempt: attempt)
+    }
+
+    /// Reads the host's Profiles again, as after the bot's profile editor closes. Nothing is
+    /// read while disconnected, and a failed read keeps the last list.
+    func refreshProfiles() async {
+        guard engine.connectionState == .connected else { return }
+        await readProfiles(attempt: engine.generation)
+    }
+
+    private func readProfiles(attempt: Int) async {
         guard let roster = try? await engine.request(.profilesList(includeSessions: false), attempt: attempt),
               let rows = roster["profiles"].list else { return }
         var seen = Set<String>()
         profiles = rows.compactMap { $0["name"].text }.filter { !$0.isEmpty && seen.insert($0).inserted }
+        bots = rows.compactMap(BotProfile.init)
+        mentions = BotMentions(roster: bots, excluding: profile)
+        onRosterRead?()
+        guard loadsAvatars else { return }
+        // A chat opened straight from its row never passes the Bots inbox, which loads them too.
+        // A newer attach ends the pass, as its own read loads them again.
+        let store = BotAvatarStore.shared, connectionID = engine.connection.id
+        await store.refresh(bots, connectionID: connectionID, using: engine.wire,
+                            validateDispatch: { [engine] in try engine.check(attempt) }) {
+            avatars = store.images(connectionID: connectionID)
+            onAvatarsChange?()
+        }
     }
 
     func disconnect() { controls.disconnect() }

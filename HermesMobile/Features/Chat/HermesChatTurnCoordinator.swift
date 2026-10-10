@@ -56,9 +56,19 @@ struct HermesSessionChat: Hashable, Identifiable {
     /// chat asks the host whether it is a branch of it, for its "Forked from" row (#1051). Nil
     /// asks nothing.
     var parentKey: String? = nil
-    /// An archived Bot Chat's root, its row's lineage root: the chat caches under it and reads
-    /// its bot's Bot Chat's copy of it while it has none (#1144). Nil for any other session.
+    /// An archived Bot Chat's root, its row's lineage root, also for a legacy "Bot Chat
+    /// (continued)" tip, which this chat opens by its key: the chat keeps Bot Chat's rules,
+    /// caches under the root and reads its bot's Bot Chat's copy of it while it has none (#1144).
+    /// Its Live Activity keeps the interim `hermes:` session identity, since the Bot identity's
+    /// tap looks the chat up by title, which leaves a deliberate archive out. Nil for any other
+    /// row; a `.canonicalChat` target is a Bot Chat without it.
     var botChatRoot: String? = nil
+    /// The root a bot's deep link named for its `.canonicalChat`: once the bot has replaced that
+    /// chat, the chat says so (`ChatView`'s `onChatReplaced`, #554) instead of opening the new one.
+    var linkedRoot: String? = nil
+
+    /// What the chat lets the user do (#1145): a bot's Bot Chat keeps Bot Chat's rules.
+    var policy: HermesChatPolicy { HermesChatPolicy(target: target, botChatRoot: botChatRoot) }
 
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -109,7 +119,10 @@ struct HermesChatTranscript: Equatable {
 /// an `error` with no completion ends it failed when the host settles.
 ///
 /// Each turn drives the shared Live Activity at the same points (#1014), under the interim
-/// key `hermes:<profile>:<stored key>`, with no push and no tap destination until #706.
+/// key `hermes:<profile>:<stored key>`, with no push and no tap destination until #706. A bot's
+/// `.canonicalChat` (#1145) keeps the Bot identity instead (`AgentRunActivityBot`), whose tap
+/// opens the bot's chat; a Bot Chat row opened by its key keeps the session's. Every Bot Chat
+/// (`policy`) has Bot Chat's `@`mentions (`mentions`) and pill state (`botProfile`, `titleFace`).
 @MainActor @Observable final class HermesChatTurnCoordinator {
     let engine: HermesConversation
     @ObservationIgnored private weak var delegate: (any HermesChatTurnDelegate)?
@@ -132,6 +145,8 @@ struct HermesChatTranscript: Equatable {
     let slashCommands: HermesSlashCommands
     /// The session's plan, the last turn's outcome (#1139) and its delegated workers (#1140).
     let activity: HermesChatActivity
+    /// What this chat lets the user do: a session's, or a bot's Bot Chat's (#1145).
+    let policy: HermesChatPolicy
 
     /// The host's `turn_started_at` for the running turn, once known.
     @ObservationIgnored private var turnStartedAt: Double?
@@ -205,23 +220,36 @@ struct HermesChatTranscript: Equatable {
     private let isNetworkAvailable: @MainActor () -> Bool
     /// The shared Live Activity manager this chat's turns drive (#1014); nil drives none.
     @ObservationIgnored private let liveActivities: (any AgentLiveActivityManaging)?
-    /// The running turn's activity: its session key and stream id, the host's
-    /// `turn_started_at`, or this chat's own id when the turn began without one. Kept for
-    /// the turn, so a reattach adopts the same activity.
-    @ObservationIgnored private var liveActivity: (sessionID: String, streamID: String)?
+    /// The running turn's activity: its session key (a bot's `key` in a Bot Chat), and the turn,
+    /// the host's `turn_started_at` or this chat's own id when the turn began without one, which
+    /// is a session's stream id. Kept for the turn, so a reattach adopts the same activity.
+    @ObservationIgnored private var liveActivity: (sessionID: String, turn: String, bot: AgentRunActivityBot?)?
+    /// Renders a Bot Chat's avatar for its activity; nil writes none, so the widget keeps its dot.
+    /// The file is named by connection and Profile, so drawing it again redraws the shown one.
+    @ObservationIgnored private let writeBotAvatar: (@MainActor (BotProfile, BotDestination) -> String?)?
+    /// The look the bot's activity last drew its name and avatar from.
+    @ObservationIgnored private var shownBotLook: BotProfileAppearance?
+    /// The fetched picture the bot's activity last drew its avatar from; nil for its drawn face.
+    @ObservationIgnored private var shownBotPhoto: ObjectIdentifier?
     @ObservationIgnored private var showsLiveActivityExcerpts = false
     /// The waiting state last shown for the open requests, so each change is written once.
     @ObservationIgnored private var shownWaiting: AgentLiveActivityEvent?
 
-    init(engine: HermesConversation, liveActivities: (any AgentLiveActivityManaging)? = nil,
+    /// A `.canonicalChat`, or a Bot Chat row opened by its key with its `botChatRoot`, is a Bot Chat.
+    init(engine: HermesConversation, botChatRoot: String? = nil,
+         liveActivities: (any AgentLiveActivityManaging)? = nil,
+         writeBotAvatar: (@MainActor (BotProfile, BotDestination) -> String?)? = nil,
          isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
         self.engine = engine
+        let policy = HermesChatPolicy(target: engine.target, botChatRoot: botChatRoot)
+        self.policy = policy
         self.liveActivities = liveActivities
+        self.writeBotAvatar = writeBotAvatar
         self.isNetworkAvailable = isNetworkAvailable
         requests = HermesChatRequests(engine: engine)
         sideTasks = HermesChatSideTasks(engine: engine)
-        settings = HermesChatSettings(engine: engine)
-        slashCommands = HermesSlashCommands(engine: engine)
+        settings = HermesChatSettings(engine: engine, loadsAvatars: policy == .botChat)
+        slashCommands = HermesSlashCommands(engine: engine, policy: policy)
         activity = HermesChatActivity(wire: engine.wire)
         draftKey = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id)
         if case .new = engine.target { opensNew = true } else { opensNew = false }
@@ -233,14 +261,52 @@ struct HermesChatTranscript: Equatable {
         slashCommands.onNeedsReattach = { [weak self] in self?.reattach() }
         sideTasks.onBackgroundChange = { [weak self] in self?.delegate?.hermesBackgroundDidChange($0) }
         sideTasks.onGoalChange = { [weak self] in self?.delegate?.hermesGoalDidChange($0) }
+        settings.onRosterRead = { [weak self] in self?.botRosterDidChange() }
+        settings.onAvatarsChange = { [weak self] in self?.botPictureDidChange() }
+        activity.delegatedWork.onWorkersChanged = { [weak self] in self?.syncBotWorkSummary() }
     }
 
-    /// A chat on `target` over the connection's shared gateway socket, driving the app's
+    /// The chat `chat` opens over the connection's shared gateway socket, driving the app's
     /// Live Activity.
-    convenience init(server: URL, connection: BotConnection, target: ConversationTarget) {
-        self.init(engine: HermesConversation(server: server, connection: connection, target: target,
-                                             wire: BotClient(saved: connection, server: server)),
-                  liveActivities: AgentLiveActivityManager.shared)
+    convenience init(_ chat: HermesSessionChat) {
+        self.init(engine: HermesConversation(server: chat.server, connection: chat.connection, target: chat.target,
+                                             linkedRoot: chat.linkedRoot,
+                                             wire: BotClient(saved: chat.connection, server: chat.server)),
+                  botChatRoot: chat.botChatRoot, liveActivities: AgentLiveActivityManager.shared,
+                  writeBotAvatar: BotLiveActivityFeed.writeAvatar)
+    }
+
+    // MARK: Bot Chat (#1145)
+
+    /// The bot whose Bot Chat this is, from the latest roster read, or a bare row for its
+    /// Profile until one answers. Nil in a session.
+    var botProfile: BotProfile? {
+        guard policy == .botChat else { return nil }
+        let profile = engine.target.profile
+        return settings.bots.first { $0.id == profile } ?? BotProfile(.object(["name": .string(profile)]))
+    }
+
+    /// The other bots on this connection a Bot Chat can `@`mention; nil in a session, whose host
+    /// would not deliver them.
+    var mentions: BotMentions? { policy.offersMentions ? settings.mentions : nil }
+
+    /// The turn in Bot Chat's terms, which `BotWorkingBeat` reads: unknown while not connected,
+    /// so a reconnect inside a turn starts no new beat.
+    var botTurn: BotConversation.TurnState {
+        guard engine.connectionState == .connected else { return .unknown }
+        if activeStreamID != nil { return requests.isWaiting ? .needsAttention : .running }
+        return activity.failure != nil ? .interrupted : .idle
+    }
+
+    /// The pill's face, as Bot Chat's title shows it (#757): working, waiting on the user,
+    /// failed while the host keeps the turn's error, and at rest otherwise, disconnected included.
+    var titleFace: BotConversation.TitleFace {
+        switch botTurn {
+        case .needsAttention: return .waiting
+        case .interrupted: return .failed
+        case .running, .stopping: return .working
+        case .unknown, .idle, .submitting, .uncertain: return .resting
+        }
     }
 
     /// The composer draft's key: a new session's stays the new-session key until the host
@@ -344,6 +410,9 @@ struct HermesChatTranscript: Equatable {
         }
         do { try await beforePrompt() } catch { throw NotSent(underlying: error) }
         let prompt = ([text] + references).filter { !$0.isEmpty }.joined(separator: "\n\n")
+        // A Bot Chat's mentions travel as Desktop's note after the prompt, resolved from the
+        // typed text only; the chat shows the prompt without it (#523).
+        let mentionNote = mentions?.annotation(for: text) ?? ""
         let startsBefore = turnsStarted
         if mode == .send { isSubmittingSend = true }
         // As in Bot Chat, a stop withdrawal while Stop & send is in flight is this phone's doing.
@@ -355,7 +424,7 @@ struct HermesChatTranscript: Equatable {
         var dispatched = false
         let reply: BotJSON
         do {
-            reply = try await engine.write(mode.call(runtime: runtime, text: prompt), attempt: attempt,
+            reply = try await engine.write(mode.call(runtime: runtime, text: prompt + mentionNote), attempt: attempt,
                                            runtime: runtime) { dispatched = true; self.promptSent = true }
         } catch {
             // A reaped runtime (4001): reattach to the stored key, which reads only.
@@ -839,9 +908,13 @@ struct HermesChatTranscript: Equatable {
         activity.turnDidStart(showsPrompt: prompt != nil || isSubmittingSend)
         delegate?.hermesTurnDidStart(prompt: prompt)
         delegate?.streamCoordinatorDidStartConnection(isReplay: false)
-        liveActivity = engine.storedKey.map { key in
-            (sessionID: "\(AgentRunTapTarget.hermesSessionPrefix)\(engine.target.profile):\(key)",
-             streamID: startedAt.map { String($0) } ?? UUID().uuidString)
+        let turn = startedAt.map { String($0) } ?? UUID().uuidString
+        if let bot = botActivity() {
+            liveActivity = (sessionID: bot.key, turn: turn, bot: bot)
+        } else {
+            liveActivity = engine.storedKey.map { key in
+                (sessionID: "\(AgentRunTapTarget.hermesSessionPrefix)\(engine.target.profile):\(key)", turn: turn, bot: nil)
+            }
         }
         startLiveActivity()
     }
@@ -886,10 +959,11 @@ struct HermesChatTranscript: Equatable {
         activeRunStartedAt = min(activeRunStartedAt ?? date, date)
     }
 
-    /// The session's title from the host: the chat shows it, and so does the turn's activity.
+    /// The session's title from the host: the chat shows it, and so does the turn's activity,
+    /// except a Bot Chat's, which shows the bot's name.
     private func applyTitle(_ title: String) {
         guard delegate?.streamCoordinatorUpdateTitle(TitleStreamEvent(sessionId: nil, title: title)) == true,
-              let shown = delegate?.streamCoordinatorDisplayTitle else { return }
+              let shown = delegate?.streamCoordinatorDisplayTitle, liveActivity?.bot == nil else { return }
         drivenLiveActivity?.update(.sessionTitle(shown))
     }
 
@@ -965,6 +1039,7 @@ struct HermesChatTranscript: Equatable {
             requests.receiveConnection(payload, opens: frame["type"].text == "connection.request")
         case "todo.updated":
             activity.receivePlan(payload)
+            syncBotWorkSummary()
         case "subagent.spawn_requested", "subagent.start", "subagent.progress", "subagent.tool", "subagent.complete":
             // Roster changes, coalesced into one list; a child's reasoning and text never list.
             activity.delegatedWork.noteSubagentEvent()
@@ -1065,7 +1140,7 @@ struct HermesChatTranscript: Equatable {
         let running = snapshot["running"].flag ?? snapshot["info"]["running"].flag ?? false
         let startedAt = snapshot["turn_started_at"].number ?? snapshot["inflight"]["started_at"].number
         hostRunning = running
-        queuedPrompt = snapshot["queued"]["user"].text.flatMap { $0.isEmpty ? nil : $0 }
+        queuedPrompt = snapshot["queued"]["user"].text.flatMap { $0.isEmpty ? nil : BotMentions.displayText($0) }
         requests.didReadSnapshot(snapshot)
         if let model = snapshot["info"]["model"].text, !model.isEmpty { delegate?.hermesApplyModel(model) }
         noteInfo(snapshot["info"])
@@ -1103,6 +1178,7 @@ struct HermesChatTranscript: Equatable {
         let endedPromptRowID = savedPromptRowID(startedAt: endedTurnStartedAt, in: rows)
         activity.readSnapshot(snapshot, promptRowID: promptRowID, followsTurn: followsTurn || endedPromptRowID != nil,
                               followedPromptRowID: endedPromptRowID)
+        syncBotWorkSummary()
     }
 
     /// The saved prompt of the turn that began at `startedAt`: the last turn boundary in `rows`,
@@ -1332,14 +1408,64 @@ struct HermesChatTranscript: Equatable {
     }
 
     /// Starts the turn's activity, or adopts it again: the manager reuses the activity of the
-    /// same session key and stream id. An open request then shows as waiting.
+    /// same session key and stream id. An open request then shows as waiting, and a bot's
+    /// activity its count chips.
     private func startLiveActivity() {
         guard let liveActivities, let liveActivity else { return }
-        liveActivities.start(sessionID: liveActivity.sessionID, server: engine.server,
-                             sessionTitle: delegate?.streamCoordinatorDisplayTitle ?? String(localized: "Untitled Session"),
-                             streamID: liveActivity.streamID, startedAt: activeRunStartedAt ?? Date())
+        if let bot = liveActivity.bot {
+            let title = botProfile.map { BotProfileAppearance(profile: $0).title } ?? engine.target.profile
+            liveActivities.startBot(bot, title: title, turn: liveActivity.turn, startedAt: activeRunStartedAt ?? Date())
+        } else {
+            liveActivities.start(sessionID: liveActivity.sessionID, server: engine.server,
+                                 sessionTitle: delegate?.streamCoordinatorDisplayTitle ?? String(localized: "Untitled Session"),
+                                 streamID: liveActivity.turn, startedAt: activeRunStartedAt ?? Date())
+        }
         shownWaiting = nil
         syncLiveActivityWaiting()
+        syncBotWorkSummary()
+    }
+
+    /// A `.canonicalChat`'s activity identity (#709): the bot on this connection, whose tap opens
+    /// its chat at the canonical root, with the stored key as the push session. Nil in a session,
+    /// and in a Bot Chat row opened by its key, which the canonical route may not find again.
+    private func botActivity() -> AgentRunActivityBot? {
+        guard case .canonicalChat = engine.target, let profile = botProfile else { return nil }
+        let destination = botDestination(profile)
+        shownBotLook = BotProfileAppearance(profile: profile)
+        shownBotPhoto = settings.avatars[profile.id].map(ObjectIdentifier.init)
+        guard var bot = AgentRunActivityBot(destination, avatarFile: writeBotAvatar?(profile, destination)) else { return nil }
+        bot.pushSessionID = engine.storedKey
+        return bot
+    }
+
+    /// Where the bot's activity taps to: its chat at the canonical root.
+    private func botDestination(_ profile: BotProfile) -> BotDestination {
+        BotDestination(server: engine.server, connectionID: engine.connection.id, profile: profile.id,
+                       conversation: engine.root)
+    }
+
+    /// A roster read answered after the bot's activity started, as when attaching to a running
+    /// turn: the same activity takes the bot's name and static avatar, with no restart, so the
+    /// turn and the pill's beat carry on. Nothing for an activity this chat no longer drives.
+    private func botRosterDidChange() {
+        guard liveActivity?.bot != nil, let profile = botProfile, let driven = drivenLiveActivity else { return }
+        let look = BotProfileAppearance(profile: profile)
+        guard look != shownBotLook else { return }
+        shownBotLook = look
+        _ = writeBotAvatar?(profile, botDestination(profile))
+        driven.update(.sessionTitle(look.title))
+    }
+
+    /// The bot's picture arrived or changed after its activity started, as when the chat opened
+    /// before the Bots inbox loaded it: the avatar is drawn again and the same activity redraws
+    /// to read it. Nothing for an activity this chat no longer drives.
+    private func botPictureDidChange() {
+        guard liveActivity?.bot != nil, let profile = botProfile, let driven = drivenLiveActivity else { return }
+        let photo = settings.avatars[profile.id].map(ObjectIdentifier.init)
+        guard photo != shownBotPhoto else { return }
+        shownBotPhoto = photo
+        _ = writeBotAvatar?(profile, botDestination(profile))
+        driven.update(.sessionTitle(BotProfileAppearance(profile: profile).title))
     }
 
     /// Shows the open requests as waiting, once per change: an approval on screen as an
@@ -1353,6 +1479,15 @@ struct HermesChatTranscript: Equatable {
         guard waiting != shownWaiting else { return }
         shownWaiting = waiting
         if let waiting { drivenLiveActivity?.update(waiting) }
+    }
+
+    /// Writes a bot's count chips to its activity, as Bot Chat does (#584): the plan's step and
+    /// the live workers, on a plan or roster change and when the activity is adopted. The
+    /// manager drops an unchanged list. A session's activity keeps its own chips.
+    private func syncBotWorkSummary() {
+        guard liveActivity?.bot != nil, let driven = drivenLiveActivity else { return }
+        driven.update(.workSummary(BotLiveActivitySnapshot.countChips(plan: activity.plan,
+                                                                      workers: activity.delegatedWork.activeCount)))
     }
 
     private func endLiveActivity(_ ending: TranscriptTurnRunOutcome.Ending) {
@@ -1410,18 +1545,20 @@ struct HermesChatTranscript: Equatable {
         return stamp >= startedAt
     }
 
-    /// A user row as a Hermes session's transcript shows it (#1012): the reference lines a
-    /// Hermex send appends become chips and the host's context footer goes
-    /// (`MessageAttachment.hermesReferences`), so the text shows no host path. Each chip
-    /// keeps the path it names for `attachmentData` (#1030); chips show only their name.
-    /// Every other row is returned as it is. Bot Chat reads the rule itself.
+    /// A user row as a Hermes session's transcript shows it (#1012): a trailing mention note
+    /// goes (#523), the reference lines a Hermex send appends become chips and the host's
+    /// context footer goes (`MessageAttachment.hermesReferences`), so the text shows no host
+    /// path. Each chip keeps the path it names for `attachmentData` (#1030); chips show only
+    /// their name. Every other row is returned as it is. Bot Chat reads the rule itself.
     static func displayed(_ message: ChatMessage) -> ChatMessage {
         guard message.role == "user", let content = message.content else { return message }
+        // The host appends its context footer after the note, so the footer goes first.
         let shown = MessageAttachment.hermesReferences(in: content)
-        guard shown.text != content || !shown.attachments.isEmpty else { return message }
+        let text = BotMentions.displayText(shown.text)
+        guard text != content || !shown.attachments.isEmpty else { return message }
         let chips = shown.attachments
         return ChatMessage(
-            role: message.role, content: shown.text, timestamp: message.timestamp, messageId: message.messageId,
+            role: message.role, content: text, timestamp: message.timestamp, messageId: message.messageId,
             name: message.name, toolCallId: message.toolCallId, toolUseId: message.toolUseId,
             toolCalls: message.toolCalls, contentParts: message.contentParts, reasoning: message.reasoning,
             attachments: chips.isEmpty ? message.attachments : (message.attachments ?? []) + chips,

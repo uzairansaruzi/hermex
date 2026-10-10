@@ -191,6 +191,70 @@ struct BotAvatarMarkView: View {
     }
 }
 
+/// A bot's chat title (#757): its face and name in one pill beside Back, and the way into the
+/// bot's profile. Bot Chat and a bot's chat in `ChatView` (#1145) both draw it. The face shows
+/// the turn's state (`TitleFace`) and stays hidden from VoiceOver, which hears the state as
+/// the pill's value instead.
+struct BotChatTitlePill: View {
+    let profile: BotProfile
+    let avatar: UIImage?
+    let motion: BotFaceMotion
+    let face: BotConversation.TitleFace
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 8) {
+                BotAvatarView(profile: profile, avatar: avatar, size: 30, motion: motion, expression: face.expression)
+                Text(profile.name).font(.headline).foregroundStyle(.primary).lineLimit(1)
+            }
+            .modifier(BotChatTitlePillFallback())
+        }
+        .accessibilityLabel(profile.name)
+        .accessibilityValue(face.accessibilityValue ?? "")
+        .accessibilityHint(Text("Opens this bot’s profile."))
+    }
+}
+
+/// Before iOS 26 the toolbar draws no glass of its own, so the pill supplies a material.
+struct BotChatTitlePillFallback: ViewModifier {
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content
+        } else {
+            content.padding(.leading, 4).padding(.trailing, 12).padding(.vertical, 4)
+                .background(.regularMaterial, in: Capsule())
+        }
+    }
+}
+
+/// A bot's chat's pill in `ChatView` (#1145): `BotChatTitlePill` over the chat's turn. It owns
+/// the working face's beat (#776), so only the pill redraws as the turn moves: one 30 s sway
+/// when work starts or the chat returns from the background mid-turn, then a still lean, and
+/// no motion while the scene is not active.
+struct HermesBotChatPill: View {
+    let turn: HermesChatTurnCoordinator
+    let onOpen: () -> Void
+
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var workingBeat = BotWorkingBeat()
+
+    var body: some View {
+        if let profile = turn.botProfile {
+            let face = turn.titleFace
+            BotChatTitlePill(
+                profile: profile,
+                avatar: turn.settings.avatars[profile.id],
+                motion: scenePhase == .active ? face.motion(beatStart: workingBeat.start) : .still,
+                face: face, onOpen: onOpen
+            )
+            .onChange(of: turn.botTurn) { workingBeat.observe(turn.botTurn, at: Date()) }
+            // The background drops the socket, so the turn is seen again on return: a new beat.
+            .onChange(of: scenePhase) { if scenePhase == .background { workingBeat.rearm() } }
+        }
+    }
+}
+
 /// An asset wins over the compatible static mark. The fallback now honors the
 /// same shape and color fields the editor writes instead of inventing a letter tile.
 struct BotAvatarView: View {
