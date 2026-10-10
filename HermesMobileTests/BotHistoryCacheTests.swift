@@ -188,7 +188,9 @@ final class BotHistoryCacheTests: XCTestCase {
         let fresh = try await cache.roomHistory(key)
         XCTAssertEqual(fresh?.messages.count, 1)
         let otherServerKey = roomKey(serverURL: otherServer), oldConnection = roomKey(connectionID: UUID())
-        for owner in [otherServerKey, oldConnection] { try await cache.appendRoom(key: owner, room: room, page: page, since: 0) }
+        for owner in [otherServerKey, oldConnection] {
+            try await cache.appendRoom(key: owner, room: room, page: page, since: 0, receivedAt: now.addingTimeInterval(2))
+        }
         try await cache.removeServer(server, activeConnectionID: connection)
         for owner in [key, oldConnection] {
             try await cache.appendRoom(key: owner, room: room, page: page, since: 0, receivedAt: now.addingTimeInterval(3))

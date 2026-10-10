@@ -157,9 +157,9 @@ actor BotHistoryCache {
             boundary = max(boundary, rows[rows.count - Self.maximumMessages - 1].seq ?? boundary)
             rows = Array(rows.suffix(Self.maximumMessages))
         }
-        let next = Snapshot(id: previous?.id ?? UUID(), scope: scope, profileName: room.name, savedAt: max(previous?.savedAt ?? receivedAt, receivedAt), messages: rows,
-            roomID: key.roomID, cursor: overlaps ? max(previous?.cursor ?? 0, cursor) : cursor,
-            earlierBoundary: boundary)
+        let next = Snapshot(id: previous?.id ?? UUID(), scope: scope, profileName: room.name,
+            savedAt: max(previous?.savedAt ?? receivedAt, receivedAt), messages: rows, roomID: key.roomID,
+            cursor: overlaps ? max(previous?.cursor ?? 0, cursor) : cursor, earlierBoundary: boundary)
         let cursorOnly = previous.map { $0.messages == next.messages && $0.earlierBoundary == next.earlierBoundary
             && $0.profileName == next.profileName } ?? false
         if cursorOnly, previous?.cursor == next.cursor { return }

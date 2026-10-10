@@ -106,7 +106,6 @@ import XCTest
         await engine.activate()
         defer { engine.suspend() }
         XCTAssertEqual(engine.connectionState, .connected)
-        XCTAssertFalse(engine.replayWasReset)
         XCTAssertEqual(engine.sequence, events.last?["seq"].integer)
         XCTAssertTrue(engine.isCurrent(snapshot))
         XCTAssertEqual(snapshot["running"].flag, false)

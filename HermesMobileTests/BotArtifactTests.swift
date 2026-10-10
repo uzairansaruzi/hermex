@@ -8,21 +8,6 @@ import UniformTypeIdentifiers
         BotArtifactContext(connectionID: connectionID, profile: "inbox-triage", sessionID: "compression-tip", generation: 1)
     }
 
-    func testMixedTextAndLocalArtifactsKeepOrderAndServerRelativePaths() {
-        let text = "Before\n![chart](./charts/result.png)\n[Report](<reports/Quarter One.pdf>)\nMEDIA:audio/result.mp3\nAfter"
-        let segments = TranscriptMediaParser.segments(in: text, includesLocalFileLinks: true)
-        let refs = segments.compactMap { if case .media(let ref) = $0 { return ref.rawReference }; return nil }
-        XCTAssertEqual(refs, ["./charts/result.png", "reports/Quarter One.pdf", "audio/result.mp3"])
-        XCTAssertEqual(segments.first, .text("Before\n"))
-        XCTAssertEqual(segments.last, .text("\nAfter"))
-        XCTAssertEqual(TranscriptMediaParser.segments(in: "[Report](./report.pdf)"), [.text("[Report](./report.pdf)")])
-    }
-
-    func testCodeSamplesAndExternalLinksStayText() {
-        let text = "`[file](./x.pdf)`\n```\n![image](./x.png)\n```\n[Website](https://example.org/page)"
-        XCTAssertEqual(TranscriptMediaParser.segments(in: text, includesLocalFileLinks: true), [.text(text)])
-    }
-
     func testDownloadURLBindsProfileAndDurableSessionAndDoesNotResolveOnPhone() throws {
         let scope = context()
         let url = try XCTUnwrap(HermesREST.downloadArtifact(path: "../files/a & b.pdf", profile: scope.profile,
