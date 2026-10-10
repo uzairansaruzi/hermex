@@ -197,8 +197,9 @@ enum BotConnectionAdvice {
     /// #1051), and returns the host's result. A payload the host refuses throws its reason as
     /// `HermesSessionRefusal`.
     func importSessions(body: Data) async throws -> BotJSON
-    /// `profile`'s sessions matching `query`, in the host's order (`HermesREST.sessionSearch`, #1053).
-    func searchSessions(query: String, profile: String) async throws -> [HermesSessionSearchResult]
+    /// `profile`'s sessions matching `query`, in the host's order, at most `limit`
+    /// (`HermesREST.sessionSearch`, #1053).
+    func searchSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult]
     /// The runtimes this phone's screens attached on the connection (`session.resume`) or branched
     /// (`session.branch`, #1051) and have not closed, so a delete can tell its own from another
     /// app's (#1048).
@@ -266,8 +267,13 @@ extension BotTransport {
         throw BotFailure.unsupported
     }
 
-    func searchSessions(query: String, profile: String) async throws -> [HermesSessionSearchResult] {
+    func searchSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
         throw BotFailure.unsupported
+    }
+
+    /// The search at the Sessions list's page size, `HermesREST.sessionSearchLimit`.
+    func searchSessions(query: String, profile: String) async throws -> [HermesSessionSearchResult] {
+        try await searchSessions(query: query, profile: profile, limit: HermesREST.sessionSearchLimit)
     }
 
     var attachedRuntimes: Set<String> { [] }

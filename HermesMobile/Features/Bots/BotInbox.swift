@@ -278,13 +278,16 @@ import UIKit
 
     /// Searches each roster bot's Bot Chat on the host for `query` (#1146), Profile by Profile, as
     /// the Sessions list does (`HermesREST.sessionSearch`); a Profile's other sessions, its rooms'
-    /// included, are not hits. Empty while the inbox is not live. A reply that lands after the
-    /// inbox closed or reconnected throws `BotFailure.stale`.
+    /// included, are not hits. The host can neither filter for the Bot Chat nor page, so each
+    /// search asks for its maximum; a Bot Chat behind that many other matches is not found. Empty
+    /// while the inbox is not live. A reply that lands after the inbox closed or reconnected
+    /// throws `BotFailure.stale`.
     func searchBotChats(_ query: String) async throws -> [BotChatHit] {
         guard link == .live, let client = wire, !query.isEmpty else { return [] }
         var hits: [BotChatHit] = []
         for profile in profiles.map(\.id) {
-            let results = try await client.searchSessions(query: query, profile: profile)
+            let results = try await client.searchSessions(query: query, profile: profile,
+                                                          limit: HermesREST.sessionSearchMaximum)
             guard wire === client else { throw BotFailure.stale }
             try Task.checkCancellation()
             if let match = results.first(where: { $0.row.isBotChat }) {

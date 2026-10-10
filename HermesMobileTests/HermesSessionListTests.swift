@@ -946,7 +946,7 @@ import Observation
         return nil
     }
 
-    func searchSessions(query: String, profile: String) async throws -> [HermesSessionSearchResult] {
+    func searchSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
         guard attached else { throw BotFailure.stale }
         searches.append((query, profile))
         let reply = searchResults

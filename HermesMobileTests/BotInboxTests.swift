@@ -111,6 +111,21 @@ import SwiftUI
         XCTAssertEqual(wire.searches.map(\.profile), ["triage", "research"])
     }
 
+    /// The host's search has no offset to page with or filter for the Bot Chat (#1146), so the bot
+    /// search asks for the host's maximum: a Bot Chat behind 50 other matching sessions is found.
+    func testMessageSearchFindsABotChatBehindFiftyOtherMatches() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.searchResults = ["triage": (0..<50).map { match("s\($0)", title: "Plan \($0)", snippet: ">>>nimbus<<<", role: "user") }
+            + [match("bot", title: "Bot Chat", snippet: "the >>>nimbus<<< cluster", role: "assistant")]]
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+
+        let hits = try await inbox.searchBotChats("nimbus")
+
+        XCTAssertEqual(hits, [BotInbox.BotChatHit(profileID: "triage", snippet: "the >>>nimbus<<< cluster", isFromUser: false)])
+        XCTAssertEqual(wire.searches.map(\.limit), [100])
+    }
+
     /// A Bot Chat the host matched by its id names no message (#1146): the hit has no author,
     /// so the sheet shows the bot rather than "<bot> to you".
     func testABotChatIDMatchHasNoAuthor() async throws {
@@ -1338,7 +1353,9 @@ import SwiftUI
     private var held: [CheckedContinuation<Void, Never>] = []
     /// `GET /api/sessions/search`'s matches per Profile, whatever the query.
     var searchResults: [String: [HermesSessionSearchResult]] = [:]
-    private(set) var searches: [(query: String, profile: String)] = []
+    /// While true, a session search waits for `release()`.
+    var holdsSearch = false
+    private(set) var searches: [(query: String, profile: String, limit: Int)] = []
 
     init(roster: [BotJSON]) { self.roster = roster }
 
@@ -1357,9 +1374,11 @@ import SwiftUI
         deleted.append(name)
     }
 
-    func searchSessions(query: String, profile: String) async throws -> [HermesSessionSearchResult] {
-        searches.append((query, profile))
-        return searchResults[profile] ?? []
+    func searchSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
+        searches.append((query, profile, limit))
+        if holdsSearch { await withCheckedContinuation { held.append($0) } }
+        // The host answers at most `limit` matches.
+        return Array((searchResults[profile] ?? []).prefix(limit))
     }
 
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {

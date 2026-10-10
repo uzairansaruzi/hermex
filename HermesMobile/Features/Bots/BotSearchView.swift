@@ -19,7 +19,9 @@ import SwiftUI
     @State private var searchError = false
     /// Why the host's search of the bots' chats failed.
     @State private var botSearchError: String?
+    /// The saved-message search and the host's bot-chat search finish separately.
     @State private var isSearching = false
+    @State private var isSearchingBots = false
     let cache: BotHistoryCache
 
     init(inbox: BotInbox, cache: BotHistoryCache = .shared, query: String = "", onSelectRoom: @escaping (BotGroupRoom, Int?) -> Void = { _, _ in }, onSelect: @escaping (BotProfile) -> Void) {
@@ -106,7 +108,9 @@ import SwiftUI
                                 .buttonStyle(.plain)
                             }
                         }
-                        if let botSearchError, hitRequest == request {
+                        // One "Searching…" at a time: the saved messages' first, then the host's.
+                        if isSearchingBots && !isSearching { status("Searching…") }
+                        else if let botSearchError, hitRequest == request {
                             Text(verbatim: botSearchError).font(.callout).foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(20)
                         }
@@ -247,27 +251,30 @@ import SwiftUI
         .contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
 
-    /// Searches room messages saved on this iPhone, then each bot's chat on the host (#1146). The
-    /// cache's bot rows are left out: a bot's chat is the host's to search.
+    /// Searches room messages saved on this iPhone, showing them as soon as the cache answers, then
+    /// each bot's chat on the host (#1146), whose hits and error arrive on their own. The cache's
+    /// bot rows are left out: a bot's chat is the host's to search.
     private func searchMessages() async {
         let captured = request
-        hits = []; botHits = []; hitRequest = captured; searchError = false; botSearchError = nil; isSearching = false
+        hits = []; botHits = []; hitRequest = captured; searchError = false; botSearchError = nil
+        isSearching = false; isSearchingBots = false
         guard captured.active, captured.includesMessages, !captured.query.isEmpty,
               let connectionID = captured.connectionID else { return }
-        isSearching = true
+        isSearching = true; isSearchingBots = true
         do { try await Task.sleep(for: .milliseconds(200)) } catch { return }
         var found: [BotHistoryCache.Hit] = [], localFailed = false
         do {
             found = try await cache.search(captured.query, scope: .init(server: inbox.server, connectionID: connectionID),
                                            profileIDs: [], roomIDs: captured.roomIDs)
         } catch { localFailed = true }
+        guard !Task.isCancelled, captured == request else { return }
+        hits = found; searchError = localFailed; isSearching = false
         var bots: [BotInbox.BotChatHit] = [], botFailure: String?
         do { bots = try await inbox.searchBotChats(captured.query) } catch {
             botFailure = (error as? BotFailure ?? .transport).localizedDescription
         }
         guard !Task.isCancelled, captured == request else { return }
-        hits = found; botHits = bots; searchError = localFailed; botSearchError = botFailure
-        hitRequest = captured; isSearching = false
+        botHits = bots; botSearchError = botFailure; isSearchingBots = false
     }
 
     private func result(_ profile: BotProfile) -> some View {
