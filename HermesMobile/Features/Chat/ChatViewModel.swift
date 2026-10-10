@@ -844,6 +844,18 @@ final class ChatViewModel {
     /// The level a Hermes host sends when the model takes less than the one picked (#1016).
     var composerSentReasoningEffort: String? { hermesSettings?.sentEffort }
 
+    /// A Hermes session's Fast mode (#1142); nil hides the chip, as on a webui session.
+    var composerFastMode: Bool? { hermesSettings?.fast }
+
+    /// Whether that Fast mode can change now, as Bot Chat's chip reads it (#1142).
+    var composerMayChangeFastMode: Bool { hermesSettings?.mayChangeFast == true }
+
+    /// Turns a Hermes session's Fast mode on or off for this chat (#1142); false when it
+    /// can't go now or the host refused it.
+    func selectFastMode(_ enabled: Bool) async -> Bool {
+        await hermesSettings?.select(fast: enabled) ?? false
+    }
+
     /// The chat's workspace: a Hermes session's working folder as its host reports it (#1117).
     var selectedWorkspacePath: String? {
         hermesTurn.map(\.cwd) ?? currentWorkspace
@@ -2854,9 +2866,32 @@ final class ChatViewModel {
     /// A Hermes session is parked on one of its host's requests.
     var isWaitingForUser: Bool { hermesRequests?.isWaiting == true }
 
-    /// A Hermes session's goal, `/btw` question and `/background` tasks (#1013). Nil on a
-    /// webui session.
+    /// A Hermes session's goal, loop and heartbeat (#1142), `/btw` question and `/background`
+    /// tasks (#1013). Nil on a webui session.
     var hermesSideTasks: HermesChatSideTasks? { hermesTurn?.sideTasks }
+
+    /// Whether the toolbar shows the goal menu: once the chat has a goal, or a Hermes
+    /// session's loop or heartbeat (#1142).
+    var showsGoalControls: Bool {
+        hasActivatedGoalCommand || hermesSideTasks?.automations.isEmpty == false
+    }
+
+    /// Sends the loop or heartbeat Pause or Resume confirmed in the goal menu (#1142). A
+    /// failure shows in the composer, like a goal command's.
+    func confirmHermesAutomation(_ control: BotSessionControl) async {
+        guard let sideTasks = hermesSideTasks else { return }
+        do {
+            try await sideTasks.confirmAutomation(control)
+        } catch let error where error is HermesChatTurnCoordinator.NotSent || HermesChatSideTasks.isReaped(error) {
+            sendErrorMessage = String(localized: "Reconnect to the server to manage goals.")
+        } catch BotFailure.stale {
+            sendErrorMessage = BotFailure.stale.localizedDescription
+        } catch let refusal as BotSettingFailure {
+            sendErrorMessage = refusal.localizedDescription
+        } catch {
+            sendErrorMessage = BotSettingFailure.unknownOutcome.localizedDescription
+        }
+    }
 
     /// A new chat in `profile` on this Hermes session's server and connection (#1015).
     func newHermesSessionChat(profile: String) -> HermesSessionChat? {

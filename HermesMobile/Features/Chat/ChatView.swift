@@ -679,6 +679,15 @@ struct ChatView: View {
             showsModelAndProfileControls: isHermesSession,
             configurationNotice: viewModel.composerConfigurationNotice,
             sentReasoningEffort: viewModel.composerSentReasoningEffort,
+            fastMode: viewModel.composerFastMode,
+            mayChangeFastMode: viewModel.composerMayChangeFastMode,
+            onSelectFastMode: { enabled in
+                Task {
+                    if await viewModel.selectFastMode(enabled) {
+                        ChatHaptics.configurationSelected(isEnabled: isHapticsEnabled)
+                    }
+                }
+            },
             uploadsAttachmentsOnSend: isHermesSession,
             onCancelAttachmentUpload: viewModel.isSendingAttachments ? { viewModel.cancelAttachmentUpload() } : nil,
             hermesTranscriber: hermesTranscriber
@@ -1041,7 +1050,7 @@ struct ChatView: View {
 
                 ToolbarItem(placement: .topBarTrailing) {
                     ChatToolbarActionCluster {
-                        if viewModel.hasActivatedGoalCommand {
+                        if viewModel.showsGoalControls {
                             ChatToolbarActionSlot {
                                 goalControlMenu
                             }
@@ -1229,6 +1238,11 @@ struct ChatView: View {
             )
             .notificationOfferAlert($pendingNotificationOffer)
             .modifier(HermesModelConfirmationModifier(controls: viewModel.hermesSettings?.controls))
+            .modifier(HermesAutomationConfirmationModifier(
+                sideTasks: viewModel.hermesSideTasks, onConfirm: { control in
+                    Task { await viewModel.confirmHermesAutomation(control) }
+                }
+            ))
             .modifier(HermesPersonalityConfirmationModifier(
                 settings: viewModel.hermesSettings, profile: viewModel.selectedProfileTitle,
                 onConfirm: confirmHermesPersonality
@@ -2303,7 +2317,13 @@ struct ChatView: View {
             },
             onSubmitCommand: { command in
                 Task { await submitGoalCommand(command) }
-            }
+            },
+            automations: viewModel.hermesSideTasks?.automations ?? [],
+            // Pause and Resume show only where the host takes `session.control` (#508).
+            allowsAutomationChanges: viewModel.hermesSideTasks?.controlsAutomations == true,
+            isAutomationDisabled: viewModel.isViewingCachedData || viewModel.hermesSideTasks?.isChangingAutomation == true
+                || viewModel.hermesSideTasks?.canChangeAutomations == false,
+            onChangeAutomation: { viewModel.hermesSideTasks?.ask($0) }
         )
     }
 
@@ -4095,6 +4115,28 @@ private struct HermesModelConfirmationModifier: ViewModifier {
             Button("Cancel", role: .cancel) { controls?.cancelConfirmation() }
         } message: {
             if let confirmation = controls?.confirmation { Text(confirmation.message) }
+        }
+    }
+}
+
+/// The one confirmation a Hermes session's loop or heartbeat Pause or Resume asks in the goal
+/// menu (#1142), in Bot Chat's words. A reattach drops it unsent.
+private struct HermesAutomationConfirmationModifier: ViewModifier {
+    let sideTasks: HermesChatSideTasks?
+    let onConfirm: (BotSessionControl) -> Void
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog("Change session control?", isPresented: Binding(
+            get: { sideTasks?.pendingAutomation != nil },
+            set: { if !$0 { sideTasks?.cancelAutomation() } }
+        ), titleVisibility: .visible) {
+            // Dismissing clears the ask, so the button carries its control.
+            if let control = sideTasks?.pendingAutomation {
+                Button(control.actionTitle) { onConfirm(control) }
+            }
+            Button("Cancel", role: .cancel) { sideTasks?.cancelAutomation() }
+        } message: {
+            if let control = sideTasks?.pendingAutomation { Text(control.consequence) }
         }
     }
 }
