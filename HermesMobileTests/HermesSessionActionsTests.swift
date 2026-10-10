@@ -303,6 +303,30 @@ import Observation
         XCTAssertEqual(archive.hermesChat(for: plain)?.target, .session(profile: "research", key: "old"))
     }
 
+    /// A first page of room sessions alone shows nothing, so the screen reads on (#1146): the
+    /// archived row on the next page appears, rather than "No archived sessions".
+    func testArchivedReadsPastAFirstPageOfRoomsAlone() async throws {
+        let host = BotSocketHost()
+        let connection = host.connection(record)
+        let rows: [BotJSON] = (0..<HermesREST.sessionPageSize).map {
+            .object(["id": .string("room\($0)"), "title": .string("Group: room-\($0)"), "archived": .bool(true), "hidden": .number(1)])
+        } + [.object(["id": .string("old"), "title": .string("Old plan"), "archived": .bool(true), "hidden": .number(0)])]
+        _ = HermesHostFixture.configuration { request in
+            guard request.httpMethod == "GET", request.url?.path == "/api/sessions" else { return nil }
+            let query = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems ?? []
+            let offset = Int(query.first { $0.name == "offset" }?.value ?? "") ?? 0
+            return .json(200, .object(["sessions": .array(Array(rows.dropFirst(offset).prefix(HermesREST.sessionPageSize)))]))
+        }
+        let archive = ArchivedSessionsViewModel(server: server, hermes: HermesArchiveSource(
+            connection: record, profile: "research", makeWire: { _ in BotClient(http: connection) }, preferences: defaults
+        ))
+
+        await archive.load()
+
+        XCTAssertEqual(archive.sessions.map(\.sessionId), ["old"])
+        XCTAssertFalse(archive.hasMore)
+    }
+
     /// A restore moves the host's later archived rows up one, so Load more reads from where they
     /// now start: the row just past the first page still appears.
     func testLoadMoreAfterARestoreStillReachesTheRowPastTheFirstPage() async throws {

@@ -95,7 +95,14 @@ import SwiftUI
                                     searchFocused = false
                                     onSelect(profile)
                                     dismiss()
-                                } label: { botChatResult(hit, profile: profile) }
+                                } label: {
+                                    // An id match names no message, so it shows as the bot.
+                                    if let isFromUser = hit.isFromUser {
+                                        botChatResult(hit, isFromUser: isFromUser, profile: profile)
+                                    } else {
+                                        result(profile)
+                                    }
+                                }
                                 .buttonStyle(.plain)
                             }
                         }
@@ -198,12 +205,12 @@ import SwiftUI
     }
 
     /// A bot's chat the host matched (#1146): who wrote the message, and the host's snippet.
-    private func botChatResult(_ hit: BotInbox.BotChatHit, profile: BotProfile) -> some View {
+    private func botChatResult(_ hit: BotInbox.BotChatHit, isFromUser: Bool, profile: BotProfile) -> some View {
         HStack(spacing: 14) {
             BotAvatarView(profile: profile, avatar: inbox.avatars[profile.id], size: 44)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(hit.isFromUser
+                    Text(isFromUser
                          ? String(localized: "You to \(profile.name)") : String(localized: "\(profile.name) to you"))
                         .font(.body).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     Spacer(minLength: 8)

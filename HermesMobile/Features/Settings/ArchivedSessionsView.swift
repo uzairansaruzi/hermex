@@ -125,7 +125,7 @@ struct ArchivedSessionsView: View {
                         .foregroundStyle(.primary)
                     }
                     .padding(.horizontal, 24)
-                } else if viewModel.sessions.isEmpty {
+                } else if viewModel.sessions.isEmpty && !viewModel.hasMore {
                     ArchivedStatusRow(title: String(localized: "No archived sessions"), systemImage: "archivebox")
                         .padding(.horizontal, 24)
                 } else {

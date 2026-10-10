@@ -1363,7 +1363,9 @@ deep links are #706. Each action goes to the row's own Profile.
   (no `min_messages`), paged as the list is. The hidden filter is off there, so archived
   hidden Bot Chats are listed, as "Bot Chat · <Profile>", and a room's sessions are not; the
   pinned back-fill still brings unarchived pinned rows, so only `archived` rows are kept. A
-  Bot Chat row opens in its bot on the Bots tab (#1146). Unarchive and Delete work as on the
+  page of room sessions alone shows no row, so the screen reads on, and says "No archived
+  sessions" only once the pages end. A Bot Chat row opens in its bot on the Bots tab (#1146).
+  Unarchive and Delete work as on the
   list; a restored Bot Chat is back in the Bots inbox. From the list it shows the list's
   Profile; from Settings, the server's pick, else the dashboard's `current`.
 
@@ -2305,7 +2307,8 @@ All / Bots / Messages filter. Bot names use the current roster, including hidden
 bots when a query matches. A bot's chat is searched on the host (#1146):
 `BotInbox.searchBotChats` asks `HermesREST.sessionSearch` once per roster Profile while the
 inbox is live, keeps each Profile's Bot Chat match (who wrote it, and the FTS snippet), and a
-hit opens that bot's chat. Room messages stay local: user/member messages from group room
+hit opens that bot's chat. A match on the session id names no message (no `role`), so that hit
+shows as the bot's plain result. Room messages stay local: user/member messages from group room
 pages this iPhone has loaded, under the label “Messages saved on this iPhone.” The cache's Bot
 snapshots are no longer searched or shown. There is no initial server crawl, attachment
 indexing, or live-token indexing.

@@ -270,8 +270,9 @@ import UIKit
         let profileID: String
         /// The host's FTS snippet, with `>>>` and `<<<` around each match; nil for an id match.
         let snippet: String?
-        /// The matched message is the user's rather than the bot's.
-        let isFromUser: Bool
+        /// The matched message is the user's rather than the bot's; nil for an id match, which
+        /// names no message.
+        let isFromUser: Bool?
         var id: String { profileID }
     }
 
@@ -287,7 +288,7 @@ import UIKit
             guard wire === client else { throw BotFailure.stale }
             try Task.checkCancellation()
             if let match = results.first(where: { $0.row.isBotChat }) {
-                hits.append(BotChatHit(profileID: profile, snippet: match.snippet, isFromUser: match.role == "user"))
+                hits.append(BotChatHit(profileID: profile, snippet: match.snippet, isFromUser: match.role.map { $0 == "user" }))
             }
         }
         return hits

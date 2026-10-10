@@ -111,6 +111,21 @@ import SwiftUI
         XCTAssertEqual(wire.searches.map(\.profile), ["triage", "research"])
     }
 
+    /// A Bot Chat the host matched by its id names no message (#1146): the hit has no author,
+    /// so the sheet shows the bot rather than "<bot> to you".
+    func testABotChatIDMatchHasNoAuthor() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.searchResults = ["triage": [HermesSessionSearchResult(row: HermesSessionRow(id: "bot", title: "Bot Chat", hidden: true))]]
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+
+        let hits = try await inbox.searchBotChats("bot")
+
+        XCTAssertEqual(hits.map(\.profileID), ["triage"])
+        XCTAssertNil(hits.first?.snippet)
+        XCTAssertNil(hits.first?.isFromUser)
+    }
+
     func testReturningFromChatMarksTheNextRosterSeenOnce() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage", lastActive: 100)])
         let inbox = try makeInbox(wires: [wire])
