@@ -1,10 +1,35 @@
 import SwiftUI
 import UIKit
 
-@MainActor struct BotDelegatedWorkView: View {
-    let work: BotDelegatedWork
+/// A Hermes chat's toolbar entry to its delegated workers (#1140, mock B): its own glass button
+/// beside the action cluster, `person.2` and a plain count, shown while any worker is active.
+struct HermesDelegatedWorkButton: View {
+    let count: Int
+    let action: () -> Void
+
+    var body: some View {
+        ChatToolbarActionCluster {
+            Button(action: action) {
+                HStack(spacing: 4) {
+                    Image(systemName: "person.2")
+                    Text(min(count, 99), format: .number)
+                        .font(.subheadline.weight(.semibold))
+                        .monospacedDigit()
+                }
+                .padding(.horizontal, 6)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Delegated work, \(count) active workers")
+            .accessibilityHint(Text("Shows worker status, recent output, and interrupt controls."))
+        }
+    }
+}
+
+@MainActor struct HermesDelegatedWorkView: View {
+    let work: HermesDelegatedWork
     @Environment(\.dismiss) private var dismiss
-    @State private var interruptAction: BotDelegatedWork.InterruptAction?
+    @State private var interruptAction: HermesDelegatedWork.InterruptAction?
 
     var body: some View {
         NavigationStack {
@@ -24,7 +49,7 @@ import UIKit
                         } description: {
                             Text(work.isRefreshing
                                  ? "Refreshing delegated work…"
-                                 : "Workers appear here while this bot has delegated work in progress.")
+                                 : "Workers appear here while the agent has delegated work in progress.")
                         }
                     }
                 } else {
@@ -36,7 +61,7 @@ import UIKit
                         Text("Active workers")
                     } footer: {
                         if work.omittedWorkerCount > 0 {
-                            Text("Showing the first \(BotDelegatedWork.maximumWorkers) workers. \(work.omittedWorkerCount) more are active.")
+                            Text("Showing the first \(HermesDelegatedWork.maximumWorkers) workers. \(work.omittedWorkerCount) more are active.")
                         } else {
                             Text("Tails load only when requested and are limited to 16 KB.")
                         }
@@ -90,7 +115,7 @@ import UIKit
     }
 
     @ViewBuilder
-    private func workerRow(_ worker: BotDelegatedWorker) -> some View {
+    private func workerRow(_ worker: HermesDelegatedWorker) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(worker.goal)
@@ -155,7 +180,7 @@ import UIKit
     }
 
     @ViewBuilder
-    private func tailView(_ tail: BotDelegatedTail) -> some View {
+    private func tailView(_ tail: HermesDelegatedTail) -> some View {
         if tail.available {
             VStack(alignment: .leading, spacing: 6) {
                 ScrollView(.vertical) {
@@ -183,8 +208,8 @@ import UIKit
 
 /// A durable, non-user-authored timeline row. The compact card is driven only
 /// by typed display metadata; the sheet preserves the host's report verbatim.
-struct BotDelegationCompletionCard: View {
-    let completion: BotDelegationCompletion
+struct HermesDelegationCompletionCard: View {
+    let completion: HermesDelegationCompletion
     @State private var showingResults = false
 
     var body: some View {
@@ -243,7 +268,7 @@ struct BotDelegationCompletionCard: View {
         .accessibilityLabel("\(title). \(summary)")
         .accessibilityHint("Opens the complete delegated work report.")
         .sheet(isPresented: $showingResults) {
-            BotDelegationResultsSheet(completion: completion)
+            HermesDelegationResultsSheet(completion: completion)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
@@ -283,8 +308,8 @@ struct BotDelegationCompletionCard: View {
     private var iconColor: Color { completion.hasFailures ? .orange : .green }
 }
 
-struct BotDelegationResultsSheet: View {
-    let completion: BotDelegationCompletion
+struct HermesDelegationResultsSheet: View {
+    let completion: HermesDelegationCompletion
     @Environment(\.dismiss) private var dismiss
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 

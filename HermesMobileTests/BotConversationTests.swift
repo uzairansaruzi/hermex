@@ -85,7 +85,7 @@ import Vision
             .object(["role": .string("assistant"), "text": .string(String(repeating: "long answer ", count: 2000)),
                      "reasoning": .string("settled reasoning"), "timestamp": .number(100)]),
             .object(["role": .string("assistant"), "text": .string("Worker finished"),
-                     "display_kind": .string(BotDelegationCompletion.displayKind),
+                     "display_kind": .string(HermesDelegationCompletion.displayKind),
                      "display_metadata": .object(["worker": .string("fixture")])])
         ]
         let first = BotConversation(server: server, connection: identity, profile: profile, historyCache: cache, wire: firstWire)
@@ -1288,7 +1288,7 @@ import Vision
             .object(["role": .string("user"), "text": .string("/work fix the leak"),
                      "display_kind": .string("skill_invocation"), "timestamp": .number(210)]),
             .object(["role": .string("user"), "text": .string("[ASYNC DELEGATION BATCH COMPLETE — d1]\nReport"),
-                     "display_kind": .string(BotDelegationCompletion.displayKind), "timestamp": .number(210)])
+                     "display_kind": .string(HermesDelegationCompletion.displayKind), "timestamp": .number(210)])
         ]
         wire.inflight = .object(["user": .string("Expanded skill body"), "assistant": .string("Once")])
         let model = make(wire)

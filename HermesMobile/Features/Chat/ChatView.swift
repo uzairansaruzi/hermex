@@ -386,6 +386,8 @@ struct ChatView: View {
     /// Measured height of a Hermes chat's pinned plan line (#1139); its open list overlays
     /// the transcript instead.
     @State private var planStripHeight: CGFloat = 30
+    /// The delegated-work sheet a Hermes chat's workers button opens (#1140).
+    @State private var showsDelegatedWork = false
     /// Measured height of the pinned notice stack, which grows with each
     /// notice and with Dynamic Type.
     @State private var pinnedNoticeStackHeight: CGFloat = 0
@@ -1080,6 +1082,8 @@ struct ChatView: View {
                         }
                     }
                 }
+
+                delegatedWorkToolbarItem
             }
             .navigationDestination(item: $pushedSession) { session in
                 ChatView(session: session, server: server, onAPIError: onAPIError)
@@ -1159,6 +1163,13 @@ struct ChatView: View {
             .fullScreenCover(isPresented: $showsBtwFullScreen) { btwFullScreen }
             .onChange(of: viewModel.hermesSideTasks?.btw == nil) { _, isClosed in
                 if isClosed { showsBtwFullScreen = false }
+            }
+            .sheet(isPresented: $showsDelegatedWork) {
+                if let work = viewModel.hermesActivity?.delegatedWork {
+                    HermesDelegatedWorkView(work: work)
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
+                }
             }
             .sheet(isPresented: $showsGoalSheet) {
                 GoalSubmissionSheet(
@@ -1827,6 +1838,21 @@ struct ChatView: View {
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerLocalNotices)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsApprovalBypassStatus)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: pinnedPlan == nil)
+        }
+    }
+
+    /// A Hermes chat's workers button (#1140), its own glass beside the cluster while any
+    /// worker is active. Hidden on the offline cache's copy, which lists no workers.
+    @ToolbarContentBuilder
+    private var delegatedWorkToolbarItem: some ToolbarContent {
+        if !viewModel.isViewingCachedData, let work = viewModel.hermesActivity?.delegatedWork, work.activeCount > 0 {
+            if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
+            ToolbarItem(placement: .topBarTrailing) {
+                HermesDelegatedWorkButton(count: work.activeCount) {
+                    showsDelegatedWork = true
+                    Task { await work.refresh() }
+                }
+            }
         }
     }
 

@@ -898,6 +898,10 @@ private struct ChatTranscriptMessageRow: View {
         // don't apply to system-emitted markers.
         if let markerKind = ChatMarkerMessageClassifier.classify(message) {
             MarkerMessageCardView(kind: markerKind, content: message.content)
+        } else if let completion = HermesDelegationCompletion(message) {
+            // A Hermes chat's async-delegation delivery (#1140): the host's turn, never a
+            // user bubble, with the full report one tap away.
+            HermesDelegationCompletionCard(completion: completion)
         } else {
             VStack(alignment: isUserMessage ? .trailing : .leading, spacing: 4) {
                 bubble

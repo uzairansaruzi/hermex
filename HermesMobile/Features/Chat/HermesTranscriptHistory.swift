@@ -245,7 +245,7 @@ enum HermesTranscriptProjection {
                       role == "assistant" || !text.drop(while: \.isWhitespace).hasPrefix("[System:") else { continue }
                 let id = "\(root)/row-\(rowID)"
                 flush(anchor: id)
-                let isDelegationCompletion = kind == BotDelegationCompletion.displayKind
+                let isDelegationCompletion = kind == HermesDelegationCompletion.displayKind
                 // A steer is stored inside the out-of-band marker; unwrapped first, the trailing
                 // mention note is still a suffix and is hidden as on any other user row.
                 let steer = role == "user" ? ChatMessage.strippedSteerText(from: text) : nil

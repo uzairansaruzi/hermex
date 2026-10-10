@@ -213,7 +213,7 @@ import Observation
     private var localOperation = false
     private var hydrated = false
     private var wire: any BotTransport { engine.wire }
-    let delegatedWork: BotDelegatedWork
+    let delegatedWork: HermesDelegatedWork
     private let historyCache: BotHistoryCache?
     private(set) var historyCacheTask: Task<Void, Never>?
     private let drafts: ChatDraftStore
@@ -233,7 +233,7 @@ import Observation
         self.engine = HermesConversation(server: server, connection: connection, target: target, linkedRoot: conversation,
                                          wire: resolvedWire, reconnectDelay: reconnectDelay, now: now)
         self.mentions = BotMentions(roster: roster, excluding: profile.id)
-        self.delegatedWork = BotDelegatedWork(wire: resolvedWire)
+        self.delegatedWork = HermesDelegatedWork(wire: resolvedWire)
         self.historyCache = historyCache
         self.drafts = drafts ?? .shared
         self.liveActivityFeed = liveActivityFeed

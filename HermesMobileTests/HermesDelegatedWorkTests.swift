@@ -1,7 +1,8 @@
 import XCTest
+import Observation
 @testable import HermesMobile
 
-@MainActor final class BotDelegatedWorkTests: XCTestCase {
+@MainActor final class HermesDelegatedWorkTests: XCTestCase {
     private let firstConnection = UUID()
 
     func testCompletionMetadataIsTolerantBoundedAndRequiresTypedDelivery() throws {
@@ -10,7 +11,7 @@ import XCTest
             content: "Opaque future report",
             timestamp: nil,
             messageId: "delivery",
-            displayKind: BotDelegationCompletion.displayKind,
+            displayKind: HermesDelegationCompletion.displayKind,
             displayMetadata: [
                 "task_count": .number(1e100),
                 "completed_count": .number(1e100),
@@ -21,10 +22,10 @@ import XCTest
             ]
         )
 
-        let completion = try XCTUnwrap(BotDelegationCompletion(typed))
-        XCTAssertEqual(completion.taskCount, BotDelegationCompletion.maximumDisplayCount)
+        let completion = try XCTUnwrap(HermesDelegationCompletion(typed))
+        XCTAssertEqual(completion.taskCount, HermesDelegationCompletion.maximumDisplayCount)
         XCTAssertEqual(completion.failedCount, 3)
-        XCTAssertEqual(completion.completedCount, BotDelegationCompletion.maximumDisplayCount - 3)
+        XCTAssertEqual(completion.completedCount, HermesDelegationCompletion.maximumDisplayCount - 3)
         XCTAssertNil(completion.durationSeconds)
         XCTAssertEqual(completion.delegationID, "deleg_future")
         XCTAssertEqual(completion.report, "Opaque future report")
@@ -35,28 +36,28 @@ import XCTest
             timestamp: nil,
             messageId: "ordinary"
         )
-        XCTAssertNil(BotDelegationCompletion(prefixOnly))
+        XCTAssertNil(HermesDelegationCompletion(prefixOnly))
     }
 
     func testListDecodesTolerantlyOrdersHierarchyAndBoundsRows() async {
-        let wire = BotDelegatedWorkWire()
+        let wire = HermesDelegatedWorkWire()
         var rows = [
             worker(id: "child", parent: "parent", depth: 1, startedAt: 2, extra: ["future": .object(["field": .bool(true)])]),
             worker(id: "parent", goal: "Compare APIs", startedAt: 1, lastTool: "read_file")
         ]
-        rows.append(contentsOf: (0..<BotDelegatedWork.maximumWorkers).map {
+        rows.append(contentsOf: (0..<HermesDelegatedWork.maximumWorkers).map {
             .object(["subagent_id": .string("extra-\($0)"), "future": .array([])])
         })
         wire.handler = { method, _ in
             XCTAssertEqual(method, "subagent.list")
             return .object(["subagents": .array(rows), "delegations": .array([]), "future": .bool(true)])
         }
-        let work = BotDelegatedWork(wire: wire)
+        let work = HermesDelegatedWork(wire: wire)
 
         await work.connect(context())
 
         XCTAssertEqual(work.availability, .supported)
-        XCTAssertEqual(work.workers.count, BotDelegatedWork.maximumWorkers)
+        XCTAssertEqual(work.workers.count, HermesDelegatedWork.maximumWorkers)
         XCTAssertEqual(work.omittedWorkerCount, 2)
         XCTAssertEqual(work.workers.prefix(2).map(\.subagentID), ["parent", "child"])
         XCTAssertEqual(work.workers[0].lastTool, "read_file")
@@ -65,7 +66,7 @@ import XCTest
     }
 
     func testTailIsLoadedOnlyOnDemandAndClientBoundsUnexpectedLargeText() async throws {
-        let wire = BotDelegatedWorkWire()
+        let wire = HermesDelegatedWorkWire()
         let row = worker(id: "child", startedAt: 1)
         wire.handler = { method, _ in
             switch method {
@@ -79,7 +80,7 @@ import XCTest
             default: throw BotFailure.unsupported
             }
         }
-        let work = BotDelegatedWork(wire: wire)
+        let work = HermesDelegatedWork(wire: wire)
         await work.connect(context())
         XCTAssertEqual(wire.calls.map(\.method), ["subagent.list"])
 
@@ -88,12 +89,12 @@ import XCTest
         let tail = try XCTUnwrap(work.tail)
         XCTAssertTrue(tail.available)
         XCTAssertTrue(tail.truncated)
-        XCTAssertLessThanOrEqual(Data(tail.text.utf8).count, BotDelegatedWork.maximumTailBytes + 2)
+        XCTAssertLessThanOrEqual(Data(tail.text.utf8).count, HermesDelegatedWork.maximumTailBytes + 2)
         XCTAssertEqual(wire.calls.map(\.method), ["subagent.list", "subagent.tail"])
     }
 
     func testLateListReplyCannotPopulateADisconnectedGeneration() async {
-        let wire = BotDelegatedWorkWire()
+        let wire = HermesDelegatedWorkWire()
         let started = expectation(description: "list started")
         var release: CheckedContinuation<Void, Never>?
         wire.handler = { method, _ in
@@ -104,7 +105,7 @@ import XCTest
             }
             return .object(["subagents": .array([self.worker(id: "late", startedAt: 1)])])
         }
-        let work = BotDelegatedWork(wire: wire)
+        let work = HermesDelegatedWork(wire: wire)
         let load = Task { await work.connect(context()) }
         await fulfillment(of: [started], timeout: 2)
 
@@ -118,7 +119,7 @@ import XCTest
 
     func testCompletionAndIDReuseDuringConfirmationNeverInterruptAnotherWorker() async throws {
         for replacement in [nil, worker(id: "same", goal: "Replacement", startedAt: 2)] {
-            let wire = BotDelegatedWorkWire()
+            let wire = HermesDelegatedWorkWire()
             var listCount = 0
             wire.handler = { method, _ in
                 switch method {
@@ -132,7 +133,7 @@ import XCTest
                 default: throw BotFailure.unsupported
                 }
             }
-            let work = BotDelegatedWork(wire: wire)
+            let work = HermesDelegatedWork(wire: wire)
             await work.connect(context())
             let action = try XCTUnwrap(work.prepareInterrupt(try XCTUnwrap(work.workers.first)))
 
@@ -144,7 +145,7 @@ import XCTest
     }
 
     func testDuplicateInterruptTapDispatchesOneIrreversibleCall() async throws {
-        let wire = BotDelegatedWorkWire()
+        let wire = HermesDelegatedWorkWire()
         let row = worker(id: "child", startedAt: 1)
         let dispatched = expectation(description: "interrupt dispatched")
         var release: CheckedContinuation<Void, Never>?
@@ -160,7 +161,7 @@ import XCTest
             default: throw BotFailure.unsupported
             }
         }
-        let work = BotDelegatedWork(wire: wire)
+        let work = HermesDelegatedWork(wire: wire)
         await work.connect(context())
         let action = try XCTUnwrap(work.prepareInterrupt(try XCTUnwrap(work.workers.first)))
         let first = Task { await work.interrupt(action) }
@@ -175,7 +176,7 @@ import XCTest
     }
 
     func testInterruptNotFoundKeepsTheInactiveMessageAfterRefreshingTheRoster() async throws {
-        let wire = BotDelegatedWorkWire()
+        let wire = HermesDelegatedWorkWire()
         let row = worker(id: "child", startedAt: 1)
         var listCount = 0
         wire.handler = { method, _ in
@@ -188,7 +189,7 @@ import XCTest
             default: throw BotFailure.unsupported
             }
         }
-        let work = BotDelegatedWork(wire: wire)
+        let work = HermesDelegatedWork(wire: wire)
         await work.connect(context())
         let action = try XCTUnwrap(work.prepareInterrupt(try XCTUnwrap(work.workers.first)))
 
@@ -199,10 +200,59 @@ import XCTest
         XCTAssertEqual(wire.calls.map(\.method), ["subagent.list", "subagent.list", "subagent.interrupt", "subagent.list"])
     }
 
+    /// A worker's next tool changes its row but not the count, so a toolbar reading the count
+    /// is not redrawn by every roster read.
+    func testARosterReadWithTheSameCountLeavesTheCountUntouched() async {
+        let wire = HermesDelegatedWorkWire()
+        var tools = 0
+        wire.handler = { _, _ in
+            tools += 1
+            return .object(["subagents": .array([self.worker(id: "child", startedAt: 1, extra: ["tool_count": .number(Double(tools))])])])
+        }
+        let work = HermesDelegatedWork(wire: wire)
+        await work.connect(context())
+        var countChanged = false
+        withObservationTracking { _ = work.activeCount } onChange: { countChanged = true }
+
+        await work.refresh()
+
+        XCTAssertEqual(work.workers.map(\.toolCount), [2])
+        XCTAssertEqual(work.activeCount, 1)
+        XCTAssertFalse(countChanged)
+    }
+
+    /// A socket that no longer owns the session (4001) asks for a reconnect, keeps the methods
+    /// available, and never sends an interrupt the host could not authorize.
+    func testOwnershipRejectionAsksForAReconnectAndSendsNoInterrupt() async throws {
+        let wire = HermesDelegatedWorkWire()
+        var listCount = 0
+        wire.handler = { method, _ in
+            switch method {
+            case "subagent.list":
+                defer { listCount += 1 }
+                if listCount == 0 { return .object(["subagents": .array([self.worker(id: "child", startedAt: 1)])]) }
+                throw BotFailure.rejected(4001)
+            default:
+                XCTFail("Only the roster is read: \(method)")
+                throw BotFailure.unsupported
+            }
+        }
+        let work = HermesDelegatedWork(wire: wire)
+        await work.connect(context())
+        let action = try XCTUnwrap(work.prepareInterrupt(try XCTUnwrap(work.workers.first)))
+
+        await work.interrupt(action)
+
+        XCTAssertEqual(wire.calls.map(\.method), ["subagent.list", "subagent.list"])
+        XCTAssertEqual(work.errorMessage, "This Hermes connection no longer owns these workers. Reconnect to inspect them.")
+        XCTAssertEqual(work.availability, .supported)
+        XCTAssertNil(work.interruptingWorker)
+    }
+
     func testUnsupportedMethodDegradesWithoutInventingWorkers() async {
-        let wire = BotDelegatedWorkWire()
+        let wire = HermesDelegatedWorkWire()
         wire.handler = { _, _ in throw BotFailure.rejected(-32601) }
-        let work = BotDelegatedWork(wire: wire)
+        let work = HermesDelegatedWork(wire: wire)
 
         await work.connect(context())
 
@@ -212,12 +262,12 @@ import XCTest
     }
 
     func testEqualRuntimeAndProfileNamesStayWithTheirConnectionOwnedModels() async {
-        let firstWire = BotDelegatedWorkWire()
-        let secondWire = BotDelegatedWorkWire()
+        let firstWire = HermesDelegatedWorkWire()
+        let secondWire = HermesDelegatedWorkWire()
         firstWire.handler = { _, _ in .object(["subagents": .array([self.worker(id: "first", startedAt: 1)])]) }
         secondWire.handler = { _, _ in .object(["subagents": .array([self.worker(id: "second", startedAt: 2)])]) }
-        let first = BotDelegatedWork(wire: firstWire)
-        let second = BotDelegatedWork(wire: secondWire)
+        let first = HermesDelegatedWork(wire: firstWire)
+        let second = HermesDelegatedWork(wire: secondWire)
 
         await first.connect(context(connectionID: firstConnection, runtime: "same-runtime"))
         await second.connect(context(connectionID: UUID(), runtime: "same-runtime"))
@@ -226,7 +276,7 @@ import XCTest
         XCTAssertEqual(second.workers.map(\.subagentID), ["second"])
     }
 
-    private func context(connectionID: UUID? = nil, runtime: String = "runtime") -> BotDelegatedWork.Context {
+    private func context(connectionID: UUID? = nil, runtime: String = "runtime") -> HermesDelegatedWork.Context {
         .init(connectionID: connectionID ?? firstConnection, runtime: runtime, generation: 1)
     }
 
@@ -244,7 +294,7 @@ import XCTest
     }
 }
 
-@MainActor private final class BotDelegatedWorkWire: BotTransport {
+@MainActor private final class HermesDelegatedWorkWire: BotTransport {
     struct Call {
         let method: String
         let params: [String: BotJSON]

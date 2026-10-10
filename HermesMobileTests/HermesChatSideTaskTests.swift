@@ -118,10 +118,11 @@ import Observation
         XCTAssertEqual(chat.model.goalErrorMessage, "Reconnect to the server to manage goals.")
         // Joins the reattach the 4001 started.
         await chat.turn.activate()
-        // The first attach's goal, model-catalog, Profile (#1015) and command-catalog (#1036)
-        // reads can land anywhere in this; they are not the reattach.
+        // The goal, model-catalog, Profile (#1015), command-catalog (#1036) and worker (#1140)
+        // reads each attach starts off its path can land anywhere in this; they are not the reattach.
         let methods = chat.host.requests.dropFirst(attached).compactMap { $0["method"].text }
-        XCTAssertEqual(methods.filter { !["session.control.read", "model.options", "profiles.list", "commands.catalog"].contains($0) },
+        XCTAssertEqual(methods.filter { !["session.control.read", "model.options", "profiles.list", "commands.catalog",
+                                          "subagent.list"].contains($0) },
                        ["command.dispatch", "session.resume", "session.events.since", "session.resume"],
                        "reattaching only reads")
     }

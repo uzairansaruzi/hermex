@@ -161,7 +161,7 @@ enum BotTranscriptProjection {
                 let id = "\(root)/\(index)"
                 flush(anchor: id)
                 let displayKind = row["display_kind"].text
-                let isDelegationCompletion = displayKind == BotDelegationCompletion.displayKind
+                let isDelegationCompletion = displayKind == HermesDelegationCompletion.displayKind
                 // A persisted steer arrives wrapped in the out-of-band marker.
                 // Unwrap it first so the trailing mention note is still a
                 // suffix and gets hidden like on any other user row.

@@ -273,7 +273,7 @@ import SwiftUI
             .id(model.connection.id.uuidString + model.profile.id)
         }
         .sheet(isPresented: $showingDelegatedWork) {
-            BotDelegatedWorkView(work: model.delegatedWork)
+            HermesDelegatedWorkView(work: model.delegatedWork)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }

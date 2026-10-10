@@ -181,10 +181,10 @@ final class BotActivityTests: XCTestCase {
         XCTAssertEqual(projected.messages.map(\.content), [report, report],
                        "the card keeps the server report intact and prefix-like user text stays user-authored")
         let delivery = try XCTUnwrap(projected.messages.first)
-        XCTAssertEqual(delivery.displayKind, BotDelegationCompletion.displayKind)
+        XCTAssertEqual(delivery.displayKind, HermesDelegationCompletion.displayKind)
         XCTAssertEqual(delivery.displayMetadata?["delegation_id"], .string("deleg_123"))
 
-        let completion = try XCTUnwrap(BotDelegationCompletion(delivery))
+        let completion = try XCTUnwrap(HermesDelegationCompletion(delivery))
         XCTAssertEqual(completion.delegationID, "deleg_123")
         XCTAssertEqual(completion.taskCount, 2)
         XCTAssertEqual(completion.completedCount, 2)
@@ -282,7 +282,7 @@ final class BotActivityTests: XCTestCase {
         // row by the turn clock, so no prompt is only live and the turn stays open.
         let skill = workedTurn() + [row("user", "/work fix the leak", at: 210, kind: "skill_invocation")]
             + workedTurn(from: 210).dropFirst()
-        let delivery = workedTurn() + [row("user", "Report", at: 210, kind: BotDelegationCompletion.displayKind)]
+        let delivery = workedTurn() + [row("user", "Report", at: 210, kind: HermesDelegationCompletion.displayKind)]
             + workedTurn(from: 210).dropFirst()
         for history in [skill, delivery] {
             let (folds, messages) = folds(history, isStreaming: true)
@@ -292,7 +292,7 @@ final class BotActivityTests: XCTestCase {
     }
 
     func testDelegationDeliveryOpensItsOwnTurnTimedFromTheDelivery() throws {
-        let kind = BotDelegationCompletion.displayKind
+        let kind = HermesDelegationCompletion.displayKind
         let history = [row("user", "Research X", at: 1000), row("assistant", "Delegated", at: 1010),
                        row("user", "Report 1", at: 5000, kind: kind),
                        row("assistant", "Reading", reasoning: "Scan it", at: 5005), row("tool"),

@@ -96,8 +96,8 @@ struct HermesChatTranscript: Equatable {
 /// `write`, never resent; a Send or Queue uploads its staged files first (#1012). The host's
 /// requests (approvals, questions, sudo and secret prompts) are `requests` (#1011); the goal,
 /// `/btw` and `/background` are `sideTasks` (#1013); its model and Profile chips are
-/// `settings` (#1015); its host's slash commands are `slashCommands` (#1036); its plan and how
-/// its last turn ended are `activity` (#1139). Edit,
+/// `settings` (#1015); its host's slash commands are `slashCommands` (#1036); its plan, how
+/// its last turn ended and its delegated workers are `activity` (#1139, #1140). Edit,
 /// Regenerate, `/retry` and `/undo` cut the host's history (`rewind`, `undo`; #1049), and
 /// `/compress` compacts it (`compress`; #1050).
 ///
@@ -128,8 +128,8 @@ struct HermesChatTranscript: Equatable {
     let settings: HermesChatSettings
     /// The host's slash commands, for the composer's panel and send path (#1036).
     let slashCommands: HermesSlashCommands
-    /// The session's plan and the last turn's outcome (#1139).
-    let activity = HermesChatActivity()
+    /// The session's plan, the last turn's outcome (#1139) and its delegated workers (#1140).
+    let activity: HermesChatActivity
 
     /// The host's `turn_started_at` for the running turn, once known.
     @ObservationIgnored private var turnStartedAt: Double?
@@ -219,6 +219,7 @@ struct HermesChatTranscript: Equatable {
         sideTasks = HermesChatSideTasks(engine: engine)
         settings = HermesChatSettings(engine: engine)
         slashCommands = HermesSlashCommands(engine: engine)
+        activity = HermesChatActivity(wire: engine.wire)
         draftKey = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id)
         if case .new = engine.target { opensNew = true } else { opensNew = false }
         engine.owner = self
@@ -954,6 +955,9 @@ struct HermesChatTranscript: Equatable {
             requests.cancel(payload)
         case "todo.updated":
             activity.receivePlan(payload)
+        case "subagent.spawn_requested", "subagent.start", "subagent.progress", "subagent.tool", "subagent.complete":
+            // Roster changes, coalesced into one list; a child's reasoning and text never list.
+            activity.delegatedWork.noteSubagentEvent()
         case "status.update":
             // The compute host's late answer to a `pending` compaction (#1050).
             if compactionPending, payload["kind"].text == "compacted" { pendingCompactionDidFinish() }
@@ -1512,6 +1516,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     func conversationDidReset() {
         requests.reset()
         settings.disconnect()
+        activity.delegatedWork.disconnect()
         heldFrames = []; deltasInRebuild = []; replayedReply = ""
     }
 
@@ -1567,9 +1572,16 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
             reportHistoryFailure(historyFailure)
         }
         sideTasks.didConnect(runtime: runtime, attempt: attempt)
-        // Off the attach's path: the chips and the `/` panel fill in once their catalogs answer.
+        // Off the attach's path: the chips, the `/` panel and the worker count fill in once
+        // their reads answer.
         Task { [settings] in await settings.connect(runtime: runtime, attempt: attempt) }
         Task { [slashCommands] in await slashCommands.connect(runtime: runtime, attempt: attempt) }
+        let workers = HermesDelegatedWork.Context(connectionID: engine.connection.id, runtime: runtime, generation: attempt)
+        Task { [weak self] in
+            // Not for an attach a reset already replaced.
+            guard let self, self.engine.generation == attempt else { return }
+            await self.activity.delegatedWork.connect(workers)
+        }
     }
 
     func conversation(didReceive frame: BotJSON, afterGap: Bool) {
@@ -1596,6 +1608,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
 
     func conversationWillDisconnect() {
         requests.willLeave()
+        activity.delegatedWork.disconnect()
     }
 
     func conversationDidDisconnect(_ failure: BotFailure, retrying: Bool) {
