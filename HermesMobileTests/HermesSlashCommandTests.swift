@@ -214,15 +214,23 @@ import Observation
     }
 
     /// A Bot Chat row (Archived) opens by its key with Bot Chat's rules, so its compaction follows
-    /// the key as any session's does; every other row opens as a session.
+    /// the key as any session's does, and so does a legacy chain's "Bot Chat (continued)" tip;
+    /// every other row opens as a session.
     func testABotChatRowOpensWithBotChatsRules() {
-        let bot = HermesSessionRow(id: "bot", title: "Bot Chat", hidden: true, profile: "default").summary(in: "default")
-        let opened = bot.hermesChat(on: URL(string: "https://hermes.example")!, connection: Self.connection, listedIn: "default")
-        XCTAssertEqual(opened?.target, .session(profile: "default", key: "bot"))
-        XCTAssertEqual(opened?.policy, .botChat)
-        let plain = HermesSessionRow(id: "a", title: "Plan").summary(in: "default")
-        XCTAssertEqual(plain.hermesChat(on: URL(string: "https://hermes.example")!, connection: Self.connection,
-                                        listedIn: "default")?.policy, .session)
+        func opened(_ row: HermesSessionRow) -> HermesSessionChat? {
+            row.summary(in: "default").hermesChat(on: URL(string: "https://hermes.example")!, connection: Self.connection,
+                                                  listedIn: "default")
+        }
+        let bot = opened(HermesSessionRow(id: "bot", title: "Bot Chat", hidden: true, profile: "default"))
+        XCTAssertEqual(bot?.target, .session(profile: "default", key: "bot"))
+        XCTAssertEqual(bot?.policy, .botChat)
+        let tip = opened(HermesSessionRow(id: "tip", title: "Bot Chat (continued)", archived: true, hidden: true,
+                                          profile: "default", lineageRootID: "root"))
+        XCTAssertEqual(tip?.target, .session(profile: "default", key: "tip"))
+        XCTAssertEqual(tip?.policy, .botChat)
+        XCTAssertEqual(opened(HermesSessionRow(id: "tip", title: "Notes (continued)", hidden: true,
+                                               lineageRootID: "root"))?.policy, .session)
+        XCTAssertEqual(opened(HermesSessionRow(id: "a", title: "Plan"))?.policy, .session)
     }
 
     // MARK: Sessions (#1053)

@@ -531,7 +531,8 @@ redirect's steer during a tool are verified against `tui_gateway/methods_config_
 `tui_gateway/server.py` and `agent/interrupt_control.py` at `ca678285`.
 
 A bot's Bot Chat opens in the main chat too (#1145): a `.canonicalChat` target, or a Bot Chat
-row Archived opens by its key (`HermesSessionChat.botChatRoot`, the row's lineage root). One
+row Archived opens by its key, including a legacy chain's "Bot Chat (continued)" tip
+(`HermesSessionChat.botChatRoot`, the row's lineage root, which also scopes its cache). One
 `HermesChatPolicy` keeps Bot Chat's rules (#1127 decision 3), read by `HermesSlashCommands`,
 the message menu and the composer: `/new` (and `/reset`), `/clear` (pointing at `/compress`),
 `/resume`, `/sessions`, `/branch`, `/fork`, `/title`, `/undo` and `/retry` are refused with

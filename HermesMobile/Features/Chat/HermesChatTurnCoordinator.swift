@@ -57,13 +57,11 @@ struct HermesSessionChat: Hashable, Identifiable {
     /// asks nothing.
     var parentKey: String? = nil
     /// An archived Bot Chat's root, its row's lineage root, also for a legacy "Bot Chat
-    /// (continued)" tip: the chat caches under it and reads its bot's Bot Chat's copy of it while
-    /// it has none (#1144). Nil for any other session.
-    var botChatCacheRoot: String? = nil
-    /// The lineage root of the bot's Bot Chat row this chat opened from by its key (Archived):
-    /// the chat keeps Bot Chat's rules. Its Live Activity keeps the interim `hermes:` session
-    /// identity, since the Bot identity's tap looks the chat up by title, which leaves a deliberate
-    /// archive out. Nil for any other row; a `.canonicalChat` target is a Bot Chat without it.
+    /// (continued)" tip, which this chat opens by its key: the chat keeps Bot Chat's rules,
+    /// caches under the root and reads its bot's Bot Chat's copy of it while it has none (#1144).
+    /// Its Live Activity keeps the interim `hermes:` session identity, since the Bot identity's
+    /// tap looks the chat up by title, which leaves a deliberate archive out. Nil for any other
+    /// row; a `.canonicalChat` target is a Bot Chat without it.
     var botChatRoot: String? = nil
     /// The root a bot's deep link named for its `.canonicalChat`: once the bot has replaced that
     /// chat, the chat says so (`ChatView`'s `onChatReplaced`, #554) instead of opening the new one.
