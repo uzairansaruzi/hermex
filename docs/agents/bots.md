@@ -531,29 +531,30 @@ redirect's steer during a tool are verified against `tui_gateway/methods_config_
 `tui_gateway/server.py` and `agent/interrupt_control.py` at `ca678285`.
 
 A bot's Bot Chat opens in the main chat too (#1145): a `.canonicalChat` target, or a Bot Chat
-row Archived opens by its key (`HermesSessionChat.botChatRoot`, the row's lineage root, which
-its Live Activity's tap names, since the canonical route resolves that and never the tip key).
-A deliberately archived Bot Chat is out of upstream's title lookup, so such a tap shows the
-missing or replaced state and opens or restores nothing. One `HermesChatPolicy` keeps
-Bot Chat's rules (#1127 decision 3), read by `HermesSlashCommands`, the message menu and the
-composer: `/new` (and `/reset`), `/clear` (pointing at `/compress`), `/resume`, `/sessions`,
-`/branch`, `/fork`, `/title`, `/undo` and `/retry` are refused with copy before anything is
-sent and left out of the panel, Hermex's and the host's alike; Edit, Regenerate and Fork From
-Here are not offered (the outcome row's Retry stays); the Profile chip shows the bot's Profile
-and picks no other. `/btw`, `/background`, `/goal`, `/yolo` and `/compress` run as in a session.
-The title is the bot's pill (`HermesBotChatPill` over Bot Chat's `BotChatTitlePill`): the
-roster row from the chat's `profiles.list` read (a bare row for the Profile until it answers),
-the avatar `BotAvatarStore` already holds, and the face from the turn
-(`HermesChatTurnCoordinator.titleFace`, with the beat rules below). A tap opens
+row Archived opens by its key (`HermesSessionChat.botChatRoot`, the row's lineage root). One
+`HermesChatPolicy` keeps Bot Chat's rules (#1127 decision 3), read by `HermesSlashCommands`,
+the message menu and the composer: `/new` (and `/reset`), `/clear` (pointing at `/compress`),
+`/resume`, `/sessions`, `/branch`, `/fork`, `/title`, `/undo` and `/retry` are refused with
+copy before anything is sent and left out of the panel, Hermex's and the host's alike; Edit,
+Regenerate and Fork From Here are not offered (the outcome row's Retry stays); the Profile chip
+shows the bot's Profile and picks no other. `/btw`, `/background`, `/goal`, `/yolo` and
+`/compress` run as in a session. The title is the bot's pill (`HermesBotChatPill` over Bot
+Chat's `BotChatTitlePill`): the roster row from the chat's `profiles.list` read (a bare row for
+the Profile until it answers), the avatar `BotAvatarStore` already holds, and the face from the
+turn (`HermesChatTurnCoordinator.titleFace`, with the beat rules below). A tap opens
 `BotProfileEditorView`; closing it reads the roster again. The same roster gives the composer's
 `@` panel this connection's other bots above its files, and the editor their chips; every send
 mode appends Desktop's note to the typed text's mentions and the chat shows the text without it
 (the optimistic row, the snapshot's in-flight prompt and the queued receipt). A session sends
 `@` text as typed. A restored prompt drops the host's context footer and reference lines before
-the note, so an attachment never exposes it. Its turns drive the Bot Live Activity (below),
-which takes the bot's name and avatar again when a roster read lands mid-turn. A `linkedRoot` (a bot link's
-root) the bot has replaced calls `ChatView`'s `onChatReplaced` (#554); Update sign-in is
-`HermesUpdateSignInAction`. Rooms never open here.
+the note, so an attachment never exposes it. A `.canonicalChat`'s turns drive the Bot Live
+Activity (below), which takes the bot's name and avatar again when a roster read lands
+mid-turn. A row opened by its key keeps the session's `hermes:` activity, with no tap
+destination until #706: the Bot activity's tap looks the chat up by title, which leaves a
+deliberate archive out and finds a replacement instead, and the client cannot tell a deliberate
+archive from a recoverable one. A `linkedRoot` (a bot link's root) the bot has replaced calls
+`ChatView`'s `onChatReplaced` (#554); Update sign-in is `HermesUpdateSignInAction`. Rooms never
+open here.
 
 `BotConversation` owns one server/connection/Profile view lifetime and is the engine's
 Bot Chat owner: it keeps the snapshot-driven transcript and the Bot features (mentions,

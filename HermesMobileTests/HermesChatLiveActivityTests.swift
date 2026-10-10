@@ -242,33 +242,35 @@ import Observation
         XCTAssertEqual(chat.spy.avatars.count, 2)
     }
 
-    /// A Bot Chat row opened from Archived resumes its compression tip by key, but its
-    /// activity's tap names the row's lineage root: the canonical Bot Chat route looks the
-    /// chat up by title and reopens the same one, not the replaced-chat state.
-    func testATapOnAnArchivedBotChatsActivityReopensThatChat() async throws {
-        // `BotFixtureWire`'s bot, whose lookup finds root `root` at tip `tip`.
+    /// A Bot Chat row opened from Archived resumes its key, and may be a deliberate archive that
+    /// upstream's title lookup leaves out, or one the bot has since replaced. Its activity keeps
+    /// the interim `hermes:` session identity, whose tap opens the app as it is, on this chat:
+    /// no Bot route, so a tap never reaches the canonical lookup, opens the replacement or
+    /// unarchives the original. The chat still keeps Bot Chat's rules.
+    func testAnArchivedBotChatsActivityNeverTapsIntoTheCanonicalChat() async throws {
         let row = HermesSessionRow(id: "tip", title: "Bot Chat", archived: true, hidden: true, profile: "inbox-triage",
                                    lineageRootID: "root").summary(in: "default")
         let opened = try XCTUnwrap(row.hermesChat(on: Self.server, connection: Self.connection, listedIn: "default"))
-        let chat = await openChat(snapshot: resume(running: false, profile: "inbox-triage"), target: opened.target,
-                                  botChatRoot: opened.botChatRoot)
-        chat.receive(event(1, "session.info", ["running": .bool(true), "turn_started_at": .number(Self.startedAt)]))
-        chat.receive(event(2, "message.start"))
-        let start = try XCTUnwrap(chat.spy.botStarts.first)
-        XCTAssertEqual(start.pushSessionID, "tip", "pushes still name the stored key")
-        let destination = try XCTUnwrap(HermesDeepLink.botDestination(from: start.destinationURL))
-        XCTAssertEqual(destination.conversation, "root")
+        let excluded = BotJSON.object(["sessions": .array([])])
+        let replaced = BotJSON.object(["sessions": .array([.object(["id": .string("newer"), "resolved_id": .string("newer")])])])
+        for lookup in [excluded, replaced] {
+            let chat = await openChat(snapshot: resume(running: false, profile: "inbox-triage"), target: opened.target,
+                                      botChatRoot: opened.botChatRoot)
+            chat.host.always("session.list", .init(result: lookup))
+            XCTAssertEqual(chat.turn.policy, .botChat)
+            chat.receive(event(1, "session.info", ["running": .bool(true), "turn_started_at": .number(Self.startedAt)]))
+            chat.receive(event(2, "message.start"))
 
-        let tapped = BotConversation(
-            server: destination.server, connection: Self.connection,
-            profile: try XCTUnwrap(BotProfile(.object(["name": .string(destination.profile)]))),
-            conversation: destination.conversation, wire: BotFixtureWire(),
-            drafts: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60))
-        )
-        await tapped.recover()
-        XCTAssertFalse(tapped.linkedRootIsStale)
-        XCTAssertEqual(tapped.connectionState, .connected)
-        tapped.suspend()
+            XCTAssertEqual(chat.spy.botStarts, [], "no Bot identity, whose tap would look the chat up by title")
+            XCTAssertEqual(chat.spy.avatars, [])
+            let start = try XCTUnwrap(chat.spy.starts.first)
+            XCTAssertEqual(start.sessionID, "hermes:inbox-triage:tip")
+            let attributes = AgentRunActivityAttributes(sessionID: start.sessionID, sessionTitle: start.title,
+                                                        startedAt: start.startedAt, server: start.server)
+            XCTAssertNil(AgentRunTapTarget.url(attributes: attributes, sessionID: start.sessionID, activityID: "a1"))
+            XCTAssertFalse(chat.host.requests.contains { $0["method"].text == "session.list" },
+                           "nothing looked up by title, so nothing replaced or restored")
+        }
     }
 
     // MARK: Tap

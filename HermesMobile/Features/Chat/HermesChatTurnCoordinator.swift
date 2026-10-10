@@ -61,9 +61,9 @@ struct HermesSessionChat: Hashable, Identifiable {
     /// it has none (#1144). Nil for any other session.
     var botChatCacheRoot: String? = nil
     /// The lineage root of the bot's Bot Chat row this chat opened from by its key (Archived):
-    /// the chat keeps Bot Chat's rules, and its Live Activity's tap names this root, which the
-    /// canonical Bot Chat route looks up, never the key it resumes. Nil for any other row; a
-    /// `.canonicalChat` target is a Bot Chat without it.
+    /// the chat keeps Bot Chat's rules. Its Live Activity keeps the interim `hermes:` session
+    /// identity, since the Bot identity's tap looks the chat up by title, which leaves a deliberate
+    /// archive out. Nil for any other row; a `.canonicalChat` target is a Bot Chat without it.
     var botChatRoot: String? = nil
     /// The root a bot's deep link named for its `.canonicalChat`: once the bot has replaced that
     /// chat, the chat says so (`ChatView`'s `onChatReplaced`, #554) instead of opening the new one.
@@ -122,9 +122,9 @@ struct HermesChatTranscript: Equatable {
 ///
 /// Each turn drives the shared Live Activity at the same points (#1014), under the interim
 /// key `hermes:<profile>:<stored key>`, with no push and no tap destination until #706. A bot's
-/// Bot Chat (`policy`, #1145) keeps the Bot identity instead (`AgentRunActivityBot`), whose tap
-/// opens the bot's chat; its `@`mentions (`mentions`) and pill state (`botProfile`,
-/// `titleFace`) are Bot Chat's.
+/// `.canonicalChat` (#1145) keeps the Bot identity instead (`AgentRunActivityBot`), whose tap
+/// opens the bot's chat; a Bot Chat row opened by its key keeps the session's. Every Bot Chat
+/// (`policy`) has Bot Chat's `@`mentions (`mentions`) and pill state (`botProfile`, `titleFace`).
 @MainActor @Observable final class HermesChatTurnCoordinator {
     let engine: HermesConversation
     @ObservationIgnored private weak var delegate: (any HermesChatTurnDelegate)?
@@ -231,8 +231,6 @@ struct HermesChatTranscript: Equatable {
     @ObservationIgnored private let writeBotAvatar: (@MainActor (BotProfile, BotDestination) -> String?)?
     /// The look the bot's activity last drew its name and avatar from.
     @ObservationIgnored private var shownBotLook: BotProfileAppearance?
-    /// The root a Bot Chat row opened by its key names for its activity's tap (`HermesSessionChat`).
-    @ObservationIgnored private let botChatRoot: String?
     @ObservationIgnored private var showsLiveActivityExcerpts = false
     /// The waiting state last shown for the open requests, so each change is written once.
     @ObservationIgnored private var shownWaiting: AgentLiveActivityEvent?
@@ -245,7 +243,6 @@ struct HermesChatTranscript: Equatable {
         self.engine = engine
         let policy = HermesChatPolicy(target: engine.target, botChatRoot: botChatRoot)
         self.policy = policy
-        self.botChatRoot = botChatRoot
         self.liveActivities = liveActivities
         self.writeBotAvatar = writeBotAvatar
         self.isNetworkAvailable = isNetworkAvailable
@@ -1422,10 +1419,11 @@ struct HermesChatTranscript: Equatable {
         syncLiveActivityWaiting()
     }
 
-    /// A Bot Chat's activity identity (#709): the bot on this connection, whose tap opens its
-    /// chat at the canonical root, with the stored key as the push session. Nil in a session.
+    /// A `.canonicalChat`'s activity identity (#709): the bot on this connection, whose tap opens
+    /// its chat at the canonical root, with the stored key as the push session. Nil in a session,
+    /// and in a Bot Chat row opened by its key, which the canonical route may not find again.
     private func botActivity() -> AgentRunActivityBot? {
-        guard let profile = botProfile else { return nil }
+        guard case .canonicalChat = engine.target, let profile = botProfile else { return nil }
         let destination = botDestination(profile)
         shownBotLook = BotProfileAppearance(profile: profile)
         guard var bot = AgentRunActivityBot(destination, avatarFile: writeBotAvatar?(profile, destination)) else { return nil }
@@ -1433,11 +1431,10 @@ struct HermesChatTranscript: Equatable {
         return bot
     }
 
-    /// Where the bot's activity taps to: its chat at the canonical root. A row opened by its key
-    /// names the row's lineage root, since `engine.root` is then the key it resumes.
+    /// Where the bot's activity taps to: its chat at the canonical root.
     private func botDestination(_ profile: BotProfile) -> BotDestination {
         BotDestination(server: engine.server, connectionID: engine.connection.id, profile: profile.id,
-                       conversation: botChatRoot ?? engine.root)
+                       conversation: engine.root)
     }
 
     /// A roster read answered after the bot's activity started, as when attaching to a running
