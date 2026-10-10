@@ -458,14 +458,7 @@ struct MessageBubbleView: View {
         return VStack(alignment: .trailing, spacing: spacing) {
             ForEach(audioItems.indices, id: \.self) { index in
                 let attachment = audioItems[index].attachment
-                InlineAudioPlayerView(
-                    title: audioDisplayName(for: attachment),
-                    load: audioLoader(for: attachment),
-                    loadKey: attachmentAudio?.loadKey ?? 0,
-                    onOpen: attachmentAudio?.openAction(
-                        for: attachment, localData: audioItems[index].localData, onPreview: onPreviewAttachment
-                    )
-                )
+                inlineAudioPlayer(for: attachment, localData: audioItems[index].localData)
                 // Identity follows the attachment, not the row position. The
                 // transcript bubble's id is positional (`transcript:<index>`),
                 // so without this a recycled row would keep its old `@State`
@@ -535,6 +528,17 @@ struct MessageBubbleView: View {
 
     /// Builds the lazy byte loader for an audio bar. Resolves the server path
     /// (or filename fallback) once and defers to the injected raw-data loader.
+    /// The inline player for an audio attachment `attachmentAudio` plays. It keeps the
+    /// source's `loadKey` as is, so a detached Hermes chat's nil waits rather than fails.
+    func inlineAudioPlayer(for attachment: MessageAttachment, localData: Data?) -> InlineAudioPlayerView {
+        InlineAudioPlayerView(
+            title: audioDisplayName(for: attachment),
+            load: audioLoader(for: attachment),
+            loadKey: attachmentAudio?.loadKey,
+            onOpen: attachmentAudio?.openAction(for: attachment, localData: localData, onPreview: onPreviewAttachment)
+        )
+    }
+
     private func audioLoader(for attachment: MessageAttachment) -> () async -> Data? {
         let resolvedPath: String? = {
             if let path = attachment.path, !path.isEmpty { return path }

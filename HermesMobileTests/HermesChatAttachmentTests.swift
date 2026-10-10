@@ -438,6 +438,22 @@ import UIKit
         XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path == "/api/fs/download" }.count, 1)
     }
 
+    /// A bubble hands its player the source's load key unchanged: a detached Hermes chat's
+    /// nil waits for the attach, where a stand-in key would load now and show the failure.
+    func testABubblesInlinePlayerKeepsADetachedChatsNilLoadKey() {
+        func player(loadKey: Int?) -> InlineAudioPlayerView {
+            let attachment = MessageAttachment(name: "memo.wav", path: "/home/u/.hermes/attachments/memo.wav")
+            return MessageBubbleView(
+                message: ChatMessage(role: "user", content: "Listen", timestamp: nil, messageId: "m"),
+                attachmentAudio: AttachmentAudioSource(load: { _ in nil }, isHost: true, loadKey: loadKey),
+                transcriptMediaCacheNamespace: "ns"
+            ).inlineAudioPlayer(for: attachment, localData: nil)
+        }
+
+        XCTAssertNil(player(loadKey: nil).loadKey)
+        XCTAssertEqual(player(loadKey: 3).loadKey, 3)
+    }
+
     /// Transcript rows skip re-rendering while their inputs compare equal, so the attach
     /// generation must be one of them, or an unchanged row's player never learns of it.
     func testATranscriptRowRerendersWhenOnlyTheAudioLoadKeyChanges() {
