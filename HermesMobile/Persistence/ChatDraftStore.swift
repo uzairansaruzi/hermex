@@ -739,13 +739,36 @@ final class ChatDraftStore {
         setContent(.empty, for: key)
     }
 
+    /// Retains a rejected send's captured files even if its view already left.
+    /// Merge by identity so newer composer records are never replaced.
+    func retainRejectedAttachments(_ attachments: [ChatDraftAttachment], for key: ChatDraftKey) {
+        guard !attachments.isEmpty, !deletedSessionKeys.contains(key) else { return }
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { draft in
+            let existingIDs = Set(draft.attachments.map(\.id))
+            draft.attachments += attachments.filter { !existingIDs.contains($0.id) }
+        }
+    }
+
     func resolveSubmission(
         submitted: ComposerDraftContent,
         current: ComposerDraftContent,
         didStart: Bool,
         draftWasEdited: Bool,
+        preserveRejectedSubmission: Bool = false,
         for key: ChatDraftKey
     ) -> ComposerDraftContent {
+        if !didStart, preserveRejectedSubmission {
+            // A sealed session definitively rejected this content. Keep both
+            // pieces of unsent work, without automatically replaying either.
+            let text = current.text.isEmpty || current.text == submitted.text
+                ? submitted.text
+                : [submitted.text, current.text].filter { !$0.isEmpty }.joined(separator: "\n\n")
+            let quotes = submitted.quotes + current.quotes.filter { !submitted.quotes.contains($0) }
+            let recovered = ComposerDraftContent(text: text, quotes: quotes)
+            setContent(recovered, for: key)
+            return recovered
+        }
         if didStart {
             // A started send consumed any staged attachments, even when the
             // user kept editing the composer during the request.
@@ -794,8 +817,15 @@ final class ChatDraftStore {
         submitted: ComposerDraftContent,
         current: ComposerDraftContent,
         draftWasEdited: Bool,
+        preserveRejectedSubmission: Bool = false,
         for key: ChatDraftKey
     ) -> ComposerDraftContent {
+        if preserveRejectedSubmission {
+            return resolveSubmission(
+                submitted: submitted, current: current, didStart: false,
+                draftWasEdited: draftWasEdited, preserveRejectedSubmission: true, for: key
+            )
+        }
         guard !draftWasEdited, current == submitted else { return current }
         clearDraft(for: key)
         return .empty

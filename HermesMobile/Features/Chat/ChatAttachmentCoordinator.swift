@@ -479,7 +479,8 @@ final class ChatAttachmentCoordinator {
     func restorePendingAttachments(_ attachments: [PendingAttachment]) {
         protectRestoringAttachments(attachments.map(ChatDraftAttachment.init(pending:)))
         guard !attachments.isEmpty else { return }
-        pendingAttachments = attachments + pendingAttachments
+        let existingIDs = Set(pendingAttachments.map(\.id))
+        pendingAttachments = attachments.filter { !existingIDs.contains($0.id) } + pendingAttachments
         refreshAttachmentSlots()
     }
 

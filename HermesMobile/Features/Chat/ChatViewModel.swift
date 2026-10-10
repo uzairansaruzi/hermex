@@ -547,6 +547,11 @@ final class ChatViewModel {
     private(set) var hasActivatedGoalCommand = false
 
     private let sessionID: String?
+    @ObservationIgnored private var chatSendGeneration = 0
+    @ObservationIgnored private var compressionContinuation: SessionSummary?
+    private(set) var isCompressionRotated = false
+    @ObservationIgnored private var compressionRejectionMessage: String?
+    @ObservationIgnored private var didHandOffCompressionDraft = false
     /// The workspace this chat's session is pointed at. `/workspace` and the
     /// composer's picker move it without the session id changing, and every
     /// `@path` the chat has confirmed was confirmed against the old root.
@@ -2837,6 +2842,11 @@ final class ChatViewModel {
             return await submitHermesPrompt(draft, mode: .send, to: hermesTurn)
         }
 
+        guard !isCompressionRotated else {
+            sendErrorMessage = compressionRejectionMessage
+            return false
+        }
+
         let message = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         // Attachment-only sends (empty text, staged attachments) synthesize
         // their message text in `PendingAttachment.chatMessageText` below.
@@ -2862,7 +2872,8 @@ final class ChatViewModel {
             messageAttachments: attachmentPreparation.messageAttachments,
             apiPayloads: attachmentPreparation.apiPayloads,
             attachmentsToRestoreOnFailure: attachmentPreparation.attachments,
-            modelContext: modelContext
+            modelContext: modelContext,
+            allowsCompressionContinuation: true
         )
         if didStart {
             for attachment in attachmentPreparation.attachments {
@@ -2871,6 +2882,35 @@ final class ChatViewModel {
             }
         }
         return didStart
+    }
+
+    /// Called only after ChatView restores the rejected composer submission. Uses
+    /// the normal pushed-session route and moves all retained draft work together.
+    func compressionContinuationForNavigation(
+        from sourceKey: ChatDraftKey, isCurrent: @MainActor () -> Bool,
+        prepareDraftForHandoff: @MainActor () -> Void = {}
+    ) async -> SessionSummary? {
+        guard !didHandOffCompressionDraft,
+              let continuation = compressionContinuation, let id = continuation.sessionId,
+              let sessionID, sourceKey == .session(server: server, sessionID: sessionID),
+              isCurrent(), !Task.isCancelled else { return nil }
+        let generation = chatSendGeneration
+        let targetKey = ChatDraftKey.session(server: server, sessionID: id)
+        let existing = await drafts.draft(for: targetKey)
+        guard generation == chatSendGeneration, compressionContinuation?.sessionId == id,
+              isCurrent(), !Task.isCancelled,
+              Self.compressionProfile(continuation.profile) == Self.compressionProfile(currentProfile) else { return nil }
+        // Never overwrite another window's unsent work. Stay here with this draft
+        // and the original conflict rather than dropping either composer's content.
+        guard existing?.isEmpty != false else { return nil }
+        // Destination hydration suspended above. Snapshot the latest composer
+        // now, with no suspension between reconciliation and the atomic move.
+        prepareDraftForHandoff()
+        drafts.moveDraft(from: sourceKey, to: targetKey)
+        didHandOffCompressionDraft = true
+        lastError = nil
+        sendErrorMessage = nil
+        return continuation
     }
 
     /// Whether this chat runs a Hermes session rather than a webui one (#1010).
@@ -3269,15 +3309,24 @@ final class ChatViewModel {
         messageAttachments: [MessageAttachment],
         apiPayloads: [JSONValue]?,
         attachmentsToRestoreOnFailure: [PendingAttachment],
-        modelContext: ModelContext?
+        modelContext: ModelContext?,
+        allowsCompressionContinuation: Bool = false
     ) async -> Bool {
+        guard !isCompressionRotated else {
+            restorePendingAttachments(attachmentsToRestoreOnFailure)
+            sendErrorMessage = compressionRejectionMessage
+            return false
+        }
+        chatSendGeneration += 1
+        let generation = chatSendGeneration
+        let profile = Self.compressionProfile(currentProfile)
         isStartingChat = true
         sendErrorMessage = nil
         lastError = nil
         archiveLiveActivityForNewTurn()
         streamCoordinator.prepareForNewResponse()
         responseCompletionNeedsTranscriptRefresh = false
-        defer { isStartingChat = false }
+        defer { if generation == chatSendGeneration { isStartingChat = false } }
 
         let optimisticMessage = ChatMessage(
             role: "user",
@@ -3308,12 +3357,22 @@ final class ChatViewModel {
             )
 
             guard let streamID = response.streamId else {
-                sendErrorMessage = response.error ?? String(localized: "The server did not return a stream ID.")
                 rollbackOptimisticMessage(id: localMessageID)
                 cacheCurrentMessages(sessionID: sessionID, modelContext: modelContext)
                 restorePendingAttachments(attachmentsToRestoreOnFailure)
+                if allowsCompressionContinuation {
+                    drafts.retainRejectedAttachments(attachmentsToRestoreOnFailure.map(ChatDraftAttachment.init(pending:)),
+                                                     for: .session(server: server, sessionID: sessionID))
+                }
+                guard generation == chatSendGeneration, !Task.isCancelled else { return false }
+                sendErrorMessage = response.error ?? String(localized: "The server did not return a stream ID.")
                 return false
             }
+
+            // A successful POST consumed the submission even if the view left.
+            // Do not attach its stream to a stale owner, but never restore it as
+            // rejected input (which could invite a duplicate explicit resend).
+            guard generation == chatSendGeneration, !Task.isCancelled else { return true }
 
             completeExplicitModelPickForChatStart(explicitModelPick)
             streamCoordinator.start(
@@ -3322,14 +3381,52 @@ final class ChatViewModel {
             )
             return true
         } catch {
-            if let streamID = (error as? APIError)?.activeStreamID {
-                rollbackOptimisticMessage(id: localMessageID)
-                cacheCurrentMessages(sessionID: sessionID, modelContext: modelContext)
-                restorePendingAttachments(attachmentsToRestoreOnFailure)
+            // Submission-owned cleanup survives navigation/cancellation. Roll
+            // back only this message and merge attachments with newer work.
+            rollbackOptimisticMessage(id: localMessageID)
+            cacheCurrentMessages(sessionID: sessionID, modelContext: modelContext)
+            restorePendingAttachments(attachmentsToRestoreOnFailure)
+            if allowsCompressionContinuation {
+                drafts.retainRejectedAttachments(attachmentsToRestoreOnFailure.map(ChatDraftAttachment.init(pending:)),
+                                                 for: .session(server: server, sessionID: sessionID))
+            }
+            if case .http(409, _) = error as? APIError,
+               (error as? APIError)?.serverCode == "session_rotated" {
+                isCompressionRotated = true
+                compressionRejectionMessage = error.localizedDescription
+            }
+            guard generation == chatSendGeneration, !Task.isCancelled else { return false }
+            if allowsCompressionContinuation,
+               let rotation = (error as? APIError)?.sessionRotation,
+               rotation.continuationSessionID != sessionID {
+                // This POST was rejected. GET may resolve a newer tip, but never replay it.
+                lastError = error
+                sendErrorMessage = error.localizedDescription
+                do {
+                    let response = try await client.session(id: rotation.continuationSessionID,
+                                                            includeMessages: false, messageLimit: nil)
+                    guard generation == chatSendGeneration, !Task.isCancelled else { return false }
+                    if let detail = response.session,
+                       let id = detail.sessionId, id != sessionID,
+                       APIError.SessionRotation(continuationSessionID: id) != nil,
+                       Self.compressionProfile(detail.profile) == profile,
+                       Self.compressionProfile(currentProfile) == profile {
+                        compressionContinuation = SessionSummary(from: detail)
+                    }
+                } catch {
+                    guard generation == chatSendGeneration, !Task.isCancelled else { return false }
+                    lastError = error
+                    sendErrorMessage = error.localizedDescription
+                }
+                return false
+            }
+            if let apiError = error as? APIError, apiError.serverCode != "session_rotated",
+               let streamID = apiError.activeStreamID {
                 // The existing run may have started outside this view model. Reconcile
                 // the server transcript first so the SSE tokens attach to the persisted
                 // assistant turn instead of creating a second bubble with only the tail.
                 await loadMessages(modelContext: modelContext)
+                guard generation == chatSendGeneration, !Task.isCancelled else { return false }
                 _ = restoreActiveStreamSnapshotIfAvailable(streamID: streamID)
                 streamingAssistantMessageID = TranscriptTurnClassifier
                     .currentTurnAssistantAnchorIDs(in: messages, messageOffset: messagesOffset)
@@ -3343,11 +3440,12 @@ final class ChatViewModel {
             lastError = error
             sendErrorMessage = error.localizedDescription
             sendErrorRuntimeStale = (error as? APIError)?.agentRuntimeStale
-            rollbackOptimisticMessage(id: localMessageID)
-            cacheCurrentMessages(sessionID: sessionID, modelContext: modelContext)
-            restorePendingAttachments(attachmentsToRestoreOnFailure)
             return false
         }
+    }
+
+    private static func compressionProfile(_ profile: String?) -> String {
+        nonEmpty(profile) ?? "default"
     }
 
     func submitGoal(args rawArgs: String, modelContext: ModelContext? = nil) async -> Bool {
@@ -6106,6 +6204,8 @@ final class ChatViewModel {
     }
 
     func suspendStreamForNavigation() {
+        chatSendGeneration += 1
+        isStartingChat = false
         suspendActiveStreamConnection()
     }
 

@@ -283,6 +283,42 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
         XCTAssertEqual(APIError.http(statusCode: 403, body: body).serverMessage, long)
     }
 
+    // MARK: - Durable compression continuation
+
+    func testSessionRotationRequiresExactConflictContractAndValidID() {
+        let body = #"{"code":"session_rotated","continuation_session_id":"20261008-abc_def","future":{"x":1}}"#
+        XCTAssertEqual(APIError.http(statusCode: 409, body: body).sessionRotation?.continuationSessionID,
+                       "20261008-abc_def")
+        for status in [200, 400, 404, 500] {
+            XCTAssertNil(APIError.http(statusCode: status, body: body).sessionRotation)
+        }
+        for invalid in [
+            "not json", "{}",
+            #"{"code":"session_profile_mismatch","continuation_session_id":"next"}"#,
+            #"{"continuation_session_id":"next"}"#,
+            #"{"code":"session_rotated"}"#,
+            #"{"code":"session_rotated","continuation_session_id":null}"#,
+            #"{"code":"session_rotated","continuation_session_id":42}"#,
+            #"{"code":"session_rotated","continuation_session_id":{}}"#,
+            #"{"code":"session_rotated","continuation_session_id":""}"#,
+            #"{"code":"session_rotated","continuation_session_id":" next "}"#,
+            #"{"code":"session_rotated","continuation_session_id":"next\nchat"}"#,
+            #"{"code":"session_rotated","continuation_session_id":"../next"}"#,
+            #"{"code":"session_rotated","continuation_session_id":"https://other.test"}"#
+        ] {
+            XCTAssertNil(APIError.http(statusCode: 409, body: invalid).sessionRotation, invalid)
+        }
+    }
+
+    func testMalformedContinuationDoesNotHideExistingErrorMetadata() {
+        let error = APIError.http(statusCode: 409, body:
+            #"{"error":"Already running","active_stream_id":"stream-1","continuation_session_id":42}"#)
+        XCTAssertNil(error.sessionRotation)
+        XCTAssertEqual(error.activeStreamID, "stream-1")
+        XCTAssertEqual(error.serverMessage, "Already running")
+        XCTAssertEqual(error.privacySafeLogCategory, "http.409")
+    }
+
     // MARK: - HTTP 409 agent_runtime_stale (issue #955)
 
     /// hermes-webui's `agent_runtime_stale_payload`, plus a field it might add later.

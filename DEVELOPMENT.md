@@ -20,6 +20,30 @@ Before debugging the app, verify the server is reachable:
 curl https://<your-server>/health
 ```
 
+## Compression continuation recovery
+
+When a WebUI chat send is rejected with HTTP 409 and `code: "session_rotated"`,
+the server supplies `continuation_session_id` for the compressed conversation's
+continuation. Hermex loads that session on the same server, verifies the Profile,
+and opens it only after restoring the rejected composer submission. The draft
+and retained attachments move together; the message is **not automatically
+resent**. If the user edits while recovery is pending, the rejected text and
+quotes are retained alongside those edits for review before explicit resend.
+The same retention applies to rejected `/queue` and `/steer` fallbacks, before
+slash-command result handling can consume the composer.
+A late rejection still rolls back its optimistic message and retains its files,
+even if the view has left. After a successful handoff the covered parent composer
+is cleared, and that sealed parent cannot start another POST on Back.
+An invalid target, failed load, stale view, or existing nonempty draft at the
+destination keeps the original draft in place rather than overwriting it.
+Other HTTP 409 responses retain their own recovery behavior.
+
+Focused coverage lives in `APIClientAuthAndErrorTests` and
+`ChatViewModelSendTests`. For a manual simulator check, open a sealed compressed
+parent, send a draft with an attachment, and verify that its continuation opens
+with the draft intact and no new agent run until Send is tapped again. Also
+check leaving the parent during recovery and a destination with an existing draft.
+
 ## Upstream Contract Pin
 
 The app is tested against the `hermes-webui` commit in the root [`UPSTREAM_TESTED_SHA`](UPSTREAM_TESTED_SHA) file — the only copy of the pin, so it cannot drift. To see its release tag: `git -C .codex-tmp/hermes-webui describe --tags --exact-match $(cat UPSTREAM_TESTED_SHA)`. The advance procedure lives in `AGENTS.md` § Working with the server.

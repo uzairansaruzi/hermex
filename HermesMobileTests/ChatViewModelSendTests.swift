@@ -1103,6 +1103,311 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.sendErrorMessage, "Could not start chat")
     }
 
+    @MainActor
+    private func makeContinuationDraftStore() -> ChatDraftStore {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+        // Budgeted staging requires a backing store; keep real attachment copies
+        // isolated alongside this fixture's draft persistence.
+        return ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: directory),
+                              attachmentStore: ChatDraftAttachmentStore(directoryURL: directory),
+                              debounceDuration: .seconds(60))
+    }
+
+    @MainActor
+    func testRotatedSendNavigatesWithReconciledDraftAndAttachmentsWithoutReplay() async throws {
+        let drafts = makeContinuationDraftStore()
+        let server = URL(string: "https://example.test")!
+        let source = ChatDraftKey.session(server: server, sessionID: "session-abc")
+        let target = ChatDraftKey.session(server: server, sessionID: "continuation-tip")
+        let otherServer = ChatDraftKey.session(server: URL(string: "https://other.test")!, sessionID: "continuation-tip")
+        drafts.setDraft("Other server draft", for: otherServer)
+        var paths: [String] = []
+        let viewModel = try makeViewModel(sessionSummary: makeSession(profile: "work"), draftStore: drafts) { request in
+            XCTAssertEqual(request.url?.host, "example.test")
+            let path = request.url?.path ?? ""
+            paths.append(path)
+            switch path {
+            case "/api/upload":
+                return apiTestJSONResponse(#"{"filename":"note.txt","path":"/tmp/note.txt","mime":"text/plain","size":4,"is_image":false}"#, for: request)
+            case "/api/chat/start":
+                XCTAssertEqual(try apiTestJSONBody(from: request)["profile"] as? String, "work")
+                return apiTestJSONResponse(#"{"error":"Open its continuation before sending.","code":"session_rotated","continuation_session_id":"continuation-next"}"#, for: request, status: 409)
+            case "/api/session":
+                let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+                XCTAssertEqual(query?.first(where: { $0.name == "session_id" })?.value, "continuation-next")
+                // GET navigation can itself adopt the latest durable tip.
+                return apiTestJSONResponse(#"{"session":{"session_id":"continuation-tip","title":"Continuation","profile":"work","messages":[]}}"#, for: request)
+            default:
+                XCTFail("Unexpected request \(path)")
+                throw URLError(.badURL)
+            }
+        }
+        await viewModel.uploadAttachment(data: Data([1, 2, 3, 4]), filename: "note.txt", previewData: nil)
+        let staged = try XCTUnwrap(viewModel.pendingAttachments.first)
+        let record = ChatDraftAttachment(id: staged.id, name: staged.name, mime: staged.mime,
+                                         size: staged.size, isImage: staged.isImage, file: staged.draftFileName)
+        let submitted = ComposerDraftContent(text: "  Keep my whitespace  ", quotes: [ComposerQuote(text: "A quote")])
+        drafts.setContent(submitted, for: source)
+        drafts.setAttachments([record], for: source)
+        let didStart = await viewModel.sendMessage(submitted.text)
+        XCTAssertFalse(didStart)
+        XCTAssertTrue(viewModel.messages.isEmpty)
+        XCTAssertEqual(viewModel.pendingAttachments.map(\.id), [staged.id])
+        XCTAssertNil(viewModel.activeStreamID)
+        // Match ChatView's failed-submission reconciliation, including an edit during send.
+        let edited = ComposerDraftContent(text: "Newer draft", quotes: submitted.quotes)
+        let resolved = drafts.resolveSubmission(submitted: submitted, current: edited,
+                                                didStart: didStart, draftWasEdited: true,
+                                                preserveRejectedSubmission: viewModel.isCompressionRotated, for: source)
+        XCTAssertEqual(resolved.text, submitted.text + "\n\n" + edited.text)
+        XCTAssertEqual(resolved.quotes, submitted.quotes)
+        drafts.setContent(resolved, for: source)
+        var preparedForHandoff = false
+        let latest = ComposerDraftContent(text: resolved.text + "\n\nLast edit", quotes: resolved.quotes + [ComposerQuote(text: "Last quote")])
+        let destination = await viewModel.compressionContinuationForNavigation(
+            from: source, isCurrent: { true }, prepareDraftForHandoff: {
+                preparedForHandoff = true
+                drafts.setContent(latest, for: source)
+            }
+        )
+        XCTAssertTrue(preparedForHandoff)
+        XCTAssertEqual(destination?.sessionId, "continuation-tip")
+        XCTAssertEqual(destination?.profile, "work")
+        let retained = await drafts.draft(for: target)
+        XCTAssertEqual(retained?.text, latest.text)
+        XCTAssertEqual(retained?.quotes, latest.quotes)
+        XCTAssertEqual(retained?.attachments, [record])
+        let removedSource = await drafts.draft(for: source)
+        XCTAssertNil(removedSource)
+        try await drafts.flush()
+        let unrelated = await drafts.draft(for: otherServer)
+        XCTAssertEqual(unrelated?.text, "Other server draft")
+        XCTAssertEqual(paths, ["/api/upload", "/api/chat/start", "/api/session"])
+        XCTAssertNil(viewModel.sendErrorMessage)
+        let duplicate = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+        XCTAssertNil(duplicate)
+        viewModel.suspendStreamForNavigation()
+        let backSend = await viewModel.sendMessage("New work after Back")
+        XCTAssertFalse(backSend)
+        XCTAssertEqual(paths, ["/api/upload", "/api/chat/start", "/api/session"])
+        let unchanged = await drafts.draft(for: target)
+        XCTAssertEqual(unchanged?.text, latest.text)
+        XCTAssertEqual(unchanged?.attachments, [record])
+    }
+
+    @MainActor
+    func testRotatedQueueAndSteerReconcileComposerBeforeNavigationWithoutReplay() async throws {
+        for command in ["/queue", "/steer"] {
+            for edited in [false, true] {
+                let drafts = makeContinuationDraftStore()
+                let source = ChatDraftKey.session(server: URL(string: "https://example.test")!, sessionID: "session-abc")
+                let submitted = ComposerDraftContent(text: "\(command) Keep working", quotes: [])
+                drafts.setContent(submitted, for: source)
+                var posts = 0
+                let viewModel = try makeViewModel(draftStore: drafts) { request in
+                    if request.url?.path == "/api/chat/start" {
+                        posts += 1
+                        return apiTestJSONResponse(#"{"error":"Compressed","code":"session_rotated","continuation_session_id":"next"}"#, for: request, status: 409)
+                    }
+                    XCTAssertEqual(request.httpMethod, "GET")
+                    return apiTestJSONResponse(#"{"session":{"session_id":"next"}}"#, for: request)
+                }
+                let result = await SlashCommandExecutor.execute(text: submitted.text, viewModel: viewModel)
+                guard case .unsupported = result else {
+                    return XCTFail("Expected the rejected fallback to reach unsupported composer reconciliation")
+                }
+                let current = edited
+                    ? ComposerDraftContent(text: "New work", quotes: [ComposerQuote(text: "New quote")])
+                    : submitted
+                // The exact store path used by handleSlashExecutionResult ->
+                // reconcileConsumedDraft, before opening the continuation.
+                let resolved = drafts.resolveConsumedInput(
+                    submitted: submitted, current: current, draftWasEdited: edited,
+                    preserveRejectedSubmission: viewModel.isCompressionRotated, for: source
+                )
+                XCTAssertEqual(resolved.text, edited ? submitted.text + "\n\nNew work" : submitted.text)
+                XCTAssertEqual(resolved.quotes, current.quotes)
+                let destination = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+                XCTAssertEqual(destination?.sessionId, "next")
+                let retained = await drafts.draft(for: .session(server: URL(string: "https://example.test")!, sessionID: "next"))
+                XCTAssertEqual(retained?.text, resolved.text)
+                XCTAssertEqual(retained?.quotes, resolved.quotes)
+                XCTAssertEqual(posts, 1)
+            }
+        }
+    }
+
+    @MainActor
+    func testInvalidRotationsStayInOriginalChatWithoutGETOrReplay() async throws {
+        for metadata in ["", #", "continuation_session_id":null"#, #", "continuation_session_id":42"#,
+                         #", "continuation_session_id":"""#, #", "continuation_session_id":"session-abc""#,
+                         #", "continuation_session_id":"../other""#] {
+            var requests = 0
+            let viewModel = try makeViewModel { request in
+                requests += 1
+                XCTAssertEqual(request.url?.path, "/api/chat/start")
+                return apiTestJSONResponse(#"{"error":"Compressed","code":"session_rotated"\#(metadata)}"#, for: request, status: 409)
+            }
+            let didStart = await viewModel.sendMessage("Keep draft")
+            XCTAssertFalse(didStart)
+            let destination = await viewModel.compressionContinuationForNavigation(
+                from: .session(server: URL(string: "https://example.test")!, sessionID: "session-abc"), isCurrent: { true })
+            XCTAssertNil(destination)
+            XCTAssertNotNil(viewModel.sendErrorMessage)
+            XCTAssertTrue(viewModel.messages.isEmpty)
+            XCTAssertEqual(requests, 1)
+        }
+    }
+
+    @MainActor
+    func testContinuationLoadFailureOrWrongProfileDoesNotNavigate() async throws {
+        for reply in [#"{"session":{"session_id":"next","profile":"other"}}"#,
+                      #"{"session":{"session_id":"session-abc","profile":"work"}}"#, "{}", "failure"] {
+            let viewModel = try makeViewModel(sessionSummary: makeSession(profile: "work")) { request in
+                if request.url?.path == "/api/chat/start" {
+                    return apiTestJSONResponse(#"{"error":"Compressed","code":"session_rotated","continuation_session_id":"next"}"#, for: request, status: 409)
+                }
+                XCTAssertEqual(request.url?.path, "/api/session")
+                return apiTestJSONResponse(reply, for: request, status: reply == "failure" ? 404 : 200)
+            }
+            let didStart = await viewModel.sendMessage("Keep draft")
+            XCTAssertFalse(didStart)
+            let destination = await viewModel.compressionContinuationForNavigation(
+                from: .session(server: URL(string: "https://example.test")!, sessionID: "session-abc"), isCurrent: { true })
+            XCTAssertNil(destination)
+            XCTAssertNotNil(viewModel.sendErrorMessage)
+            XCTAssertTrue(viewModel.messages.isEmpty)
+        }
+    }
+
+    @MainActor
+    func testContinuationUsesAuthoritativeDefaultNotSelectedProfile() async throws {
+        for targetProfile in ["default", "", "work"] {
+            let drafts = makeContinuationDraftStore()
+            let source = ChatDraftKey.session(server: URL(string: "https://example.test")!, sessionID: "session-abc")
+            drafts.setDraft("Keep", for: source)
+            let viewModel = try makeViewModel(sessionSummary: makeSession(profile: nil), draftStore: drafts) { request in
+                switch request.url?.path {
+                case "/api/profiles":
+                    return apiTestJSONResponse(#"{"active":"work","profiles":[]}"#, for: request)
+                case "/api/chat/start":
+                    XCTAssertEqual(try apiTestJSONBody(from: request)["profile"] as? String, "work")
+                    return apiTestJSONResponse(#"{"code":"session_rotated","continuation_session_id":"next"}"#, for: request, status: 409)
+                case "/api/session":
+                    return apiTestJSONResponse(#"{"session":{"session_id":"next","profile":"\#(targetProfile)"}}"#, for: request)
+                default:
+                    return apiTestJSONResponse("{}", for: request, status: 500)
+                }
+            }
+            await viewModel.loadComposerConfiguration()
+            XCTAssertEqual(viewModel.selectedProfileName, "work")
+            _ = await viewModel.sendMessage("Keep")
+            let destination = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+            XCTAssertEqual(destination?.sessionId, targetProfile == "work" ? nil : "next")
+        }
+    }
+
+    @MainActor
+    func testContinuationHandoffRefusesOtherServerStaleViewAndExistingDraft() async throws {
+        let drafts = makeContinuationDraftStore()
+        let server = URL(string: "https://example.test")!
+        let source = ChatDraftKey.session(server: server, sessionID: "session-abc")
+        let target = ChatDraftKey.session(server: server, sessionID: "next")
+        drafts.setDraft("Original draft", for: source)
+        drafts.setDraft("Destination draft", for: target)
+        let viewModel = try makeViewModel(draftStore: drafts) { request in
+            if request.url?.path == "/api/chat/start" {
+                return apiTestJSONResponse(#"{"error":"Compressed","code":"session_rotated","continuation_session_id":"next"}"#, for: request, status: 409)
+            }
+            return apiTestJSONResponse(#"{"session":{"session_id":"next"}}"#, for: request)
+        }
+        _ = await viewModel.sendMessage("Original draft")
+        let wrongServer = await viewModel.compressionContinuationForNavigation(
+            from: .session(server: URL(string: "https://other.test")!, sessionID: "session-abc"), isCurrent: { true })
+        let hidden = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { false })
+        let occupied = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+        XCTAssertNil(wrongServer)
+        XCTAssertNil(hidden)
+        XCTAssertNil(occupied)
+        let original = await drafts.draft(for: source)
+        let existing = await drafts.draft(for: target)
+        XCTAssertEqual(original?.text, "Original draft")
+        XCTAssertEqual(existing?.text, "Destination draft")
+        viewModel.suspendStreamForNavigation()
+        drafts.setDraft("", for: target)
+        let stale = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+        XCTAssertEqual(stale?.sessionId, "next", "A new visible owner can use the retained target without another POST")
+    }
+
+    @MainActor
+    func testAcceptedSendAfterNavigationIsNotReportedAsRejected() async throws {
+        let requested = expectation(description: "POST reached server")
+        let release = DispatchSemaphore(value: 0)
+        let stream = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: stream) { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            requested.fulfill()
+            release.wait()
+            return apiTestJSONResponse(#"{"session_id":"session-abc","stream_id":"accepted-stream"}"#, for: request)
+        }
+        let send = Task { await viewModel.sendMessage("Already accepted") }
+        await fulfillment(of: [requested], timeout: 2)
+        viewModel.suspendStreamForNavigation()
+        release.signal()
+        let didStart = await send.value
+        XCTAssertTrue(didStart, "An accepted POST must not restore the input as rejected")
+        XCTAssertNil(viewModel.activeStreamID, "A stale owner must not attach the stream")
+        XCTAssertFalse(viewModel.isStartingChat)
+        XCTAssertFalse(viewModel.isCompressionRotated)
+    }
+
+    @MainActor
+    func testLateRotationAfterNavigationCannotFetchOrNavigate() async throws {
+        for (delayedPath, cancel) in [("/api/chat/start", false), ("/api/session", false),
+                                       ("/api/chat/start", true), ("/api/session", true)] {
+            let drafts = makeContinuationDraftStore()
+            let requested = expectation(description: "Owned request reached server: \(delayedPath)")
+            let release = DispatchSemaphore(value: 0)
+            let viewModel = try makeViewModel(draftStore: drafts) { request in
+                let path = request.url?.path
+                if path == "/api/upload" {
+                    return apiTestJSONResponse(#"{"filename":"note.txt","path":"/tmp/note.txt","mime":"text/plain","size":4,"is_image":false}"#, for: request)
+                }
+                if path == delayedPath {
+                    requested.fulfill()
+                    release.wait()
+                }
+                if path == "/api/chat/start" {
+                    return apiTestJSONResponse(#"{"error":"Compressed","code":"session_rotated","continuation_session_id":"next"}"#, for: request, status: 409)
+                }
+                XCTAssertEqual(delayedPath, "/api/session", "A stale POST must not fetch a continuation")
+                return apiTestJSONResponse(#"{"session":{"session_id":"next"}}"#, for: request)
+            }
+            await viewModel.uploadAttachment(data: Data([1, 2, 3, 4]), filename: "note.txt", previewData: nil)
+            let attachment = try XCTUnwrap(viewModel.pendingAttachments.first)
+            let context = try makeContext()
+            let send = Task { await viewModel.sendMessage("Keep draft", modelContext: context) }
+            await fulfillment(of: [requested], timeout: 2)
+            if cancel { send.cancel() } else { viewModel.suspendStreamForNavigation() }
+            release.signal()
+            let didStart = await send.value
+            XCTAssertFalse(didStart)
+            let destination = await viewModel.compressionContinuationForNavigation(
+                from: .session(server: URL(string: "https://example.test")!, sessionID: "session-abc"), isCurrent: { true })
+            XCTAssertNil(destination)
+            XCTAssertFalse(viewModel.isStartingChat)
+            XCTAssertTrue(viewModel.messages.isEmpty)
+            XCTAssertTrue(viewModel.localAttachmentPreviews.isEmpty)
+            XCTAssertEqual(viewModel.pendingAttachments.map(\.id), [attachment.id])
+            XCTAssertNotNil(attachment.draftFileName)
+            let retained = await drafts.draft(for: .session(server: URL(string: "https://example.test")!, sessionID: "session-abc"))
+            XCTAssertEqual(retained?.attachments.map(\.id), [attachment.id])
+            XCTAssertTrue(try CacheStore.cachedMessages(serverURL: URL(string: "https://example.test")!,
+                                                       sessionID: "session-abc", in: context).isEmpty)
+        }
+    }
+
     /// After a Hermes update the server refuses every send until WebUI restarts (#955).
     @MainActor
     func testStaleAgentRuntimeSendFailureExplainsRestartAndRollsBack() async throws {
@@ -10919,6 +11224,7 @@ final class ChatViewModelSendTests: XCTestCase {
         listenRemoteControlCenter: (any ListenRemoteControlControlling)? = nil,
         serverTTSAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil,
         draftAttachmentStore: any ChatDraftAttachmentStoring = RecordingSendDraftAttachmentStore(),
+        draftStore: ChatDraftStore? = nil,
         userDefaults: UserDefaults = .standard,
         serverURL: URL? = nil,
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
@@ -10955,6 +11261,7 @@ final class ChatViewModelSendTests: XCTestCase {
             listenRemoteControlCenter: listenRemoteControlCenter ?? SpyListenRemoteControlCenter(),
             serverTTSAudioPlayerFactory: serverTTSAudioPlayerFactory,
             draftAttachmentStore: draftAttachmentStore,
+            draftStore: draftStore,
             userDefaults: userDefaults
         )
 
