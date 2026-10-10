@@ -39,6 +39,8 @@ import Observation
     /// The host holds an operation this build cannot read (no id, deadline or readable row):
     /// the session waits with no card, until a settled frame or a snapshot says otherwise.
     private(set) var hasUnreadableConnection = false { didSet { onOpenChange() } }
+    /// The unreadable operation's `op_id`, when it has one: its readable settled frame ends the wait.
+    @ObservationIgnored private var unreadableConnectionID: String?
     /// The last operation seen settling, so a late frame or snapshot never brings its card back.
     @ObservationIgnored private var settledConnectionID: String?
     /// The verdict on the connection card: inert once the host no longer holds its operation
@@ -395,10 +397,11 @@ import Observation
 
     /// `connection.request` (`opens`) or `connection.update` for this session. A request
     /// opens its operation in place of any held; an update replaces the held one only when its
-    /// `seq` is newer; the settled frame closes it. Neither revives the last settled operation.
+    /// `seq` is newer; the settled frame closes it, held or not. Neither revives the last
+    /// settled operation.
     func receiveConnection(_ payload: BotJSON, opens: Bool) {
         guard let frame = BotConnectionOperation(payload) else {
-            if opens { hasUnreadableConnection = true } else if payload["settled"].flag == true { hasUnreadableConnection = false }
+            if opens { holdUnreadableConnection(payload) } else if payload["settled"].flag == true { hasUnreadableConnection = false }
             return
         }
         applyConnection(frame, opens: opens)
@@ -506,22 +509,33 @@ import Observation
     private func restoreConnection(_ pending: BotJSON) {
         guard let frame = BotConnectionOperation(pending) else {
             connection = nil
-            hasUnreadableConnection = pending != .null
+            if pending != .null { holdUnreadableConnection(pending) } else { hasUnreadableConnection = false }
             return
         }
         hasUnreadableConnection = false
         applyConnection(frame, opens: true)
     }
 
+    private func holdUnreadableConnection(_ payload: BotJSON) {
+        unreadableConnectionID = payload["op_id"].text
+        hasUnreadableConnection = true
+    }
+
+    /// A settled frame closes its operation whether or not a card holds it, so a snapshot that
+    /// already dropped it or an unreadable wait for it cannot outlive it. A held operation's
+    /// settled frame counts only when its `seq` is newer.
     private func applyConnection(_ frame: BotConnectionOperation, opens: Bool) {
         guard frame.opID != settledConnectionID else { return }
         let next: BotConnectionOperation
         if let held = connection, held.opID == frame.opID { next = held.applying(frame) }
-        else if opens { next = frame }
+        else if opens || frame.isSettled { next = frame }
         else { return }
         if opens { hasUnreadableConnection = false }
+        if next.isSettled {
+            if hasUnreadableConnection, unreadableConnectionID == next.opID { hasUnreadableConnection = false }
+            return closeConnection(next.opID)
+        }
         if connectionResolution?.requestID != next.opID { connectionResolution = nil }
-        if next.isSettled { return closeConnection(next.opID) }
         // A new operation takes a withdrawn card's slot.
         if next.opID != connection?.opID { withdrawal = nil }
         if next != connection { connection = next }
