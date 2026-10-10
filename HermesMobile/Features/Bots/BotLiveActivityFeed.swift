@@ -31,6 +31,18 @@ struct BotLiveActivitySnapshot: Equatable {
     /// Plugin hooks carry the stored agent ID (`session_key`), not the gateway's
     /// ephemeral RPC `session_id` or the canonical chat root.
     var agentSessionID: String? = nil
+
+    /// A bot's count chips (#584), the same in Bot Chat and a bot's chat in `ChatView`: the
+    /// plan's step while one is open, then the live workers and the turn's tools. Counts only.
+    static func countChips(plan: HermesPlan?, workers: Int, tools: Int = 0) -> [String] {
+        var chips: [String] = []
+        if let plan, !plan.isFinished {
+            chips.append(String(localized: "Plan \(min(plan.completedCount + 1, plan.items.count)) of \(plan.items.count)"))
+        }
+        if workers > 0 { chips.append(String(localized: "\(workers) workers")) }
+        if tools > 0 { chips.append(String(localized: "\(tools) tools")) }
+        return chips
+    }
 }
 
 extension AgentRunActivityBot {

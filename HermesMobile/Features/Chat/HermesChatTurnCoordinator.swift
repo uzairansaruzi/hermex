@@ -262,6 +262,7 @@ struct HermesChatTranscript: Equatable {
         sideTasks.onBackgroundChange = { [weak self] in self?.delegate?.hermesBackgroundDidChange($0) }
         sideTasks.onGoalChange = { [weak self] in self?.delegate?.hermesGoalDidChange($0) }
         settings.onRosterRead = { [weak self] in self?.botRosterDidChange() }
+        activity.delegatedWork.onWorkersChanged = { [weak self] in self?.syncBotWorkSummary() }
     }
 
     /// The chat `chat` opens over the connection's shared gateway socket, driving the app's
@@ -1037,6 +1038,7 @@ struct HermesChatTranscript: Equatable {
             requests.receiveConnection(payload, opens: frame["type"].text == "connection.request")
         case "todo.updated":
             activity.receivePlan(payload)
+            syncBotWorkSummary()
         case "subagent.spawn_requested", "subagent.start", "subagent.progress", "subagent.tool", "subagent.complete":
             // Roster changes, coalesced into one list; a child's reasoning and text never list.
             activity.delegatedWork.noteSubagentEvent()
@@ -1175,6 +1177,7 @@ struct HermesChatTranscript: Equatable {
         let endedPromptRowID = savedPromptRowID(startedAt: endedTurnStartedAt, in: rows)
         activity.readSnapshot(snapshot, promptRowID: promptRowID, followsTurn: followsTurn || endedPromptRowID != nil,
                               followedPromptRowID: endedPromptRowID)
+        syncBotWorkSummary()
     }
 
     /// The saved prompt of the turn that began at `startedAt`: the last turn boundary in `rows`,
@@ -1404,7 +1407,8 @@ struct HermesChatTranscript: Equatable {
     }
 
     /// Starts the turn's activity, or adopts it again: the manager reuses the activity of the
-    /// same session key and stream id. An open request then shows as waiting.
+    /// same session key and stream id. An open request then shows as waiting, and a bot's
+    /// activity its count chips.
     private func startLiveActivity() {
         guard let liveActivities, let liveActivity else { return }
         if let bot = liveActivity.bot {
@@ -1417,6 +1421,7 @@ struct HermesChatTranscript: Equatable {
         }
         shownWaiting = nil
         syncLiveActivityWaiting()
+        syncBotWorkSummary()
     }
 
     /// A `.canonicalChat`'s activity identity (#709): the bot on this connection, whose tap opens
@@ -1460,6 +1465,15 @@ struct HermesChatTranscript: Equatable {
         guard waiting != shownWaiting else { return }
         shownWaiting = waiting
         if let waiting { drivenLiveActivity?.update(waiting) }
+    }
+
+    /// Writes a bot's count chips to its activity, as Bot Chat does (#584): the plan's step and
+    /// the live workers, on a plan or roster change and when the activity is adopted. The
+    /// manager drops an unchanged list. A session's activity keeps its own chips.
+    private func syncBotWorkSummary() {
+        guard liveActivity?.bot != nil, let driven = drivenLiveActivity else { return }
+        driven.update(.workSummary(BotLiveActivitySnapshot.countChips(plan: activity.plan,
+                                                                      workers: activity.delegatedWork.activeCount)))
     }
 
     private func endLiveActivity(_ ending: TranscriptTurnRunOutcome.Ending) {

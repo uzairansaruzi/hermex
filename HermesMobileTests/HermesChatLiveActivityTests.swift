@@ -242,6 +242,53 @@ import Observation
         XCTAssertEqual(chat.spy.avatars.count, 2)
     }
 
+    /// A Bot Chat's activity keeps Bot Chat's count chips (#584): the plan's step and the live
+    /// worker count, written as they change and clear, again once a reattach adopts the
+    /// activity, and never to an activity another run took over. A session's activity gets none.
+    func testABotChatsActivityShowsItsPlanAndWorkerCounts() async {
+        let chat = await openChat(target: .canonicalChat(profile: "default"), subagents: [worker("tests"), worker("docs")])
+        let work = chat.turn.activity.delegatedWork
+        await waitUntil("listed on connect") { work.activeCount == 2 }
+        chat.receive(event(1, "session.info", ["running": .bool(true), "turn_started_at": .number(Self.startedAt)]))
+        chat.receive(event(2, "message.start"))
+        XCTAssertEqual(chat.spy.summaries.last, ["2 workers"], "the workers listed before the turn")
+
+        chat.receive(event(3, "todo.updated", todos(revision: 1, ["completed", "in_progress", "pending"])))
+        XCTAssertEqual(chat.spy.summaries.last, ["Plan 2 of 3", "2 workers"])
+        chat.host.always("subagent.list", .init(result: .object(["subagents": .array([worker("tests"), worker("docs"),
+                                                                                      worker("lint")])])))
+        chat.receive(event(4, "subagent.start", ["subagent_id": .string("lint")]))
+        await waitUntil("a third worker") { work.activeCount == 3 }
+        XCTAssertEqual(chat.spy.summaries.last, ["Plan 2 of 3", "3 workers"])
+
+        chat.host.always("subagent.list", .init(result: .object(["subagents": .array([])])))
+        chat.receive(event(5, "todo.updated", todos(revision: 2, [])))
+        chat.receive(event(6, "subagent.complete", ["subagent_id": .string("lint")]))
+        await waitUntil("the workers finished") { work.activeCount == 0 }
+        XCTAssertEqual(chat.spy.summaries.last, [], "a cleared plan and finished workers clear the chips")
+
+        chat.model.suspendStreamForBackground()
+        chat.host.always("subagent.list", .init(result: .object(["subagents": .array([worker("docs"), worker("lint")])])))
+        chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 6)))
+        chat.host.always("session.resume", .init(result: resume(running: true, todos: todos(revision: 3, ["completed", "completed", "pending"]))))
+        await chat.model.reconnectStreamIfNeeded()
+        await waitUntil("listed on reattach") { work.activeCount == 2 }
+        XCTAssertEqual(chat.spy.botStarts.count, 2, "the reattach adopted the bot's activity")
+        XCTAssertEqual(chat.spy.summaries.last, ["Plan 3 of 3", "2 workers"])
+
+        let shown = chat.spy.summaries.count
+        chat.spy.drivenSessionID = "bot:\(UUID().uuidString):helper"
+        chat.receive(event(7, "todo.updated", todos(revision: 4, ["completed", "completed", "completed"])))
+        XCTAssertEqual(chat.spy.summaries.count, shown, "never another bot's activity")
+
+        let session = await openChat(subagents: [worker("tests"), worker("docs")])
+        await waitUntil("listed on connect") { session.turn.activity.delegatedWork.activeCount == 2 }
+        session.receive(event(1, "message.start"))
+        session.receive(event(2, "todo.updated", todos(revision: 1, ["in_progress", "pending"])))
+        XCTAssertEqual(session.spy.starts.count, 1)
+        XCTAssertEqual(session.spy.summaries, [], "a session's activity keeps its own chips")
+    }
+
     /// A Bot Chat row opened from Archived resumes its key, and may be a deliberate archive that
     /// upstream's title lookup leaves out, or one the bot has since replaced. Its activity keeps
     /// the interim `hermes:` session identity, whose tap opens the app as it is, on this chat:
@@ -311,15 +358,16 @@ import Observation
     }
 
     /// `roster` answers `profiles.list`; without one the read fails, so a Bot Chat keeps its
-    /// bare Profile row.
+    /// bare Profile row. `subagents` answers `subagent.list`; without them the read fails.
     private func openChat(snapshot: BotJSON? = nil, excerpts: Bool = false,
                           target: ConversationTarget = .session(profile: "default", key: "tip"),
-                          botChatRoot: String? = nil, roster: BotJSON? = nil) async -> Chat {
+                          botChatRoot: String? = nil, roster: BotJSON? = nil, subagents: [BotJSON]? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: snapshot ?? resume(running: false)))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
         if let roster { host.always("profiles.list", .init(result: roster)) }
+        if let subagents { host.always("subagent.list", .init(result: .object(["subagents": .array(subagents)]))) }
         let client = BotClient(http: host.connection(Self.connection))
         // No automatic reconnect: a test reattaches when it says so.
         let engine = HermesConversation(server: Self.server, connection: Self.connection,
@@ -373,7 +421,21 @@ import Observation
         }
     }
 
-    private func resume(running: Bool, title: String? = nil, profile: String = "default") -> BotJSON {
+    /// A live worker as `subagent.list` reports it.
+    private func worker(_ id: String) -> BotJSON {
+        .object(["subagent_id": .string(id), "goal": .string("Work on \(id)"), "depth": .number(0),
+                 "started_at": .number(1_790_000_010), "status": .string("running")])
+    }
+
+    /// A `todo.updated` payload, or a snapshot's `todo_state`, with one step per status.
+    private func todos(revision: Int, _ statuses: [String]) -> [String: BotJSON] {
+        ["revision": .number(Double(revision)), "todos": .array(statuses.enumerated().map { index, status in
+            .object(["id": .string("step-\(index)"), "content": .string("Step \(index + 1)"), "status": .string(status)])
+        })]
+    }
+
+    private func resume(running: Bool, title: String? = nil, profile: String = "default",
+                        todos: [String: BotJSON]? = nil) -> BotJSON {
         var info: [String: BotJSON] = ["profile_name": .string(profile)]
         if let title { info["title"] = .string(title) }
         var reply: [String: BotJSON] = [
@@ -381,6 +443,7 @@ import Observation
             "messages": .array([]), "info": .object(info)
         ]
         if running { reply["turn_started_at"] = .number(Self.startedAt) }
+        if let todos { reply["todo_state"] = .object(todos) }
         return .object(reply)
     }
 }
@@ -439,6 +502,11 @@ import Observation
     /// The titles `.sessionTitle` updates wrote.
     var titles: [String] {
         events.compactMap { if case .sessionTitle(let title) = $0 { title } else { nil } }
+    }
+
+    /// The count chips `.workSummary` updates wrote.
+    var summaries: [[String]] {
+        events.compactMap { if case .workSummary(let chips) = $0 { chips } else { nil } }
     }
 
     func writeAvatar(_ profile: BotProfile) -> String? {

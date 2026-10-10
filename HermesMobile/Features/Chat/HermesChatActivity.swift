@@ -166,6 +166,9 @@ struct HermesPlanState: Equatable {
     /// A failed prompt's row the host refused to cut (4018): Retry hides for it.
     private var uncuttableRowID: Int?
 
+    /// The newest plan the host holds, wherever it shows, for a bot's Live Activity chips.
+    var plan: HermesPlan? { planState.plan }
+
     /// The plan while its turn runs with a step still open.
     var pinnedPlan: HermesPlan? {
         guard isTurnRunning, let plan = planState.plan, planTurn?.turn == turn, !plan.isFinished else { return nil }

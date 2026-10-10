@@ -306,13 +306,8 @@ import Observation
         else if !liveActivity.reasoning.isEmpty { work = .thinking }
         else { work = .starting }
 
-        var chips: [String] = []
-        if let plan, !plan.isFinished {
-            chips.append(String(localized: "Plan \(min(plan.completedCount + 1, plan.items.count)) of \(plan.items.count)"))
-        }
-        if delegatedWork.activeCount > 0 { chips.append(String(localized: "\(delegatedWork.activeCount) workers")) }
-        if !liveActivity.toolCalls.isEmpty { chips.append(String(localized: "\(liveActivity.toolCalls.count) tools")) }
-
+        let chips = BotLiveActivitySnapshot.countChips(plan: plan, workers: delegatedWork.activeCount,
+                                                       tools: liveActivity.toolCalls.count)
         return BotLiveActivitySnapshot(
             destination: BotDestination(server: server, connectionID: connection.id, profile: profile.id, conversation: root),
             title: BotProfileAppearance(profile: profile).title, phase: phase, work: work, chips: chips, agentSessionID: tip)
