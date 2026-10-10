@@ -688,7 +688,8 @@ extension SessionSummary {
     func hermesChat(on server: URL, connection: BotConnection, listedIn profile: String) -> HermesSessionChat? {
         hermesTarget(listedIn: profile).map {
             HermesSessionChat(server: server, connection: connection, target: $0, parentKey: parentSessionId,
-                              botChatRoot: hermes?.botChatRoot, opensBotChat: hermes?.isBotChat == true)
+                              botChatCacheRoot: hermes?.botChatRoot,
+                              botChatRoot: hermes.flatMap { $0.isBotChat ? $0.lineageRoot : nil })
         }
     }
 

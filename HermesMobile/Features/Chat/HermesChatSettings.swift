@@ -78,6 +78,8 @@ enum HermesProfilePreference {
     private(set) var bots: [BotProfile] = []
     /// Those bots as `@`mention completions, without this chat's own Profile; built once per read.
     private(set) var mentions: BotMentions
+    /// Called after each `profiles.list` read lands, so a Bot Chat's activity takes the bot's look.
+    @ObservationIgnored var onRosterRead: (() -> Void)?
     /// A `/personality` name waiting for the user to confirm the Profile-wide change.
     private(set) var pendingPersonality: String?
     /// The latest `session.info`'s requested effort and the level its route sends.
@@ -129,6 +131,7 @@ enum HermesProfilePreference {
         profiles = rows.compactMap { $0["name"].text }.filter { !$0.isEmpty && seen.insert($0).inserted }
         bots = rows.compactMap(BotProfile.init)
         mentions = BotMentions(roster: bots, excluding: profile)
+        onRosterRead?()
     }
 
     func disconnect() { controls.disconnect() }

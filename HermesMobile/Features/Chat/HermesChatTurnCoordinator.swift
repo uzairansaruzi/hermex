@@ -56,18 +56,21 @@ struct HermesSessionChat: Hashable, Identifiable {
     /// chat asks the host whether it is a branch of it, for its "Forked from" row (#1051). Nil
     /// asks nothing.
     var parentKey: String? = nil
-    /// An archived Bot Chat's root, its row's lineage root: the chat caches under it and reads
-    /// its bot's Bot Chat's copy of it while it has none (#1144). Nil for any other session.
+    /// An archived Bot Chat's root, its row's lineage root, also for a legacy "Bot Chat
+    /// (continued)" tip: the chat caches under it and reads its bot's Bot Chat's copy of it while
+    /// it has none (#1144). Nil for any other session.
+    var botChatCacheRoot: String? = nil
+    /// The lineage root of the bot's Bot Chat row this chat opened from by its key (Archived):
+    /// the chat keeps Bot Chat's rules, and its Live Activity's tap names this root, which the
+    /// canonical Bot Chat route looks up, never the key it resumes. Nil for any other row; a
+    /// `.canonicalChat` target is a Bot Chat without it.
     var botChatRoot: String? = nil
-    /// The row this chat opened from is a bot's Bot Chat, opened by its key (Archived). A
-    /// `.canonicalChat` target always is one.
-    var opensBotChat = false
     /// The root a bot's deep link named for its `.canonicalChat`: once the bot has replaced that
     /// chat, the chat says so (`ChatView`'s `onChatReplaced`, #554) instead of opening the new one.
     var linkedRoot: String? = nil
 
     /// What the chat lets the user do (#1145): a bot's Bot Chat keeps Bot Chat's rules.
-    var policy: HermesChatPolicy { opensBotChat ? .botChat : HermesChatPolicy(target: target) }
+    var policy: HermesChatPolicy { HermesChatPolicy(target: target, botChatRoot: botChatRoot) }
 
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
@@ -224,19 +227,25 @@ struct HermesChatTranscript: Equatable {
     /// is a session's stream id. Kept for the turn, so a reattach adopts the same activity.
     @ObservationIgnored private var liveActivity: (sessionID: String, turn: String, bot: AgentRunActivityBot?)?
     /// Renders a Bot Chat's avatar for its activity; nil writes none, so the widget keeps its dot.
+    /// The file is named by connection and Profile, so drawing it again redraws the shown one.
     @ObservationIgnored private let writeBotAvatar: (@MainActor (BotProfile, BotDestination) -> String?)?
+    /// The look the bot's activity last drew its name and avatar from.
+    @ObservationIgnored private var shownBotLook: BotProfileAppearance?
+    /// The root a Bot Chat row opened by its key names for its activity's tap (`HermesSessionChat`).
+    @ObservationIgnored private let botChatRoot: String?
     @ObservationIgnored private var showsLiveActivityExcerpts = false
     /// The waiting state last shown for the open requests, so each change is written once.
     @ObservationIgnored private var shownWaiting: AgentLiveActivityEvent?
 
-    /// `policy` defaults to the target's: a `.canonicalChat` is a Bot Chat.
-    init(engine: HermesConversation, policy: HermesChatPolicy? = nil,
+    /// A `.canonicalChat`, or a Bot Chat row opened by its key with its `botChatRoot`, is a Bot Chat.
+    init(engine: HermesConversation, botChatRoot: String? = nil,
          liveActivities: (any AgentLiveActivityManaging)? = nil,
          writeBotAvatar: (@MainActor (BotProfile, BotDestination) -> String?)? = nil,
          isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
         self.engine = engine
-        let policy = policy ?? HermesChatPolicy(target: engine.target)
+        let policy = HermesChatPolicy(target: engine.target, botChatRoot: botChatRoot)
         self.policy = policy
+        self.botChatRoot = botChatRoot
         self.liveActivities = liveActivities
         self.writeBotAvatar = writeBotAvatar
         self.isNetworkAvailable = isNetworkAvailable
@@ -255,6 +264,7 @@ struct HermesChatTranscript: Equatable {
         slashCommands.onNeedsReattach = { [weak self] in self?.reattach() }
         sideTasks.onBackgroundChange = { [weak self] in self?.delegate?.hermesBackgroundDidChange($0) }
         sideTasks.onGoalChange = { [weak self] in self?.delegate?.hermesGoalDidChange($0) }
+        settings.onRosterRead = { [weak self] in self?.botRosterDidChange() }
     }
 
     /// The chat `chat` opens over the connection's shared gateway socket, driving the app's
@@ -263,7 +273,7 @@ struct HermesChatTranscript: Equatable {
         self.init(engine: HermesConversation(server: chat.server, connection: chat.connection, target: chat.target,
                                              linkedRoot: chat.linkedRoot,
                                              wire: BotClient(saved: chat.connection, server: chat.server)),
-                  policy: chat.policy, liveActivities: AgentLiveActivityManager.shared,
+                  botChatRoot: chat.botChatRoot, liveActivities: AgentLiveActivityManager.shared,
                   writeBotAvatar: BotLiveActivityFeed.writeAvatar)
     }
 
@@ -1416,11 +1426,30 @@ struct HermesChatTranscript: Equatable {
     /// chat at the canonical root, with the stored key as the push session. Nil in a session.
     private func botActivity() -> AgentRunActivityBot? {
         guard let profile = botProfile else { return nil }
-        let destination = BotDestination(server: engine.server, connectionID: engine.connection.id,
-                                         profile: profile.id, conversation: engine.root)
+        let destination = botDestination(profile)
+        shownBotLook = BotProfileAppearance(profile: profile)
         guard var bot = AgentRunActivityBot(destination, avatarFile: writeBotAvatar?(profile, destination)) else { return nil }
         bot.pushSessionID = engine.storedKey
         return bot
+    }
+
+    /// Where the bot's activity taps to: its chat at the canonical root. A row opened by its key
+    /// names the row's lineage root, since `engine.root` is then the key it resumes.
+    private func botDestination(_ profile: BotProfile) -> BotDestination {
+        BotDestination(server: engine.server, connectionID: engine.connection.id, profile: profile.id,
+                       conversation: botChatRoot ?? engine.root)
+    }
+
+    /// A roster read answered after the bot's activity started, as when attaching to a running
+    /// turn: the same activity takes the bot's name and static avatar, with no restart, so the
+    /// turn and the pill's beat carry on. Nothing for an activity this chat no longer drives.
+    private func botRosterDidChange() {
+        guard liveActivity?.bot != nil, let profile = botProfile, let driven = drivenLiveActivity else { return }
+        let look = BotProfileAppearance(profile: profile)
+        guard look != shownBotLook else { return }
+        shownBotLook = look
+        _ = writeBotAvatar?(profile, botDestination(profile))
+        driven.update(.sessionTitle(look.title))
     }
 
     /// Shows the open requests as waiting, once per change: an approval on screen as an
@@ -1498,11 +1527,13 @@ struct HermesChatTranscript: Equatable {
     /// their name. Every other row is returned as it is. Bot Chat reads the rule itself.
     static func displayed(_ message: ChatMessage) -> ChatMessage {
         guard message.role == "user", let content = message.content else { return message }
-        let shown = MessageAttachment.hermesReferences(in: BotMentions.displayText(content))
-        guard shown.text != content || !shown.attachments.isEmpty else { return message }
+        // The host appends its context footer after the note, so the footer goes first.
+        let shown = MessageAttachment.hermesReferences(in: content)
+        let text = BotMentions.displayText(shown.text)
+        guard text != content || !shown.attachments.isEmpty else { return message }
         let chips = shown.attachments
         return ChatMessage(
-            role: message.role, content: shown.text, timestamp: message.timestamp, messageId: message.messageId,
+            role: message.role, content: text, timestamp: message.timestamp, messageId: message.messageId,
             name: message.name, toolCallId: message.toolCallId, toolUseId: message.toolUseId,
             toolCalls: message.toolCalls, contentParts: message.contentParts, reasoning: message.reasoning,
             attachments: chips.isEmpty ? message.attachments : (message.attachments ?? []) + chips,

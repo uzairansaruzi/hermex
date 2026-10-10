@@ -62,9 +62,10 @@ enum HermesChatPolicy: Equatable {
     /// A bot's Bot Chat: its canonical chat, or a Bot Chat row opened by its key.
     case botChat
 
-    /// A Bot Chat's own target is `.canonicalChat`; every other target is a session's.
-    init(target: ConversationTarget) {
-        if case .canonicalChat = target { self = .botChat } else { self = .session }
+    /// A Bot Chat's own target is `.canonicalChat`; a session target is one only when opened from
+    /// a Bot Chat row, which names its `botChatRoot`.
+    init(target: ConversationTarget, botChatRoot: String? = nil) {
+        if case .canonicalChat = target { self = .botChat } else { self = botChatRoot == nil ? .session : .botChat }
     }
 
     /// Why `/name` (typed, after any alias resolved to `canonical`) does not run here, or nil

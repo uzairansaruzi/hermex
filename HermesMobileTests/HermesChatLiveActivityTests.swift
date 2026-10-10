@@ -1,4 +1,5 @@
 import XCTest
+import Observation
 @testable import HermesMobile
 
 /// A Hermes session's turns drive the shared Live Activity (#1014): one activity per turn
@@ -220,6 +221,56 @@ import XCTest
         XCTAssertNil(session.turn.botProfile)
     }
 
+    /// Attaching to a running turn starts the bot's activity before the roster is read, from the
+    /// bare Profile row. Once the roster answers, the same activity takes the bot's name and
+    /// static avatar: no second start, and the turn, so the pill's beat, carries on. A later
+    /// read while another bot holds the activity changes nothing.
+    func testTheRosterNamesTheBotOnItsRunningActivity() async throws {
+        let chat = await openChat(snapshot: resume(running: true), target: .canonicalChat(profile: "default"),
+                                  roster: Self.roster(title: "Inbox Triage", expression: "sleepy"))
+        await waitUntil("the roster") { !chat.turn.settings.bots.isEmpty }
+        XCTAssertEqual(chat.spy.botStarts.map(\.title), ["Hermes"], "started from the bare Profile row")
+        XCTAssertEqual(chat.spy.titles, ["Inbox Triage"])
+        XCTAssertEqual(chat.spy.avatars, [.init(title: "Hermes", expression: nil), .init(title: "Inbox Triage", expression: "sleepy")])
+        XCTAssertEqual(chat.turn.botTurn, .running)
+
+        chat.spy.drivenSessionID = "bot:\(UUID().uuidString):helper"
+        chat.host.always("profiles.list", .init(result: Self.roster(title: "Renamed", expression: nil)))
+        await chat.turn.settings.refreshProfiles()
+        XCTAssertEqual(chat.turn.botProfile?.title, "Renamed")
+        XCTAssertEqual(chat.spy.titles, ["Inbox Triage"], "never another bot's activity")
+        XCTAssertEqual(chat.spy.avatars.count, 2)
+    }
+
+    /// A Bot Chat row opened from Archived resumes its compression tip by key, but its
+    /// activity's tap names the row's lineage root: the canonical Bot Chat route looks the
+    /// chat up by title and reopens the same one, not the replaced-chat state.
+    func testATapOnAnArchivedBotChatsActivityReopensThatChat() async throws {
+        // `BotFixtureWire`'s bot, whose lookup finds root `root` at tip `tip`.
+        let row = HermesSessionRow(id: "tip", title: "Bot Chat", archived: true, hidden: true, profile: "inbox-triage",
+                                   lineageRootID: "root").summary(in: "default")
+        let opened = try XCTUnwrap(row.hermesChat(on: Self.server, connection: Self.connection, listedIn: "default"))
+        let chat = await openChat(snapshot: resume(running: false, profile: "inbox-triage"), target: opened.target,
+                                  botChatRoot: opened.botChatRoot)
+        chat.receive(event(1, "session.info", ["running": .bool(true), "turn_started_at": .number(Self.startedAt)]))
+        chat.receive(event(2, "message.start"))
+        let start = try XCTUnwrap(chat.spy.botStarts.first)
+        XCTAssertEqual(start.pushSessionID, "tip", "pushes still name the stored key")
+        let destination = try XCTUnwrap(HermesDeepLink.botDestination(from: start.destinationURL))
+        XCTAssertEqual(destination.conversation, "root")
+
+        let tapped = BotConversation(
+            server: destination.server, connection: Self.connection,
+            profile: try XCTUnwrap(BotProfile(.object(["name": .string(destination.profile)]))),
+            conversation: destination.conversation, wire: BotFixtureWire(),
+            drafts: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60))
+        )
+        await tapped.recover()
+        XCTAssertFalse(tapped.linkedRootIsStale)
+        XCTAssertEqual(tapped.connectionState, .connected)
+        tapped.suspend()
+    }
+
     // MARK: Tap
 
     /// A Hermes session's activity has no destination until #706: no webui route is built,
@@ -257,19 +308,25 @@ import XCTest
         }
     }
 
+    /// `roster` answers `profiles.list`; without one the read fails, so a Bot Chat keeps its
+    /// bare Profile row.
     private func openChat(snapshot: BotJSON? = nil, excerpts: Bool = false,
-                          target: ConversationTarget = .session(profile: "default", key: "tip")) async -> Chat {
+                          target: ConversationTarget = .session(profile: "default", key: "tip"),
+                          botChatRoot: String? = nil, roster: BotJSON? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: snapshot ?? resume(running: false)))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
+        if let roster { host.always("profiles.list", .init(result: roster)) }
         let client = BotClient(http: host.connection(Self.connection))
         // No automatic reconnect: a test reattaches when it says so.
         let engine = HermesConversation(server: Self.server, connection: Self.connection,
                                         target: target, wire: client,
                                         reconnectDelay: { _ in throw CancellationError() })
         let spy = Spy()
-        let turn = HermesChatTurnCoordinator(engine: engine, liveActivities: spy, isNetworkAvailable: { true })
+        let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, liveActivities: spy,
+                                             writeBotAvatar: { profile, _ in spy.writeAvatar(profile) },
+                                             isNetworkAvailable: { true })
         // The chat's own webui manager is the same spy, so any write it made would show too.
         let model = ChatViewModel(
             session: SessionSummary(profile: "default"), server: Self.server, liveActivityManager: spy,
@@ -294,8 +351,28 @@ import XCTest
         return .object(["jsonrpc": .string("2.0"), "id": .string(id), "method": .string(method), "params": .object(params)])
     }
 
-    private func resume(running: Bool, title: String? = nil) -> BotJSON {
-        var info: [String: BotJSON] = ["profile_name": .string("default")]
+    /// A roster whose `default` bot carries a saved name and a pinned face.
+    private static func roster(title: String, expression: String?) -> BotJSON {
+        var look: [String: BotJSON] = ["title": .string(title)]
+        if let expression { look["expression"] = .string(expression) }
+        return .object(["profiles": .array([.object(["name": .string("default"),
+                                                     "ui_meta": .object(["hermes-bots": .object(look)])])])])
+    }
+
+    /// Waits on observation, never a clock, until `condition` holds.
+    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
+                           _ condition: @escaping @MainActor () -> Bool) async {
+        while !condition() {
+            let changed = XCTestExpectation(description: description)
+            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
+            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
+                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
+            }
+        }
+    }
+
+    private func resume(running: Bool, title: String? = nil, profile: String = "default") -> BotJSON {
+        var info: [String: BotJSON] = ["profile_name": .string(profile)]
         if let title { info["title"] = .string(title) }
         var reply: [String: BotJSON] = [
             "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(running),
@@ -332,8 +409,15 @@ import XCTest
         let startedAt: Date
     }
 
+    /// The look a bot's avatar was drawn from.
+    struct Avatar: Equatable {
+        let title: String
+        let expression: String?
+    }
+
     private(set) var starts: [Start] = []
     private(set) var botStarts: [BotStart] = []
+    private(set) var avatars: [Avatar] = []
     private(set) var events: [AgentLiveActivityEvent] = []
     private(set) var ends: [End] = []
     private(set) var staleCount = 0
@@ -348,6 +432,17 @@ import XCTest
         botStarts.append(BotStart(key: bot.key, destinationURL: bot.destinationURL, pushSessionID: bot.pushSessionID,
                                   title: title, turn: turn, startedAt: startedAt))
         drivenSessionID = bot.key
+    }
+
+    /// The titles `.sessionTitle` updates wrote.
+    var titles: [String] {
+        events.compactMap { if case .sessionTitle(let title) = $0 { title } else { nil } }
+    }
+
+    func writeAvatar(_ profile: BotProfile) -> String? {
+        let look = BotProfileAppearance(profile: profile)
+        avatars.append(Avatar(title: look.title, expression: look.expression))
+        return "avatar.png"
     }
 
     func update(_ event: AgentLiveActivityEvent) { events.append(event) }

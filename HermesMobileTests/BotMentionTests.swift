@@ -236,6 +236,30 @@ final class BotMentionTests: XCTestCase {
         XCTAssertEqual(chat.turn.queuedPrompt?.contains("[@mentions"), false, "the receipt shows what was typed")
     }
 
+    /// A restored prompt with an attachment hides its note: the host adds its context footer
+    /// after the note (`agent/context_references.py`), so the footer and reference lines go
+    /// first and the file stays a chip. A note the user typed that only looks like one stays.
+    func testARestoredPromptHidesTheNoteBeforeTheHostsContextFooter() throws {
+        let helper = try XCTUnwrap(BotProfile(Self.roster["profiles"].list?[1] ?? .null))
+        let note = BotMentions(roster: [helper], excluding: "default").annotation(for: "@helper look")
+        let sent = "@helper look\n\n@file:`/work/plan.md`"
+        let footers = ["\n\n--- Attached Context ---\n\n📄 @file:plan.md (12 tokens)\n# Plan",
+                       "\n\n--- Context Warnings ---\n- @file:`/work/plan.md`: file not found",
+                       "\n\n--- Context Warnings ---\n- too large\n\n--- Attached Context ---\n\n# Plan"]
+        for footer in footers {
+            let shown = HermesChatTurnCoordinator.displayed(ChatMessage(role: "user", content: sent + note + footer,
+                                                                        timestamp: nil, messageId: nil))
+            XCTAssertEqual(shown.content, "@helper look", footer)
+            XCTAssertEqual(shown.attachments?.map(\.name), ["plan.md"], footer)
+        }
+
+        let typed = note.replacingOccurrences(of: "@helper = agent profile \"helper\" (\"Inbox Triage\")", with: "my notes")
+        let shown = HermesChatTurnCoordinator.displayed(ChatMessage(role: "user", content: sent + typed + footers[0],
+                                                                    timestamp: nil, messageId: nil))
+        XCTAssertEqual(shown.content, "@helper look" + typed)
+        XCTAssertEqual(shown.attachments?.map(\.name), ["plan.md"])
+    }
+
     /// A session sends `@` text exactly as typed: only a Bot Chat's host delivers a mention.
     func testASessionSendsMentionsAsTyped() async throws {
         let chat = await openChat(target: .session(profile: "default", key: "tip"))

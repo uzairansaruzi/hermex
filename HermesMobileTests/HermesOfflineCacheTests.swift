@@ -476,7 +476,7 @@ import XCTest
         XCTAssertEqual(opened.target, .session(profile: "default", key: "tip"))
         let offline = HermesOfflineWire(rows: [])
         offline.connectFailure = URLError(.cannotConnectToHost)
-        let chat = makeChat(offline, target: opened.target, botChatRoot: opened.botChatRoot)
+        let chat = makeChat(offline, target: opened.target, botChatRoot: opened.botChatCacheRoot)
         await chat.model.loadMessages(modelContext: context)
 
         XCTAssertTrue(chat.model.isViewingCachedData)
@@ -495,17 +495,17 @@ import XCTest
         let archived = HermesSessionRow(id: "tip", title: "Bot Chat (continued)", archived: true, hidden: true, lineageRootID: "root")
         let opened = try XCTUnwrap(archived.summary(in: "default").hermesChat(on: server, connection: connection, listedIn: "default"))
         XCTAssertEqual(opened.target, .session(profile: "default", key: "tip"))
-        XCTAssertEqual(opened.botChatRoot, "root")
+        XCTAssertEqual(opened.botChatCacheRoot, "root")
         let offline = HermesOfflineWire(rows: [])
         offline.connectFailure = URLError(.cannotConnectToHost)
-        let chat = makeChat(offline, target: opened.target, botChatRoot: opened.botChatRoot)
+        let chat = makeChat(offline, target: opened.target, botChatRoot: opened.botChatCacheRoot)
         await chat.model.loadMessages(modelContext: context)
 
         XCTAssertTrue(chat.model.isViewingCachedData)
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello."])
 
         let other = HermesSessionRow(id: "tip", title: "Notes (continued)", archived: true, hidden: true, lineageRootID: "root")
-        XCTAssertNil(other.summary(in: "default").hermesChat(on: server, connection: connection, listedIn: "default")?.botChatRoot)
+        XCTAssertNil(other.summary(in: "default").hermesChat(on: server, connection: connection, listedIn: "default")?.botChatCacheRoot)
     }
 
     /// An older archived Bot Chat visited online keeps its own copy: the bot's Bot Chat still

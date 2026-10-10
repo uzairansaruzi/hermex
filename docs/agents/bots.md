@@ -531,7 +531,10 @@ redirect's steer during a tool are verified against `tui_gateway/methods_config_
 `tui_gateway/server.py` and `agent/interrupt_control.py` at `ca678285`.
 
 A bot's Bot Chat opens in the main chat too (#1145): a `.canonicalChat` target, or a Bot Chat
-row Archived opens by its key (`HermesSessionChat.opensBotChat`). One `HermesChatPolicy` keeps
+row Archived opens by its key (`HermesSessionChat.botChatRoot`, the row's lineage root, which
+its Live Activity's tap names, since the canonical route resolves that and never the tip key).
+A deliberately archived Bot Chat is out of upstream's title lookup, so such a tap shows the
+missing or replaced state and opens or restores nothing. One `HermesChatPolicy` keeps
 Bot Chat's rules (#1127 decision 3), read by `HermesSlashCommands`, the message menu and the
 composer: `/new` (and `/reset`), `/clear` (pointing at `/compress`), `/resume`, `/sessions`,
 `/branch`, `/fork`, `/title`, `/undo` and `/retry` are refused with copy before anything is
@@ -546,7 +549,9 @@ the avatar `BotAvatarStore` already holds, and the face from the turn
 `@` panel this connection's other bots above its files, and the editor their chips; every send
 mode appends Desktop's note to the typed text's mentions and the chat shows the text without it
 (the optimistic row, the snapshot's in-flight prompt and the queued receipt). A session sends
-`@` text as typed. Its turns drive the Bot Live Activity (below). A `linkedRoot` (a bot link's
+`@` text as typed. A restored prompt drops the host's context footer and reference lines before
+the note, so an attachment never exposes it. Its turns drive the Bot Live Activity (below),
+which takes the bot's name and avatar again when a roster read lands mid-turn. A `linkedRoot` (a bot link's
 root) the bot has replaced calls `ChatView`'s `onChatReplaced` (#554); Update sign-in is
 `HermesUpdateSignInAction`. Rooms never open here.
 
