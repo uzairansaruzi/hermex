@@ -401,8 +401,8 @@ import UIKit
         XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path == "/api/fs/download" }.count, 1)
     }
 
-    /// A detached Hermes chat asks nothing for inline audio: the player shows its unavailable
-    /// state.
+    /// A detached Hermes chat asks nothing for inline audio; its player waits on
+    /// `attachmentLoadKey` instead.
     func testADetachedChatsInlineAudioAsksNothing() async {
         let chat = await openChat()
         chat.turn.engine.suspend()
@@ -412,6 +412,30 @@ import UIKit
 
         XCTAssertNil(data)
         XCTAssertEqual(HermesHostFixture.requests.count, before)
+    }
+
+    /// An inline player that loads while the chat is detached waits instead of failing, and
+    /// plays once the chat attaches, downloading the clip once.
+    func testInlineAudioLoadedWhileDetachedPlaysOnceTheChatAttaches() async throws {
+        let chat = await openChat()
+        let path = "/home/u/.hermes/attachments/\(Self.uuid)-memo.wav"
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/fs/download" ? .body(200, TranscriptMediaPreviewViewModelTests.wavData()) : nil
+        }
+        let player = InlineAudioPlayerModel()
+        let load = { await chat.model.attachmentRawData(path: path) }
+        chat.turn.engine.suspend()
+
+        XCTAssertNil(chat.model.attachmentLoadKey)
+        await player.loadIfNeeded(key: chat.model.attachmentLoadKey, using: load)
+        XCTAssertEqual(player.phase, .idle)
+
+        await chat.turn.activate()
+        await player.loadIfNeeded(key: chat.model.attachmentLoadKey, using: load)
+        await player.loadIfNeeded(key: chat.model.attachmentLoadKey, using: load)
+
+        XCTAssertEqual(player.phase, .ready)
+        XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path == "/api/fs/download" }.count, 1)
     }
 
     /// A just-sent audio chip has no host path yet, so it stays a file cell and nothing

@@ -117,4 +117,19 @@ final class AttachmentAudioDetectionTests: XCTestCase {
         await model.loadIfNeeded(using: { nil })
         XCTAssertEqual(model.phase, .failed)
     }
+
+    /// A load that went stale on a reattach fails under its key once, then loads again
+    /// under the next attach's key (#1143).
+    @MainActor
+    func testAFailedLoadRetriesOnlyUnderANewKey() async {
+        let model = InlineAudioPlayerModel()
+        var loads = 0
+        await model.loadIfNeeded(key: 1, using: { loads += 1; return nil })
+        await model.loadIfNeeded(key: 1, using: { loads += 1; return nil })
+        XCTAssertEqual(model.phase, .failed)
+        XCTAssertEqual(loads, 1)
+
+        await model.loadIfNeeded(key: 2, using: { loads += 1; return nil })
+        XCTAssertEqual(loads, 2)
+    }
 }

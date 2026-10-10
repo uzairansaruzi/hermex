@@ -1734,10 +1734,18 @@ final class ChatViewModel {
 
     /// A sent attachment's original bytes for its inline audio player: a Hermes session downloads
     /// from its host under the preview cap (#1143), a webui chat through the server's file API.
-    /// Nil when it can't load, including on a detached Hermes chat.
+    /// Nil when it can't load, including on a detached Hermes chat, which the player avoids by
+    /// waiting on `attachmentLoadKey`.
     func attachmentRawData(path: String) async -> Data? {
         guard let hermesTurn else { return await attachmentCoordinator.attachmentRawData(path: path) }
         return try? await hermesTurn.attachmentData(path: path)
+    }
+
+    /// When `attachmentRawData` can load: a Hermes chat's current attach, nil while detached; a
+    /// constant on webui. The inline audio player's `loadKey`.
+    var attachmentLoadKey: Int? {
+        guard let hermesTurn else { return 0 }
+        return hermesTurn.attachmentLoadKey
     }
 
     /// A transcript MEDIA image's inline thumbnail: a Hermes session's from its host (#1112), a

@@ -11,6 +11,9 @@ struct InlineAudioPlayerView: View {
     let title: String
     /// Lazily fetches the raw audio bytes; returns `nil` on failure.
     let load: () async -> Data?
+    /// When `load` can run: nil waits without loading (a detached Hermes chat), and a new key
+    /// loads again unless the clip is already ready.
+    var loadKey: Int? = 0
     /// Opens the clip's file preview from a trailing button, shown whether or not
     /// playback works; nil hides the button.
     var onOpen: (() -> Void)? = nil
@@ -55,8 +58,8 @@ struct InlineAudioPlayerView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
         )
-        .task {
-            await model.loadIfNeeded(using: load)
+        .task(id: loadKey) {
+            await model.loadIfNeeded(key: loadKey, using: load)
         }
         .onDisappear {
             model.teardown()
@@ -193,21 +196,29 @@ final class InlineAudioPlayerModel {
     @ObservationIgnored private var player: AVAudioPlayer?
     @ObservationIgnored private let delegateProxy = AudioPlayerDelegateProxy()
     @ObservationIgnored private var ticker: Timer?
-    @ObservationIgnored private var didLoad = false
+    /// The key of the load that ran or is running; nil until one starts.
+    @ObservationIgnored private var loadedKey: Int?
+    @ObservationIgnored private var loadAttempt = 0
 
-    func loadIfNeeded(using load: () async -> Data?) async {
-        guard !didLoad else { return }
-        didLoad = true
+    /// Loads once per `key`: nil waits in `.idle`, and a new key after a failure (a load
+    /// that went stale on a reattach) tries again. A ready clip never reloads.
+    func loadIfNeeded(key: Int? = 0, using load: () async -> Data?) async {
+        guard let key, key != loadedKey, phase != .ready else { return }
+        loadedKey = key
+        loadAttempt += 1
+        let attempt = loadAttempt
         phase = .loading
 
         let data = await load()
+        // A newer key's load took over while this one ran.
+        guard attempt == loadAttempt else { return }
 
         // A cancelled `.task` (e.g. the row scrolled off-screen mid-load) surfaces
         // as a `nil` result here. Don't treat that as a real failure: reset so the
         // player can load again if the view reappears, instead of being stuck on
         // the error state forever.
         if Task.isCancelled {
-            didLoad = false
+            loadedKey = nil
             phase = .idle
             return
         }

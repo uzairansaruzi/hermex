@@ -1882,7 +1882,8 @@ struct ChatView: View {
             },
             attachmentAudio: AttachmentAudioSource(
                 load: { path in await viewModel.attachmentRawData(path: path) },
-                isHost: isHermesSession
+                isHost: isHermesSession,
+                loadKey: viewModel.attachmentLoadKey
             ),
             loadTranscriptMediaImage: { reference in
                 await viewModel.transcriptMediaThumbnailData(for: reference)

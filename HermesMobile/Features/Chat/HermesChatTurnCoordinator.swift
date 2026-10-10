@@ -427,6 +427,13 @@ struct HermesChatTranscript: Equatable {
         return data
     }
 
+    /// The attach `attachmentData` downloads under: its generation once connected with a stored
+    /// key, nil while detached, when a download throws `.stale`. An inline player waits on nil
+    /// and loads again when it changes (#1143).
+    var attachmentLoadKey: Int? {
+        engine.connectionState == .connected && engine.storedKey != nil ? engine.generation : nil
+    }
+
     /// This chat's working folder on its host (#1112), once the session has a stored key and
     /// `session.info` has named its folder; nil before.
     var workspace: HermesWorkspaceContext? {

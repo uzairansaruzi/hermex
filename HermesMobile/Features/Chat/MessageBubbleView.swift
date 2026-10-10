@@ -461,6 +461,7 @@ struct MessageBubbleView: View {
                 InlineAudioPlayerView(
                     title: audioDisplayName(for: attachment),
                     load: audioLoader(for: attachment),
+                    loadKey: attachmentAudio?.loadKey ?? 0,
                     onOpen: attachmentAudio?.openAction(
                         for: attachment, localData: audioItems[index].localData, onPreview: onPreviewAttachment
                     )
@@ -652,6 +653,9 @@ struct AttachmentAudioSource {
     /// chip's host path, since a name is no host path and a just-sent chip has none yet,
     /// and the player keeps the chip's Open action for Quick Look, Save and Share.
     let isHost: Bool
+    /// The player's `loadKey`: nil while a Hermes chat is detached, so its players wait for
+    /// the attach instead of failing.
+    var loadKey: Int? = 0
 
     /// Whether `attachment` draws as an inline player rather than a file cell.
     func playsInline(_ attachment: MessageAttachment) -> Bool {
