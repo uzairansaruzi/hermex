@@ -241,7 +241,9 @@ import Observation
         do {
             let reply = try await engine.write(.connectionRespond(sessionID: action.runtime, opID: action.requestID, answer: answer),
                                                attempt: action.generation, runtime: action.runtime) { [weak self] in
-                guard let self, self.onScreen?.requestID == action.requestID else { throw BotFailure.stale }
+                // An update since the tap may have moved the row: send only a move the card still offers.
+                guard let self, case .connection(let current)? = self.onScreen, current.opID == action.requestID,
+                      answer.isOffered(by: current) else { throw BotFailure.stale }
             }
             guard action.generation == engine.generation, !Task.isCancelled else { return false }
             guard reply["status"].text == "ok", let settled = reply["settled"].flag else { throw BotFailure.unsupported }
@@ -273,7 +275,8 @@ import Observation
     /// Releases the open operation before a Steer or Queue message, as Desktop does, so the
     /// message does not wait behind the blocked tool until its deadline: one
     /// `settled_by: "continue"`, never retried. A refusal (most often: it had already
-    /// settled) lets the message go; a lost reply throws, and the message is held.
+    /// settled) lets the message go; a lost reply warns on the card, as a lost row answer
+    /// does, then throws, and the message is held.
     func continueConnection(runtime: String, attempt: Int) async throws {
         guard let opID = connection?.opID else { return }
         do {
@@ -282,7 +285,10 @@ import Observation
             if reply["settled"].flag == true { closeConnection(opID) }
         } catch BotFailure.rejected {
         } catch {
-            if error as? BotFailure != .stale { engine.disconnect(error) }
+            if error as? BotFailure != .stale {
+                connectionResolution = BotRequestResolution(requestID: opID, outcome: .uncertain)
+                engine.disconnect(error)
+            }
             throw error
         }
     }

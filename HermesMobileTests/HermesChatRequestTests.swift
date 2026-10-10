@@ -359,6 +359,26 @@ import XCTest
         XCTAssertFalse(chat.model.isWaitingForUser)
     }
 
+    /// A row the host moves between the tap and the socket write is not answered: the write
+    /// checks the card still offers that move, and the rows still open stay answerable.
+    func testAMoveTheCardStopsOfferingBeforeTheWriteIsNeverSent() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "connection.request", operation(seq: 1)))
+        let tap = try action(chat)
+        let answering = Task { await chat.requests.respondToConnection(tap, .skip(target: "gmail")) }
+        await Task.yield() // the answer passes its tap checks and waits for the socket write
+        chat.receive(event(3, "connection.update", operation(seq: 2, targets: [
+            BotConnectionFixture.gmail(state: "connected"), BotConnectionFixture.github()
+        ])))
+
+        let taken = await answering.value
+        XCTAssertFalse(taken)
+        XCTAssertEqual(chat.writes("connection.respond"), [])
+        XCTAssertEqual(connectionOnScreen(chat)?.targets.first?.state, .connected)
+        XCTAssertTrue(chat.requests.mayAnswer, "the card still answers its open rows")
+    }
+
     /// 4004: the host no longer holds the operation. The chat reads the session again, and a
     /// card that read still lists stays inert; nothing is sent again.
     func testAnOperationTheHostNoLongerHoldsGoesInertAndIsReadAgain() async throws {
@@ -545,6 +565,28 @@ import XCTest
         } catch {
             XCTAssertTrue(error is HermesChatTurnCoordinator.NotSent, "\(error)")
         }
+        XCTAssertEqual(chat.writes("connection.respond").count, 1)
+        XCTAssertEqual(chat.writes("prompt.submit"), [])
+    }
+
+    /// A lost Continue warns on the card the reconnect restores, as a lost row answer does,
+    /// and is never resent.
+    func testALostContinueWarnsOnTheRestoredCard() async {
+        let chat = await openChat(pendingConnection: .object(operation(seq: 1)), rpcDeadline: .milliseconds(50))
+        chat.host.withhold("connection.respond")
+        do {
+            _ = try await chat.turn.submit("Then the docs", mode: .queue)
+            XCTFail("A lost Continue must not send the message")
+        } catch {
+            XCTAssertTrue(error is HermesChatTurnCoordinator.NotSent, "\(error)")
+        }
+        XCTAssertEqual(chat.turn.engine.connectionState, .disconnected)
+
+        // Reattach now rather than on the backoff.
+        await chat.model.networkPathDidChange()
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+        XCTAssertEqual(connectionOnScreen(chat)?.opID, "op-1", "the host still holds it")
+        XCTAssertEqual(chat.requests.onScreenResolution?.outcome, .uncertain)
         XCTAssertEqual(chat.writes("connection.respond").count, 1)
         XCTAssertEqual(chat.writes("prompt.submit"), [])
     }
