@@ -276,9 +276,14 @@ import Observation
     /// message does not wait behind the blocked tool until its deadline: one
     /// `settled_by: "continue"`, never retried. A refusal (most often: it had already
     /// settled) lets the message go; a lost reply warns on the card, as a lost row answer
-    /// does, then throws, and the message is held.
+    /// does, then throws, and the message is held. It shares the card's one answer at a time
+    /// (`answeringRequestID`): an answer still out holds the message, and the card waits while
+    /// Continue is out.
     func continueConnection(runtime: String, attempt: Int) async throws {
         guard let opID = connection?.opID else { return }
+        guard answeringRequestID == nil else { throw BotFailure.stale }
+        answeringRequestID = opID
+        defer { if answeringRequestID == opID { answeringRequestID = nil } }
         do {
             let reply = try await engine.write(.connectionRespond(sessionID: runtime, opID: opID, answer: .continueWithout),
                                                attempt: attempt, runtime: runtime)

@@ -568,6 +568,45 @@ import XCTest
         XCTAssertEqual(chat.writes("connection.respond").count, 2, "Interrupt sends no Continue")
     }
 
+    /// A row's answer and a Steer or Queue's Continue never compete for one operation: while a
+    /// row's answer is out, a Queue sends no Continue and its message is held; while a Continue
+    /// is out, the card can't be answered.
+    func testARowAnswerAndContinueNeverCompete() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "connection.request", operation(seq: 1)))
+        chat.host.withhold("connection.respond")
+        let answering = expectation(description: "the row's answer is out")
+        chat.host.expect(answering, onNext: "connection.respond")
+        let skip = try action(chat)
+        let answer = Task { await chat.requests.respondToConnection(skip, .skip(target: "gmail")) }
+        await fulfillment(of: [answering], timeout: 5)
+        do {
+            _ = try await chat.turn.submit("Then the docs", mode: .queue)
+            XCTFail("A Queue must not release the operation while a row's answer is out")
+        } catch {
+            XCTAssertTrue(error is HermesChatTurnCoordinator.NotSent, "\(error)")
+        }
+        XCTAssertEqual(chat.writes("connection.respond").count, 1, "no competing Continue")
+        XCTAssertEqual(chat.writes("prompt.submit"), [])
+        chat.turn.engine.disconnect(BotFailure.transport)
+        _ = await answer.value
+
+        let other = await openChat()
+        other.receive(event(1, "message.start"))
+        other.receive(event(2, "connection.request", operation(seq: 1)))
+        other.host.withhold("connection.respond")
+        let releasing = expectation(description: "Continue is out")
+        other.host.expect(releasing, onNext: "connection.respond")
+        let queued = Task { try await other.turn.submit("Then the docs", mode: .queue) }
+        await fulfillment(of: [releasing], timeout: 5)
+        XCTAssertFalse(other.requests.mayAnswer, "the card waits for Continue")
+        XCTAssertNil(other.requests.prepareAnswer())
+        other.turn.engine.disconnect(BotFailure.transport)
+        _ = try? await queued.value
+        XCTAssertEqual(other.writes("connection.respond").count, 1)
+    }
+
     /// A Continue whose reply is lost holds the message: it is never sent, and nothing is retried.
     func testALostContinueHoldsTheMessage() async {
         let chat = await openChat(rpcDeadline: .milliseconds(50))

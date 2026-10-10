@@ -515,9 +515,11 @@ struct ChatView: View {
                     composerIsFocused = value
                 }
             ),
-            // A Hermes prompt whose answer was lost holds Send until the chat reattaches (#508).
+            // A Hermes prompt whose answer was lost holds Send until the chat reattaches (#508), and
+            // a request card's answer holds it while out, so Steer and Queue send no competing
+            // Continue (#1141).
             isSending: viewModel.isStartingChat || viewModel.isSendingVoiceNote || viewModel.isHermesSubmissionUncertain
-                || viewModel.isUndoingExchange,
+                || viewModel.isUndoingExchange || viewModel.hermesRequests?.answeringRequestID != nil,
             isCompressingSession: viewModel.isCompressingSession,
             isWaitingForStream: viewModel.activeStreamID != nil,
             isCancellingStream: viewModel.isCancellingStream,

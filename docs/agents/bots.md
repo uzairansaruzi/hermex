@@ -785,7 +785,9 @@ sign-in (`authorize`, or an install that turns into OAuth) redirects to the
 host's own loopback, so the phone shows "Finish on the Mac" and only Skip.
 Skip leaves the bot waiting until every row is connected or skipped; Continue
 releases it at once, and Guide or Queue sends Continue first so the message
-does not wait behind the blocked tool. `4004` means the operation had already
+does not wait behind the blocked tool. One answer to an operation is out at a time: a
+Hermes chat's card waits while Continue is out, and Send waits while a row's answer is.
+`4004` means the operation had already
 settled. Setup values stay in the row's view state and are cleared on send.
 Try again on a failed managed row (`connectors.connect {reconnect}`) and
 `connectors.operation.wake` are not used. The shapes are verified against
