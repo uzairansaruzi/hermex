@@ -438,6 +438,36 @@ import UIKit
         XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path == "/api/fs/download" }.count, 1)
     }
 
+    /// Transcript rows skip re-rendering while their inputs compare equal, so the attach
+    /// generation must be one of them, or an unchanged row's player never learns of it.
+    func testATranscriptRowRerendersWhenOnlyTheAudioLoadKeyChanges() {
+        func row(loadKey: Int?) -> ChatTranscriptMessageBlock {
+            ChatTranscriptMessageBlock(
+                transcriptMessage: TranscriptMessage(
+                    loadedIndex: 0, renderID: "r", anchorID: "a",
+                    message: ChatMessage(role: "assistant", content: "Here", timestamp: nil, messageId: "m")
+                ),
+                transcriptSpacing: 8, showsThinkingAndToolCards: true, foldState: nil, isTerminalReply: true,
+                onToggleTurnFold: { _ in }, reasoningGroups: [], toolCallGroups: [], liveReasoningText: "",
+                reasoningAnchorMessageID: nil, liveReasoningStreamID: nil, liveToolCalls: [],
+                isReplayingLiveToolCalls: false, toolCallAnchorMessageID: nil, streamingAssistantMessageID: nil,
+                liveTokensPerSecond: nil, localAttachmentPreviews: nil, listeningMessageID: nil,
+                isViewingCachedData: false, hasActiveStream: false, isRegeneratingMessage: false,
+                isEditingMessage: false, isForkingMessage: false, loadAttachmentImage: { _ in nil },
+                attachmentAudio: AttachmentAudioSource(load: { _ in nil }, isHost: true, loadKey: loadKey),
+                loadTranscriptMediaImage: { _ in nil }, loadTranscriptMediaData: { _ in nil },
+                transcriptMediaCacheNamespace: "ns", actionContext: { _, _ in nil },
+                shouldRenderMessageRow: { _ in true }, onPreviewAttachment: { _, _ in },
+                onPreviewTranscriptMedia: { _ in }, onAskHermex: { _ in }, onToggleListening: { _ in },
+                onRegenerate: { _ in }, onEdit: { _ in }, onFork: { _ in }, onCopy: { _ in }
+            )
+        }
+
+        XCTAssertEqual(row(loadKey: 3), row(loadKey: 3))
+        XCTAssertNotEqual(row(loadKey: nil), row(loadKey: 3))
+        XCTAssertNotEqual(row(loadKey: 3), row(loadKey: 4))
+    }
+
     /// A just-sent audio chip has no host path yet, so it stays a file cell and nothing
     /// downloads it by its display name; a chip with its host path plays inline. A webui
     /// chip still plays by name, as older sessions saved uploads to the workspace root.

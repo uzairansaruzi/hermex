@@ -598,7 +598,7 @@ struct StreamingFollowTrigger: View {
     }
 }
 
-private struct ChatTranscriptMessageBlock: View, Equatable {
+struct ChatTranscriptMessageBlock: View, Equatable {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let transcriptMessage: TranscriptMessage
@@ -674,6 +674,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.isRegeneratingMessage == rhs.isRegeneratingMessage &&
             lhs.isEditingMessage == rhs.isEditingMessage &&
             lhs.isForkingMessage == rhs.isForkingMessage &&
+            lhs.attachmentAudio == rhs.attachmentAudio &&
             lhs.transcriptMediaCacheNamespace == rhs.transcriptMediaCacheNamespace
     }
 

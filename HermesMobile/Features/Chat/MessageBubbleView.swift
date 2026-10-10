@@ -645,8 +645,9 @@ private extension [TranscriptMediaSegment] {
 }
 
 /// Where a sent message's attachment row gets its inline audio. Without one, audio
-/// attachments are file cells.
-struct AttachmentAudioSource {
+/// attachments are file cells. Equal sources differ only in `load`, which is fixed for a
+/// chat, so a transcript row's equality can compare it and still see a new `loadKey`.
+struct AttachmentAudioSource: Equatable {
     /// Downloads an attachment's bytes by its path (or, on webui, an older chip's name).
     let load: (String) async -> Data?
     /// A Hermes chat's chips live on its host (#1143): audio plays inline only from the
@@ -656,6 +657,10 @@ struct AttachmentAudioSource {
     /// The player's `loadKey`: nil while a Hermes chat is detached, so its players wait for
     /// the attach instead of failing.
     var loadKey: Int? = 0
+
+    static func == (lhs: AttachmentAudioSource, rhs: AttachmentAudioSource) -> Bool {
+        lhs.isHost == rhs.isHost && lhs.loadKey == rhs.loadKey
+    }
 
     /// Whether `attachment` draws as an inline player rather than a file cell.
     func playsInline(_ attachment: MessageAttachment) -> Bool {
