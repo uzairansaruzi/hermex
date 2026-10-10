@@ -12,7 +12,7 @@ import XCTest
         MainActor.assumeIsolated { warmUpSoftwareKeyboard() }
     }
 
-    func testSettledReplyShowsCopyWithoutTimestampsOrReactions() async throws {
+    func testSettledReplyShowsCopyWithoutTimestamps() async throws {
         let settings = try XCTUnwrap(UserDefaults(suiteName: UUID().uuidString))
         settings.set(false, forKey: ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey)
         let model = make(BotFixtureWire())
@@ -47,7 +47,7 @@ import XCTest
         try XCTSkipUnless(nodes.contains { $0.accessibilityLabel == probeLabel },
                           "This toolchain does not expose the independent SwiftUI accessibility probe")
         XCTAssertEqual(nodes.filter { $0.accessibilityLabel == "Copy" }.count, 1,
-                       "The reply must expose one Copy control without a timestamp or reactions")
+                       "The reply must expose one Copy control without a timestamp")
         XCTAssertFalse(nodes.flatMap { $0.accessibilityCustomActions ?? [] }.contains { $0.name == "Copy" },
                        "Reply text must not duplicate the footer's Copy as a VoiceOver action")
     }
@@ -716,7 +716,6 @@ import XCTest
             + "@file:`/home/u/.hermes/attachments/\(uuid)-Q3 report.pdf`"
         let prompt = BotPrompt(ChatMessage(role: "user", content: content, timestamp: 1, messageId: "u1", rowID: 7))
         XCTAssertEqual(prompt.message.content, "Compare these")
-        XCTAssertEqual(prompt.message.rowID, 7, "reactions still address the row")
         XCTAssertEqual(prompt.attachments.map(\.name), ["photo.jpg", "notes.txt", "Q3 report.pdf"])
         XCTAssertEqual(prompt.attachments.map(\.reference.rawReference), [
             "/home/u/.hermes/images/dashboard_20261004_031500_ab12cd34_photo.jpg",
@@ -753,7 +752,7 @@ import XCTest
             botRow("u3", "user", at: 1_080),
             botRow("a5", "assistant", at: 1_090)
         ]
-        let idle = BotTranscriptTimes(messages: messages, start: 0, livePrompt: nil, turnStartedAt: nil, isMidTurn: false)
+        let idle = BotTranscriptTimes(messages: messages, start: 0, hasLivePrompt: false, isMidTurn: false)
         XCTAssertEqual(idle.footerTimes, ["u1": 1_000, "a2": 1_030, "a3": 1_050, "u2": 1_060, "u3": 1_080, "a5": 1_090],
                        "interim replies, steers, delegation cards and unstamped rows get no time; a delivery ends the turn before it")
 
@@ -763,7 +762,7 @@ import XCTest
             ChatMessage(role: "assistant", content: "", timestamp: 1_020, messageId: "a2"),
             botRow("u2", "user", at: 1_030)
         ]
-        let stopped = BotTranscriptTimes(messages: interrupted, start: 0, livePrompt: nil, turnStartedAt: nil, isMidTurn: false)
+        let stopped = BotTranscriptTimes(messages: interrupted, start: 0, hasLivePrompt: false, isMidTurn: false)
         XCTAssertEqual(stopped.footerTimes, ["u1": 1_000, "a1": 1_010, "u2": 1_030],
                        "a text-less reasoning row gets no time and the visible reply before it ends the turn")
 
@@ -773,36 +772,16 @@ import XCTest
             botRow("s1", "user", at: 1_020, displayKind: ChatMessage.steerDisplayKind),
             botRow("u2", "user", at: 1_030)
         ]
-        let steered = BotTranscriptTimes(messages: lateSteer, start: 0, livePrompt: nil, turnStartedAt: nil, isMidTurn: false)
+        let steered = BotTranscriptTimes(messages: lateSteer, start: 0, hasLivePrompt: false, isMidTurn: false)
         XCTAssertEqual(steered.footerTimes["a1"], 1_010, "a steer the turn never answered doesn't make its last reply interim")
 
-        let running = BotTranscriptTimes(messages: messages, start: 0, livePrompt: nil, turnStartedAt: 1_085, isMidTurn: true)
+        let running = BotTranscriptTimes(messages: messages, start: 0, hasLivePrompt: false, isMidTurn: true)
         XCTAssertNil(running.footerTimes["a5"], "the last reply of a turn still running is interim")
-        let answeringNext = BotTranscriptTimes(messages: messages, start: 0, livePrompt: livePrompt,
-                                               turnStartedAt: 1_100, isMidTurn: true)
+        let answeringNext = BotTranscriptTimes(messages: messages, start: 0, hasLivePrompt: true, isMidTurn: true)
         XCTAssertEqual(answeringNext.footerTimes["a5"], 1_090, "a live prompt means the settled turn ended")
 
-        let windowed = BotTranscriptTimes(messages: messages, start: 8, livePrompt: nil, turnStartedAt: nil, isMidTurn: false)
+        let windowed = BotTranscriptTimes(messages: messages, start: 8, hasLivePrompt: false, isMidTurn: false)
         XCTAssertEqual(windowed.footerTimes, ["u3": 1_080, "a5": 1_090], "only the window's rows are worked out")
-        XCTAssertEqual(windowed.gapStarts, ["u3"], "the window's first stamped row is dated")
-    }
-
-    func testLivePromptIsDatedByTheHostTurnStartAfterAThirtyMinuteGap() {
-        let messages = [botRow("u1", "user", at: 1_000), botRow("a1", "assistant", at: 1_010)]
-        let soon = BotTranscriptTimes(messages: messages, start: 0, livePrompt: livePrompt,
-                                      turnStartedAt: 1_010 + 1_799, isMidTurn: true)
-        XCTAssertNil(soon.livePromptSeparator)
-        let later = BotTranscriptTimes(messages: messages, start: 0, livePrompt: livePrompt,
-                                       turnStartedAt: 1_010 + 1_800, isMidTurn: true)
-        XCTAssertEqual(later.livePromptSeparator, 1_010 + 1_800)
-        XCTAssertEqual(later.gapStarts, ["u1", "live-user"])
-        let undated = BotTranscriptTimes(messages: messages, start: 0, livePrompt: livePrompt,
-                                         turnStartedAt: nil, isMidTurn: true)
-        XCTAssertNil(undated.livePromptSeparator, "no host start time means no separator, never the phone clock")
-    }
-
-    private var livePrompt: ChatMessage {
-        ChatMessage(role: "user", content: "Again", timestamp: nil, messageId: "live-user")
     }
 
     /// Sets a standard default for one test; call the result to put it back.
@@ -818,15 +797,15 @@ import XCTest
     }
 
     /// A settled turn folds its interim reply and work behind the Sessions row;
-    /// the first and last replies stay. A long pause before the interim reply
-    /// keeps its time separator when the reply folds away, so the reader still
-    /// sees where the turn stalled. Tapping the row is a manual check: the
-    /// hosted window exposes no accessibility tree to activate it through.
+    /// the first and last replies stay. A two-hour pause draws no dated gap
+    /// separator (#1147): times live only in the per-message footers. Tapping
+    /// the row is a manual check: the hosted window exposes no accessibility
+    /// tree to activate it through.
     func testSettledTurnHidesItsInterimReplyBehindTheWorkedForRow() async throws {
         let restoreFolds = overrideDefault(ChatTranscriptDisplaySettings.foldsSettledTurnsKey, true)
         let restoreCards = overrideDefault(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey, true)
         defer { restoreFolds(); restoreCards() }
-        let start: Double = 1_700_000_000 // 2023: separators name the year.
+        let start: Double = 1_700_000_000 // 2023: a dated separator would name the year.
         let wire = BotFixtureWire()
         wire.history = [
             .object(["role": .string("user"), "text": .string("Clean the inbox"), "timestamp": .number(start)]),
@@ -845,8 +824,7 @@ import XCTest
         XCTAssertFalse(folded.contains("Halfway there"), folded)
         XCTAssertTrue(folded.contains("Worked for 2h 42s"), folded)
         XCTAssertFalse(folded.contains("Thinking"), "the reasoning row folds too: \(folded)")
-        XCTAssertEqual(folded.components(separatedBy: "2023").count - 1, 2,
-                       "the prompt's separator and the folded reply's gap separator: \(folded)")
+        XCTAssertFalse(folded.contains("2023"), "no gap separator dates the transcript: \(folded)")
     }
 
     func testTransientDisconnectRemainsQuietAboveComposer() async throws {

@@ -55,32 +55,26 @@ import SwiftUI
                         if threadID != nil, reader.threads.first(where: { $0.id == threadID })?.root == nil {
                             Text("Earlier messages not loaded").font(.caption).foregroundStyle(.secondary)
                         }
-                        let gapStarts = showsThreadOverview ? Set<Int>() : BotRoomEvent.gapStarts(in: transcriptEvents[start...])
                         let rows = Array(transcriptEvents[start...])
                         ForEach((showsThreadOverview ? Array(rows.reversed()) : rows).map {
                             BotRoomTranscriptRow(event: $0, isOverview: threadID == nil)
                         }) { row in
                             let event = row.event
                             // Thread identity survives new replies and activity reordering.
-                            VStack(spacing: 16) {
-                                if gapStarts.contains(event.seq), let timestamp = event.timestamp {
-                                    TranscriptTimeSeparator(timestamp: timestamp)
+                            if threadID == nil, let thread = reader.threads.first(where: { $0.latest.seq == event.seq }) {
+                                Button { selectedThread = thread.id } label: {
+                                    BotRoomThreadPreview(thread: thread, room: reader.room)
                                 }
-                                if threadID == nil, let thread = reader.threads.first(where: { $0.latest.seq == event.seq }) {
-                                    Button { selectedThread = thread.id } label: {
-                                        BotRoomThreadPreview(thread: thread, room: reader.room)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityIdentifier("room-thread-\(thread.id)")
-                                } else {
-                                    BotRoomEventView(
-                                        event: event,
-                                        room: reader.room,
-                                        roster: roster,
-                                        avatars: avatars,
-                                        transcriptMediaCacheNamespace: "\(reader.key.server.absoluteString)|bot-room:\(reader.room.id)"
-                                    )
-                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("room-thread-\(thread.id)")
+                            } else {
+                                BotRoomEventView(
+                                    event: event,
+                                    room: reader.room,
+                                    roster: roster,
+                                    avatars: avatars,
+                                    transcriptMediaCacheNamespace: "\(reader.key.server.absoluteString)|bot-room:\(reader.room.id)"
+                                )
                             }
                         }
                         if showsThreadOverview && (hasHiddenEvents || reader.hasEarlier) {

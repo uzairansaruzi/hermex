@@ -115,8 +115,6 @@ enum HermesCall: Equatable, Sendable {
     case requestAnswer(id: String, result: RequestAnswer)
     case clarifyLock(requestID: String, questionID: String, answer: String)
     case connectionRespond(sessionID: String, opID: String, answer: BotConnectionOperation.Answer)
-    /// Your own Tapback on one persisted row; nil clears it.
-    case messageReact(sessionID: String, rowID: Int, emoji: String?)
 
     // Runtime-scoped session settings
     case modelOptions(sessionID: String, profile: String)
@@ -303,7 +301,6 @@ enum HermesCall: Equatable, Sendable {
         case .requestAnswer: return "request.answer"
         case .clarifyLock: return "clarify.lock"
         case .connectionRespond: return "connection.respond"
-        case .messageReact: return "message.react"
         case .modelOptions, .configuredModelOptions, .profileModelOptions: return "model.options"
         case .configSet: return "config.set"
         case .sessionCwdSet: return "session.cwd.set"
@@ -423,8 +420,6 @@ enum HermesCall: Equatable, Sendable {
             if Self.predatesSessionOwner(hostVersion) { params["session_id"] = .string(sessionID) }
             else { params["owner"] = .object(["type": .string("session"), "session_id": .string(sessionID)]) }
             return params
-        case .messageReact(let sessionID, let rowID, let emoji):
-            return ["session_id": .string(sessionID), "row_id": .number(Double(rowID)), "emoji": emoji.map(BotJSON.string) ?? .null]
         case .modelOptions(let sessionID, let profile), .sessionControlRead(let sessionID, let profile):
             return ["session_id": .string(sessionID), "profile": .string(profile)]
         case .configuredModelOptions: return ["include_unconfigured": .bool(false)]
@@ -570,8 +565,6 @@ enum HermesCall: Equatable, Sendable {
                 answerIsValid = !target.isEmpty && env.allSatisfy { !$0.key.isEmpty && !$0.value.isEmpty }
             }
             valid = !sessionID.isEmpty && !opID.isEmpty && answerIsValid
-        case .messageReact(let sessionID, _, let emoji):
-            valid = !sessionID.isEmpty && emoji?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != true
         case .promptRewind(let sessionID, let text, let rowID):
             valid = !sessionID.isEmpty && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && rowID > 0
         case .promptBtw(let sessionID, let text), .promptBackground(let sessionID, let text):

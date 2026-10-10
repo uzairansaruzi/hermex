@@ -484,7 +484,7 @@ redirect's steer during a tool are verified against `tui_gateway/methods_config_
 
 `BotConversation` owns one server/connection/Profile view lifetime and is the engine's
 Bot Chat owner: it keeps the snapshot-driven transcript and the Bot features (mentions,
-reactions, slash commands, file search, delegated work, chat controls). Lookup can
+slash commands, file search, delegated work, chat controls). Lookup can
 recover archived history; resume can auto-continue unfinished backend work. Neither
 is guaranteed to be read-only.
 
@@ -543,10 +543,9 @@ does not offer edit, regenerate or branch yet (#745). Group rooms use the same
 seam. Under a settled message, one reply footer (`BotReplyFooter`, on
 `ChatMessageMetaRow`) shows the host `timestamp`
 (room `created_at`) on user messages and turn-ending replies, following
-Settings → Chat → Message Timestamps; a dated separator (`TranscriptTimeline`)
-opens the window and any row 30+ minutes after the previous stamped one, and
-shows even with that setting off. Later footer parts join this row rather than
-adding one.
+Settings → Chat → Message Timestamps. A settled reply's footer also holds its
+Copy button. Neither Bot Chat nor rooms draw dated gap separators (#1147).
+Later footer parts join this row rather than adding one.
 
 A failed turn gets an outcome row under it (`BotTurnOutcomeRow`, #878), after
 any live reply and before the plan and request card. Its failure half is
@@ -576,28 +575,9 @@ turn's frames, and a gap that could hide a newer turn's start drops it. Both
 survive suspend and a continuous reconnect, clear on `message.start` and on the
 next accepted send, and are never cached. Rooms and Sessions are unchanged.
 
-Bot Chat rows take Desktop's Tapbacks (#761). `session.resume` rows carry the
-durable `row_id` (projected as `ChatMessage.rowID`) and
-`display_metadata.reactions` (`[{emoji, author: user|agent, at?, seen?}]`, one
-per author, read tolerantly as `BotReaction`). A settled reply's footer has a
-"…" menu holding React, Desktop's six quick reactions as one inline row; a
-prompt's long-press menu puts the same row above Copy, plus Remove Reaction
-once you have one. Chips follow in the footer: yours removes it, the Bot's is
-static ("reacted by <Bot>"). `message.react({session_id, row_id, emoji})` is a
-typed `BotClient` exception (`emoji` a non-empty string or null; `author` and
-`newest_role` refused). The host toggles a repeated emoji, so picking yours
-sends null. Writes are not optimistic and serialize per row
-(`BotConversation.reactingRowIDs`): the reply's full list patches the row, a
-rejection leaves it and says so, and a lost reply is never resent; the next full
-snapshot decides. The agent's live `message.reaction` event patches only the
-agent's entry on its row: the tool writes on another host thread, so the event
-can land after a newer `message.react` reply and must not replace yours. A full snapshot requested before a patch keeps the patched row's
-list (`reactionPatches`): `session.resume` runs on the host's worker pool and
-can read history before a `message.react` commits. Live rows, rooms and the offline cache have no reactions.
-Reactions are display-only sync with Desktop unless the host enables
-`display.message_reactions` (a Desktop Appearance toggle Hermex never writes);
-then the next user turn tells the model once, and Desktop sessions give the
-agent `react_to_message`.
+Hermex shows no reactions (#1147). The host's `display_metadata.reactions`
+on `session.resume` rows and its live `message.reaction` event are ignored, and
+the phone never calls `message.react`.
 
 Settled bot replies and room member messages sit in a `ResponseTextSelection`
 document, so text selects in place as it does in Sessions. The scroll-view
@@ -2098,29 +2078,6 @@ Contract checked against the `HERMES_AGENT_TESTED_SHA` pin (`3abeca16`, 0.21.2):
 (`d337b736`) `commands.catalog` binds skill discovery to the session it is given
 (`_session_home_scope`), so the phone passes the runtime id and the list follows
 that session's Profile and workspace. No live mutation was used for validation.
-
-## Quick replies
-
-Quick replies are short texts the user writes in Settings → Interaction → Quick
-Replies (shown only with Bot Mode on). With at least one saved,
-`BotQuickReplyRow` shows them as one-line chips in the status pill's slot above
-the Bot Chat composer, so the pill and the chips never stack.
-`BotQuickReplyPolicy.showsRow` shows the row only when the draft, quotes and
-attachments are empty, `maySend` is true, no request is pending and no pill is
-showing. It hides while the bot works, needs attention or is disconnected.
-
-A tap calls `BotConversation.applyQuickReply`: it fills an empty draft and
-never sends, so a mistap cannot start agent work. Send stays the existing path,
-including skill expansion for a reply that opens with `/skill`. The composer
-does not take focus, so no keyboard comes up.
-
-The list is client-only: the host has no saved-prompt store (webui's
-`/api/prompts` library is webui-only). `BotQuickReplyStore` keeps it as one JSON
-string in `UserDefaults`, empty by default, and it is one global list for every
-server, connection and Profile. Decoding is tolerant: an unreadable value is an
-empty list and blank or repeated entries are dropped. Suggestions in the editor
-are localized starters; adding one saves its text as a plain reply the user
-owns. Group rooms do not get the row.
 
 ## Chat controls
 
