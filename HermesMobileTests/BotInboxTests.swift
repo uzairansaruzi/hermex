@@ -95,7 +95,7 @@ import SwiftUI
         let wire = BotInboxFixtureWire(roster: [row("triage"), row("research")])
         wire.searchResults = [
             "triage": [match("plan", title: "Plan", snippet: ">>>nimbus<<< plan", role: "user"),
-                       match("bot", title: "Bot Chat", snippet: "the >>>nimbus<<< cluster", role: "assistant")],
+                       match("triage-root", title: "Bot Chat", snippet: "the >>>nimbus<<< cluster", role: "assistant")],
             "research": [match("room", title: "Group: room-1", snippet: ">>>nimbus<<<", role: "user")]
         ]
         let inbox = try makeInbox(wires: [wire])
@@ -111,12 +111,26 @@ import SwiftUI
         XCTAssertEqual(wire.searches.map(\.profile), ["triage", "research"])
     }
 
+    /// Only the bot's current Bot Chat is a hit (#1146): an older session under the same title,
+    /// such as one the bot replaced, is not, since the hit opens the current chat.
+    func testMessageSearchSkipsABotChatTheBotReplaced() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage", root: "chat-2", tip: "chat-2")])
+        wire.searchResults = ["triage": [match("chat-1", title: "Bot Chat", snippet: "the old >>>nimbus<<<", role: "user"),
+                                         match("chat-2", title: "Bot Chat", snippet: "the >>>nimbus<<< cluster", role: "assistant")]]
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+
+        let hits = try await inbox.searchBotChats("nimbus")
+
+        XCTAssertEqual(hits, [BotInbox.BotChatHit(profileID: "triage", snippet: "the >>>nimbus<<< cluster", isFromUser: false)])
+    }
+
     /// The host's search has no offset to page with or filter for the Bot Chat (#1146), so the bot
     /// search asks for the host's maximum: a Bot Chat behind 50 other matching sessions is found.
     func testMessageSearchFindsABotChatBehindFiftyOtherMatches() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage")])
         wire.searchResults = ["triage": (0..<50).map { match("s\($0)", title: "Plan \($0)", snippet: ">>>nimbus<<<", role: "user") }
-            + [match("bot", title: "Bot Chat", snippet: "the >>>nimbus<<< cluster", role: "assistant")]]
+            + [match("triage-root", title: "Bot Chat", snippet: "the >>>nimbus<<< cluster", role: "assistant")]]
         let inbox = try makeInbox(wires: [wire])
         await inbox.open()
 
@@ -130,7 +144,7 @@ import SwiftUI
     /// so the sheet shows the bot rather than "<bot> to you".
     func testABotChatIDMatchHasNoAuthor() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage")])
-        wire.searchResults = ["triage": [HermesSessionSearchResult(row: HermesSessionRow(id: "bot", title: "Bot Chat", hidden: true))]]
+        wire.searchResults = ["triage": [HermesSessionSearchResult(row: HermesSessionRow(id: "triage-root", title: "Bot Chat", hidden: true))]]
         let inbox = try makeInbox(wires: [wire])
         await inbox.open()
 

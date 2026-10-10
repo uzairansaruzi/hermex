@@ -2307,7 +2307,8 @@ All / Bots / Messages filter. Bot names use the current roster, including hidden
 bots when a query matches. A bot's chat is searched on the host (#1146):
 `BotInbox.searchBotChats` asks `HermesREST.sessionSearch` once per roster Profile while the
 inbox is live, keeps each Profile's Bot Chat match (who wrote it, and the FTS snippet), and a
-hit opens that bot's chat. A match on the session id names no message (no `role`), so that hit
+hit opens that bot's chat. Only the roster's current Bot Chat (`canonical_session` root or tip)
+counts; a replaced one under the same title is not a hit. A match on the session id names no message (no `role`), so that hit
 shows as the bot's plain result. Room messages stay local: user/member messages from group room
 pages this iPhone has loaded, under the label “Messages saved on this iPhone.” The cache's Bot
 snapshots are no longer searched or shown. There is no initial server crawl, attachment
