@@ -365,14 +365,15 @@ import XCTest
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
         chat.receive(event(2, "connection.request", operation(seq: 1)))
-        let tap = try action(chat)
-        let answering = Task { await chat.requests.respondToConnection(tap, .skip(target: "gmail")) }
-        await Task.yield() // the answer passes its tap checks and waits for the socket write
-        chat.receive(event(3, "connection.update", operation(seq: 2, targets: [
+        let moved = event(3, "connection.update", operation(seq: 2, targets: [
             BotConnectionFixture.gmail(state: "connected"), BotConnectionFixture.github()
-        ])))
+        ]))
+        // Fires as the answer begins, after its tap checks and before the socket write.
+        withObservationTracking { _ = chat.requests.answeringRequestID } onChange: {
+            MainActor.assumeIsolated { chat.receive(moved) }
+        }
 
-        let taken = await answering.value
+        let taken = await chat.requests.respondToConnection(try action(chat), .skip(target: "gmail"))
         XCTAssertFalse(taken)
         XCTAssertEqual(chat.writes("connection.respond"), [])
         XCTAssertEqual(connectionOnScreen(chat)?.targets.first?.state, .connected)
