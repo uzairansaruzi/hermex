@@ -105,6 +105,9 @@ struct HermesPlanState: Equatable {
     struct RetryTarget: Equatable {
         let rowID: Int
         let text: String
+        /// The failed turn is the newest the chat saw and showed the prompt of itself, so an
+        /// unsaved last prompt is that turn's. Never for a turn another client started.
+        let showsPrompt: Bool
     }
 
     /// The turn a plan was revised in, counted by `turnDidStart`, and its prompt's row.
@@ -125,6 +128,8 @@ struct HermesPlanState: Equatable {
     private var isTurnRunning = false
     /// The chat showed the newest turn's prompt itself (`turnDidStart`).
     private var turnShowsPrompt = false
+    /// The row the host saved the newest turn's prompt as, from its `message.complete`.
+    private var turnPromptRowID: Int?
 
     /// The failure the host retained for the last turn: from its `message.complete`, then from
     /// every snapshot's `inflight`, so a reattach rebuilds the same row. Nil after a success
@@ -159,11 +164,12 @@ struct HermesPlanState: Equatable {
     }
 
     /// Retry's resend and cut, when the host says retrying can help, it kept the prompt, and
-    /// its row is known and cuttable.
+    /// its row is known and cuttable. The failure read can name a later turn than the newest
+    /// the chat saw, whose receipt then names another row.
     var retryTarget: RetryTarget? {
         guard failure?.offersRetry == true, let text = failedPrompt, let rowID = failedPromptRowID,
               rowID != uncuttableRowID else { return nil }
-        return RetryTarget(rowID: rowID, text: text)
+        return RetryTarget(rowID: rowID, text: text, showsPrompt: turnShowsPrompt && (turnPromptRowID ?? rowID) == rowID)
     }
 
     /// A turn started: the last turn's outcome goes. `showsPrompt` when the chat shows the
@@ -173,6 +179,7 @@ struct HermesPlanState: Equatable {
         turn += 1
         isTurnRunning = true
         turnShowsPrompt = showsPrompt
+        turnPromptRowID = nil
         failure = nil; notice = nil
         failedPrompt = nil; failedPromptRowID = nil; failedTurnStartedAt = nil
     }
@@ -213,7 +220,8 @@ struct HermesPlanState: Equatable {
     /// saved its prompt as (`persisted_turn.user_row_id`), where its plan settles. Retry's row
     /// waits for the snapshot that names the failed turn (`readSnapshot`).
     func turnDidComplete(_ payload: BotJSON) {
-        if let promptRowID = payload["persisted_turn"]["user_row_id"].integer, planTurn?.turn == turn {
+        turnPromptRowID = payload["persisted_turn"]["user_row_id"].integer
+        if let promptRowID = turnPromptRowID, planTurn?.turn == turn {
             planTurn?.rowID = promptRowID
         }
         let next = payload["status"].text == "error" ? HermesTurnOutcome(inflight: payload) : nil

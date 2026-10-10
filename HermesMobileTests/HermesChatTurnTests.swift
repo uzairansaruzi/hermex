@@ -786,7 +786,7 @@ import SwiftUI
         XCTAssertEqual(chat.model.latestRunOutcome?.ending, .failed)
 
         await waitUntil("the retained prompt read") { activity.retryTarget != nil }
-        XCTAssertEqual(activity.retryTarget, .init(rowID: 7, text: "Summarize the logs\n\n@file:/a/notes.txt"))
+        XCTAssertEqual(activity.retryTarget, .init(rowID: 7, text: "Summarize the logs\n\n@file:/a/notes.txt", showsPrompt: false))
         XCTAssertEqual(chat.writes("prompt.submit").count, 0, "nothing resends on its own")
 
         chat.receive(event(4, "message.start"))
@@ -809,7 +809,7 @@ import SwiftUI
         chat.receive(event(3, "session.info", ["running": .bool(false)]))
 
         await waitUntil("the retained prompt read") { activity.retryTarget != nil }
-        XCTAssertEqual(activity.retryTarget, .init(rowID: 9, text: "Second"), "the named turn's prompt, at its own row")
+        XCTAssertEqual(activity.retryTarget, .init(rowID: 9, text: "Second", showsPrompt: false), "the named turn's prompt, at its own row")
     }
 
     /// The failure read takes the snapshot, then the newest rows. A turn another client submitted
@@ -858,7 +858,7 @@ import SwiftUI
         await reattach(chat, resume(running: false, inflight: Self.failedInflight))
         XCTAssertEqual(chat.turn.activity.failure?.surface?.code, "rate_limit")
         XCTAssertNil(chat.model.sendErrorMessage)
-        XCTAssertEqual(chat.turn.activity.retryTarget, .init(rowID: 1, text: "Summarize the logs\n\n@file:/a/notes.txt"))
+        XCTAssertEqual(chat.turn.activity.retryTarget, .init(rowID: 1, text: "Summarize the logs\n\n@file:/a/notes.txt", showsPrompt: false))
     }
 
     // MARK: Fixture

@@ -294,6 +294,61 @@ import Observation
         XCTAssertEqual(chat.model.messages.map(\.content), shown + ["Elsewhere"], "the earlier exchange stays")
     }
 
+    /// The failure read can name a later turn than this chat's own failed send, one another client
+    /// started. Retry cuts at that turn's row on the host; the chat's own prompt, saved earlier as
+    /// row 7, is not that turn's, so it stays.
+    func testRetryOfALaterTurnThanTheChatsOwnKeepsItsPrompt() async {
+        let chat = await openChat(threeTurns)
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("Fourth")
+        chat.host.always("session.resume", .init(result: .object([
+            "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
+            "messages": .array([]), "info": .object(["profile_name": .string("default")]),
+            "inflight": .object(["user": .string("Elsewhere"), "assistant": .string(""), "started_at": .number(1_790_000_009),
+                                 "error": .string("HTTP 429"), "status": .string("error"), "recoverable": .bool(true),
+                                 "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"),
+                                                           "retryable": .bool(true)])])
+        ])))
+        chat.transcript.rows = threeTurns + [row(7, "user", "Fourth"), row(9, "user", "Elsewhere")]
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "message.complete", [
+            "status": .string("error"), "text": .string("HTTP 429"), "error": .string("HTTP 429"), "recoverable": .bool(true),
+            "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"), "retryable": .bool(true)]),
+            "persisted_turn": .object(["row_ids": .array([.number(7)]), "complete": .bool(false), "user_row_id": .number(7)])
+        ]))
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+        await waitUntil("Retry offered") { chat.model.hermesActivity?.retryTarget?.rowID == 9 }
+        let shown = chat.model.messages.map(\.content)
+        XCTAssertEqual(shown.last, "Fourth")
+
+        await chat.model.retryHermesFailedTurn()
+
+        XCTAssertEqual(chat.writes("prompt.submit").dropFirst().map { [$0["text"], $0["truncate_before_row_id"]] },
+                       [[.string("Elsewhere"), .number(9)]])
+        XCTAssertEqual(chat.model.messages.map(\.content), shown + ["Elsewhere"], "the chat's own prompt stays")
+    }
+
+    /// Retry on a failed skill turn replaces the typed line the chat showed, though the host kept
+    /// the expanded skill, which reads nothing like it: the prompt is the failed turn's own.
+    func testRetryOfAFailedSkillTurnLeavesOnePrompt() async throws {
+        let chat = await openChat(threeTurns)
+        await waitUntil("the catalog") { chat.model.hermesSlashCommands?.catalog.skills.isEmpty == false }
+        chat.host.always("command.dispatch", .init(result: .object([
+            "type": .string("skill"), "name": .string("demo-skill"), "message": .string(Self.skillPrompt),
+            "display": .string("/demo-skill do it")
+        ])))
+        try await failTurn(chat, prompt: "/demo-skill do it", raw: Self.skillPrompt)
+        let shown = chat.model.messages.map(\.content)
+        XCTAssertEqual(shown.last, "/demo-skill do it")
+
+        await chat.model.retryHermesFailedTurn()
+
+        XCTAssertEqual(chat.writes("prompt.submit").dropFirst().map { [$0["text"], $0["truncate_before_row_id"]] },
+                       [[.string(Self.skillPrompt), .number(7)]])
+        XCTAssertEqual(chat.model.messages.dropLast().map(\.content), Array(shown.dropLast()), "the failed line gives way")
+        XCTAssertEqual(chat.model.messages.filter { $0.role == "user" }.count, 4, "one prompt for the retried turn")
+    }
+
     /// A busy host (4009) says to wait and changes nothing; Retry stays. A row the host can no
     /// longer cut (4018) hides Retry for that row, and the chat reads the session again.
     func testARetryRefusalSaysWhyAndA4018HidesRetry() async throws {
@@ -367,7 +422,8 @@ import Observation
         }
     }
 
-    /// A chat attached to an idle session `tip` on runtime `runtime`, whose settled rows are `rows`.
+    /// A chat attached to an idle session `tip` on runtime `runtime`, whose settled rows are `rows`
+    /// and whose host lists one skill, `demo-skill`.
     private func openChat(_ rows: [BotJSON]) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
@@ -375,6 +431,7 @@ import Observation
             "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
             "messages": .array([]), "info": .object(["profile_name": .string("default")])
         ])))
+        host.always("commands.catalog", .init(result: .object(["skills": .object(["/demo-skill": .object(["origin": .string("local")])])])))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
         let client = BotClient(http: host.connection(Self.connection))
         let transcript = Transcript(rows)
@@ -398,23 +455,30 @@ import Observation
 
     /// The prompt a failed turn's host kept (`inflight.user`): what it received, file reference included.
     private static let rawFailedPrompt = "Fourth\n\n@file:/a/notes.txt"
+    /// What the host received for `/demo-skill do it`: the expanded skill (`command.dispatch`).
+    private static let skillPrompt = "[IMPORTANT: The user has invoked the \"demo-skill\" skill.]\n\nSay hello.\n\n"
+        + "The user has provided the following instruction alongside the skill invocation: do it"
 
-    /// Sends `prompt` and fails its turn on a rate limit: the host saved the prompt as row 7 and
-    /// keeps the failure, which the chat reads once the turn settles. Without a `receipt` the
-    /// failure's `message.complete` names no saved row.
-    private func failTurn(_ chat: Chat, prompt: String, receipt: Bool = true) async throws {
+    /// Sends `prompt`, a `/` line as a slash command, and fails its turn on a rate limit: the host
+    /// received it as `raw`, saved that as row 7 and keeps the failure, which the chat reads once
+    /// the turn settles. Without a `receipt` the failure's `message.complete` names no saved row.
+    private func failTurn(_ chat: Chat, prompt: String, raw: String = rawFailedPrompt, receipt: Bool = true) async throws {
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
-        _ = await chat.model.sendMessage(prompt)
+        if prompt.hasPrefix("/") {
+            _ = await chat.model.runHermesSlashCommand(prompt)
+        } else {
+            _ = await chat.model.sendMessage(prompt)
+        }
         let failed = BotJSON.object([
             "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
             "messages": .array([]), "info": .object(["profile_name": .string("default")]),
-            "inflight": .object(["user": .string(Self.rawFailedPrompt), "assistant": .string(""), "started_at": .number(1_790_000_007),
+            "inflight": .object(["user": .string(raw), "assistant": .string(""), "started_at": .number(1_790_000_007),
                                  "error": .string("HTTP 429"), "status": .string("error"), "recoverable": .bool(true),
                                  "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"),
                                                            "retryable": .bool(true)])])
         ])
         chat.host.always("session.resume", .init(result: failed))
-        chat.transcript.rows = threeTurns + [row(7, "user", Self.rawFailedPrompt)]
+        chat.transcript.rows = threeTurns + [row(7, "user", raw)]
         chat.receive(event(1, "message.start"))
         var completion: [String: BotJSON] = [
             "status": .string("error"), "text": .string("HTTP 429"), "error": .string("HTTP 429"), "recoverable": .bool(true),

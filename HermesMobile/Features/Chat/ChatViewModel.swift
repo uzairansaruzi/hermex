@@ -5797,7 +5797,7 @@ final class ChatViewModel {
         stopListening()
         sendErrorMessage = await rewindHermesTranscript(
             before: target.rowID, sending: target.text, on: hermes,
-            reconnect: String(localized: "Reconnect to the server to retry messages."), retrying: true
+            reconnect: String(localized: "Reconnect to the server to retry messages."), retrying: target
         )
     }
 
@@ -5820,19 +5820,18 @@ final class ChatViewModel {
     /// Cuts a Hermes session's transcript before the saved prompt `rowID` and sends `text` in
     /// its place, once. Once the host takes it, the prompt shows where the cut was, the rows and
     /// cards it replaced go, and the turn streams after it; the turn's end re-reads the newest
-    /// rows. `retrying` is Retry on the last turn, which failed: its prompt, when the chat still
-    /// shows it unsaved as the last one, is cut as its row, and a 4018 hides Retry. Returns why
-    /// it failed, with nothing cut, or nil.
+    /// rows. `retrying` is Retry on the last turn, which failed: when the chat showed that turn's
+    /// prompt and it is still unsaved as the last one, it is cut as its row, and a 4018 hides
+    /// Retry. Returns why it failed, with nothing cut, or nil.
     private func rewindHermesTranscript(before rowID: Int, sending text: String, on hermes: HermesChatTurnCoordinator,
-                                        reconnect: String, retrying: Bool = false) async -> String? {
+                                        reconnect: String, retrying: HermesChatActivity.RetryTarget? = nil) async -> String? {
         guard !isHermesSubmissionUncertain else { return reconnect }
         sendErrorMessage = nil
         lastError = nil
-        // Any other last prompt is an earlier turn's: the host's cut takes no row the chat shows.
+        // A failed turn whose prompt the chat never showed leaves the last one an earlier
+        // turn's: the host's cut takes no row the chat shows.
         let first = messages.firstIndex { $0.rowID == rowID } ?? messages.lastIndex(where: Self.opensHermesTurn).flatMap {
-            retrying && messages[$0].rowID == nil
-                && Self.hermesPromptText(messages[$0]) == MessageAttachment.hermesReferences(in: text).text
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ? $0 : nil
+            retrying?.showsPrompt == true && messages[$0].rowID == nil ? $0 : nil
         }
         let cut = first.map { Set(messages[$0...].map(\.id)) } ?? []
         isStartingChat = true
@@ -5840,7 +5839,7 @@ final class ChatViewModel {
         do {
             try await hermes.rewind(before: rowID, text: text)
         } catch {
-            if retrying, case BotSettingFailure.rejected(4018, _) = error { hermes.retryWasRefused(at: rowID) }
+            if retrying != nil, case BotSettingFailure.rejected(4018, _) = error { hermes.retryWasRefused(at: rowID) }
             return hermesHistoryFailure(error, on: hermes, reconnect: reconnect)
         }
         // Rows the turn's first frames added stay after the prompt.
