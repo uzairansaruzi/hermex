@@ -121,7 +121,9 @@ import Observation
     /// row's activity up instead of scanning the whole history per message.
     private(set) var settledActivityByAnchor: [String?: [BotSettledActivity]] = [:]
     private(set) var liveActivity = BotTurnActivity()
-    private(set) var plan: BotPlan?
+    /// The bot's plan (`HermesPlanState`): revision-monotonic, and a host clear hides it.
+    private var planState = HermesPlanState()
+    var plan: HermesPlan? { planState.plan }
     /// The transient status line while the bot works: `status.update` text
     /// (compacting, compressing) or the latest `thinking.delta` spinner text.
     /// Replaced, never appended; nil once ready or when the turn settles.
@@ -592,7 +594,7 @@ import Observation
             turnNotice = HermesTurnOutcome(complete: payload)
             return false
         case "todo.updated":
-            if let next = BotPlan(payload), next.revision >= (plan?.revision ?? 0) { plan = next }
+            applyPlan(payload)
         case "status.update":
             let text = payload["text"].text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             workStatus = payload["kind"].text == "ready" || text.isEmpty ? nil : text
@@ -613,6 +615,12 @@ import Observation
             return liveActivity.apply(type: type, payload: payload)
         }
         return true
+    }
+
+    /// `todo.updated` or a snapshot's `todo_state`; written only when it changes the plan.
+    private func applyPlan(_ json: BotJSON) {
+        var next = planState
+        if next.apply(json) { planState = next }
     }
 
     private func applySnapshot(_ snapshot: BotJSON, full: Bool, settingsRevision: Int? = nil, requestsRevision: Int? = nil,
@@ -638,7 +646,7 @@ import Observation
                 }
             }
         }
-        if let next = BotPlan(snapshot["todo_state"]), next.revision >= (plan?.revision ?? 0) { plan = next }
+        applyPlan(snapshot["todo_state"])
         let inflight = snapshot["inflight"]
         let failure = HermesTurnOutcome(inflight: inflight)
         if failure != turnFailure { turnFailure = failure }
@@ -1401,8 +1409,9 @@ extension BotConversation: HermesConversationOwner {
     }
 
     func conversationWillReplay(newRuntime: Bool) {
-        // A new runtime did not inherit the old turn, so its idle is no completion.
-        if newRuntime { completionArmed = false }
+        // A new runtime did not inherit the old turn, so its idle is no completion, and it
+        // counts its plan's revisions from the start again.
+        if newRuntime { completionArmed = false; planState = HermesPlanState() }
         replayRequestsRevision = requestRevision
     }
 

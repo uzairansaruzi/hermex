@@ -3,7 +3,7 @@ import Foundation
 /// How a Hermes turn ended, read tolerantly from what the host already sends about it:
 /// the failure `session.resume` retains in `inflight`, or a live `message.complete`.
 /// A pure value with every field optional, so an older or newer host decodes to
-/// whatever it sent. Bot Chat's outcome row reads it; Sessions on Hermes can too.
+/// whatever it sent. `HermesTurnOutcomeRow` reads it, in every Hermes chat and Bot Chat.
 struct HermesTurnOutcome: Equatable, Sendable {
     /// The host's advisory `error_surface`: which layer failed, why, and whether
     /// retrying unchanged can help. Unknown keys are ignored.
@@ -34,7 +34,8 @@ struct HermesTurnOutcome: Equatable, Sendable {
     var warning: String?
 
     /// The failure `session.resume` retains until the next turn starts or the session
-    /// closes. Nil when `inflight` carries no error, as after a success or a Stop.
+    /// closes, or a failed `message.complete`, which carries the same fields. Nil when
+    /// it carries no error, as after a success or a Stop.
     init?(inflight: BotJSON) {
         guard inflight["error"] != .null else { return nil }
         self.init(failure: inflight)

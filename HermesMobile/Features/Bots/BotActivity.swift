@@ -1,39 +1,5 @@
 import Foundation
 
-/// The bot's plan from `todo.updated` events and the snapshot's `todo_state`.
-/// Revision-monotonic: an older revision never replaces a newer one.
-struct BotPlan: Equatable {
-    struct Item: Identifiable, Equatable {
-        let id: String
-        let content: String
-        /// `pending`, `in_progress`, `completed` or `cancelled`; anything else reads as pending.
-        let status: String
-        var isDone: Bool { status == "completed" || status == "cancelled" }
-    }
-
-    static let itemLimit = 50
-
-    let items: [Item]
-    let revision: Int
-
-    /// `nil` when the payload is malformed or carries no items.
-    init?(_ json: BotJSON) {
-        guard let rows = json["todos"].list else { return nil }
-        let items: [Item] = rows.prefix(Self.itemLimit).enumerated().compactMap { index, row in
-            guard let content = row["content"].text?.trimmingCharacters(in: .whitespacesAndNewlines), !content.isEmpty else { return nil }
-            let id = row["id"].text.flatMap { $0.isEmpty ? nil : $0 } ?? "plan-\(index)"
-            return Item(id: id, content: content, status: row["status"].text ?? "pending")
-        }
-        guard !items.isEmpty else { return nil }
-        self.items = items
-        revision = max(0, json["revision"].integer ?? 0)
-    }
-
-    var completedCount: Int { items.filter(\.isDone).count }
-    var current: Item? { items.first { $0.status == "in_progress" } ?? items.first { !$0.isDone } }
-    var isFinished: Bool { items.allSatisfy(\.isDone) }
-}
-
 /// A keyed notice from `notification.show`; the same key replaces in place.
 struct BotNotice: Identifiable, Equatable {
     let id: String

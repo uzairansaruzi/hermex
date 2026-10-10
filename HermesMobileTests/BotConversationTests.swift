@@ -876,7 +876,7 @@ import Vision
 
     func testTheOutcomeTitleIsTheHostsSentenceThenItsCodeThenItsLayer() throws {
         func title(_ surface: BotJSON) throws -> String {
-            BotTurnOutcomeRow.title(for: try XCTUnwrap(HermesTurnOutcome(inflight: failedInflight(surface: surface))))
+            HermesTurnOutcomeRow.title(for: try XCTUnwrap(HermesTurnOutcome(inflight: failedInflight(surface: surface))))
         }
         XCTAssertEqual(try title(.object(["layer": .string("provider"), "code": .string("free_tier_rate_limited"),
                                           "retryable": .bool(true), "message": .string("The free tier is busy.")])),
@@ -1485,6 +1485,25 @@ import Vision
         wire.todoState = .object(["revision": .number(4), "todos": .array([.object(["id": .string("b"), "content": .string("Older"), "status": .string("pending")])])])
         await model.recover()
         XCTAssertEqual(model.plan?.items.map(\.content), ["Ship"])
+        // An empty list at revision 1 or later is the host clearing the plan (#1139).
+        wire.todoState = .object(["revision": .number(6), "todos": .array([])])
+        await model.recover()
+        XCTAssertNil(model.plan, "a host clear hides the plan")
+        wire.todoState = .object(["revision": .number(5), "todos": .array([.object(["id": .string("a"), "content": .string("Ship"), "status": .string("pending")])])])
+        await model.recover()
+        XCTAssertNil(model.plan, "an older revision never undoes the clear")
+        model.suspend()
+    }
+
+    func testNewRuntimeCountsPlanRevisionsAgain() async {
+        let wire = BotFixtureWire()
+        wire.todoState = .object(["revision": .number(6), "todos": .array([])])
+        let model = make(wire); await model.recover()
+        XCTAssertNil(model.plan)
+        wire.runtimeID = "runtime-2"
+        wire.todoState = .object(["revision": .number(1), "todos": .array([.object(["id": .string("a"), "content": .string("Fresh"), "status": .string("pending")])])])
+        await model.recover()
+        XCTAssertEqual(model.plan?.items.map(\.content), ["Fresh"], "a new runtime's first plan replaces the old runtime's clear")
         model.suspend()
     }
 

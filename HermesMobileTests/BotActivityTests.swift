@@ -94,28 +94,6 @@ final class BotActivityTests: XCTestCase {
         XCTAssertEqual(activity.memoryNotes.first, "note 2")
     }
 
-    func testPlanParsesTolerantlyAndSkipsMalformedItems() {
-        let plan = BotPlan(payload([
-            "revision": .number(3),
-            "todos": .array([
-                .object(["id": .string("a"), "content": .string("Archive newsletters"), "status": .string("completed")]),
-                .object(["content": .string("Draft replies"), "status": .string("in_progress")]),
-                .object(["id": .string("c"), "content": .string(" "), "status": .string("pending")]),
-                .string("garbage"),
-                .object(["id": .string("d"), "content": .string("Report"), "status": .string("weird")])
-            ])
-        ]))
-        XCTAssertEqual(plan?.revision, 3)
-        XCTAssertEqual(plan?.items.map(\.content), ["Archive newsletters", "Draft replies", "Report"])
-        XCTAssertEqual(plan?.items[1].id, "plan-1")
-        XCTAssertEqual(plan?.completedCount, 1)
-        XCTAssertEqual(plan?.current?.content, "Draft replies")
-        XCTAssertFalse(plan?.isFinished ?? true)
-        XCTAssertNil(BotPlan(payload(["revision": .number(1), "todos": .array([])])))
-        XCTAssertNil(BotPlan(payload(["todos": .string("nope")])))
-        XCTAssertNil(BotPlan(.null))
-    }
-
     func testSnapshotProjectionAnchorsWorkToTheMessageItPrecedesWithStableIDs() {
         let history: [BotJSON] = [
             .object(["role": .string("user"), "text": .string("Clear the inbox")]),

@@ -96,7 +96,8 @@ struct HermesChatTranscript: Equatable {
 /// `write`, never resent; a Send or Queue uploads its staged files first (#1012). The host's
 /// requests (approvals, questions, sudo and secret prompts) are `requests` (#1011); the goal,
 /// `/btw` and `/background` are `sideTasks` (#1013); its model and Profile chips are
-/// `settings` (#1015); its host's slash commands are `slashCommands` (#1036). Edit,
+/// `settings` (#1015); its host's slash commands are `slashCommands` (#1036); its plan and how
+/// its last turn ended are `activity` (#1139). Edit,
 /// Regenerate, `/retry` and `/undo` cut the host's history (`rewind`, `undo`; #1049), and
 /// `/compress` compacts it (`compress`; #1050).
 ///
@@ -127,6 +128,8 @@ struct HermesChatTranscript: Equatable {
     let settings: HermesChatSettings
     /// The host's slash commands, for the composer's panel and send path (#1036).
     let slashCommands: HermesSlashCommands
+    /// The session's plan and the last turn's outcome (#1139).
+    let activity = HermesChatActivity()
 
     /// The host's `turn_started_at` for the running turn, once known.
     @ObservationIgnored private var turnStartedAt: Double?
@@ -151,6 +154,9 @@ struct HermesChatTranscript: Equatable {
     @ObservationIgnored private var compactionPending = false
     /// How the running turn ended, from `message.complete`, until `session.info` says idle.
     @ObservationIgnored private var pendingEnding: TranscriptTurnRunOutcome.Ending?
+    /// The running turn's `message.complete` failed: once the turn ends, the host's retained
+    /// failure is read for Retry (`readFailedTurn`).
+    @ObservationIgnored private var completedFailed = false
     /// The turn began from a send's reply; its own `message.start` is still to come.
     @ObservationIgnored private var awaitingStart = false
     @ObservationIgnored private var stopRequested = false
@@ -651,6 +657,7 @@ struct HermesChatTranscript: Equatable {
         let attempt = engine.generation
         let reply = try await writeOnce(.sessionUndo(runtime: runtime), runtime: runtime)
         guard reply["removed"].integer != 0 else { return }
+        activity.newestTurnWasUndone()
         await readNewestRows(attempt: attempt)
         guard attempt == engine.generation, isIdle else { return }
         if let historyFailure { throw historyFailure }
@@ -814,12 +821,13 @@ struct HermesChatTranscript: Equatable {
         turnsStarted += 1
         latestRunEnding = nil; successfulResponseCompletion = nil
         pendingEnding = nil; awaitingStart = false; stopRequested = false
-        savedTurn = nil
+        savedTurn = nil; completedFailed = false
         hostRunning = true
         turnStartedAt = startedAt
         activeRunStartedAt = Self.date(startedAt) ?? Date()
         activeStreamID = "hermes:\(engine.storedKey ?? ""):\(startedAt.map { String($0) } ?? UUID().uuidString)"
         hostTurnStartedAt = nil
+        activity.turnDidStart(showsPrompt: prompt != nil || isSubmittingSend)
         delegate?.hermesTurnDidStart(prompt: prompt)
         delegate?.streamCoordinatorDidStartConnection(isReplay: false)
         liveActivity = engine.storedKey.map { key in
@@ -846,6 +854,7 @@ struct HermesChatTranscript: Equatable {
         }
         activeStreamID = nil; activeRunStartedAt = nil
         turnStartedAt = nil; pendingEnding = nil; awaitingStart = false; stopRequested = false
+        activity.turnDidEnd()
         delegate?.streamCoordinatorStreamingAssistantMessageID = nil
         if ending == .completed { delegate?.streamCoordinatorDidCompleteCurrentResponse(needsTranscriptRefresh: false) }
         delegate?.streamCoordinatorFlushPinnedLocalNoticesToTranscript()
@@ -854,6 +863,10 @@ struct HermesChatTranscript: Equatable {
         if let savedTurn {
             self.savedTurn = nil
             refreshHistory(after: savedTurn)
+        }
+        if completedFailed {
+            completedFailed = false
+            readFailedTurn()
         }
     }
 
@@ -939,6 +952,8 @@ struct HermesChatTranscript: Equatable {
             }
         case "request.cancel":
             requests.cancel(payload)
+        case "todo.updated":
+            activity.receivePlan(payload)
         case "status.update":
             // The compute host's late answer to a `pending` compaction (#1050).
             if compactionPending, payload["kind"].text == "compacted" { pendingCompactionDidFinish() }
@@ -986,13 +1001,13 @@ struct HermesChatTranscript: Equatable {
         case "error": ending = .failed
         default: ending = .completed
         }
-        // A failed turn's text is its error unless the host marks it a partial reply.
+        // A failed turn's text is its error unless the host marks it a partial reply. The
+        // outcome row says why it failed.
         if let reply = payload["text"].text, !reply.isEmpty, ending != .failed || payload["partial"].flag == true {
             delegate?.hermesTurnDidComplete(reply: reply)
         }
-        if ending == .failed, let message = payload["error"].text ?? payload["text"].text, !message.isEmpty {
-            delegate?.streamCoordinatorDidReceiveErrorMessage(message)
-        }
+        activity.turnDidComplete(payload)
+        completedFailed = ending == .failed
         if let usage = Self.contextWindow(payload["usage"]) { delegate?.hermesApplyUsage(usage) }
         // Only a receipt for the whole turn retires its streamed rows (`persisted_turn`, 0.21.5).
         let receipt = payload["persisted_turn"]
@@ -1044,18 +1059,80 @@ struct HermesChatTranscript: Equatable {
         settings.apply(info: snapshot["info"], idle: !running)
         // Ahead of the turn below, so its Live Activity starts under the session's title.
         if let title = snapshot["info"]["title"].text, !title.isEmpty { applyTitle(title) }
+        let lostFrames = engine.replayWasReset || needsRebuild
+        // The start of the turn this chat was following, which the snapshot may say has ended.
+        let followedStart = activeStreamID == nil ? nil : turnStartedAt
         if activeStreamID != nil, !running || (startedAt != nil && turnStartedAt != nil && startedAt != turnStartedAt) {
-            // The turn this chat was following ended while it was away.
-            let failure = snapshot["inflight"]["error"].text.flatMap { $0.isEmpty ? nil : $0 }
-            if let failure { delegate?.streamCoordinatorDidReceiveErrorMessage(failure) }
-            finish(pendingEnding ?? (failure != nil ? .failed : stopRequested ? .cancelled : .completed))
+            // The turn this chat was following ended while it was away; the outcome row says how.
+            let failed = HermesTurnOutcome(inflight: snapshot["inflight"]) != nil
+            completedFailed = false
+            finish(pendingEnding ?? (failed ? .failed : stopRequested ? .cancelled : .completed))
         }
         let continuing = running && activeStreamID != nil
         if running, activeStreamID == nil { beginTurn(startedAt: startedAt, prompt: nil) }
         if running, let startedAt, turnStartedAt == nil { adoptStart(startedAt) }
         // The same turn after a reattach: adopt its activity again, which is current once more.
         if continuing { startLiveActivity() }
-        if engine.replayWasReset || needsRebuild { rebuild(from: snapshot, running: running) }
+        readOutcome(snapshot, in: history, followsTurn: continuing, endedTurnStartedAt: running ? nil : followedStart)
+        if lostFrames { rebuild(from: snapshot, running: running) }
+    }
+
+    /// Takes the plan and the retained failure from a snapshot, with the failed prompt's saved
+    /// row when `rows` hold it. `followsTurn` says the snapshot's running turn is the one the
+    /// chat was following. `endedTurnStartedAt` is the start of a followed turn the snapshot
+    /// says ended: its plan stays its own when `rows` hold its prompt and none after it.
+    private func readOutcome(_ snapshot: BotJSON, in rows: HermesTranscriptHistory, followsTurn: Bool,
+                             endedTurnStartedAt: Double? = nil) {
+        let inflight = snapshot["inflight"]
+        let promptRowID = inflight["error"] == .null ? nil
+            : savedPromptRowID(startedAt: inflight["started_at"].number ?? snapshot["turn_started_at"].number, in: rows)
+        let endedPromptRowID = savedPromptRowID(startedAt: endedTurnStartedAt, in: rows)
+        activity.readSnapshot(snapshot, promptRowID: promptRowID, followsTurn: followsTurn || endedPromptRowID != nil,
+                              followedPromptRowID: endedPromptRowID)
+    }
+
+    /// The saved prompt of the turn that began at `startedAt`: the last turn boundary in `rows`,
+    /// when it is dated at or after that and the one before it is dated earlier. Nil when they
+    /// hold no such row, a later turn saved its prompt too, or a date is missing, so Retry never
+    /// cuts at another turn's prompt and a plan never settles under one.
+    private func savedPromptRowID(startedAt: Double?, in rows: HermesTranscriptHistory) -> Int? {
+        guard let startedAt else { return nil }
+        let messages = HermesTranscriptProjection.project(rows.rows, root: engine.storedKey ?? "").messages
+        guard let last = messages.lastIndex(where: BotTranscriptProjection.isTurnBoundary),
+              let stamp = messages[last].timestamp, stamp >= startedAt else { return nil }
+        if let previous = messages[..<last].last(where: BotTranscriptProjection.isTurnBoundary),
+           previous.timestamp.map({ $0 < startedAt }) != true { return nil }
+        return messages[last].rowID
+    }
+
+    /// After a turn's `message.complete` failed and the turn settled, one live-state read takes
+    /// the failure the host retained and the prompt it received, which Retry resends (#937).
+    /// The snapshot names the failed turn, which may be a later one than this chat saw, so its
+    /// prompt's row comes from the newest rows, dated from that turn's start: the host saves a
+    /// prompt before its turn can fail. A read the attach or another turn outlived is dropped;
+    /// one that fails leaves Retry hidden. A replayed failure needs none: the attach's own
+    /// snapshot follows.
+    private func readFailedTurn() {
+        guard engine.connectionState == .connected else { return }
+        let attempt = engine.generation, turns = turnsStarted
+        Task { [weak self] in
+            guard let reply = try? await self?.engine.resume(full: false, attempt: attempt), let self,
+                  attempt == self.engine.generation, turns == self.turnsStarted, self.engine.isCurrent(reply) else { return }
+            var rows = self.history
+            if HermesTurnOutcome(inflight: reply["inflight"])?.offersRetry == true,
+               let fresh = try? await self.newestRows(attempt: attempt) {
+                rows.mergeNewest(fresh.rows, reachedStart: fresh.reachedStart)
+            }
+            guard attempt == self.engine.generation, turns == self.turnsStarted else { return }
+            self.readOutcome(reply, in: rows, followsTurn: false)
+        }
+    }
+
+    /// The host refused Retry's cut at `rowID` (4018): Retry hides for that row, and the chat
+    /// reattaches and reads the session again.
+    func retryWasRefused(at rowID: Int) {
+        activity.refuseRetry(at: rowID)
+        recoverAfterLostAnswer()
     }
 
     /// The transcript from the settled history plus the snapshot's in-flight turn: the prompt
@@ -1440,6 +1517,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
 
     func conversationWillReplay(newRuntime: Bool) {
         requests.willReplay()
+        if newRuntime { activity.dropPlan() }
     }
 
     func conversationDidReplay(_ reply: BotJSON, frames: [BotJSON]) {
@@ -1447,6 +1525,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
         defer { requests.willReadSnapshot() }
         let lostFrames = engine.replayWasReset || needsRebuild
         sideTasks.didReplay(frames, lostFrames: lostFrames)
+        if lostFrames { activity.dropNotice() }
         // After lost frames the snapshot that follows rebuilds instead, and what the replay
         // carried of the running reply places the deltas that raced it.
         guard !lostFrames else {

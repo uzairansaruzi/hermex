@@ -575,6 +575,320 @@ import SwiftUI
         XCTAssertEqual(HermesHostFixture.requests.last { $0.url?.path == "/api/profiles/active" }?.httpMethod, "GET")
     }
 
+    // MARK: Plan and outcome (#1139)
+
+    /// The host's plan reads tolerantly: blank and malformed items drop, an item with no id
+    /// gets its position, and an unknown status reads as pending.
+    func testAPlanParsesTolerantlyAndSkipsMalformedItems() {
+        let plan = HermesPlan(.object([
+            "revision": .number(3),
+            "todos": .array([
+                .object(["id": .string("a"), "content": .string("Archive newsletters"), "status": .string("completed")]),
+                .object(["content": .string("Draft replies"), "status": .string("in_progress")]),
+                .object(["id": .string("c"), "content": .string(" "), "status": .string("pending")]),
+                .string("garbage"),
+                .object(["id": .string("d"), "content": .string("Report"), "status": .string("weird")])
+            ])
+        ]))
+        XCTAssertEqual(plan?.revision, 3)
+        XCTAssertEqual(plan?.items.map(\.content), ["Archive newsletters", "Draft replies", "Report"])
+        XCTAssertEqual(plan?.items[1].id, "plan-1")
+        XCTAssertEqual(plan?.completedCount, 1)
+        XCTAssertEqual(plan?.current?.content, "Draft replies")
+        XCTAssertFalse(plan?.isFinished ?? true)
+        XCTAssertNil(HermesPlan(.object(["revision": .number(1), "todos": .array([])])))
+        XCTAssertNil(HermesPlan(.object(["todos": .string("nope")])))
+        XCTAssertNil(HermesPlan(.null))
+    }
+
+    /// A turn that calls `todo` pins its plan while it runs. Once every step is done, or the turn
+    /// ends, the plan settles at the top of that turn: under the prompt the chat sent, then by the
+    /// row the host saved it as. A later turn that leaves the plan alone does not take it.
+    func testAPlanPinsWhileItsTurnRunsAndSettlesIntoThatTurn() async throws {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("Plan it")
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "todo.updated", todos(revision: 1, ["completed", "completed", "in_progress", "pending", "pending"])))
+        let pinned = try XCTUnwrap(activity.pinnedPlan, "an open plan pins while its turn runs")
+        XCTAssertEqual(pinned.completedCount, 2)
+        XCTAssertEqual(pinned.items.count, 5)
+        XCTAssertEqual(pinned.current?.content, "Step 3")
+        XCTAssertNil(activity.settledPlan, "a pinned plan is not also in the transcript")
+
+        chat.receive(event(3, "todo.updated", todos(revision: 2, ["completed", "completed", "completed", "cancelled", "completed"])))
+        XCTAssertNil(activity.pinnedPlan, "a finished plan leaves the strip while the turn still runs")
+        XCTAssertEqual(activity.settledPlan?.plan.revision, 2)
+        XCTAssertEqual(activity.settledPlan?.followsLastPrompt, true, "under the prompt this chat sent")
+
+        chat.receive(event(4, "message.complete", ["status": .string("complete"), "text": .string("Done."),
+                                                   "persisted_turn": .object(["row_ids": .array([.number(7), .number(8)]),
+                                                                              "complete": .bool(false), "user_row_id": .number(7)])]))
+        chat.receive(event(5, "session.info", ["running": .bool(false)]))
+        XCTAssertEqual(activity.settledPlan?.rowID, 7, "the plan keeps its turn's saved prompt")
+
+        chat.receive(event(6, "message.start"))
+        XCTAssertNil(activity.pinnedPlan)
+        XCTAssertEqual(activity.settledPlan?.rowID, 7)
+        XCTAssertEqual(activity.settledPlan?.followsLastPrompt, false, "the new turn did not touch the plan")
+    }
+
+    /// A plan whose turn ends with steps still open settles too, showing where it stopped.
+    func testAnOpenPlanSettlesWhenItsTurnEnds() async {
+        let chat = await openChat()
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("Plan it")
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "todo.updated", todos(revision: 1, ["completed", "in_progress", "pending"])))
+        chat.receive(event(3, "message.complete", ["status": .string("complete"), "text": .string("Stopping here.")]))
+        chat.receive(event(4, "session.info", ["running": .bool(false)]))
+        XCTAssertNil(chat.turn.activity.pinnedPlan)
+        XCTAssertEqual(chat.turn.activity.settledPlan?.plan.current?.content, "Step 2")
+        XCTAssertEqual(chat.turn.activity.settledPlan?.followsLastPrompt, true)
+    }
+
+    /// An older revision never replaces a newer one, and an empty list at revision 1 or later is
+    /// the host clearing the plan: it goes from the strip and the transcript, and an older
+    /// revision does not bring it back.
+    func testAnOlderPlanRevisionNeverReplacesANewerOneAndAHostClearRemovesIt() async {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "todo.updated", todos(revision: 2, ["in_progress", "pending"])))
+        chat.receive(event(3, "todo.updated", todos(revision: 1, ["pending"], prefix: "Stale")))
+        XCTAssertEqual(activity.pinnedPlan?.items.map(\.content), ["Step 1", "Step 2"])
+
+        chat.receive(event(4, "todo.updated", todos(revision: 3, [])))
+        XCTAssertNil(activity.pinnedPlan, "a host clear removes the strip")
+        XCTAssertNil(activity.settledPlan, "and the row")
+
+        chat.receive(event(5, "todo.updated", todos(revision: 2, ["pending"], prefix: "Stale")))
+        XCTAssertNil(activity.pinnedPlan, "an older revision never undoes the clear")
+    }
+
+    /// A reattach to the turn the chat was following restores that turn's plan from the
+    /// snapshot's `todo_state`, revision-monotonic; a new runtime starts its revisions again, so
+    /// the plan the old one had is dropped, and the new one's own revision pins.
+    func testTheAttachSnapshotRestoresThePlanAndANewRuntimeDropsIt() async {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "todo.updated", todos(revision: 1, ["in_progress", "pending"])))
+        await reattach(chat, resume(running: true).replacing("todo_state", with: .object(todos(revision: 4, ["completed", "in_progress"]))))
+        XCTAssertEqual(activity.pinnedPlan?.revision, 4, "the followed turn's plan pins after a reattach")
+        XCTAssertEqual(activity.pinnedPlan?.current?.content, "Step 2")
+
+        await reattach(chat, resume(running: true).replacing("todo_state", with: .object(todos(revision: 3, ["pending"], prefix: "Stale"))))
+        XCTAssertEqual(activity.pinnedPlan?.revision, 4, "an older snapshot never replaces it")
+
+        await reattach(chat, resume(running: true, runtime: "runtime-2")
+            .replacing("todo_state", with: .object(todos(revision: 1, ["in_progress"], prefix: "Restored"))))
+        XCTAssertNil(activity.pinnedPlan, "a new runtime drops the old one's plan, and can't place the one it restored")
+        XCTAssertNil(activity.settledPlan)
+
+        chat.receive(event(1, "todo.updated", todos(revision: 2, ["in_progress"], prefix: "Fresh"), runtime: "runtime-2"))
+        XCTAssertEqual(activity.pinnedPlan?.items.map(\.content), ["Fresh 1"], "its revisions count from the start again")
+    }
+
+    /// Reopening a chat restores the session's plan, which the host keeps across turns, so it may
+    /// be any earlier turn's: it is not drawn under the newest prompt.
+    func testAPlanRestoredOnOpenIsNotDrawnUnderTheNewestPrompt() async {
+        let chat = await openChat(snapshot: resume(running: false)
+            .replacing("todo_state", with: .object(todos(revision: 2, ["completed", "completed"]))))
+        XCTAssertNil(chat.turn.activity.settledPlan, "no turn is known to own the restored plan")
+        XCTAssertNil(chat.turn.activity.pinnedPlan)
+    }
+
+    /// Opening a chat while a turn runs does not pin a restored plan the turn never revised; the
+    /// turn's own revision does.
+    func testARunningTurnPinsOnlyAPlanItRevised() async {
+        let chat = await openChat(snapshot: resume(running: true)
+            .replacing("todo_state", with: .object(todos(revision: 2, ["completed", "in_progress"], prefix: "Earlier"))))
+        let activity = chat.turn.activity
+        XCTAssertNotNil(chat.model.activeStreamID)
+        XCTAssertNil(activity.pinnedPlan, "the running turn may not own the restored plan")
+        XCTAssertNil(activity.settledPlan)
+
+        chat.receive(event(1, "todo.updated", todos(revision: 3, ["in_progress", "pending"])))
+        XCTAssertEqual(activity.pinnedPlan?.revision, 3, "its own revision pins")
+    }
+
+    /// The chat followed a turn's plan, then left; the turn finished its plan and ended while the
+    /// replay lost its frames. The idle snapshot's newer revision is still that turn's, since its
+    /// prompt is the only one saved since it began: it settles at the top of that turn.
+    func testAFollowedTurnsFinalPlanSettlesUnderItsPromptAfterAReattach() async {
+        let activity = await followTurnThatEndsAway(saving: [userRow("Plan it", id: 5, at: 1_790_000_001)])
+        XCTAssertNil(activity.pinnedPlan)
+        XCTAssertEqual(activity.settledPlan?.plan.revision, 2, "the turn's final plan settles")
+        XCTAssertEqual(activity.settledPlan?.rowID, 5, "at the top of its own turn")
+    }
+
+    /// As above, but the turn did not revise its plan again: the plan it already owned settles at
+    /// the top of that turn all the same.
+    func testAFollowedTurnsUnchangedPlanSettlesUnderItsPromptAfterAReattach() async {
+        let activity = await followTurnThatEndsAway(saving: [userRow("Plan it", id: 5, at: 1_790_000_001)],
+                                                    finalPlan: todos(revision: 1, ["in_progress", "pending"]))
+        XCTAssertNil(activity.pinnedPlan)
+        XCTAssertEqual(activity.settledPlan?.plan.revision, 1, "the turn's plan settles")
+        XCTAssertEqual(activity.settledPlan?.rowID, 5, "at the top of its own turn")
+    }
+
+    /// As above, but another turn also ran while the chat was away: the newer revision may be
+    /// that turn's, so it is not drawn under either.
+    func testAFollowedTurnKeepsNoPlanALaterTurnMayHaveRevised() async {
+        let activity = await followTurnThatEndsAway(saving: [userRow("Plan it", id: 5, at: 1_790_000_001),
+                                                             userRow("Another client", id: 6, at: 1_790_000_050)])
+        XCTAssertNil(activity.pinnedPlan)
+        XCTAssertNil(activity.settledPlan)
+    }
+
+    /// A turn another client started shows no prompt in this chat, so its plan never settles
+    /// under the last prompt shown, an earlier turn's: without a saved row it is not drawn, and
+    /// with one only that row places it.
+    func testAnotherClientsPlanIsNeverDrawnUnderAnEarlierPrompt() async {
+        let chat = await openChat(history: [userRow("Mine", id: 7)])
+        let activity = chat.turn.activity
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "todo.updated", todos(revision: 1, ["completed", "completed"])))
+        chat.receive(event(3, "message.complete", ["status": .string("complete"), "text": .string("Done.")]))
+        chat.receive(event(4, "session.info", ["running": .bool(false)]))
+        XCTAssertNil(activity.settledPlan, "no row and no prompt shown for its turn")
+
+        chat.receive(event(5, "message.start"))
+        chat.receive(event(6, "todo.updated", todos(revision: 2, ["completed"])))
+        chat.receive(event(7, "message.complete", ["status": .string("complete"), "text": .string("Done."),
+                                                   "persisted_turn": .object(["complete": .bool(false), "user_row_id": .number(9)])]))
+        chat.receive(event(8, "session.info", ["running": .bool(false)]))
+        XCTAssertEqual(activity.settledPlan?.rowID, 9)
+        XCTAssertEqual(activity.settledPlan?.followsLastPrompt, false, "only its saved row places it")
+    }
+
+    /// A settled plan follows its turn's saved prompt. Once that row is gone, as after `/undo`,
+    /// it is not drawn under the last prompt left, another turn's.
+    func testASettledPlanWhoseSavedPromptIsGoneIsNotDrawn() throws {
+        let plan = try XCTUnwrap(HermesPlan(.object(todos(revision: 1, ["completed"]))))
+        let rows = [promptRow("Earlier", rowID: 5), promptRow("Its prompt", rowID: 7)]
+        let saved = HermesChatActivity.SettledPlan(plan: plan, rowID: 7, followsLastPrompt: true)
+        XCTAssertEqual(saved.afterRenderID(in: rows), "row-7")
+        XCTAssertNil(saved.afterRenderID(in: Array(rows.prefix(1))), "never under the earlier prompt")
+        let unsaved = HermesChatActivity.SettledPlan(plan: plan, rowID: nil, followsLastPrompt: true)
+        XCTAssertEqual(unsaved.afterRenderID(in: rows), "row-7", "until its row is known, the prompt this chat showed")
+        let shown = TranscriptMessage(loadedIndex: 8, renderID: "local", anchorID: "anchor-local",
+                                      message: ChatMessage(role: "user", content: "Its prompt", timestamp: 1, messageId: "local"))
+        XCTAssertEqual(saved.afterRenderID(in: [rows[0], shown]), "local", "the shown prompt stands in until the read saves it")
+    }
+
+    /// A first turn that failed before the host saved any row still shows its outcome row, with
+    /// Retry and the billing page, in place of the empty chat's start prompt. Loading and a
+    /// failed load keep their own placeholders.
+    func testAnEmptyChatShowsAFailedTurnsOutcome() {
+        typealias Placeholder = ChatTranscriptView.Placeholder
+        XCTAssertNil(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true, showsTurnOutcome: true))
+        XCTAssertEqual(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true, showsTurnOutcome: false), .startPrompt)
+        XCTAssertEqual(Placeholder(isLoading: true, errorMessage: nil, isEmpty: true, showsTurnOutcome: true), .loading)
+        XCTAssertEqual(Placeholder(isLoading: false, errorMessage: "Offline", isEmpty: true, showsTurnOutcome: true),
+                       .loadFailed("Offline"))
+        XCTAssertNil(Placeholder(isLoading: false, errorMessage: nil, isEmpty: false, showsTurnOutcome: false))
+    }
+
+    /// A failed turn says why in its outcome row, not as error text: the host's surface, its
+    /// reset time and raw error. Once the turn settles, one live-state read takes the prompt the
+    /// host kept for Retry, which nothing sends on its own. The next turn clears the row.
+    func testAFailedTurnShowsItsOutcomeAndNeverRetriesOnItsOwn() async throws {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        serveHistory([userRow("Summarize the logs", id: 7)])
+        chat.receive(event(1, "message.start"))
+        chat.host.next("session.resume", .init(result: resume(running: false, inflight: Self.failedInflight)))
+        chat.receive(event(2, "message.complete", Self.rateLimitedCompletion))
+        XCTAssertNotNil(chat.model.activeStreamID, "the turn waits for session.info")
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+
+        let failure = try XCTUnwrap(activity.failure)
+        XCTAssertEqual(HermesTurnOutcomeRow.title(for: failure), "The model provider is rate-limiting requests")
+        XCTAssertEqual(failure.error, "HTTP 429: Number of request tokens has exceeded your per-minute rate limit")
+        XCTAssertEqual(failure.surface?.resetsAt, Date(timeIntervalSince1970: 1_900_000_000))
+        XCTAssertTrue(failure.offersRetry)
+        XCTAssertNil(chat.model.sendErrorMessage, "the outcome row says it, not an error line")
+        XCTAssertEqual(chat.model.latestRunOutcome?.ending, .failed)
+
+        await waitUntil("the retained prompt read") { activity.retryTarget != nil }
+        XCTAssertEqual(activity.retryTarget, .init(rowID: 7, text: "Summarize the logs\n\n@file:/a/notes.txt", showsPrompt: false))
+        XCTAssertEqual(chat.writes("prompt.submit").count, 0, "nothing resends on its own")
+
+        chat.receive(event(4, "message.start"))
+        XCTAssertNil(activity.failure, "the next turn clears the row")
+        XCTAssertNil(activity.retryTarget)
+    }
+
+    /// The failure read can name a later turn than the one this chat saw fail, such as one another
+    /// client started that the host failed before it began. Retry then offers that turn's prompt,
+    /// dated from its start, never the earlier prompt's row, whose cut would take both turns.
+    func testRetryCutsAtThePromptOfTheTurnTheFailureReadNames() async {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        serveHistory([userRow("First", id: 7), userRow("Second", id: 9, at: 1_790_000_100)])
+        var later = Self.failedInflight
+        later["user"] = .string("Second"); later["started_at"] = .number(1_790_000_100)
+        chat.host.next("session.resume", .init(result: resume(running: false, inflight: later)))
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "message.complete", Self.rateLimitedCompletion))
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+
+        await waitUntil("the retained prompt read") { activity.retryTarget != nil }
+        XCTAssertEqual(activity.retryTarget, .init(rowID: 9, text: "Second", showsPrompt: false), "the named turn's prompt, at its own row")
+    }
+
+    /// The failure read takes the snapshot, then the newest rows. A turn another client submitted
+    /// in between, which the host failed before it began, saved its prompt after the failed one's,
+    /// so the rows can't say which prompt the snapshot's turn is: Retry is not offered, rather than
+    /// cutting at the later prompt's row with the earlier prompt's text.
+    func testRetryIsNotOfferedWhenAPromptFollowsTheFailedOne() async {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        serveHistory([userRow("First", id: 7, at: 1_790_000_001), userRow("Second", id: 9, at: 1_790_000_100)])
+        var retained = Self.failedInflight
+        retained["user"] = .string("First"); retained["error"] = .string("HTTP 429: retained")
+        chat.host.next("session.resume", .init(result: resume(running: false, inflight: retained)))
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "message.complete", Self.rateLimitedCompletion))
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+
+        await waitUntil("the failure read") { activity.failure?.error == "HTTP 429: retained" }
+        XCTAssertNil(activity.retryTarget, "no prompt row is provably the failed turn's")
+    }
+
+    /// A warning on a turn that succeeded shows the host's words. It survives a reattach and
+    /// goes when the next turn starts.
+    func testAWarningShowsTheHostsWordsUntilTheNextTurn() async {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        let warning = "The session database was locked; this reply exists only in this view."
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "message.complete", ["status": .string("complete"), "text": .string("Done."),
+                                                   "warning": .string(warning)]))
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+        XCTAssertEqual(activity.notice?.warning, warning)
+        XCTAssertNil(activity.failure)
+
+        await reattach(chat, resume(running: false), latest: 3)
+        XCTAssertEqual(activity.notice?.warning, warning, "a continuous reattach keeps it")
+
+        chat.receive(event(4, "message.start"))
+        XCTAssertNil(activity.notice)
+    }
+
+    /// A failure the host retained while the chat was away shows on attach, with the host's raw
+    /// prompt and the saved row dated from the turn's start for Retry.
+    func testAFailureTheHostRetainedShowsOnAttach() async {
+        let chat = await openChat(history: [userRow("Summarize the logs")])
+        await reattach(chat, resume(running: false, inflight: Self.failedInflight))
+        XCTAssertEqual(chat.turn.activity.failure?.surface?.code, "rate_limit")
+        XCTAssertNil(chat.model.sendErrorMessage)
+        XCTAssertEqual(chat.turn.activity.retryTarget, .init(rowID: 1, text: "Summarize the logs\n\n@file:/a/notes.txt", showsPrompt: false))
+    }
+
     // MARK: Fixture
 
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
@@ -608,10 +922,10 @@ import SwiftUI
 
     private func openChat(runtime: String = "runtime", key: String = "tip", profile: String = "default",
                           target: ConversationTarget? = nil, drafts: ChatDraftStore? = nil,
-                          history: [BotJSON] = [], rpcDeadline: Duration = .seconds(30)) async -> Chat {
+                          history: [BotJSON] = [], snapshot: BotJSON? = nil, rpcDeadline: Duration = .seconds(30)) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
-        host.always("session.resume", .init(result: resume(running: false, runtime: runtime, key: key, profile: profile)))
+        host.always("session.resume", .init(result: snapshot ?? resume(running: false, runtime: runtime, key: key, profile: profile)))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
         // The reduced reply `session.create` gives a session that has not started.
         host.always("session.create", .init(result: .object([
@@ -633,6 +947,42 @@ import SwiftUI
         await model.loadMessages()
         XCTAssertEqual(engine.connectionState, .connected)
         return Chat(model: model, turn: turn, host: host, client: client, liveActivity: liveActivity)
+    }
+
+    /// A failed turn's retained `inflight`, as `session.resume` carries it (`_fail_inflight_turn`).
+    private static let failedInflight: [String: BotJSON] = [
+        "user": .string("Summarize the logs\n\n@file:/a/notes.txt"), "assistant": .string(""),
+        "error": .string("HTTP 429: Number of request tokens has exceeded your per-minute rate limit"),
+        "status": .string("error"), "recoverable": .bool(true),
+        "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"),
+                                  "retryable": .bool(true), "resets_at": .number(1_900_000_000)])
+    ]
+
+    /// A rate-limited turn's `message.complete` (`_complete_turn_payload`), whose prompt row the host saved as 7.
+    private static let rateLimitedCompletion: [String: BotJSON] = [
+        "status": .string("error"), "text": .string("HTTP 429: Number of request tokens has exceeded your per-minute rate limit"),
+        "error": .string("HTTP 429: Number of request tokens has exceeded your per-minute rate limit"),
+        "recoverable": .bool(true),
+        "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"),
+                                  "retryable": .bool(true), "resets_at": .number(1_900_000_000)]),
+        "persisted_turn": .object(["row_ids": .array([.number(7)]), "complete": .bool(false), "user_row_id": .number(7)])
+    ]
+
+    /// A `todo.updated` payload or `todo_state` at `revision`: one item per status, named
+    /// `<prefix> <n>`.
+    private func todos(revision: Int, _ statuses: [String], prefix: String = "Step") -> [String: BotJSON] {
+        ["revision": .number(Double(revision)), "todos": .array(statuses.enumerated().map { index, status in
+            .object(["id": .string("\(prefix)-\(index)"), "content": .string("\(prefix) \(index + 1)"), "status": .string(status)])
+        })]
+    }
+
+    /// Leaves and comes back: the replay holds nothing past `latest`, and every snapshot is `snapshot`.
+    private func reattach(_ chat: Chat, _ snapshot: BotJSON, latest: Int = 0) async {
+        chat.model.suspendStreamForBackground()
+        chat.host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: latest)))
+        chat.host.always("session.resume", .init(result: snapshot))
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
     }
 
     /// Feeds a turn through seq 3, then `frame`, which breaks the order: the chat reattaches,
@@ -673,6 +1023,24 @@ import SwiftUI
         XCTAssertNotNil(chat.model.activeStreamID, file: file, line: line)
     }
 
+    /// Follows a turn that began at the fixtures' start time and revised its plan to revision 1,
+    /// then leaves. While away the turn ends with `finalPlan` (by default finished at revision 2),
+    /// the host saves `rows` after an earlier prompt, and the replay comes back truncated.
+    private func followTurnThatEndsAway(saving rows: [BotJSON], finalPlan: [String: BotJSON]? = nil) async -> HermesChatActivity {
+        let earlier = userRow("Earlier", id: 3, at: 1_789_999_000)
+        let chat = await openChat(history: [earlier])
+        let activity = chat.turn.activity
+        chat.receive(event(1, "session.info", ["running": .bool(true), "turn_started_at": .number(1_790_000_000)]))
+        chat.receive(event(2, "message.start"))
+        chat.receive(event(3, "todo.updated", todos(revision: 1, ["in_progress", "pending"])))
+        XCTAssertEqual(activity.pinnedPlan?.revision, 1)
+        serveHistory([earlier] + rows)
+        await reattach(chat, resume(running: false)
+            .replacing("todo_state", with: .object(finalPlan ?? todos(revision: 2, ["completed", "completed"]))))
+        XCTAssertNil(chat.model.activeStreamID, "the idle snapshot ends the followed turn")
+        return activity
+    }
+
     /// Waits on observation, never a clock, until `condition` holds.
     private func waitUntil(_ description: String, _ condition: @escaping @MainActor () -> Bool) async {
         while !condition() {
@@ -702,9 +1070,15 @@ import SwiftUI
         })])
     }
 
-    /// A saved prompt as a transcript page carries it (#1047).
-    private func userRow(_ text: String) -> BotJSON {
-        .object(["id": .number(1), "role": .string("user"), "content": .string(text), "timestamp": .number(1_790_000_000)])
+    /// A saved prompt as a transcript page carries it (#1047), saved at `at`.
+    private func userRow(_ text: String, id: Int = 1, at timestamp: Double = 1_790_000_000) -> BotJSON {
+        .object(["id": .number(Double(id)), "role": .string("user"), "content": .string(text), "timestamp": .number(timestamp)])
+    }
+
+    /// A prompt as the transcript draws it, saved as `rowID`, rendered as `row-<rowID>`.
+    private func promptRow(_ text: String, rowID: Int) -> TranscriptMessage {
+        TranscriptMessage(loadedIndex: rowID, renderID: "row-\(rowID)", anchorID: "anchor-\(rowID)",
+                          message: ChatMessage(role: "user", content: text, timestamp: 1, messageId: "m\(rowID)", rowID: rowID))
     }
 
     /// Serves `rows` as session `key`'s settled history, every page the same.
@@ -723,7 +1097,7 @@ import SwiftUI
         ]
         if running { reply["turn_started_at"] = .number(1_790_000_000) }
         if var inflight {
-            inflight["started_at"] = .number(1_790_000_000)
+            inflight["started_at"] = inflight["started_at"] ?? .number(1_790_000_000)
             reply["inflight"] = .object(inflight)
         }
         return .object(reply)
