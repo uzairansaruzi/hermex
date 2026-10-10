@@ -67,6 +67,12 @@ struct HermesSessionRow: Decodable, Equatable {
         return title == HermesCall.botChatTitle + " (continued)" ? lineageRootID : nil
     }
 
+    /// A group room's session (#1127): hidden, titled `Group: <room id>`, or Desktop's older
+    /// `Group: <name> · …`. No screen lists or opens one (#1146): the host refuses a prompt into a
+    /// room it runs (4122), and a Desktop room would fall out of step. A search result carries no
+    /// `hidden`, so there the title alone tells.
+    var isRoomSession: Bool { hidden != false && title?.hasPrefix("Group: ") == true }
+
     enum CodingKeys: String, CodingKey {
         case id, title, preview, pinned, archived, unread, hidden, model, cwd, profile
         case lastActive = "last_active", startedAt = "started_at", messageCount = "message_count"
@@ -123,8 +129,8 @@ struct HermesSessionRow: Decodable, Equatable {
 
 /// One `GET /api/sessions/search` reply (#1053): a Profile's matches for one query, id matches
 /// first, then message-content matches, one per compression lineage, archived and hidden
-/// sessions included. A result that can't be read is skipped; a reply without `results` is a
-/// failed read.
+/// sessions included, except a room's (`HermesSessionRow.isRoomSession`). A result that can't be
+/// read is skipped; a reply without `results` is a failed read.
 struct HermesSessionSearch: Decodable, Equatable {
     let results: [HermesSessionSearchResult]
 
@@ -135,7 +141,8 @@ struct HermesSessionSearch: Decodable, Equatable {
     enum CodingKeys: String, CodingKey { case results }
 
     init(from decoder: Decoder) throws {
-        results = try decoder.container(keyedBy: CodingKeys.self).decode([Slot].self, forKey: .results).compactMap(\.result)
+        results = try decoder.container(keyedBy: CodingKeys.self).decode([Slot].self, forKey: .results)
+            .compactMap(\.result).filter { !$0.row.isRoomSession }
     }
 
     private struct Slot: Decodable {
@@ -152,10 +159,13 @@ struct HermesSessionSearchResult: Decodable, Equatable {
     /// A content match's FTS `snippet()`: the message's text with `>>>` and `<<<` around each
     /// match and `...` where it was cut. Nil for an id match, whose snippet is only its preview.
     let snippet: String?
+    /// Who wrote a content match's message (`user`, `assistant`); nil for an id match.
+    let role: String?
 
-    init(row: HermesSessionRow, snippet: String? = nil) {
+    init(row: HermesSessionRow, snippet: String? = nil, role: String? = nil) {
         self.row = row
         self.snippet = snippet
+        self.role = role
     }
 
     enum CodingKeys: String, CodingKey {
@@ -184,14 +194,16 @@ struct HermesSessionSearchResult: Decodable, Equatable {
             profile: nonEmpty(.profile), parentSessionID: nonEmpty(.parentSessionID), lineageRootID: nonEmpty(.lineageRoot)
         )
         // An id match has no `role`; its snippet repeats the preview or says "Session ID: …".
-        snippet = nonEmpty(.role) == nil ? nil : nonEmpty(.snippet)
+        role = nonEmpty(.role)
+        snippet = role == nil ? nil : nonEmpty(.snippet)
     }
 }
 
 /// A Hermes Profile's list across the pages read so far (#1046). Every page repeats each pinned
 /// row its own rows missed, archived ones included, and rows shift between pages as sessions
 /// move, so a row is kept once, by identity, and an archived one never. The Archived screen's
-/// pages (#1048) keep only archived rows, since their back-fill brings unarchived pinned ones.
+/// pages (#1048) keep only archived rows, since their back-fill brings unarchived pinned ones, and
+/// leave a room's session out (#1146).
 struct HermesSessionPages: Equatable {
     /// True for the Archived screen's pages.
     let archived: Bool
@@ -214,8 +226,9 @@ struct HermesSessionPages: Equatable {
     mutating func append(_ page: HermesSessionPage) {
         var added = 0
         for row in page.rows where (row.archived == true) == archived && identities.insert(row.identity).inserted {
-            rows.append(row)
+            // Still new to the list, so a page of rooms alone does not end it.
             added += 1
+            if !row.isRoomSession { rows.append(row) }
         }
         nextOffset += HermesREST.sessionPageSize
         hasMore = page.count >= HermesREST.sessionPageSize && added > 0

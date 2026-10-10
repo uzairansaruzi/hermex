@@ -37,6 +37,21 @@ import XCTest
         XCTAssertEqual(spy.events, [.toolStarted(name: "search_mail"), .workSummary(["Plan 2 of 5"])])
     }
 
+    /// A bot activity's tap (#1146) opens the bot's canonical chat in the regular chat, under the
+    /// root the activity named, through the selection every bot route ends at.
+    func testATapOpensTheBotsCanonicalChat() throws {
+        let connection = BotConnection(id: UUID(), name: "Mac", address: server, username: "user", password: "fixture")
+        let bot = try XCTUnwrap(AgentRunActivityBot(destination(connection.id)))
+        let attributes = AgentRunActivityAttributes(sessionID: bot.key, sessionTitle: "Inbox Triage", startedAt: .now, bot: bot)
+        let tap = try XCTUnwrap(AgentRunTapTarget.url(attributes: attributes, sessionID: bot.key, activityID: "activity-1"))
+
+        var selection = BotInboxSelection()
+        selection.open(try XCTUnwrap(HermesDeepLink.botDestination(from: tap)), connection: connection, profiles: [profile])
+        let chat = try XCTUnwrap(selection.chat(server: server, connection: connection))
+        XCTAssertEqual(chat.target, .canonicalChat(profile: "inbox-triage"))
+        XCTAssertEqual(chat.linkedRoot, "root")
+    }
+
     func testEqualProfileNamesOnTwoConnectionsNeverShareAnActivity() throws {
         let first = try XCTUnwrap(AgentRunActivityBot(destination()))
         let second = try XCTUnwrap(AgentRunActivityBot(destination()))

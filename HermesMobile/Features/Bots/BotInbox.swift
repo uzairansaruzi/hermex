@@ -265,6 +265,39 @@ import UIKit
                     hidden: showsHidden || !search.isEmpty ? matching.filter(\.hidden) : [])
     }
 
+    /// A bot whose Bot Chat matched a message search on the host (#1146).
+    struct BotChatHit: Identifiable, Equatable {
+        let profileID: String
+        /// The host's FTS snippet, with `>>>` and `<<<` around each match; nil for an id match.
+        let snippet: String?
+        /// The matched message is the user's rather than the bot's; nil for an id match, which
+        /// names no message.
+        let isFromUser: Bool?
+        var id: String { profileID }
+    }
+
+    /// Searches each roster bot's Bot Chat on the host for `query` (#1146), Profile by Profile, as
+    /// the Sessions list does (`HermesREST.sessionSearch`); a Profile's other sessions, its rooms'
+    /// and a replaced Bot Chat's included, are not hits, since a hit opens the bot's current chat. The host can neither filter for the Bot Chat nor page, so each
+    /// search asks for its maximum; a Bot Chat behind that many other matches is not found. Empty
+    /// while the inbox is not live. A reply that lands after the inbox closed or reconnected
+    /// throws `BotFailure.stale`.
+    func searchBotChats(_ query: String) async throws -> [BotChatHit] {
+        guard link == .live, let client = wire, !query.isEmpty else { return [] }
+        var hits: [BotChatHit] = []
+        for profile in profiles {
+            let results = try await client.searchSessions(query: query, profile: profile.id,
+                                                          limit: HermesREST.sessionSearchMaximum)
+            guard wire === client else { throw BotFailure.stale }
+            try Task.checkCancellation()
+            let current = Set([profile.canonicalID, profile.canonicalTipID].compactMap { $0 })
+            if let match = results.first(where: { $0.row.isBotChat && (current.contains($0.row.id) || current.contains($0.row.identity)) }) {
+                hits.append(BotChatHit(profileID: profile.id, snippet: match.snippet, isFromUser: match.role.map { $0 == "user" }))
+            }
+        }
+        return hits
+    }
+
     /// True when the canonical chat moved past what this device last showed.
     /// A row without a watermark reads as seen: the first roster load seeds it.
     func isUnread(_ profile: BotProfile) -> Bool {

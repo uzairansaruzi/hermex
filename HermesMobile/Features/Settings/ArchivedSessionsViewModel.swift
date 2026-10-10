@@ -158,26 +158,38 @@ final class ArchivedSessionsViewModel {
 
     // MARK: Hermes (#1048)
 
-    /// The Hermes session a row opens, in the row's Profile.
+    /// The Hermes session a row opens, in the row's Profile. Nil for a Bot Chat row, which opens
+    /// in its bot (`hermesBot(for:)`).
     func hermesChat(for session: SessionSummary) -> HermesSessionChat? {
-        guard let hermes, let profile = hermesProfile else { return nil }
+        guard let hermes, let profile = hermesProfile, session.hermes?.isBotChat != true else { return nil }
         return session.hermesChat(on: server, connection: hermes.connection, listedIn: profile)
     }
 
-    /// Reads the next page of archived sessions, one at a time. A restore or delete moves the
-    /// host's later rows, so no page is read while one is out, and one already out is dropped.
+    /// The bot whose Bot Chat this row is (#1146): it opens through the app's bot route, as a
+    /// Sessions search hit does, so the Bots tab owns that chat's replaced notice, Update sign-in
+    /// and read mark. Nil for any other row.
+    func hermesBot(for session: SessionSummary) -> BotDestination? {
+        hermes.flatMap { session.hermesBot(on: server, connectionID: $0.connection.id) }
+    }
+
+    /// Reads the next page of archived sessions, one at a time, and reads on past a page of room
+    /// sessions alone, which shows no row (#1146). A restore or delete moves the host's later
+    /// rows, so no page is read while one is out, and one already out is dropped.
     func loadMore() async {
         guard hasMore, !isLoadingMore, unarchivingSessionIDs.isEmpty, deletingSessionIDs.isEmpty,
               let wire, let profile = hermesProfile else { return }
         let serial = readSerial
         isLoadingMore = true
         defer { if serial == readSerial { isLoadingMore = false } }
+        let shown = pages.rows.count
         do {
-            let page = try await wire.sessionPage(profile: profile, offset: pages.nextOffset, archived: true)
-            guard serial == readSerial else { return }
-            var pages = self.pages
-            pages.append(page)
-            show(pages)
+            repeat {
+                let page = try await wire.sessionPage(profile: profile, offset: self.pages.nextOffset, archived: true)
+                guard serial == readSerial else { return }
+                var pages = self.pages
+                pages.append(page)
+                show(pages)
+            } while self.pages.rows.count == shown && self.pages.hasMore
         } catch {
             guard serial == readSerial, !Self.isCancellationError(error) else { return }
             actionErrorMessage = hermesFailure(error)
@@ -241,6 +253,8 @@ final class ArchivedSessionsViewModel {
             guard serial == readSerial else { return }
             pagesRead += 1
             show(pages)
+            // A first page of room sessions alone shows nothing yet.
+            if pages.rows.isEmpty, pages.hasMore { await loadMore() }
         } catch {
             guard serial == readSerial, !Task.isCancelled, !Self.isCancellationError(error) else { return }
             // A client the socket dropped is replaced on the next load.

@@ -79,6 +79,8 @@ enum HermesREST: Equatable, Sendable {
     static let transcriptPageSize = 100
     /// The most sessions one search answers; the host allows up to 100 and defaults to 20.
     static let sessionSearchLimit = 50
+    /// The host's cap on one search, which has no offset to page past it.
+    static let sessionSearchMaximum = 100
 
     /// Public, so it reads the host before any credential is sent.
     case status
@@ -132,8 +134,9 @@ enum HermesREST: Equatable, Sendable {
     /// message.
     case importSessions(body: Data)
     /// `profile`'s sessions matching `query` (#1053): id matches, then message-content matches,
-    /// at most `sessionSearchLimit`, archived and hidden ones included, without machine-run rows.
-    case sessionSearch(query: String, profile: String)
+    /// at most `limit` (the host clamps it to 1…`sessionSearchMaximum`), archived and hidden ones
+    /// included, without machine-run rows.
+    case sessionSearch(query: String, profile: String, limit: Int = sessionSearchLimit)
     /// Every Profile's scheduled Tasks, paused and completed included: a bare array.
     case cronJobs
     /// Creates a Task in `profile`, or in the host's default Profile when nil.
@@ -385,14 +388,14 @@ enum HermesREST: Equatable, Sendable {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             return request
-        case .sessionSearch(let query, let profile):
+        case .sessionSearch(let query, let profile, let limit):
             guard !query.isEmpty, !profile.isEmpty,
                   var parts = URLComponents(url: base.appendingPathComponent("api/sessions/search"), resolvingAgainstBaseURL: false)
             else { throw BotFailure.invalidAddress }
             // The same sources the list leaves out, so a search never finds a row it never shows.
             parts.queryItems = [
                 URLQueryItem(name: "q", value: query), URLQueryItem(name: "profile", value: profile),
-                URLQueryItem(name: "limit", value: String(Self.sessionSearchLimit)),
+                URLQueryItem(name: "limit", value: String(limit)),
                 URLQueryItem(name: "exclude_sources", value: "cron,kanban,oneshot,subagent,tool")
             ]
             // The host reads a bare `+` as a space, so a typed one ("c++") is escaped.

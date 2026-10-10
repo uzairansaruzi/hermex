@@ -217,10 +217,10 @@ import Foundation
         return body
     }
 
-    func searchSessions(query: String, profile: String) async throws -> [HermesSessionSearchResult] {
+    func searchSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
         guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
         let attempt = self.attempt
-        let data = try await http.data(.sessionSearch(query: query, profile: profile),
+        let data = try await http.data(.sessionSearch(query: query, profile: profile, limit: limit),
                                        validateDispatch: { try self.checkOwner(attempt) })
         try checkOwner(attempt)
         guard let search = try? JSONDecoder().decode(HermesSessionSearch.self, from: data) else { throw BotFailure.unsupported }

@@ -351,6 +351,42 @@ import XCTest
         XCTAssertFalse(after.contains("No saved messages found"), after)
     }
 
+    /// Room messages saved on this iPhone show as soon as the cache answers (#1146): the host's
+    /// search of the bots' chats, still out here, does not hold them back.
+    func testSavedRoomHitsShowWhileTheHostSearchIsPending() async throws {
+        let server = URL(string: "https://search.example")!
+        let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        try store.save(connection, server: server)
+        let wire = BotInboxFixtureWire(roster: [.object(["name": .string("inbox"), "display_name": .string("Inbox")])])
+        wire.rooms = [RoomFixture.room(latest: 20)]
+        wire.holdsSearch = true
+        let cache = BotHistoryCache()
+        let inbox = BotInbox(server: server, store: store, historyCache: cache, makeWire: { _ in wire })
+        await inbox.open()
+        defer { wire.release(); inbox.close() }
+        let room = try XCTUnwrap(inbox.rooms.first)
+        try await cache.appendRoom(key: BotRoomKey(server: server, connectionID: connection.id, roomID: room.id), room: room,
+                                   page: RoomFixture.page([RoomFixture.event(20)], cursor: 20), since: 0)
+        let window = try show(BotSearchView(inbox: inbox, cache: cache, query: "Message 20") { _ in }
+            .environment(\.scenePhase, .active))
+        defer { close(window) }
+        // The room row's trailing "Message" kind label draws below the section header only with a hit.
+        let header = "Messages saved on this iPhone"
+        let text = try await screenshot(window, name: "1146-room-hits-before-bot-hits") {
+            $0.components(separatedBy: header).dropFirst().joined().contains("Message")
+        }
+        XCTAssertTrue(text.components(separatedBy: header).dropFirst().joined().contains("Message"), text)
+        XCTAssertTrue(text.components(separatedBy: header).first?.contains("Searching") == true, "The bots' search is pending: \(text)")
+        XCTAssertEqual(wire.searches.map(\.query), ["Message 20"], "The host search is still held")
+
+        wire.release()
+        let answered = try await screenshot(window, name: "1146-bot-search-answered") {
+            $0.components(separatedBy: header).first?.contains("Searching") == false
+        }
+        XCTAssertFalse(answered.components(separatedBy: header).first?.contains("Searching") ?? true, answered)
+    }
+
     func testThreadSearchOpensChronologicalDetailAndItsOwnComposer() async throws {
         let server = URL(string: "https://room.example")!
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")

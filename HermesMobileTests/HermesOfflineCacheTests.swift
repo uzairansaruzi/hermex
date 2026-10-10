@@ -416,6 +416,42 @@ import XCTest
         XCTAssertEqual(same.model.messages.map(\.content), ["Hi"])
     }
 
+    /// Every bot route opens the chat the inbox's selection names (#1146), and it shows the bot's
+    /// cached transcript while the host is unreachable (#628): an inbox row naming no root, and a
+    /// link naming the cached one. A link naming a root the bot has since replaced shows none of
+    /// the new chat's transcript.
+    func testEveryBotRouteShowsItsBotChatsCachedTranscriptOffline() async throws {
+        let context = try makeContext()
+        let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
+                             target: .canonicalChat(profile: "default"))
+        await visit.model.loadMessages(modelContext: context)
+
+        let bot = try XCTUnwrap(BotProfile(.object(["name": .string("default")])))
+        let destination = BotDestination(server: server, connectionID: connection.id, profile: "default", conversation: "root")
+        var linked = BotInboxSelection()
+        linked.open(destination, connection: connection, profiles: [bot])
+        for selection in [BotInboxSelection(profile: bot), linked] {
+            let opened = try XCTUnwrap(selection.chat(server: server, connection: connection))
+            let offline = HermesOfflineWire(rows: [])
+            offline.connectFailure = URLError(.cannotConnectToHost)
+            let chat = makeChat(offline, target: opened.target, linkedRoot: opened.linkedRoot)
+            await chat.model.loadMessages(modelContext: context)
+            XCTAssertTrue(chat.model.isViewingCachedData)
+            XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello."])
+        }
+
+        var replaced = BotInboxSelection()
+        replaced.open(BotDestination(server: server, connectionID: connection.id, profile: "default", conversation: "old-root"),
+                      connection: connection, profiles: [bot])
+        let opened = try XCTUnwrap(replaced.chat(server: server, connection: connection))
+        let offline = HermesOfflineWire(rows: [])
+        offline.connectFailure = URLError(.cannotConnectToHost)
+        let chat = makeChat(offline, target: opened.target, linkedRoot: opened.linkedRoot)
+        await chat.model.loadMessages(modelContext: context)
+        XCTAssertFalse(chat.model.isViewingCachedData)
+        XCTAssertEqual(chat.model.messages, [])
+    }
+
     /// An attach that finds another canonical root, a Bot Chat made again, discards the cached
     /// copy it showed, though its history read then fails.
     func testANewCanonicalRootDiscardsTheCachedTranscript() async throws {
@@ -624,12 +660,12 @@ import XCTest
     }
 
     /// A chat on `target`, session `tip` in `default` unless given, over `wire`; an archived Bot
-    /// Chat's with `botChatRoot`.
+    /// Chat's with `botChatRoot`, a bot link's with `linkedRoot`.
     private func makeChat(_ wire: HermesOfflineWire, target: ConversationTarget = .session(profile: "default", key: "tip"),
-                          server: URL? = nil, botChatRoot: String? = nil) -> Chat {
+                          server: URL? = nil, botChatRoot: String? = nil, linkedRoot: String? = nil) -> Chat {
         let gate = Gate()
         let server = server ?? self.server
-        let engine = HermesConversation(server: server, connection: connection, target: target,
+        let engine = HermesConversation(server: server, connection: connection, target: target, linkedRoot: linkedRoot,
                                         wire: wire, reconnectDelay: { _ in await gate.wait() })
         let model = ChatViewModel(
             session: SessionSummary(profile: "default"), server: server, streamingScrollCoalescingDelayNanoseconds: 0,

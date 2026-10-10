@@ -162,4 +162,15 @@ struct BotInboxSelection {
         room = nil
         conversation = profile == nil ? nil : destination.conversation
     }
+
+    /// The chat the selected bot opens (#1146): its canonical Bot Chat in the regular chat, the
+    /// one destination every bot route reaches (inbox row and tile, search, deep link, push and
+    /// Live Activity taps, a Sessions search hit, an Archived Bot Chat row). A link's root is
+    /// seeded, so a chat the bot has since replaced is refused. Nil with no bot selected.
+    func chat(server: URL, connection: BotConnection) -> HermesSessionChat? {
+        profile.map {
+            HermesSessionChat(server: server, connection: connection, target: .canonicalChat(profile: $0.id),
+                              linkedRoot: conversation)
+        }
+    }
 }

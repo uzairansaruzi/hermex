@@ -88,6 +88,73 @@ import SwiftUI
         XCTAssertEqual(BotUnreadStore(defaults: defaults).load(connectionID: inbox.connection!.id), ["triage": 200])
     }
 
+    /// A bot's chat is searched on the host (#1146), Profile by Profile with the query: each
+    /// bot's Bot Chat is a hit with the matched text and who wrote it, and any other session the
+    /// Profile has, such as a room's, is not. An inbox that is not live asks nothing.
+    func testMessageSearchFindsEachBotsChatOnTheHost() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage"), row("research")])
+        wire.searchResults = [
+            "triage": [match("plan", title: "Plan", snippet: ">>>nimbus<<< plan", role: "user"),
+                       match("triage-root", title: "Bot Chat", snippet: "the >>>nimbus<<< cluster", role: "assistant")],
+            "research": [match("room", title: "Group: room-1", snippet: ">>>nimbus<<<", role: "user")]
+        ]
+        let inbox = try makeInbox(wires: [wire])
+        let offline = try await inbox.searchBotChats("nimbus")
+        XCTAssertEqual(offline, [])
+        XCTAssertTrue(wire.searches.isEmpty)
+
+        await inbox.open()
+        let hits = try await inbox.searchBotChats("nimbus")
+
+        XCTAssertEqual(hits, [BotInbox.BotChatHit(profileID: "triage", snippet: "the >>>nimbus<<< cluster", isFromUser: false)])
+        XCTAssertEqual(wire.searches.map(\.query), ["nimbus", "nimbus"])
+        XCTAssertEqual(wire.searches.map(\.profile), ["triage", "research"])
+    }
+
+    /// Only the bot's current Bot Chat is a hit (#1146): an older session under the same title,
+    /// such as one the bot replaced, is not, since the hit opens the current chat.
+    func testMessageSearchSkipsABotChatTheBotReplaced() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage", root: "chat-2", tip: "chat-2")])
+        wire.searchResults = ["triage": [match("chat-1", title: "Bot Chat", snippet: "the old >>>nimbus<<<", role: "user"),
+                                         match("chat-2", title: "Bot Chat", snippet: "the >>>nimbus<<< cluster", role: "assistant")]]
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+
+        let hits = try await inbox.searchBotChats("nimbus")
+
+        XCTAssertEqual(hits, [BotInbox.BotChatHit(profileID: "triage", snippet: "the >>>nimbus<<< cluster", isFromUser: false)])
+    }
+
+    /// The host's search has no offset to page with or filter for the Bot Chat (#1146), so the bot
+    /// search asks for the host's maximum: a Bot Chat behind 50 other matching sessions is found.
+    func testMessageSearchFindsABotChatBehindFiftyOtherMatches() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.searchResults = ["triage": (0..<50).map { match("s\($0)", title: "Plan \($0)", snippet: ">>>nimbus<<<", role: "user") }
+            + [match("triage-root", title: "Bot Chat", snippet: "the >>>nimbus<<< cluster", role: "assistant")]]
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+
+        let hits = try await inbox.searchBotChats("nimbus")
+
+        XCTAssertEqual(hits, [BotInbox.BotChatHit(profileID: "triage", snippet: "the >>>nimbus<<< cluster", isFromUser: false)])
+        XCTAssertEqual(wire.searches.map(\.limit), [100])
+    }
+
+    /// A Bot Chat the host matched by its id names no message (#1146): the hit has no author,
+    /// so the sheet shows the bot rather than "<bot> to you".
+    func testABotChatIDMatchHasNoAuthor() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.searchResults = ["triage": [HermesSessionSearchResult(row: HermesSessionRow(id: "triage-root", title: "Bot Chat", hidden: true))]]
+        let inbox = try makeInbox(wires: [wire])
+        await inbox.open()
+
+        let hits = try await inbox.searchBotChats("bot")
+
+        XCTAssertEqual(hits.map(\.profileID), ["triage"])
+        XCTAssertNil(hits.first?.snippet)
+        XCTAssertNil(hits.first?.isFromUser)
+    }
+
     func testReturningFromChatMarksTheNextRosterSeenOnce() async throws {
         let wire = BotInboxFixtureWire(roster: [row("triage", lastActive: 100)])
         let inbox = try makeInbox(wires: [wire])
@@ -1212,6 +1279,13 @@ import SwiftUI
     }
 
     /// A roster row whose canonical chat is `<name>-root`, resolved to `<name>-tip`, unless named.
+    /// One host search match, as `HermesSessionSearch` decodes it: a title of exactly "Bot Chat"
+    /// is that Profile's hidden Bot Chat.
+    private func match(_ id: String, title: String, snippet: String, role: String) -> HermesSessionSearchResult {
+        HermesSessionSearchResult(row: HermesSessionRow(id: id, title: title, hidden: title == "Bot Chat" ? true : nil),
+                                  snippet: snippet, role: role)
+    }
+
     private func row(_ name: String, lastActive: Double? = 100, preview: String = "hi", root: String? = nil, tip: String? = nil,
                      look: [String: BotJSON]? = nil, revision: Int? = nil) -> BotJSON {
         var fields: [String: BotJSON] = [
@@ -1291,6 +1365,11 @@ import SwiftUI
     var connectError: Error?
     private(set) var closed = 0
     private var held: [CheckedContinuation<Void, Never>] = []
+    /// `GET /api/sessions/search`'s matches per Profile, whatever the query.
+    var searchResults: [String: [HermesSessionSearchResult]] = [:]
+    /// While true, a session search waits for `release()`.
+    var holdsSearch = false
+    private(set) var searches: [(query: String, profile: String, limit: Int)] = []
 
     init(roster: [BotJSON]) { self.roster = roster }
 
@@ -1307,6 +1386,13 @@ import SwiftUI
         guard let delete else { throw BotFailure.unsupported }
         try delete(name)
         deleted.append(name)
+    }
+
+    func searchSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
+        searches.append((query, profile, limit))
+        if holdsSearch { await withCheckedContinuation { held.append($0) } }
+        // The host answers at most `limit` matches.
+        return Array((searchResults[profile] ?? []).prefix(limit))
     }
 
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {

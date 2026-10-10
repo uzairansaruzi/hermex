@@ -376,8 +376,10 @@ struct HermesServerHome: View {
         .modifier(HermesUpdateSignInModifier { authManager.hermesSignInRejected(server: server) })
         // A connection the inbox's sheet saved or changed closes no screen, so the switch reads too.
         .onChange(of: tab, readConnection)
+        // A bot route lands on the inbox, so Settings (and an Archived screen pushed from it, #1146)
+        // closes first, as a Sessions list's pushed screens do when its tab goes.
         .onChange(of: pendingBotDestination, initial: true) {
-            if pendingBotDestination != nil { tab = .bots }
+            if pendingBotDestination != nil { tab = .bots; isShowingSettings = false }
         }
         .sheet(isPresented: $isPresentingAddServer) {
             AddServerView(authManager: authManager)
@@ -406,7 +408,7 @@ struct HermesServerHome: View {
 
 /// Opens the Hermes server's sign-in form after its host refused the saved password (#942).
 /// `HermesServerHome` installs it, so every Hermes chat under it inherits it: opened from the
-/// Sessions list, a pushed branch or Archived Sessions. A reference, like
+/// Sessions list, a pushed branch or Archived Sessions. A bot's chat takes the inbox's (#1146). A reference, like
 /// `OpenNotificationSettingsAction`, so a pass of the home invalidates no chat reading it.
 final class HermesUpdateSignInAction {
     var handler: () -> Void = {}
@@ -426,8 +428,8 @@ extension EnvironmentValues {
 }
 
 /// The stable action lives in this modifier's state, so the handler capturing the home cannot
-/// form a cycle that outlives it.
-private struct HermesUpdateSignInModifier: ViewModifier {
+/// form a cycle that outlives it. The Bots inbox installs its own for the bot chats it opens.
+struct HermesUpdateSignInModifier: ViewModifier {
     let handler: () -> Void
     @State private var action = HermesUpdateSignInAction()
 
