@@ -99,6 +99,17 @@ struct HermesPlanState: Equatable {
         /// The plan's turn is the newest and the chat showed its prompt, so that prompt is the
         /// transcript's last. Never for a turn another client started, which shows none.
         let followsLastPrompt: Bool
+
+        /// The row the plan follows in `rows`: its turn's saved prompt, or, while that turn is the
+        /// newest and the chat showed its prompt, the last prompt shown, unless that one is saved
+        /// as another row: the saved prompt is gone, as after a cut. Nil hides the plan rather
+        /// than draw it under another turn's prompt.
+        func afterRenderID(in rows: [TranscriptMessage]) -> String? {
+            if let rowID, let row = rows.last(where: { $0.message.rowID == rowID }) { return row.renderID }
+            guard followsLastPrompt, let prompt = rows.last(where: { $0.message.role == "user" && !$0.message.isSteerMessage }),
+                  rowID == nil || prompt.message.rowID == nil else { return nil }
+            return prompt.renderID
+        }
     }
 
     /// What Retry resends, the host's raw `inflight.user`, cut before the failed prompt's row.
@@ -252,6 +263,11 @@ struct HermesPlanState: Equatable {
             placePlan(inTurn: true, promptRowID: followedPromptRowID)
         }
         planRuntimeIsNew = false
+    }
+
+    /// `/undo` removed the newest exchange: a plan that turn revised goes with it.
+    func newestTurnWasUndone() {
+        if planTurn?.turn == turn { planTurn = nil }
     }
 
     /// A new runtime counts its plan's revisions from the start again: the old plan goes.

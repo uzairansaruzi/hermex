@@ -764,6 +764,34 @@ import SwiftUI
         XCTAssertEqual(activity.settledPlan?.followsLastPrompt, false, "only its saved row places it")
     }
 
+    /// A settled plan follows its turn's saved prompt. Once that row is gone, as after `/undo`,
+    /// it is not drawn under the last prompt left, another turn's.
+    func testASettledPlanWhoseSavedPromptIsGoneIsNotDrawn() throws {
+        let plan = try XCTUnwrap(HermesPlan(.object(todos(revision: 1, ["completed"]))))
+        let rows = [promptRow("Earlier", rowID: 5), promptRow("Its prompt", rowID: 7)]
+        let saved = HermesChatActivity.SettledPlan(plan: plan, rowID: 7, followsLastPrompt: true)
+        XCTAssertEqual(saved.afterRenderID(in: rows), "row-7")
+        XCTAssertNil(saved.afterRenderID(in: Array(rows.prefix(1))), "never under the earlier prompt")
+        let unsaved = HermesChatActivity.SettledPlan(plan: plan, rowID: nil, followsLastPrompt: true)
+        XCTAssertEqual(unsaved.afterRenderID(in: rows), "row-7", "until its row is known, the prompt this chat showed")
+        let shown = TranscriptMessage(loadedIndex: 8, renderID: "local", anchorID: "anchor-local",
+                                      message: ChatMessage(role: "user", content: "Its prompt", timestamp: 1, messageId: "local"))
+        XCTAssertEqual(saved.afterRenderID(in: [rows[0], shown]), "local", "the shown prompt stands in until the read saves it")
+    }
+
+    /// A first turn that failed before the host saved any row still shows its outcome row, with
+    /// Retry and the billing page, in place of the empty chat's start prompt. Loading and a
+    /// failed load keep their own placeholders.
+    func testAnEmptyChatShowsAFailedTurnsOutcome() {
+        typealias Placeholder = ChatTranscriptView.Placeholder
+        XCTAssertNil(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true, showsTurnOutcome: true))
+        XCTAssertEqual(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true, showsTurnOutcome: false), .startPrompt)
+        XCTAssertEqual(Placeholder(isLoading: true, errorMessage: nil, isEmpty: true, showsTurnOutcome: true), .loading)
+        XCTAssertEqual(Placeholder(isLoading: false, errorMessage: "Offline", isEmpty: true, showsTurnOutcome: true),
+                       .loadFailed("Offline"))
+        XCTAssertNil(Placeholder(isLoading: false, errorMessage: nil, isEmpty: false, showsTurnOutcome: false))
+    }
+
     /// A failed turn says why in its outcome row, not as error text: the host's surface, its
     /// reset time and raw error. Once the turn settles, one live-state read takes the prompt the
     /// host kept for Retry, which nothing sends on its own. The next turn clears the row.
@@ -1045,6 +1073,12 @@ import SwiftUI
     /// A saved prompt as a transcript page carries it (#1047), saved at `at`.
     private func userRow(_ text: String, id: Int = 1, at timestamp: Double = 1_790_000_000) -> BotJSON {
         .object(["id": .number(Double(id)), "role": .string("user"), "content": .string(text), "timestamp": .number(timestamp)])
+    }
+
+    /// A prompt as the transcript draws it, saved as `rowID`, rendered as `row-<rowID>`.
+    private func promptRow(_ text: String, rowID: Int) -> TranscriptMessage {
+        TranscriptMessage(loadedIndex: rowID, renderID: "row-\(rowID)", anchorID: "anchor-\(rowID)",
+                          message: ChatMessage(role: "user", content: text, timestamp: 1, messageId: "m\(rowID)", rowID: rowID))
     }
 
     /// Serves `rows` as session `key`'s settled history, every page the same.

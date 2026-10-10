@@ -1836,15 +1836,9 @@ struct ChatView: View {
         viewModel.isViewingCachedData ? nil : viewModel.hermesActivity?.pinnedPlan
     }
 
-    /// The prompt row a Hermes chat's settled plan follows: its turn's saved prompt, or, while
-    /// that turn is the newest and the chat showed its prompt, the last prompt shown (#1139).
-    /// Nil hides the row rather than draw it under another turn's prompt.
+    /// The prompt row a Hermes chat's settled plan follows (#1139).
     private var settledPlanAfterRenderID: String? {
-        guard let settled = viewModel.hermesActivity?.settledPlan else { return nil }
-        let rows = displayedTranscriptMessages
-        if let rowID = settled.rowID, let row = rows.last(where: { $0.message.rowID == rowID }) { return row.renderID }
-        guard settled.followsLastPrompt else { return nil }
-        return rows.last { $0.message.role == "user" && !$0.message.isSteerMessage }?.renderID
+        viewModel.hermesActivity?.settledPlan?.afterRenderID(in: displayedTranscriptMessages)
     }
 
     /// How a Hermes chat's last turn ended, under it (#1139): the failure with Retry and the

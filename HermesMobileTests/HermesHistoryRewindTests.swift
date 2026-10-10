@@ -192,6 +192,30 @@ import Observation
         XCTAssertEqual(chat.writes("slash.exec"), [], "never the host's own /undo")
     }
 
+    /// `/undo` takes the plan of the exchange it removes, its saved row not yet known: the plan
+    /// is not drawn under the earlier prompt that is now last.
+    func testUndoTakesTheUndoneTurnsPlan() async {
+        let chat = await openChat(threeTurns)
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("Plan it")
+        chat.transcript.rows = threeTurns + [row(7, "user", "Plan it"), row(8, "assistant", "Done.")]
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "todo.updated", ["revision": .number(1), "todos": .array([
+            .object(["id": .string("a"), "content": .string("Read"), "status": .string("completed")])
+        ])]))
+        chat.receive(event(3, "message.complete", ["status": .string("complete"), "text": .string("Done.")]))
+        chat.receive(event(4, "session.info", ["running": .bool(false)]))
+        XCTAssertEqual(chat.model.hermesActivity?.settledPlan?.followsLastPrompt, true)
+
+        chat.host.always("session.undo", .init(result: .object(["removed": .number(2)])))
+        chat.transcript.rows = threeTurns
+        let result = await chat.model.runHermesSlashCommand("/undo")
+
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(chat.model.messages.last?.content, "Third answer.")
+        XCTAssertNil(chat.model.hermesActivity?.settledPlan, "the plan went with its exchange")
+    }
+
     /// An `/undo` the host took whose newest-page read then fails still shows the exchange, so
     /// it is not reported done: Send waits, and the reattach's read shows it gone. A retried
     /// `/undo` would remove another exchange for good.

@@ -475,7 +475,10 @@ panel; hidden on the offline cache's copy); once every step is done or the turn 
 `HermesPlanRowView` after that turn's prompt, by `persisted_turn.user_row_id` or, while the turn is
 the newest and the chat showed its prompt (its own send or a prompt it queued), the last prompt
 shown. A turn another client started shows no prompt here, so its plan settles only by its row.
-The outcome row is Bot Chat's (`HermesTurnOutcomeRow`, below) under the last turn: a
+A saved row the transcript no longer holds hides the plan, and `/undo` drops the plan of the turn
+it removed, so a cut never moves a plan under an earlier prompt.
+The outcome row is Bot Chat's (`HermesTurnOutcomeRow`, below) under the last turn, and shows in
+an empty chat too, for a first turn that failed before the host saved any row: a
 failed `message.complete` gives the failure and notice, and once the turn settles one
 `session.resume` (no messages) reads the retained `inflight.user` for Retry, then the newest rows
 for its prompt's row. That snapshot can name a later turn than the one the chat saw fail, and a

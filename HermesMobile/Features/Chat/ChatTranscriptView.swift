@@ -126,11 +126,34 @@ struct ChatTranscriptView: View {
     /// How a Hermes chat's last turn ended (#1139), under that turn.
     var turnOutcome: HermesTurnOutcomeRow? = nil
 
+    /// What stands in for a transcript with no rows. Nil draws the transcript, as for a Hermes
+    /// turn that failed before the host saved any row, whose outcome row still shows (#1139).
+    enum Placeholder: Equatable {
+        case loading
+        case loadFailed(String)
+        case startPrompt
+
+        init?(isLoading: Bool, errorMessage: String?, isEmpty: Bool, showsTurnOutcome: Bool) {
+            guard isEmpty else { return nil }
+            if isLoading {
+                self = .loading
+            } else if let errorMessage {
+                self = .loadFailed(errorMessage)
+            } else if showsTurnOutcome {
+                return nil
+            } else {
+                self = .startPrompt
+            }
+        }
+    }
+
     var body: some View {
-        if isLoading && messages.isEmpty {
+        switch Placeholder(isLoading: isLoading, errorMessage: errorMessage, isEmpty: messages.isEmpty,
+                           showsTurnOutcome: turnOutcome != nil) {
+        case .loading?:
             ChatTranscriptLoadingSkeletonView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let errorMessage, messages.isEmpty {
+        case .loadFailed(let errorMessage)?:
             ContentUnavailableView {
                 Label("Could Not Load Messages", systemImage: "exclamationmark.triangle")
             } description: {
@@ -140,7 +163,7 @@ struct ChatTranscriptView: View {
                     Task { await onLoadMessages() }
                 }
             }
-        } else if messages.isEmpty {
+        case .startPrompt?:
             ContentUnavailableView {
                 Image(systemName: "bubble.left.and.bubble.right")
             } description: {
@@ -160,7 +183,7 @@ struct ChatTranscriptView: View {
                         .padding(.top, 16)
                 }
             }
-        } else {
+        case nil:
             transcriptScrollView
         }
     }

@@ -657,6 +657,7 @@ struct HermesChatTranscript: Equatable {
         let attempt = engine.generation
         let reply = try await writeOnce(.sessionUndo(runtime: runtime), runtime: runtime)
         guard reply["removed"].integer != 0 else { return }
+        activity.newestTurnWasUndone()
         await readNewestRows(attempt: attempt)
         guard attempt == engine.generation, isIdle else { return }
         if let historyFailure { throw historyFailure }
