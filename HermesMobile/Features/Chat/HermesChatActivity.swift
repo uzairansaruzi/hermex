@@ -227,8 +227,8 @@ struct HermesPlanState: Equatable {
     /// failed turn's `inflight.started_at`; without one, a row already known stays only for that
     /// same turn. `followsTurn` says the snapshot's plan is the newest turn's, the one the chat
     /// followed before it: still running, or ended with no turn since, its prompt saved as
-    /// `followedPromptRowID`. So a plan revised since is that turn's; no other restored plan
-    /// has a turn.
+    /// `followedPromptRowID`. So a plan revised since is that turn's, and a plan it already
+    /// owned settles at that row; no other restored plan has a turn.
     func readSnapshot(_ snapshot: BotJSON, promptRowID: Int?, followsTurn: Bool, followedPromptRowID: Int? = nil) {
         let inflight = snapshot["inflight"]
         let next = HermesTurnOutcome(inflight: inflight)
@@ -240,6 +240,8 @@ struct HermesPlanState: Equatable {
         failedTurnStartedAt = startedAt
         if applyRevision(snapshot["todo_state"]) {
             placePlan(inTurn: followsTurn && !planRuntimeIsNew, promptRowID: followedPromptRowID)
+        } else if followsTurn, !planRuntimeIsNew, planTurn?.turn == turn {
+            placePlan(inTurn: true, promptRowID: followedPromptRowID)
         }
         planRuntimeIsNew = false
     }

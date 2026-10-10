@@ -1495,6 +1495,18 @@ import Vision
         model.suspend()
     }
 
+    func testNewRuntimeCountsPlanRevisionsAgain() async {
+        let wire = BotFixtureWire()
+        wire.todoState = .object(["revision": .number(6), "todos": .array([])])
+        let model = make(wire); await model.recover()
+        XCTAssertNil(model.plan)
+        wire.runtimeID = "runtime-2"
+        wire.todoState = .object(["revision": .number(1), "todos": .array([.object(["id": .string("a"), "content": .string("Fresh"), "status": .string("pending")])])])
+        await model.recover()
+        XCTAssertEqual(model.plan?.items.map(\.content), ["Fresh"], "a new runtime's first plan replaces the old runtime's clear")
+        model.suspend()
+    }
+
     func testLongInflightResponseRemainsVisibleAtLatestEdge() async throws {
         let wire = BotFixtureWire()
         wire.running = true

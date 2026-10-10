@@ -1409,8 +1409,9 @@ extension BotConversation: HermesConversationOwner {
     }
 
     func conversationWillReplay(newRuntime: Bool) {
-        // A new runtime did not inherit the old turn, so its idle is no completion.
-        if newRuntime { completionArmed = false }
+        // A new runtime did not inherit the old turn, so its idle is no completion, and it
+        // counts its plan's revisions from the start again.
+        if newRuntime { completionArmed = false; planState = HermesPlanState() }
         replayRequestsRevision = requestRevision
     }
 

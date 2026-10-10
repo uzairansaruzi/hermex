@@ -724,6 +724,16 @@ import SwiftUI
         XCTAssertEqual(activity.settledPlan?.rowID, 5, "at the top of its own turn")
     }
 
+    /// As above, but the turn did not revise its plan again: the plan it already owned settles at
+    /// the top of that turn all the same.
+    func testAFollowedTurnsUnchangedPlanSettlesUnderItsPromptAfterAReattach() async {
+        let activity = await followTurnThatEndsAway(saving: [userRow("Plan it", id: 5, at: 1_790_000_001)],
+                                                    finalPlan: todos(revision: 1, ["in_progress", "pending"]))
+        XCTAssertNil(activity.pinnedPlan)
+        XCTAssertEqual(activity.settledPlan?.plan.revision, 1, "the turn's plan settles")
+        XCTAssertEqual(activity.settledPlan?.rowID, 5, "at the top of its own turn")
+    }
+
     /// As above, but another turn also ran while the chat was away: the newer revision may be
     /// that turn's, so it is not drawn under either.
     func testAFollowedTurnKeepsNoPlanALaterTurnMayHaveRevised() async {
@@ -986,9 +996,9 @@ import SwiftUI
     }
 
     /// Follows a turn that began at the fixtures' start time and revised its plan to revision 1,
-    /// then leaves. While away the turn finishes its plan at revision 2 and ends, the host saves
-    /// `rows` after an earlier prompt, and the replay comes back truncated.
-    private func followTurnThatEndsAway(saving rows: [BotJSON]) async -> HermesChatActivity {
+    /// then leaves. While away the turn ends with `finalPlan` (by default finished at revision 2),
+    /// the host saves `rows` after an earlier prompt, and the replay comes back truncated.
+    private func followTurnThatEndsAway(saving rows: [BotJSON], finalPlan: [String: BotJSON]? = nil) async -> HermesChatActivity {
         let earlier = userRow("Earlier", id: 3, at: 1_789_999_000)
         let chat = await openChat(history: [earlier])
         let activity = chat.turn.activity
@@ -997,7 +1007,8 @@ import SwiftUI
         chat.receive(event(3, "todo.updated", todos(revision: 1, ["in_progress", "pending"])))
         XCTAssertEqual(activity.pinnedPlan?.revision, 1)
         serveHistory([earlier] + rows)
-        await reattach(chat, resume(running: false).replacing("todo_state", with: .object(todos(revision: 2, ["completed", "completed"]))))
+        await reattach(chat, resume(running: false)
+            .replacing("todo_state", with: .object(finalPlan ?? todos(revision: 2, ["completed", "completed"]))))
         XCTAssertNil(chat.model.activeStreamID, "the idle snapshot ends the followed turn")
         return activity
     }

@@ -262,6 +262,38 @@ import Observation
                        [[.string(Self.rawFailedPrompt), .number(7)]])
     }
 
+    /// Retry on a turn another client started, whose prompt this chat never showed, cuts at that
+    /// prompt's saved row on the host; the earlier exchange the chat shows last is not that
+    /// turn's, so it stays, and the retried prompt follows it.
+    func testRetryOfATurnWhosePromptTheChatNeverShowedKeepsTheEarlierExchange() async {
+        let chat = await openChat(threeTurns)
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        chat.host.always("session.resume", .init(result: .object([
+            "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
+            "messages": .array([]), "info": .object(["profile_name": .string("default")]),
+            "inflight": .object(["user": .string("Elsewhere"), "assistant": .string(""), "started_at": .number(1_790_000_009),
+                                 "error": .string("HTTP 429"), "status": .string("error"), "recoverable": .bool(true),
+                                 "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"),
+                                                           "retryable": .bool(true)])])
+        ])))
+        chat.transcript.rows = threeTurns + [row(9, "user", "Elsewhere")]
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "message.complete", [
+            "status": .string("error"), "text": .string("HTTP 429"), "error": .string("HTTP 429"), "recoverable": .bool(true),
+            "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"), "retryable": .bool(true)])
+        ]))
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+        await waitUntil("Retry offered") { chat.model.hermesActivity?.retryTarget != nil }
+        let shown = chat.model.messages.map(\.content)
+        XCTAssertEqual(shown, ["First", "First answer.", "Second", "Second answer.", "Third", "Third answer."])
+
+        await chat.model.retryHermesFailedTurn()
+
+        XCTAssertEqual(chat.writes("prompt.submit").map { [$0["text"], $0["truncate_before_row_id"]] },
+                       [[.string("Elsewhere"), .number(9)]])
+        XCTAssertEqual(chat.model.messages.map(\.content), shown + ["Elsewhere"], "the earlier exchange stays")
+    }
+
     /// A busy host (4009) says to wait and changes nothing; Retry stays. A row the host can no
     /// longer cut (4018) hides Retry for that row, and the chat reads the session again.
     func testARetryRefusalSaysWhyAndA4018HidesRetry() async throws {
