@@ -55,7 +55,7 @@ struct HermesPlan: Equatable {
     }
 }
 
-/// The newest plan a session's host reported, for every Hermes chat and Bot Chat.
+/// The newest plan a session's host reported, for every Hermes chat.
 /// Revision-monotonic: an older revision never replaces a newer one. An empty list at
 /// revision 1 or later is the host clearing the plan (`_normalize_todo_state`), which hides
 /// it until a newer revision.

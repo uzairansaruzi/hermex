@@ -91,7 +91,7 @@ enum HermesChatPolicy: Equatable {
         }
     }
 
-    /// Edit, Regenerate and Fork From Here; Retry under a failed turn stays, as in Bot Chat.
+    /// Edit, Regenerate and Fork From Here; Retry under a failed turn stays.
     var offersHistoryActions: Bool { self == .session }
     /// The Profile chip starts a new chat in the Profile it picks.
     var picksProfile: Bool { self == .session }

@@ -49,7 +49,7 @@ enum HermesProfilePreference {
 /// #1016, #1142), and its `/personality` command. `HermesChatTurnCoordinator` owns it and connects
 /// it on each attach.
 ///
-/// The model rides Bot Chat's `BotChatControls` on the session's runtime: the catalog is
+/// The model rides `BotChatControls` on the session's runtime: the catalog is
 /// `model.options` for the chat's Profile, and a pick goes out once as `config.set` with
 /// `--session`, so the next chat in the Profile still starts on its default. The host may
 /// ask to confirm an expensive model (`confirmation`) or apply the pick after the running
@@ -70,7 +70,7 @@ enum HermesProfilePreference {
 /// The Profile chip lists `profiles.list`. A session's Profile never changes: picking another
 /// starts a new chat in it (`ChatView`).
 @MainActor @Observable final class HermesChatSettings {
-    let controls = BotChatControls(readsSessionControl: false)
+    let controls = BotChatControls()
     /// The session's Profile.
     let profile: String
     /// The host's Profiles, from the latest attach's `profiles.list`; empty until it answers.
@@ -94,7 +94,7 @@ enum HermesProfilePreference {
     /// The latest `session.info`'s requested effort and the level its route sends.
     private var reportedEffort: (requested: String, sent: String)?
     /// The latest `session.info`, applied again once an attach reconnects the controls.
-    @ObservationIgnored private var latestInfo: (info: BotJSON, idle: Bool)?
+    @ObservationIgnored private var latestInfo: BotJSON?
     private let engine: HermesConversation
 
     init(engine: HermesConversation, loadsAvatars: Bool = false) {
@@ -123,7 +123,7 @@ enum HermesProfilePreference {
         await controls.connect(.init(connectionID: engine.connection.id, profile: profile, runtime: runtime,
                                      generation: attempt), wire: engine.wire)
         guard engine.generation == attempt else { return }
-        if let latestInfo { controls.snapshot(latestInfo.info, idle: latestInfo.idle) }
+        if let latestInfo { controls.snapshot(latestInfo) }
         await readProfiles(attempt: attempt)
     }
 
@@ -158,8 +158,8 @@ enum HermesProfilePreference {
     /// A `session.info` frame, or an attach's `session.resume` info. Once a turn ends with a
     /// pick still waiting on it, the catalog is read again for the model the host now runs.
     func apply(info: BotJSON, idle: Bool) {
-        latestInfo = (info, idle)
-        controls.snapshot(info, idle: idle)
+        latestInfo = info
+        controls.snapshot(info)
         reportedEffort = info["reasoning_effort"].text.map { ($0, info["reasoning_effort_wire"].text ?? "") }
         if idle, controls.pendingModel != nil { controls.refresh() }
     }

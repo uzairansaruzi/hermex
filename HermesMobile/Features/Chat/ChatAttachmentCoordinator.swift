@@ -167,7 +167,7 @@ final class ChatAttachmentCoordinator {
 
     /// Keeps a durable local copy for a Hermes send to upload, under Bot Chat's rules:
     /// eight files, 25 MB each and 50 MB in all; images re-encoded as JPEG, or PNG with
-    /// transparency (`BotAttachmentDraft.prepare`). Counts as an upload while it runs, so
+    /// transparency (`BotAttachmentUpload.prepare`). Counts as an upload while it runs, so
     /// the composer waits for it as it waits for a webui upload.
     private func stageForSend(data: Data, filename: String) async -> PendingAttachment? {
         let stagingID = UUID()
@@ -184,11 +184,11 @@ final class ChatAttachmentCoordinator {
         let prepared: (data: Data, name: String, mime: String, image: Bool)
         do {
             guard pendingAttachments.count + stagingIDs.count <= HermexAttachmentPickerPolicy.maximumBotAttachments,
-                  !data.isEmpty, data.count <= BotAttachmentDraft.maximumFileBytes
+                  !data.isEmpty, data.count <= BotAttachmentUpload.maximumFileBytes
             else { throw BotAttachmentFailure.limit }
-            prepared = try await Task.detached { try BotAttachmentDraft.prepare(data: data, filename: filename) }.value
-            let staged = pendingAttachments.reduce(stagingBytes) { $0 + ($1.size ?? BotAttachmentDraft.maximumFileBytes) }
-            guard staged + prepared.data.count <= BotAttachmentDraft.maximumTotalBytes else { throw BotAttachmentFailure.limit }
+            prepared = try await Task.detached { try BotAttachmentUpload.prepare(data: data, filename: filename) }.value
+            let staged = pendingAttachments.reduce(stagingBytes) { $0 + ($1.size ?? BotAttachmentUpload.maximumFileBytes) }
+            guard staged + prepared.data.count <= BotAttachmentUpload.maximumTotalBytes else { throw BotAttachmentFailure.limit }
         } catch {
             uploadAttachmentErrorMessage = error.localizedDescription
             return nil
@@ -196,7 +196,7 @@ final class ChatAttachmentCoordinator {
         stagingBytes += prepared.data.count
         defer { stagingBytes -= prepared.data.count }
         guard let file = await saveDraftCopy(prepared.data, filename: prepared.name, attachmentID: stagingID,
-                                             maximumBytes: BotAttachmentDraft.maximumFileBytes) else { return nil }
+                                             maximumBytes: BotAttachmentUpload.maximumFileBytes) else { return nil }
         let attachment = PendingAttachment(
             id: stagingID, name: prepared.name, path: "", mime: prepared.mime, size: prepared.data.count,
             isImage: prepared.image, thumbnailData: prepared.image ? await Self.thumbnail(of: prepared.data) : nil,
@@ -250,7 +250,7 @@ final class ChatAttachmentCoordinator {
             ) { [draftAttachmentStore] in
                 guard let file = attachment.draftFileName else { throw BotAttachmentFailure.unreadable }
                 let data = try await draftAttachmentStore.data(named: file)
-                guard !data.isEmpty, data.count <= BotAttachmentDraft.maximumFileBytes else { throw BotAttachmentFailure.limit }
+                guard !data.isEmpty, data.count <= BotAttachmentUpload.maximumFileBytes else { throw BotAttachmentFailure.limit }
                 return data
             }
         }

@@ -3,7 +3,7 @@ import Foundation
 /// How a Hermes turn ended, read tolerantly from what the host already sends about it:
 /// the failure `session.resume` retains in `inflight`, or a live `message.complete`.
 /// A pure value with every field optional, so an older or newer host decodes to
-/// whatever it sent. `HermesTurnOutcomeRow` reads it, in every Hermes chat and Bot Chat.
+/// whatever it sent. `HermesTurnOutcomeRow` reads it, in every Hermes chat.
 struct HermesTurnOutcome: Equatable, Sendable {
     /// The host's advisory `error_surface`: which layer failed, why, and whether
     /// retrying unchanged can help. Unknown keys are ignored.

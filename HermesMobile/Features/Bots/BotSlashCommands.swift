@@ -1,33 +1,5 @@
 import Foundation
 
-/// The `/…` the caret sits in, when it can actually run something here.
-///
-/// Narrower than the Sessions trigger on purpose. A Bot host only expands a
-/// skill from the start of a message, so a `/` mid-sentence offers nothing, and
-/// the trigger ends at its first space: past that the user is writing the
-/// skill's argument, not choosing a row.
-struct BotSlashTrigger: Equatable {
-    /// UTF-16 range of the trigger inside the draft: the `/` up to the caret.
-    let range: NSRange
-    /// What the panel filters on, without the leading `/`.
-    let query: String
-
-    static func detect(in draft: String, selection: NSRange) -> Self? {
-        guard let trigger = ComposerSlashTrigger.detect(in: draft, selection: selection), trigger.startsDraft else {
-            return nil
-        }
-        let query = trigger.text.dropFirst()
-        guard !query.contains(where: \.isWhitespace) else { return nil }
-        return Self(range: trigger.range, query: String(query))
-    }
-
-    /// What the draft and caret become when the user accepts a row. Only the
-    /// trigger's own range changes, so text after the caret survives.
-    func applying(_ replacement: String, to draft: String) -> (draft: String, selection: NSRange) {
-        ComposerSlashTrigger(range: range, text: "/" + query, startsDraft: true).applying(replacement, to: draft)
-    }
-}
-
 /// The `/name rest` a draft opens with.
 struct BotSlashInvocation: Equatable {
     let name: String

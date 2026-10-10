@@ -13,7 +13,7 @@ import Observation
 /// `open_requests` an attach's replay and snapshot carry, which replace it. An approval, a
 /// question, a sudo or secret prompt and a Desktop task get a card; a Desktop task's is only
 /// shown, never answered, since a reply from here would take the request from Desktop, which
-/// answers it. Vault prompts (#943) and unknown methods get no card and are never answered.
+/// answers it. Password-vault prompts and unknown methods get no card and are never answered.
 /// Any open request still means the session waits for someone. Credential and setup values
 /// pass straight to the dispatch and are never kept.
 ///
@@ -88,7 +88,7 @@ import Observation
     }
 
     /// The request a card shows: a question first, then an approval, then a sudo or secret
-    /// prompt or a Desktop task, then a connection operation, as in Bot Chat.
+    /// prompt or a Desktop task, then a connection operation.
     var onScreen: BotPendingRequest? {
         let shown = open.compactMap(\.pending).filter(Self.isShownHere)
         return shown.first { if case .question = $0 { return true }; return false }
@@ -125,18 +125,16 @@ import Observation
     /// The verdict the card on screen shows, if it has one.
     var onScreenResolution: BotRequestResolution? { onScreen.flatMap(resolution(for:)) }
 
-    /// Whether this chat shows a card for `request`. Vault prompts stay Bot Chat's (#943).
+    /// Whether this chat shows a card for `request`.
     static func isShownHere(_ request: BotPendingRequest) -> Bool {
         if case .desktopTask = request { return true }
         return isAnsweredHere(request)
     }
 
-    /// Whether this chat answers `request`. Vault prompts stay Bot Chat's (#943); a Desktop
-    /// task is shown, never answered.
+    /// Whether this chat answers `request`. A Desktop task is shown, never answered.
     static func isAnsweredHere(_ request: BotPendingRequest) -> Bool {
         switch request {
-        case .approval, .question, .connection: return true
-        case .credential(let credential): return credential.kind == .sudo || credential.kind == .secret
+        case .approval, .question, .credential, .connection: return true
         case .desktopTask: return false
         }
     }

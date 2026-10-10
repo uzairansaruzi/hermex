@@ -357,3 +357,34 @@ struct BotHostStatusProbe {
         }
     }
 }
+
+extension BotJSON {
+    /// Tool arguments in the shared transcript model's JSON type.
+    var argumentDictionary: [String: JSONValue]? {
+        guard case .object(let object) = self, !object.isEmpty else { return nil }
+        return object.mapValues(\.jsonValue)
+    }
+
+    var jsonValue: JSONValue {
+        switch self {
+        case .object(let value): return .object(value.mapValues(\.jsonValue))
+        case .array(let value): return .array(value.map(\.jsonValue))
+        case .string(let value): return .string(value)
+        case .number(let value): return .number(value)
+        case .bool(let value): return .bool(value)
+        case .null: return .null
+        }
+    }
+
+    /// A tool result as the text the shared tool row formatter parses: a string as
+    /// is, any other JSON re-encoded so envelope fields such as `error` are read.
+    var toolResultPreview: String? {
+        switch self {
+        case .null: return nil
+        case .string(let text): return text.isEmpty ? nil : text
+        default:
+            guard let data = try? JSONEncoder().encode(self) else { return nil }
+            return String(decoding: data, as: UTF8.self)
+        }
+    }
+}

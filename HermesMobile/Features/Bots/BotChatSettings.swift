@@ -1,24 +1,5 @@
 import Foundation
 
-struct BotChatUsage: Equatable {
-    let snapshot: ContextWindowSnapshot
-
-    init(_ payload: BotJSON) {
-        func count(_ key: String) -> Int? {
-            guard let value = payload[key].integer, value >= 0 else { return nil }
-            return value
-        }
-        snapshot = ContextWindowSnapshot(
-            contextLength: count("context_max"), thresholdTokens: nil,
-            lastPromptTokens: count("context_used"), inputTokens: count("input"),
-            outputTokens: count("output"), estimatedCost: nil
-        )
-    }
-
-    /// Session input is cumulative; it must never substitute for current context.
-    var hasContext: Bool { snapshot.lastPromptTokens != nil && (snapshot.contextLength ?? 0) > 0 }
-}
-
 struct BotSessionControl: Identifiable, Equatable {
     enum Kind: String, CaseIterable {
         case goal, loop, heartbeat

@@ -1,6 +1,7 @@
 import XCTest
 @testable import HermesMobile
 
+/// A Hermes chat's model, effort and Fast controls (`HermesChatSettings` owns one).
 @MainActor final class BotChatControlsTests: XCTestCase {
     private func context(_ id: UUID = UUID(), generation: Int = 1) -> BotChatControls.Context {
         .init(connectionID: id, profile: "same-profile", runtime: "runtime", generation: generation)
@@ -13,16 +14,6 @@ import XCTest
         XCTAssertEqual(catalog.groups[0].models.count, 2)
         XCTAssertEqual(catalog.active?.id, "model-a")
         XCTAssertTrue(HermesModelCatalog(.object([:])).groups.isEmpty)
-    }
-
-    func testMissingContextDoesNotUseCumulativeInputAsCurrentUsage() {
-        let usage = BotChatUsage(.object(["input": .number(150_000), "context_max": .number(100_000)]))
-        XCTAssertFalse(usage.hasContext)
-        XCTAssertNil(usage.snapshot.lastPromptTokens)
-        XCTAssertNil(usage.snapshot.outputTokens)
-        XCTAssertNil(usage.snapshot.estimatedCost)
-        XCTAssertFalse(BotChatUsage(.object(["context_used": .number(-1), "context_max": .number(100)])).hasContext)
-        XCTAssertTrue(BotChatUsage(.object(["context_used": .number(0), "context_max": .number(100)])).hasContext)
     }
 
     func testModelWireValueAlwaysPinsSessionAndRejectsFlags() {
@@ -58,7 +49,7 @@ import XCTest
         XCTAssertEqual(wire.writes.last?.1["confirm_expensive_model"], .bool(true))
         XCTAssertEqual(settings.pendingModel, next)
         XCTAssertEqual(settings.catalog.active?.id, "model-a")
-        settings.snapshot(.object(["model": .string("model-b")]), idle: true)
+        settings.snapshot(.object(["model": .string("model-b")]))
         XCTAssertEqual(settings.catalog.active?.id, "model-a")
         wire.active = "model-b"
         await settings.reload()
@@ -119,58 +110,24 @@ import XCTest
         XCTAssertTrue(other.writes.isEmpty)
     }
 
-    func testWorkspaceRequiresIdleAndOnlyChangesAfterAcknowledgment() async throws {
-        let wire = SettingsWire(); let settings = BotChatControls()
-        await settings.connect(context(), wire: wire)
-        settings.snapshot(.object(["cwd": .string("/old")]), idle: false)
-        XCTAssertNil(settings.prepare(.workspace("/new")))
-        settings.snapshot(.object(["cwd": .string("/old")]), idle: true)
-        let action = try XCTUnwrap(settings.prepare(.workspace("/new")))
-        wire.failure = BotSettingFailure.rejected(4017, "No such directory")
-        await settings.apply(action)
-        XCTAssertEqual(settings.workspace, "/old")
-        wire.failure = nil; wire.response = .object(["cwd": .string("/new")])
-        await settings.apply(try XCTUnwrap(settings.prepare(.workspace("/new"))))
-        XCTAssertEqual(settings.workspace, "/new")
-        XCTAssertEqual(wire.writes.last?.0, "session.cwd.set")
-    }
-
     /// A method the host lacks is the connection's to remember: a second chat on it never
     /// sends the call, and a new connection starts with the control on.
     func testAMissingMethodStaysOffForEveryChatOnTheConnection() async throws {
         let wire = SettingsWire(), connection = UUID()
         let first = BotChatControls(), second = BotChatControls()
         await first.connect(context(connection), wire: wire)
-        first.snapshot(.object([:]), idle: true)
         wire.failure = BotSettingFailure.rejected(-32601, "unknown method")
-        await first.apply(try XCTUnwrap(first.prepare(.workspace("/new"))))
-        XCTAssertFalse(first.mayChangeWorkspace)
+        await first.apply(try XCTUnwrap(first.prepare(.model(next))))
+        XCTAssertFalse(first.mayChangeModel)
 
         await second.connect(.init(connectionID: connection, profile: "same-profile", runtime: "second", generation: 1), wire: wire)
-        second.snapshot(.object([:]), idle: true)
-        XCTAssertFalse(second.mayChangeWorkspace)
-        XCTAssertNil(second.prepare(.workspace("/new")))
-        XCTAssertEqual(wire.writes.map(\.0), ["session.cwd.set"])
+        XCTAssertFalse(second.mayChangeModel)
+        XCTAssertNil(second.prepare(.model(next)))
+        XCTAssertEqual(wire.writes.map(\.0), ["config.set"])
 
         let fresh = BotChatControls()
         await fresh.connect(context(), wire: SettingsWire())
-        fresh.snapshot(.object([:]), idle: true)
-        XCTAssertTrue(fresh.mayChangeWorkspace)
-    }
-
-    func testSessionControlsUseKnownStatesAndOfferReverseAction() async throws {
-        let wire = SettingsWire(); let settings = BotChatControls()
-        wire.control = .object(["goal": .object(["title": .string("Finish"), "status": .string("active")]),
-                               "loop": .object(["status": .string("future")])])
-        await settings.connect(context(), wire: wire)
-        let goal = try XCTUnwrap(settings.controls.first)
-        XCTAssertEqual(goal.action, "goal.pause")
-        XCTAssertNil(settings.controls.last?.action)
-        wire.response = .object(["control": .object(["goal": .object(["title": .string("Finish"), "status": .string("paused")])])])
-        await settings.apply(try XCTUnwrap(settings.prepare(.control(goal))))
-        XCTAssertEqual(settings.controls.first?.action, "goal.resume")
-        XCTAssertEqual(wire.writes.last?.1["action"], .string("goal.pause"))
-        XCTAssertNil(settings.prepare(.control(goal)))
+        XCTAssertTrue(fresh.mayChangeModel)
     }
 
     func testConfirmationCannotOverwriteADesktopModelChange() async throws {
@@ -186,27 +143,10 @@ import XCTest
         XCTAssertNotNil(settings.errorMessage)
     }
 
-    func testLateControlReadCannotOverwriteAcknowledgedPause() async throws {
-        let wire = SettingsWire(); let settings = BotChatControls()
-        wire.control = .object(["goal": .object(["status": .string("active")])])
-        await settings.connect(context(), wire: wire)
-        let goal = try XCTUnwrap(settings.controls.first)
-        let readStarted = expectation(description: "Control read started")
-        var finish: CheckedContinuation<Void, Never>?
-        wire.afterControlRead = { await withCheckedContinuation { finish = $0; readStarted.fulfill() } }
-        let reading = Task { await settings.reload() }
-        await fulfillment(of: [readStarted], timeout: 3)
-        wire.response = .object(["control": .object(["goal": .object(["status": .string("paused")])])])
-        await settings.apply(try XCTUnwrap(settings.prepare(.control(goal))))
-        finish?.resume(); await reading.value
-        XCTAssertEqual(settings.controls.first?.status, "paused")
-        XCTAssertFalse(settings.isLoading)
-    }
-
     func testEffortUsesExplicitSessionValuesAndWaitsForAcknowledgment() async throws {
         let wire = SettingsWire(); let settings = BotChatControls()
         await settings.connect(context(), wire: wire)
-        settings.snapshot(.object(["reasoning_effort": .string("medium")]), idle: true)
+        settings.snapshot(.object(["reasoning_effort": .string("medium")]))
         wire.failure = BotSettingFailure.rejected(4002, "Unsupported effort")
         await settings.apply(try XCTUnwrap(settings.prepare(.effort("high"))))
         XCTAssertEqual(settings.effort, "medium")
@@ -227,7 +167,7 @@ import XCTest
     func testStaleEffortActionNeverWritesAfterReconnect() async throws {
         let wire = SettingsWire(); let settings = BotChatControls()
         await settings.connect(context(), wire: wire)
-        settings.snapshot(.object(["reasoning_effort": .string("medium")]), idle: true)
+        settings.snapshot(.object(["reasoning_effort": .string("medium")]))
         let effort = try XCTUnwrap(settings.prepare(.effort("high")))
         await settings.connect(context(generation: 2), wire: wire)
         await settings.apply(effort)
@@ -237,7 +177,7 @@ import XCTest
     func testSnapshotSettingsNeverDispatchConfigWrites() async {
         let wire = SettingsWire(); let settings = BotChatControls()
         await settings.connect(context(), wire: wire)
-        settings.snapshot(.object(["reasoning_effort": .string("ultra"), "fast": .bool(true)]), idle: true)
+        settings.snapshot(.object(["reasoning_effort": .string("ultra"), "fast": .bool(true)]))
         XCTAssertEqual(settings.effort, "ultra")
         XCTAssertEqual(settings.fast, true)
         XCTAssertTrue(wire.writes.isEmpty)
@@ -249,12 +189,10 @@ import XCTest
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
     var active = "model-a"
-    var control: BotJSON = .object([:])
     var response = modelReply()
     var failure: Error?
     var beforeDispatch: (() -> Void)?
     var afterDispatch: (() async -> Void)?
-    var afterControlRead: (() async -> Void)?
     var writes: [(String, [String: BotJSON])] = []
     /// The connection's missing methods: like the gateway, a -32601 adds its method.
     var unavailableMethods: Set<String> = []
@@ -265,11 +203,6 @@ import XCTest
         if method == "model.options" {
             var fields = Self.catalog.fields!; fields["model"] = .string(active)
             return .object(fields)
-        }
-        if method == "session.control.read" {
-            let result = BotJSON.object(["control": control])
-            await afterControlRead?()
-            return result
         }
         beforeDispatch?(); try validateDispatch?()
         writes.append((method, params))

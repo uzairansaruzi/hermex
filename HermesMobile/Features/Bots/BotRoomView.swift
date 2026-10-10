@@ -40,7 +40,7 @@ import SwiftUI
                 // the welcome is (at accessibility text sizes).
                 ZStack {
                     if showsWelcome { Color.clear.containerRelativeFrame(.vertical) }
-                    // Eager over a bounded window, like Bot Chat: member replies are
+                    // Eager over a bounded window: member replies are
                     // hosted selection documents, and a lazy stack places unbuilt rows
                     // from an estimate, so the jump to a search hit missed on a cold
                     // open (issue #553). The window keeps the build to the newest page.
@@ -144,7 +144,7 @@ import SwiftUI
             VStack(spacing: 10) {
                 if let pill {
                     BotComposerPillView(pill: pill, onReconnect: { revision = UUID() }, onUpdateSignIn: onUpdateSignIn,
-                        onShowRequest: { showRequestID = UUID() }, onCancelUpload: {},
+                        onShowRequest: { showRequestID = UUID() },
                         onDismissError: { if let text = pill.errorText { dismissedErrors.insert(text) } },
                         onRetrySend: { Task { await reader.send(retry: true, threadID: threadID) } })
                 }
@@ -399,6 +399,8 @@ private struct BotRoomEventView: View {
     let avatars: [String: UIImage]
     let transcriptMediaCacheNamespace: String
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey)
+    private var showsTimestamps = ChatTranscriptDisplaySettings.defaultShowsTimestamps
     @State private var responseIsVisible = false
 
     var body: some View {
@@ -446,11 +448,12 @@ private struct BotRoomEventView: View {
 
     private var messageText: String { event.payload["text"].text ?? "" }
 
-    /// Rooms take the shared reply footer with the time only.
+    /// Rooms take the shared meta row with the time only; Copy stays in the long-press menu.
     @ViewBuilder
     private var footer: some View {
-        if let timestamp = event.timestamp, timestamp.isFinite, timestamp > 0 {
-            BotReplyFooter(isUserMessage: event.kind == "message.user", timestamp: timestamp)
+        if showsTimestamps, let timestamp = event.timestamp, timestamp > 0,
+           let time = ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: timestamp) {
+            ChatMessageMetaRow(isUserMessage: event.kind == "message.user", timeText: time, onCopy: nil)
         }
     }
 

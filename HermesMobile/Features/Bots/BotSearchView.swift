@@ -265,7 +265,7 @@ import SwiftUI
         var found: [BotHistoryCache.Hit] = [], localFailed = false
         do {
             found = try await cache.search(captured.query, scope: .init(server: inbox.server, connectionID: connectionID),
-                                           profileIDs: [], roomIDs: captured.roomIDs)
+                                           roomIDs: captured.roomIDs)
         } catch { localFailed = true }
         guard !Task.isCancelled, captured == request else { return }
         hits = found; searchError = localFailed; isSearching = false

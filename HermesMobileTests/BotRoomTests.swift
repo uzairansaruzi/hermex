@@ -47,7 +47,7 @@ import XCTest
             XCTAssertTrue(inbox.rooms.isEmpty)
             XCTAssertNil(inbox.searchableRoomIDs)
             let hits = try await cache.search("Message", scope: .init(server: key().server, connectionID: connection.id),
-                                             profileIDs: [], roomIDs: inbox.searchableRoomIDs)
+                                             roomIDs: inbox.searchableRoomIDs)
             let hit = try XCTUnwrap(hits.first)
             XCTAssertEqual(inbox.roomForSearch(hit)?.name, "Comms")
             XCTAssertEqual(inbox.selectRoomSearchHit(hit)?.id, room.id)
@@ -129,7 +129,7 @@ import XCTest
         let cache = BotHistoryCache(), wire = RoomWire(); wire.latest = 500
         let first = makeReader(wire, cache: cache); await first.open(); first.close()
         let hits = try await cache.search("Message 345", scope: .init(server: key().server, connectionID: connection.id),
-                                         profileIDs: [], roomIDs: [key().roomID])
+                                         roomIDs: [key().roomID])
         let selected = try XCTUnwrap(hits.first)
         XCTAssertEqual(selected.message.seq, 345)
         let nextWire = RoomWire(); nextWire.latest = 500

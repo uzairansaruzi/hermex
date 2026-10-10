@@ -180,6 +180,28 @@ import SwiftUI
         XCTAssertEqual(chat.model.messages.map(\.role), ["user", "assistant"], "its own message.start is the same turn")
     }
 
+    /// Each mode reads only its own receipt: a steer is `queued`, an interrupt `redirected` or
+    /// `queued`, a send `streaming` or `queued`, and the host's voice-stop acknowledgment
+    /// clears a send without claiming a turn ran. Anything else is unknown, never success.
+    func testEachPromptModeReadsOnlyItsOwnAcknowledgment() {
+        let reply = { (status: String) in BotJSON.object(["status": .string(status), "future": .bool(true)]) }
+        XCTAssertEqual(BotPromptMode.steer.outcome(reply("queued")), .guidanceQueued)
+        XCTAssertEqual(BotPromptMode.redirect.outcome(reply("redirected")), .redirected)
+        XCTAssertEqual(BotPromptMode.redirect.outcome(reply("queued")), .redirectQueued)
+        XCTAssertEqual(BotPromptMode.queue.outcome(reply("queued")), .followUpQueued)
+        XCTAssertEqual(BotPromptMode.send.outcome(reply("streaming")), .started)
+        XCTAssertEqual(BotPromptMode.steer.outcome(reply("rejected")), .rejected)
+        XCTAssertEqual(BotPromptMode.steer.outcome(reply("streaming")), .unknown)
+        XCTAssertEqual(BotPromptMode.send.outcome(reply("redirected")), .unknown)
+        XCTAssertEqual(BotPromptMode.send.outcome(.object(["voice_stopped": .bool(true)])), .voiceStopped)
+        XCTAssertEqual(BotPromptMode.steer.outcome(.object(["voice_stopped": .bool(true)])), .unknown)
+
+        XCTAssertTrue(BotPromptMode.send.definitelyRejected(BotFailure.rejected(4001)))
+        XCTAssertTrue(BotPromptMode.steer.definitelyRejected(BotFailure.rejected(4002)))
+        XCTAssertFalse(BotPromptMode.send.definitelyRejected(BotFailure.rejected(4002)), "a send may have been taken")
+        XCTAssertFalse(BotPromptMode.send.definitelyRejected(BotFailure.transport))
+    }
+
     /// A reply that is neither a start nor a queue might have been taken: the draft stays,
     /// and nothing is sent again.
     func testAnUnknownAcknowledgmentKeepsTheDraftAndSendsOnce() async {

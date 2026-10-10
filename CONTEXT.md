@@ -121,7 +121,7 @@ A chat created from another chat's history by Fork From Here or `/branch` (`/api
 _Avoid_: Branch (for the chat), child session
 
 **Conversation target**:
-Which Hermes session a conversation attaches to: a bot's canonical Bot Chat, found by its title; a stored session, by its stored key; or a new session, created on first attach. Each target has its own draft and recent transcript (`ConversationTarget`).
+Which Hermes session a conversation attaches to: a bot's canonical Bot Chat, found by its title; a stored session, by its stored key; or a new session, created on first attach. Each target has its own draft (`ConversationTarget`).
 _Avoid_: chat target, session kind
 
 **Turn identity**:

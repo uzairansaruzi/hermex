@@ -87,9 +87,8 @@ enum HermesCall: Equatable, Sendable {
     case promptSubmit(sessionID: String, text: String)
     /// Cuts the transcript at one durable prompt row and starts the turn again with
     /// `text`, in one call under the host's history lock. Never `queued`: the host
-    /// refuses a cut while busy (4009) instead of queueing or steering it. Bot Chat's
-    /// retry of a failed turn (#878) uses it, and so do a Hermes session's Edit,
-    /// Regenerate and `/retry` (#1049).
+    /// refuses a cut while busy (4009) instead of queueing or steering it. A Hermes
+    /// chat's retry of a failed turn (#878), Edit, Regenerate and `/retry` (#1049) use it.
     case promptRewind(sessionID: String, text: String, beforeRowID: Int)
     /// `/undo` in a Hermes session (#1049): rewinds the last real user turn on `runtime`
     /// and answers `{removed}`. Refused while a turn runs (4009).
@@ -131,7 +130,7 @@ enum HermesCall: Equatable, Sendable {
     case commandsCatalog(sessionID: String)
     case commandDispatch(name: String, argument: String, sessionID: String)
     /// `timesOutLocally`: the Hermes chat's `@` lookups (#1113) fail only themselves when the
-    /// host never answers. Bot Chat's keep the required-call policy, ending its screen's
+    /// host never answers; without it the call keeps the required-call policy, ending the
     /// connection.
     case completePath(word: String, sessionID: String, profile: String, timesOutLocally: Bool = false)
     /// `complete.path` for a host folder outside any session (#1052): `word` is a path from the

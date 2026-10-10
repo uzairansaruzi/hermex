@@ -516,7 +516,7 @@ private final class OwnedModel {
     deinit { onRelease() }
 }
 
-/// Mirrors ChatView and BotChatView: the handlers are methods on a view that
+/// Mirrors ChatView: the handlers are methods on a view that
 /// owns a model in `@State`.
 private struct SelfCapturingOwner: View {
     @State private var model: OwnedModel

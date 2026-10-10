@@ -233,7 +233,7 @@ import XCTest
         let wire = BotFixtureWire()
         wire.root = "root-now"
         let model = conversation(named: "root-then", wire: wire)
-        await model.recover()
+        await model.activate()
 
         XCTAssertTrue(model.linkedRootIsStale)
         XCTAssertNotEqual(model.connectionState, .connected)
@@ -246,22 +246,20 @@ import XCTest
         let wire = BotFixtureWire()
         wire.root = "root-now"
         let model = conversation(named: "root-now", wire: wire)
-        await model.recover()
+        await model.activate()
 
         XCTAssertFalse(model.linkedRootIsStale)
         XCTAssertEqual(model.connectionState, .connected)
         model.suspend()
     }
 
-    private func conversation(named conversation: String, wire: BotFixtureWire) -> BotConversation {
-        BotConversation(
+    /// The engine a bot's deep link opens: the bot's chat, seeded with the link's root.
+    private func conversation(named conversation: String, wire: BotFixtureWire) -> HermesConversation {
+        HermesConversation(
             server: serverA,
             connection: BotConnection(id: connectionID, name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                       username: "user", password: "fixture", hermesVersion: nil),
-            profile: BotProfile(.object(["name": .string("inbox-triage")]))!,
-            conversation: conversation,
-            wire: wire,
-            drafts: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60))
+            target: .canonicalChat(profile: "inbox-triage"), linkedRoot: conversation, wire: wire
         )
     }
 }

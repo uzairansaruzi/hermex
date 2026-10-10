@@ -1,20 +1,33 @@
 import XCTest
 @testable import HermesMobile
 
+/// The room search index and its rules: bounded, scoped to its server and connection, and
+/// revocable. A bot's chat is searched on its host (#1146), so only rooms are saved here.
 final class BotHistoryCacheTests: XCTestCase {
     private let server = URL(string: "https://one.example")!
     private let otherServer = URL(string: "https://two.example")!
     private let connection = UUID()
 
-    private func message(_ id: String, _ text: String, role: String = "assistant") -> ChatMessage {
-        ChatMessage(role: role, content: text, timestamp: nil, messageId: id)
-    }
-
-    private func roomKey(connectionID: UUID? = nil, serverURL: URL? = nil) -> BotRoomKey {
-        BotRoomKey(server: serverURL ?? server, connectionID: connectionID ?? connection, roomID: "fixture-room")
+    private func roomKey(connectionID: UUID? = nil, serverURL: URL? = nil, roomID: String = "fixture-room") -> BotRoomKey {
+        BotRoomKey(server: serverURL ?? server, connectionID: connectionID ?? connection, roomID: roomID)
     }
 
     private var room: BotGroupRoom { BotGroupRoom(RoomFixture.room(latest: 3))! }
+
+    /// Saves `texts` as one page of `room`'s user messages, seq 1 onwards.
+    private func append(_ cache: BotHistoryCache, room roomID: String, _ texts: [String], roles: [String]? = nil,
+                        key: BotRoomKey? = nil, receivedAt: Date = Date()) async throws {
+        let key = key ?? roomKey(roomID: roomID)
+        var fields = RoomFixture.room(latest: texts.count).fields!
+        fields["room_id"] = .string(roomID)
+        let events: [BotJSON] = texts.enumerated().map { index, text in
+            .object(["room_id": .string(roomID), "seq": .number(Double(index + 1)),
+                     "kind": .string(roles?[index] ?? "message.user"), "actor": .object(["id": .string("chief")]),
+                     "payload": .object(["text": .string(text)])])
+        }
+        try await cache.appendRoom(key: key, room: BotGroupRoom(.object(fields))!,
+                                   page: RoomFixture.page(events, cursor: texts.count), since: 0, receivedAt: receivedAt)
+    }
 
     func testOldRoomMessageSnapshotRemainsReadableWithoutAReplyTarget() throws {
         let data = Data(#"{"id":"3","role":"message.member","text":"Old message","seq":3}"#.utf8)
@@ -58,12 +71,12 @@ final class BotHistoryCacheTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: file), before, "Invisible events move the cursor without rewriting the file")
         let live = try await cache.roomHistory(key)
         XCTAssertEqual(live?.cursor, 4)
-        try await cache.replace(scope: scope, profileID: "inbox", root: "root", tip: "tip", messages: [message("one", "Newport")])
+        try await append(cache, room: "other-room", ["Newport"])
         let restored = BotHistoryCache(directory: directory)
         let snapshot = try await restored.roomHistory(key)
         XCTAssertEqual(snapshot?.messages.compactMap(\.seq), [1, 2])
         XCTAssertEqual(snapshot?.cursor, 4, "The next real write persists the newer cursor")
-        let hits = try await restored.search("Message", scope: scope, profileIDs: [], roomIDs: [key.roomID])
+        let hits = try await restored.search("Message", scope: scope, roomIDs: [key.roomID])
         XCTAssertEqual(hits.map(\.message.seq), [2, 1])
         XCTAssertEqual(hits.first?.message.sender, "chief-of-staff")
         XCTAssertEqual(hits.first?.snapshot.profileName, "Comms")
@@ -112,28 +125,29 @@ final class BotHistoryCacheTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: file), before, "A relaunch does not rewrite on its first cursor-only poll")
     }
 
-    func testPruneEvictsOldestSnapshotsToTheCountAndByteBudgets() async throws {
+    func testPruneEvictsOldestRoomsToTheCountAndByteBudgets() async throws {
         let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
-        func savedProfiles(_ directory: URL, _ profiles: Set<String>) async throws -> Set<String> {
-            let hits = try await BotHistoryCache(directory: directory).search("Newport", scope: scope, profileIDs: profiles)
-            return Set(hits.map(\.snapshot.profileID))
+        func savedRooms(_ directory: URL) async throws -> Set<String> {
+            let hits = try await BotHistoryCache(directory: directory).search("Newport", scope: scope, roomIDs: nil)
+            return Set(hits.compactMap(\.snapshot.roomID))
         }
         let counted = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let sized = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { for directory in [counted, sized] { try? FileManager.default.removeItem(at: directory) } }
-        let cache = BotHistoryCache(directory: counted)
+        let cache = BotHistoryCache(directory: counted), start = Date()
         for index in 0...100 {
-            try await cache.replace(scope: scope, profileID: "bot\(index)", root: "r", tip: "t", messages: [message("m", "Newport")])
+            try await append(cache, room: "room\(index)", ["Newport"], receivedAt: start + Double(index))
         }
-        let afterCount = try await savedProfiles(counted, ["bot0", "bot1", "bot100"])
-        XCTAssertEqual(afterCount, ["bot1", "bot100"], "The 101st snapshot evicts the oldest")
+        let afterCount = try await savedRooms(counted)
+        XCTAssertEqual(afterCount.count, 100)
+        XCTAssertFalse(afterCount.contains("room0"), "The 101st room evicts the oldest")
         let large = BotHistoryCache(directory: sized)
-        let rows = (0..<300).map { message(String($0), "Newport " + String(repeating: "x", count: 16_000)) }
-        for profile in ["large1", "large2"] {
-            try await large.replace(scope: scope, profileID: profile, root: "r", tip: "t", messages: rows)
+        let rows = (0..<300).map { "Newport \($0) " + String(repeating: "x", count: 16_000) }
+        for (index, roomID) in ["large1", "large2"].enumerated() {
+            try await append(large, room: roomID, rows, receivedAt: start + Double(index))
         }
-        let afterBytes = try await savedProfiles(sized, ["large1", "large2"])
-        XCTAssertEqual(afterBytes, ["large2"], "Two 4.8 MB snapshots exceed the 8 MB budget")
+        let afterBytes = try await savedRooms(sized)
+        XCTAssertEqual(afterBytes, ["large2"], "Two 4.8 MB rooms exceed the 8 MB budget")
         XCTAssertLessThanOrEqual(try Data(contentsOf: sized.appendingPathComponent("history.json")).count,
                                  BotHistoryCache.maximumBytes)
     }
@@ -151,7 +165,7 @@ final class BotHistoryCacheTests: XCTestCase {
         XCTAssertNil(removed)
         for owner in [otherConnection, otherServer] {
             let hits = try await cache.search("Message", scope: .init(server: owner.server, connectionID: owner.connectionID),
-                                              profileIDs: [], roomIDs: [owner.roomID])
+                                              roomIDs: [owner.roomID])
             XCTAssertEqual(hits.count, 1)
         }
         try await cache.remove(server: server, connectionID: otherConnection.connectionID)
@@ -173,10 +187,18 @@ final class BotHistoryCacheTests: XCTestCase {
         try await cache.appendRoom(key: key, room: room, page: page, since: 0, receivedAt: now.addingTimeInterval(2))
         let fresh = try await cache.roomHistory(key)
         XCTAssertEqual(fresh?.messages.count, 1)
+        let otherServerKey = roomKey(serverURL: otherServer), oldConnection = roomKey(connectionID: UUID())
+        for owner in [otherServerKey, oldConnection] {
+            try await cache.appendRoom(key: owner, room: room, page: page, since: 0, receivedAt: now.addingTimeInterval(2))
+        }
         try await cache.removeServer(server, activeConnectionID: connection)
-        try await cache.appendRoom(key: key, room: room, page: page, since: 0, receivedAt: now.addingTimeInterval(3))
-        let removed = try await cache.roomHistory(key)
-        XCTAssertNil(removed)
+        for owner in [key, oldConnection] {
+            try await cache.appendRoom(key: owner, room: room, page: page, since: 0, receivedAt: now.addingTimeInterval(3))
+            let removed = try await cache.roomHistory(owner)
+            XCTAssertNil(removed, "a removed server takes every connection's rooms and refuses late pages")
+        }
+        let retained = try await cache.roomHistory(otherServerKey)
+        XCTAssertNotNil(retained)
     }
 
     func testRoomSizeLimitAndSharedSearchCapAndRetentionBoundary() async throws {
@@ -191,11 +213,10 @@ final class BotHistoryCacheTests: XCTestCase {
         XCTAssertEqual(saved?.cursor, 601)
         XCTAssertFalse(saved?.messages.contains { $0.seq == 601 } ?? true)
         let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
-        try await cache.replace(scope: scope, profileID: "bot", root: "r", tip: "t", messages: [message("bot", "Message")])
-        let hits = try await cache.search("Message", scope: scope, profileIDs: nil, roomIDs: nil)
-        XCTAssertEqual(hits.count, 100, "Bot and room hits share one limit")
-        XCTAssertTrue(hits.contains { $0.snapshot.roomID == nil })
-        XCTAssertTrue(hits.contains { $0.snapshot.roomID == key.roomID })
+        try await append(cache, room: "other-room", ["Message elsewhere"], receivedAt: now)
+        let hits = try await cache.search("Message", scope: scope, roomIDs: nil, now: now)
+        XCTAssertEqual(hits.count, BotHistoryCache.maximumHits, "every room's hits share one limit")
+        XCTAssertEqual(hits.first?.snapshot.roomID, "other-room", "the newest room's hits come first")
         let expired = try await cache.roomHistory(key, now: now.addingTimeInterval(BotHistoryCache.lifetime + 1))
         XCTAssertNil(expired)
     }
@@ -210,60 +231,54 @@ final class BotHistoryCacheTests: XCTestCase {
         XCTAssertNil(removed); XCTAssertNotNil(retained)
     }
 
-    func testSearchReturnsIndividualIncomingAndOutgoingMessagesOnlyWithinCapturedIdentity() async throws {
+    func testSearchReturnsIndividualMessagesOnlyWithinCapturedIdentityAndRooms() async throws {
         let cache = BotHistoryCache()
         let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
-        let otherScope = BotHistoryCache.Scope(server: otherServer, connectionID: connection)
-        let replacement = BotHistoryCache.Scope(server: server, connectionID: UUID())
-        for owner in [scope, otherScope, replacement] {
-            try await cache.replace(scope: owner, profileID: "inbox", root: "root", tip: "tip", messages: [
-                message("one", "Newport this Friday", role: "user"),
-                message("two", "Yes, Newport is available"),
-                message("tool", "Newport tool result", role: "tool"),
-                message("unknown", "Newport", role: "future-role")
-            ])
+        let texts = ["Café près de Newport 🏡", "Oui, Newport est libre", "Newport tool result"]
+        let roles = ["message.user", "message.member", "tool.completed"]
+        for owner in [roomKey(), roomKey(serverURL: otherServer), roomKey(connectionID: UUID())] {
+            try await append(cache, room: owner.roomID, texts, roles: roles, key: owner)
         }
-        try await cache.replace(scope: scope, profileID: "another", root: "root", tip: "tip", messages: [message("one", "Newport")])
-        let hits = try await cache.search("NEWPORT", scope: scope, profileIDs: ["inbox"])
-        XCTAssertEqual(hits.map(\.message.id), ["two", "one"])
-        XCTAssertEqual(hits.map(\.message.role), ["assistant", "user"])
-        XCTAssertTrue(hits.allSatisfy { $0.snapshot.scope == scope && $0.snapshot.profileID == "inbox" })
-        let empty = try await cache.search("  ", scope: scope, profileIDs: ["inbox"])
+        try await append(cache, room: "another", ["Newport"])
+        let hits = try await cache.search("NEWPORT", scope: scope, roomIDs: ["fixture-room"])
+        XCTAssertEqual(hits.map(\.message.seq), [2, 1])
+        XCTAssertEqual(hits.map(\.message.role), ["message.member", "message.user"])
+        XCTAssertTrue(hits.allSatisfy { $0.snapshot.scope == scope && $0.snapshot.roomID == "fixture-room" })
+        let unicode = try await cache.search("CAFÉ", scope: scope, roomIDs: ["fixture-room"])
+        XCTAssertEqual(unicode.map(\.message.seq), [1])
+        let everyRoom = try await cache.search("Newport", scope: scope, roomIDs: nil)
+        XCTAssertEqual(Set(everyRoom.compactMap(\.snapshot.roomID)), ["fixture-room", "another"],
+                       "a list not yet read must not hide the saved rooms")
+        let noRooms = try await cache.search("Newport", scope: scope, roomIDs: [])
+        XCTAssertTrue(noRooms.isEmpty, "an authoritative list excludes rooms no longer on it")
+        let empty = try await cache.search("  ", scope: scope, roomIDs: nil)
         XCTAssertTrue(empty.isEmpty)
     }
 
-    func testReplacementDropsUndoneHistoryAndRetainsFrozenResultForReadOnlyNavigation() async throws {
-        let cache = BotHistoryCache()
-        let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
-        try await cache.replace(scope: scope, profileID: "inbox", root: "root", tip: "tip", messages: [message("root/0", "Newport")])
-        let hits = try await cache.search("Newport", scope: scope, profileIDs: ["inbox"])
-        let selected = try XCTUnwrap(hits.first)
-        try await cache.replace(scope: scope, profileID: "inbox", root: "root", tip: "compressed", messages: [message("root/0", "Manhattan")])
-        let afterCompression = try await cache.search("Newport", scope: scope, profileIDs: ["inbox"])
-        XCTAssertTrue(afterCompression.isEmpty)
-        XCTAssertEqual(selected.snapshot.tip, "tip")
-        XCTAssertEqual(selected.snapshot.messages.first?.text, "Newport")
-        try await cache.replace(scope: scope, profileID: "inbox", root: "replacement", tip: "replacement", messages: [])
-        let afterReset = try await cache.search("Manhattan", scope: scope, profileIDs: ["inbox"])
-        XCTAssertTrue(afterReset.isEmpty)
-    }
-
-    func testCacheSurvivesRelaunchAndHasNoServerAddressInItsFile() async throws {
+    /// Bot Chat saved its own snapshots here until #1148. They are dropped, and written out
+    /// without, the first time the cache loads.
+    func testLegacyBotChatSnapshotsAreDroppedOnLoad() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("history.json")
+        let scope = try String(decoding: JSONEncoder().encode(BotHistoryCache.Scope(server: server, connectionID: connection)),
+                               as: UTF8.self)
+        let saved = Date().timeIntervalSinceReferenceDate
+        try Data(#"""
+        [{"id":"\#(UUID())","scope":\#(scope),"profileID":"inbox","root":"root","tip":"tip","savedAt":\#(saved),
+          "messages":[{"id":"root/0","role":"assistant","text":"Bot Newport"}]},
+         {"id":"\#(UUID())","scope":\#(scope),"profileID":"","profileName":"Comms","root":"","tip":"","savedAt":\#(saved),
+          "roomID":"fixture-room","cursor":1,"earlierBoundary":0,
+          "messages":[{"id":"1","role":"message.user","text":"Room Newport","seq":1}]}]
+        """#.utf8).write(to: file)
+
         let cache = BotHistoryCache(directory: directory)
-        try await cache.replace(scope: scope, profileID: "inbox", root: "root", tip: "tip", messages: [message("one", "Newport")])
-        let restored = BotHistoryCache(directory: directory)
-        let hits = try await restored.search("Newport", scope: scope, profileIDs: ["inbox"])
-        XCTAssertEqual(hits.map(\.message.id), ["one"])
-        let offlineHits = try await restored.search("Newport", scope: scope, profileIDs: nil)
-        XCTAssertEqual(offlineHits.count, 1, "A temporarily unavailable roster must not hide the on-device cache")
-        let deletedBotHits = try await restored.search("Newport", scope: scope, profileIDs: [])
-        XCTAssertTrue(deletedBotHits.isEmpty, "An authoritative live roster excludes removed bots")
-        let disk = try String(contentsOf: directory.appendingPathComponent("history.json"), encoding: .utf8)
-        XCTAssertFalse(disk.contains(server.absoluteString))
-        XCTAssertFalse(disk.contains("runtime"))
+        let hits = try await cache.search("Newport", scope: .init(server: server, connectionID: connection), roomIDs: nil)
+        XCTAssertEqual(hits.map(\.message.text), ["Room Newport"])
+        let restored = try await cache.roomHistory(roomKey())
+        XCTAssertEqual(restored?.profileName, "Comms")
+        XCTAssertFalse(try String(contentsOf: file, encoding: .utf8).contains("Bot Newport"))
     }
 
     func testExpiredHistoryIsPrunedFromDiskOnLoadAndLaterSearch() async throws {
@@ -272,17 +287,14 @@ final class BotHistoryCacheTests: XCTestCase {
         let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
         let now = Date()
         let cache = BotHistoryCache(directory: directory)
-        try await cache.replace(scope: scope, profileID: "old", root: "root", tip: "tip",
-                                messages: [message("old", "Expired Newport")],
-                                receivedAt: now.addingTimeInterval(-BotHistoryCache.lifetime - 1))
+        try await append(cache, room: "old", ["Expired Newport"], receivedAt: now.addingTimeInterval(-BotHistoryCache.lifetime - 1))
         let restored = BotHistoryCache(directory: directory)
-        let expired = try await restored.search("Newport", scope: scope, profileIDs: nil)
+        let expired = try await restored.search("Newport", scope: scope, roomIDs: nil)
         XCTAssertTrue(expired.isEmpty)
         let file = directory.appendingPathComponent("history.json")
         XCTAssertFalse(try String(contentsOf: file, encoding: .utf8).contains("Expired Newport"))
-        try await restored.replace(scope: scope, profileID: "new", root: "root", tip: "tip",
-                                   messages: [message("new", "Fresh Newport")], receivedAt: now)
-        let later = try await restored.search("Newport", scope: scope, profileIDs: nil,
+        try await append(restored, room: "new", ["Fresh Newport"], receivedAt: now)
+        let later = try await restored.search("Newport", scope: scope, roomIDs: nil,
                                              now: now.addingTimeInterval(BotHistoryCache.lifetime + 1))
         XCTAssertTrue(later.isEmpty)
         XCTAssertFalse(try String(contentsOf: file, encoding: .utf8).contains("Fresh Newport"))
@@ -299,156 +311,93 @@ final class BotHistoryCacheTests: XCTestCase {
         let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
         let now = Date()
         let rows = [
-            BotHistoryCache.Snapshot(id: UUID(), scope: scope, profileID: "old", profileName: nil,
-                root: "root", tip: "tip", savedAt: now.addingTimeInterval(-BotHistoryCache.lifetime - 1),
-                messages: [.init(id: "old", role: "assistant", text: "Expired Newport")]),
-            BotHistoryCache.Snapshot(id: UUID(), scope: scope, profileID: "fresh", profileName: nil,
-                root: "root", tip: "tip", savedAt: now,
-                messages: [.init(id: "fresh", role: "assistant", text: "Fresh Newport")])
+            BotHistoryCache.Snapshot(id: UUID(), scope: scope, profileName: nil,
+                savedAt: now.addingTimeInterval(-BotHistoryCache.lifetime - 1),
+                messages: [.init(id: "old", role: "message.user", text: "Expired Newport", seq: 1)], roomID: "old"),
+            BotHistoryCache.Snapshot(id: UUID(), scope: scope, profileName: nil, savedAt: now,
+                messages: [.init(id: "fresh", role: "message.user", text: "Fresh Newport", seq: 1)], roomID: "fresh")
         ]
         try JSONEncoder().encode(rows).write(to: file)
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
         let cache = BotHistoryCache(directory: directory)
-        let hits = try await cache.search("Newport", scope: scope, profileIDs: nil)
+        let hits = try await cache.search("Newport", scope: scope, roomIDs: nil)
         XCTAssertEqual(hits.map(\.message.id), ["fresh"])
         XCTAssertTrue(try String(contentsOf: file, encoding: .utf8).contains("Expired Newport"),
                       "The fixture must prevent the cleanup write")
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
-        let retried = try await cache.search("Newport", scope: scope, profileIDs: nil)
+        let retried = try await cache.search("Newport", scope: scope, roomIDs: nil)
         XCTAssertEqual(retried.map(\.message.id), ["fresh"])
         XCTAssertFalse(try String(contentsOf: file, encoding: .utf8).contains("Expired Newport"))
-    }
-
-    func testClearIsServerScopedAndRejectsEarlierQueuedWrites() async throws {
-        let cache = BotHistoryCache()
-        let now = Date()
-        let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
-        let other = BotHistoryCache.Scope(server: otherServer, connectionID: connection)
-        for owner in [scope, other] {
-            try await cache.replace(scope: owner, profileID: "inbox", root: "root", tip: "tip", messages: [message("one", "Newport")], receivedAt: now)
-        }
-        try await cache.remove(server: server, now: now.addingTimeInterval(1))
-        try await cache.replace(scope: scope, profileID: "inbox", root: "root", tip: "tip", messages: [message("old", "Newport")], receivedAt: now)
-        let cleared = try await cache.search("Newport", scope: scope, profileIDs: ["inbox"])
-        let retained = try await cache.search("Newport", scope: other, profileIDs: ["inbox"])
-        XCTAssertTrue(cleared.isEmpty)
-        XCTAssertEqual(retained.count, 1)
-        try await cache.replace(scope: scope, profileID: "inbox", root: "root", tip: "tip", messages: [message("new", "Newport")], receivedAt: now.addingTimeInterval(2))
-        let fresh = try await cache.search("Newport", scope: scope, profileIDs: ["inbox"])
-        XCTAssertEqual(fresh.map(\.message.id), ["new"])
-    }
-
-    func testRemovingConnectionRevokesFutureWritesAndPreservesOtherConnection() async throws {
-        let cache = BotHistoryCache()
-        let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
-        let other = BotHistoryCache.Scope(server: server, connectionID: UUID())
-        try await cache.remove(server: server, connectionID: connection)
-        for owner in [scope, other] {
-            try await cache.replace(scope: owner, profileID: "inbox", root: "root", tip: "tip", messages: [message("one", "Newport")])
-        }
-        let removed = try await cache.search("Newport", scope: scope, profileIDs: ["inbox"])
-        let retained = try await cache.search("Newport", scope: other, profileIDs: ["inbox"])
-        XCTAssertTrue(removed.isEmpty)
-        XCTAssertEqual(retained.count, 1)
-    }
-
-    func testLateSnapshotCannotOverwriteANewerSnapshotAndServerRemovalPurgesAllConnections() async throws {
-        let cache = BotHistoryCache()
-        let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
-        let oldConnection = BotHistoryCache.Scope(server: server, connectionID: UUID())
-        let now = Date()
-        try await cache.replace(scope: scope, profileID: "inbox", root: "root", tip: "new", messages: [message("new", "Newport")], receivedAt: now)
-        try await cache.replace(scope: scope, profileID: "inbox", root: "root", tip: "old", messages: [message("old", "Newport")], receivedAt: now.addingTimeInterval(-1))
-        let current = try await cache.search("Newport", scope: scope, profileIDs: ["inbox"])
-        XCTAssertEqual(current.map(\.message.id), ["new"])
-        try await cache.replace(scope: oldConnection, profileID: "inbox", root: "root", tip: "old", messages: [message("old", "Newport")])
-        try await cache.removeServer(server, activeConnectionID: connection)
-        for owner in [scope, oldConnection] {
-            try await cache.replace(scope: owner, profileID: "inbox", root: "root", tip: "old", messages: [message("late", "Newport")])
-            let remaining = try await cache.search("Newport", scope: owner, profileIDs: ["inbox"])
-            XCTAssertTrue(remaining.isEmpty)
-        }
-    }
-
-    func testCacheBoundsResultsAndExpiryAndHandlesUnicode() async throws {
-        let cache = BotHistoryCache()
-        let scope = BotHistoryCache.Scope(server: server, connectionID: connection)
-        let now = Date()
-        var rows = (0..<600).map { message(String($0), "Café près de Newport 🏡") }
-        rows.append(message("large", String(repeating: "Newport", count: 5000)))
-        try await cache.replace(scope: scope, profileID: "inbox", root: "root", tip: "tip", messages: rows, receivedAt: now)
-        let hits = try await cache.search("CAFÉ", scope: scope, profileIDs: ["inbox"], now: now)
-        XCTAssertEqual(hits.count, BotHistoryCache.maximumHits)
-        XCTAssertLessThanOrEqual(hits[0].snapshot.messages.count, BotHistoryCache.maximumMessages)
-        XCTAssertFalse(hits.contains { $0.message.id == "large" })
-        let expired = try await cache.search("Newport", scope: scope, profileIDs: ["inbox"], now: now.addingTimeInterval(BotHistoryCache.lifetime + 1))
-        XCTAssertTrue(expired.isEmpty)
     }
 }
 
 final class BotRecentTranscriptTests: XCTestCase {
     private let server = URL(string: "https://recent.example")!
     private let connection = UUID()
-    private func key(_ profile: String = "bot") -> BotRecentTranscripts.Key {
-        .bot(server: server, connectionID: connection, profile: profile)
+    private func room(_ id: String = "room") -> BotRoomKey {
+        BotRoomKey(server: server, connectionID: connection, roomID: id)
     }
-    private func snapshot(_ text: String = "cached") -> BotRecentTranscripts.Snapshot {
-        .bot(.init(root: "root", messages: [ChatMessage(role: "assistant", content: text, timestamp: 100, messageId: "m")], activity: []))
+    private func key(_ id: String = "room") -> BotRecentTranscripts.Key { .init(room(id)) }
+    private func log(_ text: String = "cached") -> BotRoomLog {
+        var log = BotRoomLog()
+        var event = RoomFixture.event(1).fields!
+        event["payload"] = .object(["text": .string(text)])
+        log.apply(RoomFixture.page([.object(event)], cursor: 1))
+        return log
     }
 
-    func testNewestOwnerWinsAndEvictionBoundsRecentChats() {
+    func testNewestOwnerWinsAndEvictionBoundsRecentRooms() {
         let recent = BotRecentTranscripts(maximumEntries: 2)
         let old = recent.begin(key()), new = recent.begin(key())
-        recent.save(snapshot("new"), for: key(), owner: new)
-        recent.save(snapshot("stale"), for: key(), owner: old)
-        guard case .bot(let stored)? = recent.snapshot(for: key()) else { return XCTFail("Missing recent chat") }
-        XCTAssertEqual(stored.messages.first?.content, "new")
-        recent.save(snapshot(), for: key("second"), owner: recent.begin(key("second")))
-        _ = recent.snapshot(for: key())
-        recent.save(snapshot(), for: key("third"), owner: recent.begin(key("third")))
-        XCTAssertNil(recent.snapshot(for: key("second")))
-        XCTAssertNotNil(recent.snapshot(for: key()))
-        XCTAssertNotNil(recent.snapshot(for: key("third")))
+        recent.save(log("new"), for: key(), owner: new)
+        recent.save(log("stale"), for: key(), owner: old)
+        XCTAssertEqual(recent.log(for: key())?.events.first?.payload["text"].text, "new")
+        recent.save(log(), for: key("second"), owner: recent.begin(key("second")))
+        _ = recent.log(for: key())
+        recent.save(log(), for: key("third"), owner: recent.begin(key("third")))
+        XCTAssertNil(recent.log(for: key("second")))
+        XCTAssertNotNil(recent.log(for: key()))
+        XCTAssertNotNil(recent.log(for: key("third")))
     }
 
-    func testOversizedProjectionDoesNotKeepOldContentOrBreakTheBudget() {
+    func testOversizedLogDoesNotKeepOldContentOrBreakTheBudget() {
         let recent = BotRecentTranscripts(maximumBytes: 2048)
         let owner = recent.begin(key())
-        recent.save(snapshot(), for: key(), owner: owner)
-        recent.save(snapshot(String(repeating: "large", count: 1000)), for: key(), owner: owner)
-        XCTAssertNil(recent.snapshot(for: key()))
+        recent.save(log(), for: key(), owner: owner)
+        recent.save(log(String(repeating: "large", count: 1000)), for: key(), owner: owner)
+        XCTAssertNil(recent.log(for: key()))
     }
 
     func testClearAndRemovalInvalidateWarmValuesAndLateWriters() async throws {
         let cache = BotHistoryCache()
-        let other = BotRecentTranscripts.Key.bot(server: URL(string: "https://other.example")!, connectionID: connection, profile: "bot")
+        let other = BotRecentTranscripts.Key(BotRoomKey(server: URL(string: "https://other.example")!,
+                                                        connectionID: connection, roomID: "room"))
         let owner = cache.recent.begin(key())
-        cache.recent.save(snapshot(), for: key(), owner: owner)
-        cache.recent.save(snapshot("other"), for: other, owner: cache.recent.begin(other))
+        cache.recent.save(log(), for: key(), owner: owner)
+        cache.recent.save(log("other"), for: other, owner: cache.recent.begin(other))
         try await cache.remove(server: server)
-        cache.recent.save(snapshot("late"), for: key(), owner: owner)
-        XCTAssertNil(cache.recent.snapshot(for: key()))
-        XCTAssertNotNil(cache.recent.snapshot(for: other))
+        cache.recent.save(log("late"), for: key(), owner: owner)
+        XCTAssertNil(cache.recent.log(for: key()))
+        XCTAssertNotNil(cache.recent.log(for: other))
 
-        cache.recent.save(snapshot(), for: key(), owner: cache.recent.begin(key()))
-        try await cache.removeProfile(server: server, connectionID: connection, profileID: "bot")
-        XCTAssertNil(cache.recent.snapshot(for: key()))
-        cache.recent.save(snapshot(), for: key(), owner: cache.recent.begin(key()))
+        cache.recent.save(log(), for: key(), owner: cache.recent.begin(key()))
         try await cache.remove(server: server, connectionID: connection)
-        XCTAssertNil(cache.recent.snapshot(for: key()))
-        XCTAssertNotNil(cache.recent.snapshot(for: other))
+        XCTAssertNil(cache.recent.log(for: key()))
+        XCTAssertNotNil(cache.recent.log(for: other))
     }
 
-    func testRoomRemovalAlsoClearsTheImmediateProjection() async throws {
+    func testRoomRemovalAndAnAuthoritativeListClearTheImmediateLog() async throws {
         let cache = BotHistoryCache()
-        let room = BotRoomKey(server: server, connectionID: connection, roomID: "fixture-room")
-        let key = BotRecentTranscripts.Key.room(room)
-        var log = BotRoomLog()
-        log.apply(RoomFixture.page([RoomFixture.event(1, kind: "room.renamed")], cursor: 1))
-        let owner = cache.recent.begin(key)
-        cache.recent.save(.room(log), for: key, owner: owner)
-        try await cache.removeRoom(room)
-        cache.recent.save(.room(log), for: key, owner: owner)
-        XCTAssertNil(cache.recent.snapshot(for: key))
+        let owner = cache.recent.begin(key())
+        cache.recent.save(log(), for: key(), owner: owner)
+        try await cache.removeRoom(room())
+        cache.recent.save(log(), for: key(), owner: owner)
+        XCTAssertNil(cache.recent.log(for: key()))
+
+        cache.recent.save(log(), for: key("kept"), owner: cache.recent.begin(key("kept")))
+        cache.recent.save(log(), for: key("gone"), owner: cache.recent.begin(key("gone")))
+        try await cache.retainRooms(["kept"], scope: .init(server: server, connectionID: connection))
+        XCTAssertNotNil(cache.recent.log(for: key("kept")))
+        XCTAssertNil(cache.recent.log(for: key("gone")))
     }
 }

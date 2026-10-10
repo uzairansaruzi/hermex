@@ -218,7 +218,7 @@ import UIKit
     private let avatarStore: BotAvatarStore
     private let historyCache: BotHistoryCache
     private let makeWire: @MainActor (BotConnection) -> any BotTransport
-    /// Drops this phone's drafts and cached history for one deleted bot.
+    /// Drops this phone's drafts for one deleted bot.
     private let purgeLocalState: @MainActor (UUID, String) async -> Void
     /// The offline cache, from the inbox's screen: a deleted bot's Bot Chat transcript leaves
     /// it too (#1144).
@@ -248,7 +248,6 @@ import UIKit
         self.statusPollInterval = statusPollInterval
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }
         self.purgeLocalState = purgeLocalState ?? { connectionID, profile in
-            try? await BotHistoryCache.shared.removeProfile(server: server, connectionID: connectionID, profileID: profile)
             await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: connectionID, profile: profile)
         }
         // Known before the first frame, so a saved connection draws the loading
@@ -579,13 +578,6 @@ import UIKit
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
             var ids = Set<String>()
             profiles = rows.compactMap(BotProfile.init).filter { ids.insert($0.id).inserted }
-            if let connection {
-                let scope = BotHistoryCache.Scope(server: server, connectionID: connection.id)
-                historyCache.recent.remove {
-                    guard $0.scope == scope, case .bot(let id) = $0.conversation else { return false }
-                    return !ids.contains(id)
-                }
-            }
             var changed = false
             for profile in profiles {
                 guard let lastActive = profile.lastActive?.timeIntervalSince1970,

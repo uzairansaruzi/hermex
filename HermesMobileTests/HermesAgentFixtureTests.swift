@@ -7,17 +7,18 @@ import XCTest
 /// quietly blanking a screen. Read via `#filePath`, so they skip off-tree like the pin test.
 @MainActor final class HermesAgentFixtureTests: XCTestCase {
     /// Every event type the canned turn emitted at the pin. A type missing here is new
-    /// upstream: decide whether Bot Chat should consume it, then add it.
+    /// upstream: decide whether a Hermes chat (`HermesChatTurnCoordinator.apply`) should
+    /// consume it, then add it.
     private static let knownTurnEvents: Set<String> = [
         "session.info", "message.start", "message.delta", "message.complete", // turn state
-        "thinking.delta", "reasoning.available", // activity, `BotConversation.applyActivity`
-        "session.title" // Bot Chat only schedules a snapshot read; a Hermes session shows it
+        "thinking.delta", "reasoning.available", // read on purpose by nothing: only `reasoning.delta` is reasoning
+        "session.title" // the chat's title
     ]
     /// The event types the local tool and approval turn adds to `knownTurnEvents`.
     private static let knownToolEvents: Set<String> = [
-        "tool.start", "tool.complete", // tool rows, `BotTurnActivity`
+        "tool.start", "tool.complete", // tool rows
         "request.cancel", // withdraws the answered approval card
-        "message.interim", "session.usage" // Bot Chat only schedules a snapshot read; a Hermes session shows them
+        "message.interim", "session.usage" // interim replies and the context ring
     ]
 
     private static let tests = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
@@ -87,9 +88,9 @@ import XCTest
         XCTAssertEqual(bot.hidden, hidden)
     }
 
-    /// The captured resume and turn, served through the scripted wire, settle Bot Chat
-    /// on the canned exchange: the replay reconciles and the snapshot passes every guard.
-    func testCapturedResumeAndReplaySettleTheConversation() async throws {
+    /// The captured resume and turn, served through the scripted wire, attach a bot's chat:
+    /// the replay reconciles and the resume reply is this attach's, idle.
+    func testCapturedResumeAndReplayAttachTheBotsChat() async throws {
         let snapshot = try fixture("session-resume")
         let frames = try XCTUnwrap(fixture("turn-frames").list)
         let wire = BotFixtureWire()
@@ -98,19 +99,16 @@ import XCTest
         wire.transformResume = { _ in snapshot }
         let events = frames.map { $0["params"] }
         wire.replay = BotFixtureWire.replay(latest: events.last?["seq"].integer ?? 0, events: events)
-        let model = BotConversation(server: URL(string: "https://webui.example")!,
-                                    connection: BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
-                                                              username: "user", password: "fixture"),
-                                    profile: BotProfile(.object(["name": .string("inbox-triage")]))!, wire: wire,
-                                    drafts: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)))
-        await model.recover()
-        XCTAssertEqual(model.connectionState, .connected)
-        XCTAssertEqual(model.turn, .idle)
-        XCTAssertEqual(model.messages.first?.role, "user")
-        XCTAssertEqual(model.messages.first?.content, "Reply with exactly: ok. Do not use tools.")
-        let reply = try XCTUnwrap(model.messages.last)
-        XCTAssertEqual(reply.role, "assistant")
-        XCTAssertEqual(reply.content?.isEmpty, false)
+        let engine = HermesConversation(server: URL(string: "https://webui.example")!,
+                                        connection: BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
+                                                                  username: "user", password: "fixture"),
+                                        target: .canonicalChat(profile: "inbox-triage"), wire: wire)
+        await engine.activate()
+        defer { engine.suspend() }
+        XCTAssertEqual(engine.connectionState, .connected)
+        XCTAssertEqual(engine.sequence, events.last?["seq"].integer)
+        XCTAssertTrue(engine.isCurrent(snapshot))
+        XCTAssertEqual(snapshot["running"].flag, false)
     }
 
     func testTurnFramesAreOneContiguousSettledTurn() throws {
@@ -133,7 +131,7 @@ import XCTest
     }
 
     /// The tool and approval turn `scripts/capture-hermes-fixtures --local` records from
-    /// `scripts/local-hermes`: its `approval` request becomes the card Bot Chat shows, and
+    /// `scripts/local-hermes`: its `approval` request becomes the card a Hermes chat shows, and
     /// its events settle one turn whose one terminal call completed.
     func testToolApprovalTurnDecodesAndSettles() throws {
         // `fixture` skips off-tree, so prove the tree is here before a missing file can fail.
@@ -160,10 +158,11 @@ import XCTest
         XCTAssertTrue(events.allSatisfy { $0["session_id"].text == request.sessionID }, "One runtime carries the turn")
         let types = events.compactMap { $0["type"].text }
         XCTAssertEqual(Set(types).subtracting(Self.knownTurnEvents.union(Self.knownToolEvents)), [], "A new upstream event type")
-        var activity = BotTurnActivity()
-        for event in events { activity.apply(type: event["type"].text ?? "", payload: event["payload"]) }
-        XCTAssertEqual(activity.toolCalls.map(\.name), ["terminal"])
-        XCTAssertEqual(activity.toolCalls.map(\.isCompleted), [true])
+        let starts = events.filter { $0["type"].text == "tool.start" }.map { $0["payload"] }
+        let completes = events.filter { $0["type"].text == "tool.complete" }.map { $0["payload"] }
+        XCTAssertEqual(starts.map { $0["name"].text }, ["terminal"])
+        XCTAssertEqual(completes.map { $0["tool_id"].text }, starts.map { $0["tool_id"].text }, "the one call completed")
+        XCTAssertNotNil(completes.first?["result"].toolResultPreview)
         let completed = try XCTUnwrap(types.lastIndex(of: "message.complete"), "The turn completes")
         XCTAssertLessThan(try XCTUnwrap(types.firstIndex(of: "tool.complete")), completed, "The tool finished inside the turn")
         XCTAssertEqual(events.last?["type"].text, "session.info")

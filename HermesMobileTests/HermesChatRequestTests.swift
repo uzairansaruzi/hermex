@@ -246,7 +246,7 @@ import XCTest
         XCTAssertTrue(chat.requests.mayAnswer, "the live prompt is still answerable")
     }
 
-    /// Vault prompts (#943) and unknown methods get no card and no answer here, though the
+    /// Password-vault prompts and unknown methods get no card and no answer here, though the
     /// session still waits on them.
     func testRequestsThisChatMustNotAnswerGetNoCardButStillWait() async {
         let chat = await openChat()
@@ -260,6 +260,106 @@ import XCTest
             isStartingChat: false, hasActiveStream: true, activeStreamRecoveryState: .idle, isCancellingStream: false,
             isScrolledNearBottom: false, activeRunStartedAt: nil, isWaitingForUser: chat.model.isWaitingForUser
         )?.label(now: Date()), "Waiting for you")
+    }
+
+    /// A batch answers only what the host still asks: a question it never asked is refused
+    /// before any write, and one it already locked is not locked again.
+    func testABatchSendsOnlyTheQuestionsTheHostStillAsks() async throws {
+        let restored = request("clarify", id: "srq-b1", [
+            "questions": .array([question("q1", "First?"), question("q2", "Second?")]),
+            "answers": .object(["q1": .string("already")])
+        ])
+        let chat = await openChat(openRequests: [restored])
+        chat.host.always("clarify.lock", .init(result: .object(["status": .string("ok"), "remaining": .array([])])))
+        let foreign = await chat.requests.answerQuestion(try action(chat), [BotQuestionAnswer(questionID: "q9", text: "nope")])
+        XCTAssertFalse(foreign)
+        XCTAssertEqual(chat.writes("clarify.lock"), [])
+
+        let taken = await chat.requests.answerQuestion(try action(chat), [BotQuestionAnswer(questionID: "q2", text: "b")])
+        XCTAssertTrue(taken)
+        XCTAssertEqual(chat.writes("clarify.lock").map { $0["question_id"] }, [.string("q2")])
+    }
+
+    /// The first lock's receipt settles the rest: `expired` means the host dropped the prompt,
+    /// and an empty `remaining` that another client locked the tail. Either way nothing more
+    /// is locked and the card leaves.
+    func testABatchStopsOnceTheHostSaysNothingRemains() async throws {
+        for status in ["expired", "ok"] {
+            let chat = await openChat()
+            chat.host.always("clarify.lock", .init(result: .object(["status": .string(status), "remaining": .array([])])))
+            chat.receive(request("clarify", id: "srq-b1", ["questions": .array([question("q1", "First?"), question("q2", "Second?")])]))
+            let taken = await chat.requests.answerQuestion(try action(chat), [
+                BotQuestionAnswer(questionID: "q1", text: "a"), BotQuestionAnswer(questionID: "q2", text: "b")
+            ])
+            XCTAssertEqual(taken, status == "ok", status)
+            XCTAssertEqual(chat.writes("clarify.lock").count, 1, status)
+            XCTAssertNil(chat.requests.onScreen, status)
+            XCTAssertNil(chat.requests.errorMessage, status)
+        }
+    }
+
+    /// A late answer to a prompt the host already dropped comes back `expired`: the card goes
+    /// quietly and nothing is resent.
+    func testAnExpiredCredentialPromptLeavesQuietly() async throws {
+        let chat = await openChat()
+        chat.host.always("request.answer", .init(result: .object(["status": .string("expired")])))
+        chat.receive(request("secret", id: "srq-k1", ["env_var": .string("TAVILY_API_KEY")]))
+        let taken = await chat.requests.answerCredential(try action(chat), value: "late")
+        XCTAssertFalse(taken)
+        XCTAssertNil(chat.requests.onScreen)
+        XCTAssertNil(chat.requests.errorMessage)
+        XCTAssertEqual(chat.writes("request.answer").count, 1)
+    }
+
+    /// A question outranks an approval and a credential prompt: it is the outer blocker.
+    func testAQuestionOutranksAnApprovalAndACredentialPrompt() async {
+        let chat = await openChat()
+        chat.receive(request("sudo", id: "srq-s1"))
+        chat.receive(approvalRequest(id: "srq-a1", requestID: "q-1"))
+        XCTAssertEqual(chat.requests.onScreen?.requestID, "q-1", "an approval outranks a credential prompt")
+        chat.receive(request("clarify", id: "srq-c1", ["question": .string("Which mailbox?")]))
+        XCTAssertEqual(chat.requests.onScreen?.requestID, "srq-c1")
+    }
+
+    /// A lost reply cannot tell sent from not sent: the chat reconnects, the host's
+    /// `open_requests` puts the card back, and the answer is never sent again on its own.
+    func testALostAnswerIsNeverResent() async throws {
+        let approval = approvalRequest(id: "srq-a1", requestID: "q-1")
+        let chat = await openChat(openRequests: [approval], rpcDeadline: .milliseconds(50))
+        chat.host.withhold("approval.respond")
+        let taken = await chat.requests.respond(try action(chat), choice: .deny)
+        XCTAssertFalse(taken)
+        XCTAssertEqual(chat.turn.engine.connectionState, .disconnected)
+
+        await chat.model.networkPathDidChange()
+        XCTAssertEqual(chat.turn.engine.connectionState, .connected)
+        XCTAssertEqual(chat.requests.onScreen?.requestID, "q-1", "the host still holds it")
+        XCTAssertTrue(chat.requests.mayAnswer)
+        XCTAssertEqual(chat.writes("approval.respond").count, 1)
+    }
+
+    /// An answer tapped before a reattach belongs to the old attach and is never sent after it.
+    func testAnAnswerCapturedBeforeAReattachIsNeverSent() async throws {
+        let sudo = request("sudo", id: "srq-s1")
+        let chat = await openChat(openRequests: [sudo])
+        let captured = try action(chat)
+        chat.model.suspendStreamForBackground()
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.requests.onScreen?.requestID, "srq-s1")
+        let taken = await chat.requests.answerCredential(captured, value: "never sent")
+        XCTAssertFalse(taken)
+        XCTAssertEqual(chat.writes("request.answer"), [])
+        XCTAssertTrue(chat.requests.mayAnswer, "the restored prompt takes a fresh tap")
+    }
+
+    /// `request.cancel` withdraws only the envelope it names by both id and method.
+    func testACancelMustNameTheEnvelopesIDAndMethod() async {
+        let chat = await openChat()
+        chat.receive(request("sudo", id: "srq-s1"))
+        for (seq, id, method) in [(1, "other", "sudo"), (2, "srq-s1", "secret"), (3, "srq-s1", "sudo")] {
+            chat.receive(event(seq, "request.cancel", ["id": .string(id), "method": .string(method), "reason": .string("timeout")]))
+            XCTAssertEqual(chat.requests.onScreen == nil, seq == 3, "\(id) \(method)")
+        }
     }
 
     // MARK: Desktop tasks and connections (#1141)

@@ -165,15 +165,14 @@ struct HermesCompaction: Equatable {
     let anchorMessageID: String?
 }
 
-/// A Hermes session's REST transcript rows as the main chat shows them (#1047). Bot Chat keeps
-/// `BotTranscriptProjection`, which reads `session.resume`'s snapshot rows.
+/// A Hermes session's REST transcript rows as the main chat shows them (#1047).
 ///
 /// A row's message id is `<stored key>/row-<id>` and its `rowID` the host's id, so a reload, a
 /// turn's end and a later cache agree on identity; a row compaction archived (`active` 0) is
 /// `isCompacted`, since the host cuts only in its live history (#1049). A `tool` row carries the full output; it joins
 /// the call its assistant row declared (`tool_calls`, matched by `tool_call_id`), named by the
 /// host's `tool_call_labels` when it sent any. Tool rows and reasoning settle in front of the next
-/// message, as in Bot Chat. `display_kind` is open: `hidden` never shows, a steer is unwrapped,
+/// message. `display_kind` is open: `hidden` never shows, a steer is unwrapped,
 /// `async_delegation_complete` is the delegation completion row, and any other kind, such as
 /// `failed_turn`, shows its text by role. The host's `display_content`, `display_commentary` and
 /// `display_reasoning` already project the `codex_*` columns, which are never read. User rows that
@@ -186,6 +185,14 @@ enum HermesTranscriptProjection {
         var toolCallGroups: [ToolCallGroup] = []
         var reasoningGroups: [ReasoningGroup] = []
         var compaction: HermesCompaction?
+    }
+
+    /// Whether a row opens a turn: a prompt (steers ride inside a turn) or a delegation
+    /// delivery, which the host runs as a turn of its own and whose time starts that turn.
+    static func isTurnBoundary(_ message: ChatMessage) -> Bool {
+        guard message.role == "delegation_completion" else { return TranscriptTurnClassifier.isUserTurnBoundary(message) }
+        return TranscriptTurnClassifier.isUserTurnBoundary(
+            ChatMessage(role: "user", content: message.content, timestamp: message.timestamp, messageId: message.messageId))
     }
 
     static func project(_ rows: [BotJSON], root: String) -> Result {
@@ -225,7 +232,7 @@ enum HermesTranscriptProjection {
                 let call = row["tool_call_id"].text.flatMap { calls[$0] }
                 tools.append(ToolCall(
                     id: "\(root)/row-\(rowID)", name: call?.name ?? row["tool_name"].text,
-                    preview: BotTurnActivity.resultPreview(row["content"]), args: call?.args, isCompleted: true,
+                    preview: row["content"].toolResultPreview, args: call?.args, isCompleted: true,
                     startedAt: row["timestamp"].number ?? 0
                 ))
             case "assistant", "user":

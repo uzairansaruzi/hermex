@@ -127,85 +127,11 @@ final class BotMentionTests: XCTestCase {
         let sent = original + mentions.annotation(for: original)
         XCTAssertEqual(BotMentions.displayText(sent), original)
         XCTAssertEqual(BotMentions.displayText(sent + "\nmore user text"), sent + "\nmore user text")
-        let projected = BotTranscriptProjection.project(history: [
-            .object(["role": .string("user"), "text": .string(sent)]),
-            .object(["role": .string("assistant"), "text": .string(sent)])
+        let projected = HermesTranscriptProjection.project([
+            .object(["id": .number(1), "role": .string("user"), "content": .string(sent)]),
+            .object(["id": .number(2), "role": .string("assistant"), "content": .string(sent)])
         ], root: "root")
         XCTAssertEqual(projected.messages.map(\.content), [original, sent])
-    }
-}
-
-@MainActor final class BotMentionSendingTests: XCTestCase {
-    func testEveryPromptModeAnnotatesTransportAndHidesLiveAndResumedNote() async throws {
-        let target = BotProfile(.object(["name": .string("default"), "display_name": .string("Chief")]))!
-        for mode in BotPromptMode.allCases {
-            let wire = BotFixtureWire()
-            wire.running = mode != .send
-            let model = make(wire, roster: [target])
-            await model.recover()
-            let original = "@chief summarize"
-            model.editDraft(original)
-            let sent = original + model.mentions.annotation(for: original)
-            await model.submit(try XCTUnwrap(model.preparePrompt(mode)))
-            let calls = wire.calls.filter { $0.0 == mode.call(runtime: "", text: "").method }
-            XCTAssertEqual(calls.count, 1)
-            XCTAssertEqual(calls.first?.1["text"], .string(sent))
-            if mode == .send || mode == .queue { XCTAssertEqual(calls.first?.1["queued"], .bool(true)) }
-            XCTAssertEqual(model.draft, "")
-            model.suspend()
-            wire.history = [.object(["role": .string("user"), "text": .string(sent)])]
-            wire.inflight = .object(["user": .string(sent)])
-            await model.recover()
-            XCTAssertEqual(model.messages.first?.content, original)
-            // History already lists the prompt, so the live row yields to it.
-            XCTAssertTrue(model.liveMessages.isEmpty)
-            model.suspend()
-        }
-    }
-
-    func testStaleActionCannotSendAndFailureKeepsUnannotatedDraft() async throws {
-        let target = BotProfile(.object(["name": .string("default")]))!
-        let wire = BotFixtureWire()
-        let model = make(wire, roster: [target])
-        await model.recover()
-        model.editDraft("@hermes hello")
-        let stale = try XCTUnwrap(model.preparePrompt(.send))
-        model.suspend()
-        await model.recover()
-        await model.submit(stale)
-        XCTAssertFalse(wire.calls.contains { $0.0 == "prompt.submit" })
-        wire.submitFailure = .rejected(4002)
-        await model.send()
-        XCTAssertEqual(model.draft, "@hermes hello")
-        model.suspend()
-    }
-
-    func testAttachmentsKeepReferencesAndResolveOnlyTheTypedDraft() async throws {
-        let target = BotProfile(.object(["name": .string("default")]))!
-        let fileBot = BotProfile(.object(["name": .string("file")]))!
-        let wire = BotFixtureWire()
-        let model = make(wire, roster: [target, fileBot])
-        await model.recover()
-        await model.attachments.stage(data: Data("hello".utf8), filename: "note.txt")
-        wire.attachFile = { _ in
-            .object(["attached": .bool(true), "path": .string("/attachments/note.txt"),
-                     "ref_text": .string("@file:/attachments/note.txt")])
-        }
-        model.editDraft("@hermes read this")
-        await model.send()
-        let sent = try XCTUnwrap(wire.calls.first { $0.0 == "prompt.submit" }?.1["text"]?.text)
-        XCTAssertTrue(sent.contains("@file:/attachments/note.txt"))
-        XCTAssertTrue(sent.hasSuffix(model.mentions.annotation(for: "@hermes read this")))
-        XCTAssertFalse(sent.contains("agent profile \"file\""))
-        model.suspend()
-    }
-
-    private func make(_ wire: BotFixtureWire, roster: [BotProfile]) -> BotConversation {
-        BotConversation(server: URL(string: "https://webui.example")!,
-                        connection: BotConnection(id: UUID(), name: "Test", address: URL(string: "https://bot.example")!, username: "test", password: "test"),
-                        profile: BotProfile(.object(["name": .string("inbox-triage")]))!, roster: roster,
-                        wire: wire, drafts: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)),
-                        attachmentCopies: BotAttachmentCopies())
     }
 }
 
@@ -276,6 +202,26 @@ final class BotMentionTests: XCTestCase {
         XCTAssertEqual(shown.attachments?.map(\.name), ["plan.md"])
     }
 
+    /// A file's reference stays in the prompt, and the note resolves only what was typed: the
+    /// `@file:` reference never mentions a bot named "file".
+    func testAttachmentsKeepTheirReferenceAndOnlyTheTypedTextIsResolved() async throws {
+        let roster: BotJSON = .object(["profiles": .array(["default", "helper", "file"].map { .object(["name": .string($0)]) })])
+        let chat = await openChat(target: .canonicalChat(profile: "default"), roster: roster)
+        let ref = "@file:/work/attachments/note.txt"
+        chat.host.always("file.attach", .init(result: .object([
+            "attached": .bool(true), "path": .string("/work/attachments/note.txt"), "ref_text": .string(ref)
+        ])))
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        await chat.model.uploadAttachment(data: Data("hello".utf8), filename: "note.txt")
+        _ = await chat.model.sendMessage("@helper read this")
+        let sent = try XCTUnwrap(chat.writes("prompt.submit").last?["text"]?.text)
+        XCTAssertTrue(sent.hasPrefix("@helper read this\n\n" + ref))
+        let note = try XCTUnwrap(chat.turn.mentions).annotation(for: "@helper read this")
+        XCTAssertFalse(note.isEmpty)
+        XCTAssertTrue(sent.hasSuffix(note))
+        XCTAssertFalse(sent.contains("agent profile \"file\""))
+    }
+
     /// A session sends `@` text exactly as typed: only a Bot Chat's host delivers a mention.
     func testASessionSendsMentionsAsTyped() async throws {
         let chat = await openChat(target: .session(profile: "default", key: "tip"))
@@ -325,14 +271,16 @@ final class BotMentionTests: XCTestCase {
         }
         let engine = HermesConversation(server: Self.server, connection: Self.connection, target: target, wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
+        let copies = BotAttachmentCopies()
         let model = ChatViewModel(
             session: SessionSummary(profile: "default"), server: Self.server, streamingScrollCoalescingDelayNanoseconds: 0,
-            draftStore: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)),
+            draftAttachmentStore: copies,
+            draftStore: ChatDraftStore(persistence: BotMemoryDrafts(), attachmentStore: copies, debounceDuration: .seconds(60)),
             backend: .hermes(turn)
         )
         await model.loadMessages()
         XCTAssertEqual(engine.connectionState, .connected)
-        await waitUntil("the roster") { turn.settings.profiles.count == 2 }
+        await waitUntil("the roster") { turn.settings.profiles.count == roster["profiles"].list?.count }
         return Chat(model: model, turn: turn, host: host)
     }
 
