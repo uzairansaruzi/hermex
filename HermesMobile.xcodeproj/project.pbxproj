@@ -526,6 +526,7 @@
 		C8780A000000000000000003 /* HermesTurnOutcomeRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8780A000000000000000004 /* HermesTurnOutcomeRow.swift */; };
 		E1139000000000000000A001 /* HermesChatActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1139000000000000000A002 /* HermesChatActivity.swift */; };
 		E1139000000000000000A003 /* HermesPlanViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1139000000000000000A004 /* HermesPlanViews.swift */; };
+		E1141000000000000000A001 /* HermesRequestCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1141000000000000000A002 /* HermesRequestCards.swift */; };
 		A4750000000000000000B0A1 /* BotPendingRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4750000000000000000B0A2 /* BotPendingRequest.swift */; };
 		A4750000000000000000B003 /* BotActivityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4750000000000000000B004 /* BotActivityViews.swift */; };
 		C2A87F2CDEB941BB825EABA5 /* BotConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40877A8534C94AAF97EA1C7C /* BotConnectionView.swift */; };
@@ -1191,6 +1192,7 @@
 		C8780A000000000000000004 /* HermesTurnOutcomeRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesTurnOutcomeRow.swift; sourceTree = "<group>"; };
 		E1139000000000000000A002 /* HermesChatActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatActivity.swift; sourceTree = "<group>"; };
 		E1139000000000000000A004 /* HermesPlanViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesPlanViews.swift; sourceTree = "<group>"; };
+		E1141000000000000000A002 /* HermesRequestCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesRequestCards.swift; sourceTree = "<group>"; };
 		A4750000000000000000B0A2 /* BotPendingRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotPendingRequest.swift"; sourceTree = "<group>"; };
 		A4750000000000000000B004 /* BotActivityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotActivityViews.swift"; sourceTree = "<group>"; };
 		40877A8534C94AAF97EA1C7C /* BotConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotConnectionView.swift"; sourceTree = "<group>"; };
@@ -1957,6 +1959,7 @@
 					E1013000000000000000A002 /* HermesChatSideTasks.swift */,
 					E1139000000000000000A002 /* HermesChatActivity.swift */,
 					E1139000000000000000A004 /* HermesPlanViews.swift */,
+					E1141000000000000000A002 /* HermesRequestCards.swift */,
 					C8780A000000000000000004 /* HermesTurnOutcomeRow.swift */,
 					A4770000000000000000D002 /* HermesDelegatedWork.swift */,
 					A4770000000000000000D004 /* HermesDelegatedWorkView.swift */,
@@ -2751,6 +2754,7 @@
 					E1013000000000000000A001 /* HermesChatSideTasks.swift in Sources */,
 					E1139000000000000000A001 /* HermesChatActivity.swift in Sources */,
 					E1139000000000000000A003 /* HermesPlanViews.swift in Sources */,
+					E1141000000000000000A001 /* HermesRequestCards.swift in Sources */,
 					E1036000000000000000A001 /* HermesSlashCommands.swift in Sources */,
 					E1015000000000000000A003 /* HermesChatSettings.swift in Sources */,
 					E1013000000000000000A005 /* HermesBtwPanel.swift in Sources */,

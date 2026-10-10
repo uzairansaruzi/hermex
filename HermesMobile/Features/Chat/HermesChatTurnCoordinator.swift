@@ -94,7 +94,8 @@ struct HermesChatTranscript: Equatable {
 /// re-reads them so its rows take their durable ids. The engine drops repeated frames by
 /// `seq`, so appends never deduplicate by text. Each prompt, steer, redirect and stop is one
 /// `write`, never resent; a Send or Queue uploads its staged files first (#1012). The host's
-/// requests (approvals, questions, sudo and secret prompts) are `requests` (#1011); the goal,
+/// requests (approvals, questions, sudo and secret prompts, Desktop tasks and connection
+/// operations) are `requests` (#1011, #1141); the goal,
 /// `/btw` and `/background` are `sideTasks` (#1013); its model and Profile chips are
 /// `settings` (#1015); its host's slash commands are `slashCommands` (#1036); its plan, how
 /// its last turn ended and its delegated workers are `activity` (#1139, #1140). Edit,
@@ -120,7 +121,8 @@ struct HermesChatTranscript: Equatable {
     /// The prompt the host holds for its next turn: one slot, merged as the host merges
     /// text-only prompts. Restored from the snapshot's `queued`; a Stop discards it.
     private(set) var queuedPrompt: String?
-    /// Host requests open on this runtime (#1011): an approval, a question, a credential prompt.
+    /// Host requests open on this runtime (#1011, #1141): an approval, a question, a credential
+    /// prompt, a Desktop task, a connection operation.
     let requests: HermesChatRequests
     /// The session's goal, `/btw` question and `/background` tasks (#1013).
     let sideTasks: HermesChatSideTasks
@@ -181,9 +183,10 @@ struct HermesChatTranscript: Equatable {
     private let opensNew: Bool
     @ObservationIgnored private var attaching: Task<Void, Never>?
     @ObservationIgnored private var attachGeneration = 0
-    /// The host refused the saved sign-in: nothing reattaches on its own until the chat
-    /// asks again, so the refused password is not sent again unasked (#884).
-    @ObservationIgnored private var refusedSignIn = false
+    /// The host refused the saved password (`.rejected(401)`, #884, #942): nothing on this chat
+    /// attaches again, so the refused password is never sent again unasked. The chat offers
+    /// Update sign-in, which closes it; the next chat signs in with what the form saved.
+    private(set) var needsSignIn = false
     /// The settled history read so far (#1047).
     @ObservationIgnored private var history = HermesTranscriptHistory()
     /// Why the last newest read failed, until one succeeds.
@@ -245,8 +248,8 @@ struct HermesChatTranscript: Equatable {
     var currentDraftKey: ChatDraftKey { draftKey }
 
     /// Stop asks first only when it would lose something: the host's queued prompt, or a
-    /// request (an approval the stop denies).
-    var stopNeedsConfirmation: Bool { queuedPrompt != nil || requests.isWaiting }
+    /// request (an approval the stop denies). Desktop's own task loses nothing.
+    var stopNeedsConfirmation: Bool { queuedPrompt != nil || requests.stopWithdrawsAnswers }
 
     /// Attaches the session, creating a new one on the first attach, or joins the attach
     /// already running so a new session is never created twice.
@@ -261,6 +264,7 @@ struct HermesChatTranscript: Equatable {
     /// The one attach in flight. Cancelled by leaving, so one that has not begun never does.
     @discardableResult
     private func startAttach() -> Task<Void, Never> {
+        guard !needsSignIn else { return Task {} }
         attachGeneration += 1
         let generation = attachGeneration
         let task = Task { [weak self, engine] in
@@ -313,8 +317,9 @@ struct HermesChatTranscript: Equatable {
 
     /// Sends `text` in `mode` on the attached runtime, attaching first if the chat has not.
     /// `attachments` (Send and Queue only) upload first on that attach and runtime, and
-    /// their references follow the text; `beforePrompt` runs after the last upload, just
-    /// before the prompt goes out. Returns what the host said; throws `NotSent` when it
+    /// their references follow the text. A Steer or Queue then releases an open connection
+    /// operation (`continueConnection`); a lost release holds the message. `beforePrompt`
+    /// runs just before the prompt goes out. Returns what the host said; throws `NotSent` when it
     /// never went out, and the failure itself when its reply was refused or lost. Never
     /// resent: after a lost reply the next snapshot says what happened.
     func submit(_ text: String, mode: BotPromptMode, attachments: [OutgoingAttachment] = [],
@@ -333,6 +338,9 @@ struct HermesChatTranscript: Equatable {
             references = try await upload(attachments, runtime: runtime, attempt: attempt)
         } catch {
             throw NotSent(underlying: error, duringUpload: true)
+        }
+        if mode == .steer || mode == .queue {
+            do { try await requests.continueConnection(runtime: runtime, attempt: attempt) } catch { throw NotSent(underlying: error) }
         }
         do { try await beforePrompt() } catch { throw NotSent(underlying: error) }
         let prompt = ([text] + references).filter { !$0.isEmpty }.joined(separator: "\n\n")
@@ -953,6 +961,8 @@ struct HermesChatTranscript: Equatable {
             }
         case "request.cancel":
             requests.cancel(payload)
+        case "connection.request", "connection.update":
+            requests.receiveConnection(payload, opens: frame["type"].text == "connection.request")
         case "todo.updated":
             activity.receivePlan(payload)
         case "subagent.spawn_requested", "subagent.start", "subagent.progress", "subagent.tool", "subagent.complete":
@@ -1490,13 +1500,13 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
     }
 
     func reconnectIfNeeded(modelContext: ModelContext?) async {
-        guard !refusedSignIn else { return }
+        guard !needsSignIn else { return }
         await activate()
     }
 
     /// A network that came back retries a waiting reattach now instead of after its backoff.
     func networkPathDidChange(modelContext: ModelContext?) async {
-        guard !refusedSignIn, engine.isActive, attaching == nil, engine.connectionState == .disconnected,
+        guard !needsSignIn, engine.isActive, attaching == nil, engine.connectionState == .disconnected,
               isNetworkAvailable() else { return }
         engine.suspend()
         await startAttach().value
@@ -1566,7 +1576,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     func conversationDidConnect(runtime: String, attempt: Int) async throws {
         // The engine released the held frames just before this.
         heldFrames = []; deltasInRebuild = []; replayedReply = ""
-        refusedSignIn = false
+        needsSignIn = false
         delegate?.hermesConnectionDidChange(failure: nil)
         if let historyFailure {
             reportHistoryFailure(historyFailure)
@@ -1596,10 +1606,11 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     func conversationDidLoseFrames() { rebuildAfterGap() }
 
     /// Frames past the engine's hold are lost, and the release rebuilds again. A held
-    /// `request.cancel` is newer than the `open_requests` the attach is reading.
+    /// `request.cancel` is newer than the `open_requests` the attach is reading; held
+    /// connection frames apply after its `pending_connection`, once released.
     func conversation(didHold frame: BotJSON) {
         if heldFrames.count < HermesConversation.heldFrameLimit { heldFrames.append(frame) }
-        if frame["type"].text == "request.cancel" { requests.holdCancel() }
+        if frame["type"].text == "request.cancel" { requests.holdRequestFrame() }
     }
 
     func conversation(didReceiveRequest envelope: BotJSON) {
@@ -1608,12 +1619,13 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
 
     func conversationWillDisconnect() {
         requests.willLeave()
+        requests.disconnect()
         activity.delegatedWork.disconnect()
     }
 
     func conversationDidDisconnect(_ failure: BotFailure, retrying: Bool) {
         drivenLiveActivity?.markStale()
-        refusedSignIn = failure == .rejected(401)
+        if failure == .rejected(401) { needsSignIn = true }
         guard !retrying else { return }
         delegate?.hermesConnectionDidChange(failure: BotConnectionAdvice.message(for: failure, address: engine.connection.address))
     }

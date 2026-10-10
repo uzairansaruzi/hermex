@@ -498,11 +498,17 @@ cache's copy) that opens `HermesDelegatedWorkView`. A history row with
 `display_kind: "async_delegation_complete"` draws as `HermesDelegationCompletionCard`; live, it
 arrives with the newest rows the delivery's turn re-reads when it ends.
 
-Its host requests are `HermesChatRequests` (#1011), on the Bot request model below and the
-engine's `answer`. An approval takes the Sessions overlay with only the host's choices
-(`ApprovalScope.Host.hermes`); a question or a sudo or secret prompt takes the
-clarification's slot above the composer as the Bot request card. Vault prompts, Desktop's
-own tasks and unknown methods get no card and are never answered. A batch question never
+Its host requests are `HermesChatRequests` (#1011, #1141), on the Bot request model below and
+the engine's `answer`. An approval takes the Sessions overlay with only the host's choices
+(`ApprovalScope.Host.hermes`); a question, a sudo or secret prompt, a Desktop task and a
+connection operation take the clarification's slot above the composer as the Bot request
+card, whose copy names Hermes where Bot Chat names the bot (`HermesRequestSubject`; the
+Desktop-task and connection bodies live in `Features/Chat/HermesRequestCards.swift`). A
+Desktop task is shown, never answered: its card keeps the chat's Stop, which asks first only
+when something else would be lost. A connection operation follows the rules below, answered
+with `connection.respond` from the card; 4004 leaves the card inert and reattaches, and a lost
+reply warns on the card and reconnects. Account operations' global `connection.update` never
+reaches a session. Vault prompts and unknown methods get no card and are never answered. A batch question never
 gets a bare answer: Skip locks each outstanding `qid` empty. Skip all is `config.set {key:
 "yolo", value: "on", scope: "session"}`, then `approval.respond once` for the card on
 screen. The bypass pill reads `session.info`'s `yolo`, which the host also sets for its own
@@ -514,7 +520,11 @@ withdrawal note at the transcript's end, silent for this phone's Stop or Stop & 
 reattach replaces the list from `open_requests`, one per envelope id. A question or
 credential prompt answered in Desktop sends no cancel, so its card stays until the next
 attach, or until an answer here comes back `expired` and it leaves quietly. Any open
-request shows "Waiting for you" in the run-status pill. The `config.set` yolo shape (`{key,
+request shows "Waiting for you" in the run-status pill. A refused password (`.rejected(401)`)
+holds Update sign-in above the composer and blocks every attach on that chat, so foregrounding,
+a network change and a send all send nothing; the pill signs the Hermes server out to its
+sign-in form (`HermesUpdateSignInAction`, installed by `HermesServerHome`), whose save signs it
+back in with fresh chats. The `config.set` yolo shape (`{key,
 value: "1"|"0", scope}` back), `session.info`'s `yolo` and `approval_mode`, and the
 redirect's steer during a tool are verified against `tui_gateway/methods_config_set.py`,
 `tui_gateway/server.py` and `agent/interrupt_control.py` at `ca678285`.
@@ -775,7 +785,10 @@ sign-in (`authorize`, or an install that turns into OAuth) redirects to the
 host's own loopback, so the phone shows "Finish on the Mac" and only Skip.
 Skip leaves the bot waiting until every row is connected or skipped; Continue
 releases it at once, and Guide or Queue sends Continue first so the message
-does not wait behind the blocked tool. `4004` means the operation had already
+does not wait behind the blocked tool. One answer to an operation is out at a time: a
+Hermes chat's card waits while Continue is out, and Send waits while a row's answer is.
+A Continue whose operation was replaced before the write is not sent, and the message is held.
+`4004` means the operation had already
 settled. Setup values stay in the row's view state and are cleared on send.
 Try again on a failed managed row (`connectors.connect {reconnect}`) and
 `connectors.operation.wake` are not used. The shapes are verified against

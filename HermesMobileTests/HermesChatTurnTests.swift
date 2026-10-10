@@ -318,6 +318,24 @@ import SwiftUI
         XCTAssertNil(chat.model.queuedMessagesReceipt)
     }
 
+    /// A refused password (#884, #942) is never sent again unasked: neither returning from the
+    /// background, a network change nor a send signs the chat in again.
+    func testARefusedSignInIsNeverSentAgainUnasked() async {
+        let chat = await openChat()
+        let before = chat.host.requests.count
+        chat.turn.engine.disconnect(BotFailure.rejected(401))
+        XCTAssertTrue(chat.model.hermesNeedsSignIn)
+
+        chat.model.suspendStreamForBackground()
+        await chat.model.reconnectStreamIfNeeded()
+        await chat.model.networkPathDidChange()
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        let sent = await chat.model.sendMessage("Are you there?")
+        XCTAssertFalse(sent)
+        XCTAssertEqual(chat.host.requests.count, before, "nothing reattached or sent")
+        XCTAssertEqual(chat.turn.engine.connectionState, .disconnected)
+    }
+
     // MARK: `@` file references (#1113)
 
     /// The `@` panel opens only once `session.info` names a folder on a `local` backend, then

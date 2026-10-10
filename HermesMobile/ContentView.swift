@@ -371,6 +371,9 @@ struct HermesServerHome: View {
                 SettingsView(authManager: authManager, server: server, initialScrollTarget: settingsTarget)
             }
         }
+        // A Hermes chat's Update sign-in (#942) signs the server out to its sign-in form, which
+        // keeps the saved values and focuses the password; saving signs it back in.
+        .modifier(HermesUpdateSignInModifier { authManager.hermesSignInRejected(server: server) })
         // A connection the inbox's sheet saved or changed closes no screen, so the switch reads too.
         .onChange(of: tab, readConnection)
         .onChange(of: pendingBotDestination, initial: true) {
@@ -398,6 +401,39 @@ struct HermesServerHome: View {
             addServer: { isPresentingAddServer = true },
             manageServers: { settingsTarget = .servers; isShowingSettings = true }
         )
+    }
+}
+
+/// Opens the Hermes server's sign-in form after its host refused the saved password (#942).
+/// `HermesServerHome` installs it, so every Hermes chat under it inherits it: opened from the
+/// Sessions list, a pushed branch or Archived Sessions. A reference, like
+/// `OpenNotificationSettingsAction`, so a pass of the home invalidates no chat reading it.
+final class HermesUpdateSignInAction {
+    var handler: () -> Void = {}
+
+    func callAsFunction() { handler() }
+}
+
+private struct HermesUpdateSignInKey: EnvironmentKey {
+    static let defaultValue = HermesUpdateSignInAction()
+}
+
+extension EnvironmentValues {
+    var hermesUpdateSignIn: HermesUpdateSignInAction {
+        get { self[HermesUpdateSignInKey.self] }
+        set { self[HermesUpdateSignInKey.self] = newValue }
+    }
+}
+
+/// The stable action lives in this modifier's state, so the handler capturing the home cannot
+/// form a cycle that outlives it.
+private struct HermesUpdateSignInModifier: ViewModifier {
+    let handler: () -> Void
+    @State private var action = HermesUpdateSignInAction()
+
+    func body(content: Content) -> some View {
+        action.handler = handler
+        return content.environment(\.hermesUpdateSignIn, action)
     }
 }
 
