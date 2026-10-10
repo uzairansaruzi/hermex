@@ -6071,13 +6071,17 @@ final class ChatViewModel {
         turn.suspendActiveStreamConnection()
     }
 
+    /// `ChatView` reconnects as it appears, before its first load, so a Hermes chat's attach can
+    /// start here: it takes the offline cache first, to write what that attach reads (#1144).
     func reconnectStreamIfNeeded(modelContext: ModelContext? = nil) async {
+        if hermesTurn != nil, let modelContext { hermesCache = modelContext }
         await turn.reconnectIfNeeded(modelContext: modelContext)
     }
 
     /// Retries a suspended stream, or clears a stale "Waiting for network",
     /// when the device's network path changes (#869).
     func networkPathDidChange(modelContext: ModelContext? = nil) async {
+        if hermesTurn != nil, let modelContext { hermesCache = modelContext }
         await turn.networkPathDidChange(modelContext: modelContext)
     }
 
@@ -7831,22 +7835,23 @@ extension ChatViewModel: HermesChatTurnDelegate {
     /// shown from another root, a Bot Chat since made again, leaves the screen, and every
     /// other root's leaves the cache.
     func hermesDidIdentify(root: String) {
-        guard let hermesCache, let engine = hermesTurn?.engine else { return }
-        if case .canonicalChat(let profile) = engine.target {
-            if hermesCacheRoot != root, isViewingCachedData {
-                messages = []
-                transcriptRevision &+= 1
-                isViewingCachedData = false
-            }
-            hermesCacheRoot = root
-            do {
-                try CacheStore.removeHermesBotChats(exceptRoot: root, serverURL: engine.server, connectionID: engine.connection.id,
-                                                    profile: profile, in: hermesCache)
-            } catch {
-                cacheErrorMessage = error.localizedDescription
-            }
-        }
+        guard let engine = hermesTurn?.engine else { return }
+        // Taken even before the chat has its cache, so the writes after it still count.
         hermesCacheEpoch = CacheStore.hermesCacheEpoch(serverURL: engine.server)
+        guard case .canonicalChat(let profile) = engine.target else { return }
+        if hermesCacheRoot != root, isViewingCachedData {
+            messages = []
+            transcriptRevision &+= 1
+            isViewingCachedData = false
+        }
+        hermesCacheRoot = root
+        guard let hermesCache else { return }
+        do {
+            try CacheStore.removeHermesBotChats(exceptRoot: root, serverURL: engine.server, connectionID: engine.connection.id,
+                                                profile: profile, in: hermesCache)
+        } catch {
+            cacheErrorMessage = error.localizedDescription
+        }
     }
 
     /// A chat with nothing on screen whose host can't be reached, to attach or to read its

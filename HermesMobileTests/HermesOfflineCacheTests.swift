@@ -381,6 +381,19 @@ import XCTest
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello.", "Sent from Desktop"])
     }
 
+    /// `ChatView` reconnects as it appears, before its first load: the attach that reconnect
+    /// starts still caches what it reads, so the next visit offline shows it.
+    func testAnAttachBeforeTheFirstLoadStillCachesWhatItReads() async throws {
+        let context = try makeContext()
+        let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
+                             target: .canonicalChat(profile: "default"))
+        await visit.model.reconnectStreamIfNeeded(modelContext: context)
+        await visit.model.loadMessages(modelContext: context)
+        XCTAssertEqual(visit.model.messages.map(\.content), ["Hi", "Hello."])
+
+        XCTAssertEqual(try botChatMessages(in: context), ["Hi", "Hello."])
+    }
+
     /// Two servers never share a Bot Chat's cache, even for the same connection and Profile: an
     /// unreachable host shows only its own server's copy.
     func testABotChatsCacheStaysWithItsServer() async throws {
