@@ -84,15 +84,15 @@ Reply with the exact address, username, password, and both check results, plus a
         }
     }
 
-    /// Continue needs the prompt that is shown copied: copying one prompt and swapping to the
-    /// other asks again.
+    /// Continue needs the prompt that is shown copied, or its reminder skipped with Continue
+    /// Anyway: copying or skipping one prompt and swapping to the other asks again.
     static func shouldShowCopyReminder(
         page: Int,
         shownPrompt: OnboardingSetupPrompt,
         copiedPrompts: Set<OnboardingSetupPrompt>,
-        hasBypassedCopyReminder: Bool = false
+        bypassedPrompts: Set<OnboardingSetupPrompt> = []
     ) -> Bool {
-        page == agentPromptPageIndex && !copiedPrompts.contains(shownPrompt) && !hasBypassedCopyReminder
+        page == agentPromptPageIndex && needsCopy(shownPrompt, copied: copiedPrompts, bypassed: bypassedPrompts)
     }
 
     static func shouldInterceptForwardNavigationFromAgentPrompt(
@@ -100,12 +100,16 @@ Reply with the exact address, username, password, and both check results, plus a
         to newPage: Int,
         shownPrompt: OnboardingSetupPrompt,
         copiedPrompts: Set<OnboardingSetupPrompt>,
-        hasBypassedCopyReminder: Bool = false
+        bypassedPrompts: Set<OnboardingSetupPrompt> = []
     ) -> Bool {
         oldPage == agentPromptPageIndex
             && newPage > oldPage
-            && !copiedPrompts.contains(shownPrompt)
-            && !hasBypassedCopyReminder
+            && needsCopy(shownPrompt, copied: copiedPrompts, bypassed: bypassedPrompts)
+    }
+
+    private static func needsCopy(_ prompt: OnboardingSetupPrompt, copied: Set<OnboardingSetupPrompt>,
+                                  bypassed: Set<OnboardingSetupPrompt>) -> Bool {
+        !copied.contains(prompt) && !bypassed.contains(prompt)
     }
 
     static func shouldClearConnectFocusWhenLeavingPage(_ page: Int) -> Bool {

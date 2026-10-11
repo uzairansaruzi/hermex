@@ -10,7 +10,8 @@ struct OnboardingView: View {
     @State private var currentPage: Int
     @State private var shownSetupPrompt = OnboardingFlowPolicy.initialSetupPrompt
     @State private var copiedSetupPrompts: Set<OnboardingSetupPrompt> = []
-    @State private var hasBypassedCopyReminder = false
+    /// The prompts whose copy reminder Continue Anyway skipped.
+    @State private var bypassedSetupPrompts: Set<OnboardingSetupPrompt> = []
     @State private var isShowingCopyReminder = false
     @FocusState private var focusedField: OnboardingConnectField?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -88,7 +89,7 @@ struct OnboardingView: View {
         .alert("Copy the setup prompt first", isPresented: $isShowingCopyReminder) {
             Button("Stay Here", role: .cancel) {}
             Button("Continue Anyway") {
-                hasBypassedCopyReminder = true
+                bypassedSetupPrompts.insert(shownSetupPrompt)
                 advanceToNextPage()
             }
         } message: {
@@ -202,7 +203,7 @@ struct OnboardingView: View {
             page: currentPage,
             shownPrompt: shownSetupPrompt,
             copiedPrompts: copiedSetupPrompts,
-            hasBypassedCopyReminder: hasBypassedCopyReminder
+            bypassedPrompts: bypassedSetupPrompts
         ) {
             isShowingCopyReminder = true
             return
@@ -223,7 +224,7 @@ struct OnboardingView: View {
             to: newPage,
             shownPrompt: shownSetupPrompt,
             copiedPrompts: copiedSetupPrompts,
-            hasBypassedCopyReminder: hasBypassedCopyReminder
+            bypassedPrompts: bypassedSetupPrompts
         ) else {
             return
         }

@@ -30,7 +30,7 @@ final class OnboardingFlowTests: XCTestCase {
                 page: OnboardingFlowPolicy.agentPromptPageIndex,
                 shownPrompt: .hermes,
                 copiedPrompts: [],
-                hasBypassedCopyReminder: true
+                bypassedPrompts: [.hermes]
             )
         )
         XCTAssertFalse(
@@ -106,7 +106,7 @@ final class OnboardingFlowTests: XCTestCase {
                 to: 3,
                 shownPrompt: .hermes,
                 copiedPrompts: [],
-                hasBypassedCopyReminder: true
+                bypassedPrompts: [.hermes]
             )
         )
         XCTAssertFalse(
@@ -115,6 +115,27 @@ final class OnboardingFlowTests: XCTestCase {
                 to: 1,
                 shownPrompt: .hermes,
                 copiedPrompts: []
+            )
+        )
+    }
+
+    func testSkippingOnePromptsReminderStillRemindsForTheOther() {
+        // Continue Anyway on Hermes, then back to step 1 and over to Web UI: its reminder still shows.
+        XCTAssertTrue(
+            OnboardingFlowPolicy.shouldShowCopyReminder(
+                page: OnboardingFlowPolicy.agentPromptPageIndex,
+                shownPrompt: .webUI,
+                copiedPrompts: [],
+                bypassedPrompts: [.hermes]
+            )
+        )
+        XCTAssertTrue(
+            OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
+                from: OnboardingFlowPolicy.agentPromptPageIndex,
+                to: 3,
+                shownPrompt: .webUI,
+                copiedPrompts: [],
+                bypassedPrompts: [.hermes]
             )
         )
     }
