@@ -229,6 +229,49 @@ import Observation
         XCTAssertEqual(chat.spy.ends, [.init(status: .complete, activity: "Response complete")])
     }
 
+    /// A moved key outlives another run taking the activity while the chat was away (#1179):
+    /// reattaching to the same running turn drives its activity again under the moved key, for a
+    /// bot, whose identity still names the turn's first key, and for a session alike. The
+    /// durable record a relaunch reads keeps the moved key too.
+    func testAMovedKeySurvivesAnotherRunTakingTheActivityBeforeAReattach() async throws {
+        var bot = try XCTUnwrap(AgentRunActivityBot(BotDestination(server: Self.server, connectionID: Self.connection.id,
+                                                                   profile: "default", conversation: "root")))
+        bot.pushSessionID = "tip"
+        let cases: [(target: ConversationTarget, attributes: AgentRunActivityAttributes)] = [
+            (.canonicalChat(profile: "default"),
+             AgentRunActivityAttributes(sessionID: bot.key, sessionTitle: "Hermes", streamID: bot.streamID(turn: "1790000000.5"),
+                                        startedAt: .now, bot: bot)),
+            (.session(profile: "default", key: "tip"),
+             AgentRunActivityAttributes(sessionID: "hermes:default:tip", sessionTitle: "Untitled Session",
+                                        streamID: "1790000000.5", startedAt: .now, server: Self.server,
+                                        pushSessionID: "tip"))
+        ]
+        for (target, attributes) in cases {
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: "HermesChatLiveActivityTests-\(UUID())"))
+            let manager = AgentLiveActivityManager(pushKeys: LiveActivityPushKeys(defaults: defaults))
+            let chat = await openChat(target: target, manager: manager)
+            chat.receive(event(1, "session.info", ["running": .bool(true), "turn_started_at": .number(Self.startedAt)]))
+            chat.receive(event(2, "message.start"))
+            chat.receive(event(3, "session.info", ["running": .bool(true), "stored_session_id": .string("tip-2")]))
+            XCTAssertEqual(manager.drivenSessionID, attributes.sessionID)
+            XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-2")
+
+            chat.model.suspendStreamForBackground()
+            manager.start(sessionID: "webui-session", server: Self.server, sessionTitle: "Other run", streamID: "s1",
+                          startedAt: .now)
+            // The bot's title lookup now finds its tip at the moved key.
+            chat.host.always("session.list", .init(result: .object(["sessions": .array([
+                .object(["id": .string("root"), "resolved_id": .string("tip-2")])])])))
+            chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 3)))
+            chat.host.always("session.resume", .init(result: resume(running: true, key: "tip-2")))
+            await chat.model.reconnectStreamIfNeeded()
+            XCTAssertEqual(manager.drivenSessionID, attributes.sessionID, "\(target): the chat drives its turn again")
+            XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-2", "\(target): its token registers under the moved key")
+            let relaunched = LiveActivityPushKeys(defaults: defaults)
+            XCTAssertEqual(relaunched.pushTarget(for: attributes)?.sessionID, "tip-2", "\(target): a relaunch finds the moved key")
+        }
+    }
+
     /// A Bot Chat's pill shows the turn as Bot Chat's title does (#757, #778): at rest while
     /// idle, working while the turn runs, waiting while a request is open, failed while the host
     /// keeps the turn's error, and at rest again once the socket drops. A session has no pill.
@@ -426,11 +469,12 @@ import Observation
 
     /// `roster` answers `profiles.list`; without one the read fails, so a Bot Chat keeps its
     /// bare Profile row. `subagents` answers `subagent.list`; without them the read fails.
-    /// `pictures` answers `profiles.get_asset` with an image.
+    /// `pictures` answers `profiles.get_asset` with an image. `manager` drives the activity in
+    /// place of the spy, for a test of the real manager's push keys.
     private func openChat(snapshot: BotJSON? = nil, excerpts: Bool = false,
                           target: ConversationTarget = .session(profile: "default", key: "tip"),
                           botChatRoot: String? = nil, roster: BotJSON? = nil, subagents: [BotJSON]? = nil,
-                          pictures: Bool = false) async -> Chat {
+                          pictures: Bool = false, manager: AgentLiveActivityManager? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: snapshot ?? resume(running: false)))
@@ -446,12 +490,12 @@ import Observation
                                         target: target, wire: client,
                                         reconnectDelay: { _ in throw CancellationError() })
         let spy = Spy()
-        let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, liveActivities: spy,
+        let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, liveActivities: manager ?? spy,
                                              writeBotAvatar: { profile, destination in spy.writeAvatar(profile, destination) },
                                              isNetworkAvailable: { true })
         // The chat's own webui manager is the same spy, so any write it made would show too.
         let model = ChatViewModel(
-            session: SessionSummary(profile: "default"), server: Self.server, liveActivityManager: spy,
+            session: SessionSummary(profile: "default"), server: Self.server, liveActivityManager: manager ?? spy,
             showsLiveActivityResponseExcerpts: excerpts, streamingScrollCoalescingDelayNanoseconds: 0,
             draftStore: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)),
             backend: .hermes(turn)
@@ -563,8 +607,10 @@ import Observation
     private(set) var events: [AgentLiveActivityEvent] = []
     private(set) var ends: [End] = []
     private(set) var staleCount = 0
-    /// The keys `movePushSession` moved the driven activity's pushes to.
+    /// The keys `movePushSession` moved the driven activity's pushes to. As in the manager, a
+    /// key the activity already drives moves nothing.
     private(set) var moves: [String] = []
+    private var drivenPushSessionID: String?
     var drivenSessionID: String?
 
     func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date) {
@@ -577,14 +623,20 @@ import Observation
         starts.append(Start(sessionID: sessionID, server: server, title: sessionTitle, streamID: turn, startedAt: startedAt,
                             destinationURL: destinationURL, pushSessionID: pushSessionID))
         drivenSessionID = sessionID
+        drivenPushSessionID = pushSessionID
     }
 
-    func movePushSession(to key: String) { moves.append(key) }
+    func movePushSession(to key: String) {
+        guard key != drivenPushSessionID else { return }
+        drivenPushSessionID = key
+        moves.append(key)
+    }
 
     func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date) {
         botStarts.append(BotStart(key: bot.key, destinationURL: bot.destinationURL, pushSessionID: bot.pushSessionID,
                                   title: title, turn: turn, startedAt: startedAt))
         drivenSessionID = bot.key
+        drivenPushSessionID = bot.pushSessionID
     }
 
     /// The titles `.sessionTitle` updates wrote.

@@ -1447,7 +1447,9 @@ struct HermesChatTranscript: Equatable {
                                         sessionTitle: delegate?.streamCoordinatorDisplayTitle ?? String(localized: "Untitled Session"),
                                         turn: liveActivity.turn, startedAt: activeRunStartedAt ?? Date())
         }
-        syncLiveActivityPushKey()
+        // Always: a start that took the activity back from another run drives the key it
+        // named, and a bot's names the turn's first.
+        syncLiveActivityPushKey(always: true)
         shownWaiting = nil
         syncLiveActivityWaiting()
         syncBotWorkSummary()
@@ -1455,9 +1457,12 @@ struct HermesChatTranscript: Equatable {
 
     /// Moves the driven activity's pushes to the stored key, once per move (#1179): a legacy
     /// compression, mid-turn or by `/compress`, or one an attach found, moved it, and the plugin
-    /// reports progress under the new key. A bot's and a session's alike.
-    private func syncLiveActivityPushKey() {
-        guard let key = engine.storedKey, key != liveActivity?.pushSessionID, let driven = drivenLiveActivity else { return }
+    /// reports progress under the new key. A bot's and a session's alike. `always` applies the
+    /// key even when this chat already reported it, after a start that may have named an older
+    /// one; the manager ignores a key it already drives.
+    private func syncLiveActivityPushKey(always: Bool = false) {
+        guard let key = engine.storedKey, always || key != liveActivity?.pushSessionID,
+              let driven = drivenLiveActivity else { return }
         liveActivity?.pushSessionID = key
         driven.movePushSession(to: key)
     }
