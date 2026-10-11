@@ -539,6 +539,22 @@ import XCTest
         reader.close()
     }
 
+    func testAMalformedRoomChoicesOffersOnlyDenyAndAnAbsentListKeepsTheRoomDefault() {
+        func action(_ choices: BotJSON?) -> BotRoomAction {
+            var body: [String: BotJSON] = ["command": .string("echo hello")]
+            if let choices { body["choices"] = choices }
+            return BotRoomAction(.object(["kind": .string("approval"), "member_id": .string("chief"),
+                "task_id": .string("task:1"), "execution_generation": .number(1), "request_id": .string("approval:1"),
+                "approval": .object(body)]))
+        }
+        for malformed: BotJSON in [.null, .string("once"), .object(["once": .bool(true)]), .number(1)] {
+            let room = action(malformed)
+            XCTAssertEqual(room.approval?.choices, [.deny], "\(malformed)")
+            XCTAssertNil(room.call(roomID: "fixture-room", choice: .once), "once cannot be sent for \(malformed)")
+        }
+        XCTAssertEqual(action(nil).approval?.choices, [.once, .deny])
+    }
+
     func testStaleApprovalFailsAtActualWriteAndRejectsPermanentChoices() async throws {
         let wire = RoomWire(); wire.driverStatus = RoomFixture.status(actions: [RoomFixture.approval])
         let reader = makeReader(wire); await reader.open()

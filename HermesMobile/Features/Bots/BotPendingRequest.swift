@@ -128,7 +128,12 @@ struct BotApprovalRequest: Equatable {
         // what it offered. If a newer host renames the lot so none of it parses,
         // Deny is the only thing left that is safe to offer: rebuilding here
         // would invent an Always allow the host never sanctioned.
-        if let list = json["choices"].list {
+        let present = json.fields?["choices"]
+        if let present, present.list == nil {
+            // Present but not a list (null, a string, an object): not an older host,
+            // so nothing is rebuilt and Deny is the only safe offer.
+            choices = [.deny]
+        } else if let list = present?.list {
             let offered = list.compactMap { $0.text.flatMap(Choice.init(rawValue:)) }
             if offered.isEmpty { choices = [.deny] }
             else { choices = offered.contains(.deny) ? offered : offered + [.deny] }
