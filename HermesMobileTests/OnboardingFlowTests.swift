@@ -14,26 +14,71 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertTrue(
             OnboardingFlowPolicy.shouldShowCopyReminder(
                 page: OnboardingFlowPolicy.agentPromptPageIndex,
-                hasCopiedAgentPrompt: false
+                shownPrompt: .hermes,
+                copiedPrompts: []
             )
         )
         XCTAssertFalse(
             OnboardingFlowPolicy.shouldShowCopyReminder(
                 page: OnboardingFlowPolicy.agentPromptPageIndex,
-                hasCopiedAgentPrompt: true
+                shownPrompt: .hermes,
+                copiedPrompts: [.hermes]
             )
         )
         XCTAssertFalse(
             OnboardingFlowPolicy.shouldShowCopyReminder(
                 page: OnboardingFlowPolicy.agentPromptPageIndex,
-                hasCopiedAgentPrompt: false,
+                shownPrompt: .hermes,
+                copiedPrompts: [],
                 hasBypassedCopyReminder: true
             )
         )
         XCTAssertFalse(
             OnboardingFlowPolicy.shouldShowCopyReminder(
                 page: OnboardingFlowPolicy.connectPageIndex,
-                hasCopiedAgentPrompt: false
+                shownPrompt: .hermes,
+                copiedPrompts: []
+            )
+        )
+    }
+
+    func testCopyReminderFollowsThePromptShown() {
+        // Copying one prompt and then swapping to the other still needs a copy.
+        XCTAssertTrue(
+            OnboardingFlowPolicy.shouldShowCopyReminder(
+                page: OnboardingFlowPolicy.agentPromptPageIndex,
+                shownPrompt: .hermes,
+                copiedPrompts: [.webUI]
+            )
+        )
+        XCTAssertTrue(
+            OnboardingFlowPolicy.shouldShowCopyReminder(
+                page: OnboardingFlowPolicy.agentPromptPageIndex,
+                shownPrompt: .webUI,
+                copiedPrompts: [.hermes]
+            )
+        )
+        XCTAssertFalse(
+            OnboardingFlowPolicy.shouldShowCopyReminder(
+                page: OnboardingFlowPolicy.agentPromptPageIndex,
+                shownPrompt: .webUI,
+                copiedPrompts: [.hermes, .webUI]
+            )
+        )
+        XCTAssertTrue(
+            OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
+                from: OnboardingFlowPolicy.agentPromptPageIndex,
+                to: 3,
+                shownPrompt: .webUI,
+                copiedPrompts: [.hermes]
+            )
+        )
+        XCTAssertFalse(
+            OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
+                from: OnboardingFlowPolicy.agentPromptPageIndex,
+                to: 3,
+                shownPrompt: .webUI,
+                copiedPrompts: [.webUI]
             )
         )
     }
@@ -43,21 +88,24 @@ final class OnboardingFlowTests: XCTestCase {
             OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
                 from: OnboardingFlowPolicy.agentPromptPageIndex,
                 to: 3,
-                hasCopiedAgentPrompt: false
+                shownPrompt: .hermes,
+                copiedPrompts: []
             )
         )
         XCTAssertFalse(
             OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
                 from: OnboardingFlowPolicy.agentPromptPageIndex,
                 to: 3,
-                hasCopiedAgentPrompt: true
+                shownPrompt: .hermes,
+                copiedPrompts: [.hermes]
             )
         )
         XCTAssertFalse(
             OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
                 from: OnboardingFlowPolicy.agentPromptPageIndex,
                 to: 3,
-                hasCopiedAgentPrompt: false,
+                shownPrompt: .hermes,
+                copiedPrompts: [],
                 hasBypassedCopyReminder: true
             )
         )
@@ -65,9 +113,29 @@ final class OnboardingFlowTests: XCTestCase {
             OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
                 from: OnboardingFlowPolicy.agentPromptPageIndex,
                 to: 1,
-                hasCopiedAgentPrompt: false
+                shownPrompt: .hermes,
+                copiedPrompts: []
             )
         )
+    }
+
+    func testStepOneOpensOnTheHermesPromptAndSwapsToWebUIAndBack() {
+        let initial = OnboardingFlowPolicy.initialSetupPrompt
+        XCTAssertEqual(initial, .hermes)
+        XCTAssertEqual(initial.text, OnboardingFlowPolicy.hermesSetupPrompt)
+        XCTAssertEqual(initial.title, "Set up Hermes")
+        XCTAssertEqual(initial.switchTitle, "Using Hermes Web UI instead?")
+
+        let swapped = initial.alternative
+        XCTAssertEqual(swapped, .webUI)
+        XCTAssertEqual(swapped.text, OnboardingFlowPolicy.webUISetupPrompt)
+        XCTAssertEqual(swapped.title, "Set up Hermes Web UI")
+        XCTAssertEqual(swapped.alternative, .hermes)
+    }
+
+    func testSetupPromptChoiceKeepsThePageCount() {
+        XCTAssertEqual(OnboardingFlowPolicy.pageCount, 5)
+        XCTAssertEqual(OnboardingFlowPolicy.agentPromptPageIndex, 2)
     }
 
     func testConnectFocusClearsWhenLeavingConnectPage() {
@@ -82,7 +150,7 @@ final class OnboardingFlowTests: XCTestCase {
     }
 
     func testAgentSetupPromptDefaultsToSafeStateAwareTailscaleServe() {
-        let prompt = OnboardingFlowPolicy.agentSetupPrompt
+        let prompt = OnboardingFlowPolicy.webUISetupPrompt
 
         let requiredInstructions = [
             "Python standard library + vanilla JavaScript",
@@ -132,6 +200,44 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertFalse(prompt.contains("curl http://$(tailscale ip -4):8787/health"))
         XCTAssertFalse(prompt.contains("fall back: bind the server to 0.0.0.0"))
         XCTAssertFalse(prompt.contains("Otherwise configure auto-start appropriate for this OS"))
+    }
+
+    func testHermesSetupPromptRequiresSignInPersistentSecretAndPublicURL() {
+        let prompt = OnboardingFlowPolicy.hermesSetupPrompt
+
+        let requiredInstructions = [
+            "Set up the Hermes dashboard on this machine for access from my iPhone.",
+            "Inventory before changing anything",
+            "`hermes dashboard`",
+            "default 9119",
+            "config.yaml",
+            "Do not kill an unknown process",
+            "dashboard.basic_auth.username",
+            "password_hash",
+            "plugins.dashboard_auth.basic import hash_password",
+            "dashboard.basic_auth.secret",
+            "survive a restart",
+            "dashboard.public_url",
+            "400 Invalid Host header",
+            "Cloudflare Tunnel",
+            "Tailscale",
+            "same Wi-Fi",
+            "require my confirmation",
+            "Never run the dashboard without its sign-in gate",
+            "`curl --fail <exact-phone-address>/api/status`",
+            "keeping its scheme and port",
+            "\"auth_required\": true",
+            "address, username, password"
+        ]
+
+        for instruction in requiredInstructions {
+            XCTAssertTrue(prompt.contains(instruction), "Missing Hermes setup instruction: \(instruction)")
+        }
+
+        // The confirmed same-Wi-Fi fallback is plain HTTP, so the check must not force https://.
+        XCTAssertFalse(prompt.contains("curl --fail https://<"))
+        XCTAssertFalse(prompt.contains("--insecure"))
+        XCTAssertFalse(prompt.contains("hermes-webui"))
     }
 
     func testTailscaleAppStoreURLUsesITMSDeepLink() {
