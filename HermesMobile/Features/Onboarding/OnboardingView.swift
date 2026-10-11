@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct OnboardingView: View {
+    /// Height of the fade the bottom bar paints over the pager. Pages that end in a control
+    /// pad their scroll content past it so the control can scroll clear of the fade.
+    static let bottomFadeHeight: CGFloat = 50
+
     @Bindable var authManager: AuthManager
     @State private var viewModel: OnboardingViewModel
     @State private var currentPage: Int
@@ -140,8 +144,8 @@ struct OnboardingView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 50)
-            .offset(y: -50)
+            .frame(height: Self.bottomFadeHeight)
+            .offset(y: -Self.bottomFadeHeight)
             // The fade overlaps the page above it; let taps reach the page's controls.
             .allowsHitTesting(false),
             alignment: .top
