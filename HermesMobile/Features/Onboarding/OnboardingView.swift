@@ -141,7 +141,9 @@ struct OnboardingView: View {
                 endPoint: .bottom
             )
             .frame(height: 50)
-            .offset(y: -50),
+            .offset(y: -50)
+            // The fade overlaps the page above it; let taps reach the page's controls.
+            .allowsHitTesting(false),
             alignment: .top
         )
     }
