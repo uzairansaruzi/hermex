@@ -64,6 +64,10 @@ import UserNotifications
         /// The newest is on disk, but the dashboard runs the old code, `loaded`, until it
         /// restarts. With 0.4.0 or newer loaded, the phone can restart it (#934).
         case restartNeeded(loaded: HermexPushPluginVersion?)
+        /// Setup reached a dashboard that hasn't loaded hermex-push (#1178): it was installed
+        /// after the dashboard started, or just now. A gateway restart doesn't load it; only
+        /// restarting `hermes dashboard` on the host does. "Check again" then finishes pairing.
+        case setupNeedsRestart
         /// Hermes didn't answer in time after a restart from the phone (#934). "Check again"
         /// reads once; a restart is offered again only once the host answers.
         case restartTimedOut
@@ -286,12 +290,18 @@ import UserNotifications
 
     /// The whole setup. A host that already answers the pairing route has its relay set
     /// and the plugin loaded, so it is paired as it stands: no install, and no restart
-    /// interrupting work. Anything else gets the full sequence, in the order the host
-    /// needs it — the relay address before the pairing route will answer, and the plugin
-    /// loaded by a restart before that route exists at all. Denied notification permission
-    /// stops the run before it signs in, so the host is never touched for a phone that
-    /// could not show what it sends.
-    func enable() async {
+    /// interrupting work. A plugin that is off or missing gets the full sequence, in the
+    /// order the host needs it — the relay address before the pairing route will answer,
+    /// and the plugin enabled before that route exists at all. A dashboard that hasn't
+    /// mounted a plugin on its disk ends in `.setupNeedsRestart` (#1178), the full sequence
+    /// included: only restarting the dashboard on the host loads it. Denied notification
+    /// permission stops the run before it signs in, so the host is never touched for a
+    /// phone that could not show what it sends.
+    func enable() async { await setUp(mayInstall: true) }
+
+    /// `enable`, or with `mayInstall` false "Check again" on `.setupNeedsRestart`, which
+    /// pairs a host that now answers and never installs or restarts anything.
+    private func setUp(mayInstall: Bool) async {
         guard !isWorking else { return }
         setupRanLast = true
         guard let connection else { return fail(Step.relayURL.title, HermexPushFailure.noConnection) }
@@ -307,7 +317,9 @@ import UserNotifications
         do { try await client.signIn() } catch { return failSignIn(error) }
         do {
             let state: HostState
-            do { state = try await hostState(client) } catch { return fail(Step.pair.title, error) }
+            do { state = try await hostState(client) } catch HermexPushRouteMissing.notMounted {
+                return awaitDashboardRestart()
+            } catch { return fail(Step.pair.title, error) }
             var paired: PushPairing
             switch state {
             case .paired(let configured):
@@ -324,6 +336,9 @@ import UserNotifications
                 step = .pair
                 phase = .enabling(step)
                 paired = try await pairAfterRestart(client)
+            case .notInstalled where !mayInstall:
+                // The plugin went off or away since setup; Check again changes nothing.
+                return fail(Step.pair.title, HermexPushFailure.pairingUnavailable)
             case .notInstalled:
                 try await client.setEnvironmentValue(HermexPushPlugin.relayURLEnvironmentKey,
                                                      HermexPushPlugin.defaultRelayURL.absoluteString)
@@ -352,7 +367,10 @@ import UserNotifications
             guard connectionID() == connection.id else { return await abandon() }
             completed.insert(.device)
             pairing = registrar.pairing(for: server)
+            if pluginUpdate == .setupNeedsRestart { pluginUpdate = nil }
             phase = .idle
+        } catch HermexPushRouteMissing.notMounted {
+            awaitDashboardRestart()
         } catch {
             // Nothing half-paired: the registrar undoes its own registration, and the host
             // keeps the same key pair, so a retry gets it back.
@@ -404,6 +422,7 @@ import UserNotifications
     /// error is a failed read.
     func checkPluginAgain() async {
         guard !isWorking, let connection else { return }
+        if pluginUpdate == .setupNeedsRestart { return await setUp(mayInstall: false) }
         pluginCheckGeneration &+= 1
         setupRanLast = false
         phase = .checkingPlugin
@@ -565,21 +584,32 @@ import UserNotifications
         }
     }
 
-    /// What the pairing route says this host still needs. Only an absent route or an
-    /// unset relay mean "not set up yet": a timeout, a server error, or keys this build
-    /// cannot read are thrown on instead, because reinstalling and restarting on those
-    /// would replace a self-hosted relay and interrupt work over a failure that had
-    /// nothing to do with setup.
+    /// What the pairing route says this host still needs. Only a plugin that is off or
+    /// missing, or an unset relay, mean "not set up yet": a timeout, a server error, a 404
+    /// the host doesn't explain, or keys this build cannot read are thrown on instead,
+    /// because reinstalling and restarting on those would replace a self-hosted relay and
+    /// interrupt work over a failure that had nothing to do with setup. An unmounted route
+    /// is read against the plugins hub: with hermex-push on disk it throws
+    /// `HermexPushRouteMissing.notMounted`, since only a dashboard restart loads it.
     private enum HostState { case paired(PushPairing), relayUnset, notInstalled }
 
     private func hostState(_ client: BotDashboardClient) async throws -> HostState {
-        do { return .paired(try await client.pairing()) } catch BotFailure.rejected(let status) {
-            switch status {
-            case 404: return .notInstalled
-            case 409: return .relayUnset
-            default: throw BotFailure.rejected(status)
-            }
+        do { return .paired(try await client.pairing()) } catch BotFailure.rejected(409) {
+            return .relayUnset
+        } catch HermexPushRouteMissing.pluginOff {
+            return .notInstalled
+        } catch HermexPushRouteMissing.notMounted {
+            guard try await client.hasPluginOnDisk() else { return .notInstalled }
+            throw HermexPushRouteMissing.notMounted
         }
+    }
+
+    /// Ends setup on "Restart Hermes to finish" rather than a failed step: the host has the
+    /// plugin, and the dashboard that serves the pairing route loads it only when it starts.
+    private func awaitDashboardRestart() {
+        pairing = registrar?.pairing(for: server)
+        pluginUpdate = .setupNeedsRestart
+        phase = .idle
     }
 
     /// Finishes a run whose connection was removed under it: nothing is stored, and a
@@ -592,9 +622,9 @@ import UserNotifications
         phase = .idle
     }
 
-    /// The restart drops the route for a moment, and a freshly installed plugin only
-    /// mounts it once the host has reloaded, so a missing route, a relay address the
-    /// plugin has not read yet, and a refused connection are all retried.
+    /// The restart drops the route for a moment, so a missing route, a relay address the
+    /// plugin has not read yet, and a refused connection are all retried. A route the
+    /// dashboard never mounted is not: the gateway restart can't mount it (#1178).
     private func pairAfterRestart(_ client: BotDashboardClient) async throws -> PushPairing {
         try await afterRestart { try await client.pairing() }
     }
@@ -614,7 +644,7 @@ import UserNotifications
     /// A host coming back from a restart: unreachable, or up without the plugin's routes yet.
     private static func isRestarting(_ error: Error) -> Bool {
         switch error {
-        case BotFailure.rejected(404), BotFailure.rejected(409): return true
+        case BotFailure.rejected(404), BotFailure.rejected(409), HermexPushRouteMissing.pluginOff: return true
         default: return isUnreachable(error)
         }
     }
@@ -669,6 +699,8 @@ import UserNotifications
         switch error {
         case let failure as HermexPushFailure:
             return failure.errorDescription ?? String(localized: "This step did not finish. Try again.")
+        case is HermexPushRouteMissing:
+            return message(for: HermexPushFailure.pairingUnavailable)
         case let failure as PushRegistrarError:
             switch failure {
             case .permissionDenied:

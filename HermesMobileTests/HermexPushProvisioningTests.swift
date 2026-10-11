@@ -93,9 +93,14 @@ import XCTest
         PushHTTPFixture.handler = { request in
             guard request.url?.path == "/api/plugins/hermex-push/pairing" else { return nil }
             attempts += 1
-            // 1 is the probe that finds an unconfigured host; 2 and 3 are the host coming
-            // back from its restart with the route missing, then its relay address unread.
-            return attempts < 4 ? (attempts < 3 ? 404 : 409, .null) : nil
+            // 1 is the probe that finds the plugin off; 2 and 3 are the host coming back
+            // from its restart with the route missing, then its relay address unread.
+            switch attempts {
+            case 1: return PushHTTPFixture.pluginNotFound
+            case 2: return (404, .null)
+            case 3: return (409, .null)
+            default: return nil
+            }
         }
         let provisioner = makeProvisioner(server: serverA, registrar: registrar)
 
@@ -108,7 +113,9 @@ import XCTest
 
     func testAHostThatNeverAnswersFailsThePairingStepInsteadOfWaitingForever() async throws {
         let registrar = FakePushRegistrar()
-        PushHTTPFixture.handler = { request in request.url?.path == "/api/plugins/hermex-push/pairing" ? (404, .null) : nil }
+        PushHTTPFixture.handler = { request in
+            request.url?.path == "/api/plugins/hermex-push/pairing" ? PushHTTPFixture.pluginNotFound : nil
+        }
         let provisioner = makeProvisioner(server: serverA, registrar: registrar)
 
         await provisioner.enable()
@@ -158,6 +165,114 @@ import XCTest
         XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("agent-plugins") },
                        "A loaded plugin is not reinstalled to give it an address")
         XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/gateway/restart") })
+    }
+
+    /// A fresh host (#1178): the plugin was never loaded, and the gateway restart does not
+    /// restart the dashboard that mounts plugin routes. Setup stops at the first read that
+    /// says the route isn't mounted, asks for a dashboard restart, and Check again pairs.
+    func testAFreshHostAsksForADashboardRestartAndCheckAgainPairs() async throws {
+        let registrar = FakePushRegistrar()
+        var enabled = false
+        var dashboardRestarted = false
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/dashboard/agent-plugins/hermex-push/enable": enabled = true; return nil
+            case "/api/plugins/hermex-push/pairing":
+                if dashboardRestarted { return nil }
+                return enabled ? PushHTTPFixture.notMounted : PushHTTPFixture.pluginNotFound
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        await provisioner.enable()
+
+        XCTAssertNil(provisioner.failure, "A host that needs its dashboard restarted has not failed")
+        XCTAssertEqual(provisioner.pluginCard, .status(.setupNeedsRestart))
+        XCTAssertNil(provisioner.pairing)
+        XCTAssertEqual(registrar.actions, [])
+        XCTAssertEqual(PushHTTPFixture.calls.filter { $0.hasSuffix("/api/plugins/hermex-push/pairing") }.count, 2,
+                       "An unmounted route is not retried: only a dashboard restart mounts it")
+        XCTAssertTrue(PushHTTPFixture.calls.contains("POST https://a.example.com/api/gateway/restart"))
+
+        dashboardRestarted = true
+        PushHTTPFixture.clearCalls()
+        await provisioner.checkPluginAgain()
+
+        XCTAssertNil(provisioner.failure)
+        XCTAssertNil(provisioner.pluginCard)
+        XCTAssertEqual(provisioner.pairing?.installKey, PushHTTPFixture.installKey)
+        XCTAssertEqual(registrar.actions, ["enable a.example.com"])
+        XCTAssertEqual(PushHTTPFixture.calls.filter { $0.hasPrefix("POST") || $0.hasPrefix("PUT") },
+                       ["POST https://a.example.com/auth/password-login"], "Check again changes nothing on the host")
+    }
+
+    /// Installed after the dashboard started, or under `hermes serve`: the plugin is on disk,
+    /// so nothing is reinstalled or restarted and the restart instruction shows at once.
+    func testAPluginOnDiskButNotMountedAsksForARestartWithoutReinstalling() async throws {
+        for answer in [PushHTTPFixture.notMounted, PushHTTPFixture.headless] {
+            PushHTTPFixture.reset()
+            PushHTTPFixture.handler = { request in
+                switch request.url?.path {
+                case "/api/plugins/hermex-push/pairing": return answer
+                case "/api/dashboard/plugins/hub": return (200, PushHTTPFixture.hubBody(version: "0.4.0"))
+                default: return nil
+                }
+            }
+            let registrar = FakePushRegistrar()
+            let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+            await provisioner.enable()
+
+            XCTAssertNil(provisioner.failure)
+            XCTAssertEqual(provisioner.pluginCard, .status(.setupNeedsRestart))
+            XCTAssertEqual(PushHTTPFixture.calls, [
+                "GET https://a.example.com/api/status",
+                "POST https://a.example.com/auth/password-login",
+                "GET https://a.example.com/api/auth/me",
+                "GET https://a.example.com/api/plugins/hermex-push/pairing",
+                "GET https://a.example.com/api/dashboard/plugins/hub"
+            ])
+            XCTAssertEqual(registrar.actions, [])
+        }
+    }
+
+    /// Listed in `plugins.enabled` but missing on disk: the route is unmounted for want of
+    /// the plugin itself, so the full sequence installs it before asking for the restart.
+    func testAnUnmountedRouteWithNoPluginOnDiskInstallsIt() async throws {
+        let registrar = FakePushRegistrar()
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/pairing": return PushHTTPFixture.notMounted
+            case "/api/dashboard/plugins/hub":
+                return (200, .object(["plugins": .array([.object(["name": .string("disk-cleanup"), "version": .string("1.0")])])]))
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        await provisioner.enable()
+
+        XCTAssertNil(provisioner.failure)
+        XCTAssertEqual(provisioner.pluginCard, .status(.setupNeedsRestart))
+        XCTAssertTrue(PushHTTPFixture.calls.contains("POST https://a.example.com/api/dashboard/agent-plugins/install"))
+        XCTAssertTrue(PushHTTPFixture.calls.contains("POST https://a.example.com/api/gateway/restart"))
+    }
+
+    /// A 404 that is none of the host's known answers is not taken as "not set up".
+    func testAnUnknownMissingRouteIsReportedInsteadOfReconfiguringTheHost() async throws {
+        let registrar = FakePushRegistrar()
+        PushHTTPFixture.handler = { request in
+            request.url?.path == "/api/plugins/hermex-push/pairing" ? (404, .object(["detail": .string("Not Found")])) : nil
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        await provisioner.enable()
+
+        XCTAssertEqual(provisioner.failure?.title, HermexPushProvisioner.Step.pair.title)
+        XCTAssertEqual(provisioner.failure?.message, "This Hermes host refused the step (HTTP 404). Check the host’s logs, then try again.")
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/env") || $0.contains("agent-plugins") || $0.contains("/api/gateway/restart") })
+        XCTAssertNil(provisioner.pluginCard)
     }
 
     func testAHostErrorWhileCheckingIsReportedInsteadOfReconfiguringTheHost() async throws {
@@ -1454,6 +1569,13 @@ private final class PushHTTPFixture: URLProtocol {
 
     override func stopLoading() {}
 
+    /// The pairing route's 404s at hermes-agent ca678285 (#1178): the plugin is off or not
+    /// installed; it is on but the dashboard never mounted it; and `hermes serve`'s catch-all.
+    static let pluginNotFound: (Int, BotJSON) = (404, .object(["detail": .string("Plugin not found")]))
+    static let notMounted: (Int, BotJSON) = (404, .object(["detail": .string("No such API endpoint: /api/plugins/hermex-push/pairing")]))
+    static let headless: (Int, BotJSON) = (404, .object(["error": .string(
+        "Headless backend (hermes serve): web UI disabled — use `hermes dashboard` for the browser UI.")]))
+
     /// The pairing route as a set-up host answers it; `version` is its `plugin_version`,
     /// which plugins older than 0.2.0 leave out.
     static func pairingBody(version: String?) -> BotJSON {
@@ -1480,7 +1602,7 @@ private final class PushHTTPFixture: URLProtocol {
                                   "version": .string("0.21.3")]))
         case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
         case "/api/plugins/hermex-push/pairing":
-            guard isSetUp else { return (404, .null) }
+            guard isSetUp else { return pluginNotFound }
             return (200, .object(["relay_url": .string(HermexPushPlugin.defaultRelayURL.absoluteString),
                                   "install_key": .string(installKey), "preview_key": .string(previewKey),
                                   "platform": .string("hermex"), "payload_version": .number(1)]))

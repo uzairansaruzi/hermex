@@ -36,10 +36,27 @@ enum HermexPushPlugin {
         body["plugin_version"].text.flatMap(HermexPushPluginVersion.init)
     }
 
+    /// Whether the plugins hub lists hermex-push, i.e. it is on the host's disk.
+    static func isOnDisk(hub body: BotJSON) -> Bool {
+        body["plugins"].list?.contains { $0["name"].text == name } == true
+    }
+
     /// The version on the host's disk: `plugin.yaml`'s, as `GET /api/dashboard/plugins/hub`
     /// lists it per plugin. Nil when the plugin is not listed or its version doesn't parse.
     static func installedVersion(hub body: BotJSON) -> HermexPushPluginVersion? {
         body["plugins"].list?.first { $0["name"].text == name }?["version"].text.flatMap(HermexPushPluginVersion.init)
+    }
+
+    /// Why the pairing route answered 404, from the body the dashboard sent (hermes-agent
+    /// ca678285, #1178). Its auth middleware answers "Plugin not found" for a plugin that is
+    /// off or not installed. The SPA catch-all answers "No such API endpoint" for a plugin
+    /// that is on but whose routes the dashboard never mounted, since it mounts them only at
+    /// startup; `hermes serve`'s headless catch-all means the same. Nil for any other body.
+    static func missingRoute(_ body: BotJSON) -> HermexPushRouteMissing? {
+        if body["detail"].text == "Plugin not found" { return .pluginOff }
+        if body["detail"].text?.hasPrefix("No such API endpoint") == true
+            || body["error"].text?.hasPrefix("Headless backend") == true { return .notMounted }
+        return nil
     }
 
     /// Decodes `GET /api/plugins/hermex-push/pairing`. Fields the plugin may add later
@@ -95,6 +112,10 @@ enum HermexPushFailure: Error, Equatable, LocalizedError {
         }
     }
 }
+
+/// The pairing route's 404s that say what the host lacks (`HermexPushPlugin.missingRoute`).
+/// `notMounted` never clears without a dashboard restart on the host.
+enum HermexPushRouteMissing: Error, Equatable { case pluginOff, notMounted }
 
 /// A hermex-push version, compared number by number so 0.10.0 is newer than 0.9.0, and
 /// 0.3 equals 0.3.0. Only dot-separated whole numbers parse.

@@ -140,9 +140,10 @@ enum PushRegistrarError: Error, Equatable {
     /// never fails: the keys go whether or not the relay could be told, because the user
     /// has already thrown the connection away and an unreachable relay must not leave
     /// credentials behind. The relay drops the device on its own once Apple reports the
-    /// token invalid.
+    /// token invalid. A device another entry for the same host still uses stays registered.
     func forget(for server: URL) async {
-        if let pairing = try? store.pairing(for: server), let token = pairing.registeredToken {
+        if let pairing = try? store.pairing(for: server), let token = pairing.registeredToken,
+           !isShared(pairing, besides: server) {
             try? await relay.deleteDevice(token: token, pairing: pairing)
         }
         try? store.remove(for: server)
@@ -157,10 +158,10 @@ enum PushRegistrarError: Error, Equatable {
     /// relay call comes first on purpose: dropping the install key while the relay
     /// still holds the device would leave a phone that keeps buzzing with no way
     /// left to address it. A failure here throws and changes nothing, so the user
-    /// can retry.
+    /// can retry. Like `forget`, it leaves a device another entry for the host still uses.
     func disable(for server: URL) async throws {
         guard let pairing = try store.pairing(for: server) else { return }
-        if let token = pairing.registeredToken {
+        if let token = pairing.registeredToken, !isShared(pairing, besides: server) {
             try await relay.deleteDevice(token: token, pairing: pairing)
         }
         try store.remove(for: server)
@@ -174,6 +175,16 @@ enum PushRegistrarError: Error, Equatable {
 
     func pairing(for server: URL) -> PushPairing? {
         try? store.pairing(for: server)
+    }
+
+    /// Whether another configured server pairs with the same install at the same relay
+    /// (#1178). Two entries that reach one host, say a LAN and a tunnel address, get the
+    /// host's one key pair, and the relay keys a device by install and token, so they
+    /// share one registration: deleting it for one would silence the other.
+    private func isShared(_ pairing: PushPairing, besides server: URL) -> Bool {
+        ((try? store.allPairings()) ?? [:]).contains { other, stored in
+            other != server && stored.installKey == pairing.installKey && stored.relayURL == pairing.relayURL
+        }
     }
 
     /// Finishes an accepted preference transaction even if its screen closes. Only

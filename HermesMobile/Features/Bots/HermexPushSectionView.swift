@@ -268,7 +268,7 @@ import SwiftUI
             callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
                     message: Text("The new plugin is installed, but Hermes loads plugins only when it starts."),
                     action: String(localized: "Restart Hermes…")) { isConfirmingRestart = true }
-        case .status(.restartNeeded):
+        case .status(.restartNeeded), .status(.setupNeedsRestart):
             callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
                     message: Text("The new plugin is installed, but Hermes loads plugins only when it starts. Restart `hermes dashboard` on your host, then check again. Hermex can’t restart it from this iPhone."),
                     action: provisioner.phase == .checkingPlugin ? String(localized: "Checking…") : String(localized: "Check again")) {
@@ -344,7 +344,7 @@ import SwiftUI
             captionLine("circle.dashed", tint: .secondary, text: String(localized: "Updating plugin…"), textTint: .secondary)
         case .restarting:
             captionLine("circle.dashed", tint: .secondary, text: String(localized: "Restarting Hermes…"), textTint: .secondary)
-        case .status(.restartNeeded):
+        case .status(.restartNeeded), .status(.setupNeedsRestart):
             captionLine("arrow.clockwise.circle.fill", tint: .orange, text: String(localized: "Restart Hermes to finish"),
                         textTint: .secondary)
         case .status(.restartTimedOut):

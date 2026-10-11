@@ -63,16 +63,28 @@ import Foundation
         await http.answersStatus()
     }
 
-    /// Reads the plugin's pairing keys. The route answers 409 until the relay URL is set
-    /// and 404 until the restart has mounted it, so the caller retries both.
+    /// Reads the plugin's pairing keys. The route answers 409 until the relay URL is set,
+    /// and a 404 whose body says why it is missing throws `HermexPushRouteMissing`; any
+    /// other refusal throws `BotFailure.rejected` with its status.
     func pairing() async throws -> PushPairing {
-        try HermexPushPlugin.pairing(try await send(.pushPairing))
+        let (data, status) = try await http.reply(.pushPairing, deadline: .provisioning)
+        let body = (try? JSONDecoder().decode(BotJSON.self, from: data)) ?? .null
+        guard (200..<300).contains(status) else {
+            if status == 404, let missing = HermexPushPlugin.missingRoute(body) { throw missing }
+            throw BotFailure.rejected(status)
+        }
+        return try HermexPushPlugin.pairing(body)
     }
 
     /// The hermex-push version the dashboard process has loaded, from the pairing route;
     /// nil for a plugin too old to say. Keys are not decoded, so an old plugin's still read.
     func loadedPluginVersion() async throws -> HermexPushPluginVersion? {
         HermexPushPlugin.loadedVersion(try await send(.pushPairing))
+    }
+
+    /// Whether hermex-push is on the host's disk, from the plugins hub.
+    func hasPluginOnDisk() async throws -> Bool {
+        HermexPushPlugin.isOnDisk(hub: try await send(.pluginsHub))
     }
 
     /// The hermex-push version on the host's disk, from the plugins hub.
