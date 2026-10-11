@@ -61,7 +61,7 @@ struct HermesSessionListView: View {
     private let didAbandonShare: (SharedImportReservation) -> Void
     /// Moving `pendingShare` into its new session's draft; leaving cancels it.
     @State private var shareTransfer: Task<Void, Never>?
-    /// A share whose move failed, still claimed, until the user discards it or leaves (#1196).
+    /// A share whose move failed, still claimed, until the user discards it or the alert closes (#1196).
     @State private var failedShare: HermesShareFailure?
     @State private var viewModel: SessionListViewModel
     /// The chat, pushed screens, sheets and confirmations over the rows.
@@ -257,9 +257,11 @@ struct HermesSessionListView: View {
         } message: { move in
             Text(verbatim: move.message)
         }
-        // Discard is the only button: kept, the same files would fail the same way. The share stays
-        // claimed meanwhile; the list leaving (`onDisappear`) queues it again instead.
-        .alert("Couldn’t Add Shared Files", isPresented: Binding(get: { failedShare != nil }, set: { _ in }),
+        // Discard is the only action: kept, the same files would fail the same way. The share stays
+        // claimed meanwhile; the alert closing any other way (a Cancel iOS adds, Escape, leaving)
+        // queues it again instead.
+        .alert("Couldn’t Add Shared Files",
+               isPresented: Binding(get: { failedShare != nil }, set: { if !$0 { queueFailedShareAgain() } }),
                presenting: failedShare) { failure in
             Button("Discard Share", role: .destructive) {
                 failedShare = nil
@@ -291,10 +293,7 @@ struct HermesSessionListView: View {
         .onDisappear {
             shareTransfer?.cancel()
             shareTransfer = nil
-            if let failedShare {
-                self.failedShare = nil
-                didDeclineShare(failedShare.share)
-            }
+            queueFailedShareAgain()
             actionToast.dismiss()
             if covers.chat == nil { viewModel.closeHermes() } else { viewModel.pauseHermes() }
         }
@@ -584,8 +583,8 @@ struct HermesSessionListView: View {
     /// Opens a share (#1181) as a new session over whatever covers the rows, once `transfer` has
     /// moved it into that session's draft and let it go. The share is claimed for the move, so no
     /// home, here or on another server, starts a second one. A transfer that fails stays claimed
-    /// and says why, offering Discard (#1196); leaving first keeps it queued. One cut short by
-    /// leaving hands it back for the next try.
+    /// and says why, offering Discard (#1196); closing the alert otherwise, or leaving, keeps it
+    /// queued. One cut short by leaving hands it back for the next try.
     private func openPendingShare() {
         guard shareTransfer == nil, let share = pendingShare,
               let opening = share.hermesOpening(on: entry, listed: profile, isLive: viewModel.isHermesLive) else {
@@ -612,6 +611,14 @@ struct HermesSessionListView: View {
             }
             if !Task.isCancelled { shareTransfer = nil }
         }
+    }
+
+    /// Hands back a failed share the user didn't discard, so it is offered again next time.
+    /// Discard clears `failedShare` first, so the alert's dismissal after it does nothing.
+    private func queueFailedShareAgain() {
+        guard let failedShare else { return }
+        self.failedShare = nil
+        didDeclineShare(failedShare.share)
     }
 
     private func showLinkNotice(_ message: String) {
