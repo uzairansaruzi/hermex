@@ -2355,10 +2355,17 @@ gateway socket). It reads `GET /api/plugins/hermex-push/pairing` first, and only
 route's own answers decide what the host needs: 200 means the relay is set and the plugin
 loaded, so it is paired as it stands, with nothing installed and no restart interrupting
 work; 409 means a loaded plugin with nowhere to send, which needs the address alone, since
-the plugin re-reads it; 404 means the plugin is missing, which needs the full sequence.
-Anything else — a timeout, a server error, keys this build cannot read — is reported as it
-is, because reconfiguring on those would replace a self-hosted relay and restart a gateway
-over a failure that had nothing to do with setup. The full sequence runs
+the plugin re-reads it. A 404 is read by its body (hermes-agent `ca678285`, #1178):
+
+| 404 body | Meaning | Setup |
+| --- | --- | --- |
+| `{"detail":"Plugin not found"}` | off, or not installed (auth middleware) | the full sequence |
+| `{"detail":"No such API endpoint: …"}` | on, but the dashboard never mounted its routes | plugins hub: on disk → "Restart Hermes to finish"; not on disk → the full sequence; no plugins list → Pair step fails, host unchanged |
+| `{"error":"Headless backend (hermes serve): …"}` | `hermes serve`'s catch-all, read like the line above | as above |
+
+Anything else — another 404, a timeout, a server error, keys this build cannot read — is
+reported as it is, because reconfiguring on those would replace a self-hosted relay and
+restart a gateway over a failure that had nothing to do with setup. The full sequence runs
 in the order the host needs: `PUT /api/env` sets
 `HERMEX_PUSH_RELAY_URL` at the root so every Profile inherits it, `POST
 /api/dashboard/agent-plugins/install` and `…/hermex-push/enable` install the
@@ -2374,9 +2381,19 @@ reinstalls instead of refusing. Reinstalling cannot unpair a phone: the plugin k
 key pair in `plugin-data`. The revision is whatever the repository resolves to; pinning a
 `ref` is an open owner decision.
 
-The restart drops the route, so the pairing read retries a missing route, a 409
-from an unread relay address and a refused connection on a fixed schedule before
-the step fails. A failure names its step and leaves nothing half-paired: the keys
+`POST /api/gateway/restart` restarts only the messaging gateway (`hermes gateway restart`),
+not the dashboard that serves the pairing route: the dashboard mounts plugin routes once,
+when it starts. So the restart loads nothing new there; it is kept as it runs today, being
+harmless for push (owner decision, #1178). A plugin turned off after the dashboard
+mounted it answers again once enabled. One the dashboard never mounted — a fresh install,
+or one installed after it started — answers "No such API endpoint", and setup stops at that
+read instead of retrying it: Settings shows the plugin card's "Restart Hermes to finish"
+(`.setupNeedsRestart`), which asks the user to restart `hermes dashboard` on the host, then
+"Check again". The phone never restarts a dashboard that hasn't loaded the plugin, since
+only the plugin's own route can. Check again re-reads the pairing route and pairs a host
+that now answers (setting the relay address first if it answers 409); it installs and
+restarts nothing. Other missing routes, a 409 from an unread relay address and a refused
+connection are retried on a fixed schedule before the step fails. A failure names its step and leaves nothing half-paired: the keys
 are wiped, and the host hands back the same pair on the next attempt, because the
 plugin keeps them in `plugin-data` rather than its install directory.
 
@@ -2471,7 +2488,8 @@ never pairs by itself; "Turn on notifications…" stays the way to pair. Turning
 off drops the offer, because its install would enable the plugin again. Bump the constant in
 the release that follows a plugin release (TESTFLIGHT.md's release gates).
 
-Every way out removes this phone at the relay and wipes the keys.
+Every way out removes this phone at the relay and wipes the keys, except that a relay
+device another entry for the same host still shares stays registered (`push.md`, #1178).
 `HermexPushProvisioner.disable()` stops the host sending first, then calls
 `PushRegistrar.disable`, so a failure at either end changes nothing the user has to
 unpick. `PushRegistrar.forget` is the teardown that cannot fail — the keys go whether or

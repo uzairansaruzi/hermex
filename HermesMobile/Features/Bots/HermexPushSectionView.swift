@@ -76,7 +76,9 @@ import SwiftUI
         .confirmationDialog("Turn off notifications for this server?", isPresented: $isConfirmingDisable, titleVisibility: .visible) {
             Button("Turn off notifications", role: .destructive) { Task { await provisioner.disable() } }
         } message: {
-            Text("This iPhone is removed from the relay, the plugin is disabled on your Hermes host, and the keys stored on this iPhone are deleted.")
+            Text(provisioner.sharesHostPairing
+                 ? String(localized: "Another entry for this Hermes host still gets its notifications, so the plugin and the relay stay as they are. Only the keys stored on this iPhone for this server are deleted.")
+                 : String(localized: "This iPhone is removed from the relay, the plugin is disabled on your Hermes host, and the keys stored on this iPhone are deleted."))
         }
         .confirmationDialog("Update the hermex-push plugin?", isPresented: $isConfirmingUpdate, titleVisibility: .visible) {
             // Like setup, the run outlives the screen: the host has already been asked to change.
@@ -268,7 +270,7 @@ import SwiftUI
             callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
                     message: Text("The new plugin is installed, but Hermes loads plugins only when it starts."),
                     action: String(localized: "Restart Hermes…")) { isConfirmingRestart = true }
-        case .status(.restartNeeded):
+        case .status(.restartNeeded), .status(.setupNeedsRestart):
             callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
                     message: Text("The new plugin is installed, but Hermes loads plugins only when it starts. Restart `hermes dashboard` on your host, then check again. Hermex can’t restart it from this iPhone."),
                     action: provisioner.phase == .checkingPlugin ? String(localized: "Checking…") : String(localized: "Check again")) {
@@ -344,7 +346,7 @@ import SwiftUI
             captionLine("circle.dashed", tint: .secondary, text: String(localized: "Updating plugin…"), textTint: .secondary)
         case .restarting:
             captionLine("circle.dashed", tint: .secondary, text: String(localized: "Restarting Hermes…"), textTint: .secondary)
-        case .status(.restartNeeded):
+        case .status(.restartNeeded), .status(.setupNeedsRestart):
             captionLine("arrow.clockwise.circle.fill", tint: .orange, text: String(localized: "Restart Hermes to finish"),
                         textTint: .secondary)
         case .status(.restartTimedOut):

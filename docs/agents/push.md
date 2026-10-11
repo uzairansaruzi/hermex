@@ -60,7 +60,19 @@ touches may show up under another. A server without a pairing gets local run
 alerts instead, which route the same way: their `server_hash` must match a
 configured server (`ResponseCompletionNotificationRequest.destination`).
 
-One caveat: two configured servers that reach the same host pair with the
-same install, because the host hands out one key pair. A tap on one of that
-host's banners then prefers the active server and otherwise takes the first
-matching server by URL (`PushNotificationRouter.botDestination`).
+One caveat: two configured servers that reach the same host (a LAN and a tunnel
+address, say) pair with the same install, because the host hands out one key
+pair. A tap on one of that host's banners then prefers the active server and
+otherwise takes the first matching server by URL
+(`PushNotificationRouter.botDestination`). The relay keys a device by install
+and token, so both entries share one registration: removing or turning off one
+keeps it for the other, and only the last one deletes it
+(`PushRegistrar.forget` and `disable`, #1178). Both wait for an in-flight device
+write (a token refresh, preference save, or another entry's enable) before
+deciding, so they judge the tokens the entries end up holding; removing an entry
+that never paired doesn't wait. Another entry keeps only the token it
+holds, and a Keychain that can't list the entries deletes nothing (turning off
+fails instead). Turning one off in Settings also leaves the
+host's plugin enabled; only the last one disables it
+(`HermexPushProvisioner.disable`). Their preferences are that one
+registration too, so the last choice saved under either entry applies to both.
