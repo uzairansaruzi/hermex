@@ -379,16 +379,21 @@ import UserNotifications
         }
     }
 
+    /// Whether another entry for this server's host (a LAN and a tunnel address, say) uses
+    /// the same pairing, so turning this one off leaves the host and relay alone (#1178).
+    var sharesHostPairing: Bool { registrar?.sharesRegistration(for: server) == true }
+
     /// The way out: stop the host sending, then drop this phone at the relay and wipe its
     /// keys. The host goes first so a failure at either step changes nothing the user has
-    /// to unpick — they can simply try again.
+    /// to unpick — they can simply try again. While another entry shares the pairing, the
+    /// plugin stays on for it and only this entry's keys go.
     func disable() async {
         guard !isWorking, pairing != nil else { return }
         completed = []
         phase = .disabling
         var step = String(localized: "Disable the plugin")
         do {
-            if let connection {
+            if let connection, !sharesHostPairing {
                 let client = dashboard(connection)
                 do { try await client.signIn() } catch { return failSignIn(error) }
                 try await client.setPlugin(HermexPushPlugin.name, enabled: false)

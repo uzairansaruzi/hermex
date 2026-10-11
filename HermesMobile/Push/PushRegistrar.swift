@@ -28,6 +28,8 @@ import UIKit
     /// reached. Removing a connection or a whole server may not depend on the network.
     func forget(for server: URL) async
     func pairing(for server: URL) -> PushPairing?
+    /// Whether another stored pairing uses this server's relay registration (#1178).
+    func sharesRegistration(for server: URL) -> Bool
     func finishPendingRegistrations() async
     func updatePreferences(_ preferences: PushPreferences, for server: URL, expectedPairing: PushPairing) async throws
 }
@@ -131,7 +133,7 @@ enum PushRegistrarError: Error, Equatable {
             // nothing could ever revoke it, so undo the registration before
             // reporting the failure rather than leave a phone that cannot be
             // unpaired.
-            try? await relay.deleteDevice(token: token, pairing: pairing)
+            await retire(token: token, of: pairing, removedFrom: server)
             throw error
         }
     }
@@ -177,6 +179,13 @@ enum PushRegistrarError: Error, Equatable {
         try? store.pairing(for: server)
     }
 
+    /// Whether another entry for this server's host uses the same relay registration, so
+    /// turning this one off must leave the host sending for it.
+    func sharesRegistration(for server: URL) -> Bool {
+        guard let pairing = pairing(for: server) else { return false }
+        return isShared(pairing, besides: server)
+    }
+
     /// Whether another configured server pairs with the same install at the same relay
     /// (#1178). Two entries that reach one host, say a LAN and a tunnel address, get the
     /// host's one key pair, and the relay keys a device by install and token, so they
@@ -185,6 +194,13 @@ enum PushRegistrarError: Error, Equatable {
         ((try? store.allPairings()) ?? [:]).contains { other, stored in
             other != server && stored.installKey == pairing.installKey && stored.relayURL == pairing.relayURL
         }
+    }
+
+    /// Undoes a device write whose pairing left `server` while it was in flight, unless
+    /// another entry for the host still uses that registration.
+    private func retire(token: String, of pairing: PushPairing, removedFrom server: URL) async {
+        guard !isShared(pairing, besides: server) else { return }
+        try? await relay.deleteDevice(token: token, pairing: pairing)
     }
 
     /// Finishes an accepted preference transaction even if its screen closes. Only
@@ -230,7 +246,7 @@ enum PushRegistrarError: Error, Equatable {
                     }
                 }
                 if !isStillPaired(original, for: server) {
-                    try? await relay.deleteDevice(token: token, pairing: original)
+                    await retire(token: token, of: original, removedFrom: server)
                     throw PushRegistrarError.pairingChanged
                 }
                 throw updateError
@@ -294,7 +310,7 @@ enum PushRegistrarError: Error, Equatable {
                     // Disabled while that call was in flight. Retire the device we
                     // just registered; otherwise the phone keeps receiving pushes
                     // for a server whose keys are gone.
-                    try? await relay.deleteDevice(token: token, pairing: pairing)
+                    await retire(token: token, of: pairing, removedFrom: server)
                     continue
                 }
                 if let previous = pairing.registeredToken, previous != token {

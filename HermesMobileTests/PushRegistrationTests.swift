@@ -161,6 +161,22 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertEqual(harness.relay.deletions.map(\.token), ["abcd", "abcd"])
     }
 
+    /// Removing one of two entries for a host while its preference save is in flight leaves
+    /// the relay device the other entry still uses (#1178).
+    func testRemovingASharedEntryDuringItsPreferenceSaveKeepsTheOtherEntrysDevice() async {
+        let harness = Harness()
+        let original = harness.pairing(install: installA, registeredToken: "abcd")
+        harness.store.pairings[serverA] = original
+        harness.store.pairings[serverB] = original
+        harness.relay.duringRegister = { [serverA] in await harness.registrar.forget(for: serverA) }
+        await XCTAssertThrowsErrorAsync(
+            try await harness.registrar.updatePreferences(PushPreferences(previews: false), for: serverA, expectedPairing: original),
+            PushRegistrarError.pairingChanged)
+        XCTAssertNil(harness.store.pairings[serverA])
+        XCTAssertEqual(harness.store.pairings[serverB], original)
+        XCTAssertEqual(harness.relay.deletions, [])
+    }
+
     func testOldSettingsCannotChangeAReplacementPairing() async {
         let harness = Harness()
         let original = harness.pairing(install: installA, registeredToken: "abcd")
@@ -492,6 +508,53 @@ final class PushRegistrationTests: XCTestCase {
 
         XCTAssertNil(harness.store.pairings[serverA])
         XCTAssertEqual(harness.relay.deletions.map(\.token), ["0dd0", "5ee5"])
+    }
+
+    /// The same during a launch refresh: a second entry for the host pairs while the first
+    /// one's registration is in flight, and the first is then removed. The device the
+    /// refresh just registered stays for the second entry (#1178).
+    func testRemovingASharedEntryDuringALaunchRefreshKeepsTheOtherEntrysDevice() async {
+        let harness = Harness()
+        harness.store.pairings[serverA] = harness.pairing(install: installA, registeredToken: "0dd0")
+        harness.relay.duringRegister = { [registrar = harness.registrar, serverA, serverB, installA] in
+            harness.store.pairings[serverB] = harness.pairing(install: installA, registeredToken: "5ee5")
+            await registrar.forget(for: serverA)
+        }
+
+        harness.registrar.refreshOnLaunch()
+        await harness.deliverToken("5ee5")
+
+        XCTAssertNil(harness.store.pairings[serverA])
+        XCTAssertEqual(harness.store.pairings[serverB]?.registeredToken, "5ee5")
+        XCTAssertEqual(harness.relay.deletions, [])
+    }
+
+    /// A failed Keychain write undoes only a registration no other entry for the host uses.
+    func testEnableRollbackKeepsADeviceAnotherEntryForTheHostUses() async {
+        struct KeychainFailure: Error, Equatable {}
+        let harness = Harness()
+        harness.store.pairings[serverB] = harness.pairing(install: installA, registeredToken: "0a1b")
+        harness.deliverTokenOnRegister("0a1b")
+        harness.store.saveError = KeychainFailure()
+
+        await XCTAssertThrowsErrorAsync(
+            try await harness.registrar.enable(harness.pairing(install: installA), for: serverA),
+            KeychainFailure()
+        )
+        XCTAssertNil(harness.store.pairings[serverA])
+        XCTAssertEqual(harness.relay.deletions, [])
+    }
+
+    func testSharesRegistrationOnlyWithAnotherEntryAtTheSameInstallAndRelay() {
+        let harness = Harness()
+        harness.store.pairings[serverA] = harness.pairing(install: installA, registeredToken: "0a1b")
+        XCTAssertFalse(harness.registrar.sharesRegistration(for: serverA))
+        harness.store.pairings[serverB] = PushPairing(relayURL: URL(string: "https://other-relay.example.com")!,
+                                                      installKey: installA, previewKey: "preview", registeredToken: "0a1b")
+        XCTAssertFalse(harness.registrar.sharesRegistration(for: serverA))
+        harness.store.pairings[serverB] = harness.pairing(install: installA, registeredToken: "0a1b")
+        XCTAssertTrue(harness.registrar.sharesRegistration(for: serverA))
+        XCTAssertFalse(harness.registrar.sharesRegistration(for: URL(string: "https://unpaired.example.com")!))
     }
 
     /// Without stored keys nothing could ever revoke the device, so a Keychain

@@ -538,6 +538,32 @@ import XCTest
         XCTAssertNil(registrar.pairing(for: serverA))
     }
 
+    /// A LAN and a tunnel entry for one host share its plugin (#1178): turning one off keeps
+    /// the host sending for the other, and only the last one disables the plugin.
+    func testDisableLeavesTheHostPluginOnWhileAnotherEntryForTheHostIsPaired() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        try await registrar.enable(try XCTUnwrap(registrar.pairing(for: serverA)), for: serverB)
+        registrar.clearActions()
+        PushHTTPFixture.handler = { _ in nil }
+        PushHTTPFixture.clearCalls()
+        let first = makeProvisioner(server: serverA, registrar: registrar)
+
+        await first.disable()
+
+        XCTAssertNil(first.failure)
+        XCTAssertEqual(PushHTTPFixture.calls, [])
+        XCTAssertEqual(registrar.actions, ["disable a.example.com"])
+        XCTAssertNil(first.pairing)
+        XCTAssertNotNil(registrar.pairing(for: serverB))
+
+        let last = makeProvisioner(server: serverB, registrar: registrar)
+        await last.disable()
+
+        XCTAssertNil(last.failure)
+        XCTAssertEqual(PushHTTPFixture.calls.last, "POST https://a.example.com/api/dashboard/agent-plugins/hermex-push/disable")
+        XCTAssertEqual(registrar.actions, ["disable a.example.com", "disable b.example.com"])
+    }
+
     func testDisableKeepsThePairingWhenTheRelayRefusesSoTheUserCanRetry() async throws {
         let registrar = FakePushRegistrar()
         PushHTTPFixture.handler = { _ in nil }
@@ -1464,6 +1490,11 @@ import XCTest
     }
 
     func pairing(for server: URL) -> PushPairing? { pairings[server] }
+
+    func sharesRegistration(for server: URL) -> Bool {
+        guard let pairing = pairings[server] else { return false }
+        return pairings.contains { $0.key != server && $0.value.installKey == pairing.installKey && $0.value.relayURL == pairing.relayURL }
+    }
 
     func clearActions() { actions = [] }
 }

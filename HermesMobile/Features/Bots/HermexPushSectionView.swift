@@ -76,7 +76,9 @@ import SwiftUI
         .confirmationDialog("Turn off notifications for this server?", isPresented: $isConfirmingDisable, titleVisibility: .visible) {
             Button("Turn off notifications", role: .destructive) { Task { await provisioner.disable() } }
         } message: {
-            Text("This iPhone is removed from the relay, the plugin is disabled on your Hermes host, and the keys stored on this iPhone are deleted.")
+            Text(provisioner.sharesHostPairing
+                 ? String(localized: "Another entry for this Hermes host still gets its notifications, so the plugin and the relay stay as they are. Only the keys stored on this iPhone for this server are deleted.")
+                 : String(localized: "This iPhone is removed from the relay, the plugin is disabled on your Hermes host, and the keys stored on this iPhone are deleted."))
         }
         .confirmationDialog("Update the hermex-push plugin?", isPresented: $isConfirmingUpdate, titleVisibility: .visible) {
             // Like setup, the run outlives the screen: the host has already been asked to change.
