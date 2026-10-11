@@ -226,8 +226,9 @@ struct ContentView: View {
         }
     }
 
-    /// Keeps a share the Hermes home can't open (it has no saved connection, or its draft
-    /// couldn't take it) queued, to be offered again on the next launch or return to the app.
+    /// Keeps a share the Hermes home can't open queued (it has no saved connection, or the list
+    /// left before the user discarded a share its draft couldn't take), to be offered again on
+    /// the next launch or return to the app.
     private func releasePendingSharedImport(_ reservation: SharedImportReservation) {
         shares.release(reservation, in: HermesShareDraft.containerURL())
     }
@@ -281,8 +282,9 @@ struct SharedImportQueue {
         }
     }
 
-    /// The home routed `reservation`, so it leaves the queue, and a Hermes home, which has no
-    /// Open Next banner, takes the next share at once.
+    /// The home routed `reservation`, or the user discarded it after it failed (#1196), so it
+    /// leaves the queue, and a Hermes home, which has no Open Next banner, takes the next share
+    /// at once.
     mutating func consume(_ reservation: SharedImportReservation, in directory: URL?, active: URL?,
                           servers: [ServerAccount]) {
         hasRouted = true
@@ -383,8 +385,9 @@ struct HermesServerHome: View {
     @Binding var pendingSessionDestination: HermesSessionDestination?
     @Binding var pendingNewChat: HermesNewChatDestination?
     /// The share `ContentView` reserved; the list claims it as it starts moving it into its new
-    /// session's draft and routes it once the draft holds it. The home declines it without a saved
-    /// connection, and the list when that move fails, which keeps it queued; a move cut short
+    /// session's draft and routes it once the draft holds it, or once the user discards it after
+    /// that move failed. The home declines it without a saved connection, and the list when it
+    /// goes before the user discards a failed one, which keeps it queued; a move cut short
     /// abandons it to whichever home is active.
     let pendingShare: SharedImportReservation?
     let claimShare: (SharedImportReservation) -> Bool
