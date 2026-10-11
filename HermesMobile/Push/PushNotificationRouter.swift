@@ -5,6 +5,28 @@ import UserNotifications
 /// an approval push lands on the conversation, where approving is its own deliberate
 /// action.
 @MainActor enum PushNotificationRouter {
+    /// The deep link a tapped relay banner queues on `AppIntentRouter`, or nil when it names
+    /// nothing this phone can open and the app simply opens. A webui push opens its webui
+    /// session. Any other push paired with a configured Hermes server opens its session through
+    /// the session link (#1177), Bot Chats included, whose row opens their bot. One paired only
+    /// with a configured webui server opens that server's Bot connection's bot (legacy Bot Mode).
+    static func link(
+        userInfo: [AnyHashable: Any], pairings: [URL: PushPairing], servers: [ServerAccount], activeServer: URL? = nil,
+        botConnectionID: @MainActor (URL) -> UUID? = BotDeepLinkRouter.savedConnectionID
+    ) -> URL? {
+        if let destination = webuiDestination(userInfo: userInfo, pairings: pairings, activeServer: activeServer) {
+            return destination.url
+        }
+        let kinds = Dictionary(servers.map { ($0.id, $0.kind) }, uniquingKeysWith: { first, _ in first })
+        let (hermes, webui) = (pairings.filter { kinds[$0.key.absoluteString] == .hermes },
+                               pairings.filter { kinds[$0.key.absoluteString] == .webui })
+        if let destination = hermesDestination(userInfo: userInfo, pairings: hermes, activeServer: activeServer) {
+            return HermesDeepLink.sessionURL(for: destination)
+        }
+        return botDestination(userInfo: userInfo, pairings: webui, activeServer: activeServer,
+                              botConnectionID: botConnectionID).flatMap(HermesDeepLink.botURL(for:))
+    }
+
     /// Webui taps use the pairing alone: neither Bot Mode nor a Bot connection is
     /// needed. A shared host alias prefers the active configured server.
     static func webuiDestination(
@@ -12,15 +34,36 @@ import UserNotifications
     ) -> WebuiPushDestination? {
         let payload = PushPayload(userInfo: userInfo)
         guard payload.source == "webui",
-              let id = payload.sessionID?.trimmingCharacters(in: .whitespacesAndNewlines), !id.isEmpty,
-              let hash = payload.installHash,
-              let server = pairings.filter({
-                  PushPreviewKeys(installKey: $0.value.installKey, previewKey: $0.value.previewKey).installHash == hash
-              }).keys.sorted(by: {
-                  ($0 == activeServer ? 0 : 1, $0.absoluteString) < ($1 == activeServer ? 0 : 1, $1.absoluteString)
-              }).first
+              let id = HermesDeepLink.normalizedSessionID(payload.sessionID),
+              let server = servers(pairedWith: payload.installHash, in: pairings, activeServer: activeServer).first
         else { return nil }
         return WebuiPushDestination(server: server, sessionID: id)
+    }
+
+    /// A non-webui push on a Hermes server (`pairings` holds only those): `session_id` is the
+    /// session's stored key in every hook. The Profile is the one the opened preview wrote
+    /// back, and nil with previews off (or for the default Profile, which the extension
+    /// leaves out), when the lookup reads every Profile. A subagent's push asks for its parent.
+    private static func hermesDestination(
+        userInfo: [AnyHashable: Any], pairings: [URL: PushPairing], activeServer: URL?
+    ) -> HermesSessionDestination? {
+        let payload = PushPayload(userInfo: userInfo)
+        guard payload.source != "webui",
+              let key = HermesDeepLink.normalizedSessionID(payload.sessionID),
+              let server = servers(pairedWith: payload.installHash, in: pairings, activeServer: activeServer).first
+        else { return nil }
+        return HermesSessionDestination(server: server, profile: payload.profile, key: key,
+                                        opensParent: userInfo["is_subagent"] as? Bool == true)
+    }
+
+    /// The servers whose pairing is the banner's install: `activeServer` first, then by URL.
+    private static func servers(pairedWith installHash: String?, in pairings: [URL: PushPairing],
+                                activeServer: URL?) -> [URL] {
+        guard let installHash else { return [] }
+        return pairings
+            .filter { PushPreviewKeys(installKey: $0.value.installKey, previewKey: $0.value.previewKey).installHash == installHash }
+            .keys
+            .sorted { ($0 == activeServer ? 0 : 1, $0.absoluteString) < ($1 == activeServer ? 0 : 1, $1.absoluteString) }
     }
 
     /// Nil when the banner does not name a bot this phone can open: a webui or other
@@ -34,25 +77,19 @@ import UserNotifications
     /// of them, and otherwise takes the first by URL that has a Bot connection.
     ///
     /// The destination carries no conversation: the payload's `session_id` is the
-    /// run's live session, not the bot's durable root, and a bot has one chat.
+    /// run's live session, not the bot's durable root, and a bot has one chat. `link` asks
+    /// only for webui servers' pairings; a Hermes server's push opens its session instead.
     static func botDestination(
         userInfo: [AnyHashable: Any],
         pairings: [URL: PushPairing],
         activeServer: URL? = nil,
-        botConnectionID: @MainActor (URL) -> UUID? = { @MainActor url in
-            (try? BotConnectionStore().load(server: url))?.id
-        }
+        botConnectionID: @MainActor (URL) -> UUID? = BotDeepLinkRouter.savedConnectionID
     ) -> BotDestination? {
         let payload = PushPayload(userInfo: userInfo)
         guard payload.source == "bot",
-              let profile = payload.profile, !profile.isEmpty,
-              let installHash = payload.installHash
+              let profile = payload.profile, !profile.isEmpty
         else { return nil }
-        let servers = pairings
-            .filter { PushPreviewKeys(installKey: $0.value.installKey, previewKey: $0.value.previewKey).installHash == installHash }
-            .keys
-            .sorted { ($0 == activeServer ? 0 : 1, $0.absoluteString) < ($1 == activeServer ? 0 : 1, $1.absoluteString) }
-        for server in servers {
+        for server in servers(pairedWith: payload.installHash, in: pairings, activeServer: activeServer) {
             if let connectionID = botConnectionID(server) {
                 return BotDestination(server: server, connectionID: connectionID, profile: profile)
             }
@@ -115,7 +152,7 @@ struct WebuiPushDestination: Hashable {
     struct Viewer: Hashable {
         let server: URL
         /// The session the plugin reports under: a webui session's own ID, or a
-        /// bot's live agent session.
+        /// Hermes session's current stored key (`ChatViewModel.pushPresence`).
         let sessionID: String
     }
 
@@ -180,7 +217,7 @@ private struct PushPresenceModifier: ViewModifier {
                 PushPresence.shared.leave(owner: owner)
             }
             .onChange(of: viewer) {
-                // A bot's live session can arrive after the screen or move mid-turn.
+                // A Hermes session's stored key can arrive after the screen or move mid-turn.
                 if isVisible { record(viewer) }
             }
     }

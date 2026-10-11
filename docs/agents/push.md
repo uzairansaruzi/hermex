@@ -60,7 +60,18 @@ touches may show up under another. A server without a pairing gets local run
 alerts instead, which route the same way: their `server_hash` must match a
 configured server (`ResponseCompletionNotificationRequest.destination`).
 
-One caveat: two configured servers that reach the same host pair with the
-same install, because the host hands out one key pair. A tap on one of that
-host's banners then prefers the active server and otherwise takes the first
-matching server by URL (`PushNotificationRouter.botDestination`).
+A tap only navigates (`PushNotificationRouter.link`). A webui push opens its
+webui session. Any other push on a Hermes server opens the session its
+`session_id` names, the stored key, through the Hermes session link (#1176,
+#1177): the Sessions list looks it up under the Profile an opened preview wrote
+back, or in every Profile with previews off, refusing a key two Profiles have.
+A subagent's push opens its parent, and a Bot Chat's opens its bot. A Hermes
+chat's local run alert carries its Profile and stored key and opens the same
+way. The approval card shows only when the host's own runtime still holds the
+approval; a session another process runs (Hermes Desktop's private backend, a
+standalone TUI) opens with its transcript and no card.
+
+One caveat: two configured servers that reach the same host (LAN and a tunnel,
+webui or Hermes) pair with the same install, because the host hands out one key
+pair. A tap on one of that host's banners then prefers the active server and
+otherwise takes the first matching server by URL.

@@ -80,15 +80,12 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
             let activeServer = ServerRegistry.shared.activeServerID.flatMap(URL.init(string:))
             if let destination = ResponseCompletionNotificationRequest.destination(
                 userInfo: userInfo, servers: ServerRegistry.shared.servers.compactMap { URL(string: $0.id) }) {
-                AppIntentRouter.shared.requestDeepLink(destination.url)
-            } else if let pairings = Self.configuredPairings() {
-                if let destination = PushNotificationRouter.webuiDestination(
-                    userInfo: userInfo, pairings: pairings, activeServer: activeServer) {
-                    AppIntentRouter.shared.requestDeepLink(destination.url)
-                } else if let destination = PushNotificationRouter.botDestination(
-                    userInfo: userInfo, pairings: pairings, activeServer: activeServer) {
-                    AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: destination))
-                }
+                AppIntentRouter.shared.requestDeepLink(destination)
+            } else if let pairings = Self.configuredPairings(),
+                      let link = PushNotificationRouter.link(userInfo: userInfo, pairings: pairings,
+                                                             servers: ServerRegistry.shared.servers,
+                                                             activeServer: activeServer) {
+                AppIntentRouter.shared.requestDeepLink(link)
             }
             completionHandler()
         }

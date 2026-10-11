@@ -3617,6 +3617,7 @@ struct ChatView: View {
         let outcome = viewModel.runEndOutcome
         let runEndTrigger = viewModel.runEndTrigger
         let completion = viewModel.successfulResponseCompletion
+        let hermesLink = viewModel.hermesSessionLink
 
         Task { @MainActor in
             if outcome == .completed, completion?.needsTranscriptRefresh == true {
@@ -3630,7 +3631,8 @@ struct ChatView: View {
             }
             await ResponseCompletionNotificationService.scheduleRunEndedIfAllowed(
                 outcome,
-                sessionID: session.sessionId,
+                sessionID: hermesLink?.key ?? session.sessionId,
+                hermesProfile: hermesLink?.profile,
                 title: viewModel.displayTitle,
                 server: server,
                 preferenceEnabled: isResponseCompletionNotificationsEnabled,

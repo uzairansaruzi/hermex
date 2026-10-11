@@ -155,6 +155,32 @@ import XCTest
         XCTAssertEqual(outcome, .room)
     }
 
+    /// A subagent's push opens the session that delegated to it, one hop up, found in the
+    /// child's Profile; a parent that is gone is gone, and a child naming none opens itself (#1177).
+    func testASubagentLinkOpensItsParent() async throws {
+        let wire = LookupWire()
+        wire.profiles = [("default", true), ("research", false)]
+        wire.rows = ["research": [
+            "child": row("child", "research", title: "Subtask", parent: "parent"),
+            "parent": row("parent", "research", title: "Planning", parent: "grandparent"),
+            "orphan": row("orphan", "research", title: "Subtask", parent: "deleted"),
+            "solo": row("solo", "research", title: "Solo")
+        ]]
+        func resolve(_ key: String) async throws -> HermesSessionLookup.Outcome {
+            try await HermesSessionLookup.resolve(
+                HermesSessionDestination(server: server, profile: nil, key: key, opensParent: true), on: wire)
+        }
+
+        let parent = try found(try await resolve("child"))
+        XCTAssertEqual(parent.sessionId, "parent")
+        XCTAssertEqual(parent.title, "Planning")
+        XCTAssertEqual(parent.profile, "research")
+        let solo = try found(try await resolve("solo"))
+        XCTAssertEqual(solo.sessionId, "solo")
+        let gone = try await resolve("orphan")
+        XCTAssertEqual(gone, .gone)
+    }
+
     /// A Profile that can't be read leaves the link unproven: nothing opens, and the failure
     /// (here a store the host can't read) reaches the caller, which drops the link.
     func testAProbeThatFailsOpensNothing() async throws {

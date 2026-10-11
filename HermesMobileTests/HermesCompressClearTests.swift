@@ -201,6 +201,19 @@ import Observation
         XCTAssertEqual(chat.turn.engine.root, "tip")
     }
 
+    /// Pushes and run alerts name the session by its current stored key (#1177), so the open
+    /// chat's replies stay quiet and its alert opens it after the key moves.
+    func testPushPresenceAndTheRunAlertFollowTheRotatedKey() async {
+        let chat = await openChat(threeTurns)
+        let server = URL(string: "https://hermes.example")!
+        XCTAssertEqual(chat.model.pushPresence, PushPresence.Viewer(server: server, sessionID: "tip"))
+
+        chat.receive(event(1, "session.info", ["stored_session_id": .string("tip-2"), "running": .bool(false)]))
+
+        XCTAssertEqual(chat.model.pushPresence, PushPresence.Viewer(server: server, sessionID: "tip-2"))
+        XCTAssertEqual(chat.model.hermesSessionLink, HermesSessionDestination(server: server, profile: "default", key: "tip-2"))
+    }
+
     // MARK: Clear
 
     /// `/clear` opens a new chat in this one's place, in its Profile, on the model its chip

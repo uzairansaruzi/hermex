@@ -2533,12 +2533,19 @@ entitlement is the push Keychain group alone: no app group, no networking, no Sw
 rename of `installKey` or `previewKey` in `PushPairing` breaks previews.
 
 The Profile exists only inside the ciphertext, so the extension writes it back to
-`userInfo["hermex_profile"]`. `PushAppDelegate` is the notification-center delegate: a
-tap becomes `PushNotificationRouter.botDestination` — `source == "bot"`, the pairing
-picks the server, that server's Bot connection supplies the UUID — and rides the one bot
-deep link (#554) through `AppIntentRouter`. No conversation is passed: `session_id` is
-the run's live session, not the bot's durable root. A tap only navigates; an approval is
-never answered from a banner. Anything unroutable just opens the app. Webui taps use the install's configured server
+`userInfo["hermex_profile"]` (a named Profile only: the default's `""` stays out).
+`PushAppDelegate` is the notification-center delegate, and a tap becomes
+`PushNotificationRouter.link`, queued through `AppIntentRouter`; the pairing picks the
+server, the active one first when one host is configured twice. On a Hermes server every
+non-webui push (`source` is `bot` for `ios`, `desktop` and `tui` sessions alike) becomes
+the Hermes session link (#1177) for its `session_id`, the session's stored key in every
+hook, with the written-back Profile or none. The Sessions list resolves it as any session
+link: gone or in two Profiles says so, a Bot Chat opens its bot, and a legacy compression
+chain opens at its tip. `is_subagent` adds `subagent=1`, and the lookup opens the child
+row's `parent_session_id`, one hop. An approval card appears only from the host's
+`open_requests` on resume. Only on a webui server does `source == "bot"` still open
+`botDestination`, its Bot connection's bot (legacy Bot Mode). A tap only navigates; an
+approval is never answered from a banner. Anything unroutable just opens the app. Webui taps use the install's configured server
 and `session_id`, independently of Bot Mode and preview decryption. After switching to
 that server (and signing in if needed), a live session lookup opens the conversation;
 a missing session leaves its session list without an error. It never searches another
@@ -2562,7 +2569,7 @@ a phone that is offline when the run ends gets the `end` without the alert.
 
 While the app is open, `PushAppDelegate` presents relay pushes itself (#566); iOS would
 otherwise show none, approvals included. `PushPresence` records the conversation on
-screen (a webui session ID, or a bot's live agent session) and, when that server's
+screen (a webui session ID, or a Hermes session's current stored key) and, when that server's
 "Quiet the Open Chat" preference is on (the default), hides its pushes except
 `approval`, `clarify`, `input` and `turn_error`. The preference travels to the relay as
 `presence_suppression`, but the app never sends the relay's `active_session_id` /

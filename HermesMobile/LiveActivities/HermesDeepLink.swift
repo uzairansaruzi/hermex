@@ -11,6 +11,9 @@ enum HermesDeepLink {
     /// `session?id=` (`sessionURL(sessionID:)`), which names no server.
     static let sessionHost = "session"
 
+    /// A session link's flag that its key is a subagent's (`HermesSessionDestination.opensParent`).
+    static let subagentQueryItem = "subagent"
+
     /// Host for the one bot route (#554): `hermes-agent://bot?server=…&connection=…&profile=…`.
     /// The builder, parser and typed `BotDestination` live in `Features/Bots/BotDeepLink.swift`,
     /// which is main-app only; this file is shared with the Live Activity widget.
@@ -109,7 +112,8 @@ enum HermesDeepLink {
         return components.url
     }
 
-    /// `hermes-agent://session?server=…&id=…[&profile=…]`, a Hermes server's stored session (#1176).
+    /// `hermes-agent://session?server=…&id=…[&profile=…][&subagent=1]`, a Hermes server's stored
+    /// session (#1176).
     /// Every part rides as a query item, so a Profile name or key is percent-encoded rather than
     /// mangled into the host. A nil Profile is left out; `""` stays, naming the host's default.
     /// The main app parses it (`HermesSessionDestination(url:)`) and owns routing; this builder
@@ -124,6 +128,7 @@ enum HermesDeepLink {
             items.append(URLQueryItem(name: profileQueryItem, value: profile.trimmingCharacters(in: .whitespacesAndNewlines)))
         }
         items.append(URLQueryItem(name: "id", value: key))
+        if destination.opensParent { items.append(URLQueryItem(name: subagentQueryItem, value: "1")) }
         components.queryItems = items
         return components.url
     }
@@ -181,6 +186,8 @@ struct HermesSessionDestination: Hashable {
     let server: URL
     let profile: String?
     let key: String
+    /// The key is a subagent's (#1177): the lookup opens the session that delegated to it.
+    var opensParent = false
 }
 
 /// Shared by the Lock Screen and Dynamic Island, and exercised by main-app tests.
