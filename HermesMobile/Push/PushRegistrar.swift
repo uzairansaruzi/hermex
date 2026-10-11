@@ -81,6 +81,8 @@ enum PushRegistrarError: Error, Equatable {
     // must never replace a newly accepted choice with an older snapshot, and a teardown
     // judges which entries hold a token only once no write to them is in flight (#1178).
     private var registrationTail: Task<Void, Never>?
+    /// Servers whose enable has a device token and is writing (or waiting to write) it.
+    private var enablesInFlight: [URL] = []
     private var currentToken: String?
     private var pendingLaunchRefresh = false
     private var tokenWaiters: [CheckedContinuation<String, any Error>] = []
@@ -117,26 +119,33 @@ enum PushRegistrarError: Error, Equatable {
 
     /// Completes a pairing: asks for notification permission, gets a device token
     /// and registers it at that install's relay. The pairing is stored only after
-    /// the relay accepts, so a half-finished enable leaves nothing behind.
+    /// the relay accepts, so a half-finished enable leaves nothing behind. The
+    /// registration and its Keychain write queue with the other device writes and
+    /// teardowns, so removing another entry for the host can't delete the device
+    /// this one is saving (#1178).
     func enable(_ pairing: PushPairing, for server: URL) async throws {
         guard let identity else { throw PushRegistrarError.unsupportedBuild }
         guard pairing.hasWellFormedInstallKey else { throw PushRegistrarError.malformedPairing }
         guard await authorization.requestAuthorization() else { throw PushRegistrarError.permissionDenied }
 
         let token = try await deviceToken()
-        try await relay.registerDevice(token: token, identity: identity, pairing: pairing)
+        enablesInFlight.append(server)
+        defer { if let index = enablesInFlight.firstIndex(of: server) { enablesInFlight.remove(at: index) } }
+        try await enqueueRegistrationWork { [self] in
+            try await relay.registerDevice(token: token, identity: identity, pairing: pairing)
 
-        var stored = pairing
-        stored.registeredToken = token
-        do {
-            try store.save(stored, for: server)
-        } catch {
-            // The relay has already accepted this device. With no keys on disk
-            // nothing could ever revoke it, so undo the registration before
-            // reporting the failure rather than leave a phone that cannot be
-            // unpaired.
-            await retire(token: token, of: pairing, removedFrom: server)
-            throw error
+            var stored = pairing
+            stored.registeredToken = token
+            do {
+                try store.save(stored, for: server)
+            } catch {
+                // The relay has already accepted this device. With no keys on disk
+                // nothing could ever revoke it, so undo the registration before
+                // reporting the failure rather than leave a phone that cannot be
+                // unpaired.
+                await retire(token: token, of: pairing, removedFrom: server)
+                throw error
+            }
         }
     }
 
@@ -147,6 +156,13 @@ enum PushRegistrarError: Error, Equatable {
     /// token invalid. A device another entry for the same host still uses stays registered,
     /// and so does one when the Keychain can't say whether another entry uses it.
     func forget(for server: URL) async {
+        // An entry that never paired has no device to judge, so its removal doesn't wait
+        // for other servers' relay calls. One whose enable is queued or whose keys can't be
+        // read takes the queue like any other.
+        if !enablesInFlight.contains(server), case .success(nil) = Result(catching: { try store.pairing(for: server) }) {
+            await activities.forget(server: server)
+            return
+        }
         try? await enqueueRegistrationWork { [self] in
             if let pairing = try? store.pairing(for: server), let token = pairing.registeredToken,
                (try? isRegistered(token, of: pairing, besides: server)) == false {
@@ -329,7 +345,7 @@ enum PushRegistrarError: Error, Equatable {
             do {
                 try await relay.registerDevice(token: token, identity: identity, pairing: pairing)
                 guard isStillPaired(pairing, for: server) else {
-                    // Re-paired while that call was in flight. Retire the device we
+                    // The keys changed while that call was in flight. Retire the device we
                     // just registered; otherwise the phone keeps receiving pushes
                     // under keys the server no longer uses.
                     await retire(token: token, of: pairing, removedFrom: server)
@@ -352,9 +368,9 @@ enum PushRegistrarError: Error, Equatable {
         }
     }
 
-    /// Whether the stored pairing is still the one this refresh started from. A
-    /// re-pair in the meantime mints a new install key (disable and forget wait in
-    /// the queue); the snapshot must not be written back over the user's choice.
+    /// Whether the stored pairing is still the one this write started from. Enable,
+    /// disable and forget wait in the queue, so only keys changed outside it can differ;
+    /// the snapshot must not be written back over them.
     private func isStillPaired(_ pairing: PushPairing, for server: URL) -> Bool {
         guard let stored = try? store.pairing(for: server) else { return false }
         return sameInstall(stored, pairing)

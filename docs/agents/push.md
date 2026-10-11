@@ -68,8 +68,9 @@ otherwise takes the first matching server by URL
 and token, so both entries share one registration: removing or turning off one
 keeps it for the other, and only the last one deletes it
 (`PushRegistrar.forget` and `disable`, #1178). Both wait for an in-flight device
-write (a token refresh or preference save) before deciding, so they judge the
-tokens the entries end up holding. Another entry keeps only the token it
+write (a token refresh, preference save, or another entry's enable) before
+deciding, so they judge the tokens the entries end up holding; removing an entry
+that never paired doesn't wait. Another entry keeps only the token it
 holds, and a Keychain that can't list the entries deletes nothing (turning off
 fails instead). Turning one off in Settings also leaves the
 host's plugin enabled; only the last one disables it
