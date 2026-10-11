@@ -14,6 +14,14 @@ enum HermesCall: Equatable, Sendable {
     static let botChatTitle = "Bot Chat"
     /// Room lists are read in the host's largest page.
     static let roomPageSize = 500
+    /// Every session this app opens is driven by Hermex's own chat renderer, which
+    /// intercepts MEDIA: tags into authenticated downloads — not by a terminal and not
+    /// by the Electron desktop. Declaring it keeps the host's platform guidance honest
+    /// (a session that omits `source` is stamped `tui` and the model is told it cannot
+    /// deliver files at all). The matching `hermex` platform hint ships in
+    /// hermes-agent; older hosts simply record the unknown source and fall back to an
+    /// empty hint, which is no worse than the `tui` mis-tag.
+    static let sessionSource = "hermex"
 
     // Profiles
     case profilesList(includeSessions: Bool)
@@ -349,9 +357,11 @@ enum HermesCall: Equatable, Sendable {
             return ["profile": .string(profile), "title": .string(Self.botChatTitle), "include_hidden": .bool(true)]
         case .sessionCreate(let profile):
             return ["profile": .string(profile), "title": .string(Self.botChatTitle),
-                    "hidden": .bool(true), "follow_profile_config": .bool(true)]
+                    "hidden": .bool(true), "follow_profile_config": .bool(true),
+                    "source": .string(Self.sessionSource)]
         case .sessionNew(let profile, let cwd, let model):
-            var params: [String: BotJSON] = ["profile": .string(profile)]
+            var params: [String: BotJSON] = ["profile": .string(profile),
+                                             "source": .string(Self.sessionSource)]
             if let cwd { params["cwd"] = .string(cwd) }
             if let model { params["model"] = .string(model.id); params["provider"] = .string(model.provider) }
             return params
@@ -384,7 +394,8 @@ enum HermesCall: Equatable, Sendable {
             return params
         case .sessionResume(let profile, let sessionID, let omitMessages):
             var params: [String: BotJSON] = ["profile": .string(profile), "session_id": .string(sessionID),
-                                             "close_on_disconnect": .bool(false)]
+                                             "close_on_disconnect": .bool(false),
+                                             "source": .string(Self.sessionSource)]
             if omitMessages { params["omit_messages"] = .bool(true) }
             return params
         case .sessionEventsSince(let sessionID, let lastSeen):
