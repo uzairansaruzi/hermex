@@ -224,7 +224,8 @@ final class OnboardingFlowTests: XCTestCase {
             "same Wi-Fi",
             "require my confirmation",
             "Never run the dashboard without its sign-in gate",
-            "/api/status",
+            "`curl --fail <exact-phone-address>/api/status`",
+            "keeping its scheme and port",
             "\"auth_required\": true",
             "address, username, password"
         ]
@@ -233,6 +234,8 @@ final class OnboardingFlowTests: XCTestCase {
             XCTAssertTrue(prompt.contains(instruction), "Missing Hermes setup instruction: \(instruction)")
         }
 
+        // The confirmed same-Wi-Fi fallback is plain HTTP, so the check must not force https://.
+        XCTAssertFalse(prompt.contains("curl --fail https://<"))
         XCTAssertFalse(prompt.contains("--insecure"))
         XCTAssertFalse(prompt.contains("hermes-webui"))
     }

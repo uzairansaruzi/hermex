@@ -59,7 +59,7 @@ Choose the address my iPhone will use:
 
 Verify in this order:
 1. Confirm the dashboard locally with `curl --fail http://127.0.0.1:9119/api/status` (use the actual port).
-2. Confirm the phone's address with `curl --fail https://<actual-address>/api/status`, and check that it reports `"auth_required": true` with `basic` in `auth_providers`.
+2. Confirm the phone's address with `curl --fail <exact-phone-address>/api/status`, keeping its scheme and port (`https://` unless I confirmed the same Wi-Fi fallback), and check that it reports `"auth_required": true` with `basic` in `auth_providers`.
 
 Reply with the exact address, username, password, and both check results, plus any remaining action required on my iPhone. Do not include `config.yaml` or the secret.
 """
