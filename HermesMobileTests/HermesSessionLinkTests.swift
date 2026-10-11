@@ -54,6 +54,14 @@ import XCTest
         XCTAssertEqual(HermesDeepLink.sessionID(from: try url("id=abc")), "abc", "The legacy link keeps its parse")
     }
 
+    /// A session link that names a server it can't use never falls back to the legacy route, which
+    /// would open its key on whichever webui server is reachable instead of the one it names.
+    func testALinkNamingAnUnusableServerIsNotALegacyLink() throws {
+        for query in ["server=ftp://hermes.example&id=abc", "server=not%20a%20url&id=abc", "server=&id=abc", "server&id=abc"] {
+            XCTAssertNil(HermesDeepLink.sessionID(from: try url(query)), query)
+        }
+    }
+
     /// The webui push link and the Hermes session link never parse as each other.
     func testTheWebuiPushLinkKeepsItsOwnRoute() throws {
         let push = try XCTUnwrap(HermesDeepLink.webuiSessionURL(server: webui, sessionID: "abc"))
@@ -147,6 +155,20 @@ import XCTest
         XCTAssertNil(covers.moving)
         XCTAssertFalse(covers.showingArchived)
         XCTAssertFalse(covers.isCoveredByScreen, "Kanban and Archived Sessions are popped")
+    }
+
+    /// An export started before a link brought the rows forward doesn't reopen its share sheet
+    /// over the link's chat when it finishes; one started after does.
+    func testAnExportFromBeforeALinkDoesNotPresent() {
+        var covers = HermesSessionListCovers()
+        let before = covers.generation
+        covers.accept(HermesSessionDestination(server: hermes, profile: "research", key: "abc"), on: hermes)
+        let item = SessionExportShareItem(fileURL: URL(fileURLWithPath: "/tmp/export/chat.json"))
+        covers.present(item, startedAt: before)
+        XCTAssertNil(covers.exported)
+
+        covers.present(item, startedAt: covers.generation)
+        XCTAssertEqual(covers.exported?.fileURL, item.fileURL)
     }
 
     /// No link, or another server's, which this list will never open, leaves the list as it was.

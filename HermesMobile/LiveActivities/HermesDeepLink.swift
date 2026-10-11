@@ -142,6 +142,9 @@ enum HermesDeepLink {
         return components.url
     }
 
+    /// The session a legacy `session?id=` link (or `session/<id>`) names, opened on a webui server.
+    /// Nil for any other link, including one carrying a `server` item: that link opens only on the
+    /// server it names (#1176), or not at all, never on whichever webui server is reachable.
     static func sessionID(from url: URL) -> String? {
         guard url.scheme?.lowercased() == scheme,
               url.host?.lowercased() == sessionHost
@@ -150,6 +153,7 @@ enum HermesDeepLink {
         }
 
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        guard components?.queryItems?.contains(where: { $0.name == "server" }) != true else { return nil }
         if let id = components?.queryItems?.first(where: { item in
             item.name == "id" || item.name == "session_id"
         })?.value {

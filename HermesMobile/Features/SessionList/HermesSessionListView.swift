@@ -472,7 +472,12 @@ struct HermesSessionListView: View {
             createProject: { session in covers.creatingProject = HermesProjectCreation(folder: session.workspace ?? "", session: session) },
             refreshProjects: { Task { await viewModel.openHermes(modelContext: modelContext) } },
             export: { session, format in
-                Task { if let url = await viewModel.export(session, format: format) { covers.exported = SessionExportShareItem(fileURL: url) } }
+                let generation = covers.generation
+                Task {
+                    if let url = await viewModel.export(session, format: format) {
+                        covers.present(SessionExportShareItem(fileURL: url), startedAt: generation)
+                    }
+                }
             }
         )
     }
@@ -653,9 +658,22 @@ struct HermesSessionListCovers {
         showingArchived || showingKanban || tasks != nil || skills != nil || memory != nil || insights != nil
     }
 
+    /// Counts the links that brought the rows forward, so work started before one (an export)
+    /// doesn't cover them again when it finishes.
+    private(set) var generation = 0
+
     /// Brings the rows forward for `link` when it names `server`, the list's own.
     mutating func accept(_ link: HermesSessionDestination?, on server: URL) {
-        if link?.server == server { self = Self() }
+        guard link?.server == server else { return }
+        let next = generation + 1
+        self = Self()
+        generation = next
+    }
+
+    /// Shows an export's share sheet unless a link brought the rows forward since it started at
+    /// `generation`.
+    mutating func present(_ export: SessionExportShareItem, startedAt generation: Int) {
+        if generation == self.generation { exported = export }
     }
 }
 

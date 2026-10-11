@@ -159,8 +159,8 @@ struct ContentView: View {
             return
         }
 
-        // A session link that names its server opens there, Hermes or webui (#1176); one that
-        // doesn't keeps the webui route it always had.
+        // A session link that names its server opens there, Hermes or webui, or nowhere when that
+        // server isn't usable (#1176); one that doesn't keeps the webui route it always had.
         if let destination = HermesSessionDestination(url: url) {
             switchServer(pendingLinks.open(destination, state: authManager.state, servers: authManager.servers))
             return
