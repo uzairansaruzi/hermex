@@ -843,6 +843,19 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertEqual(wire.calls.map(\.action), ["delete"])
     }
 
+    /// A legacy compression moves a Hermes session's stored key mid-turn (#1179): the same
+    /// activity registering under the new key deletes its old route first, then puts the new one.
+    func testAnActivityMovedToANewKeyRetiresItsOldRoute() async {
+        let wire = ActivityRelaySpy()
+        let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        let registrar = PushActivityRegistrar(relay: wire, pairing: { _ in keys })
+        await registrar.register(owner: "a", server: serverA, sessionID: "tip", token: "token")
+        await registrar.register(owner: "a", server: serverA, sessionID: "tip-2", token: "token")
+        XCTAssertEqual(wire.calls.map(\.action), ["put:token", "delete", "put:token"])
+        XCTAssertEqual(wire.calls.map(\.session), ["tip", "tip", "tip-2"])
+        XCTAssertTrue(registrar.isRegistered("a"))
+    }
+
     /// A finished activity's cleanup (cold launch or an orphaned webui run, #566) must
     /// not delete the route a new run in the same session is still registering.
     func testRelaunchedActivityCleanupSparesARegistrationInFlightForTheSameSession() async {

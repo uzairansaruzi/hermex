@@ -553,8 +553,8 @@ mode appends Desktop's note to the typed text's mentions and the chat shows the 
 `@` text as typed. A restored prompt drops the host's context footer and reference lines before
 the note, so an attachment never exposes it. A `.canonicalChat`'s turns drive the Bot Live
 Activity (below), which takes the bot's name and avatar again when a roster read lands
-mid-turn, and draws its avatar again when the bot's picture arrives after the activity started. A row opened by its key keeps the session's `hermes:` activity, with no tap
-destination until #706: the Bot activity's tap looks the chat up by title, which leaves a
+mid-turn, and draws its avatar again when the bot's picture arrives after the activity started. A row opened by its key keeps the session's `hermes:` activity, whose tap is the session link to
+that key (#1165, #1179): the Bot activity's tap looks the chat up by title, which leaves a
 deliberate archive out and finds a replacement instead, and the client cannot tell a deliberate
 archive from a recoverable one. A `linkedRoot` (a bot link's root) the bot has replaced calls
 `ChatView`'s `onChatReplaced` (#554); Update sign-in is `HermesUpdateSignInAction`. Rooms never
@@ -1816,9 +1816,12 @@ avatar and `BotLiveActivity.countChips` for the work counts.
   paired server takes the same handoff (#566): its attributes carry the configured
   server, it requests a token, and it registers under its webui session ID, which
   webui also gives the agent. Webui runs on unpaired servers stay local-only
-  (`pushType: nil`). A compression that rotates the session ID mid-turn moves the
-  plugin's progress to an ID the relay does not know, so that activity goes stale.
-  Ending an orphaned webui activity, or finding one finished at cold launch,
+  (`pushType: nil`). A legacy compression that moves a bot's or a Hermes session's
+  stored key mid-turn (`session.info`'s `stored_session_id`) moves the driven
+  activity's registration with it (`movePushSession`, #1179): the registrar deletes
+  the old route, then puts the token under the new key, so the plugin's progress
+  still reaches it. A webui run's compression still moves its ID out from under the
+  relay. Ending an orphaned webui activity, or finding one finished at cold launch,
   retires its registration so the relay stops holding that session's banners.
   There is no push-to-start.
 - **Attention.** Entering an approval or a question alerts: a paired server's relay
@@ -1834,7 +1837,8 @@ avatar and `BotLiveActivity.countChips` for the work counts.
   touched. Token rotation and retirement are serialized: an in-flight registration
   must be cleaned up before its replacement can register the same session. Ending,
   dismissal, and server unpairing retire registrations. Cold launch observes paired
-  activities without resuming their chats; legacy/unpaired activities are removed.
+  activities without resuming their chats; legacy/unpaired bot activities are removed
+  (`LeftoverLiveActivitySettlement`).
 - **Privacy.** Chips are counts only (plan step, workers, tools). Reply text
   appears only behind the existing response-excerpt setting.
 - **Avatar.** The app renders the bot's photo or drawn face to one PNG under
@@ -1844,18 +1848,26 @@ avatar and `BotLiveActivity.countChips` for the work counts.
 
 A Hermes session in the main chat drives the same manager from
 `HermesChatTurnCoordinator` (#1014), starting, updating and ending the activity where
-its turn does, with the webui layouts. The key is the interim
-`hermes:<profile>:<stored key>` and the stream id the host's `turn_started_at`, so a
-reattach, or the session reopened mid-turn, adopts the turn's activity. Only a session's
+its turn does, with the webui layouts. The key is `hermes:<profile>:<root>`, the chat's
+identity (the key it opened by), and the stream id the host's `turn_started_at`, so a
+reattach, or the session reopened mid-turn, adopts the turn's activity, also after a legacy
+compression moved the stored key (#1179). Only a session's
 first turn after an attach is sure to learn `turn_started_at` live; a later one uses the
 chat's own turn id, so reopening the session during it replaces the activity. Reply text
 follows the excerpt setting; with it off, the reply still moves the status on to writing. An open approval shows as waiting for approval and any other request
 as a question. Leaving or a dropped socket marks it stale, and it checks
-`drivenSessionID` like a bot's chat. It has no push, a tap opens the app as it is
-(`AgentRunTapTarget` builds no route for the key), and the orphan reconciler skips it, so a
-leftover one ages out by its stale date. #706 slice 6.2 replaces the key with
-`<server>:<profile>:<lineage root>#<turn_started_at>` and adds the tap destination, push and
-cold-launch reconciliation. A bot's Bot Chat in the main chat (#1145) keeps the Bot identity
+`drivenSessionID` like a bot's chat. Its attributes carry its server, its tap
+(`destinationURL`, the #1176 session link to the root, which opens the session as its row
+does, an archived Bot Chat row by its key with its Bot Chat root) and the stored key its
+pushes start under (`pushSessionID`). On a paired server it requests a token and the relay
+keeps it fresh like a bot's, moving with the stored key (above). One a build before #1179
+started has neither: no route (a tap opens the app as it is) and no push. The webui orphan
+reconciler skips it. Cold launch adopts a paired one like a bot's; an unpaired one on the
+signed-in active Hermes server is checked with one `session.active_list` read (never
+`session.resume`): listed under its key or root with any status but `idle`, it stays;
+otherwise it ends as complete ("Response complete"), since how the run ended is unknown, and
+retires any registration. A read that fails, or another server's activity, leaves it to its
+stale date. A bot's Bot Chat in the main chat (#1145) keeps the Bot identity
 instead: `startBot` with `AgentRunActivityBot` for the bot's `BotDestination` at the canonical
 root, the stored key as its push session, the bot's name as the title (session titles never
 replace it), its rendered avatar, and one stream per `turn_started_at`, so a tap opens the

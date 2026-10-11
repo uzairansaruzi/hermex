@@ -57,14 +57,34 @@ struct AgentRunActivityPushTarget: Equatable {
 }
 
 extension AgentRunActivityAttributes {
-    /// A bot resolves its target from its destination and stored agent session ID. A
-    /// webui run uses its own session ID, which webui also gives the agent (#566).
-    /// Nil when the activity cannot be pushed, such as one from an older build.
+    /// A bot resolves its target from its destination and stored agent session ID, and a
+    /// Hermes session from its server and stored key (#1179). A webui run uses its own
+    /// session ID, which webui also gives the agent (#566). Nil when the activity cannot be
+    /// pushed, such as one from an older build: a Hermes session's `hermes:` identity is no
+    /// key the plugin reports.
     var pushTarget: AgentRunActivityPushTarget? {
-        guard let bot else { return server.map { AgentRunActivityPushTarget(server: $0, sessionID: sessionID) } }
-        guard let sessionID = bot.pushSessionID,
-              let destination = HermesDeepLink.botDestination(from: bot.destinationURL) else { return nil }
-        return AgentRunActivityPushTarget(server: destination.server, sessionID: sessionID)
+        if let bot {
+            guard let sessionID = bot.pushSessionID,
+                  let destination = HermesDeepLink.botDestination(from: bot.destinationURL) else { return nil }
+            return AgentRunActivityPushTarget(server: destination.server, sessionID: sessionID)
+        }
+        guard let server else { return nil }
+        if let pushSessionID { return AgentRunActivityPushTarget(server: server, sessionID: pushSessionID) }
+        return isHermesSession ? nil : AgentRunActivityPushTarget(server: server, sessionID: sessionID)
+    }
+
+    /// A Hermes session's activity (#1014), as opposed to a webui run's or a bot's.
+    var isHermesSession: Bool { bot == nil && sessionID.hasPrefix(AgentRunTapTarget.hermesSessionPrefix) }
+
+    /// The stored keys `session.active_list` may list a Hermes session's run under: the key its
+    /// pushes started under, and the key its identity names, the chat's root (#1179) or, for an
+    /// activity a build before #1179 started, the stored key itself. Empty for any other activity.
+    var hermesSessionKeys: Set<String> {
+        guard isHermesSession else { return [] }
+        // `hermes:<profile>:<key>`: a Profile name has no colon, so the key is everything after one.
+        let named = sessionID.dropFirst(AgentRunTapTarget.hermesSessionPrefix.count)
+            .split(separator: ":", maxSplits: 1).dropFirst().first.map(String.init)
+        return Set([pushSessionID, named].compactMap { $0 }.filter { !$0.isEmpty })
     }
 }
 
@@ -116,6 +136,15 @@ protocol AgentLiveActivityManaging: AnyObject {
     /// Starts or re-adopts a bot's activity for one turn (#489). `turn` names the turn,
     /// so a reconnect inside it reuses the activity and the next turn gets a new one.
     func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date)
+    /// Starts or re-adopts a Hermes session's activity for one turn (#1179). `sessionID` is
+    /// `hermes:<profile>:<root>`, the chat's identity, so a reconnect inside the turn reuses
+    /// the activity across a key move; `destinationURL` is its tap, and `pushSessionID` the
+    /// stored key the relay keys its pushes under.
+    func startSession(sessionID: String, server: URL, destinationURL: URL?, pushSessionID: String,
+                      sessionTitle: String, turn: String, startedAt: Date)
+    /// A legacy compression moved the driven activity's stored key (#1179): its token
+    /// registers under `key`, and the old route retires. Nothing for an unchanged key.
+    func movePushSession(to key: String)
     /// The session id, or a bot's `key`, of the unfinished activity this manager is
     /// driving. The Bot feed checks it before every stale or end call, so it never
     /// touches an activity a webui run or another bot has since taken over.
@@ -138,6 +167,9 @@ protocol AgentLiveActivityManaging: AnyObject {
 extension AgentLiveActivityManaging {
     // Defaults so webui-only test spies don't have to care about bots.
     func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date) {}
+    func startSession(sessionID: String, server: URL, destinationURL: URL?, pushSessionID: String,
+                      sessionTitle: String, turn: String, startedAt: Date) {}
+    func movePushSession(to key: String) {}
     var drivenSessionID: String? { nil }
     // Defaults so test spies and non-ActivityKit conformers don't have to care
     // about reconciliation; the real manager overrides both.
@@ -155,8 +187,11 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     private var currentState: AgentRunActivityAttributes.ContentState?
     private var currentSessionID: String?
     private var currentStreamID: String?
-    /// The configured server of the webui run being driven; nil for a bot.
+    /// The configured server of the webui run or Hermes session being driven; nil for a bot.
     private var currentServer: URL?
+    /// The stored key the driven activity's pushes come under (#1179): a bot's or a Hermes
+    /// session's, which a legacy compression can move past the key its attributes carry.
+    private var drivenPushSessionID: String?
     // StreamID of the run whose SSE is live in THIS process right now: set when the
     // coordinator (re)connects (`start`), cleared the moment it suspends/hits trouble
     // (`markStale`) or finalizes (`end`/`reset`). The orphan reconciler skips it so a
@@ -194,12 +229,35 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
               bot: bot, server: nil)
     }
 
+    func startSession(sessionID: String, server: URL, destinationURL: URL?, pushSessionID: String,
+                      sessionTitle: String, turn: String, startedAt: Date) {
+        start(sessionID: sessionID, sessionTitle: sessionTitle, streamID: turn, startedAt: startedAt,
+              bot: nil, server: server, destinationURL: destinationURL, pushSessionID: pushSessionID)
+    }
+
+    func movePushSession(to key: String) {
+        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty, currentState?.isFinal == false, key != drivenPushSessionID else { return }
+        drivenPushSessionID = key
+        // The token task forwards under the moved key from now on. A token already in hand
+        // registers again now; the registrar deletes the old route before it puts the new one.
+        guard let activity, pushOwner == activity.id, let token = activity.pushToken,
+              let server = activity.attributes.pushTarget?.server, let registrar = pushRegistrar else { return }
+        let owner = activity.id
+        Task { [weak self] in
+            guard self?.pushOwner == owner, self?.drivenPushSessionID == key else { return }
+            await registrar.register(owner: owner, server: server, sessionID: key, token: Self.hex(token))
+        }
+    }
+
     var drivenSessionID: String? {
         currentState?.isFinal == false ? currentSessionID : nil
     }
 
+    /// `pushSessionID` is a Hermes session's stored key; a bot's comes from `bot`.
     private func start(sessionID: String, sessionTitle: String, streamID: String?, startedAt: Date,
-                       bot: AgentRunActivityBot?, server: URL?) {
+                       bot: AgentRunActivityBot?, server: URL?, destinationURL: URL? = nil,
+                       pushSessionID: String? = nil) {
         let normalizedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedSessionID.isEmpty else { return }
         cancelPushHandoff()
@@ -213,6 +271,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
            activity?.activityState != .ended, activity?.activityState != .dismissed,
            currentServer == server,
            activity?.attributes.bot?.pushSessionID == bot?.pushSessionID {
+            // A session's chat names the key it now knows; observing forwards the token under it.
+            if let pushSessionID { drivenPushSessionID = pushSessionID }
             if let activity { observePush(activity) }
             updateCurrentState { state in
                 AgentRunActivityAttributes.ContentState(
@@ -248,6 +308,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         currentSessionID = normalizedSessionID
         currentStreamID = normalizedStreamID
         currentServer = server
+        drivenPushSessionID = pushSessionID ?? bot?.pushSessionID
         let state = AgentRunActivityStateReducer.initialState(
             sessionID: normalizedSessionID,
             sessionTitle: sessionTitle,
@@ -270,6 +331,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 sessionTitle: state.sessionTitle,
                 bot: bot,
                 server: server,
+                destinationURL: destinationURL,
+                pushSessionID: pushSessionID,
                 state: state,
                 lifecycle: lifecycle
             )
@@ -281,6 +344,9 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     func currentStateForTesting() -> AgentRunActivityAttributes.ContentState? {
         currentState
     }
+
+    /// Test seam: the stored key the driven activity's pushes come under.
+    var drivenPushSessionIDForTesting: String? { drivenPushSessionID }
 
     /// Test seam: how many state writes asked to skip the update throttle.
     private(set) var immediateWriteCountForTesting = 0
@@ -474,9 +540,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         // truth — a genuinely live run reports active=true and is left alone.
         let result: [OrphanedLiveActivity] = all.compactMap { activity in
             // A bot's activity has no webui stream to ask about (#489), and neither has a
-            // Hermes session's (#1014): left over, it ages out by its stale date.
-            guard activity.attributes.bot == nil,
-                  !activity.attributes.sessionID.hasPrefix(AgentRunTapTarget.hermesSessionPrefix) else { return nil }
+            // Hermes session's (#1014): cold launch settles those (`settleActivitiesFromPreviousLaunch`).
+            guard activity.attributes.bot == nil, !activity.attributes.isHermesSession else { return nil }
             guard let streamID = AgentLiveActivityReusePolicy.normalizedStreamID(activity.attributes.streamID) else {
                 return nil
             }
@@ -499,41 +564,62 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         return result
     }
 
-    /// Cold launch adopts paired push activities without resuming a Bot session.
-    /// Legacy/unpaired bot activities still have no background source of truth. A webui
-    /// activity the relay already finished must not keep holding its session's banners,
-    /// so its registration retires; a running one is left to the server-status
-    /// reconciler (#566).
-    func settleActivitiesFromPreviousLaunch() async {
-        for persisted in Activity<AgentRunActivityAttributes>.activities where persisted.id != activity?.id {
-            guard persisted.attributes.bot != nil else {
-                if persisted.activityState == .ended || persisted.activityState == .dismissed
-                    || persisted.content.state.isFinal {
-                    await retirePush(persisted)
-                }
+    /// The signed-in Hermes server cold launch checks unpaired Hermes sessions' activities
+    /// against (#1179), and its one `session.active_list` read: the stored keys of the runs it
+    /// lists (`LeftoverLiveActivitySettlement.runningKeys`), or nil when it couldn't be read.
+    struct HermesRunCheck {
+        let server: URL
+        let runningKeys: @MainActor () async -> Set<String>?
+    }
+
+    /// Settles the activities a previous launch left (`LeftoverLiveActivitySettlement`) without
+    /// resuming any session. A paired bot's or Hermes session's is adopted, since the relay
+    /// drives it; an unpaired bot's has no background source of truth and ends. A finished one
+    /// releases its relay registration, so it no longer holds its session's banners; the
+    /// registrar never deletes a route a new activity for that session is registering (#642).
+    /// An unpaired Hermes session's on `hermes`'s server ends as complete unless the host still
+    /// runs it. A running webui activity is left to the server-status reconciler (#566).
+    func settleActivitiesFromPreviousLaunch(checking hermes: HermesRunCheck? = nil) async {
+        let leftovers = Activity<AgentRunActivityAttributes>.activities.filter { $0.id != activity?.id }
+        let actions = await LeftoverLiveActivitySettlement.actions(
+            for: leftovers.map { persisted in
+                LeftoverLiveActivity(id: persisted.id, attributes: persisted.attributes,
+                                     isFinished: persisted.activityState == .ended || persisted.activityState == .dismissed
+                                        || persisted.content.state.isFinal)
+            },
+            isPaired: { [weak self] in self?.isPaired($0) == true },
+            hermesServer: hermes?.server,
+            runningKeys: { await hermes?.runningKeys() }
+        )
+        for (persisted, action) in zip(leftovers, actions) {
+            switch action {
+            case .keep:
                 continue
-            }
-            if canReceivePush(persisted.attributes),
-               persisted.activityState != .ended, persisted.activityState != .dismissed,
-               restoreBotOwnership(attributes: persisted.attributes, state: persisted.content.state) {
+            case .retire:
+                await retirePush(persisted)
+            case .adopt where restoreOwnership(attributes: persisted.attributes, state: persisted.content.state):
                 activity = persisted
                 observePush(persisted)
-            } else {
+            case .adopt, .end:
                 await retirePush(persisted)
                 await persisted.end(nil, dismissalPolicy: .immediate)
+            case .endComplete:
+                await endPersisted(persisted, status: .complete, activity: String(localized: "Response complete"))
             }
         }
     }
 
-    /// Restores the feed's ownership before observing a surviving push activity.
-    /// Only one activity can own the manager; duplicates and final states retire.
+    /// Restores the feed's ownership of a surviving push activity, a bot's or a Hermes
+    /// session's, before observing it, under the stored key it carried. Only one activity can
+    /// own the manager; duplicates and final states retire.
     @discardableResult
-    func restoreBotOwnership(attributes: AgentRunActivityAttributes,
-                             state: AgentRunActivityAttributes.ContentState) -> Bool {
-        guard currentSessionID == nil, attributes.bot != nil, !state.isFinal else { return false }
+    func restoreOwnership(attributes: AgentRunActivityAttributes,
+                          state: AgentRunActivityAttributes.ContentState) -> Bool {
+        guard currentSessionID == nil, attributes.bot != nil || attributes.isHermesSession, !state.isFinal else { return false }
         currentSessionID = attributes.sessionID
         currentStreamID = AgentLiveActivityReusePolicy.normalizedStreamID(attributes.streamID)
         currentServer = attributes.server
+        drivenPushSessionID = attributes.pushTarget?.sessionID
         currentState = state.presented(attributes: attributes, systemIsStale: false)
         rawResponseText = currentState?.responseExcerpt ?? ""
         lastSentUpdateAt = state.updatedAt
@@ -572,21 +658,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         for persisted in Activity<AgentRunActivityAttributes>.activities
         where AgentLiveActivityReusePolicy.normalizedStreamID(persisted.attributes.streamID) == normalized {
             guard persisted.content.state.isFinal == false else { continue }
-
-            let finalState = Self.keepingRelayCounts(AgentRunActivityStateReducer.final(
-                status: status,
-                activity: activityLine,
-                state: persisted.content.state
-            ), on: persisted)
-            // The run is over, so the relay must stop holding this session's banners.
-            await retirePush(persisted)
-            // `end(content:)` sets the final content directly and there is no
-            // intervening render delay here, so a preceding `update` is redundant
-            // (PR #266 review).
-            await persisted.end(
-                ActivityContent(state: finalState, staleDate: nil),
-                dismissalPolicy: dismissalPolicy(for: status)
-            )
+            await endPersisted(persisted, status: status, activity: activityLine)
             didEndRunningActivity = true
         }
 
@@ -599,12 +671,28 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         return didEndRunningActivity
     }
 
+    /// Ends a persisted activity this manager isn't driving with a final `status`. The run is
+    /// over, so the relay first stops holding its session's banners. `end(content:)` sets the
+    /// final content directly with no render delay, so no `update` precedes it (PR #266 review).
+    private func endPersisted(_ persisted: Activity<AgentRunActivityAttributes>,
+                              status: AgentRunActivityStatus, activity activityLine: String) async {
+        let finalState = Self.keepingRelayCounts(AgentRunActivityStateReducer.final(
+            status: status,
+            activity: activityLine,
+            state: persisted.content.state
+        ), on: persisted)
+        await retirePush(persisted)
+        await persisted.end(ActivityContent(state: finalState, staleDate: nil), dismissalPolicy: dismissalPolicy(for: status))
+    }
+
     private func requestOrUpdateActivity(
         sessionID: String,
         streamID: String?,
         sessionTitle: String,
         bot: AgentRunActivityBot?,
         server: URL?,
+        destinationURL: URL?,
+        pushSessionID: String?,
         state: AgentRunActivityAttributes.ContentState,
         lifecycle: Int
     ) async {
@@ -658,10 +746,12 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 streamID: streamID,
                 startedAt: state.startedAt,
                 bot: bot,
-                server: server
+                server: server,
+                destinationURL: destinationURL,
+                pushSessionID: pushSessionID
             )
-            // Every bot asks for a token; a webui run asks only when its server is
-            // paired, so webui-only users see no change (#566).
+            // Every bot asks for a token; a webui run or a Hermes session asks only when its
+            // server is paired, so users without push see no change (#566, #1179).
             let wantsPushToken = bot != nil || server.map(isPaired) == true
             let requestedActivity = try Activity.request(
                 attributes: attributes,
@@ -853,17 +943,19 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     }
 
     private func observePush(_ observed: Activity<AgentRunActivityAttributes>) {
-        // A webui run on an unpaired server has no token to forward; leave it local-only.
+        // A webui run or Hermes session on an unpaired server has no token to forward; leave it local-only.
         guard let target = observed.attributes.pushTarget, let registrar = pushRegistrar,
               observed.attributes.bot != nil || isPaired(target.server) else { return }
         pushTokenTask?.cancel()
         pushStateTask?.cancel()
         pushOwner = observed.id
         pushTokenTask = Task { [weak self] in
-            func forward(_ token: Data) async {
+            @MainActor func forward(_ token: Data) async {
                 guard !Task.isCancelled else { return }
-                await registrar.register(owner: observed.id, server: target.server, sessionID: target.sessionID,
-                                         token: token.map { String(format: "%02x", $0) }.joined())
+                // The driven activity registers under the key its stored session moved to (#1179).
+                let moved = self?.activity?.id == observed.id ? self?.drivenPushSessionID : nil
+                await registrar.register(owner: observed.id, server: target.server, sessionID: moved ?? target.sessionID,
+                                         token: Self.hex(token))
             }
             if let token = observed.pushToken { await forward(token) }
             for await token in observed.pushTokenUpdates {
@@ -882,6 +974,10 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
                 }
             }
         }
+    }
+
+    private static func hex(_ token: Data) -> String {
+        token.map { String(format: "%02x", $0) }.joined()
     }
 
     private func retirePush(_ retiring: Activity<AgentRunActivityAttributes>) async {
@@ -903,6 +999,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         currentSessionID = nil
         currentStreamID = nil
         currentServer = nil
+        drivenPushSessionID = nil
         activeConnectedStreamID = nil
         rawResponseText = ""
         lastSentUpdateAt = nil
@@ -1082,6 +1179,68 @@ enum LiveActivityReconciler {
             let age = now.timeIntervalSince(orphan.updatedAt)
             guard age >= 0, age <= recencyWindow else { continue }
             await notify(orphan, alertOutcome)
+        }
+    }
+}
+
+// MARK: - Leftover activities at cold launch (#1179)
+
+/// One Live Activity a previous launch left, as cold launch decides it.
+struct LeftoverLiveActivity {
+    let id: String
+    let attributes: AgentRunActivityAttributes
+    /// Ended, dismissed, or showing a final state.
+    let isFinished: Bool
+}
+
+enum LeftoverLiveActivityAction: Equatable {
+    /// The relay drives it: the manager owns it again.
+    case adopt
+    /// Left as it is, to age out by its stale date or for another reconciler.
+    case keep
+    /// Already finished: its relay registration is released.
+    case retire
+    /// Nothing can follow it: retired and ended as it shows.
+    case end
+    /// The host no longer runs it, and how it ended is unknown: retired and ended as complete.
+    case endComplete
+}
+
+/// Decides each leftover activity's action at cold launch, testably. Paired activities are
+/// adopted, finished ones retire, and an unpaired bot's ends. An unpaired Hermes session's
+/// (#1179), when it belongs to the signed-in Hermes server, is checked against one
+/// `session.active_list` read: kept while the host runs one of its keys, else ended as
+/// complete. Another server's, or one the read couldn't settle, waits for its stale date, and
+/// a running webui activity waits for the server-status reconciler.
+@MainActor enum LeftoverLiveActivitySettlement {
+    /// The stored keys a `session.active_list` reply runs: each listed `session_key` whose
+    /// status isn't `idle`, including a status this build doesn't know, so an unfamiliar state
+    /// never ends a run.
+    static func runningKeys(_ items: [BotJSON]) -> Set<String> {
+        Set(items.compactMap { item in
+            guard let key = item["session_key"].text, !key.isEmpty, item["status"].text != "idle" else { return nil }
+            return key
+        })
+    }
+
+    /// Reads `runningKeys` once, and only when an unpaired Hermes session's activity on
+    /// `hermesServer` needs it.
+    static func actions(for leftovers: [LeftoverLiveActivity], isPaired: (URL) -> Bool, hermesServer: URL?,
+                        runningKeys: () async -> Set<String>?) async -> [LeftoverLiveActivityAction] {
+        let paired = leftovers.map { $0.attributes.pushTarget.map { isPaired($0.server) } == true }
+        let checked = zip(leftovers, paired).map { leftover, paired in
+            leftover.attributes.isHermesSession && !leftover.isFinished && !paired
+                && hermesServer != nil && leftover.attributes.server == hermesServer
+        }
+        let running = checked.contains(true) ? await runningKeys() : nil
+        return leftovers.indices.map { index in
+            let leftover = leftovers[index]
+            if leftover.attributes.bot != nil { return !leftover.isFinished && paired[index] ? .adopt : .end }
+            if leftover.isFinished { return .retire }
+            guard leftover.attributes.isHermesSession else { return .keep }
+            if paired[index] { return .adopt }
+            guard checked[index], let running else { return .keep }
+            return leftover.attributes.hermesSessionKeys.isDisjoint(with: running) ? .endComplete : .keep
         }
     }
 }

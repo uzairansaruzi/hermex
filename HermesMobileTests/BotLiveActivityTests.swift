@@ -48,7 +48,7 @@ import XCTest
         let state = try JSONDecoder().decode(AgentRunActivityAttributes.ContentState.self,
                                             from: Data(#"{"v":1,"status":"running","tool_calls":5}"#.utf8))
         let manager = AgentLiveActivityManager()
-        XCTAssertTrue(manager.restoreBotOwnership(attributes: attributes, state: state))
+        XCTAssertTrue(manager.restoreOwnership(attributes: attributes, state: state))
         XCTAssertEqual(manager.drivenSessionID, bot.key)
         XCTAssertEqual(manager.currentStateForTesting()?.sessionTitle, "Inbox Triage")
         XCTAssertNil(manager.activeConnectedStreamID, "A restored push activity does not own a foreground stream")
@@ -66,13 +66,31 @@ import XCTest
         let running = AgentRunActivityStateReducer.initialState(sessionID: bot.key, sessionTitle: "Inbox Triage")
         let final = AgentRunActivityStateReducer.final(status: .complete, activity: "Done", state: running)
         let manager = AgentLiveActivityManager()
-        XCTAssertFalse(manager.restoreBotOwnership(attributes: attributes, state: final))
+        XCTAssertFalse(manager.restoreOwnership(attributes: attributes, state: final))
         XCTAssertNil(manager.drivenSessionID)
-        XCTAssertTrue(manager.restoreBotOwnership(attributes: attributes, state: running))
+        XCTAssertTrue(manager.restoreOwnership(attributes: attributes, state: running))
         var duplicate = attributes
         duplicate.sessionID = "another-bot"
-        XCTAssertFalse(manager.restoreBotOwnership(attributes: duplicate, state: running))
+        XCTAssertFalse(manager.restoreOwnership(attributes: duplicate, state: running))
         XCTAssertEqual(manager.drivenSessionID, bot.key)
+    }
+
+    /// A legacy compression moves a bot's stored key mid-turn (#1179): the adopted activity's
+    /// pushes move to the new key, and a blank key moves nothing.
+    func testABotsPushesFollowAKeyMove() throws {
+        var bot = try XCTUnwrap(AgentRunActivityBot(destination()))
+        bot.pushSessionID = "tip"
+        let attributes = AgentRunActivityAttributes(sessionID: bot.key, sessionTitle: "Inbox Triage",
+                                                    streamID: bot.streamID(turn: "100.0"),
+                                                    startedAt: Date(timeIntervalSince1970: 100), bot: bot)
+        let running = AgentRunActivityStateReducer.initialState(sessionID: bot.key, sessionTitle: "Inbox Triage")
+        let manager = AgentLiveActivityManager()
+        XCTAssertTrue(manager.restoreOwnership(attributes: attributes, state: running))
+        XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip")
+        manager.movePushSession(to: "tip-2")
+        XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-2")
+        manager.movePushSession(to: "")
+        XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-2")
     }
 
     /// The relay route for each kind of activity (#566): a webui run pushes under its
