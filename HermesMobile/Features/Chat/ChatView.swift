@@ -485,6 +485,7 @@ struct ChatView: View {
             backend: hermesSession.map { .hermes(HermesChatTurnCoordinator($0)) } ?? .webui
         )
         model.hermesBotChatRoot = hermesSession?.botChatRoot
+        model.hermesLineageRoot = hermesSession?.lineageRoot
         _viewModel = State(initialValue: model)
         _gitAvailabilityViewModel = State(initialValue: GitWorkspaceAvailabilityViewModel(
             session: session,
@@ -2892,6 +2893,7 @@ struct ChatView: View {
     private func hydrateDraftIfNeeded() async {
         viewModel.protectDraftAttachments(for: draftKey)
         guard !didHydrateDraft else { return }
+        await viewModel.adoptHermesSegmentDraft()
         await draftStore.markUsed(draftKey)
         let textBeforeHydration = draftMessage
         let quotesBeforeHydration = draftQuotes

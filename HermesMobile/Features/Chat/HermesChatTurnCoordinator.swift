@@ -66,6 +66,11 @@ struct HermesSessionChat: Hashable, Identifiable {
     /// The root a bot's deep link named for its `.canonicalChat`: once the bot has replaced that
     /// chat, the chat says so (`ChatView`'s `onChatReplaced`, #554) instead of opening the new one.
     var linkedRoot: String? = nil
+    /// The row's identity across a legacy compression chain (`SessionSummary.Hermes.lineageRoot`),
+    /// which this chat, opened by its key, caches and keeps its draft under, so a chat a session
+    /// link opened (#1176) shares the list row's copy and draft before any cached row names the
+    /// root. Nil asks the cache, else takes the key.
+    var lineageRoot: String? = nil
 
     /// What the chat lets the user do (#1145): a bot's Bot Chat keeps Bot Chat's rules.
     var policy: HermesChatPolicy { HermesChatPolicy(target: target, botChatRoot: botChatRoot) }
@@ -217,6 +222,11 @@ struct HermesChatTranscript: Equatable {
     /// transcript under a prompt the chat already shows.
     @ObservationIgnored private var submitsInFlight = 0
     @ObservationIgnored private var draftKey: ChatDraftKey
+    /// The chain this session belongs to (`HermesSessionChat.lineageRoot`), which keys its draft.
+    @ObservationIgnored private let lineageRoot: String?
+    /// The key this session's draft had before drafts followed a compression chain's root
+    /// (#1176): the segment it opened by. Nil when that is the draft key.
+    @ObservationIgnored let segmentDraftKey: ChatDraftKey?
     private let isNetworkAvailable: @MainActor () -> Bool
     /// The shared Live Activity manager this chat's turns drive (#1014); nil drives none.
     @ObservationIgnored private let liveActivities: (any AgentLiveActivityManaging)?
@@ -236,7 +246,8 @@ struct HermesChatTranscript: Equatable {
     @ObservationIgnored private var shownWaiting: AgentLiveActivityEvent?
 
     /// A `.canonicalChat`, or a Bot Chat row opened by its key with its `botChatRoot`, is a Bot Chat.
-    init(engine: HermesConversation, botChatRoot: String? = nil,
+    /// A session's draft goes under its `lineageRoot` when given (`HermesSessionChat.lineageRoot`).
+    init(engine: HermesConversation, botChatRoot: String? = nil, lineageRoot: String? = nil,
          liveActivities: (any AgentLiveActivityManaging)? = nil,
          writeBotAvatar: (@MainActor (BotProfile, BotDestination) -> String?)? = nil,
          isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
@@ -251,7 +262,10 @@ struct HermesChatTranscript: Equatable {
         settings = HermesChatSettings(engine: engine, loadsAvatars: policy == .botChat)
         slashCommands = HermesSlashCommands(engine: engine, policy: policy)
         activity = HermesChatActivity(wire: engine.wire)
-        draftKey = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id)
+        self.lineageRoot = lineageRoot
+        draftKey = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id, lineageRoot: lineageRoot)
+        let segmentDraftKey = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id)
+        self.segmentDraftKey = segmentDraftKey == draftKey ? nil : segmentDraftKey
         if case .new = engine.target { opensNew = true } else { opensNew = false }
         engine.owner = self
         requests.onOpenChange = { [weak self] in self?.syncLiveActivityWaiting() }
@@ -272,7 +286,7 @@ struct HermesChatTranscript: Equatable {
         self.init(engine: HermesConversation(server: chat.server, connection: chat.connection, target: chat.target,
                                              linkedRoot: chat.linkedRoot,
                                              wire: BotClient(saved: chat.connection, server: chat.server)),
-                  botChatRoot: chat.botChatRoot, liveActivities: AgentLiveActivityManager.shared,
+                  botChatRoot: chat.botChatRoot, lineageRoot: chat.lineageRoot, liveActivities: AgentLiveActivityManager.shared,
                   writeBotAvatar: BotLiveActivity.writeAvatar)
     }
 
@@ -665,7 +679,7 @@ struct HermesChatTranscript: Equatable {
     private func acceptPrompt() {
         guard !promptAccepted else { return }
         promptAccepted = true
-        let key = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id)
+        let key = engine.target.draftKey(server: engine.server, connectionID: engine.connection.id, lineageRoot: lineageRoot)
         guard key != draftKey else { return }
         let previous = draftKey
         draftKey = key

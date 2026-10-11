@@ -198,6 +198,18 @@ server's content even if the purge fails.
 | Default model/profile | No persisted state to leak (server-fresh per active server); covered by the switch mechanism + `9.3` Settings tests. |
 | Chat thumbnail cache (same path, two servers/sessions; attachment vs. media key) | `TranscriptMediaParserTests` (`testAttachmentImageCacheKeySeparatesSamePathAcrossServersAndSessions`, `testImageCacheKeySeparatesSameReferenceAcrossSessions`, `testAttachmentAndMediaCacheKeysNeverCollide`) |
 
+## Links that name a server
+
+A Bot link (`bot?server=…`), a webui push link (`webui-push?server=…`) and a Hermes session
+link (`session?server=…`, #1176) each name their configured server. Each router reads only the
+registry and auth state, and drops a link for an unconfigured server. A link for another
+server switches to it first; a webui push or session link does so even from another server's
+sign-in form, where a Bot link waits for that sign-in. The session lookup
+then runs on the named server's own saved connection, after the switch, so a link never reads,
+signs in to or opens anything on a server it doesn't name. A webui push or session link
+also replaces every link already held (`PendingLinks`), so the sign-in it waits for never
+routes an older link to another server first. `HermesSessionLinkTests` covers the routing.
+
 ## Bot connection and drafts
 
 Bot Mode has a separate per-server Keychain connection and ephemeral cookie jar.

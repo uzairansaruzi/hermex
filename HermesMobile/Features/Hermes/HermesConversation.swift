@@ -24,12 +24,14 @@ enum ConversationTarget: Hashable, Sendable {
     }
 
     /// The composer draft's key, which its attachments share. A Bot Chat keeps the key it
-    /// has always had, so no saved draft moves.
-    func draftKey(server: URL, connectionID: UUID) -> ChatDraftKey {
+    /// has always had, so no saved draft moves. A session in a legacy compression chain keys by
+    /// the chain's `lineageRoot` when its row or link named one, so every segment's chat shares
+    /// the list row's draft (#1176).
+    func draftKey(server: URL, connectionID: UUID, lineageRoot: String? = nil) -> ChatDraftKey {
         switch self {
         case .canonicalChat(let profile): return .bot(server: server, connectionID: connectionID, profile: profile)
         case .session(let profile, let key):
-            return .hermesSession(server: server, connectionID: connectionID, profile: profile, key: key)
+            return .hermesSession(server: server, connectionID: connectionID, profile: profile, key: lineageRoot ?? key)
         case .new(let profile, _, _): return .hermesSession(server: server, connectionID: connectionID, profile: profile, key: nil)
         }
     }

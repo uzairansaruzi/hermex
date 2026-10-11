@@ -308,6 +308,19 @@ import XCTest
                                                            in: context, limit: 10), [])
     }
 
+    /// A chat a session link opened (#1176) caches under the lineage root the link's lookup
+    /// found, though no cached row names it yet, so its list row later reads the same copy.
+    func testALinkedChainsTranscriptIsCachedUnderTheRootItsLookupFound() async throws {
+        let context = try makeContext()
+        let chat = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), lineageRoot: "root")
+        await chat.model.loadMessages(modelContext: context)
+
+        XCTAssertEqual(try CacheStore.cachedHermesMessages(serverURL: server, profile: "default", lineageRoot: "root",
+                                                           in: context, limit: 10).map(\.content), ["Hi"])
+        XCTAssertEqual(try CacheStore.cachedHermesMessages(serverURL: server, profile: "default", lineageRoot: "tip",
+                                                           in: context, limit: 10), [])
+    }
+
     /// All Profiles (#709) caches each Profile's rows under its own Profile and, with the host
     /// unreachable, shows every Profile's.
     func testAllProfilesShowsEveryProfilesCachedRowsOffline() async throws {
@@ -660,9 +673,11 @@ import XCTest
     }
 
     /// A chat on `target`, session `tip` in `default` unless given, over `wire`; an archived Bot
-    /// Chat's with `botChatRoot`, a bot link's with `linkedRoot`.
+    /// Chat's with `botChatRoot`, a bot link's with `linkedRoot`, a session link's with the
+    /// `lineageRoot` its lookup found.
     private func makeChat(_ wire: HermesOfflineWire, target: ConversationTarget = .session(profile: "default", key: "tip"),
-                          server: URL? = nil, botChatRoot: String? = nil, linkedRoot: String? = nil) -> Chat {
+                          server: URL? = nil, botChatRoot: String? = nil, linkedRoot: String? = nil,
+                          lineageRoot: String? = nil) -> Chat {
         let gate = Gate()
         let server = server ?? self.server
         let engine = HermesConversation(server: server, connection: connection, target: target, linkedRoot: linkedRoot,
@@ -673,6 +688,7 @@ import XCTest
             backend: .hermes(HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true }))
         )
         model.hermesBotChatRoot = botChatRoot
+        model.hermesLineageRoot = lineageRoot
         return Chat(model: model, reconnect: gate)
     }
 
