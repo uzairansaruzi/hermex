@@ -36,9 +36,10 @@ enum HermexPushPlugin {
         body["plugin_version"].text.flatMap(HermexPushPluginVersion.init)
     }
 
-    /// Whether the plugins hub lists hermex-push, i.e. it is on the host's disk.
-    static func isOnDisk(hub body: BotJSON) -> Bool {
-        body["plugins"].list?.contains { $0["name"].text == name } == true
+    /// Whether the plugins hub lists hermex-push, i.e. it is on the host's disk. Nil for a
+    /// reply without a plugins list, which says nothing either way.
+    static func isOnDisk(hub body: BotJSON) -> Bool? {
+        body["plugins"].list?.contains { $0["name"].text == name }
     }
 
     /// The version on the host's disk: `plugin.yaml`'s, as `GET /api/dashboard/plugins/hub`

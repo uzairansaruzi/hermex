@@ -85,8 +85,9 @@ import Foundation
         HermexPushPlugin.loadedVersion(try await send(.pushPairing))
     }
 
-    /// Whether hermex-push is on the host's disk, from the plugins hub.
-    func hasPluginOnDisk() async throws -> Bool {
+    /// Whether hermex-push is on the host's disk, from the plugins hub; nil when the hub's
+    /// reply has no plugins list to read.
+    func hasPluginOnDisk() async throws -> Bool? {
         HermexPushPlugin.isOnDisk(hub: try await send(.pluginsHub))
     }
 

@@ -68,7 +68,9 @@ otherwise takes the first matching server by URL
 and token, so both entries share one registration: removing or turning off one
 keeps it for the other, and only the last one deletes it
 (`PushRegistrar.forget` and `disable`, #1178), including a removal that lands
-while a device write is in flight. Turning one off in Settings also leaves the
+while a device write is in flight. Another entry keeps only the token it
+holds, and a Keychain that can't list the entries deletes nothing (turning off
+fails instead). Turning one off in Settings also leaves the
 host's plugin enabled; only the last one disables it
 (`HermexPushProvisioner.disable`). Their preferences are that one
 registration too, so the last choice saved under either entry applies to both.

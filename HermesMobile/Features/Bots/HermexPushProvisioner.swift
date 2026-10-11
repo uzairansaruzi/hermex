@@ -380,8 +380,9 @@ import UserNotifications
     }
 
     /// Whether another entry for this server's host (a LAN and a tunnel address, say) uses
-    /// the same pairing, so turning this one off leaves the host and relay alone (#1178).
-    var sharesHostPairing: Bool { registrar?.sharesRegistration(for: server) == true }
+    /// the same pairing, so turning this one off leaves the host and relay alone (#1178). An
+    /// unreadable Keychain reads as not shared here; `disable` asks again and stops on it.
+    var sharesHostPairing: Bool { (try? registrar?.sharesRegistration(for: server)) == true }
 
     /// Stops `disable`'s plugin write when another entry paired while it signed in.
     private struct HostPairingShared: Error {}
@@ -389,21 +390,22 @@ import UserNotifications
     /// The way out: stop the host sending, then drop this phone at the relay and wipe its
     /// keys. The host goes first so a failure at either step changes nothing the user has
     /// to unpick — they can simply try again. While another entry shares the pairing, the
-    /// plugin stays on for it and only this entry's keys go.
+    /// plugin stays on for it and only this entry's keys go. A Keychain that can't say
+    /// whether one does fails the run before anything changes.
     func disable() async {
         guard !isWorking, pairing != nil else { return }
         completed = []
         phase = .disabling
         var step = String(localized: "Disable the plugin")
         do {
-            if let connection, !sharesHostPairing {
+            if let connection, try registrar?.sharesRegistration(for: server) != true {
                 let client = dashboard(connection)
                 do { try await client.signIn() } catch { return failSignIn(error) }
                 // Another entry can finish pairing during a sign-in; it then owns the
                 // plugin too, so the disable doesn't go out.
                 do {
                     try await client.setPlugin(HermexPushPlugin.name, enabled: false) {
-                        if self.sharesHostPairing { throw HostPairingShared() }
+                        if try self.registrar?.sharesRegistration(for: self.server) == true { throw HostPairingShared() }
                     }
                 } catch is HostPairingShared {}
             }
@@ -604,7 +606,8 @@ import UserNotifications
     /// because reinstalling and restarting on those would replace a self-hosted relay and
     /// interrupt work over a failure that had nothing to do with setup. An unmounted route
     /// is read against the plugins hub: with hermex-push on disk it throws
-    /// `HermexPushRouteMissing.notMounted`, since only a dashboard restart loads it.
+    /// `HermexPushRouteMissing.notMounted`, since only a dashboard restart loads it; a hub
+    /// reply with no plugins list leaves the 404 unexplained.
     private enum HostState { case paired(PushPairing), relayUnset, notInstalled }
 
     private func hostState(_ client: BotDashboardClient) async throws -> HostState {
@@ -613,8 +616,11 @@ import UserNotifications
         } catch HermexPushRouteMissing.pluginOff {
             return .notInstalled
         } catch HermexPushRouteMissing.notMounted {
-            guard try await client.hasPluginOnDisk() else { return .notInstalled }
-            throw HermexPushRouteMissing.notMounted
+            switch try await client.hasPluginOnDisk() {
+            case false?: return .notInstalled
+            case true?: throw HermexPushRouteMissing.notMounted
+            case nil: throw BotFailure.rejected(404)
+            }
         }
     }
 

@@ -28,8 +28,9 @@ import UIKit
     /// reached. Removing a connection or a whole server may not depend on the network.
     func forget(for server: URL) async
     func pairing(for server: URL) -> PushPairing?
-    /// Whether another stored pairing uses this server's relay registration (#1178).
-    func sharesRegistration(for server: URL) -> Bool
+    /// Whether another stored pairing uses this server's host install (#1178). Throws when
+    /// the Keychain can't list them.
+    func sharesRegistration(for server: URL) throws -> Bool
     func finishPendingRegistrations() async
     func updatePreferences(_ preferences: PushPreferences, for server: URL, expectedPairing: PushPairing) async throws
 }
@@ -142,15 +143,16 @@ enum PushRegistrarError: Error, Equatable {
     /// never fails: the keys go whether or not the relay could be told, because the user
     /// has already thrown the connection away and an unreachable relay must not leave
     /// credentials behind. The relay drops the device on its own once Apple reports the
-    /// token invalid. A device another entry for the same host still uses stays registered.
+    /// token invalid. A device another entry for the same host still uses stays registered,
+    /// and so does one when the Keychain can't say whether another entry uses it.
     func forget(for server: URL) async {
         if let pairing = try? store.pairing(for: server), let token = pairing.registeredToken,
-           !isShared(pairing, besides: server) {
+           (try? isRegistered(token, of: pairing, besides: server)) == false {
             try? await relay.deleteDevice(token: token, pairing: pairing)
         }
         try? store.remove(for: server)
         await activities.forget(server: server)
-        if ((try? store.allPairings()) ?? [:]).isEmpty {
+        if (try? store.allPairings())?.isEmpty == true {
             remoteNotifications.unregisterForRemoteNotifications()
             currentToken = nil
         }
@@ -163,13 +165,13 @@ enum PushRegistrarError: Error, Equatable {
     /// can retry. Like `forget`, it leaves a device another entry for the host still uses.
     func disable(for server: URL) async throws {
         guard let pairing = try store.pairing(for: server) else { return }
-        if let token = pairing.registeredToken, !isShared(pairing, besides: server) {
+        if let token = pairing.registeredToken, try !isRegistered(token, of: pairing, besides: server) {
             try await relay.deleteDevice(token: token, pairing: pairing)
         }
         try store.remove(for: server)
         await activities.forget(server: server)
 
-        if ((try? store.allPairings()) ?? [:]).isEmpty {
+        if (try? store.allPairings())?.isEmpty == true {
             remoteNotifications.unregisterForRemoteNotifications()
             currentToken = nil
         }
@@ -179,27 +181,34 @@ enum PushRegistrarError: Error, Equatable {
         try? store.pairing(for: server)
     }
 
-    /// Whether another entry for this server's host uses the same relay registration, so
-    /// turning this one off must leave the host sending for it.
-    func sharesRegistration(for server: URL) -> Bool {
+    /// Whether another entry for this server's host is paired too, so turning this one off
+    /// must leave the host sending for it. Throws when the Keychain can't list the entries.
+    func sharesRegistration(for server: URL) throws -> Bool {
         guard let pairing = pairing(for: server) else { return false }
-        return isShared(pairing, besides: server)
+        return try !entries(sharing: pairing, besides: server).isEmpty
     }
 
-    /// Whether another configured server pairs with the same install at the same relay
+    /// The other configured servers that pair with the same install at the same relay
     /// (#1178). Two entries that reach one host, say a LAN and a tunnel address, get the
-    /// host's one key pair, and the relay keys a device by install and token, so they
-    /// share one registration: deleting it for one would silence the other.
-    private func isShared(_ pairing: PushPairing, besides server: URL) -> Bool {
-        ((try? store.allPairings()) ?? [:]).contains { other, stored in
-            other != server && stored.installKey == pairing.installKey && stored.relayURL == pairing.relayURL
+    /// host's one key pair. Throws when the Keychain can't list them: an owner it can't see
+    /// must not be silenced.
+    private func entries(sharing pairing: PushPairing, besides server: URL) throws -> [PushPairing] {
+        try store.allPairings().compactMap { other, stored in
+            other != server && stored.installKey == pairing.installKey && stored.relayURL == pairing.relayURL ? stored : nil
         }
     }
 
+    /// Whether another entry for the host still holds `token`. The relay keys a device by
+    /// install and token, so deleting it would silence that entry; a token no entry holds,
+    /// such as one a launch refresh is replacing, is nobody's to keep.
+    private func isRegistered(_ token: String, of pairing: PushPairing, besides server: URL) throws -> Bool {
+        try entries(sharing: pairing, besides: server).contains { $0.registeredToken == token }
+    }
+
     /// Undoes a device write whose pairing left `server` while it was in flight, unless
-    /// another entry for the host still uses that registration.
+    /// another entry for the host still uses that registration or the Keychain can't say.
     private func retire(token: String, of pairing: PushPairing, removedFrom server: URL) async {
-        guard !isShared(pairing, besides: server) else { return }
+        guard (try? isRegistered(token, of: pairing, besides: server)) == false else { return }
         try? await relay.deleteDevice(token: token, pairing: pairing)
     }
 

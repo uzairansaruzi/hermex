@@ -2360,7 +2360,7 @@ the plugin re-reads it. A 404 is read by its body (hermes-agent `ca678285`, #117
 | 404 body | Meaning | Setup |
 | --- | --- | --- |
 | `{"detail":"Plugin not found"}` | off, or not installed (auth middleware) | the full sequence |
-| `{"detail":"No such API endpoint: …"}` | on, but the dashboard never mounted its routes | plugins hub: on disk → "Restart Hermes to finish"; not on disk → the full sequence |
+| `{"detail":"No such API endpoint: …"}` | on, but the dashboard never mounted its routes | plugins hub: on disk → "Restart Hermes to finish"; not on disk → the full sequence; no plugins list → Pair step fails, host unchanged |
 | `{"error":"Headless backend (hermes serve): …"}` | `hermes serve`'s catch-all, read like the line above | as above |
 
 Anything else — another 404, a timeout, a server error, keys this build cannot read — is

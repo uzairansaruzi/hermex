@@ -259,6 +259,28 @@ import XCTest
         XCTAssertTrue(PushHTTPFixture.calls.contains("POST https://a.example.com/api/gateway/restart"))
     }
 
+    /// A hub reply without a readable plugins list can't say the plugin is missing, so the
+    /// unmounted route fails the Pair step instead of reinstalling and restarting (#1178).
+    func testAnUnreadableHubReplyIsReportedInsteadOfReinstalling() async throws {
+        let registrar = FakePushRegistrar()
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/pairing": return PushHTTPFixture.notMounted
+            case "/api/dashboard/plugins/hub": return (200, .object(["error": .string("hub unavailable")]))
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        await provisioner.enable()
+
+        XCTAssertEqual(provisioner.failure?.title, HermexPushProvisioner.Step.pair.title)
+        XCTAssertEqual(provisioner.failure?.message, "This Hermes host refused the step (HTTP 404). Check the host’s logs, then try again.")
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/env") || $0.contains("agent-plugins") || $0.contains("/api/gateway/restart") })
+        XCTAssertNil(provisioner.pluginCard)
+        XCTAssertEqual(registrar.actions, [])
+    }
+
     /// A 404 that is none of the host's known answers is not taken as "not set up".
     func testAnUnknownMissingRouteIsReportedInsteadOfReconfiguringTheHost() async throws {
         let registrar = FakePushRegistrar()
@@ -595,6 +617,24 @@ import XCTest
         XCTAssertEqual(registrar.actions, ["disable a.example.com"])
         XCTAssertNil(provisioner.pairing)
         XCTAssertEqual(registrar.pairing(for: serverB)?.installKey, PushHTTPFixture.installKey)
+    }
+
+    /// A Keychain that can't say whether another entry shares the host stops the disable
+    /// before it signs in, so neither the host plugin nor this entry's keys change (#1178).
+    func testDisableChangesNothingWhenTheKeychainCantListTheOtherEntries() async throws {
+        struct KeychainFailure: Error {}
+        let registrar = try await pairedRegistrar(serverA)
+        registrar.sharesError = KeychainFailure()
+        PushHTTPFixture.handler = { _ in nil }
+        PushHTTPFixture.clearCalls()
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        await provisioner.disable()
+
+        XCTAssertEqual(provisioner.failure?.title, "Disable the plugin")
+        XCTAssertEqual(PushHTTPFixture.calls, [])
+        XCTAssertEqual(registrar.actions, [])
+        XCTAssertNotNil(provisioner.pairing)
     }
 
     func testDisableKeepsThePairingWhenTheRelayRefusesSoTheUserCanRetry() async throws {
@@ -1524,7 +1564,9 @@ import XCTest
 
     func pairing(for server: URL) -> PushPairing? { pairings[server] }
 
-    func sharesRegistration(for server: URL) -> Bool {
+    var sharesError: (any Error)?
+    func sharesRegistration(for server: URL) throws -> Bool {
+        if let sharesError { throw sharesError }
         guard let pairing = pairings[server] else { return false }
         return pairings.contains { $0.key != server && $0.value.installKey == pairing.installKey && $0.value.relayURL == pairing.relayURL }
     }
