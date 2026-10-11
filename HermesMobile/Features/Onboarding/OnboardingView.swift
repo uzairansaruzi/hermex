@@ -4,7 +4,8 @@ struct OnboardingView: View {
     @Bindable var authManager: AuthManager
     @State private var viewModel: OnboardingViewModel
     @State private var currentPage: Int
-    @State private var hasCopiedAgentPrompt = false
+    @State private var shownSetupPrompt = OnboardingFlowPolicy.initialSetupPrompt
+    @State private var copiedSetupPrompts: Set<OnboardingSetupPrompt> = []
     @State private var hasBypassedCopyReminder = false
     @State private var isShowingCopyReminder = false
     @FocusState private var focusedField: OnboardingConnectField?
@@ -48,7 +49,10 @@ struct OnboardingView: View {
                     OnboardingFeaturesPage()
                         .tag(1)
 
-                    OnboardingAgentPromptPage(hasCopiedAgentPrompt: $hasCopiedAgentPrompt)
+                    OnboardingAgentPromptPage(
+                        shownPrompt: $shownSetupPrompt,
+                        copiedPrompts: $copiedSetupPrompts
+                    )
                         .tag(2)
 
                     OnboardingTailscalePage()
@@ -84,7 +88,7 @@ struct OnboardingView: View {
                 advanceToNextPage()
             }
         } message: {
-            Text("Copy the agent setup prompt on your desktop before continuing so Hermes Web UI and Tailscale are configured correctly.")
+            Text(shownSetupPrompt.copyReminderMessage)
         }
     }
 
@@ -190,7 +194,8 @@ struct OnboardingView: View {
     private func handlePrimaryAction() {
         if OnboardingFlowPolicy.shouldShowCopyReminder(
             page: currentPage,
-            hasCopiedAgentPrompt: hasCopiedAgentPrompt,
+            shownPrompt: shownSetupPrompt,
+            copiedPrompts: copiedSetupPrompts,
             hasBypassedCopyReminder: hasBypassedCopyReminder
         ) {
             isShowingCopyReminder = true
@@ -210,7 +215,8 @@ struct OnboardingView: View {
         guard OnboardingFlowPolicy.shouldInterceptForwardNavigationFromAgentPrompt(
             from: oldPage,
             to: newPage,
-            hasCopiedAgentPrompt: hasCopiedAgentPrompt,
+            shownPrompt: shownSetupPrompt,
+            copiedPrompts: copiedSetupPrompts,
             hasBypassedCopyReminder: hasBypassedCopyReminder
         ) else {
             return
