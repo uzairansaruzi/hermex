@@ -58,7 +58,7 @@ enum HermesSessionLinkOutcome: Equatable {
 /// only a key exactly one of them has opens. The host answers an unknown key with the one session
 /// it prefixes, so a row whose `id` isn't the link's key is no match. Any failed read fails the
 /// lookup: a Profile that couldn't be read leaves the link unproven. A subagent's link
-/// (`opensParent`) opens the found session's parent instead.
+/// (`opensParent`) opens the session that delegated to the found one instead.
 @MainActor enum HermesSessionLookup {
     enum Outcome: Equatable {
         /// The session as the Sessions list shows its row, which it opens the way that row does.
@@ -98,11 +98,21 @@ enum HermesSessionLinkOutcome: Equatable {
         }
         guard var hit = hits.first else { return .gone }
         guard hits.count == 1 else { return .ambiguous }
-        // A subagent's push names the child; the user follows the session that delegated to it,
-        // one hop up in the child's Profile (#1177). A child naming no parent opens itself.
-        if destination.opensParent, let parent = hit.row["parent_session_id"].text, !parent.isEmpty {
-            guard let row = try await exactRow(parent, profile: hit.profile, on: wire) else { return .gone }
-            hit.row = row
+        // A subagent's push names the child; the user follows the session that delegated to it
+        // (#1177): one hop up from the subagent's first segment, in the child's Profile, since a
+        // subagent that compressed pushes from its newest. Every segment inherits the
+        // `_delegate_from` `delegate_task` stamps, so the climb stops there even when the delegator
+        // compressed too; a host without the mark climbs compression alone. A child naming no
+        // parent opens itself.
+        if destination.opensParent {
+            let delegator = hit.row.modelConfigText("_delegate_from")
+            let first = try await lineageRoot(of: hit.row, profile: hit.profile, on: wire) {
+                $0.modelConfigText("_delegate_from") == delegator
+            }
+            if let parent = first["parent_session_id"].text, !parent.isEmpty {
+                guard let row = try await exactRow(parent, profile: hit.profile, on: wire) else { return .gone }
+                hit.row = row
+            }
         }
         let row = try await listRow(hit.row, profile: hit.profile, on: wire)
         return row.isRoomSession ? .room : .found(row.summary(in: hit.profile))
@@ -124,18 +134,25 @@ enum HermesSessionLinkOutcome: Equatable {
         }
     }
 
-    /// The found row as the host's list projects a legacy compression chain: identified under its
-    /// root, reached by stepping up while the parent ended in compression, at most
-    /// `lineageHopLimit` parents. The chain keeps its root's `hidden` and start, and an untitled
-    /// tip shows the root's title. The row stays the found one's, which the chat opens by.
-    private static func listRow(_ found: BotJSON, profile: String, on wire: any BotTransport) async throws -> HermesSessionRow {
+    /// The root of `found`'s legacy compression chain: reached by stepping up while the parent
+    /// ended in compression and `belongs` accepts it, at most `lineageHopLimit` parents.
+    private static func lineageRoot(of found: BotJSON, profile: String, on wire: any BotTransport,
+                                    where belongs: (BotJSON) -> Bool = { _ in true }) async throws -> BotJSON {
         var top = found
         for _ in 0..<lineageHopLimit {
             guard let parent = top["parent_session_id"].text, !parent.isEmpty,
                   let row = try await exactRow(parent, profile: profile, on: wire),
-                  row["end_reason"].text == "compression" else { break }
+                  row["end_reason"].text == "compression", belongs(row) else { break }
             top = row
         }
+        return top
+    }
+
+    /// The found row as the host's list projects a legacy compression chain: identified under its
+    /// `lineageRoot`. The chain keeps its root's `hidden` and start, and an untitled tip shows the
+    /// root's title. The row stays the found one's, which the chat opens by.
+    private static func listRow(_ found: BotJSON, profile: String, on wire: any BotTransport) async throws -> HermesSessionRow {
+        let top = try await lineageRoot(of: found, profile: profile, on: wire)
         let own = try JSONDecoder().decode(HermesSessionRow.self, from: JSONEncoder().encode(found))
         guard top != found else { return own }
         let root = try JSONDecoder().decode(HermesSessionRow.self, from: JSONEncoder().encode(top))

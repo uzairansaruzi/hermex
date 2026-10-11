@@ -15,12 +15,14 @@ import XCTest
     }
 
     /// A stored row as `GET /api/sessions/{id}` returns it: `profile` is the Profile asked.
+    /// `delegatedFrom` is the `_delegate_from` a subagent's `model_config` (a JSON string) carries.
     private func row(_ id: String, _ profile: String, title: String? = "Plan", parent: String? = nil,
-                     endReason: String? = nil, hidden: Bool = false) -> BotJSON {
+                     endReason: String? = nil, hidden: Bool = false, delegatedFrom: String? = nil) -> BotJSON {
         .object(["id": .string(id), "source": .string("tui"), "title": title.map(BotJSON.string) ?? .null,
                  "parent_session_id": parent.map(BotJSON.string) ?? .null, "end_reason": endReason.map(BotJSON.string) ?? .null,
                  "hidden": .bool(hidden), "archived": .bool(false), "profile": .string(profile),
-                 "is_default_profile": .bool(profile == "default")])
+                 "is_default_profile": .bool(profile == "default"),
+                 "model_config": delegatedFrom.map { BotJSON.string(#"{"_delegate_from": "\#($0)"}"#) } ?? .null])
     }
 
     private func found(_ outcome: HermesSessionLookup.Outcome, file: StaticString = #filePath, line: UInt = #line) throws -> SessionSummary {
@@ -179,6 +181,33 @@ import XCTest
         XCTAssertEqual(solo.sessionId, "solo")
         let gone = try await resolve("orphan")
         XCTAssertEqual(gone, .gone)
+    }
+
+    /// A subagent that compressed under legacy compression pushes from its newest segment: its
+    /// link climbs that subagent's own compression chain, then one hop to the delegating session.
+    /// The climb stops where `_delegate_from` changes, even when the delegator itself later
+    /// compressed; a host without the marker climbs compression alone.
+    func testACompressedSubagentLinkOpensItsDelegator() async throws {
+        let wire = LookupWire()
+        wire.rows = ["research": [
+            "c1": row("c1", "research", title: nil, parent: "c0", delegatedFrom: "p"),
+            "c0": row("c0", "research", title: "Subtask", parent: "p", endReason: "compression", delegatedFrom: "p"),
+            "p": row("p", "research", title: "Planning", parent: "start", endReason: "compression"),
+            "start": row("start", "research", endReason: "user_exit"),
+            "old-c1": row("old-c1", "research", title: nil, parent: "old-c0"),
+            "old-c0": row("old-c0", "research", title: "Subtask", parent: "old-p", endReason: "compression"),
+            "old-p": row("old-p", "research", title: "Planning")
+        ]]
+        func resolve(_ key: String) async throws -> SessionSummary {
+            try found(try await HermesSessionLookup.resolve(
+                HermesSessionDestination(server: server, profile: "research", key: key, opensParent: true), on: wire))
+        }
+
+        let delegator = try await resolve("c1")
+        XCTAssertEqual(delegator.sessionId, "p")
+        XCTAssertEqual(delegator.title, "Planning")
+        let unmarked = try await resolve("old-c1")
+        XCTAssertEqual(unmarked.sessionId, "old-p")
     }
 
     /// A Profile that can't be read leaves the link unproven: nothing opens, and the failure

@@ -246,6 +246,29 @@ import XCTest
         XCTAssertEqual(try route(active: nil), lan)
     }
 
+    /// One host under a webui server with a Bot connection and a Hermes server: the active one
+    /// picks the route, its bot or its session link, then the rest by URL; a webui alias with no
+    /// Bot connection hands the tap to the Hermes alias.
+    func testAMixedKindSharedHostRoutesByTheActiveServersKind() throws {
+        let webui = URL(string: "https://webui.example")!
+        let connection = UUID()
+        let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
+        var info = banner(sealed: nil).userInfo
+        info[PushPayload.profileKey] = "research"
+        func route(active: URL?, botConnection: UUID? = connection) -> URL? {
+            PushNotificationRouter.link(userInfo: info, pairings: [server: pairing, webui: pairing],
+                                        servers: [account(server, .hermes), account(webui, .webui)],
+                                        activeServer: active, botConnectionID: { $0 == webui ? botConnection : nil })
+        }
+        let bot = HermesDeepLink.botURL(for: BotDestination(server: webui, connectionID: connection, profile: "research"))
+        let session = HermesDeepLink.sessionURL(for: HermesSessionDestination(server: server, profile: "research", key: "s1"))
+
+        XCTAssertEqual(route(active: webui), bot)
+        XCTAssertEqual(route(active: server), session)
+        XCTAssertEqual(route(active: nil), session, "With neither active, the first by URL")
+        XCTAssertEqual(route(active: webui, botConnection: nil), session)
+    }
+
     func testWebuiTapRoutesWithoutBotConnectionOrDecryptedProfile() throws {
         let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
         var info = banner(sealed: nil).userInfo
