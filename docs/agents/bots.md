@@ -2541,12 +2541,13 @@ non-webui push (`source` is `bot` for `ios`, `desktop` and `tui` sessions alike)
 the Hermes session link (#1177) for its `session_id`, the session's stored key in every
 hook, with the written-back Profile or none. The Sessions list resolves it as any session
 link: gone or in two Profiles says so, a Bot Chat opens its bot, and a legacy compression
-chain opens at its tip. `is_subagent` adds `subagent=1`, and the lookup opens the child
-row's `parent_session_id`, one hop. An approval card appears only from the host's
+chain opens at its tip. `is_subagent` adds `subagent=1`, and the lookup opens the
+`_delegate_from` key when present; otherwise it walks the child's compression segments
+before taking one `parent_session_id` hop. An approval card appears only from the host's
 `open_requests` on resume. Only on a webui server does `source == "bot"` still open
 `botDestination`, its Bot connection's bot (legacy Bot Mode). A tap only navigates; an
-approval is never answered from a banner. Anything unroutable just opens the app. Webui taps use the install's configured server
-and `session_id`, independently of Bot Mode and preview decryption. After switching to
+approval is never answered from a banner. Anything unroutable just opens the app. Webui taps use the install's configured webui server
+(never a Hermes alias of the same host) and `session_id`, independently of Bot Mode and preview decryption. After switching to
 that server (and signing in if needed), a live session lookup opens the conversation;
 a missing session leaves its session list without an error. It never searches another
 server or uses a stale cached session. A paired server suppresses local completion

@@ -7,7 +7,7 @@ import UserNotifications
 @MainActor enum PushNotificationRouter {
     /// The deep link a tapped relay banner queues on `AppIntentRouter`, or nil when it names
     /// nothing this phone can open and the app simply opens. A webui push opens its webui
-    /// session. Any other push goes to the first configured server holding its install, the active
+    /// session on a webui server. Any other push goes to the first configured server holding its install, the active
     /// one first, then by URL, that can open it: a Hermes server opens the session through the
     /// session link (#1177), Bot Chats included, whose row opens their bot; a webui server opens
     /// its Bot connection's bot (legacy Bot Mode). One host under both kinds routes by the active one.
@@ -15,7 +15,8 @@ import UserNotifications
         userInfo: [AnyHashable: Any], pairings: [URL: PushPairing], servers: [ServerAccount], activeServer: URL? = nil,
         botConnectionID: @MainActor (URL) -> UUID? = BotDeepLinkRouter.savedConnectionID
     ) -> URL? {
-        if let destination = webuiDestination(userInfo: userInfo, pairings: pairings, activeServer: activeServer) {
+        if let destination = webuiDestination(userInfo: userInfo, pairings: pairings, servers: servers,
+                                              activeServer: activeServer) {
             return destination.url
         }
         let payload = PushPayload(userInfo: userInfo)
@@ -39,14 +40,17 @@ import UserNotifications
     }
 
     /// Webui taps use the pairing alone: neither Bot Mode nor a Bot connection is
-    /// needed. A shared host alias prefers the active configured server.
+    /// needed. Only a configured webui server opens one, the active alias first, so a host
+    /// also configured as a Hermes server never takes it there.
     static func webuiDestination(
-        userInfo: [AnyHashable: Any], pairings: [URL: PushPairing], activeServer: URL? = nil
+        userInfo: [AnyHashable: Any], pairings: [URL: PushPairing], servers: [ServerAccount], activeServer: URL? = nil
     ) -> WebuiPushDestination? {
         let payload = PushPayload(userInfo: userInfo)
+        let webuiServers = Set(servers.filter { $0.kind == .webui }.map(\.id))
         guard payload.source == "webui",
               let id = HermesDeepLink.normalizedSessionID(payload.sessionID),
-              let server = servers(pairedWith: payload.installHash, in: pairings, activeServer: activeServer).first
+              let server = self.servers(pairedWith: payload.installHash, in: pairings, activeServer: activeServer)
+                .first(where: { webuiServers.contains($0.absoluteString) })
         else { return nil }
         return WebuiPushDestination(server: server, sessionID: id)
     }

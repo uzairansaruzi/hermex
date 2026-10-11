@@ -273,18 +273,19 @@ import XCTest
         let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
         var info = banner(sealed: nil).userInfo
         info["source"] = "webui"
+        let servers = [account(server, .webui)]
         let destination = try XCTUnwrap(PushNotificationRouter.webuiDestination(
-            userInfo: info, pairings: [server: pairing]))
+            userInfo: info, pairings: [server: pairing], servers: servers))
         XCTAssertEqual(destination, WebuiPushDestination(server: server, sessionID: "s1"))
         XCTAssertEqual(WebuiPushDestination(url: try XCTUnwrap(destination.url)), destination)
-        XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [:]))
+        XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [:], servers: servers))
         for source in ["bot", "other", "future"] {
             info["source"] = source
-            XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [server: pairing]))
+            XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [server: pairing], servers: servers))
         }
         info["source"] = "webui"
         info["session_id"] = " "
-        XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [server: pairing]))
+        XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [server: pairing], servers: servers))
     }
 
     func testWebuiDeepLinkAcceptsMixedCaseSchemeAndHost() throws {
@@ -321,11 +322,32 @@ import XCTest
         let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
         var info = banner(sealed: nil).userInfo
         info["source"] = "webui"
+        let servers = [account(server, .webui), account(other, .webui)]
         XCTAssertEqual(PushNotificationRouter.webuiDestination(
-            userInfo: info, pairings: [server: pairing, other: pairing], activeServer: other)?.server, other)
+            userInfo: info, pairings: [server: pairing, other: pairing], servers: servers, activeServer: other)?.server, other)
         let unrelated = PushPairing(relayURL: other, installKey: String(repeating: "f", count: 64), previewKey: keys.previewKey)
         XCTAssertEqual(PushNotificationRouter.webuiDestination(
-            userInfo: info, pairings: [server: pairing, other: unrelated], activeServer: other)?.server, server)
+            userInfo: info, pairings: [server: pairing, other: unrelated], servers: servers, activeServer: other)?.server, server)
+    }
+
+    /// One host under a Hermes server and a webui server: a webui push opens on the webui
+    /// server even while the Hermes alias is active, and opens nothing with no webui alias.
+    func testAWebuiTapOnAMixedKindSharedHostOpensOnTheWebuiServer() {
+        let webui = URL(string: "https://webui.example")!
+        let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
+        var info = banner(sealed: nil).userInfo
+        info["source"] = "webui"
+        func route(active: URL?, servers: [ServerAccount]) -> URL? {
+            PushNotificationRouter.link(userInfo: info, pairings: [server: pairing, webui: pairing], servers: servers,
+                                        activeServer: active, botConnectionID: { _ in nil })
+        }
+        let mixed = [account(server, .hermes), account(webui, .webui)]
+        let session = HermesDeepLink.webuiSessionURL(server: webui, sessionID: "s1")
+
+        XCTAssertEqual(route(active: server, servers: mixed), session)
+        XCTAssertEqual(route(active: webui, servers: mixed), session)
+        XCTAssertEqual(route(active: nil, servers: mixed), session)
+        XCTAssertNil(route(active: server, servers: [account(server, .hermes)]))
     }
 
     // #862: a local run alert opens its chat on its own server with no pairing at all.

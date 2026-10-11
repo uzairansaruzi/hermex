@@ -382,7 +382,11 @@ import SwiftUI
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
         let sent = await chat.model.sendMessage("Are you there?")
         XCTAssertFalse(sent)
-        XCTAssertEqual(chat.host.requests.count, before, "nothing reattached or sent")
+        // The first attach's goal, model-catalog, Profile, command-catalog and worker reads run off
+        // its path and can land after `before`; they are not a reattach.
+        let methods = chat.host.requests.dropFirst(before).compactMap { $0["method"].text }
+        XCTAssertEqual(methods.filter { !["session.control.read", "model.options", "profiles.list", "commands.catalog",
+                                          "subagent.list"].contains($0) }, [], "nothing reattached or sent")
         XCTAssertEqual(chat.turn.engine.connectionState, .disconnected)
     }
 

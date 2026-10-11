@@ -77,3 +77,4 @@ webui or Hermes) pair with the same install, because the host hands out one key
 pair. A tap on one of that host's banners then prefers the active server and
 otherwise takes the first matching server by URL, and the chosen server's kind
 picks the route: a webui server's Bot connection or a Hermes server's session.
+A webui push only ever takes a webui server, even while a Hermes alias is active.
