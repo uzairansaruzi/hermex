@@ -114,7 +114,7 @@ enum HermesSessionDuplication {
     static func row(of key: String, profile: String, on wire: any BotTransport) async throws -> HermesSessionRow? {
         guard let own = try await wire.sessionRow(key: key, profile: profile),
               let parent = own["parent_session_id"].text, !parent.isEmpty,
-              branchedFrom(own["model_config"]) == parent,
+              own.modelConfigText("_branched_from") == parent,
               let row = try await wire.sessionRow(key: parent, profile: profile) else { return nil }
         let grandparent = row["parent_session_id"].text
         return HermesSessionRow(id: parent, title: row["title"].text, profile: profile,
@@ -126,13 +126,17 @@ enum HermesSessionDuplication {
     /// other parent, a legacy compression segment or a reset continuation, puts that parent's
     /// rows first, and the session's own transcript pages never show them.
     static func standsAlone(_ own: BotJSON) -> Bool {
-        (own["parent_session_id"].text ?? "").isEmpty || !(branchedFrom(own["model_config"]) ?? "").isEmpty
+        (own["parent_session_id"].text ?? "").isEmpty || !(own.modelConfigText("_branched_from") ?? "").isEmpty
     }
+}
 
-    /// `_branched_from` in a `model_config` stored as a JSON string, or sent as an object.
-    private static func branchedFrom(_ config: BotJSON) -> String? {
+extension BotJSON {
+    /// `key` in a stored session row's `model_config`, which the host stores as a JSON string
+    /// and may send as an object: `_branched_from` on a branch, `_delegate_from` on a subagent.
+    func modelConfigText(_ key: String) -> String? {
+        let config = self["model_config"]
         let object = config.text.flatMap { try? JSONDecoder().decode(BotJSON.self, from: Data($0.utf8)) } ?? config
-        return object["_branched_from"].text
+        return object[key].text
     }
 }
 

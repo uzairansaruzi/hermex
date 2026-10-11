@@ -15,12 +15,14 @@ import XCTest
     }
 
     /// A stored row as `GET /api/sessions/{id}` returns it: `profile` is the Profile asked.
+    /// `delegatedFrom` is the `_delegate_from` a subagent's `model_config` (a JSON string) carries.
     private func row(_ id: String, _ profile: String, title: String? = "Plan", parent: String? = nil,
-                     endReason: String? = nil, hidden: Bool = false) -> BotJSON {
+                     endReason: String? = nil, hidden: Bool = false, delegatedFrom: String? = nil) -> BotJSON {
         .object(["id": .string(id), "source": .string("tui"), "title": title.map(BotJSON.string) ?? .null,
                  "parent_session_id": parent.map(BotJSON.string) ?? .null, "end_reason": endReason.map(BotJSON.string) ?? .null,
                  "hidden": .bool(hidden), "archived": .bool(false), "profile": .string(profile),
-                 "is_default_profile": .bool(profile == "default")])
+                 "is_default_profile": .bool(profile == "default"),
+                 "model_config": delegatedFrom.map { BotJSON.string(#"{"_delegate_from": "\#($0)"}"#) } ?? .null])
     }
 
     private func found(_ outcome: HermesSessionLookup.Outcome, file: StaticString = #filePath, line: UInt = #line) throws -> SessionSummary {
@@ -153,6 +155,87 @@ import XCTest
         let outcome = try await HermesSessionLookup.resolve(link("abc", profile: "default"), on: wire)
 
         XCTAssertEqual(outcome, .room)
+    }
+
+    /// A subagent's push opens the session that delegated to it, one hop up, found in the
+    /// child's Profile; a parent that is gone is gone, and a child naming none opens itself (#1177).
+    func testASubagentLinkOpensItsParent() async throws {
+        let wire = LookupWire()
+        wire.profiles = [("default", true), ("research", false)]
+        wire.rows = ["research": [
+            "child": row("child", "research", title: "Subtask", parent: "parent"),
+            "parent": row("parent", "research", title: "Planning", parent: "grandparent"),
+            "orphan": row("orphan", "research", title: "Subtask", parent: "deleted"),
+            "solo": row("solo", "research", title: "Solo")
+        ]]
+        func resolve(_ key: String) async throws -> HermesSessionLookup.Outcome {
+            try await HermesSessionLookup.resolve(
+                HermesSessionDestination(server: server, profile: nil, key: key, opensParent: true), on: wire)
+        }
+
+        let parent = try found(try await resolve("child"))
+        XCTAssertEqual(parent.sessionId, "parent")
+        XCTAssertEqual(parent.title, "Planning")
+        XCTAssertEqual(parent.profile, "research")
+        let solo = try found(try await resolve("solo"))
+        XCTAssertEqual(solo.sessionId, "solo")
+        let gone = try await resolve("orphan")
+        XCTAssertEqual(gone, .gone)
+    }
+
+    /// A subagent that compressed under legacy compression pushes from its newest segment, which
+    /// inherits `_delegate_from`: its link opens that delegator, even one that itself later
+    /// compressed. A host without the marker climbs the subagent's compression chain, then one hop.
+    func testACompressedSubagentLinkOpensItsDelegator() async throws {
+        let wire = LookupWire()
+        wire.rows = ["research": [
+            "c1": row("c1", "research", title: nil, parent: "c0", delegatedFrom: "p"),
+            "c0": row("c0", "research", title: "Subtask", parent: "p", endReason: "compression", delegatedFrom: "p"),
+            "p": row("p", "research", title: "Planning", parent: "start", endReason: "compression"),
+            "start": row("start", "research", endReason: "user_exit"),
+            "old-c1": row("old-c1", "research", title: nil, parent: "old-c0"),
+            "old-c0": row("old-c0", "research", title: "Subtask", parent: "old-p", endReason: "compression"),
+            "old-p": row("old-p", "research", title: "Planning")
+        ]]
+        func resolve(_ key: String) async throws -> SessionSummary {
+            try found(try await HermesSessionLookup.resolve(
+                HermesSessionDestination(server: server, profile: "research", key: key, opensParent: true), on: wire))
+        }
+
+        let delegator = try await resolve("c1")
+        XCTAssertEqual(delegator.sessionId, "p")
+        XCTAssertEqual(delegator.title, "Planning")
+        let unmarked = try await resolve("old-c1")
+        XCTAssertEqual(unmarked.sessionId, "old-p")
+    }
+
+    /// A subagent that compressed nine times, past the lineage walk's eight hops: a marked
+    /// segment opens its `_delegate_from` key directly, and an unmarked chain the walk can't
+    /// finish opens nothing rather than one of the subagent's own earlier segments.
+    func testASubagentPastTheLineageLimitOpensItsDelegatorOnlyWhenMarked() async throws {
+        func chain(marked: Bool) -> [String: BotJSON] {
+            var rows = ["p": row("p", "research", title: "Planning"),
+                        "c9": row("c9", "research", title: nil, parent: "c8", delegatedFrom: marked ? "p" : nil)]
+            for segment in 0...8 {
+                rows["c\(segment)"] = row("c\(segment)", "research", title: nil, parent: segment == 0 ? "p" : "c\(segment - 1)",
+                                          endReason: "compression", delegatedFrom: marked ? "p" : nil)
+            }
+            return rows
+        }
+        func resolve(_ wire: LookupWire) async throws -> HermesSessionLookup.Outcome {
+            try await HermesSessionLookup.resolve(
+                HermesSessionDestination(server: server, profile: "research", key: "c9", opensParent: true), on: wire)
+        }
+        let marked = LookupWire()
+        marked.rows = ["research": chain(marked: true)]
+        let unmarked = LookupWire()
+        unmarked.rows = ["research": chain(marked: false)]
+
+        let delegator = try found(try await resolve(marked))
+        XCTAssertEqual(delegator.sessionId, "p")
+        XCTAssertEqual(marked.reads, ["research/c9", "research/p"], "The mark names the delegator; no segment is walked")
+        let exhausted = try await resolve(unmarked)
+        XCTAssertEqual(exhausted, .gone)
     }
 
     /// A Profile that can't be read leaves the link unproven: nothing opens, and the failure

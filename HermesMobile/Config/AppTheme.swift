@@ -589,12 +589,16 @@ struct ResponseCompletionNotificationRequest: Equatable {
     /// trims it, falling back to "Hermes session".
     let title: String
     let outcome: ResponseCompletionOutcome
+    /// A Hermes chat's Profile, with `sessionID` its stored key (#1177): the tap opens the
+    /// session link, which looks the session up there. Nil for a webui chat.
+    let hermesProfile: String?
 
-    init(sessionID: String?, server: URL, title: String, outcome: ResponseCompletionOutcome) {
+    init(sessionID: String?, server: URL, title: String, outcome: ResponseCompletionOutcome, hermesProfile: String? = nil) {
         self.sessionID = sessionID?.isEmpty == false ? sessionID : nil
         self.server = server
         self.title = AgentRunActivitySanitizer.sessionTitle(title)
         self.outcome = outcome
+        self.hermesProfile = hermesProfile
     }
 
     var body: String { outcome.body }
@@ -612,6 +616,7 @@ struct ResponseCompletionNotificationRequest: Equatable {
     var userInfo: [String: String] {
         var info = ["server_hash": Self.serverHash(server), "source": Self.source]
         info["session_id"] = sessionID
+        info["hermes_profile"] = hermesProfile
         return info
     }
 
@@ -620,17 +625,20 @@ struct ResponseCompletionNotificationRequest: Equatable {
         SHA256.hash(data: Data(server.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// The chat a tapped local alert names, on a server that is still configured.
-    /// Nil for a relay push, a removed server, or a missing session, so the tap only
-    /// opens the app.
-    static func destination(userInfo: [AnyHashable: Any], servers: [URL]) -> WebuiPushDestination? {
+    /// The link to the chat a tapped local alert names, on a server that is still configured:
+    /// a Hermes session link when it names a Profile, else the webui session. Nil for a relay
+    /// push, a removed server, or a missing session, so the tap only opens the app.
+    static func destination(userInfo: [AnyHashable: Any], servers: [URL]) -> URL? {
         guard userInfo["source"] as? String == source,
               let hash = userInfo["server_hash"] as? String,
               let sessionID = (userInfo["session_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !sessionID.isEmpty,
               let server = servers.first(where: { serverHash($0) == hash })
         else { return nil }
-        return WebuiPushDestination(server: server, sessionID: sessionID)
+        if let profile = userInfo["hermes_profile"] as? String {
+            return HermesDeepLink.sessionURL(for: HermesSessionDestination(server: server, profile: profile, key: sessionID))
+        }
+        return HermesDeepLink.webuiSessionURL(server: server, sessionID: sessionID)
     }
 }
 
@@ -780,6 +788,7 @@ enum ResponseCompletionNotificationService {
     static func scheduleRunEndedIfAllowed(
         _ outcome: ResponseCompletionOutcome,
         sessionID: String?,
+        hermesProfile: String? = nil,
         title: String,
         server: URL,
         preferenceEnabled: Bool,
@@ -802,7 +811,7 @@ enum ResponseCompletionNotificationService {
         }
 
         await scheduler.schedule(ResponseCompletionNotificationRequest(
-            sessionID: sessionID, server: server, title: title, outcome: outcome))
+            sessionID: sessionID, server: server, title: title, outcome: outcome, hermesProfile: hermesProfile))
         return true
     }
 }

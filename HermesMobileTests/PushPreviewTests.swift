@@ -164,22 +164,128 @@ import XCTest
         XCTAssertNil(PushNotificationRouter.botDestination(userInfo: opened.userInfo, pairings: pairings) { _ in nil })
     }
 
+    // MARK: Hermes taps (#1177)
+
+    private func account(_ url: URL, _ kind: ServerKind) -> ServerAccount {
+        ServerAccount(id: url.absoluteString, urlString: url.absoluteString, displayName: "", initials: "",
+                      headerLogoColorHex: "", createdAt: .now, updatedAt: .now, kind: kind)
+    }
+
+    /// The link a tap queues, for a banner with `source`, the Profile the extension wrote back
+    /// (nil when the preview never opened) and `is_subagent`, paired with `server` of `kind`.
+    private func tap(source: String, kind: ServerKind, profile: String?, isSubagent: Bool = false,
+                     botConnection: UUID? = UUID()) -> URL? {
+        var info = banner(sealed: nil).userInfo
+        info["source"] = source
+        info["is_subagent"] = isSubagent
+        info[PushPayload.profileKey] = profile
+        return PushNotificationRouter.link(
+            userInfo: info, pairings: [server: PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)],
+            servers: [account(server, kind)], botConnectionID: { _ in botConnection })
+    }
+
+    /// Every non-webui push on a Hermes server, Bot Chat or not, opens its session through the
+    /// session link with whatever Profile the preview gave, nil with previews off; a subagent's
+    /// asks for its parent. A webui server keeps its webui route and its Bot connection's bot.
+    func testATapRoutesBySourceServerKindProfileAndSubagent() throws {
+        for source in ["bot", "other", "future"] {
+            for profile in ["inbox-triage", "", nil] as [String?] {
+                for isSubagent in [false, true] {
+                    let link = try XCTUnwrap(tap(source: source, kind: .hermes, profile: profile, isSubagent: isSubagent),
+                                             "\(source), \(profile ?? "nil"), \(isSubagent)")
+                    XCTAssertEqual(HermesSessionDestination(url: link),
+                                   HermesSessionDestination(server: server, profile: profile, key: "s1", opensParent: isSubagent),
+                                   "\(source), \(profile ?? "nil"), \(isSubagent)")
+                }
+            }
+        }
+        XCTAssertEqual(tap(source: "webui", kind: .webui, profile: nil), HermesDeepLink.webuiSessionURL(server: server, sessionID: "s1"))
+        let connection = UUID()
+        XCTAssertEqual(tap(source: "bot", kind: .webui, profile: "inbox-triage", botConnection: connection),
+                       HermesDeepLink.botURL(for: BotDestination(server: server, connectionID: connection, profile: "inbox-triage")))
+        // A webui server's bot needs the Profile and the Bot connection; its other pushes name nothing.
+        XCTAssertNil(tap(source: "bot", kind: .webui, profile: nil))
+        XCTAssertNil(tap(source: "bot", kind: .webui, profile: "inbox-triage", botConnection: nil))
+        XCTAssertNil(tap(source: "other", kind: .webui, profile: "inbox-triage"))
+    }
+
+    /// A Hermes server never takes the old bot route, even with a saved connection, and a banner
+    /// with no session, or from an install no configured server holds, opens nothing.
+    func testAHermesTapWithoutASessionOrServerOpensNothing() {
+        var info = banner(sealed: nil).userInfo
+        info[PushPayload.profileKey] = "inbox-triage"
+        info["session_id"] = " "
+        let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
+        XCTAssertNil(PushNotificationRouter.link(userInfo: info, pairings: [server: pairing],
+                                                 servers: [account(server, .hermes)], botConnectionID: { _ in UUID() }))
+        info["session_id"] = "s1"
+        XCTAssertNil(PushNotificationRouter.link(userInfo: info, pairings: [server: pairing], servers: [],
+                                                 botConnectionID: { _ in UUID() }))
+        XCTAssertNil(PushNotificationRouter.link(userInfo: info, pairings: [:], servers: [account(server, .hermes)],
+                                                 botConnectionID: { _ in UUID() }))
+    }
+
+    /// One host under two Hermes servers (LAN and a tunnel) opens on the active one, else the
+    /// first by URL; a server the pairing doesn't name is never a candidate.
+    func testAHermesTapOnOneHostUnderTwoServersStaysOnTheActiveOne() throws {
+        let lan = URL(string: "http://192.168.1.2:9119")!
+        let other = URL(string: "https://other.example")!
+        let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
+        let unrelated = PushPairing(relayURL: other, installKey: String(repeating: "f", count: 64), previewKey: keys.previewKey)
+        let servers = [account(server, .hermes), account(lan, .hermes), account(other, .hermes)]
+        func route(active: URL?) throws -> URL? {
+            let link = try XCTUnwrap(PushNotificationRouter.link(
+                userInfo: banner(sealed: nil).userInfo, pairings: [server: pairing, lan: pairing, other: unrelated],
+                servers: servers, activeServer: active, botConnectionID: { _ in UUID() }))
+            return HermesSessionDestination(url: link)?.server
+        }
+
+        XCTAssertEqual(try route(active: server), server)
+        XCTAssertEqual(try route(active: lan), lan)
+        XCTAssertEqual(try route(active: other), lan)
+        XCTAssertEqual(try route(active: nil), lan)
+    }
+
+    /// One host under a webui server with a Bot connection and a Hermes server: the active one
+    /// picks the route, its bot or its session link, then the rest by URL; a webui alias with no
+    /// Bot connection hands the tap to the Hermes alias.
+    func testAMixedKindSharedHostRoutesByTheActiveServersKind() throws {
+        let webui = URL(string: "https://webui.example")!
+        let connection = UUID()
+        let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
+        var info = banner(sealed: nil).userInfo
+        info[PushPayload.profileKey] = "research"
+        func route(active: URL?, botConnection: UUID? = connection) -> URL? {
+            PushNotificationRouter.link(userInfo: info, pairings: [server: pairing, webui: pairing],
+                                        servers: [account(server, .hermes), account(webui, .webui)],
+                                        activeServer: active, botConnectionID: { $0 == webui ? botConnection : nil })
+        }
+        let bot = HermesDeepLink.botURL(for: BotDestination(server: webui, connectionID: connection, profile: "research"))
+        let session = HermesDeepLink.sessionURL(for: HermesSessionDestination(server: server, profile: "research", key: "s1"))
+
+        XCTAssertEqual(route(active: webui), bot)
+        XCTAssertEqual(route(active: server), session)
+        XCTAssertEqual(route(active: nil), session, "With neither active, the first by URL")
+        XCTAssertEqual(route(active: webui, botConnection: nil), session)
+    }
+
     func testWebuiTapRoutesWithoutBotConnectionOrDecryptedProfile() throws {
         let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
         var info = banner(sealed: nil).userInfo
         info["source"] = "webui"
+        let servers = [account(server, .webui)]
         let destination = try XCTUnwrap(PushNotificationRouter.webuiDestination(
-            userInfo: info, pairings: [server: pairing]))
+            userInfo: info, pairings: [server: pairing], servers: servers))
         XCTAssertEqual(destination, WebuiPushDestination(server: server, sessionID: "s1"))
         XCTAssertEqual(WebuiPushDestination(url: try XCTUnwrap(destination.url)), destination)
-        XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [:]))
+        XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [:], servers: servers))
         for source in ["bot", "other", "future"] {
             info["source"] = source
-            XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [server: pairing]))
+            XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [server: pairing], servers: servers))
         }
         info["source"] = "webui"
         info["session_id"] = " "
-        XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [server: pairing]))
+        XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [server: pairing], servers: servers))
     }
 
     func testWebuiDeepLinkAcceptsMixedCaseSchemeAndHost() throws {
@@ -216,11 +322,32 @@ import XCTest
         let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
         var info = banner(sealed: nil).userInfo
         info["source"] = "webui"
+        let servers = [account(server, .webui), account(other, .webui)]
         XCTAssertEqual(PushNotificationRouter.webuiDestination(
-            userInfo: info, pairings: [server: pairing, other: pairing], activeServer: other)?.server, other)
+            userInfo: info, pairings: [server: pairing, other: pairing], servers: servers, activeServer: other)?.server, other)
         let unrelated = PushPairing(relayURL: other, installKey: String(repeating: "f", count: 64), previewKey: keys.previewKey)
         XCTAssertEqual(PushNotificationRouter.webuiDestination(
-            userInfo: info, pairings: [server: pairing, other: unrelated], activeServer: other)?.server, server)
+            userInfo: info, pairings: [server: pairing, other: unrelated], servers: servers, activeServer: other)?.server, server)
+    }
+
+    /// One host under a Hermes server and a webui server: a webui push opens on the webui
+    /// server even while the Hermes alias is active, and opens nothing with no webui alias.
+    func testAWebuiTapOnAMixedKindSharedHostOpensOnTheWebuiServer() {
+        let webui = URL(string: "https://webui.example")!
+        let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
+        var info = banner(sealed: nil).userInfo
+        info["source"] = "webui"
+        func route(active: URL?, servers: [ServerAccount]) -> URL? {
+            PushNotificationRouter.link(userInfo: info, pairings: [server: pairing, webui: pairing], servers: servers,
+                                        activeServer: active, botConnectionID: { _ in nil })
+        }
+        let mixed = [account(server, .hermes), account(webui, .webui)]
+        let session = HermesDeepLink.webuiSessionURL(server: webui, sessionID: "s1")
+
+        XCTAssertEqual(route(active: server, servers: mixed), session)
+        XCTAssertEqual(route(active: webui, servers: mixed), session)
+        XCTAssertEqual(route(active: nil, servers: mixed), session)
+        XCTAssertNil(route(active: server, servers: [account(server, .hermes)]))
     }
 
     // #862: a local run alert opens its chat on its own server with no pairing at all.
@@ -230,7 +357,7 @@ import XCTest
         let info: [AnyHashable: Any] = alert.userInfo
 
         XCTAssertEqual(ResponseCompletionNotificationRequest.destination(userInfo: info, servers: [other, server]),
-                       WebuiPushDestination(server: server, sessionID: "s1"))
+                       HermesDeepLink.webuiSessionURL(server: server, sessionID: "s1"))
         // Its server was removed, so the tap only opens the app.
         XCTAssertNil(ResponseCompletionNotificationRequest.destination(userInfo: info, servers: [other]))
         var blank = info
@@ -245,6 +372,17 @@ import XCTest
         relay["source"] = "webui"
         relay["server_hash"] = info["server_hash"]
         XCTAssertNil(ResponseCompletionNotificationRequest.destination(userInfo: relay, servers: [server]))
+    }
+
+    /// A Hermes chat's alert names its Profile and stored key, and its tap opens the session link
+    /// (#1177), which looks the session up as a push tap does.
+    func testAHermesLocalAlertTapOpensItsSessionLink() throws {
+        let alert = ResponseCompletionNotificationRequest(sessionID: "tip-2", server: server, title: "Chat",
+                                                          outcome: .completed, hermesProfile: "research")
+        let link = try XCTUnwrap(ResponseCompletionNotificationRequest.destination(userInfo: alert.userInfo, servers: [server]))
+
+        XCTAssertEqual(HermesSessionDestination(url: link),
+                       HermesSessionDestination(server: server, profile: "research", key: "tip-2"))
     }
 
     func testForegroundShowsRelayPushesButQuietsTheOpenChatsReplies() {

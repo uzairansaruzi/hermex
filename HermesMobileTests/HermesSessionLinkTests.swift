@@ -34,6 +34,13 @@ import XCTest
         }
     }
 
+    /// A subagent's push asks for its parent (#1177); every other link opens its own key.
+    func testASubagentLinkKeepsItsParentStep() throws {
+        let sent = HermesSessionDestination(server: hermes, profile: nil, key: "child", opensParent: true)
+        XCTAssertEqual(HermesSessionDestination(url: try XCTUnwrap(HermesDeepLink.sessionURL(for: sent))), sent)
+        XCTAssertEqual(HermesSessionDestination(url: try url("server=https://hermes.example&id=child"))?.opensParent, false)
+    }
+
     /// The registry keeps normalized addresses, so a link written with a trailing slash or a
     /// dashboard path still names its configured server.
     func testParsingNormalizesTheServer() throws {
