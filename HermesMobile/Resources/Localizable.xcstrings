@@ -14612,6 +14612,112 @@
     "Avatar" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Avatar" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Avatar" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Avatar" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Avatar" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Awatar" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Avatar" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Avatar" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Avatar" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Аватар" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "アバター" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "头像" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "아바타" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "الصورة الرمزية" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "תמונת פרופיל" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اوتار" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "頭像" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "頭像" } } } },
     "Avatar color %@" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Avatarfarbe %@" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Color del avatar %@" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Couleur de l’avatar %@" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Colore avatar %@" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kolor awatara %@" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Cor do avatar %@" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Avatarkleur %@" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Avatar rengi %@" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Цвет аватара %@" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "アバターの色 %@" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "头像颜色 %@" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "아바타 색상 %@" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لون الصورة الرمزية %@" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "צבע תמונת הפרופיל %@" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اوتار کا رنگ %@" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "頭像顏色 %@" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "頭像顏色 %@" } } } },
     "Back" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Zurück" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Atrás" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Retour" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Indietro" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Wstecz" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Voltar" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Terug" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Geri" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Назад" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "戻る" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "返回" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "뒤로" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "رجوع" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "חזרה" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "واپس" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "返回" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "返回" } } } },
+    "Back to the Hermes setup" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "العودة إلى إعداد Hermes"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zurück zur Hermes-Einrichtung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Volver a la configuración de Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Revenir à la configuration de Hermes"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "חזרה להגדרת Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Torna alla configurazione di Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes のセットアップに戻る"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 설정으로 돌아가기"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Terug naar het instellen van Hermes"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wróć do konfiguracji Hermes"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Voltar à configuração do Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Вернуться к настройке Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes kurulumuna dön"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes سیٹ اپ پر واپس جائیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "返回 Hermes 設定"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "返回 Hermes 设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "返回 Hermes 設定"
+          }
+        }
+      }
+    },
     "Background task started. I'll add the result here when it completes." : {
       "localizations" : {
         "ar" : {
@@ -26461,6 +26567,112 @@
       }
     },
     "Copy setup prompt" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Einrichtungsanfrage kopieren"}},"es":{"stringUnit":{"state":"needs_review","value":"Copiar petición de configuración"}},"fr":{"stringUnit":{"state":"needs_review","value":"Copier la demande de configuration"}},"it":{"stringUnit":{"state":"needs_review","value":"Copia richiesta di configurazione"}},"pl":{"stringUnit":{"state":"needs_review","value":"Kopiuj polecenie konfiguracji"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Copiar solicitação de configuração"}},"nl":{"stringUnit":{"state":"needs_review","value":"Installatieopdracht kopiëren"}},"tr":{"stringUnit":{"state":"needs_review","value":"Kurulum istemini kopyala"}},"ru":{"stringUnit":{"state":"needs_review","value":"Скопировать запрос настройки"}},"ja":{"stringUnit":{"state":"needs_review","value":"設定用プロンプトをコピー"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"复制配置提示词"}},"ko":{"stringUnit":{"state":"needs_review","value":"설정 프롬프트 복사"}},"ar":{"stringUnit":{"state":"needs_review","value":"نسخ طلب الإعداد"}},"he":{"stringUnit":{"state":"needs_review","value":"העתקת בקשת הגדרה"}},"ur":{"stringUnit":{"state":"needs_review","value":"سیٹ اپ پرامپٹ کاپی کریں"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"複製設定提示詞"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"複製設定提示詞"}}}},
+    "Copy the agent setup prompt on your desktop before continuing so Hermes sign-in and HTTPS are configured correctly." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انسخ مطالبة إعداد العميل على سطح المكتب قبل المتابعة لضمان إعداد تسجيل الدخول إلى Hermes وHTTPS بشكل صحيح."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kopiere den Agent-Einrichtungs-Prompt auf deinem Desktop, bevor du fortfährst, damit die Hermes-Anmeldung und HTTPS korrekt konfiguriert sind."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copia el prompt de configuración del agente en tu escritorio antes de continuar para que el inicio de sesión de Hermes y HTTPS se configuren correctamente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copiez l'invite de configuration de l'agent sur votre bureau avant de continuer afin que la connexion à Hermes et le HTTPS soient correctement configurés."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "העתק את הנחיית הגדרת הסוכן במחשב השולחני שלך לפני שתמשיך, כדי שהכניסה ל-Hermes ו-HTTPS יוגדרו כראוי."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copia il prompt di configurazione dell'agente sul desktop prima di continuare per configurare correttamente l'accesso a Hermes e HTTPS."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes のサインインと HTTPS を正しく設定するため、続ける前にデスクトップでエージェント設定プロンプトをコピーしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 로그인과 HTTPS가 올바르게 구성되도록 계속하기 전에 데스크탑에서 에이전트 설정 프롬프트를 복사하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kopieer de agent-installatieprompt op uw bureaublad voordat u doorgaat, zodat aanmelden bij Hermes en HTTPS correct worden geconfigureerd."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Skopiuj prompt konfiguracji agenta na pulpicie przed kontynuowaniem, aby logowanie do Hermes i HTTPS były poprawnie skonfigurowane."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copie o prompt de configuração do agente no seu computador antes de continuar para que o login do Hermes e o HTTPS sejam configurados corretamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Скопируйте запрос на настройку агента на компьютере, прежде чем продолжить, чтобы вход в Hermes и HTTPS были настроены правильно."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes oturum açma ve HTTPS'in doğru yapılandırılması için devam etmeden önce ajan kurulum istemini masaüstünüzde kopyalayın."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "جاری رکھنے سے پہلے اپنے ڈیسک ٹاپ پر ایجنٹ سیٹ اپ پرامپٹ کاپی کریں تاکہ Hermes سائن اِن اور HTTPS درست طریقے سے ترتیب دیے جائیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "繼續之前，請在你的桌面端複製代理設定提示詞，以便正確設定 Hermes 登入和 HTTPS。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "继续之前，请在你的桌面端拷贝智能体设置提示词，以便正确配置 Hermes 登录和 HTTPS。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "繼續之前，請先在你的桌面端複製代理人設定提示詞，以便正確設定 Hermes 登入和 HTTPS。"
+          }
+        }
+      }
+    },
     "Copy the agent setup prompt on your desktop before continuing so Hermes Web UI and Tailscale are configured correctly." : {
       "localizations" : {
         "ar" : {
@@ -93954,6 +94166,112 @@
     },
     "Send Message" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Nachricht senden" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Enviar mensaje" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Envoyer le message" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Invia messaggio" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Wyślij wiadomość" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Enviar mensagem" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Bericht versturen" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Mesaj Gönder" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Отправить сообщение" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "メッセージを送信" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "发送消息" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "메시지 보내기" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "إرسال الرسالة" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "שליחת הודעה" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "پیغام بھیجیں" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "傳送訊息" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "傳送訊息" } } } },
     "Send Test Notification" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Testmitteilung senden"}},"es":{"stringUnit":{"state":"needs_review","value":"Enviar notificación de prueba"}},"fr":{"stringUnit":{"state":"needs_review","value":"Envoyer une notification de test"}},"it":{"stringUnit":{"state":"needs_review","value":"Invia notifica di prova"}},"pl":{"stringUnit":{"state":"needs_review","value":"Wyślij powiadomienie testowe"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Enviar notificação de teste"}},"nl":{"stringUnit":{"state":"needs_review","value":"Testmelding versturen"}},"tr":{"stringUnit":{"state":"needs_review","value":"Test Bildirimi Gönder"}},"ru":{"stringUnit":{"state":"needs_review","value":"Отправить тестовое уведомление"}},"ja":{"stringUnit":{"state":"needs_review","value":"テスト通知を送信"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"发送测试通知"}},"ko":{"stringUnit":{"state":"needs_review","value":"테스트 알림 보내기"}},"ar":{"stringUnit":{"state":"needs_review","value":"إرسال إشعار تجريبي"}},"he":{"stringUnit":{"state":"needs_review","value":"שליחת התראת בדיקה"}},"ur":{"stringUnit":{"state":"needs_review","value":"آزمائشی اطلاع بھیجیں"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"傳送測試通知"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"傳送測試通知"}}}},
+    "Send this prompt to your Hermes Agent. It turns on password sign-in and gives you an HTTPS address." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "أرسل هذا المُوجّه إلى وكيل Hermes الخاص بك. فهو يفعّل تسجيل الدخول بكلمة مرور ويمنحك عنوان HTTPS."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sende diesen Prompt an deinen Hermes Agent. Er schaltet die Anmeldung per Passwort ein und gibt dir eine HTTPS-Adresse."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Envía esta indicación a tu agente Hermes. Activa el inicio de sesión con contraseña y te da una dirección HTTPS."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Envoyez cette invite à votre agent Hermes. Elle active la connexion par mot de passe et vous fournit une adresse HTTPS."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "שלח הנחיה זו לסוכן Hermes שלך. היא מפעילה כניסה עם סיסמה ונותנת לך כתובת HTTPS."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Invia questo prompt al tuo agente Hermes. Attiva l'accesso con password e ti fornisce un indirizzo HTTPS."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このプロンプトを Hermes エージェントに送信してください。パスワードによるサインインを有効にし、HTTPS アドレスを用意します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 프롬프트를 Hermes 에이전트에게 보내세요. 비밀번호 로그인을 켜고 HTTPS 주소를 제공해요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Verzend deze prompt naar uw Hermes-agent. Deze schakelt aanmelden met een wachtwoord in en geeft u een HTTPS-adres."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wyślij ten monit do swojego agenta Hermes. Włącza logowanie hasłem i zapewnia adres HTTPS."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Envie este prompt ao seu Hermes Agent. Ele ativa o login com senha e fornece um endereço HTTPS."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Отправьте этот промпт вашему агенту Hermes. Он включит вход по паролю и выдаст вам адрес HTTPS."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu istemi Hermes Aracınıza gönderin. Parolayla oturum açmayı etkinleştirir ve size bir HTTPS adresi verir."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "یہ پرامپٹ اپنے Hermes ایجنٹ کو بھیجیں۔ یہ پاس ورڈ سے سائن اِن آن کرتا ہے اور آپ کو ایک HTTPS پتہ دیتا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "將此提示傳送給你的 Hermes 代理。它會啟用密碼登入，並為你提供 HTTPS 位址。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "将此提示发送给你的 Hermes 代理。它会启用密码登录，并为你提供 HTTPS 地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "將此提示傳送給你的 Hermes 代理。它會啟用密碼登入，並為你提供 HTTPS 位址。"
+          }
+        }
+      }
+    },
     "Send While Responding" : {
       "localizations" : {
         "ar" : {
@@ -97454,6 +97772,112 @@
       }
     },
     "Set this Hermes host up for push?" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Diesen Hermes-Host für Push einrichten?"}},"es":{"stringUnit":{"state":"needs_review","value":"¿Configurar este host de Hermes para push?"}},"fr":{"stringUnit":{"state":"needs_review","value":"Configurer cet hôte Hermes pour le push ?"}},"it":{"stringUnit":{"state":"needs_review","value":"Configurare questo host Hermes per il push?"}},"pl":{"stringUnit":{"state":"needs_review","value":"Skonfigurować tego hosta Hermes do push?"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Configurar este host do Hermes para push?"}},"nl":{"stringUnit":{"state":"needs_review","value":"Deze Hermes-host instellen voor push?"}},"tr":{"stringUnit":{"state":"needs_review","value":"Bu Hermes sunucusu push için kurulsun mu?"}},"ru":{"stringUnit":{"state":"needs_review","value":"Настроить этот хост Hermes для push?"}},"ja":{"stringUnit":{"state":"needs_review","value":"この Hermes ホストをプッシュ用に設定しますか？"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"为此 Hermes 主机设置推送？"}},"ko":{"stringUnit":{"state":"needs_review","value":"이 Hermes 호스트를 푸시용으로 설정할까요?"}},"ar":{"stringUnit":{"state":"needs_review","value":"إعداد مضيف Hermes هذا للإشعارات الفورية؟"}},"he":{"stringUnit":{"state":"needs_review","value":"להגדיר את מארח Hermes הזה ל‑Push?"}},"ur":{"stringUnit":{"state":"needs_review","value":"اس Hermes ہوسٹ کو پش کے لیے سیٹ اپ کریں؟"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"為此 Hermes 主機設定推播？"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"為此 Hermes 主機設定推播？"}}}},
+    "Set up Hermes" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "إعداد Hermes"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes einrichten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Configurar Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Configurer Hermes"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הגדרת Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Configura Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermesをセットアップ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 설정"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes instellen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Skonfiguruj Hermes"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Configurar o Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Настроить Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes'i kur"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes ترتیب دیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "設定 Hermes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "设置 Hermes"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "設定 Hermes"
+          }
+        }
+      }
+    },
     "Set up Hermes Web UI" : {
       "localizations" : {
         "ar" : {
@@ -127339,6 +127763,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "正在使用 %@"
+          }
+        }
+      }
+    },
+    "Using Hermes Web UI instead?" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "هل تستخدم Hermes Web UI بدلاً من ذلك؟"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nutzt du stattdessen Hermes Web UI?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "¿Usas Hermes Web UI en su lugar?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vous utilisez plutôt Hermes Web UI ?"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "משתמש ב-Hermes Web UI במקום זאת?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Usi invece Hermes Web UI?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "代わりに Hermes Web UI を使いますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "대신 Hermes Web UI를 사용하시나요?"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gebruikt u in plaats daarvan Hermes Web UI?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Używasz zamiast tego Hermes Web UI?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Usa a Hermes Web UI em vez disso?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Используете Hermes Web UI?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bunun yerine Hermes Web UI mı kullanıyorsunuz?"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اس کے بجائے Hermes Web UI استعمال کر رہے ہیں؟"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "改用 Hermes Web UI？"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "改用 Hermes Web UI？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "改用 Hermes Web UI？"
           }
         }
       }

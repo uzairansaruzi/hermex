@@ -45,6 +45,10 @@ cd hermes-webui
 
 For simulator-only testing, `http://localhost:8787` can work when the server is running on the same Mac. For physical-device testing, use HTTPS, a local network address (a private IP, `.local` or single-label name), or a Tailscale IP or `ts.net` name; the app's ATS policy allows plain HTTP to exactly those (`HermesMobile/Resources/Info.plist`).
 
+## Hermes Host Setup
+
+A Hermes host (`hermes dashboard`, default port 9119) needs basic auth before the app can use it: off loopback, or with a non-loopback `dashboard.public_url`, it refuses to run without its sign-in gate. In the host's `config.yaml`, set `dashboard.basic_auth.username` and a `password_hash` (from `plugins.dashboard_auth.basic.hash_password`). Also set `dashboard.basic_auth.secret` to 32 or more random bytes: without it the signing key is per process, so every restart signs the app out. Set `dashboard.public_url` to the exact address the app uses, or the dashboard answers `400 Invalid Host header`. `curl https://<your-host>/api/status` should then report `"auth_required": true`. Onboarding's Hermes prompt (`OnboardingFlowPolicy.hermesSetupPrompt`) walks an agent through the same steps.
+
 ## Example Server Setup (macOS + launchd)
 
 One proven way to run the server natively on macOS is through launchd, for contributors who want a local reference (this is not the maintainer's setup, which runs on a different Mac):
