@@ -2,17 +2,19 @@ import XCTest
 import Observation
 @testable import HermesMobile
 
-/// A Hermes session's turns drive the shared Live Activity (#1014): one activity per turn
-/// under the interim `hermes:<profile>:<stored key>` identity, the turn's work and waits as
-/// updates, and its ending as the outcome. Driven over #901's socket-level host.
+/// A Hermes session's turns drive the shared Live Activity (#1014, #1179): one activity per turn
+/// under the `hermes:<profile>:<root>` identity, tapping through to the session's link and
+/// pushed under its stored key, the turn's work and waits as updates, and its ending as the
+/// outcome. Driven over #901's socket-level host.
 @MainActor final class HermesChatLiveActivityTests: XCTestCase {
     private static let startedAt = 1_790_000_000.5
 
     // MARK: Start
 
-    /// A turn starts one activity under the session's key and the host's `turn_started_at`;
-    /// its frames start no second one, and a reattach inside the turn adopts it again.
-    func testATurnStartsOneActivityAndAReattachAdoptsIt() async {
+    /// A turn starts one activity under the session's key and the host's `turn_started_at`,
+    /// tapping through to the session's link and pushed under its stored key (#1179); its frames
+    /// start no second one, and a reattach inside the turn adopts it again.
+    func testATurnStartsOneActivityAndAReattachAdoptsIt() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["running": .bool(true), "turn_started_at": .number(Self.startedAt)]))
         chat.receive(event(2, "message.start"))
@@ -20,7 +22,9 @@ import Observation
         chat.receive(event(4, "tool.start", ["name": .string("terminal"), "tool_id": .string("t1")]))
         XCTAssertEqual(chat.spy.starts, [.init(sessionID: "hermes:default:tip", server: Self.server,
                                                title: "Untitled Session", streamID: "1790000000.5",
-                                               startedAt: Date(timeIntervalSince1970: Self.startedAt))])
+                                               startedAt: Date(timeIntervalSince1970: Self.startedAt),
+                                               destinationURL: try Self.link(profile: "default", key: "tip"),
+                                               pushSessionID: "tip")])
 
         chat.model.suspendStreamForBackground()
         XCTAssertEqual(chat.spy.staleCount, 1, "leaving drops the socket, so the activity is no longer current")
@@ -35,11 +39,37 @@ import Observation
 
     /// Opening the session mid-turn starts the activity under the identity the turn's first
     /// chat used, titled from the snapshot, so the manager adopts the one already showing.
-    func testOpeningARunningSessionAdoptsTheTurnsActivityUnderItsTitle() async {
+    func testOpeningARunningSessionAdoptsTheTurnsActivityUnderItsTitle() async throws {
         let chat = await openChat(snapshot: resume(running: true, title: "Release plan"))
         XCTAssertEqual(chat.spy.starts, [.init(sessionID: "hermes:default:tip", server: Self.server,
                                                title: "Release plan", streamID: "1790000000.5",
-                                               startedAt: Date(timeIntervalSince1970: Self.startedAt))])
+                                               startedAt: Date(timeIntervalSince1970: Self.startedAt),
+                                               destinationURL: try Self.link(profile: "default", key: "tip"),
+                                               pushSessionID: "tip")])
+    }
+
+    /// A legacy compression moves the stored key mid-turn (#1179): the same activity's pushes
+    /// move to the new key, once, and a reattach inside the turn keeps the chat's identity and
+    /// link, so the manager adopts that activity instead of starting another.
+    func testAKeyMoveMidTurnKeepsTheActivityAndMovesItsPushes() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["running": .bool(true), "turn_started_at": .number(Self.startedAt)]))
+        chat.receive(event(2, "message.start"))
+        chat.receive(event(3, "session.info", ["running": .bool(true), "stored_session_id": .string("tip-2")]))
+        chat.receive(event(4, "session.info", ["running": .bool(true), "stored_session_id": .string("tip-2")]))
+        XCTAssertEqual(chat.spy.moves, ["tip-2"])
+
+        chat.model.suspendStreamForBackground()
+        chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 4)))
+        chat.host.always("session.resume", .init(result: resume(running: true, key: "tip-2")))
+        await chat.model.reconnectStreamIfNeeded()
+        let link = try Self.link(profile: "default", key: "tip")
+        XCTAssertEqual(chat.spy.starts.map(\.sessionID), ["hermes:default:tip", "hermes:default:tip"])
+        XCTAssertEqual(chat.spy.starts.map(\.streamID), ["1790000000.5", "1790000000.5"])
+        XCTAssertEqual(chat.spy.starts.map(\.destinationURL), [link, link])
+        XCTAssertEqual(chat.spy.starts.map(\.pushSessionID), ["tip", "tip-2"])
+        XCTAssertEqual(chat.spy.moves, ["tip-2"], "the reattach found the key already moved")
+        XCTAssertEqual(chat.spy.ends, [])
     }
 
     /// A turn the send's reply began, before its own frames, still gets one activity.
@@ -186,12 +216,60 @@ import Observation
         XCTAssertEqual(chat.spy.botStarts, [.init(key: "bot:\(Self.connection.id.uuidString):default", destinationURL: url,
                                                   pushSessionID: "tip", title: "Hermes", turn: "1790000000.5",
                                                   startedAt: Date(timeIntervalSince1970: Self.startedAt))])
-        XCTAssertEqual(chat.spy.starts, [], "never the interim hermes: identity")
+        XCTAssertEqual(chat.spy.starts, [], "never the hermes: session identity")
         XCTAssertEqual(chat.spy.events.last, .toolStarted(name: "terminal"))
 
-        chat.receive(event(4, "message.complete", ["text": .string("Done")]))
-        chat.receive(event(5, "session.info", ["running": .bool(false)]))
+        // A legacy compression mid-turn moves the bot's pushes to the new key (#1179).
+        chat.receive(event(4, "session.info", ["running": .bool(true), "stored_session_id": .string("tip-2")]))
+        XCTAssertEqual(chat.spy.moves, ["tip-2"])
+        XCTAssertEqual(chat.spy.botStarts.count, 1)
+
+        chat.receive(event(5, "message.complete", ["text": .string("Done")]))
+        chat.receive(event(6, "session.info", ["running": .bool(false)]))
         XCTAssertEqual(chat.spy.ends, [.init(status: .complete, activity: "Response complete")])
+    }
+
+    /// A moved key outlives another run taking the activity while the chat was away (#1179):
+    /// reattaching to the same running turn drives its activity again under the moved key, for a
+    /// bot, whose identity still names the turn's first key, and for a session alike. The
+    /// durable record a relaunch reads keeps the moved key too.
+    func testAMovedKeySurvivesAnotherRunTakingTheActivityBeforeAReattach() async throws {
+        var bot = try XCTUnwrap(AgentRunActivityBot(BotDestination(server: Self.server, connectionID: Self.connection.id,
+                                                                   profile: "default", conversation: "root")))
+        bot.pushSessionID = "tip"
+        let cases: [(target: ConversationTarget, attributes: AgentRunActivityAttributes)] = [
+            (.canonicalChat(profile: "default"),
+             AgentRunActivityAttributes(sessionID: bot.key, sessionTitle: "Hermes", streamID: bot.streamID(turn: "1790000000.5"),
+                                        startedAt: .now, bot: bot)),
+            (.session(profile: "default", key: "tip"),
+             AgentRunActivityAttributes(sessionID: "hermes:default:tip", sessionTitle: "Untitled Session",
+                                        streamID: "1790000000.5", startedAt: .now, server: Self.server,
+                                        pushSessionID: "tip"))
+        ]
+        for (target, attributes) in cases {
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: "HermesChatLiveActivityTests-\(UUID())"))
+            let manager = AgentLiveActivityManager(pushKeys: LiveActivityPushKeys(defaults: defaults))
+            let chat = await openChat(target: target, manager: manager)
+            chat.receive(event(1, "session.info", ["running": .bool(true), "turn_started_at": .number(Self.startedAt)]))
+            chat.receive(event(2, "message.start"))
+            chat.receive(event(3, "session.info", ["running": .bool(true), "stored_session_id": .string("tip-2")]))
+            XCTAssertEqual(manager.drivenSessionID, attributes.sessionID)
+            XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-2")
+
+            chat.model.suspendStreamForBackground()
+            manager.start(sessionID: "webui-session", server: Self.server, sessionTitle: "Other run", streamID: "s1",
+                          startedAt: .now)
+            // The bot's title lookup now finds its tip at the moved key.
+            chat.host.always("session.list", .init(result: .object(["sessions": .array([
+                .object(["id": .string("root"), "resolved_id": .string("tip-2")])])])))
+            chat.host.next("session.events.since", .init(result: BotFixtureWire.replay(latest: 3)))
+            chat.host.always("session.resume", .init(result: resume(running: true, key: "tip-2")))
+            await chat.model.reconnectStreamIfNeeded()
+            XCTAssertEqual(manager.drivenSessionID, attributes.sessionID, "\(target): the chat drives its turn again")
+            XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-2", "\(target): its token registers under the moved key")
+            let relaunched = LiveActivityPushKeys(defaults: defaults)
+            XCTAssertEqual(relaunched.pushTarget(for: attributes)?.sessionID, "tip-2", "\(target): a relaunch finds the moved key")
+        }
     }
 
     /// A Bot Chat's pill shows the turn as Bot Chat's title does (#757, #778): at rest while
@@ -302,10 +380,10 @@ import Observation
 
     /// A Bot Chat row opened from Archived resumes its key, and may be a deliberate archive that
     /// upstream's title lookup leaves out, or one the bot has since replaced. Its activity keeps
-    /// the interim `hermes:` session identity, whose tap opens the app as it is, on this chat:
+    /// the `hermes:` session identity, whose tap is the session link to its key (#1165, #1179):
     /// no Bot route, so a tap never reaches the canonical lookup, opens the replacement or
     /// unarchives the original. The chat still keeps Bot Chat's rules.
-    func testAnArchivedBotChatsActivityNeverTapsIntoTheCanonicalChat() async throws {
+    func testAnArchivedBotChatsActivityTapsBackToItsKey() async throws {
         let row = HermesSessionRow(id: "tip", title: "Bot Chat", archived: true, hidden: true, profile: "inbox-triage",
                                    lineageRootID: "root").summary(in: "default")
         let opened = try XCTUnwrap(row.hermesChat(on: Self.server, connection: Self.connection, listedIn: "default"))
@@ -324,8 +402,13 @@ import Observation
             let start = try XCTUnwrap(chat.spy.starts.first)
             XCTAssertEqual(start.sessionID, "hermes:inbox-triage:tip")
             let attributes = AgentRunActivityAttributes(sessionID: start.sessionID, sessionTitle: start.title,
-                                                        startedAt: start.startedAt, server: start.server)
-            XCTAssertNil(AgentRunTapTarget.url(attributes: attributes, sessionID: start.sessionID, activityID: "a1"))
+                                                        startedAt: start.startedAt, server: start.server,
+                                                        destinationURL: start.destinationURL, pushSessionID: start.pushSessionID)
+            let tap = try XCTUnwrap(AgentRunTapTarget.url(attributes: attributes, sessionID: start.sessionID, activityID: "a1"))
+            XCTAssertNil(HermesDeepLink.botDestination(from: tap))
+            XCTAssertEqual(HermesSessionDestination(url: tap),
+                           HermesSessionDestination(server: Self.server, profile: "inbox-triage", key: "tip"),
+                           "the link reopens the row by its key, which keeps its Bot Chat root")
             XCTAssertFalse(chat.host.requests.contains { $0["method"].text == "session.list" },
                            "nothing looked up by title, so nothing replaced or restored")
         }
@@ -333,12 +416,23 @@ import Observation
 
     // MARK: Tap
 
-    /// A Hermes session's activity has no destination until #706: no webui route is built,
-    /// so a tap opens the app as it is. A webui run on the same server still routes.
-    func testATapOnAHermesSessionsActivityBuildsNoWebuiRoute() throws {
-        let hermes = AgentRunActivityAttributes(sessionID: "hermes:default:tip", sessionTitle: "Run", startedAt: .now,
-                                                server: Self.server)
-        XCTAssertNil(AgentRunTapTarget.url(attributes: hermes, sessionID: "hermes:default:tip", activityID: "a1"))
+    /// A Hermes session's activity taps through its session link (#1179), naming the exact
+    /// activity so a finished one is dismissed. One a build before #1179 started has no link,
+    /// and still builds no webui route: its tap opens the app as it is. A webui run on the same
+    /// server still routes.
+    func testATapOnAHermesSessionsActivityOpensItsSession() throws {
+        let link = try Self.link(profile: "Research & review", key: "20260925_023517_59d8c3")
+        let hermes = AgentRunActivityAttributes(sessionID: "hermes:Research & review:20260925_023517_59d8c3",
+                                                sessionTitle: "Run", startedAt: .now, server: Self.server,
+                                                destinationURL: link, pushSessionID: "20260925_023517_59d8c3")
+        let tap = try XCTUnwrap(AgentRunTapTarget.url(attributes: hermes, sessionID: hermes.sessionID, activityID: "a1"))
+        XCTAssertEqual(AgentRunTapTarget.activityID(from: tap), "a1")
+        XCTAssertEqual(HermesSessionDestination(url: tap),
+                       HermesSessionDestination(server: Self.server, profile: "Research & review", key: "20260925_023517_59d8c3"))
+
+        let older = AgentRunActivityAttributes(sessionID: "hermes:default:tip", sessionTitle: "Run", startedAt: .now,
+                                               server: Self.server)
+        XCTAssertNil(AgentRunTapTarget.url(attributes: older, sessionID: "hermes:default:tip", activityID: "a1"))
 
         let webui = AgentRunActivityAttributes(sessionID: "20260925_023517_59d8c3", sessionTitle: "Run", startedAt: .now,
                                                server: Self.server)
@@ -350,6 +444,11 @@ import Observation
     // MARK: Fixture
 
     private static let server = URL(string: "https://hermes.example")!
+
+    /// The session link (#1176) a Hermes session's activity on this server taps to.
+    private static func link(profile: String, key: String) throws -> URL {
+        try XCTUnwrap(HermesDeepLink.sessionURL(for: HermesSessionDestination(server: server, profile: profile, key: key)))
+    }
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                                   username: "user", password: "fixture")
 
@@ -370,11 +469,12 @@ import Observation
 
     /// `roster` answers `profiles.list`; without one the read fails, so a Bot Chat keeps its
     /// bare Profile row. `subagents` answers `subagent.list`; without them the read fails.
-    /// `pictures` answers `profiles.get_asset` with an image.
+    /// `pictures` answers `profiles.get_asset` with an image. `manager` drives the activity in
+    /// place of the spy, for a test of the real manager's push keys.
     private func openChat(snapshot: BotJSON? = nil, excerpts: Bool = false,
                           target: ConversationTarget = .session(profile: "default", key: "tip"),
                           botChatRoot: String? = nil, roster: BotJSON? = nil, subagents: [BotJSON]? = nil,
-                          pictures: Bool = false) async -> Chat {
+                          pictures: Bool = false, manager: AgentLiveActivityManager? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.resume", .init(result: snapshot ?? resume(running: false)))
@@ -390,12 +490,12 @@ import Observation
                                         target: target, wire: client,
                                         reconnectDelay: { _ in throw CancellationError() })
         let spy = Spy()
-        let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, liveActivities: spy,
+        let turn = HermesChatTurnCoordinator(engine: engine, botChatRoot: botChatRoot, liveActivities: manager ?? spy,
                                              writeBotAvatar: { profile, destination in spy.writeAvatar(profile, destination) },
                                              isNetworkAvailable: { true })
         // The chat's own webui manager is the same spy, so any write it made would show too.
         let model = ChatViewModel(
-            session: SessionSummary(profile: "default"), server: Self.server, liveActivityManager: spy,
+            session: SessionSummary(profile: "default"), server: Self.server, liveActivityManager: manager ?? spy,
             showsLiveActivityResponseExcerpts: excerpts, streamingScrollCoalescingDelayNanoseconds: 0,
             draftStore: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)),
             backend: .hermes(turn)
@@ -451,12 +551,12 @@ import Observation
         })]
     }
 
-    private func resume(running: Bool, title: String? = nil, profile: String = "default",
+    private func resume(running: Bool, title: String? = nil, profile: String = "default", key: String = "tip",
                         todos: [String: BotJSON]? = nil) -> BotJSON {
         var info: [String: BotJSON] = ["profile_name": .string(profile)]
         if let title { info["title"] = .string(title) }
         var reply: [String: BotJSON] = [
-            "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(running),
+            "session_id": .string("runtime"), "session_key": .string(key), "running": .bool(running),
             "messages": .array([]), "info": .object(info)
         ]
         if running { reply["turn_started_at"] = .number(Self.startedAt) }
@@ -474,6 +574,8 @@ import Observation
         let title: String
         let streamID: String?
         let startedAt: Date
+        var destinationURL: URL?
+        var pushSessionID: String?
     }
 
     struct End: Equatable {
@@ -505,6 +607,10 @@ import Observation
     private(set) var events: [AgentLiveActivityEvent] = []
     private(set) var ends: [End] = []
     private(set) var staleCount = 0
+    /// The keys `movePushSession` moved the driven activity's pushes to. As in the manager, a
+    /// key the activity already drives moves nothing.
+    private(set) var moves: [String] = []
+    private var drivenPushSessionID: String?
     var drivenSessionID: String?
 
     func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date) {
@@ -512,10 +618,25 @@ import Observation
         drivenSessionID = sessionID
     }
 
+    func startSession(sessionID: String, server: URL, destinationURL: URL?, pushSessionID: String,
+                      sessionTitle: String, turn: String, startedAt: Date) {
+        starts.append(Start(sessionID: sessionID, server: server, title: sessionTitle, streamID: turn, startedAt: startedAt,
+                            destinationURL: destinationURL, pushSessionID: pushSessionID))
+        drivenSessionID = sessionID
+        drivenPushSessionID = pushSessionID
+    }
+
+    func movePushSession(to key: String) {
+        guard key != drivenPushSessionID else { return }
+        drivenPushSessionID = key
+        moves.append(key)
+    }
+
     func startBot(_ bot: AgentRunActivityBot, title: String, turn: String, startedAt: Date) {
         botStarts.append(BotStart(key: bot.key, destinationURL: bot.destinationURL, pushSessionID: bot.pushSessionID,
                                   title: title, turn: turn, startedAt: startedAt))
         drivenSessionID = bot.key
+        drivenPushSessionID = bot.pushSessionID
     }
 
     /// The titles `.sessionTitle` updates wrote.

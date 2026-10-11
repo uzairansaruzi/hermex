@@ -1558,6 +1558,195 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(state.status, .responding)
         XCTAssertEqual(state.responseExcerpt, "Hello")
     }
+
+    // MARK: Hermes sessions (#1179)
+
+    /// A Hermes session's relay route is its server and stored key, the `session_id` the
+    /// plugin's progress carries. One a build before #1179 started names no such key, so it is
+    /// never registered under its `hermes:` identity. A webui run keeps its own session ID.
+    func testAHermesSessionPushesUnderItsStoredKey() {
+        let hermes = AgentRunActivityAttributes(sessionID: "hermes:default:root", sessionTitle: "Run", startedAt: .now,
+                                                server: server, pushSessionID: "tip")
+        XCTAssertEqual(hermes.pushTarget, AgentRunActivityPushTarget(server: server, sessionID: "tip"))
+        let older = AgentRunActivityAttributes(sessionID: "hermes:default:tip", sessionTitle: "Run", startedAt: .now,
+                                               server: server)
+        XCTAssertNil(older.pushTarget)
+        let webui = AgentRunActivityAttributes(sessionID: "webui-session", sessionTitle: "Run", startedAt: .now, server: server)
+        XCTAssertEqual(webui.pushTarget, AgentRunActivityPushTarget(server: server, sessionID: "webui-session"))
+    }
+
+    /// An activity the previous build persisted decodes without a link or a key, and the new
+    /// fields survive the round trip ActivityKit puts attributes through.
+    func testAHermesActivityFromThePreviousBuildStillDecodes() throws {
+        let data = Data(#"{"sessionID":"hermes:default:tip","sessionTitle":"Run","streamID":"1790000000.5","startedAt":0,"server":"https://webui.example"}"#.utf8)
+        let older = try JSONDecoder().decode(AgentRunActivityAttributes.self, from: data)
+        XCTAssertEqual(older.server, server)
+        XCTAssertNil(older.destinationURL)
+        XCTAssertNil(older.pushSessionID)
+
+        let link = try XCTUnwrap(HermesDeepLink.sessionURL(for: HermesSessionDestination(server: server, profile: "default", key: "tip")))
+        let current = AgentRunActivityAttributes(sessionID: "hermes:default:tip", sessionTitle: "Run", startedAt: .now,
+                                                 server: server, destinationURL: link, pushSessionID: "tip-2")
+        let copy = try JSONDecoder().decode(AgentRunActivityAttributes.self, from: JSONEncoder().encode(current))
+        XCTAssertEqual(copy.destinationURL, link)
+        XCTAssertEqual(copy.pushSessionID, "tip-2")
+    }
+
+    /// The driven session's pushes follow its stored key: a move changes the key its token
+    /// registers under, and a reattach inside the turn adopts the same activity (its state
+    /// carries on) under the key the chat now knows. A blank key moves nothing.
+    func testAHermesSessionsPushesFollowItsStoredKey() throws {
+        let manager = AgentLiveActivityManager()
+        let startedAt = Date(timeIntervalSince1970: 1_000)
+        manager.startSession(sessionID: "hermes:default:root", server: server, destinationURL: nil, pushSessionID: "tip",
+                             sessionTitle: "Run", turn: "1000.0", startedAt: startedAt)
+        XCTAssertEqual(manager.drivenSessionID, "hermes:default:root")
+        XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip")
+
+        manager.movePushSession(to: "tip-2")
+        XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-2")
+        manager.movePushSession(to: " ")
+        XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-2")
+
+        manager.update(.toolStarted(name: "terminal"))
+        manager.startSession(sessionID: "hermes:default:root", server: server, destinationURL: nil, pushSessionID: "tip-3",
+                             sessionTitle: "Run", turn: "1000.0", startedAt: startedAt)
+        XCTAssertEqual(manager.currentStateForTesting()?.status, .runningCommand, "the same activity, not a new one")
+        XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip-3")
+    }
+
+    /// Cold launch adopts a paired Hermes session's running activity, as a bot's, under the key
+    /// it carried, so the relay keeps driving it and the session's chat can take it over. A
+    /// finished one is not adopted.
+    func testColdLaunchAdoptsAPairedHermesSessionsActivity() throws {
+        let attributes = AgentRunActivityAttributes(sessionID: "hermes:default:root", sessionTitle: "Run",
+                                                    streamID: "1000.0", startedAt: Date(timeIntervalSince1970: 1_000),
+                                                    server: server, pushSessionID: "tip")
+        let running = AgentRunActivityStateReducer.initialState(sessionID: "hermes:default:root", sessionTitle: "Run")
+        let final = AgentRunActivityStateReducer.final(status: .complete, activity: "Done", state: running)
+        let manager = AgentLiveActivityManager()
+        XCTAssertFalse(manager.restoreOwnership(attributes: attributes, state: final))
+        XCTAssertTrue(manager.restoreOwnership(attributes: attributes, state: running))
+        XCTAssertEqual(manager.drivenSessionID, "hermes:default:root")
+        XCTAssertEqual(manager.drivenPushSessionIDForTesting, "tip")
+    }
+
+    /// `session.active_list` runs a session while it lists the stored key with any status but
+    /// `idle`, including ones this build does not know.
+    func testTheLiveListRunsEveryListedSessionThatIsNotIdle() {
+        let items: [BotJSON] = [("a", "working"), ("b", "waiting"), ("c", "starting"), ("d", "streaming"),
+                                ("e", "resuming"), ("f", "idle")].map { key, status in
+            .object(["id": .string("runtime-\(key)"), "session_key": .string(key), "status": .string(status)])
+        } + [.object(["id": .string("runtime-g"), "session_key": .string("g")]),
+             .object(["id": .string("runtime-h"), "status": .string("working")])]
+        XCTAssertEqual(LeftoverLiveActivitySettlement.runningKeys(items), ["a", "b", "c", "d", "e", "g"])
+    }
+
+    /// What cold launch does with each activity a previous launch left (#489, #566, #1179). A
+    /// paired activity is adopted; a finished one releases its route. An unpaired Hermes
+    /// session's on the signed-in Hermes server is checked once against the live list: listed
+    /// and running, it stays; otherwise it ends as complete, since the outcome is unknown.
+    /// Another server's waits for its stale date, as a running webui run waits for its own
+    /// reconciler; an unpaired bot cannot be followed, so it ends.
+    func testColdLaunchChecksUnpairedHermesRunsOnceAgainstTheLiveList() async throws {
+        let paired = URL(string: "https://paired.example")!
+        let other = URL(string: "https://other.example")!
+        func hermes(_ id: String, key: String?, on server: URL, finished: Bool = false) -> LeftoverLiveActivity {
+            LeftoverLiveActivity(id: id, attributes: AgentRunActivityAttributes(
+                sessionID: "hermes:default:\(key ?? id)", sessionTitle: "Run", startedAt: .now, server: server,
+                pushSessionID: key), isFinished: finished)
+        }
+        func bot(_ id: String, on server: URL) throws -> LeftoverLiveActivity {
+            var bot = try XCTUnwrap(AgentRunActivityBot(BotDestination(server: server, connectionID: UUID(), profile: "triage")))
+            bot.pushSessionID = "bot-tip"
+            return LeftoverLiveActivity(id: id, attributes: AgentRunActivityAttributes(
+                sessionID: bot.key, sessionTitle: "Triage", startedAt: .now, bot: bot), isFinished: false)
+        }
+        let leftovers = [
+            hermes("paired", key: "k-paired", on: paired),
+            hermes("working", key: "k-working", on: server),
+            hermes("waiting", key: "k-waiting", on: server),
+            hermes("idle", key: "k-idle", on: server),
+            hermes("absent", key: "k-absent", on: server),
+            hermes("k-older", key: nil, on: server),
+            hermes("other", key: "k-working", on: other),
+            hermes("finished", key: "k-finished", on: server, finished: true),
+            try bot("bot-paired", on: paired),
+            try bot("bot-unpaired", on: server),
+            LeftoverLiveActivity(id: "webui", attributes: AgentRunActivityAttributes(
+                sessionID: "webui-session", sessionTitle: "Run", startedAt: .now, server: server), isFinished: false),
+            LeftoverLiveActivity(id: "webui-finished", attributes: AgentRunActivityAttributes(
+                sessionID: "webui-session", sessionTitle: "Run", startedAt: .now, server: server), isFinished: true)
+        ]
+        var reads = 0
+        let actions = await LeftoverLiveActivitySettlement.actions(
+            for: leftovers, isPaired: { $0 == paired }, hermesServer: server,
+            runningKeys: { reads += 1; return ["k-working", "k-waiting", "k-older"] }
+        )
+        XCTAssertEqual(actions, [.adopt, .keep, .keep, .endComplete, .endComplete, .keep, .keep, .retire,
+                                 .adopt, .end, .keep, .retire])
+        XCTAssertEqual(reads, 1, "one live-list read for every unpaired Hermes run")
+    }
+
+    /// A live list that can't be read proves nothing, so the unpaired run stays. Without an
+    /// unpaired Hermes run on the signed-in Hermes server, nothing is read at all.
+    func testColdLaunchLeavesHermesRunsTheLiveListCannotSettle() async {
+        let unpaired = LeftoverLiveActivity(id: "unpaired", attributes: AgentRunActivityAttributes(
+            sessionID: "hermes:default:tip", sessionTitle: "Run", startedAt: .now, server: server, pushSessionID: "tip"),
+            isFinished: false)
+        var reads = 0
+        let failed = await LeftoverLiveActivitySettlement.actions(
+            for: [unpaired], isPaired: { _ in false }, hermesServer: server, runningKeys: { reads += 1; return nil })
+        XCTAssertEqual(failed, [.keep])
+        XCTAssertEqual(reads, 1)
+
+        let cases: [(paired: URL?, hermes: URL?)] = [(server, server), (nil, nil), (nil, URL(string: "https://other.example")!)]
+        for (pairedServer, hermesServer) in cases {
+            let actions = await LeftoverLiveActivitySettlement.actions(
+                for: [unpaired], isPaired: { $0 == pairedServer }, hermesServer: hermesServer,
+                runningKeys: { reads += 1; return [] })
+            XCTAssertEqual(actions, [pairedServer == nil ? .keep : .adopt])
+        }
+        XCTAssertEqual(reads, 1, "nothing to check, so nothing read")
+
+        // Nor does a list without the leftover's key show its run is over, when it names none.
+        let keyless = LeftoverLiveActivity(id: "keyless", attributes: AgentRunActivityAttributes(
+            sessionID: "hermes:default", sessionTitle: "Run", startedAt: .now, server: server), isFinished: false)
+        let unknown = await LeftoverLiveActivitySettlement.actions(
+            for: [keyless], isPaired: { _ in false }, hermesServer: server, runningKeys: { ["tip"] })
+        XCTAssertEqual(unknown, [.keep])
+    }
+
+    /// A legacy compression's key move outlives the process (#1179). A fresh manager, as after a
+    /// relaunch, finds the activity under the moved key: the host listing that key running keeps
+    /// it, and adopting it re-registers under that key. The same turn on another server keeps
+    /// the key it carries.
+    func testAMovedKeySurvivesARelaunch() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "LiveActivityTests-\(UUID())"))
+        let before = AgentLiveActivityManager(pushKeys: LiveActivityPushKeys(defaults: defaults))
+        before.startSession(sessionID: "hermes:default:root", server: server, destinationURL: nil, pushSessionID: "tip",
+                            sessionTitle: "Run", turn: "1000.0", startedAt: .now)
+        before.movePushSession(to: "tip-2")
+
+        let relaunched = AgentLiveActivityManager(pushKeys: LiveActivityPushKeys(defaults: defaults))
+        func attributes(on server: URL) -> AgentRunActivityAttributes {
+            AgentRunActivityAttributes(sessionID: "hermes:default:root", sessionTitle: "Run", streamID: "1000.0",
+                                       startedAt: .now, server: server, pushSessionID: "tip")
+        }
+        let other = relaunched.leftover(id: "other", attributes: attributes(on: URL(string: "https://other.example")!),
+                                        isFinished: false)
+        XCTAssertEqual(other.pushSessionID, "tip")
+
+        let leftover = relaunched.leftover(id: "moved", attributes: attributes(on: server), isFinished: false)
+        var ended: [LeftoverLiveActivityAction] = []
+        await relaunched.settle([leftover], checking: AgentLiveActivityManager.HermesRunCheck(server: server) { ["tip-2"] },
+                                isFinished: { _ in false }, adopt: { _ in false }, end: { ended.append($1) })
+        XCTAssertEqual(ended, [], "the host still runs the moved key")
+
+        let running = AgentRunActivityStateReducer.initialState(sessionID: "hermes:default:root", sessionTitle: "Run")
+        XCTAssertTrue(relaunched.restoreOwnership(attributes: attributes(on: server), state: running))
+        XCTAssertEqual(relaunched.drivenPushSessionIDForTesting, "tip-2")
+    }
 }
 
 @MainActor

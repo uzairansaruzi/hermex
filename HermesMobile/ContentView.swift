@@ -46,7 +46,8 @@ struct ContentView: View {
                 await reconcileOrphanedLiveActivities(notifiesOnCompletion: true)
                 // #489: a bot activity has no server status to reconcile against.
                 // #566: a finished webui activity releases its relay registration.
-                await AgentLiveActivityManager.shared.settleActivitiesFromPreviousLaunch()
+                // #1179: an unpaired Hermes session's is checked once against its host.
+                await AgentLiveActivityManager.shared.settleActivitiesFromPreviousLaunch(checking: hermesRunCheck())
             }
             .onChange(of: scenePhase) {
                 // Closes the shared Bot socket cleanly on background; Control Center and
@@ -79,6 +80,21 @@ struct ContentView: View {
             notifiesOnCompletion: notifiesOnCompletion,
             preferenceEnabled: isResponseCompletionNotificationsEnabled
         )
+    }
+
+    /// The signed-in active Hermes server's one `session.active_list` read for cold launch
+    /// (#1179), over its saved connection; nil on a webui server or without a sign-in. The read is
+    /// made only if an unpaired Hermes session's activity needs it.
+    private func hermesRunCheck() -> AgentLiveActivityManager.HermesRunCheck? {
+        guard case let .loggedIn(server) = authManager.state, authManager.kind(of: server) == .hermes,
+              let connection = try? BotConnectionStore().load(server: server) else { return nil }
+        return AgentLiveActivityManager.HermesRunCheck(server: server) {
+            let wire = BotClient(saved: connection, server: server)
+            defer { wire.close() }
+            guard (try? await wire.connect()) != nil,
+                  let items = (try? await wire.call(.sessionActiveList))?["sessions"].list else { return nil }
+            return LeftoverLiveActivitySettlement.runningKeys(items)
+        }
     }
 
     @ViewBuilder

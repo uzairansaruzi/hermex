@@ -192,15 +192,20 @@ struct HermesSessionDestination: Hashable {
 
 /// Shared by the Lock Screen and Dynamic Island, and exercised by main-app tests.
 enum AgentRunTapTarget {
-    /// Starts a Hermes session's interim activity key, `hermes:<profile>:<stored key>`
-    /// (#1014). Until #706 such an activity has no destination: a tap opens the app as it is.
+    /// Starts a Hermes session's activity key, `hermes:<profile>:<root>` (#1014, #1179).
     static let hermesSessionPrefix = "hermes:"
 
+    /// A bot's route, a Hermes session's link (#1179), or a webui run's server-owned route, with
+    /// the activity's id. A Hermes session's activity from a build before #1179 has no link and
+    /// gets none: a tap opens the app as it is, never a webui route for its `hermes:` key.
     static func url(attributes: AgentRunActivityAttributes, sessionID: String, activityID: String) -> URL? {
-        guard attributes.bot != nil || !attributes.sessionID.hasPrefix(hermesSessionPrefix) else { return nil }
         let destination: URL?
         if let bot = attributes.bot {
             destination = bot.destinationURL
+        } else if let link = attributes.destinationURL {
+            destination = link
+        } else if attributes.sessionID.hasPrefix(hermesSessionPrefix) {
+            return nil
         } else if let server = attributes.server {
             destination = HermesDeepLink.webuiSessionURL(server: server, sessionID: sessionID)
         } else {
