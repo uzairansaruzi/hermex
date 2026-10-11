@@ -1708,6 +1708,44 @@ final class LiveActivityTests: XCTestCase {
             XCTAssertEqual(actions, [pairedServer == nil ? .keep : .adopt])
         }
         XCTAssertEqual(reads, 1, "nothing to check, so nothing read")
+
+        // Nor does a list without the leftover's key show its run is over, when it names none.
+        let keyless = LeftoverLiveActivity(id: "keyless", attributes: AgentRunActivityAttributes(
+            sessionID: "hermes:default", sessionTitle: "Run", startedAt: .now, server: server), isFinished: false)
+        let unknown = await LeftoverLiveActivitySettlement.actions(
+            for: [keyless], isPaired: { _ in false }, hermesServer: server, runningKeys: { ["tip"] })
+        XCTAssertEqual(unknown, [.keep])
+    }
+
+    /// A legacy compression's key move outlives the process (#1179). A fresh manager, as after a
+    /// relaunch, finds the activity under the moved key: the host listing that key running keeps
+    /// it, and adopting it re-registers under that key. The same turn on another server keeps
+    /// the key it carries.
+    func testAMovedKeySurvivesARelaunch() async throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "LiveActivityTests-\(UUID())"))
+        let before = AgentLiveActivityManager(pushKeys: LiveActivityPushKeys(defaults: defaults))
+        before.startSession(sessionID: "hermes:default:root", server: server, destinationURL: nil, pushSessionID: "tip",
+                            sessionTitle: "Run", turn: "1000.0", startedAt: .now)
+        before.movePushSession(to: "tip-2")
+
+        let relaunched = AgentLiveActivityManager(pushKeys: LiveActivityPushKeys(defaults: defaults))
+        func attributes(on server: URL) -> AgentRunActivityAttributes {
+            AgentRunActivityAttributes(sessionID: "hermes:default:root", sessionTitle: "Run", streamID: "1000.0",
+                                       startedAt: .now, server: server, pushSessionID: "tip")
+        }
+        let other = relaunched.leftover(id: "other", attributes: attributes(on: URL(string: "https://other.example")!),
+                                        isFinished: false)
+        XCTAssertEqual(other.pushSessionID, "tip")
+
+        let leftover = relaunched.leftover(id: "moved", attributes: attributes(on: server), isFinished: false)
+        var ended: [LeftoverLiveActivityAction] = []
+        await relaunched.settle([leftover], checking: AgentLiveActivityManager.HermesRunCheck(server: server) { ["tip-2"] },
+                                isFinished: { _ in false }, adopt: { _ in false }, end: { ended.append($1) })
+        XCTAssertEqual(ended, [], "the host still runs the moved key")
+
+        let running = AgentRunActivityStateReducer.initialState(sessionID: "hermes:default:root", sessionTitle: "Run")
+        XCTAssertTrue(relaunched.restoreOwnership(attributes: attributes(on: server), state: running))
+        XCTAssertEqual(relaunched.drivenPushSessionIDForTesting, "tip-2")
     }
 }
 

@@ -180,7 +180,7 @@ extension AgentLiveActivityManaging {
 
 @MainActor
 final class AgentLiveActivityManager: AgentLiveActivityManaging {
-    static let shared = AgentLiveActivityManager()
+    static let shared = AgentLiveActivityManager(pushKeys: LiveActivityPushKeys(defaults: .standard))
 
     private let minimumUpdateInterval: TimeInterval
     private var activity: Activity<AgentRunActivityAttributes>?
@@ -192,6 +192,10 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     /// The stored key the driven activity's pushes come under (#1179): a bot's or a Hermes
     /// session's, which a legacy compression can move past the key its attributes carry.
     private var drivenPushSessionID: String?
+    /// The server the driven activity's pushes go to: a webui run's or Hermes session's own,
+    /// or a bot's destination. Scopes the moved key `pushKeys` keeps for it.
+    private var drivenPushServer: URL?
+    private let pushKeys: LiveActivityPushKeys
     // StreamID of the run whose SSE is live in THIS process right now: set when the
     // coordinator (re)connects (`start`), cleared the moment it suspends/hits trouble
     // (`markStale`) or finalizes (`end`/`reset`). The orphan reconciler skips it so a
@@ -211,12 +215,18 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     private var pushStateTask: Task<Void, Never>?
     private var pushOwner: String?
     private var pushHandoffTask: Task<Void, Never>?
-    private var pushRegistrar: PushActivityRegistrar? { PushRegistrar.shared?.activities }
+    private let injectedPushRegistrar: PushActivityRegistrar?
+    private var pushRegistrar: PushActivityRegistrar? { injectedPushRegistrar ?? PushRegistrar.shared?.activities }
     /// How long a suspending app waits for the relay to confirm an activity it is handing off.
     private let pushHandoffLimit: Duration = .seconds(10)
 
-    init(minimumUpdateInterval: TimeInterval = 1.5) {
+    /// `shared` keeps moved keys in the standard defaults and uses the shared registrar; a
+    /// test's manager keeps them in memory unless it passes its own.
+    init(minimumUpdateInterval: TimeInterval = 1.5, pushKeys: LiveActivityPushKeys = LiveActivityPushKeys(defaults: nil),
+         pushRegistrar: PushActivityRegistrar? = nil) {
         self.minimumUpdateInterval = minimumUpdateInterval
+        self.pushKeys = pushKeys
+        self.injectedPushRegistrar = pushRegistrar
     }
 
     func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date = Date()) {
@@ -239,6 +249,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty, currentState?.isFinal == false, key != drivenPushSessionID else { return }
         drivenPushSessionID = key
+        rememberPushKey()
         // The token task forwards under the moved key from now on. A token already in hand
         // registers again now; the registrar deletes the old route before it puts the new one.
         guard let activity, pushOwner == activity.id, let token = activity.pushToken,
@@ -252,6 +263,27 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
 
     var drivenSessionID: String? {
         currentState?.isFinal == false ? currentSessionID : nil
+    }
+
+    /// The driven activity's identity under its push server, the scope of its moved key.
+    private var drivenPushIdentity: LiveActivityPushKeys.Identity? {
+        guard let drivenPushServer, let currentSessionID else { return nil }
+        return LiveActivityPushKeys.Identity(server: drivenPushServer, sessionID: currentSessionID,
+                                             streamID: currentStreamID)
+    }
+
+    /// Keeps the driven activity's stored key where a relaunch finds it (#1179): its attributes
+    /// cannot follow a move.
+    private func rememberPushKey() {
+        guard let identity = drivenPushIdentity else { return }
+        pushKeys.record(drivenPushSessionID, for: identity)
+    }
+
+    /// Whether this manager now drives the unfinished turn `attributes` describe, such as a
+    /// leftover activity a chat has since taken over.
+    private func drives(_ attributes: AgentRunActivityAttributes) -> Bool {
+        drivenSessionID == attributes.sessionID
+            && currentStreamID == AgentLiveActivityReusePolicy.normalizedStreamID(attributes.streamID)
     }
 
     /// `pushSessionID` is a Hermes session's stored key; a bot's comes from `bot`.
@@ -272,7 +304,10 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
            currentServer == server,
            activity?.attributes.bot?.pushSessionID == bot?.pushSessionID {
             // A session's chat names the key it now knows; observing forwards the token under it.
-            if let pushSessionID { drivenPushSessionID = pushSessionID }
+            if let pushSessionID {
+                drivenPushSessionID = pushSessionID
+                rememberPushKey()
+            }
             if let activity { observePush(activity) }
             updateCurrentState { state in
                 AgentRunActivityAttributes.ContentState(
@@ -309,6 +344,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         currentStreamID = normalizedStreamID
         currentServer = server
         drivenPushSessionID = pushSessionID ?? bot?.pushSessionID
+        drivenPushServer = server ?? bot.flatMap { HermesDeepLink.botDestination(from: $0.destinationURL)?.server }
+        rememberPushKey()
         let state = AgentRunActivityStateReducer.initialState(
             sessionID: normalizedSessionID,
             sessionTitle: sessionTitle,
@@ -578,40 +615,101 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     /// releases its relay registration, so it no longer holds its session's banners; the
     /// registrar never deletes a route a new activity for that session is registering (#642).
     /// An unpaired Hermes session's on `hermes`'s server ends as complete unless the host still
-    /// runs it. A running webui activity is left to the server-status reconciler (#566).
+    /// runs it. A running webui activity is left to the server-status reconciler (#566). Every
+    /// decision uses the stored key the activity's pushes last moved to (`LiveActivityPushKeys`).
     func settleActivitiesFromPreviousLaunch(checking hermes: HermesRunCheck? = nil) async {
-        let leftovers = Activity<AgentRunActivityAttributes>.activities.filter { $0.id != activity?.id }
-        let actions = await LeftoverLiveActivitySettlement.actions(
-            for: leftovers.map { persisted in
-                LeftoverLiveActivity(id: persisted.id, attributes: persisted.attributes,
-                                     isFinished: persisted.activityState == .ended || persisted.activityState == .dismissed
-                                        || persisted.content.state.isFinal)
+        let persisted = Activity<AgentRunActivityAttributes>.activities
+        // Moved keys outlive their activities only until here; the driven turn keeps its own.
+        pushKeys.prune(keeping: Set(persisted.compactMap { LiveActivityPushKeys.Identity(of: $0.attributes) }
+            + [drivenPushIdentity].compactMap { $0 }))
+        func find(_ id: String) -> Activity<AgentRunActivityAttributes>? {
+            Activity<AgentRunActivityAttributes>.activities.first { $0.id == id }
+        }
+        await settle(
+            persisted.filter { $0.id != activity?.id }.map {
+                leftover(id: $0.id, attributes: $0.attributes, isFinished: Self.isFinished($0))
             },
-            isPaired: { [weak self] in self?.isPaired($0) == true },
-            hermesServer: hermes?.server,
+            checking: hermes,
+            isFinished: { find($0).map(Self.isFinished) },
+            adopt: { leftover in
+                guard let persisted = find(leftover.id),
+                      restoreOwnership(attributes: persisted.attributes, state: persisted.content.state) else { return false }
+                activity = persisted
+                observePush(persisted)
+                return true
+            },
+            end: { leftover, action in
+                guard let persisted = find(leftover.id) else { return }
+                if action == .endComplete {
+                    await finishPersisted(persisted, status: .complete, activity: String(localized: "Response complete"))
+                } else {
+                    await persisted.end(nil, dismissalPolicy: .immediate)
+                }
+            },
+            reclaimed: { leftover in
+                if let persisted = find(leftover.id), activity?.id == persisted.id { observePush(persisted) }
+            }
+        )
+    }
+
+    /// The testable core of `settleActivitiesFromPreviousLaunch`. The host read and each relay
+    /// retirement suspend, and meanwhile a chat can take a leftover's turn over, move its key,
+    /// or the activity can end; so each action applies only while its activity is unchanged,
+    /// and an end only if it still is after the retirement. `isFinished` reads an activity's
+    /// state now, nil once it is gone; `adopt` makes it the driven activity; `end` ends it as
+    /// `action` says; `reclaimed` hands a chat that took it over during the retirement its
+    /// pushes back.
+    func settle(_ leftovers: [LeftoverLiveActivity], checking hermes: HermesRunCheck?,
+                isFinished: (String) -> Bool?,
+                adopt: (LeftoverLiveActivity) -> Bool,
+                end: (LeftoverLiveActivity, LeftoverLiveActivityAction) async -> Void,
+                reclaimed: (LeftoverLiveActivity) -> Void = { _ in }) async {
+        let actions = await LeftoverLiveActivitySettlement.actions(
+            for: leftovers, isPaired: { isPaired($0) }, hermesServer: hermes?.server,
             runningKeys: { await hermes?.runningKeys() }
         )
-        for (persisted, action) in zip(leftovers, actions) {
+        func unchanged(_ snapshot: LeftoverLiveActivity) -> Bool {
+            guard activity?.id != snapshot.id, !drives(snapshot.attributes),
+                  let finished = isFinished(snapshot.id) else { return false }
+            return finished == snapshot.isFinished
+                && pushKeys.pushTarget(for: snapshot.attributes)?.sessionID == snapshot.pushSessionID
+        }
+        for (leftover, action) in zip(leftovers, actions) {
+            guard action != .keep, unchanged(leftover) else { continue }
             switch action {
             case .keep:
                 continue
             case .retire:
-                await retirePush(persisted)
-            case .adopt where restoreOwnership(attributes: persisted.attributes, state: persisted.content.state):
-                activity = persisted
-                observePush(persisted)
-            case .adopt, .end:
-                await retirePush(persisted)
-                await persisted.end(nil, dismissalPolicy: .immediate)
-            case .endComplete:
-                await endPersisted(persisted, status: .complete, activity: String(localized: "Response complete"))
+                await retireRoute(owner: leftover.id, attributes: leftover.attributes)
+                forgetPushKey(owner: leftover.id, attributes: leftover.attributes)
+            case .adopt where adopt(leftover):
+                continue
+            case .adopt, .end, .endComplete:
+                await retireRoute(owner: leftover.id, attributes: leftover.attributes)
+                guard unchanged(leftover) else {
+                    reclaimed(leftover)
+                    continue
+                }
+                await end(leftover, action)
+                forgetPushKey(owner: leftover.id, attributes: leftover.attributes)
             }
         }
     }
 
+    /// A previous launch's activity as cold launch decides it, with the key its pushes last
+    /// moved to.
+    func leftover(id: String, attributes: AgentRunActivityAttributes, isFinished: Bool) -> LeftoverLiveActivity {
+        LeftoverLiveActivity(id: id, attributes: attributes, isFinished: isFinished,
+                             pushSessionID: pushKeys.pushTarget(for: attributes)?.sessionID)
+    }
+
+    private static func isFinished(_ persisted: Activity<AgentRunActivityAttributes>) -> Bool {
+        persisted.activityState == .ended || persisted.activityState == .dismissed || persisted.content.state.isFinal
+    }
+
     /// Restores the feed's ownership of a surviving push activity, a bot's or a Hermes
-    /// session's, before observing it, under the stored key it carried. Only one activity can
-    /// own the manager; duplicates and final states retire.
+    /// session's, before observing it, under the stored key its pushes last moved to. Only one
+    /// activity can own the manager; duplicates and final states retire.
     @discardableResult
     func restoreOwnership(attributes: AgentRunActivityAttributes,
                           state: AgentRunActivityAttributes.ContentState) -> Bool {
@@ -619,7 +717,8 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         currentSessionID = attributes.sessionID
         currentStreamID = AgentLiveActivityReusePolicy.normalizedStreamID(attributes.streamID)
         currentServer = attributes.server
-        drivenPushSessionID = attributes.pushTarget?.sessionID
+        drivenPushServer = attributes.pushTarget?.server
+        drivenPushSessionID = pushKeys.pushTarget(for: attributes)?.sessionID
         currentState = state.presented(attributes: attributes, systemIsStale: false)
         rawResponseText = currentState?.responseExcerpt ?? ""
         lastSentUpdateAt = state.updatedAt
@@ -676,12 +775,18 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
     /// final content directly with no render delay, so no `update` precedes it (PR #266 review).
     private func endPersisted(_ persisted: Activity<AgentRunActivityAttributes>,
                               status: AgentRunActivityStatus, activity activityLine: String) async {
+        await retirePush(persisted)
+        await finishPersisted(persisted, status: status, activity: activityLine)
+    }
+
+    /// Ends `persisted` with a final `status` as it shows, its relay route already retired.
+    private func finishPersisted(_ persisted: Activity<AgentRunActivityAttributes>,
+                                 status: AgentRunActivityStatus, activity activityLine: String) async {
         let finalState = Self.keepingRelayCounts(AgentRunActivityStateReducer.final(
             status: status,
             activity: activityLine,
             state: persisted.content.state
         ), on: persisted)
-        await retirePush(persisted)
         await persisted.end(ActivityContent(state: finalState, staleDate: nil), dismissalPolicy: dismissalPolicy(for: status))
     }
 
@@ -944,7 +1049,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
 
     private func observePush(_ observed: Activity<AgentRunActivityAttributes>) {
         // A webui run or Hermes session on an unpaired server has no token to forward; leave it local-only.
-        guard let target = observed.attributes.pushTarget, let registrar = pushRegistrar,
+        guard let target = pushKeys.pushTarget(for: observed.attributes), let registrar = pushRegistrar,
               observed.attributes.bot != nil || isPaired(target.server) else { return }
         pushTokenTask?.cancel()
         pushStateTask?.cancel()
@@ -988,8 +1093,24 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
             pushStateTask = nil
             pushOwner = nil
         }
-        let target = retiring.attributes.pushTarget
-        await pushRegistrar?.retire(owner: retiring.id, server: target?.server, sessionID: target?.sessionID)
+        await retireRoute(owner: retiring.id, attributes: retiring.attributes)
+        if retiring.activityState == .ended || retiring.activityState == .dismissed {
+            pushKeys.forget(retiring.attributes)
+        } else {
+            forgetPushKey(owner: retiring.id, attributes: retiring.attributes)
+        }
+    }
+
+    /// Releases `owner`'s relay route under the key its pushes last moved to.
+    private func retireRoute(owner: String, attributes: AgentRunActivityAttributes) async {
+        let target = pushKeys.pushTarget(for: attributes)
+        await pushRegistrar?.retire(owner: owner, server: target?.server, sessionID: target?.sessionID)
+    }
+
+    /// Drops an ending activity's moved key, unless a chat has taken its turn over meanwhile.
+    private func forgetPushKey(owner: String, attributes: AgentRunActivityAttributes) {
+        guard activity?.id != owner, !drives(attributes) else { return }
+        pushKeys.forget(attributes)
     }
 
     private func reset() {
@@ -1000,6 +1121,7 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         currentStreamID = nil
         currentServer = nil
         drivenPushSessionID = nil
+        drivenPushServer = nil
         activeConnectedStreamID = nil
         rawResponseText = ""
         lastSentUpdateAt = nil
@@ -1191,6 +1313,9 @@ struct LeftoverLiveActivity {
     let attributes: AgentRunActivityAttributes
     /// Ended, dismissed, or showing a final state.
     let isFinished: Bool
+    /// The stored key its pushes last moved to (`LiveActivityPushKeys`), which a legacy
+    /// compression can take past the key its attributes carry.
+    var pushSessionID: String? = nil
 }
 
 enum LeftoverLiveActivityAction: Equatable {
@@ -1209,9 +1334,10 @@ enum LeftoverLiveActivityAction: Equatable {
 /// Decides each leftover activity's action at cold launch, testably. Paired activities are
 /// adopted, finished ones retire, and an unpaired bot's ends. An unpaired Hermes session's
 /// (#1179), when it belongs to the signed-in Hermes server, is checked against one
-/// `session.active_list` read: kept while the host runs one of its keys, else ended as
-/// complete. Another server's, or one the read couldn't settle, waits for its stale date, and
-/// a running webui activity waits for the server-status reconciler.
+/// `session.active_list` read: kept while the host runs one of its keys, including the one its
+/// pushes last moved to, else ended as complete. Another server's, or one the read couldn't
+/// settle, waits for its stale date, and a running webui activity waits for the server-status
+/// reconciler.
 @MainActor enum LeftoverLiveActivitySettlement {
     /// The stored keys a `session.active_list` reply runs: each listed `session_key` whose
     /// status isn't `idle`, including a status this build doesn't know, so an unfamiliar state
@@ -1240,7 +1366,95 @@ enum LeftoverLiveActivityAction: Equatable {
             guard leftover.attributes.isHermesSession else { return .keep }
             if paired[index] { return .adopt }
             guard checked[index], let running else { return .keep }
-            return leftover.attributes.hermesSessionKeys.isDisjoint(with: running) ? .endComplete : .keep
+            let keys = leftover.attributes.hermesSessionKeys.union([leftover.pushSessionID].compactMap { $0 })
+            // With no key to look for, the read cannot show the run is over.
+            guard !keys.isEmpty else { return .keep }
+            return keys.isDisjoint(with: running) ? .endComplete : .keep
         }
+    }
+}
+
+// MARK: - Moved push keys (#1179)
+
+/// The stored key each Live Activity's pushes last moved to, kept across a relaunch. ActivityKit
+/// attributes are immutable, so after a legacy compression moves a bot's or Hermes session's key
+/// the activity still names the old one; cold launch reads this to match the host's live list,
+/// to re-register an adopted activity, and to retire the route it really used. Entries are
+/// scoped by the push server and the activity's identity, dropped when the activity ends, and
+/// pruned at cold launch. A key names a session on its server; it is not a credential.
+final class LiveActivityPushKeys {
+    /// An activity's identity under the server its pushes go to.
+    struct Identity: Hashable {
+        let server: URL
+        let sessionID: String
+        let streamID: String?
+
+        init(server: URL, sessionID: String, streamID: String?) {
+            self.server = server
+            self.sessionID = sessionID
+            self.streamID = AgentLiveActivityReusePolicy.normalizedStreamID(streamID)
+        }
+
+        /// Nil for an activity that cannot be pushed, whose key never moves.
+        init?(of attributes: AgentRunActivityAttributes) {
+            guard let target = attributes.pushTarget else { return nil }
+            self.init(server: target.server, sessionID: attributes.sessionID, streamID: attributes.streamID)
+        }
+
+        fileprivate var storageKey: String { [server.absoluteString, sessionID, streamID ?? ""].joined(separator: "\n") }
+    }
+
+    private static let defaultsKey = "liveActivityPushKeys"
+    private let defaults: UserDefaults?
+    private var memory: [String: String] = [:]
+
+    /// Nil `defaults` keeps the keys in memory only, for a manager no relaunch reads.
+    init(defaults: UserDefaults?) {
+        self.defaults = defaults
+    }
+
+    private var entries: [String: String] {
+        guard let defaults else { return memory }
+        return defaults.dictionary(forKey: Self.defaultsKey) as? [String: String] ?? [:]
+    }
+
+    private func store(_ entries: [String: String]) {
+        guard let defaults else {
+            memory = entries
+            return
+        }
+        if entries.isEmpty {
+            defaults.removeObject(forKey: Self.defaultsKey)
+        } else {
+            defaults.set(entries, forKey: Self.defaultsKey)
+        }
+    }
+
+    /// Where `attributes`' pushes go now: their target under the key it last moved to.
+    func pushTarget(for attributes: AgentRunActivityAttributes) -> AgentRunActivityPushTarget? {
+        guard let target = attributes.pushTarget, let identity = Identity(of: attributes),
+              let moved = entries[identity.storageKey] else { return attributes.pushTarget }
+        return AgentRunActivityPushTarget(server: target.server, sessionID: moved)
+    }
+
+    /// Records `key` as `identity`'s current one; nil drops it.
+    func record(_ key: String?, for identity: Identity) {
+        var entries = entries
+        guard entries[identity.storageKey] != key else { return }
+        entries[identity.storageKey] = key
+        store(entries)
+    }
+
+    func forget(_ attributes: AgentRunActivityAttributes) {
+        guard let identity = Identity(of: attributes) else { return }
+        record(nil, for: identity)
+    }
+
+    /// Drops every entry but `identities`', the activities that still exist.
+    func prune(keeping identities: Set<Identity>) {
+        let entries = entries
+        let kept = Set(identities.map(\.storageKey))
+        let pruned = entries.filter { kept.contains($0.key) }
+        if pruned.count != entries.count { store(pruned) }
     }
 }

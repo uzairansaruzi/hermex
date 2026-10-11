@@ -856,6 +856,121 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertTrue(registrar.isRegistered("a"))
     }
 
+    /// After a relaunch, a Hermes session's activity whose stored key moved retires the route it
+    /// really used (#1179, #642). Its run is no longer listed, so it ends as complete and the
+    /// relay deletes the moved key's route, never the key it started under; its record goes with
+    /// it. A newer activity already registered under the moved key keeps its route.
+    func testARelaunchedActivityRetiresTheRouteItsKeyMovedTo() async throws {
+        let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        let attributes = AgentRunActivityAttributes(sessionID: "hermes:default:root", sessionTitle: "Run",
+                                                    streamID: "1000.0", startedAt: .now, server: serverA,
+                                                    pushSessionID: "tip")
+        func relaunchAfterAMove() throws -> (AgentLiveActivityManager, ActivityRelaySpy, PushActivityRegistrar, LiveActivityPushKeys) {
+            let pushKeys = LiveActivityPushKeys(defaults: try XCTUnwrap(UserDefaults(suiteName: "PushRegistrationTests-\(UUID())")))
+            let before = AgentLiveActivityManager(pushKeys: pushKeys)
+            before.startSession(sessionID: "hermes:default:root", server: serverA, destinationURL: nil, pushSessionID: "tip",
+                                sessionTitle: "Run", turn: "1000.0", startedAt: .now)
+            before.movePushSession(to: "tip-2")
+            let wire = ActivityRelaySpy()
+            let registrar = PushActivityRegistrar(relay: wire, pairing: { [serverA] in $0 == serverA ? keys : nil })
+            return (AgentLiveActivityManager(pushKeys: pushKeys, pushRegistrar: registrar), wire, registrar, pushKeys)
+        }
+
+        let (relaunched, wire, _, pushKeys) = try relaunchAfterAMove()
+        var ended: [LeftoverLiveActivityAction] = []
+        await relaunched.settle([relaunched.leftover(id: "persisted", attributes: attributes, isFinished: false)],
+                                checking: AgentLiveActivityManager.HermesRunCheck(server: serverA) { [] }, isFinished: { _ in false },
+                                adopt: { _ in false }, end: { ended.append($1) })
+        XCTAssertEqual(ended, [.endComplete])
+        XCTAssertEqual(wire.calls.map(\.action), ["delete"])
+        XCTAssertEqual(wire.calls.map(\.session), ["tip-2"])
+        XCTAssertEqual(pushKeys.pushTarget(for: attributes)?.sessionID, "tip")
+
+        let (finished, newerWire, registrar, _) = try relaunchAfterAMove()
+        await registrar.register(owner: "newer", server: serverA, sessionID: "tip-2", token: "token")
+        await finished.settle([finished.leftover(id: "persisted", attributes: attributes, isFinished: true)],
+                              checking: nil, isFinished: { _ in true }, adopt: { _ in false }, end: { _, _ in XCTFail("already ended") })
+        XCTAssertEqual(newerWire.calls.map(\.action), ["put:token"])
+        XCTAssertTrue(registrar.isRegistered("newer"))
+    }
+
+    /// Cold launch's host read suspends, and meanwhile the session's chat can take the leftover's
+    /// turn over and move its key (#1179). The result read before that proves nothing about the
+    /// activity now: it is not ended, and its current route is not retired.
+    func testColdLaunchLeavesAnActivityAChatTookOverDuringTheHostRead() async throws {
+        // Only serverA is paired: the chat's start retires the simulator's other leftover activities.
+        let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        let pushKeys = LiveActivityPushKeys(defaults: try XCTUnwrap(UserDefaults(suiteName: "PushRegistrationTests-\(UUID())")))
+        let wire = ActivityRelaySpy()
+        let manager = AgentLiveActivityManager(pushKeys: pushKeys,
+                                               pushRegistrar: PushActivityRegistrar(relay: wire, pairing: { [serverA] in $0 == serverA ? keys : nil }))
+        let attributes = AgentRunActivityAttributes(sessionID: "hermes:default:root", sessionTitle: "Run",
+                                                    streamID: "1000.0", startedAt: .now, server: serverA,
+                                                    pushSessionID: "tip")
+        let leftover = manager.leftover(id: "persisted", attributes: attributes, isFinished: false)
+        let reading = expectation(description: "host read")
+        var release: CheckedContinuation<Set<String>?, Never>?
+        let check = AgentLiveActivityManager.HermesRunCheck(server: serverA) {
+            await withCheckedContinuation { continuation in
+                release = continuation
+                reading.fulfill()
+            }
+        }
+        let settling = Task { () -> [LeftoverLiveActivityAction] in
+            var ended: [LeftoverLiveActivityAction] = []
+            await manager.settle([leftover], checking: check, isFinished: { _ in false }, adopt: { _ in false },
+                                 end: { ended.append($1) })
+            return ended
+        }
+        await fulfillment(of: [reading], timeout: 2)
+        manager.startSession(sessionID: "hermes:default:root", server: serverA, destinationURL: nil, pushSessionID: "tip",
+                             sessionTitle: "Run", turn: "1000.0", startedAt: .now)
+        manager.movePushSession(to: "tip-2")
+        release?.resume(returning: [])
+        let ended = await settling.value
+        XCTAssertEqual(ended, [])
+        XCTAssertEqual(wire.calls.map(\.action), [])
+        XCTAssertEqual(pushKeys.pushTarget(for: attributes)?.sessionID, "tip-2")
+    }
+
+    /// A chat can also take the turn over while the leftover's route retirement is in flight:
+    /// the end it was retiring for no longer applies, and the chat gets its pushes back.
+    func testColdLaunchKeepsAnActivityAChatTookOverDuringItsRetirement() async throws {
+        // Only serverA is paired: the chat's start retires the simulator's other leftover activities.
+        let keys = PushPairing(relayURL: relay, installKey: installA, previewKey: "k", registeredToken: "device")
+        let pushKeys = LiveActivityPushKeys(defaults: try XCTUnwrap(UserDefaults(suiteName: "PushRegistrationTests-\(UUID())")))
+        let wire = ActivityRelaySpy()
+        let manager = AgentLiveActivityManager(pushKeys: pushKeys,
+                                               pushRegistrar: PushActivityRegistrar(relay: wire, pairing: { [serverA] in $0 == serverA ? keys : nil }))
+        let attributes = AgentRunActivityAttributes(sessionID: "hermes:default:root", sessionTitle: "Run",
+                                                    streamID: "1000.0", startedAt: .now, server: serverA,
+                                                    pushSessionID: "tip")
+        let leftover = manager.leftover(id: "persisted", attributes: attributes, isFinished: false)
+        let deleting = expectation(description: "DELETE entered")
+        var release: CheckedContinuation<Void, Never>?
+        wire.deleteHold = {
+            await withCheckedContinuation { continuation in
+                release = continuation
+                deleting.fulfill()
+            }
+        }
+        let settling = Task { () -> (ended: [LeftoverLiveActivityAction], reclaimed: [String]) in
+            var ended: [LeftoverLiveActivityAction] = []
+            var reclaimed: [String] = []
+            await manager.settle([leftover], checking: AgentLiveActivityManager.HermesRunCheck(server: serverA) { [] }, isFinished: { _ in false },
+                                 adopt: { _ in false }, end: { ended.append($1) }, reclaimed: { reclaimed.append($0.id) })
+            return (ended, reclaimed)
+        }
+        await fulfillment(of: [deleting], timeout: 2)
+        manager.startSession(sessionID: "hermes:default:root", server: serverA, destinationURL: nil, pushSessionID: "tip",
+                             sessionTitle: "Run", turn: "1000.0", startedAt: .now)
+        release?.resume()
+        let result = await settling.value
+        XCTAssertEqual(result.ended, [])
+        XCTAssertEqual(result.reclaimed, ["persisted"])
+        XCTAssertEqual(pushKeys.pushTarget(for: attributes)?.sessionID, "tip", "the chat's key stays recorded")
+    }
+
     /// A finished activity's cleanup (cold launch or an orphaned webui run, #566) must
     /// not delete the route a new run in the same session is still registering.
     func testRelaunchedActivityCleanupSparesARegistrationInFlightForTheSameSession() async {
@@ -1160,6 +1275,7 @@ private func XCTAssertThrowsErrorAsync<T, E: Error & Equatable>(
     struct Call { let action: String; let install: String; let session: String }
     var calls: [Call] = []
     var hold: (() async -> Void)?
+    var deleteHold: (() async -> Void)?
     var failure = false
     func registerActivity(token: String, sessionID: String, deviceToken: String, pairing: PushPairing) async throws {
         calls.append(Call(action: "put:" + token, install: pairing.installKey, session: sessionID))
@@ -1168,6 +1284,7 @@ private func XCTAssertThrowsErrorAsync<T, E: Error & Equatable>(
     }
     func deleteActivity(sessionID: String, deviceToken: String, pairing: PushPairing) async throws {
         calls.append(Call(action: "delete", install: pairing.installKey, session: sessionID))
+        await deleteHold?()
         if failure { throw PushRelayError.transport }
     }
 }

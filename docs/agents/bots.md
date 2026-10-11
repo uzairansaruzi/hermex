@@ -1820,8 +1820,11 @@ avatar and `BotLiveActivity.countChips` for the work counts.
   stored key mid-turn (`session.info`'s `stored_session_id`) moves the driven
   activity's registration with it (`movePushSession`, #1179): the registrar deletes
   the old route, then puts the token under the new key, so the plugin's progress
-  still reaches it. A webui run's compression still moves its ID out from under the
-  relay. Ending an orphaned webui activity, or finding one finished at cold launch,
+  still reaches it. Attributes cannot change, so the moved key is also kept in the
+  standard defaults (`LiveActivityPushKeys`, scoped by push server and activity
+  identity, dropped at the activity's end and pruned at cold launch); a relaunch
+  matches, re-registers and retires the activity under it. A webui run's compression
+  still moves its ID out from under the relay. Ending an orphaned webui activity, or finding one finished at cold launch,
   retires its registration so the relay stops holding that session's banners.
   There is no push-to-start.
 - **Attention.** Entering an approval or a question alerts: a paired server's relay
@@ -1838,7 +1841,9 @@ avatar and `BotLiveActivity.countChips` for the work counts.
   must be cleaned up before its replacement can register the same session. Ending,
   dismissal, and server unpairing retire registrations. Cold launch observes paired
   activities without resuming their chats; legacy/unpaired bot activities are removed
-  (`LeftoverLiveActivitySettlement`).
+  (`LeftoverLiveActivitySettlement`). Its decisions apply only to an activity no chat
+  took over, and whose state and key did not change, while the host read or a route
+  retirement was in flight.
 - **Privacy.** Chips are counts only (plan step, workers, tools). Reply text
   appears only behind the existing response-excerpt setting.
 - **Avatar.** The app renders the bot's photo or drawn face to one PNG under
@@ -1864,7 +1869,8 @@ keeps it fresh like a bot's, moving with the stored key (above). One a build bef
 started has neither: no route (a tap opens the app as it is) and no push. The webui orphan
 reconciler skips it. Cold launch adopts a paired one like a bot's; an unpaired one on the
 signed-in active Hermes server is checked with one `session.active_list` read (never
-`session.resume`): listed under its key or root with any status but `idle`, it stays;
+`session.resume`): listed under its key, the key it last moved to, or its root with any
+status but `idle`, it stays (so does one naming no key);
 otherwise it ends as complete ("Response complete"), since how the run ended is unknown, and
 retires any registration. A read that fails, or another server's activity, leaves it to its
 stale date. A bot's Bot Chat in the main chat (#1145) keeps the Bot identity
