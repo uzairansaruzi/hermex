@@ -383,6 +383,9 @@ import UserNotifications
     /// the same pairing, so turning this one off leaves the host and relay alone (#1178).
     var sharesHostPairing: Bool { registrar?.sharesRegistration(for: server) == true }
 
+    /// Stops `disable`'s plugin write when another entry paired while it signed in.
+    private struct HostPairingShared: Error {}
+
     /// The way out: stop the host sending, then drop this phone at the relay and wipe its
     /// keys. The host goes first so a failure at either step changes nothing the user has
     /// to unpick — they can simply try again. While another entry shares the pairing, the
@@ -396,7 +399,13 @@ import UserNotifications
             if let connection, !sharesHostPairing {
                 let client = dashboard(connection)
                 do { try await client.signIn() } catch { return failSignIn(error) }
-                try await client.setPlugin(HermexPushPlugin.name, enabled: false)
+                // Another entry can finish pairing during a sign-in; it then owns the
+                // plugin too, so the disable doesn't go out.
+                do {
+                    try await client.setPlugin(HermexPushPlugin.name, enabled: false) {
+                        if self.sharesHostPairing { throw HostPairingShared() }
+                    }
+                } catch is HostPairingShared {}
             }
             step = String(localized: "Remove this iPhone from the relay")
             try await registrar?.disable(for: server)

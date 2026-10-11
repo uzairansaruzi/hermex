@@ -564,6 +564,39 @@ import XCTest
         XCTAssertEqual(registrar.actions, ["disable a.example.com", "disable b.example.com"])
     }
 
+    /// Another entry for the host can finish pairing while this one signs in to turn the
+    /// plugin off (#1178). It owns the plugin by the time the disable would go out, so the
+    /// host is left alone and only this entry's keys go.
+    func testDisableLeavesTheHostPluginOnWhenAnotherEntryPairsDuringSignIn() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        let shared = try XCTUnwrap(registrar.pairing(for: serverA))
+        PushHTTPFixture.handler = { _ in nil }
+        let held = expectation(description: "Sign-in held")
+        var pending: PushHTTPFixture?
+        PushHTTPFixture.holdResponse = { fixture in
+            guard fixture.request.url?.path == "/auth/password-login" else { return false }
+            pending = fixture
+            held.fulfill()
+            return true
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        let disabling = Task { await provisioner.disable() }
+        await fulfillment(of: [held], timeout: 5)
+        PushHTTPFixture.holdResponse = nil
+        try await registrar.enable(shared, for: serverB)
+        registrar.clearActions()
+        try XCTUnwrap(pending).respond(status: 200, value: .object(["result": .string("ok")]))
+        await disabling.value
+
+        XCTAssertNil(provisioner.failure)
+        XCTAssertFalse(PushHTTPFixture.calls.contains { $0.contains("/api/dashboard/agent-plugins/") },
+                       "The plugin now serves the other entry and stays on")
+        XCTAssertEqual(registrar.actions, ["disable a.example.com"])
+        XCTAssertNil(provisioner.pairing)
+        XCTAssertEqual(registrar.pairing(for: serverB)?.installKey, PushHTTPFixture.installKey)
+    }
+
     func testDisableKeepsThePairingWhenTheRelayRefusesSoTheUserCanRetry() async throws {
         let registrar = FakePushRegistrar()
         PushHTTPFixture.handler = { _ in nil }

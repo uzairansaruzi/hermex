@@ -41,8 +41,11 @@ import Foundation
 
     /// Enables or disables an installed agent plugin. Disabling is deliberately never
     /// `DELETE`: the plugin directory is also where the host's key pair used to live.
-    func setPlugin(_ name: String, enabled: Bool) async throws {
-        _ = try await send(.setPlugin(name: name, enabled: enabled))
+    /// `validateDispatch` runs after any sign-in, just before each send; throwing there
+    /// sends nothing.
+    func setPlugin(_ name: String, enabled: Bool,
+                   validateDispatch: (@MainActor () throws -> Void)? = nil) async throws {
+        _ = try await send(.setPlugin(name: name, enabled: enabled), validateDispatch: validateDispatch)
     }
 
     /// Restarts the agent gateway so a newly installed plugin is loaded. This interrupts
@@ -95,8 +98,10 @@ import Foundation
     /// Any non-2xx is the step's failure, carrying the status so the pairing route's 404
     /// and 409 can be retried while the host comes back up. Each step gets the
     /// provisioning deadline.
-    private func send(_ rest: HermesREST) async throws -> BotJSON {
-        let data = try await http.data(rest, deadline: .provisioning, accepting: 200..<300)
+    private func send(_ rest: HermesREST,
+                      validateDispatch: (@MainActor () throws -> Void)? = nil) async throws -> BotJSON {
+        let data = try await http.data(rest, deadline: .provisioning, accepting: 200..<300,
+                                       validateDispatch: validateDispatch)
         return (try? JSONDecoder().decode(BotJSON.self, from: data)) ?? .null
     }
 }
