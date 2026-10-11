@@ -485,6 +485,7 @@ struct ChatView: View {
             backend: hermesSession.map { .hermes(HermesChatTurnCoordinator($0)) } ?? .webui
         )
         model.hermesBotChatRoot = hermesSession?.botChatRoot
+        model.hermesLineageRoot = hermesSession?.lineageRoot
         _viewModel = State(initialValue: model)
         _gitAvailabilityViewModel = State(initialValue: GitWorkspaceAvailabilityViewModel(
             session: session,

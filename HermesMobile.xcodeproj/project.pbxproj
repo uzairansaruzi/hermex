@@ -527,6 +527,7 @@
 		C2A87F2CDEB941BB825EABA5 /* BotConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40877A8534C94AAF97EA1C7C /* BotConnectionView.swift */; };
 		E9030000000000000000A001 /* HermesConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9030000000000000000A002 /* HermesConversation.swift */; };
 		709A0000000000000000A001 /* HermesHome.swift in Sources */ = {isa = PBXBuildFile; fileRef = 709A0000000000000000A002 /* HermesHome.swift */; };
+		B1176000000000000000A001 /* HermesSessionLookup.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1176000000000000000A002 /* HermesSessionLookup.swift */; };
 		7EF4120B486B4243AF54FCAF /* BotsInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE221A56F264309AF71E18B /* BotsInboxView.swift */; };
 		A27FAACA0A9243C5AD4860BB /* BotClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF2EA5336E9B431489F91A63 /* BotClient.swift */; };
 		490BBC30DF0FD97DB0850771 /* BotDashboardClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02620AA1CBC865AE71DB7C5C /* BotDashboardClient.swift */; };
@@ -601,6 +602,8 @@
 		4BD37C1CCB8A45B493C8DBF0 /* BotRoomProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B49433CFA1FF4DEBAB6E5645 /* BotRoomProfileView.swift */; };
 		49793ABA58F841BE8AF4B27E /* BotRoomCreateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8738D4AB53F84D1CBC2E1B22 /* BotRoomCreateView.swift */; };
 		CF99AE7CDC2E472881C269AC /* BotDeepLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 689A646974F44DF4BFE57FD7 /* BotDeepLinkTests.swift */; };
+		B1176000000000000000A003 /* HermesSessionLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1176000000000000000A004 /* HermesSessionLinkTests.swift */; };
+		B1176000000000000000A005 /* HermesSessionLookupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1176000000000000000A006 /* HermesSessionLookupTests.swift */; };
 		4890A0000000000000000002 /* BotLiveActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4890A0000000000000000011 /* BotLiveActivityTests.swift */; };
 		902328F7C46D484784A92C52 /* BotRoomTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AF16E9919604984868D037B /* BotRoomTests.swift */; };
 		44479D93F1024975AD571858 /* BotRoomManagementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73869046C6B24A24B963627C /* BotRoomManagementTests.swift */; };
@@ -1181,6 +1184,7 @@
 		40877A8534C94AAF97EA1C7C /* BotConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotConnectionView.swift"; sourceTree = "<group>"; };
 		E9030000000000000000A002 /* HermesConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesConversation.swift"; sourceTree = "<group>"; };
 		709A0000000000000000A002 /* HermesHome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesHome.swift"; sourceTree = "<group>"; };
+		B1176000000000000000A002 /* HermesSessionLookup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesSessionLookup.swift"; sourceTree = "<group>"; };
 		9FE221A56F264309AF71E18B /* BotsInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotsInboxView.swift"; sourceTree = "<group>"; };
 		BF2EA5336E9B431489F91A63 /* BotClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotClient.swift"; sourceTree = "<group>"; };
 		02620AA1CBC865AE71DB7C5C /* BotDashboardClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotDashboardClient.swift"; sourceTree = "<group>"; };
@@ -1255,6 +1259,8 @@
 		B49433CFA1FF4DEBAB6E5645 /* BotRoomProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomProfileView.swift"; sourceTree = "<group>"; };
 		8738D4AB53F84D1CBC2E1B22 /* BotRoomCreateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotRoomCreateView.swift"; sourceTree = "<group>"; };
 		689A646974F44DF4BFE57FD7 /* BotDeepLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotDeepLinkTests.swift"; sourceTree = "<group>"; };
+		B1176000000000000000A004 /* HermesSessionLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HermesSessionLinkTests.swift"; sourceTree = "<group>"; };
+		B1176000000000000000A006 /* HermesSessionLookupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HermesSessionLookupTests.swift"; sourceTree = "<group>"; };
 		4890A0000000000000000011 /* BotLiveActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotLiveActivityTests.swift"; sourceTree = "<group>"; };
 		1AF16E9919604984868D037B /* BotRoomTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomTests.swift"; sourceTree = "<group>"; };
 		73869046C6B24A24B963627C /* BotRoomManagementTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BotRoomManagementTests.swift"; sourceTree = "<group>"; };
@@ -1400,6 +1406,8 @@
 				EE6A7BC5738C4EF9AB0A965B /* BotDraftTests.swift */,
 				A48400000000000000000555 /* BotMessageActionsTests.swift */,
 				689A646974F44DF4BFE57FD7 /* BotDeepLinkTests.swift */,
+				B1176000000000000000A004 /* HermesSessionLinkTests.swift */,
+				B1176000000000000000A006 /* HermesSessionLookupTests.swift */,
 				4890A0000000000000000011 /* BotLiveActivityTests.swift */,
 				1AF16E9919604984868D037B /* BotRoomTests.swift */,
 				73869046C6B24A24B963627C /* BotRoomManagementTests.swift */,
@@ -1718,6 +1726,7 @@
 				41FCCA0BACC647998F9CC3D0 /* BotHistoryCache.swift */,
 				E9030000000000000000A002 /* HermesConversation.swift */,
 				709A0000000000000000A002 /* HermesHome.swift */,
+				B1176000000000000000A002 /* HermesSessionLookup.swift */,
 				3C75DCD3DB974E27A3CB405C /* BotPromptMode.swift */,
 				FFAECFA53DCE4DDF90FBEEE7 /* BotChatControls.swift */,
 				A8D7065880CB4CA7B1ECB65C /* BotChatSettings.swift */,
@@ -2456,6 +2465,7 @@
 				F0907446778F4FBEBAEEC2B9 /* BotHistoryCache.swift in Sources */,
 				E9030000000000000000A001 /* HermesConversation.swift in Sources */,
 				709A0000000000000000A001 /* HermesHome.swift in Sources */,
+				B1176000000000000000A001 /* HermesSessionLookup.swift in Sources */,
 				9BB85D722406416798DFA518 /* BotPromptMode.swift in Sources */,
 				88EF8F77C1434727A4C84D7D /* BotChatControls.swift in Sources */,
 				1FAEC70E0BFD4CA7AAAFC9B4 /* BotChatSettings.swift in Sources */,
@@ -2814,6 +2824,8 @@
 				142E7F57D82742678CF78DCA /* BotDraftTests.swift in Sources */,
 				A48400000000000000000556 /* BotMessageActionsTests.swift in Sources */,
 				CF99AE7CDC2E472881C269AC /* BotDeepLinkTests.swift in Sources */,
+				B1176000000000000000A003 /* HermesSessionLinkTests.swift in Sources */,
+				B1176000000000000000A005 /* HermesSessionLookupTests.swift in Sources */,
 				4890A0000000000000000002 /* BotLiveActivityTests.swift in Sources */,
 				902328F7C46D484784A92C52 /* BotRoomTests.swift in Sources */,
 				44479D93F1024975AD571858 /* BotRoomManagementTests.swift in Sources */,

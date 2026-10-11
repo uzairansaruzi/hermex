@@ -28,6 +28,7 @@ struct HermesSessionListEntry: Hashable, Identifiable {
 /// filters the loaded rows at once and then adds the host's matches, which reach past the loaded
 /// pages; a bot's Bot Chat among them opens in that bot. Every page it reads goes to the offline
 /// cache, which it shows, read-only under the offline banner, while the host can't be reached (#1054).
+/// As the home's list it opens the session a link named (#1176), as that session's row would.
 struct HermesSessionListView: View {
 
     @Environment(\.scenePhase) private var scenePhase
@@ -46,6 +47,8 @@ struct HermesSessionListView: View {
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     private let entry: HermesSessionListEntry
     private let home: HermesHome?
+    /// The session a link named, held by `ContentView` until this list looks it up.
+    @Binding private var pendingLink: HermesSessionDestination?
     @State private var viewModel: SessionListViewModel
     /// The chat a row or New Session opened.
     @State private var chat: HermesSessionChat?
@@ -80,10 +83,12 @@ struct HermesSessionListView: View {
     }
 
     /// The Sessions side of the Hermes home, on a `model` the home keeps across its switch, so a
-    /// switch back shows the last rows at once (#709).
-    init(entry: HermesSessionListEntry, model: SessionListViewModel, home: HermesHome?) {
+    /// switch back shows the last rows at once (#709), and opening the session `pendingLink` names.
+    init(entry: HermesSessionListEntry, model: SessionListViewModel, home: HermesHome?,
+         pendingLink: Binding<HermesSessionDestination?> = .constant(nil)) {
         self.entry = entry
         self.home = home
+        _pendingLink = pendingLink
         _searchText = State(initialValue: entry.query)
         _viewModel = State(initialValue: model)
     }
@@ -248,6 +253,7 @@ struct HermesSessionListView: View {
             deleteProject: { project in Task { _ = await viewModel.delete(project) } }
         ))
         .task { await viewModel.openHermes(modelContext: modelContext) }
+        .task(id: pendingLink) { await openPendingLink() }
         .onDisappear {
             actionToast.dismiss()
             if chat == nil { viewModel.closeHermes() } else { viewModel.pauseHermes() }
@@ -490,6 +496,48 @@ struct HermesSessionListView: View {
         )
     }
 
+    /// Opens the session the held link names on this list's server (#1176), the way its row
+    /// opens, or says why nothing opened: gone, or in more than one Profile. A room's session
+    /// opens nothing. A lookup that fails (an unreachable host, a store the host can't read) drops
+    /// the link quietly, except a refused sign-in or a list that left mid-lookup: the server's
+    /// sign-out or switch routes the held link again.
+    private func openPendingLink() async {
+        guard let link = pendingLink, link.server == entry.server else { return }
+        let wire = BotClient(saved: entry.connection, server: entry.server)
+        defer { wire.close() }
+        let outcome: HermesSessionLookup.Outcome
+        do {
+            try await wire.connect()
+            outcome = try await HermesSessionLookup.resolve(link, on: wire)
+        } catch {
+            if !Task.isCancelled, error as? BotFailure != .rejected(401), pendingLink == link { pendingLink = nil }
+            return
+        }
+        guard !Task.isCancelled, pendingLink == link else { return }
+        pendingLink = nil
+        switch outcome {
+        case .found(let session):
+            if let bot = session.hermesBot(on: entry.server, connectionID: entry.connection.id) {
+                AppIntentRouter.shared.requestDeepLink(HermesDeepLink.botURL(for: bot))
+            } else if let profile = session.profile,
+                      let opened = session.hermesChat(on: entry.server, connection: entry.connection, listedIn: profile) {
+                viewModel.beginViewing(session)
+                chat = opened
+            }
+        case .gone:
+            let server = home?.title ?? entry.server.host ?? entry.server.absoluteString
+            showLinkNotice(String(localized: "That chat is no longer on \(server)."))
+        case .ambiguous:
+            showLinkNotice(String(localized: "That chat is in more than one Profile. Open it from Sessions."))
+        case .room:
+            break
+        }
+    }
+
+    private func showLinkNotice(_ message: String) {
+        actionToast.show(ActionToast(message: message, systemImage: "exclamationmark.triangle", accessibilityLabel: message))
+    }
+
     private var mutationAnimation: Animation? { SessionListMotion.sessionMutationAnimation(reduceMotion: reduceMotion) }
 
     private func togglePinned(_ session: SessionSummary) async {
@@ -682,13 +730,14 @@ extension SessionSummary {
     }
 
     /// The chat this Hermes row opens on `connection`, carrying the parent the row names, so a
-    /// branch shows its "Forked from" row (#1051). A Bot Chat row (Archived), or a legacy chain's
-    /// "Bot Chat (continued)" tip, opens as the bot's chat, with its pill and rules (#1145), and
-    /// carries its root, so it shows its bot's cached transcript offline (#1144). Nil for a webui row.
+    /// branch shows its "Forked from" row (#1051), and its lineage root, which the chat caches
+    /// under. A Bot Chat row (Archived), or a legacy chain's "Bot Chat (continued)" tip, opens as
+    /// the bot's chat, with its pill and rules (#1145), and carries its root, so it shows its bot's
+    /// cached transcript offline (#1144). Nil for a webui row.
     func hermesChat(on server: URL, connection: BotConnection, listedIn profile: String) -> HermesSessionChat? {
         hermesTarget(listedIn: profile).map {
             HermesSessionChat(server: server, connection: connection, target: $0, parentKey: parentSessionId,
-                              botChatRoot: hermes?.botChatRoot)
+                              botChatRoot: hermes?.botChatRoot, lineageRoot: hermes?.lineageRoot)
         }
     }
 

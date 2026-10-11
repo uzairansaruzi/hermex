@@ -66,6 +66,11 @@ struct HermesSessionChat: Hashable, Identifiable {
     /// The root a bot's deep link named for its `.canonicalChat`: once the bot has replaced that
     /// chat, the chat says so (`ChatView`'s `onChatReplaced`, #554) instead of opening the new one.
     var linkedRoot: String? = nil
+    /// The row's identity across a legacy compression chain (`SessionSummary.Hermes.lineageRoot`),
+    /// which this chat, opened by its key, caches under, so a chat a session link opened (#1176)
+    /// reads and writes the list row's copy before any cached row names the root. Nil asks the
+    /// cache, else takes the key.
+    var lineageRoot: String? = nil
 
     /// What the chat lets the user do (#1145): a bot's Bot Chat keeps Bot Chat's rules.
     var policy: HermesChatPolicy { HermesChatPolicy(target: target, botChatRoot: botChatRoot) }

@@ -387,6 +387,9 @@ final class ChatViewModel {
     /// and reads its bot's Bot Chat's copy of that root while it has none (#1144). Nil for any
     /// other chat.
     @ObservationIgnored var hermesBotChatRoot: String?
+    /// A session's lineage root as its row or link named it (`HermesSessionChat.lineageRoot`);
+    /// nil asks the cache.
+    @ObservationIgnored var hermesLineageRoot: String?
     /// The cache epoch this chat's attach took (`CacheStore.hermesCacheEpoch`): its writes are
     /// dropped once a clear or removal moves the server's on, until the next attach.
     @ObservationIgnored private var hermesCacheEpoch: Int?
@@ -7962,8 +7965,8 @@ extension ChatViewModel: HermesChatTurnDelegate {
 
     /// Where this Hermes chat's transcript sits in the offline cache: its server and scope. A
     /// session's is its Profile and lineage root, which the list's cached row names for its
-    /// key, else the key, settled once found, so a key the host later moves keeps the same
-    /// place. A Bot Chat's is its connection, Profile and canonical root: the one its attach
+    /// key, else its row or link names, else the key, settled once found, so a key the host
+    /// later moves keeps the same place. A Bot Chat's is its connection, Profile and canonical root: the one its attach
     /// found, else a deep link's, else the one cached last. An archived Bot Chat's is its own,
     /// under the root its row names, apart from its bot's so it never becomes that chat's
     /// preview. `sameRoot` is the other copy of a Bot Chat's root, the bot's or an archive's,
@@ -7983,7 +7986,7 @@ extension ChatViewModel: HermesChatTurnDelegate {
             }
             let root = hermesCacheRoot
                 ?? (try? CacheStore.hermesLineageRoot(forKey: key, profile: profile, serverURL: engine.server, in: hermesCache))
-                ?? key
+                ?? hermesLineageRoot ?? key
             hermesCacheRoot = root
             return (hermesCache, engine.server, CacheStore.hermesScope(profile: profile, lineageRoot: root), nil, nil)
         case .canonicalChat(let profile):

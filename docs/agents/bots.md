@@ -46,8 +46,8 @@ password focused, no Remove, the avatar as the way out. No Bot screen exists in 
 state, so nothing sends the refused password again; saving a sign-in signs the server
 back in. A webui server's own connection keeps #884's per-screen flag instead. A
 Hermes server sends no webui request: Settings skips its webui loads and hides their
-rows, a webui 401 never signs it out, and new chats, session links and shares switch
-to the first webui server (or say there is none). It has no push pairing until #706,
+rows, a webui 401 never signs it out, and new chats, webui's serverless session links
+(`session?id=`) and shares switch to the first webui server (or say there is none). It has no push pairing until #706,
 so removing it never calls the relay. Its connection form is reached through Settings
 → Active Server → Hermes connection or Settings → Servers → the server, and saving it
 from either signs the server back in. That server screen's button is Remove Server
@@ -1203,8 +1203,8 @@ inbox stops on (`BotConnectionAdvice.isRetryable`); pull to refresh tries again.
 ### Row actions (#1048)
 
 A Hermes row's menu and swipes rename, pin, archive, delete, duplicate and Export as JSON
-(`SessionRowActionPolicy`), and Move to Project (below). The host has no HTML export, and Hermes
-deep links are #706. Each action goes to the row's own Profile.
+(`SessionRowActionPolicy`), and Move to Project (below). The host has no HTML export. A session
+link opens a row's session from outside the app (below). Each action goes to the row's own Profile.
 
 - **Pin, archive and rename** are `PATCH /api/sessions/{id}` with one field and `profile` in
   the body (`HermesSessionChange`). `pinned` and `archived` apply across the compression
@@ -1634,6 +1634,33 @@ link never sends a prompt and never auto-continues on its own.
 seeded as `HermesConversation.root` (`linkedRoot`), so the changed-root rejection refuses to
 open a replacement conversation under the link's identity; the chat reports that
 back and the inbox says the conversation is no longer available.
+
+## Opening a Hermes session from outside the app (#1176)
+
+`hermes-agent://session?server=…&id=<stored key>[&profile=…]` names one stored session on one
+configured server: `HermesSessionDestination`, built by `HermesDeepLink.sessionURL(for:)` (widget-
+shared, Foundation only) and parsed and resolved in `Features/Hermes/HermesSessionLookup.swift`.
+A missing `profile` is unknown; an empty one is the host's default Profile.
+`HermesSessionLinkRouter` routes it as a bot link is routed, from the registry and auth state:
+an unconfigured server drops it; another server, signed in or on its sign-in form, is switched
+away from first; signed out, it waits for sign-in. A webui server's link becomes its
+`WebuiPushDestination`, as `webui-push` and a local alert's do, and `session?id=` without a
+server keeps its webui route (#971). The home turns to Sessions and closes Settings, and its
+list looks the session up (`HermesSessionLookup`) on the server's saved connection:
+
+- A named Profile is one `GET /api/sessions/{id}?profile=` read; `""` reads the Profile
+  `profiles.list` marks `is_default`; none reads every Profile at once. One hit opens, none
+  says "That chat is no longer on <server>.", two or more say "That chat is in more than one
+  Profile. Open it from Sessions." and open nothing, both as the list's `ActionToast`.
+- The host resolves an unknown key to the one session it prefixes, so a reply whose `id` isn't
+  the link's key is no hit. The read doesn't follow a compression chain or name its root, so the
+  lookup steps up while the parent ended in `compression` (at most 8 parents): the chat opens by
+  the link's key and caches under that root (`HermesSessionChat.lineageRoot`), as its row does.
+- The found row opens the way its list row does: a Bot Chat through the bot route (#1146), any
+  other session in the main chat. A room's session never opens.
+- A failed read (unreachable host, a 503 store) drops the link with no notice; a refused sign-in
+  keeps it held while the server signs out to its sign-in form (#942), and it opens after.
+  A link never sends a prompt or answers a request.
 
 ## Bot lifecycle
 
