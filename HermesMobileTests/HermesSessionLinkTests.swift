@@ -120,4 +120,44 @@ import XCTest
         XCTAssertEqual(HermesSessionLinkRouter.resolve(link, state: .loggedIn(server: hermes), servers: servers),
                        .webui(WebuiPushDestination(server: webui, sessionID: "abc")))
     }
+
+    /// A Sessions list covered by a chat, a sheet, an alert and a pushed screen, as a warm link
+    /// finds it.
+    private func coveredList() -> HermesSessionListCovers {
+        let connection = BotConnection(id: UUID(), name: "Host", address: hermes, username: "me", password: "secret")
+        let session = SessionSummary(title: "Synthetic chat", workspace: "/workspace")
+        var covers = HermesSessionListCovers()
+        covers.chat = HermesSessionChat(server: hermes, connection: connection, target: .new(profile: "research"))
+        covers.renaming = session
+        covers.exported = SessionExportShareItem(fileURL: URL(fileURLWithPath: "/tmp/export/chat.json"))
+        covers.moving = HermesProjectMove(session: session, projectName: "Docs", folder: "/docs", isBusy: false)
+        covers.showingArchived = true
+        covers.showingKanban = true
+        return covers
+    }
+
+    /// A link for the list's server brings its rows forward before it opens, so its chat, or the
+    /// gone or ambiguous notice in the list's overlay, is what the user sees.
+    func testALinkForTheListsServerBringsItsRowsForward() {
+        var covers = coveredList()
+        covers.accept(HermesSessionDestination(server: hermes, profile: "research", key: "abc"), on: hermes)
+        XCTAssertNil(covers.chat)
+        XCTAssertNil(covers.renaming)
+        XCTAssertNil(covers.exported)
+        XCTAssertNil(covers.moving)
+        XCTAssertFalse(covers.showingArchived)
+        XCTAssertFalse(covers.isCoveredByScreen, "Kanban and Archived Sessions are popped")
+    }
+
+    /// No link, or another server's, which this list will never open, leaves the list as it was.
+    func testOnlyALinkForTheListsServerClosesAnything() {
+        for link in [nil, HermesSessionDestination(server: otherHermes, profile: "research", key: "abc")] {
+            var covers = coveredList()
+            let chat = covers.chat
+            covers.accept(link, on: hermes)
+            XCTAssertEqual(covers.chat, chat)
+            XCTAssertNotNil(covers.renaming)
+            XCTAssertTrue(covers.isCoveredByScreen)
+        }
+    }
 }

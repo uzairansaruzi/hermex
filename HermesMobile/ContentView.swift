@@ -357,12 +357,13 @@ struct HermesServerHome: View {
         .onChange(of: pendingBotDestination, initial: true) {
             if pendingBotDestination != nil { tab = .bots; isShowingSettings = false }
         }
-        // A session link lands on the Sessions list the same way; without a saved connection
-        // there is no list to open it.
+        // A session link lands on the Sessions list the same way, with Add Server closed too, and
+        // the list closes what covers its rows; without a saved connection there is no list to
+        // open it.
         .onChange(of: pendingSessionDestination, initial: true) {
             guard pendingSessionDestination != nil else { return }
             if sessions == nil { pendingSessionDestination = nil; return }
-            tab = .sessions; isShowingSettings = false
+            tab = .sessions; isShowingSettings = false; isPresentingAddServer = false
         }
         .sheet(isPresented: $isPresentingAddServer) {
             AddServerView(authManager: authManager)

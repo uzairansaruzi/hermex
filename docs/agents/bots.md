@@ -1645,8 +1645,10 @@ A missing `profile` is unknown; an empty one is the host's default Profile.
 an unconfigured server drops it; another server, signed in or on its sign-in form, is switched
 away from first; signed out, it waits for sign-in. A webui server's link becomes its
 `WebuiPushDestination`, as `webui-push` and a local alert's do, and `session?id=` without a
-server keeps its webui route (#971). The home turns to Sessions and closes Settings, and its
-list looks the session up (`HermesSessionLookup`) on the server's saved connection:
+server keeps its webui route (#971). The home turns to Sessions and closes Settings and Add
+Server; its list pops its chat and pushed screens and closes its sheets and confirmations
+(`HermesSessionListCovers`), so the chat or notice shows on the list, and looks the session up
+(`HermesSessionLookup`) on the server's saved connection:
 
 - A named Profile is one `GET /api/sessions/{id}?profile=` read; `""` reads the Profile
   `profiles.list` marks `is_default`; none reads every Profile at once. One hit opens, none

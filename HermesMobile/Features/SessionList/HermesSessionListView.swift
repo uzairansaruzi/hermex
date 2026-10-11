@@ -50,32 +50,15 @@ struct HermesSessionListView: View {
     /// The session a link named, held by `ContentView` until this list looks it up.
     @Binding private var pendingLink: HermesSessionDestination?
     @State private var viewModel: SessionListViewModel
-    /// The chat a row or New Session opened.
-    @State private var chat: HermesSessionChat?
-    @State private var renaming: SessionSummary?
-    @State private var deleting: SessionSummary?
-    @State private var exported: SessionExportShareItem?
-    @State private var showingArchived = false
+    /// The chat, pushed screens, sheets and confirmations over the rows.
+    @State private var covers = HermesSessionListCovers()
     @State private var actionToast = ActionToastState()
     /// The project lane the list shows; nil shows every session.
     @State private var selectedProjectID: String?
-    @State private var creatingProject: HermesProjectCreation?
-    @State private var renamingProject: ProjectSummary?
-    @State private var deletingProject: ProjectSummary?
-    @State private var moving: HermesProjectMove?
-    /// The Move to Project a project created from a row's Move menu still needs, asked once the
-    /// sheet is gone.
-    @State private var movingAfterCreation: HermesProjectMove?
     @State private var searchText: String
     /// The home's header has grown its search pill into a field (`SessionsHeader`).
     @State private var isSearchExpanded = false
     @FocusState private var isSearchFieldFocused: Bool
-    /// The Tasks, Skills, Memory or Usage screen a home row pushed, and whether Kanban is pushed.
-    @State private var tasks: HermesTasksEntry?
-    @State private var skills: HermesSkillsEntry?
-    @State private var memory: HermesMemoryEntry?
-    @State private var insights: HermesInsightsEntry?
-    @State private var showingKanban = false
 
     /// The list a chat's `/sessions` pushed.
     init(entry: HermesSessionListEntry) {
@@ -120,9 +103,9 @@ struct HermesSessionListView: View {
             SessionSidebarUtilityRows(
                 viewModel: viewModel, topPadding: 10, automatedVisibility: .showAll, sectionVisibility: sectionVisibility,
                 profilesAreExpanded: .constant(false), projectsAreExpanded: $projectsAreExpanded,
-                selectedProjectID: $selectedProjectID, projectPendingDeletion: $deletingProject,
-                projectPendingRename: $renamingProject, openDestination: open, switchActiveProfile: { _ in },
-                presentProjectCreation: { creatingProject = HermesProjectCreation(folder: "") }
+                selectedProjectID: $selectedProjectID, projectPendingDeletion: $covers.deletingProject,
+                projectPendingRename: $covers.renamingProject, openDestination: open, switchActiveProfile: { _ in },
+                presentProjectCreation: { covers.creatingProject = HermesProjectCreation(folder: "") }
             )
             SessionListRowsSection(
                 viewModel: viewModel,
@@ -157,11 +140,11 @@ struct HermesSessionListView: View {
         }
         .modifier(chrome)
         // Keyed by the chat, so a Profile picked in an empty chat replaces its screen (#1015).
-        .navigationDestination(item: $chat) { chat in
+        .navigationDestination(item: $covers.chat) { chat in
             // `/sessions` and `/resume` in the chat come back here, in the chat's Profile, searching
             // what they name.
-            ChatView(hermesSession: chat, onReplace: { self.chat = $0 }, onOpenSessions: { opened in
-                self.chat = nil
+            ChatView(hermesSession: chat, onReplace: { self.covers.chat = $0 }, onOpenSessions: { opened in
+                self.covers.chat = nil
                 if let listed = opened.profile, listed != profile || viewModel.hermesShowsAllProfiles {
                     Task { await viewModel.selectHermesProfile(listed) }
                 }
@@ -170,93 +153,96 @@ struct HermesSessionListView: View {
             })
             .id(chat.id)
         }
-        .navigationDestination(isPresented: $showingArchived) {
+        .navigationDestination(isPresented: $covers.showingArchived) {
             if let profile {
                 ArchivedSessionsView(server: entry.server, hermes: .saved(entry.connection, server: entry.server, profile: profile))
             }
         }
-        .navigationDestination(item: $tasks) { entry in
+        .navigationDestination(item: $covers.tasks) { entry in
             TasksView(server: entry.server, onAPIError: { _ in }, client: entry.client, newTaskProfile: entry.newTaskProfile)
                 .id(entry.id)
         }
-        .navigationDestination(item: $skills) { entry in
+        .navigationDestination(item: $covers.skills) { entry in
             SkillsView(client: entry.client, profile: entry.client.profile, onAPIError: { _ in })
                 .id(entry.id)
         }
-        .navigationDestination(item: $memory) { entry in
+        .navigationDestination(item: $covers.memory) { entry in
             MemoryView(server: entry.server, client: entry.client, profile: entry.client.profile, onAPIError: { _ in })
                 .id(entry.id)
         }
-        .navigationDestination(item: $insights) { entry in
+        .navigationDestination(item: $covers.insights) { entry in
             InsightsView(client: entry.client, profile: entry.client.profile, onAPIError: { _ in })
                 .id(entry.id)
         }
-        .navigationDestination(isPresented: $showingKanban) {
+        .navigationDestination(isPresented: $covers.showingKanban) {
             KanbanView(server: entry.server, hermes: HermesConnections.shared.connection(for: entry.connection, server: entry.server))
         }
-        .sheet(item: $renaming, onDismiss: { viewModel.clearRenameError() }) { session in
+        .sheet(item: $covers.renaming, onDismiss: { viewModel.clearRenameError() }) { session in
             SessionRenameSheet(initialTitle: SessionRowView.displayTitle(for: session), isSaving: viewModel.isRenamingSession,
                                errorMessage: viewModel.renameErrorMessage) {
-                renaming = nil
+                covers.renaming = nil
             } onSave: { title in
-                Task { if await rename(session, to: title) { renaming = nil } }
+                Task { if await rename(session, to: title) { covers.renaming = nil } }
             }
             .presentationDetents([.medium])
         }
-        .sheet(item: $exported) { item in
+        .sheet(item: $covers.exported) { item in
             SessionExportShareSheet(fileURL: item.fileURL)
                 .presentationDetents([.medium, .large])
                 .ignoresSafeArea()
                 // Each export has its own temp directory (`SessionListViewModel.export`).
                 .onDisappear { try? FileManager.default.removeItem(at: item.fileURL.deletingLastPathComponent()) }
         }
-        .sheet(item: $creatingProject, onDismiss: {
+        .sheet(item: $covers.creatingProject, onDismiss: {
             viewModel.clearProjectSheetError()
-            moving = movingAfterCreation
-            movingAfterCreation = nil
+            covers.moving = covers.movingAfterCreation
+            covers.movingAfterCreation = nil
         }) { creation in
             ProjectCreationSheet(
                 existingProjectCount: viewModel.projects.count, isSaving: viewModel.isCreatingProject,
                 folder: ProjectFolderField(initialPath: creation.folder) { await viewModel.completeHermesFolder($0) },
                 errorMessage: viewModel.projectSheetErrorMessage
             ) {
-                creatingProject = nil
+                covers.creatingProject = nil
             } onSave: { name, color, folder in
                 Task {
                     guard let saved = await viewModel.createHermesProject(named: name, color: color, folder: folder ?? "") else { return }
-                    movingAfterCreation = creation.move(intoProjectNamed: name, savedOn: saved, isBusy: creation.session
+                    covers.movingAfterCreation = creation.move(intoProjectNamed: name, savedOn: saved, isBusy: creation.session
                         .map { viewModel.attentionState(for: $0) != nil } ?? false)
-                    creatingProject = nil
+                    covers.creatingProject = nil
                 }
             }
             .presentationDetents([.medium, .large])
         }
-        .sheet(item: $renamingProject, onDismiss: { viewModel.clearProjectSheetError() }) { project in
+        .sheet(item: $covers.renamingProject, onDismiss: { viewModel.clearProjectSheetError() }) { project in
             ProjectRenameSheet(project: project, isSaving: viewModel.isRenamingProject,
                                errorMessage: viewModel.projectSheetErrorMessage) {
-                renamingProject = nil
+                covers.renamingProject = nil
             } onSave: { name, color in
-                Task { if await viewModel.rename(project, named: name, color: color) { renamingProject = nil } }
+                Task { if await viewModel.rename(project, named: name, color: color) { covers.renamingProject = nil } }
             }
             .presentationDetents([.medium])
         }
-        .alert(Text(verbatim: moving?.title ?? ""), isPresented: Binding(get: { moving != nil }, set: { if !$0 { moving = nil } }),
-               presenting: moving) { move in
+        .alert(Text(verbatim: covers.moving?.title ?? ""), isPresented: Binding(get: { covers.moving != nil }, set: { if !$0 { covers.moving = nil } }),
+               presenting: covers.moving) { move in
             Button("Cancel", role: .cancel) {}
             Button("Move") { Task { await self.move(move) } }
         } message: { move in
             Text(verbatim: move.message)
         }
         .modifier(SessionActionConfirmations(
-            viewModel: viewModel, sessionPendingDeletion: $deleting, projectPendingDeletion: $deletingProject,
+            viewModel: viewModel, sessionPendingDeletion: $covers.deleting, projectPendingDeletion: $covers.deletingProject,
             deleteSession: { session in Task { await delete(session) } },
             deleteProject: { project in Task { _ = await viewModel.delete(project) } }
         ))
         .task { await viewModel.openHermes(modelContext: modelContext) }
+        // A link arriving while a chat, screen or sheet covers the rows pops and closes them, so
+        // what it opens or says shows here.
+        .onChange(of: pendingLink, initial: true) { covers.accept(pendingLink, on: entry.server) }
         .task(id: pendingLink) { await openPendingLink() }
         .onDisappear {
             actionToast.dismiss()
-            if chat == nil { viewModel.closeHermes() } else { viewModel.pauseHermes() }
+            if covers.chat == nil { viewModel.closeHermes() } else { viewModel.pauseHermes() }
         }
         // A lane the host no longer lists (deleted here or on Desktop, or another Profile's) clears.
         .onChange(of: viewModel.projects) {
@@ -264,14 +250,14 @@ struct HermesSessionListView: View {
                 self.selectedProjectID = nil
             }
         }
-        .onChange(of: chat) { old, new in
+        .onChange(of: covers.chat) { old, new in
             if case .session(_, let key)? = old?.target, new?.id != old?.id { viewModel.noteHermesReturn(from: key) }
         }
         .onChange(of: scenePhase) {
             switch scenePhase {
             case .background: viewModel.closeHermes()
             // Control Center and banners (`.inactive`) keep the socket; only a closed list reopens.
-            case .active where chat == nil && !isCoveredByScreen && !viewModel.isHermesConnected:
+            case .active where covers.chat == nil && !covers.isCoveredByScreen && !viewModel.isHermesConnected:
                 Task { await viewModel.openHermes(modelContext: modelContext) }
             default: break
             }
@@ -281,11 +267,6 @@ struct HermesSessionListView: View {
     /// The listed Profile, and the one New Session opens in; nil until a home list without a
     /// pick has asked the host.
     private var profile: String? { viewModel.hermesProfile ?? entry.profile }
-
-    /// A screen this list pushed covers it, so the socket stays closed until it returns.
-    private var isCoveredByScreen: Bool {
-        showingArchived || showingKanban || tasks != nil || skills != nil || memory != nil || insights != nil
-    }
 
     /// The home's Tasks, Kanban, Skills, Memory and Usage rows, as Settings shows them (#709), and
     /// the project lanes of the one listed Profile. A search drops the links but keeps the lanes,
@@ -303,17 +284,17 @@ struct HermesSessionListView: View {
     /// New Session opens in, on a list of every Profile), Kanban for the whole host.
     private func open(_ destination: SessionListUtilityDestination) {
         let server = entry.server, connection = entry.connection
-        if destination == .kanban { showingKanban = true; return }
+        if destination == .kanban { covers.showingKanban = true; return }
         guard let profile else { return }
         switch destination {
         case .tasks:
-            tasks = HermesTasksEntry(server: server, client: HermesCronClient(saved: connection, server: server), newTaskProfile: profile)
+            covers.tasks = HermesTasksEntry(server: server, client: HermesCronClient(saved: connection, server: server), newTaskProfile: profile)
         case .skills:
-            skills = HermesSkillsEntry(client: HermesSkillsClient(saved: connection, server: server, profile: profile))
+            covers.skills = HermesSkillsEntry(client: HermesSkillsClient(saved: connection, server: server, profile: profile))
         case .memory:
-            memory = HermesMemoryEntry(server: server, client: HermesMemoryClient(saved: connection, server: server, profile: profile))
+            covers.memory = HermesMemoryEntry(server: server, client: HermesMemoryClient(saved: connection, server: server, profile: profile))
         case .insights:
-            insights = HermesInsightsEntry(client: HermesInsightsClient(saved: connection, server: server, profile: profile))
+            covers.insights = HermesInsightsEntry(client: HermesInsightsClient(saved: connection, server: server, profile: profile))
         default:
             break
         }
@@ -339,7 +320,7 @@ struct HermesSessionListView: View {
     private var newSessionButton: some View {
         Button("New Session", systemImage: "square.and.pencil") {
             guard let profile else { return }
-            chat = HermesSessionChat(server: entry.server, connection: entry.connection, target: .new(profile: profile))
+            covers.chat = HermesSessionChat(server: entry.server, connection: entry.connection, target: .new(profile: profile))
         }
         .disabled(viewModel.isViewingCachedData || profile == nil)
     }
@@ -429,7 +410,7 @@ struct HermesSessionListView: View {
     /// The Profile's archived sessions, hidden Bot Chats included, where they are restored.
     private var archivedRow: some View {
         Button {
-            showingArchived = true
+            covers.showingArchived = true
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "archivebox")
@@ -471,33 +452,33 @@ struct HermesSessionListView: View {
                 guard let listed = profile ?? session.profile,
                       let opened = session.hermesChat(on: entry.server, connection: entry.connection, listedIn: listed) else { return }
                 viewModel.beginViewing(session)
-                chat = opened
+                covers.chat = opened
             },
             toggleUnread: { viewModel.toggleUnread($0) },
             togglePinned: { session in Task { await togglePinned(session) } },
             archive: { session in Task { await archive(session) } },
-            delete: { deleting = $0 },
+            delete: { covers.deleting = $0 },
             rename: { session in
                 viewModel.clearRenameError()
-                renaming = session
+                covers.renaming = session
             },
             duplicate: { session in Task { await duplicate(session) } },
             move: { session, projectID in
                 guard let project = viewModel.projects.first(where: { $0.projectId == projectID }),
                       let folder = project.hermes?.folder else { return }
-                moving = HermesProjectMove(session: session, projectName: project.name ?? folder, folder: folder,
+                covers.moving = HermesProjectMove(session: session, projectName: project.name ?? folder, folder: folder,
                                            isBusy: viewModel.attentionState(for: session) != nil)
             },
-            createProject: { session in creatingProject = HermesProjectCreation(folder: session.workspace ?? "", session: session) },
+            createProject: { session in covers.creatingProject = HermesProjectCreation(folder: session.workspace ?? "", session: session) },
             refreshProjects: { Task { await viewModel.openHermes(modelContext: modelContext) } },
             export: { session, format in
-                Task { if let url = await viewModel.export(session, format: format) { exported = SessionExportShareItem(fileURL: url) } }
+                Task { if let url = await viewModel.export(session, format: format) { covers.exported = SessionExportShareItem(fileURL: url) } }
             }
         )
     }
 
     /// Opens the session the held link names on this list's server (#1176), the way its row
-    /// opens, or says why nothing opened: gone, or in more than one Profile. A room's session
+    /// opens, over the rows it brings forward, or says why nothing opened: gone, or in more than one Profile. A room's session
     /// opens nothing. A lookup that fails (an unreachable host, a store the host can't read) drops
     /// the link quietly, except a refused sign-in or a list that left mid-lookup: the server's
     /// sign-out or switch routes the held link again.
@@ -514,6 +495,8 @@ struct HermesSessionListView: View {
             return
         }
         guard !Task.isCancelled, pendingLink == link else { return }
+        // Anything opened during the lookup closes too.
+        covers.accept(link, on: entry.server)
         pendingLink = nil
         switch outcome {
         case .found(let session):
@@ -522,7 +505,7 @@ struct HermesSessionListView: View {
             } else if let profile = session.profile,
                       let opened = session.hermesChat(on: entry.server, connection: entry.connection, listedIn: profile) {
                 viewModel.beginViewing(session)
-                chat = opened
+                covers.chat = opened
             }
         case .gone:
             let server = home?.title ?? entry.server.host ?? entry.server.absoluteString
@@ -583,7 +566,7 @@ struct HermesSessionListView: View {
     private func duplicate(_ session: SessionSummary) async {
         guard let profile, let copy = await viewModel.duplicate(session),
               let opened = copy.hermesChat(on: entry.server, connection: entry.connection, listedIn: profile) else { return }
-        chat = opened
+        covers.chat = opened
     }
 
     private func delete(_ session: SessionSummary) async {
@@ -638,6 +621,41 @@ private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSessi
                     ToolbarItem(placement: .topBarTrailing) { newSession }
                 }
         }
+    }
+}
+
+/// What covers a Hermes Sessions list's rows: the chat a row opened, the screens it pushed, and
+/// its sheets and confirmations. A session link (#1176) for the list's server clears them all, so
+/// its chat, or why it can't open, shows on the list itself; a closed chat keeps its draft in the
+/// draft store.
+struct HermesSessionListCovers {
+    var chat: HermesSessionChat?
+    var renaming: SessionSummary?
+    var deleting: SessionSummary?
+    var exported: SessionExportShareItem?
+    var showingArchived = false
+    var creatingProject: HermesProjectCreation?
+    var renamingProject: ProjectSummary?
+    var deletingProject: ProjectSummary?
+    var moving: HermesProjectMove?
+    /// The Move to Project a project created from a row's Move menu still needs, asked once the
+    /// sheet is gone.
+    var movingAfterCreation: HermesProjectMove?
+    /// The Tasks, Skills, Memory or Usage screen a home row pushed, and whether Kanban is pushed.
+    var tasks: HermesTasksEntry?
+    var skills: HermesSkillsEntry?
+    var memory: HermesMemoryEntry?
+    var insights: HermesInsightsEntry?
+    var showingKanban = false
+
+    /// A screen this list pushed covers it, so the socket stays closed until it returns.
+    var isCoveredByScreen: Bool {
+        showingArchived || showingKanban || tasks != nil || skills != nil || memory != nil || insights != nil
+    }
+
+    /// Brings the rows forward for `link` when it names `server`, the list's own.
+    mutating func accept(_ link: HermesSessionDestination?, on server: URL) {
+        if link?.server == server { self = Self() }
     }
 }
 
