@@ -667,6 +667,7 @@ final class SharedDraftStoreTests: XCTestCase {
         let replay = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(
             from: inbox, now: Date().addingTimeInterval(HermesShareDraft.reservationLifetime + 60)))
         XCTAssertEqual(replay.itemID, share.itemID)
+        XCTAssertEqual(replay.occurrenceID, share.occurrenceID)
         let relaunched = launch()
         var consumed = 0
         try await replay.transfer(into: newSession().chat, drafts: relaunched, route: {
@@ -679,6 +680,39 @@ final class SharedDraftStoreTests: XCTestCase {
         XCTAssertEqual(draft?.attachments.map(\.name), ["notes.pdf"])
         let saved = await copies.count
         XCTAssertEqual(saved, 1)
+        XCTAssertNil(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+    }
+
+    /// The inbox names a share by its content, so sharing the same thing again after the first was
+    /// consumed repeats its item id; the draft, edited since, still takes the new share (#1197).
+    @MainActor
+    func testTheSameContentSharedAgainAfterConsumptionIsAddedAgain() async throws {
+        let inbox = try temporaryDirectory()
+        let pdf = SharedAttachmentImport(filename: "notes.pdf", typeIdentifier: "com.adobe.pdf", data: Data([4, 5]))
+        func share(at seconds: TimeInterval) throws -> SharedImportReservation {
+            let now = Date(timeIntervalSince1970: seconds)
+            try HermesShareDraft.savePendingImport(draft: "Read this", attachments: [pdf], in: inbox, now: now)
+            return try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox, now: now))
+        }
+        let store = drafts(BotMemoryDrafts(), BotAttachmentCopies())
+        let (chat, key) = newSession()
+        let consume: (SharedImportReservation) -> Void = { try? HermesShareDraft.consume($0, from: inbox) }
+        let decline: (SharedImportReservation) -> Void = { _ in XCTFail("Nothing failed") }
+
+        let first = try share(at: 1_800_000_010)
+        try await first.transfer(into: chat, drafts: store, route: consume, decline: decline)
+        // The user rewrites the text and removes the file without sending.
+        store.setDraft("Something else", for: key)
+        store.setAttachments([], for: key)
+
+        let second = try share(at: 1_800_000_020)
+        XCTAssertEqual(second.itemID, first.itemID)
+        XCTAssertNotEqual(second.occurrenceID, first.occurrenceID)
+        try await second.transfer(into: newSession().chat, drafts: store, route: consume, decline: decline)
+
+        let draft = await store.draft(for: key)
+        XCTAssertEqual(draft?.text, "Something else\n\nRead this\n")
+        XCTAssertEqual(draft?.attachments.map(\.name), ["notes.pdf"])
         XCTAssertNil(try HermesShareDraft.reserveNextPendingImport(from: inbox))
     }
 

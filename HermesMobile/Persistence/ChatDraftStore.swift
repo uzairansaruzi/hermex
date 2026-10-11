@@ -78,8 +78,8 @@ struct ChatDraft: Equatable, Sendable {
     // loss must survive relaunch (#508).
     var botSubmissionUncertain = false
     var lastUsedAt: Date?
-    /// The shares (app-group item ids) already moved into this draft, so a retried or
-    /// replayed share isn't added twice (#1181). Rides along with the content; never
+    /// The shares (`SharedImportReservation.occurrenceID`s) already moved into this draft,
+    /// so a retried or replayed share isn't added twice (#1181, #1197). Rides along with the content; never
     /// keeps a draft alive on its own.
     var sharedImportIDs: Set<String> = []
 

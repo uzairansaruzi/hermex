@@ -696,13 +696,14 @@ extension SharedImportReservation {
     /// any unsent text, its files after any staged ones, each as a Hermes send takes it
     /// (`BotAttachmentUpload.prepare`, Bot Chat's limits). A file Hermes can't take now (its type or
     /// size, an unreadable image, no room left in the draft) throws its reason and moves nothing, so the
-    /// whole share stays recoverable. Once it returns the draft owns the share, under its item id,
-    /// so a retry or replay adds nothing; a throw leaves the draft as it was.
+    /// whole share stays recoverable. Once it returns the draft owns the share, under its occurrence
+    /// id, so a retry or replay adds nothing while the same content shared again later is added;
+    /// a throw leaves the draft as it was.
     @MainActor func moveIntoDraft(of chat: HermesSessionChat, drafts: ChatDraftStore = .shared) async throws {
         let key = chat.target.draftKey(server: chat.server, connectionID: chat.connection.id, lineageRoot: chat.lineageRoot)
         let draft = await drafts.draft(for: key)
         var files: [(data: Data, name: String, mime: String, image: Bool)] = []
-        if draft?.sharedImportIDs.contains(itemID) != true {
+        if draft?.sharedImportIDs.contains(occurrenceID) != true {
             let staged = draft?.attachments ?? []
             var room = HermexAttachmentPickerPolicy.maximumBotAttachments - staged.count
             var bytes = staged.reduce(0) { $0 + ($1.size ?? BotAttachmentUpload.maximumFileBytes) }
@@ -725,7 +726,7 @@ extension SharedImportReservation {
             }
             try Task.checkCancellation()
         }
-        try await drafts.appendShare(itemID, text: HermesShareDraft.composerDraft(from: sharedImport.draft), files: files,
+        try await drafts.appendShare(occurrenceID, text: HermesShareDraft.composerDraft(from: sharedImport.draft), files: files,
                                      to: key, maximumFileBytes: BotAttachmentUpload.maximumFileBytes) { attachments in
             // A composer open on this draft may have added files since the check above.
             guard attachments.count <= HermexAttachmentPickerPolicy.maximumBotAttachments,
