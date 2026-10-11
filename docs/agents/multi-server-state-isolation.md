@@ -206,8 +206,9 @@ registry and auth state, and drops a link for an unconfigured server. A link for
 server switches to it first; a webui push or session link does so even from another server's
 sign-in form, where a Bot link waits for that sign-in. The session lookup
 then runs on the named server's own saved connection, after the switch, so a link never reads,
-signs in to or opens anything on a server it doesn't name. `HermesSessionLinkTests` covers the
-routing.
+signs in to or opens anything on a server it doesn't name. A webui push or session link
+also replaces every link already held (`PendingLinks`), so the sign-in it waits for never
+routes an older link to another server first. `HermesSessionLinkTests` covers the routing.
 
 ## Bot connection and drafts
 

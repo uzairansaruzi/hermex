@@ -2893,6 +2893,7 @@ struct ChatView: View {
     private func hydrateDraftIfNeeded() async {
         viewModel.protectDraftAttachments(for: draftKey)
         guard !didHydrateDraft else { return }
+        await viewModel.adoptHermesSegmentDraft()
         await draftStore.markUsed(draftKey)
         let textBeforeHydration = draftMessage
         let quotesBeforeHydration = draftQuotes

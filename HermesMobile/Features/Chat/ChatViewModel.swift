@@ -2974,9 +2974,19 @@ final class ChatViewModel {
     /// draft already waiting in that Profile's new chat stays, and this one keeps its key.
     func handOffHermesDraft(to chat: HermesSessionChat) async {
         guard let key = hermesDraftKey else { return }
-        let target = chat.target.draftKey(server: chat.server, connectionID: chat.connection.id)
+        let target = chat.target.draftKey(server: chat.server, connectionID: chat.connection.id, lineageRoot: chat.lineageRoot)
         guard await drafts.draft(for: target) == nil else { return }
         drafts.moveDraft(from: key, to: target)
+    }
+
+    /// Moves a draft saved under the segment of a compression chain this chat opened by, before
+    /// drafts followed the chain's root (#1176), to the chain's key, unless that has one already.
+    /// The chat calls it before it restores its draft.
+    func adoptHermesSegmentDraft() async {
+        guard let hermesTurn, let segment = hermesTurn.segmentDraftKey else { return }
+        let key = hermesTurn.currentDraftKey
+        guard await drafts.draft(for: key) == nil, await drafts.draft(for: segment) != nil else { return }
+        drafts.moveDraft(from: segment, to: key)
     }
 
     /// Who asks in a Hermes session's request card: its Profile on its saved connection.

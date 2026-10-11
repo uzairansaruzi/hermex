@@ -101,11 +101,7 @@ enum BotDeepLinkOutcome: Equatable {
         state: AuthManager.State,
         servers: [ServerAccount],
         isBotModeEnabled: Bool,
-        // Main-actor isolated so the default can read the per-server Keychain record
-        // the way every other caller does.
-        botConnectionID: @MainActor (URL) -> UUID? = { @MainActor url in
-            (try? BotConnectionStore().load(server: url))?.id
-        }
+        botConnectionID: @MainActor (URL) -> UUID? = savedConnectionID
     ) -> BotDeepLinkOutcome {
         guard let account = servers.first(where: { $0.id == destination.server.absoluteString }) else {
             return .ignore
@@ -125,6 +121,12 @@ enum BotDeepLinkOutcome: Equatable {
         case .loggedOut, .unconfigured:
             return .waitForSignIn(destination)
         }
+    }
+
+    /// The server's saved Bot connection, from the per-server Keychain record the way every
+    /// other caller reads it.
+    static func savedConnectionID(for server: URL) -> UUID? {
+        (try? BotConnectionStore().load(server: server))?.id
     }
 
     /// Whether an inbox in this state can answer a held link now. A live roster can.

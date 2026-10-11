@@ -247,6 +247,34 @@ import SwiftUI
                        "returning resumed the created session")
     }
 
+    /// A legacy compression chain keeps one draft whichever segment opened it (#1176): its list
+    /// row (the tip) and links to its root or middle restore and edit the same draft, under the
+    /// chain's root, while each resumes the key it named. A draft the tip kept before drafts
+    /// followed the root moves to it.
+    func testEverySegmentOfACompressionChainSharesOneDraft() async {
+        let drafts = ChatDraftStore(persistence: InMemoryDraftPersistence(), debounceDuration: .seconds(60))
+        let server = URL(string: "https://hermes.example")!
+        func draftKey(_ key: String) -> ChatDraftKey {
+            .hermesSession(server: server, connectionID: Self.connection.id, profile: "default", key: key)
+        }
+        drafts.setDraft("Ship the notes", for: draftKey("tip"))
+
+        var expected = "Ship the notes"
+        for segment in ["tip", "middle", "root"] {
+            let chat = await openChat(key: segment, drafts: drafts, lineageRoot: "root")
+            await chat.model.adoptHermesSegmentDraft()
+            XCTAssertEqual(chat.model.hermesDraftKey, draftKey("root"), segment)
+            let restored = await drafts.draft(for: draftKey("root"))
+            XCTAssertEqual(restored?.text, expected, segment)
+            XCTAssertEqual(Set(chat.writes("session.resume").compactMap { $0["session_id"]?.text }), [segment])
+            expected = "Ship the notes from \(segment)"
+            drafts.setDraft(expected, for: draftKey("root"))
+            chat.model.suspendStreamForNavigation()
+        }
+        let tip = await drafts.draft(for: draftKey("tip"))
+        XCTAssertNil(tip, "moved, not copied")
+    }
+
     func testAcceptedSteerShowsItsEchoAndARefusedOneKeepsTheDraftAndTheRun() async {
         let chat = await openChat()
         chat.receive(event(1, "message.start"))
@@ -1038,7 +1066,7 @@ import SwiftUI
         + "[Examine it with the vision_analyze tool using image_url: /home/u/.hermes/images/dashboard_20261005_120000_0123abcd_IMG_2041.jpg]"
 
     private func openChat(runtime: String = "runtime", key: String = "tip", profile: String = "default",
-                          target: ConversationTarget? = nil, drafts: ChatDraftStore? = nil,
+                          target: ConversationTarget? = nil, drafts: ChatDraftStore? = nil, lineageRoot: String? = nil,
                           history: [BotJSON] = [], snapshot: BotJSON? = nil, subagents: [BotJSON] = [],
                           rpcDeadline: Duration = .seconds(30)) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
@@ -1055,7 +1083,7 @@ import SwiftUI
         serveHistory(history, key: key)
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: target ?? .session(profile: profile, key: key), wire: client)
-        let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
+        let turn = HermesChatTurnCoordinator(engine: engine, lineageRoot: lineageRoot, isNetworkAvailable: { true })
         let liveActivity = TitleRecordingLiveActivity()
         let model = ChatViewModel(
             session: SessionSummary(profile: profile), server: URL(string: "https://hermes.example")!,

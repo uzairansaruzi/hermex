@@ -88,6 +88,31 @@ import XCTest
         XCTAssertEqual(HermesSessionLinkRouter.resolve(link, state: .loggedIn(server: hermes), servers: servers), .ignore)
     }
 
+    /// A session link replaces the links already held: with server B signed out holding a Bot
+    /// link for server A, a session link for B leaves only B's, so signing in to B neither reads
+    /// A's saved connection nor switches to A.
+    func testASessionLinkReplacesAHeldBotLinkForAnotherServer() {
+        let signedOut = AuthManager.State.loggedOut(server: hermes)
+        let bot = BotDestination(server: otherHermes, connectionID: UUID(), profile: "inbox-triage")
+        var links = PendingLinks(deepLinkedSessionID: "legacy", newChatRequest: NewChatRequest())
+        XCTAssertNil(links.route(bot, state: signedOut, servers: servers, isBotModeEnabled: true,
+                                 botConnectionID: { _ in bot.connectionID }))
+        XCTAssertEqual(links.bot, bot, "held for the sign-in")
+
+        let session = HermesSessionDestination(server: hermes, profile: "research", key: "abc")
+        XCTAssertNil(links.open(session, state: signedOut, servers: servers))
+
+        var lookedUp: [URL] = []
+        let switched = links.reroute(state: .loggedIn(server: hermes), servers: servers, isBotModeEnabled: true,
+                                     botConnectionID: { lookedUp.append($0); return bot.connectionID })
+        XCTAssertNil(switched, "no server switch")
+        XCTAssertEqual(lookedUp, [], "no other server's saved connection read")
+        XCTAssertEqual(links.hermesSession, session)
+        XCTAssertNil(links.bot)
+        XCTAssertNil(links.deepLinkedSessionID)
+        XCTAssertNil(links.newChatRequest)
+    }
+
     /// `session?server=<webui server>&id=` is a legacy form: it becomes that server's push
     /// destination and nothing else, so a moved server (#707) is redirected in one place.
     func testAWebuiServersSessionLinkBecomesItsPushDestination() throws {
