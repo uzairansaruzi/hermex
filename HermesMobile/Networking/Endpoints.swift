@@ -6,6 +6,9 @@ enum Endpoint {
     case login
     case logout
     case sessions(includeArchived: Bool = false, archivedLimit: Int? = nil)
+    /// Move to Hermes's scan (#1213): every Profile's sessions, archived included, without
+    /// switching the Profile this client's cookie names.
+    case moveScanSessions
     case sessionsSearch(query: String, content: Bool, depth: Int)
     case session(id: String, includeMessages: Bool, messageLimit: Int?, messageBefore: Int?, expandRenderable: Bool = false)
     case sessionStatus(id: String)
@@ -154,7 +157,7 @@ enum Endpoint {
             return "/api/auth/login"
         case .logout:
             return "/api/auth/logout"
-        case .sessions:
+        case .sessions, .moveScanSessions:
             return "/api/sessions"
         case .sessionsSearch:
             return "/api/sessions/search"
@@ -419,6 +422,13 @@ enum Endpoint {
                 items.append(URLQueryItem(name: "archived_limit", value: "\(archivedLimit)"))
             }
             return items
+        case .moveScanSessions:
+            // `all_profiles` is ignored in the server's isolated-Profile mode; the reply's own
+            // `all_profiles` says whether it was honored.
+            return [
+                URLQueryItem(name: "all_profiles", value: "1"),
+                URLQueryItem(name: "include_archived", value: "1")
+            ]
         case let .sessionsSearch(query, content, depth):
             return [
                 URLQueryItem(name: "q", value: query),

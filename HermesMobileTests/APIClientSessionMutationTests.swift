@@ -528,7 +528,7 @@ final class APIClientSessionMutationTests: APIClientTestCase {
     // MARK: Hermes (#1051)
 
     /// An import posts its body and hands back the host's result. A payload the host refuses
-    /// carries its first error; a 413 stays a status.
+    /// carries its first error and every session it named; a 413 stays a status.
     @MainActor
     func testHermesImportPostsTheSessionAndCarriesTheHostsRefusal() async throws {
         var status = 200
@@ -560,7 +560,10 @@ final class APIClientSessionMutationTests: APIClientTestCase {
             _ = try await client.importSessions(body: encoded)
             XCTFail("The host refused the payload")
         } catch {
-            XCTAssertEqual(error as? HermesSessionRefusal, HermesSessionRefusal(message: "messages[0].role must be a non-empty string"))
+            XCTAssertEqual(error as? HermesSessionRefusal, HermesSessionRefusal(
+                message: "messages[0].role must be a non-empty string",
+                entries: [.init(index: 0, sessionID: "x", reason: "messages[0].role must be a non-empty string")]
+            ), "Every session the host named is kept (#1213)")
         }
         status = 413
         do {
