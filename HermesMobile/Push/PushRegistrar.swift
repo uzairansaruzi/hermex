@@ -56,7 +56,7 @@ enum PushRegistrarError: Error, Equatable {
 /// one does, the token is re-registered on every launch: the relay revokes a
 /// device on its own when Apple reports the token invalid, so a past registration
 /// is not something the app may assume still holds.
-@MainActor final class PushRegistrar {
+@MainActor final class PushRegistrar: PushPairingCopying {
     /// Nil only when the build has no shared Keychain access group to write to,
     /// which means push cannot work at all on this build.
     static let shared: PushRegistrar? = {
@@ -241,6 +241,23 @@ enum PushRegistrarError: Error, Equatable {
         try? await relay.deleteDevice(token: token, pairing: pairing)
     }
 
+    /// Copies `source`'s stored pairing to `destination` for Move to Hermes (#1215), with its
+    /// device token and preferences, since the relay keys one registration by install and
+    /// token. Queued with the other device writes so a token refresh can't replace the token
+    /// being copied, and judged when it runs: nothing is written when `destination` is no longer
+    /// configured or already paired, or `source` no longer holds `install`. No relay call.
+    func copyPairing(from source: URL, to destination: URL, matching install: PushPairing,
+                     isConfigured: @escaping @MainActor (URL) -> Bool) async throws -> MovePushPairingOutcome {
+        try await enqueueRegistrationWork { [self] in
+            guard isConfigured(destination) else { return .unchecked }
+            guard try store.pairing(for: destination) == nil else { return .destinationAlreadyPaired }
+            guard let stored = try store.pairing(for: source) else { return .sourceUnpaired }
+            guard sameInstall(stored, install) else { return .differentInstall }
+            try store.save(stored, for: destination)
+            return .copied
+        }
+    }
+
     /// Finishes an accepted preference transaction even if its screen closes. Only
     /// the screen's state update is cancelled; relay and Keychain must agree.
     func updatePreferences(_ preferences: PushPreferences, for server: URL, expectedPairing: PushPairing) async throws {
@@ -293,14 +310,17 @@ enum PushRegistrarError: Error, Equatable {
 
     /// Runs `work` after every queued device write and teardown, and holds the queue until
     /// it ends. The work finishes even if the caller is cancelled.
-    private func enqueueRegistrationWork(_ work: @escaping @MainActor () async throws -> Void) async throws {
+    @discardableResult
+    private func enqueueRegistrationWork<Result: Sendable>(
+        _ work: @escaping @MainActor () async throws -> Result
+    ) async throws -> Result {
         let previous = registrationTail
         let task = Task {
             await previous?.value
-            try await work()
+            return try await work()
         }
         registrationTail = Task { _ = await task.result }
-        try await task.value
+        return try await task.value
     }
 
     /// Called once at launch. Only a server that already paired gets a token

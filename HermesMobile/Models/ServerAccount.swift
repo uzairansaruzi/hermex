@@ -47,6 +47,11 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
     /// A Hermes server's release, as `/api/status` reported it at the last saved
     /// sign-in. Nil for webui servers, whose version Settings reads live.
     var serverVersion: String?
+    /// The webui servers whose chats moved here (Move to Hermes, #707). Kept on the
+    /// destination so it outlives removing the webui entry and goes with this one, and
+    /// written only by `AuthManager.commitMove` and `updateMoveRecord`: `ServerRegistry.update`
+    /// keeps the stored list, so an identity edit from an older copy can't drop it.
+    var movedWebuiServers: [MovedWebuiServer]
 
     init(
         id: String,
@@ -57,7 +62,8 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         createdAt: Date,
         updatedAt: Date,
         kind: ServerKind = .webui,
-        serverVersion: String? = nil
+        serverVersion: String? = nil,
+        movedWebuiServers: [MovedWebuiServer] = []
     ) {
         self.id = id
         self.urlString = urlString
@@ -68,6 +74,7 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         self.updatedAt = updatedAt
         self.kind = kind
         self.serverVersion = serverVersion
+        self.movedWebuiServers = movedWebuiServers
     }
 
     enum CodingKeys: String, CodingKey {
@@ -80,6 +87,7 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         case updatedAt
         case kind
         case serverVersion
+        case movedWebuiServers
     }
 
     init(from decoder: Decoder) throws {
@@ -107,7 +115,137 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         // falls back to webui instead of failing the entry.
         kind = (try? container.decodeIfPresent(String.self, forKey: .kind)).flatMap(ServerKind.init(rawValue:)) ?? .webui
         serverVersion = try? container.decodeIfPresent(String.self, forKey: .serverVersion)
+        // One unreadable record is dropped on its own; the entry still loads.
+        movedWebuiServers = ((try? container.decodeIfPresent([Lossy<MovedWebuiServer>].self, forKey: .movedWebuiServers)) ?? [])
+            .compactMap(\.value)
     }
+}
+
+/// A webui server whose chats moved to the Hermes server holding this record (#707). The
+/// legacy routes of #1217 read it to send the webui server's old links, pushes and Shortcuts
+/// to the destination, including after the webui entry is removed. One webui server has at
+/// most one record across the whole registry.
+struct MovedWebuiServer: Codable, Equatable, Sendable {
+    /// The webui server's id: its URL as `AuthManager.normalizedServerURL` normalizes it.
+    let sourceServerID: String
+    /// Where each webui Profile's imports and new chats go, chosen explicitly at Review.
+    /// Existing chats route by where they actually are, never by this mapping. A Profile
+    /// missing here is unmapped, and its legacy entry points refuse rather than guess.
+    var profiles: [MovedWebuiProfile]
+    /// When the move finished its work and saved its report. Nil while it is unfinished.
+    var completedAt: Date?
+    /// The last counts the move recorded, which removal copy reads. Nil when none was saved.
+    var report: MovedWebuiReport?
+
+    init(sourceServerID: String, profiles: [MovedWebuiProfile], completedAt: Date? = nil,
+         report: MovedWebuiReport? = nil) {
+        self.sourceServerID = sourceServerID
+        self.profiles = profiles
+        self.completedAt = completedAt
+        self.report = report
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case sourceServerID, profiles, completedAt, report
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sourceServerID = try container.decode(String.self, forKey: .sourceServerID)
+        profiles = ((try? container.decodeIfPresent([Lossy<MovedWebuiProfile>].self, forKey: .profiles)) ?? [])
+            .compactMap(\.value)
+        completedAt = try? container.decodeIfPresent(Date.self, forKey: .completedAt)
+        report = try? container.decodeIfPresent(MovedWebuiReport.self, forKey: .report)
+    }
+
+    /// Where `profile`'s imports and new chats go, or nil when it is unmapped.
+    func destination(ofProfile profile: String) -> MovedWebuiProfile.Destination? {
+        profiles.first { $0.source == profile }?.destination
+    }
+}
+
+/// One webui Profile's explicit choice at Review.
+struct MovedWebuiProfile: Codable, Equatable, Sendable {
+    enum Destination: Equatable, Sendable {
+        /// The Hermes Profile, by name, that the webui Profile's chats go to.
+        case hermes(profile: String)
+        /// The webui Profile stays where it is, usable on the webui entry.
+        case keepOnWebui
+    }
+
+    /// The webui Profile's name, as the webui server lists it.
+    let source: String
+    let destination: Destination
+
+    init(source: String, destination: Destination) {
+        self.source = source
+        self.destination = destination
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case source, hermesProfile, keepOnWebui
+    }
+
+    /// A mapping that names neither destination fails, so the Profile reads as unmapped.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        source = try container.decode(String.self, forKey: .source)
+        if let profile = try? container.decodeIfPresent(String.self, forKey: .hermesProfile), !profile.isEmpty {
+            destination = .hermes(profile: profile)
+        } else if (try? container.decodeIfPresent(Bool.self, forKey: .keepOnWebui)) == true {
+            destination = .keepOnWebui
+        } else {
+            throw DecodingError.dataCorruptedError(forKey: .source, in: container,
+                                                   debugDescription: "A moved Profile names no destination")
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(source, forKey: .source)
+        switch destination {
+        case .hermes(let profile): try container.encode(profile, forKey: .hermesProfile)
+        case .keepOnWebui: try container.encode(true, forKey: .keepOnWebui)
+        }
+    }
+}
+
+/// The last counts a move recorded for the chats it left on webui. Each is nil when the
+/// move couldn't establish it, which removal copy must show as unknown, never as zero.
+struct MovedWebuiReport: Codable, Equatable, Sendable {
+    /// Chats still only on webui: not copied, failed, or in a Profile kept on webui.
+    var remaining: Int?
+    /// Chats whose presence on Hermes couldn't be checked.
+    var unchecked: Int?
+    /// Chats over the import limits, reported and never trimmed.
+    var oversized: Int?
+    var recordedAt: Date
+
+    init(remaining: Int?, unchecked: Int?, oversized: Int?, recordedAt: Date) {
+        self.remaining = remaining
+        self.unchecked = unchecked
+        self.oversized = oversized
+        self.recordedAt = recordedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case remaining, unchecked, oversized, recordedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        remaining = try? container.decodeIfPresent(Int.self, forKey: .remaining)
+        unchecked = try? container.decodeIfPresent(Int.self, forKey: .unchecked)
+        oversized = try? container.decodeIfPresent(Int.self, forKey: .oversized)
+        recordedAt = try container.decode(Date.self, forKey: .recordedAt)
+    }
+}
+
+/// Decodes one element of a list, or nil when that element can't be read, so one bad
+/// element never fails the whole list.
+private struct Lossy<Value: Decodable>: Decodable {
+    let value: Value?
+    init(from decoder: Decoder) throws { value = try? Value(from: decoder) }
 }
 
 /// Process-wide, thread-safe registry of configured servers plus which one is
@@ -167,14 +305,9 @@ final class ServerRegistry: @unchecked Sendable {
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             // One unreadable entry is dropped on its own, never the whole list.
-            servers = ((try? container.decodeIfPresent([Entry].self, forKey: .servers)) ?? [])
-                .compactMap(\.account)
+            servers = ((try? container.decodeIfPresent([Lossy<ServerAccount>].self, forKey: .servers)) ?? [])
+                .compactMap(\.value)
             activeServerID = try? container.decodeIfPresent(String.self, forKey: .activeServerID)
-        }
-
-        private struct Entry: Decodable {
-            let account: ServerAccount?
-            init(from decoder: Decoder) throws { account = try? ServerAccount(from: decoder) }
         }
     }
 
@@ -291,7 +424,8 @@ final class ServerRegistry: @unchecked Sendable {
     }
 
     /// Replaces the stored entry for `account.id` (per-server identity edits,
-    /// #17), bumping `updatedAt`. No-op for an unregistered id. Mirrors to the
+    /// #17), bumping `updatedAt`, and keeps the stored `movedWebuiServers`, which only
+    /// `commit` writes. No-op for an unregistered id. Mirrors to the
     /// global identity defaults when the updated server is the active one, so the
     /// active server's edits show up live without each consumer reading the
     /// registry directly.
@@ -303,6 +437,7 @@ final class ServerRegistry: @unchecked Sendable {
             }
             var updated = account
             updated.updatedAt = now()
+            updated.movedWebuiServers = snapshot.servers[index].movedWebuiServers
             snapshot.servers[index] = updated
             persist(snapshot)
             if snapshot.activeServerID == account.id {
@@ -323,6 +458,20 @@ final class ServerRegistry: @unchecked Sendable {
             snapshot.servers.removeAll { $0.id == id }
             snapshot.activeServerID = nil
             persist(snapshot)
+        }
+    }
+
+    /// Applies `change` to the server list and keeps the result only once the Keychain has
+    /// saved it (Move to Hermes, #1215). `change` gets the registry's clock for `updatedAt`.
+    /// When `change` or the save throws, the registry stays as it was, in memory and on disk.
+    /// Never changes the active server or the global identity defaults.
+    func commit<Result>(_ change: (_ servers: inout [ServerAccount], _ now: Date) throws -> Result) throws -> Result {
+        try storage.withLockUnchecked { snapshot in
+            var next = snapshot
+            let result = try change(&next.servers, now())
+            try save(next)
+            snapshot = next
+            return result
         }
     }
 
@@ -372,15 +521,16 @@ final class ServerRegistry: @unchecked Sendable {
 
     // MARK: - Persistence
 
-    /// Writes the snapshot through to the Keychain. Called under the storage lock.
+    /// Writes the snapshot through to the Keychain, ignoring a failure. Called under the
+    /// storage lock.
     private func persist(_ snapshot: Snapshot) {
-        guard
-            let data = try? JSONEncoder().encode(snapshot),
-            let json = String(data: data, encoding: .utf8)
-        else {
-            return
-        }
-        try? keychain.save(json, forKey: .servers)
+        try? save(snapshot)
+    }
+
+    /// Writes the snapshot through to the Keychain, throwing when it isn't saved.
+    private func save(_ snapshot: Snapshot) throws {
+        let data = try JSONEncoder().encode(snapshot)
+        try keychain.save(String(decoding: data, as: UTF8.self), forKey: .servers)
     }
 
     private static func loadSnapshot(from keychain: any KeychainStoring) -> Snapshot {

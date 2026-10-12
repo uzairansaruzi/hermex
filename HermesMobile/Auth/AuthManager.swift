@@ -66,7 +66,9 @@ final class AuthManager {
     /// one whose `id` matches `state.server?.absoluteString`.
     private(set) var servers: [ServerAccount] = []
 
-    private let keychain: any KeychainStoring
+    // `keychain`, `serverRegistry`, `preferences` and `refreshServers` are internal for
+    // `AuthManager+MoveToHermes`; nothing outside this type and that extension uses them.
+    let keychain: any KeychainStoring
     private let clientFactory: (URL) -> any AuthAPIClient
     /// Builds a client bound to explicit headers (not the shared `CustomHeaderStore`)
     /// — used by `addServer` to probe a new server without disturbing the active
@@ -74,10 +76,10 @@ final class AuthManager {
     private let probeClientFactory: (URL, [CustomHeader]) -> any AuthAPIClient
     private let headerStore: CustomHeaderStore
     private let logoutTimeout: Duration
-    private let serverRegistry: ServerRegistry
+    let serverRegistry: ServerRegistry
     private let hermesConnections: HermesConnections
     /// Where the Bot Mode gate is read (`BotModeGate`), which adding a Hermes server needs.
-    private let preferences: UserDefaults
+    let preferences: UserDefaults
     /// Tears down a server's push pairing when it is signed out of or removed.
     private let forgetPush: @MainActor (URL) async -> Void
 
@@ -123,7 +125,7 @@ final class AuthManager {
 
     /// Re-reads the registry into the observable `servers` snapshot. Called after
     /// every registry mutation routed through this manager.
-    private func refreshServers() {
+    func refreshServers() {
         servers = serverRegistry.servers
     }
 
