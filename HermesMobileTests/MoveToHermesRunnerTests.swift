@@ -287,6 +287,24 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(report.changesApplied, 0)
     }
 
+    /// A planned write that names another chat than its plan's is damage, never a write.
+    func testAPlanNamingAnotherChatIsDamaged() async throws {
+        exports("a")
+        host.failingReads = ["a"]
+        await makeRunner().start(review([entry("a"), entry("b", location: .present(profile: "default"))]))
+        let count = journalEvents().count
+        let line = #"{"seq":\#(count + 1),"event":{"planned":{"_0":{"a":{"plan":{"_0":{"target":{"chat":{"id":"a","profile":"default","archived":false,"pinned":false},"profile":"default","copied":true},"operations":[{"id":"b","profile":"default","change":{"pinned":{"from":false,"to":true}}}]}}}}}}}"#
+        try appendRaw(line + "\n")
+        host.failingReads = []
+        let calls = host.calls
+
+        let runner = makeRunner()
+        await runner.resume()
+
+        XCTAssertEqual(runner.state, .paused(.damaged))
+        XCTAssertEqual(host.calls, calls)
+    }
+
     /// A plan whose log is gone has lost the record of what was sent.
     func testAMissingLogIsDamaged() async throws {
         exports("a")

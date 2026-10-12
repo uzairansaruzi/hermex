@@ -260,10 +260,13 @@ enum MoveToHermesEvent: Codable, Equatable, Sendable {
 
     private static func logURL(in folder: URL) -> URL { folder.appendingPathComponent("log.jsonl") }
 
-    /// The complete lines of a log, checked against the plan they belong to.
+    /// The complete lines of a log, checked against the plan they belong to: every chat, Profile
+    /// and planned write a line names must be one the frozen Review allows, so a damaged line can
+    /// never point a write at another chat.
     private static func decode(_ data: Data, against review: MoveToHermesReview) throws -> [MoveToHermesEvent] {
         let ids = Set(review.entries.map(\.chat.id))
         let destinations = Set(review.entries.compactMap { review.destination(of: $0.chat) })
+        let profiles = Set(review.hermesProfiles)
         var events: [MoveToHermesEvent] = []
         for line in data.split(separator: 0x0A, omittingEmptySubsequences: false).dropLast() {
             let decoded = try JSONDecoder().decode(Line.self, from: line)
@@ -273,10 +276,28 @@ enum MoveToHermesEvent: Codable, Equatable, Sendable {
             case .importing(let profile, let chats, _):
                 guard destinations.contains(profile) else { throw Damaged() }
                 named = chats
-            case .copied(let outcomes, _): named = Array(outcomes.keys)
-            case .planned(let plans): named = Array(plans.keys)
+            case .copied(let outcomes, _):
+                for outcome in outcomes.values {
+                    switch outcome {
+                    case .imported(let profile), .alreadyPresent(let profile), .uncertain(let profile):
+                        guard profiles.contains(profile) else { throw Damaged() }
+                    case .ambiguous(let found):
+                        guard profiles.isSuperset(of: found) else { throw Damaged() }
+                    case .oversized, .rejected, .unreadable, .unknown, .notSent: break
+                    }
+                }
+                named = Array(outcomes.keys)
+            case .planned(let plans):
+                for (id, planned) in plans {
+                    guard case .plan(let plan) = planned else { continue }
+                    guard plan.target.chat.id == id, profiles.contains(plan.target.profile),
+                          plan.draftSession == nil || plan.draftSession == id,
+                          plan.operations.allSatisfy({ $0.id == id && $0.profile == plan.target.profile })
+                    else { throw Damaged() }
+                }
+                named = Array(plans.keys)
             case .changing(let operation), .changed(let operation, _):
-                guard review.hermesProfiles.contains(operation.profile) else { throw Damaged() }
+                guard profiles.contains(operation.profile) else { throw Damaged() }
                 named = [operation.id]
             case .drafts(let results): named = Array(results.keys)
             case .pairing, .finished: named = []
