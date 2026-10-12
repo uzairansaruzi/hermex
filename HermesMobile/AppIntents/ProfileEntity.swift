@@ -153,7 +153,9 @@ enum ProfileEntityProvider {
 
     /// Saved Shortcuts' Profiles. A Hermes id resolves from the id itself while its server is
     /// configured, titled from the cached roster without reading the host; a bare id resolves
-    /// against the webui list as it always has (#971).
+    /// against the webui list as it always has (#971), or while a webui server's move to Hermes
+    /// named it, even after that server is removed (#1217). Running it then decides where it goes
+    /// (`MovedWebuiRoute.newChat`), and opens nothing where more than one place could take it.
     @MainActor static func entities(
         for identifiers: [String], servers: [ServerAccount] = ServerRegistry.shared.servers,
         names: HermesProfileNameCache = .shared, webui: () async -> [ProfileEntity] = { await currentEntities() }
@@ -162,7 +164,8 @@ enum ProfileEntityProvider {
         let webuiList = bare ? await webui() : []
         return identifiers.compactMap { id in
             guard let chat = ProfileEntity(id: id, name: id, subtitle: nil).hermesNewChat, let profile = chat.profile else {
-                return webuiList.first { $0.id == id }
+                if let listed = webuiList.first(where: { $0.id == id }) { return listed }
+                return MovedWebuiRoute.names(profile: id, in: servers) ? ProfileEntity(id: id, name: id, subtitle: nil) : nil
             }
             guard servers.contains(where: { $0.id == chat.server.absoluteString && $0.kind == .hermes }) else { return nil }
             let title = names.names(for: chat.server).first { $0.profile == profile }?.title
@@ -205,8 +208,8 @@ enum ProfileEntityProvider {
 
     /// The webui server whose Profiles Shortcuts lists: the active one, or while a Hermes
     /// server is active the first webui server, which New Chat in Profile switches to.
-    /// Nil when no webui server is configured. Every bare-id Shortcut resolves through here,
-    /// so a webui server that moves to Hermes (#707) can redirect them in one place.
+    /// Nil when no webui server is configured. A webui server that moved to Hermes still lists
+    /// here; running its Profile's Shortcut follows the move (`MovedWebuiRoute.newChat`, #1217).
     static func profileServer(active: URL?, servers: [ServerAccount]) -> URL? {
         guard let active else { return nil }
         guard servers.first(where: { $0.id == active.absoluteString })?.kind == .hermes else { return active }

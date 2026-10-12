@@ -202,6 +202,9 @@ struct HermesSessionDestination: Hashable {
     let key: String
     /// The key is a subagent's (#1177): the lookup opens the session that delegated to it.
     var opensParent = false
+    /// The configured webui server a moved webui link named (#1217): when no Profile here has the
+    /// key, the Sessions list opens it there instead (`MovedWebuiRoute`). Never part of a link.
+    var movedFrom: URL?
 }
 
 /// Shared by the Lock Screen and Dynamic Island, and exercised by main-app tests.

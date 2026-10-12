@@ -150,12 +150,18 @@ struct ContentView: View {
         // The profile variant carries the chosen profile name, so the composer creates the
         // session pinned to it (#339). A malformed link with no profile falls back to a
         // plain new chat (server's active profile) rather than failing; one naming a server
-        // that didn't parse above opens nothing.
+        // that didn't parse above opens nothing. A webui server that moved sends its Profile
+        // where Review mapped it, unless another place could take it too (#1217).
         if HermesDeepLink.isWebuiNewChatInProfileURL(url) {
-            if reachWebuiServer() {
-                pendingLinks.newChatRequest = NewChatRequest(
-                    profileName: HermesDeepLink.profileName(fromNewChatInProfile: url)
-                )
+            let profile = HermesDeepLink.profileName(fromNewChatInProfile: url)
+            switch MovedWebuiRoute.newChat(inProfile: profile, active: authManager.state.server,
+                                           servers: authManager.servers) {
+            case .webui(let route):
+                if enter(route) { pendingLinks.newChatRequest = NewChatRequest(profileName: profile) }
+            case .hermes(let destination):
+                switchServer(pendingLinks.open(destination, state: authManager.state, servers: authManager.servers))
+            case .refuse:
+                break
             }
             return
         }
@@ -180,8 +186,17 @@ struct ContentView: View {
             return
         }
 
+        // A bare session link names no server: once a webui server moved, it opens only where it
+        // can't be another server's (#1217).
         if let sessionID = HermesDeepLink.sessionID(from: url) {
-            if reachWebuiServer() { pendingLinks.deepLinkedSessionID = sessionID }
+            switch MovedWebuiRoute.bareSession(sessionID, active: authManager.state.server, servers: authManager.servers) {
+            case .webui(let route):
+                if enter(route) { pendingLinks.deepLinkedSessionID = sessionID }
+            case .hermes(let destination):
+                switchServer(pendingLinks.open(destination, state: authManager.state, servers: authManager.servers))
+            case .refuse:
+                break
+            }
             return
         }
 
@@ -215,7 +230,12 @@ struct ContentView: View {
     /// user is never asked to add one (#1181). On a webui server, or with nothing configured,
     /// there is nothing to do.
     private func reachWebuiServer() -> Bool {
-        switch WebuiEntryRoute.resolve(active: authManager.state.server, servers: authManager.servers) {
+        enter(WebuiEntryRoute.resolve(active: authManager.state.server, servers: authManager.servers))
+    }
+
+    /// Takes `route` and returns whether the webui entry point can go ahead.
+    private func enter(_ route: WebuiEntryRoute) -> Bool {
+        switch route {
         case .stay:
             return true
         case .switchServer(let account):
@@ -354,10 +374,133 @@ enum WebuiEntryRoute: Equatable {
     /// A Hermes server is active and no webui server is configured.
     case unavailable
 
-    static func resolve(active: URL?, servers: [ServerAccount]) -> WebuiEntryRoute {
-        guard let active, servers.first(where: { $0.id == active.absoluteString })?.kind == .hermes else { return .stay }
-        guard let webui = servers.first(where: { $0.kind == .webui }) else { return .unavailable }
+    /// `moved` are webui servers an entry point mustn't take (`MovedWebuiRoute`): one that is
+    /// active is left like a Hermes server, for the first webui server not among them.
+    static func resolve(active: URL?, servers: [ServerAccount], moved: Set<String> = []) -> WebuiEntryRoute {
+        guard let active, servers.first(where: { $0.id == active.absoluteString })?.kind == .hermes
+                || moved.contains(active.absoluteString) else { return .stay }
+        guard let webui = servers.first(where: { $0.kind == .webui && !moved.contains($0.id) }) else { return .unavailable }
         return .switchServer(webui)
+    }
+}
+
+/// Where a webui server's old entry points go once it moved to Hermes (#707, #1217). The Hermes
+/// server it moved to holds its move record (`ServerAccount.movedWebuiServers`), which outlives
+/// the webui entry and goes with the destination; without records every route is today's.
+///
+/// - A webui session link naming a moved server opens on its destination, looked up in every
+///   Profile, so it finds where the session actually is rather than where Review mapped its
+///   Profile. Only when every Profile was read and none has it does the Sessions list open it on
+///   the webui server, while that is configured (`movedFrom`). A link about a run on the webui
+///   server (`WebuiPushDestination.opensOnSource`) opens there while it is configured.
+/// - A bare `session?id=` link or webui Profile Shortcut names no server. Once a move could own
+///   it, it opens only where every candidate agrees, counting each webui server that didn't move,
+///   and otherwise opens nothing: the active server never breaks the tie.
+enum MovedWebuiRoute {
+    /// What a bare link or webui Profile Shortcut does.
+    enum Outcome<Destination: Equatable>: Equatable {
+        /// No move could own it: the webui route, among webui servers that didn't move.
+        case webui(WebuiEntryRoute)
+        case hermes(Destination)
+        /// More than one place could take it, or the one place can't.
+        case refuse
+    }
+
+    private struct Move {
+        /// The Hermes server holding the record, and the webui server it names, as registry ids.
+        let destination: String
+        let source: String
+        let record: MovedWebuiServer
+    }
+
+    /// The Hermes server holding `source`'s move record; nil when it never moved or its
+    /// destination was removed.
+    static func destination(of source: URL, in servers: [ServerAccount]) -> ServerAccount? {
+        servers.first { $0.kind == .hermes && $0.movedWebuiServers.contains { $0.sourceServerID == source.absoluteString } }
+    }
+
+    /// `link` as a session link on the Hermes server its webui server moved to, falling back to
+    /// that webui server while it is configured; nil when it didn't move, or when `link` is about
+    /// a run on it and it is still configured.
+    static func session(_ link: WebuiPushDestination, servers: [ServerAccount]) -> HermesSessionDestination? {
+        let isConfigured = servers.contains { $0.id == link.server.absoluteString && $0.kind == .webui }
+        guard !(link.opensOnSource && isConfigured),
+              let destination = destination(of: link.server, in: servers),
+              let server = URL(string: destination.id) else { return nil }
+        return HermesSessionDestination(server: server, profile: nil, key: link.sessionID,
+                                        movedFrom: isConfigured ? link.server : nil)
+    }
+
+    /// The link the Sessions list opens when no Profile has `link`'s key: the session on the webui
+    /// server it moved from, which opens there and never comes back here. Nil for any other link.
+    static func fallback(for link: HermesSessionDestination) -> URL? {
+        link.movedFrom.flatMap { WebuiPushDestination(server: $0, sessionID: link.key, opensOnSource: true).url }
+    }
+
+    /// A bare `session?id=` link, which any moved server could own. With any move recorded it
+    /// opens only when every move went to one Hermes server, at most one of them is still
+    /// configured to fall back to, and no webui server stayed unmoved.
+    static func bareSession(_ key: String, active: URL?, servers: [ServerAccount]) -> Outcome<HermesSessionDestination> {
+        let moves = moves(in: servers)
+        guard !moves.isEmpty else { return .webui(WebuiEntryRoute.resolve(active: active, servers: servers)) }
+        let destinations = Set(moves.map(\.destination))
+        let retained = Set(moves.map(\.source).filter { id in servers.contains { $0.id == id && $0.kind == .webui } })
+        guard unmovedWebui(in: servers, moves: moves).isEmpty, destinations.count == 1, retained.count <= 1,
+              let server = destinations.first.flatMap(URL.init(string:)) else { return .refuse }
+        return .hermes(HermesSessionDestination(server: server, profile: nil, key: key,
+                                                movedFrom: retained.first.flatMap(URL.init(string:))))
+    }
+
+    /// A webui Profile's New Chat in Profile, which names no server. Each move whose Review named
+    /// `profile` sends it where it was mapped: a Hermes Profile, or the webui server it was kept
+    /// on, which can't open it once removed. With any such move it opens only where they and every
+    /// unmoved webui server agree. With none, the webui route among unmoved webui servers, so a
+    /// moved server whose Review didn't name the Profile never takes it.
+    static func newChat(inProfile profile: String?, active: URL?,
+                        servers: [ServerAccount]) -> Outcome<HermesNewChatDestination> {
+        enum Place: Hashable {
+            case hermes(server: String, profile: String)
+            case webui(String)
+        }
+        let moves = moves(in: servers)
+        var places = Set<Place>()
+        for move in moves {
+            switch profile.flatMap(move.record.destination(ofProfile:)) {
+            case .hermes(let mapped)?: places.insert(.hermes(server: move.destination, profile: mapped))
+            case .keepOnWebui?: places.insert(.webui(move.source))
+            case nil: break
+            }
+        }
+        guard !places.isEmpty else {
+            return .webui(WebuiEntryRoute.resolve(active: active, servers: servers, moved: Set(moves.map(\.source))))
+        }
+        places.formUnion(unmovedWebui(in: servers, moves: moves).map { .webui($0.id) })
+        guard places.count == 1, let place = places.first else { return .refuse }
+        switch place {
+        case .hermes(let server, let mapped):
+            guard let url = URL(string: server) else { return .refuse }
+            return .hermes(HermesNewChatDestination(server: url, profile: mapped))
+        case .webui(let id):
+            guard let account = servers.first(where: { $0.id == id && $0.kind == .webui }) else { return .refuse }
+            return .webui(active?.absoluteString == id ? .stay : .switchServer(account))
+        }
+    }
+
+    /// Whether a move's Review named webui Profile `profile`, so a Shortcut saved with it still
+    /// resolves after its webui server is removed, and `newChat` decides where it goes.
+    static func names(profile: String, in servers: [ServerAccount]) -> Bool {
+        moves(in: servers).contains { $0.record.destination(ofProfile: profile) != nil }
+    }
+
+    private static func moves(in servers: [ServerAccount]) -> [Move] {
+        servers.filter { $0.kind == .hermes }.flatMap { server in
+            server.movedWebuiServers.map { Move(destination: server.id, source: $0.sourceServerID, record: $0) }
+        }
+    }
+
+    private static func unmovedWebui(in servers: [ServerAccount], moves: [Move]) -> [ServerAccount] {
+        let moved = Set(moves.map(\.source))
+        return servers.filter { $0.kind == .webui && !moved.contains($0.id) }
     }
 }
 
@@ -719,8 +862,14 @@ struct PendingLinks {
         return nil
     }
 
+    /// A webui conversation link, or, when its server moved to Hermes, that server's session link
+    /// (`MovedWebuiRoute`).
     @MainActor private mutating func route(_ destination: WebuiPushDestination, state: AuthManager.State,
                                            servers: [ServerAccount]) -> ServerAccount? {
+        if let moved = MovedWebuiRoute.session(destination, servers: servers) {
+            webuiPush = nil
+            return route(moved, state: state, servers: servers)
+        }
         switch destination.route(state: state, servers: servers) {
         case .ignore:
             webuiPush = nil
@@ -753,12 +902,17 @@ struct PendingLinks {
     }
 
     /// A Hermes session link: dropped, handed to a webui server's push route, or held while its
-    /// server signs in or activates.
+    /// server signs in or activates. A link naming a webui server removed after it moved to Hermes
+    /// takes the push route, which sends it to its destination (#1217).
     @MainActor private mutating func route(_ destination: HermesSessionDestination, state: AuthManager.State,
                                            servers: [ServerAccount]) -> ServerAccount? {
         switch HermesSessionLinkRouter.resolve(destination, state: state, servers: servers) {
         case .ignore:
             hermesSession = nil
+            if MovedWebuiRoute.destination(of: destination.server, in: servers) != nil {
+                return route(WebuiPushDestination(server: destination.server, sessionID: destination.key),
+                             state: state, servers: servers)
+            }
         case .webui(let push):
             hermesSession = nil
             return open(push, state: state, servers: servers)

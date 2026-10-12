@@ -61,7 +61,7 @@ alerts instead, which route the same way: their `server_hash` must match a
 configured server (`ResponseCompletionNotificationRequest.destination`).
 
 A tap only navigates (`PushNotificationRouter.link`). A webui push opens its
-webui session. Any other push on a Hermes server opens the session its
+webui session (see Moved webui servers below for one that moved to Hermes). Any other push on a Hermes server opens the session its
 `session_id` names, the stored key, through the Hermes session link (#1176,
 #1177): the Sessions list looks it up under the Profile an opened preview wrote
 back, or in every Profile with previews off, refusing a key two Profiles have.
@@ -90,3 +90,30 @@ fails instead). Turning one off in Settings also leaves the
 host's plugin enabled while another entry is paired or still registering its
 device; only the last one disables it (`HermexPushProvisioner.disable`). Their preferences are that one
 registration too, so the last choice saved under either entry applies to both.
+
+## Moved webui servers
+
+After Move to Hermes (#707), the Hermes destination holds the webui server's
+move record, which outlives the webui entry and goes with the destination
+(`MovedWebuiRoute`, #1217).
+
+- A webui push, a webui chat's local run alert and a webui Live Activity's
+  tap are about a run on the webui server, so they open there while it is
+  configured, with the run's live stream and approval card. Once it is
+  removed they open on the destination.
+- Any other webui link opens on the destination first, looked up in every
+  Profile, so it finds where the session actually is rather than where Review
+  mapped its Profile. Only when every Profile was read and none has it does it
+  open on the webui server, if that is still configured. A read that fails is
+  never absence.
+- Pairing stays installation-scoped. A same-host move copies the webui
+  server's pairing to the destination (`MovePushPairing.carry`), so after the
+  webui entry is removed its webui pushes still reach the one paired Hermes
+  server holding a record, which opens them; two such servers open nothing. A
+  cross-host move copies nothing, and removing the webui entry ends its old
+  host's pushes as removing any server does.
+- A local alert for a removed webui server matches the record's server hash.
+- Bare `session?id=` links and webui Profile Shortcuts name no server. Once a
+  move could own one, it opens only where every candidate agrees, counting
+  unmoved webui servers, and otherwise opens nothing: the active server never
+  breaks the tie.

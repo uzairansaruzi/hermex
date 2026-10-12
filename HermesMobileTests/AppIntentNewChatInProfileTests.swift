@@ -222,6 +222,94 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
         XCTAssertEqual(WebuiEntryRoute.resolve(active: nil, servers: [hermes]), .stay)
     }
 
+    // MARK: - After Move to Hermes (#1217)
+
+    /// A Hermes server holding move records for webui servers, each with Review's mappings.
+    private func moved(_ id: String, from moves: [(source: String, profiles: [MovedWebuiProfile])]) -> ServerAccount {
+        var holder = account(id, .hermes)
+        holder.movedWebuiServers = moves.map { MovedWebuiServer(sourceServerID: $0.source, profiles: $0.profiles) }
+        return holder
+    }
+
+    private func newChat(_ profile: String, active: String?, _ servers: [ServerAccount])
+        -> MovedWebuiRoute.Outcome<HermesNewChatDestination> {
+        MovedWebuiRoute.newChat(inProfile: profile, active: active.flatMap(URL.init(string:)), servers: servers)
+    }
+
+    /// Where a Hermes outcome opens, without the request's fresh id.
+    private func opens(_ outcome: MovedWebuiRoute.Outcome<HermesNewChatDestination>) -> String? {
+        guard case .hermes(let destination) = outcome else { return nil }
+        return "\(destination.server.absoluteString)|\(destination.profile ?? "")"
+    }
+
+    /// A moved webui server's Profile opens where Review mapped it: a Hermes Profile, or the
+    /// webui server it was kept on, which can't open it once removed.
+    func testAWebuiProfileShortcutFollowsItsMove() {
+        let webui = account("https://webui.test", .webui)
+        let toResearch = moved("https://hermes.test", from: [("https://webui.test", [
+            MovedWebuiProfile(source: "dev", destination: .hermes(profile: "research")),
+            MovedWebuiProfile(source: "ops", destination: .keepOnWebui)
+        ])])
+
+        for active in ["https://webui.test", "https://hermes.test"] {
+            XCTAssertEqual(opens(newChat("dev", active: active, [toResearch, webui])), "https://hermes.test|research")
+        }
+        XCTAssertEqual(newChat("ops", active: "https://webui.test", [toResearch, webui]), .webui(.stay))
+        XCTAssertEqual(newChat("ops", active: "https://hermes.test", [toResearch, webui]), .webui(.switchServer(webui)))
+        XCTAssertEqual(newChat("ops", active: "https://hermes.test", [toResearch]), .refuse,
+                       "Kept on a webui server since removed")
+        XCTAssertEqual(opens(newChat("dev", active: "https://hermes.test", [toResearch])), "https://hermes.test|research")
+        XCTAssertEqual(newChat("qa", active: "https://webui.test", [toResearch, webui]), .webui(.unavailable),
+                       "A Profile its Review didn't name never goes to the moved server")
+    }
+
+    /// Once a move names the Profile, every place that could take it counts, an unmoved webui
+    /// server included, and the active server never breaks the tie. With no move naming it,
+    /// today's route among unmoved webui servers.
+    func testAWebuiProfileShortcutRefusesWhenAnotherPlaceCouldTakeIt() {
+        let webui = account("https://webui.test", .webui), unmoved = account("https://other.test", .webui)
+        let toResearch = moved("https://hermes.test", from: [("https://webui.test", [
+            MovedWebuiProfile(source: "dev", destination: .hermes(profile: "research"))
+        ])])
+        for active in ["https://other.test", "https://hermes.test", "https://webui.test"] {
+            XCTAssertEqual(newChat("dev", active: active, [toResearch, webui, unmoved]), .refuse, active)
+        }
+        XCTAssertEqual(newChat("qa", active: "https://other.test", [toResearch, webui, unmoved]), .webui(.stay))
+        XCTAssertEqual(newChat("qa", active: "https://webui.test", [toResearch, webui, unmoved]), .webui(.switchServer(unmoved)))
+
+        let toStudio = moved("https://studio.test", from: [("https://b.test", [
+            MovedWebuiProfile(source: "dev", destination: .hermes(profile: "research"))
+        ])])
+        XCTAssertEqual(newChat("dev", active: "https://hermes.test", [toResearch, toStudio]), .refuse)
+        let kept = moved("https://studio.test", from: [("https://b.test", [MovedWebuiProfile(source: "dev", destination: .keepOnWebui)])])
+        XCTAssertEqual(newChat("dev", active: "https://hermes.test", [toResearch, kept]), .refuse,
+                       "A removed webui server that kept the Profile still claims it")
+        let sameMapping = moved("https://hermes.test", from: [
+            ("https://webui.test", [MovedWebuiProfile(source: "dev", destination: .hermes(profile: "research"))]),
+            ("https://b.test", [MovedWebuiProfile(source: "dev", destination: .hermes(profile: "research"))])
+        ])
+        XCTAssertEqual(opens(newChat("dev", active: "https://hermes.test", [sameMapping])), "https://hermes.test|research",
+                       "Two moves that agree are one place")
+
+        let none = [account("https://hermes.test", .hermes), webui, unmoved]
+        XCTAssertEqual(newChat("dev", active: "https://hermes.test", none), .webui(.switchServer(webui)), "No move: as before")
+    }
+
+    /// A saved bare-id Shortcut keeps resolving while a move named its Profile, with its webui
+    /// server gone, so running it decides where it goes.
+    @MainActor func testASavedBareShortcutResolvesWhileAMoveNamesItsProfile() async {
+        let (names, suite, defaults) = makeIsolatedNames()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let destination = moved("https://hermes.test", from: [("https://webui.test", [
+            MovedWebuiProfile(source: "dev", destination: .hermes(profile: "research"))
+        ])])
+
+        let resolved = await ProfileEntityProvider.entities(for: ["dev", "qa"], servers: [destination], names: names,
+                                                            webui: { [] })
+
+        XCTAssertEqual(resolved.map(\.id), ["dev"])
+    }
+
     // MARK: - Deep link shape
 
     func testNewChatInProfileURLUsesProfileHostAndCarriesName() throws {

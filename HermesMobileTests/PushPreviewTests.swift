@@ -199,7 +199,8 @@ import XCTest
                 }
             }
         }
-        XCTAssertEqual(tap(source: "webui", kind: .webui, profile: nil), HermesDeepLink.webuiSessionURL(server: server, sessionID: "s1"))
+        XCTAssertEqual(tap(source: "webui", kind: .webui, profile: nil),
+                       WebuiPushDestination(server: server, sessionID: "s1", opensOnSource: true).url)
         let connection = UUID()
         XCTAssertEqual(tap(source: "bot", kind: .webui, profile: "inbox-triage", botConnection: connection),
                        HermesDeepLink.botURL(for: BotDestination(server: server, connectionID: connection, profile: "inbox-triage")))
@@ -276,7 +277,8 @@ import XCTest
         let servers = [account(server, .webui)]
         let destination = try XCTUnwrap(PushNotificationRouter.webuiDestination(
             userInfo: info, pairings: [server: pairing], servers: servers))
-        XCTAssertEqual(destination, WebuiPushDestination(server: server, sessionID: "s1"))
+        XCTAssertEqual(destination, WebuiPushDestination(server: server, sessionID: "s1", opensOnSource: true),
+                       "A push is about a run on its webui server (#1217)")
         XCTAssertEqual(WebuiPushDestination(url: try XCTUnwrap(destination.url)), destination)
         XCTAssertNil(PushNotificationRouter.webuiDestination(userInfo: info, pairings: [:], servers: servers))
         for source in ["bot", "other", "future"] {
@@ -342,7 +344,7 @@ import XCTest
                                         activeServer: active, botConnectionID: { _ in nil })
         }
         let mixed = [account(server, .hermes), account(webui, .webui)]
-        let session = HermesDeepLink.webuiSessionURL(server: webui, sessionID: "s1")
+        let session = WebuiPushDestination(server: webui, sessionID: "s1", opensOnSource: true).url
 
         XCTAssertEqual(route(active: server, servers: mixed), session)
         XCTAssertEqual(route(active: webui, servers: mixed), session)
@@ -372,6 +374,79 @@ import XCTest
         relay["source"] = "webui"
         relay["server_hash"] = info["server_hash"]
         XCTAssertNil(ResponseCompletionNotificationRequest.destination(userInfo: relay, servers: [server]))
+    }
+
+    // MARK: Moved webui servers (#1217)
+
+    private func moved(to destination: URL, from sources: [URL]) -> ServerAccount {
+        var holder = account(destination, .hermes)
+        holder.movedWebuiServers = sources.map {
+            MovedWebuiServer(sourceServerID: $0.absoluteString,
+                             profiles: [MovedWebuiProfile(source: "default", destination: .hermes(profile: "work"))])
+        }
+        return holder
+    }
+
+    /// A webui push is about a run on its webui server, so it opens there while that server is
+    /// configured and paired, even after it moved to Hermes.
+    func testAMovedWebuiServersPushOpensOnItWhileItIsConfigured() {
+        let webui = URL(string: "https://webui.example")!
+        let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
+        var info = banner(sealed: nil).userInfo
+        info["source"] = "webui"
+        let link = PushNotificationRouter.link(userInfo: info, pairings: [server: pairing, webui: pairing],
+                                               servers: [moved(to: server, from: [webui]), account(webui, .webui)],
+                                               activeServer: server, botConnectionID: { _ in nil })
+        XCTAssertEqual(link, WebuiPushDestination(server: webui, sessionID: "s1", opensOnSource: true).url)
+    }
+
+    /// After a same-host move the Hermes server holds the webui server's install: once that webui
+    /// server is removed, its pushes open on the Hermes server, looked up in every Profile. Only
+    /// the pairing proves it: two such Hermes servers, one without a record, or another install
+    /// open nothing.
+    func testAWebuiPushAfterItsServerWasRemovedOpensOnTheOneHermesServerHoldingItsInstall() throws {
+        let webui = URL(string: "https://webui.example")!
+        let studio = URL(string: "https://studio.example")!
+        let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
+        let otherInstall = PushPairing(relayURL: server, installKey: String(repeating: "f", count: 64),
+                                       previewKey: keys.previewKey)
+        var info = banner(sealed: nil).userInfo
+        info["source"] = "webui"
+        info[PushPayload.profileKey] = "default"
+        func route(_ pairings: [URL: PushPairing], _ servers: [ServerAccount]) -> URL? {
+            PushNotificationRouter.link(userInfo: info, pairings: pairings, servers: servers, activeServer: server,
+                                        botConnectionID: { _ in nil })
+        }
+
+        let link = try XCTUnwrap(route([server: pairing], [moved(to: server, from: [webui])]))
+        XCTAssertEqual(HermesSessionDestination(url: link), HermesSessionDestination(server: server, profile: nil, key: "s1"),
+                       "The preview's webui Profile is no Hermes Profile")
+        XCTAssertNil(route([server: pairing, studio: pairing],
+                           [moved(to: server, from: [webui]), moved(to: studio, from: [URL(string: "https://b.example")!])]),
+                     "Two Hermes servers on the install: the active one breaks no tie")
+        XCTAssertNil(route([server: pairing], [account(server, .hermes)]), "No move: as before")
+        XCTAssertNil(route([server: otherInstall], [moved(to: server, from: [webui])]),
+                     "A cross-host move's old install is paired with nothing")
+    }
+
+    /// A webui chat's local alert opens on its server while that is configured, and through the
+    /// record once it moved and was removed; a removed server that never moved opens nothing.
+    func testAMovedWebuiServersLocalAlertKeepsAWayIn() throws {
+        let webui = URL(string: "https://webui.example")!
+        let alert = ResponseCompletionNotificationRequest(sessionID: "s1", server: webui, title: "Chat", outcome: .completed)
+        let onWebui = WebuiPushDestination(server: webui, sessionID: "s1", opensOnSource: true).url
+
+        XCTAssertEqual(PushNotificationRouter.localAlertLink(
+            userInfo: alert.userInfo, servers: [moved(to: server, from: [webui]), account(webui, .webui)]), onWebui)
+        XCTAssertEqual(PushNotificationRouter.localAlertLink(
+            userInfo: alert.userInfo, servers: [moved(to: server, from: [webui])]), onWebui,
+                       "The link's route finds the destination")
+        XCTAssertNil(PushNotificationRouter.localAlertLink(userInfo: alert.userInfo, servers: [account(server, .hermes)]))
+
+        let hermesAlert = ResponseCompletionNotificationRequest(sessionID: "tip", server: server, title: "Chat",
+                                                                outcome: .completed, hermesProfile: "research")
+        XCTAssertEqual(PushNotificationRouter.localAlertLink(userInfo: hermesAlert.userInfo, servers: [account(server, .hermes)]),
+                       HermesDeepLink.sessionURL(for: HermesSessionDestination(server: server, profile: "research", key: "tip")))
     }
 
     /// A Hermes chat's alert names its Profile and stored key, and its tap opens the session link
