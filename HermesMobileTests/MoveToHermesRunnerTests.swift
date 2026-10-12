@@ -158,6 +158,31 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(host.imports.map(\.profile), ["default", "default"], "The replay goes to the frozen Profile")
     }
 
+    /// The import's reply arrived but its outcome line never reached disk. The next attempt
+    /// can't tell that send from any other, so the chat is present or sent, never copied.
+    func testALostCopyOutcomeKeepsTheEarlierSendUnconfirmed() async throws {
+        exports("a", "b")
+        failingWrite = { if case .event(.copied) = $0 { true } else { false } }
+        await makeRunner().start(review([entry("a", pinned: true), entry("b")]))
+        XCTAssertEqual(Set(host.imports.flatMap(\.ids)), ["a", "b"])
+        failingWrite = nil
+        // b's retry can't even export, so nothing says whether the first send landed.
+        MoveWebuiFixture.exports["b"] = nil
+        host.rows["default|b"] = nil
+
+        let resumed = makeRunner()
+        await resumed.resume()
+        XCTAssertEqual(resumed.state, .paused(.workLeft))
+        await resumed.finishEarly()
+
+        guard case .finished(let report) = resumed.state else { return XCTFail("Expected finished, got \(resumed.state)") }
+        XCTAssertEqual(report.presentUnconfirmed, ["a"])
+        XCTAssertEqual(report.sentUnconfirmed, ["b"])
+        XCTAssertEqual(report.notCopied, [])
+        XCTAssertNotEqual(host.rows["default|a"]?["pinned"], .bool(true))
+        XCTAssertEqual(auth.moveRecord(forSource: webui.absoluteString)?.record.report?.remaining, 0)
+    }
+
     func testAnImportIntentThatIsNotSavedSendsNothing() async throws {
         exports("a")
         failingWrite = { if case .event(.importing) = $0 { true } else { false } }
@@ -167,7 +192,8 @@ final class MoveToHermesRunnerTests: XCTestCase {
 
         XCTAssertEqual(runner.state, .paused(.saveFailed))
         XCTAssertTrue(host.imports.isEmpty)
-        XCTAssertEqual(journalEvents().last, .copied(["a": .notSent]))
+        guard case .copied(let outcomes, _)? = journalEvents().last else { return XCTFail("The copy's outcome is logged") }
+        XCTAssertEqual(outcomes, ["a": .notSent])
     }
 
     // MARK: Metadata
@@ -237,7 +263,7 @@ final class MoveToHermesRunnerTests: XCTestCase {
         await runner.start(review([entry("a", title: "Trip")]))
         XCTAssertEqual(runner.state, .paused(.workLeft))
         var lines = try logText().split(separator: "\n").map(String.init)
-        lines.insert(#"{"seq":2,"event":{"importing":{"profile":"default","ids":["not-in-plan"]}}}"#, at: 1)
+        lines.insert(#"{"seq":2,"event":{"importing":{"profile":"default","ids":["not-in-plan"],"attempt":"\#(UUID().uuidString)"}}}"#, at: 1)
         try (lines.joined(separator: "\n") + "\n").write(to: logURL, atomically: true, encoding: .utf8)
         host.failingReads = []
         let calls = host.calls
@@ -257,6 +283,21 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertTrue(report.recovered)
         XCTAssertEqual(report.alreadyThere, ["a"])
         XCTAssertEqual(report.changesApplied, 0)
+    }
+
+    /// A plan whose log is gone has lost the record of what was sent.
+    func testAMissingLogIsDamaged() async throws {
+        exports("a")
+        host.failingReads = ["a"]
+        await makeRunner().start(review([entry("a")]))
+        try FileManager.default.removeItem(at: logURL)
+        let calls = host.calls
+
+        let runner = makeRunner()
+        await runner.resume()
+
+        XCTAssertEqual(runner.state, .paused(.damaged))
+        XCTAssertEqual(host.calls, calls)
     }
 
     func testAJournalFromANewerBuildIsKeptAndNeverActedOn() async throws {
@@ -349,6 +390,43 @@ final class MoveToHermesRunnerTests: XCTestCase {
         let summary = try XCTUnwrap(auth.moveRecord(forSource: webui.absoluteString)?.record.report)
         XCTAssertEqual(summary.remaining, 1, "Only chats confirmed missing count as remaining")
         XCTAssertEqual(summary.unchecked, 2)
+    }
+
+    func testACollidingTitleIsReportedAsTheSuffixedTitleItTried() async throws {
+        exports("abcdef123456")
+        host.titlesInUse = ["Trip", "Trip (123456)"]
+
+        let runner = makeRunner()
+        await runner.start(review([entry("abcdef123456", title: "Trip")]))
+
+        guard case .finished(let report) = runner.state else { return XCTFail("Expected finished, got \(runner.state)") }
+        XCTAssertEqual(report.changesRejected.map(\.change), [.title(from: nil, to: "Trip (123456)")])
+    }
+
+    /// The destination is removed while a chat's row is read for its draft: the draft goes back
+    /// under the webui server instead of staying under a server that is gone.
+    func testADraftReadWhileTheDestinationIsRemovedStaysOnTheWebui() async throws {
+        root = MoveToHermesJournal.defaultRoot
+        host.rows["default|had"] = ["id": .string("had"), "title": .string("Mine")]
+        await drafts.seed([sourceDraft("had"): ChatDraft(text: "unsent")])
+        var reads = 0
+        host.onRead = { [unowned self] key in
+            guard key == "had" else { return }
+            reads += 1
+            // The second read is the draft step's; the first is planning's.
+            if reads == 2, let destination = self.auth.servers.first(where: { $0.id == self.hermes.absoluteString }) {
+                await self.auth.removeServer(destination)
+            }
+        }
+        let runner = makeRunner()
+
+        await runner.start(review([entry("had", location: .present(profile: "default"))]))
+
+        XCTAssertEqual(runner.state, .paused(.destinationRemoved))
+        let saved = await drafts.values
+        XCTAssertEqual(saved[sourceDraft("had")]?.text, "unsent")
+        XCTAssertNil(saved[hermesDraft("had")])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
     }
 
     func testAConflictingDraftIsKeptOnBothSides() async throws {
@@ -497,6 +575,9 @@ final class MoveToHermesRunnerTests: XCTestCase {
     var onDisconnect: ((Error) -> Void)?
     var rows: [String: [String: BotJSON]] = [:]
     var failingReads: Set<String> = []
+    var titlesInUse: Set<String> = []
+    /// Runs inside each row read, before it answers.
+    var onRead: (@MainActor (String) async -> Void)?
     /// The next import lands but its reply is lost.
     var loseNextImportReply = false
     private(set) var imports: [(profile: String, ids: [String])] = []
@@ -509,6 +590,7 @@ final class MoveToHermesRunnerTests: XCTestCase {
 
     func sessionRow(key: String, profile: String) async throws -> BotJSON? {
         calls += 1
+        await onRead?(key)
         if failingReads.contains(key) { throw BotFailure.transport }
         return rows["\(profile)|\(key)"].map(BotJSON.object)
     }
@@ -534,6 +616,7 @@ final class MoveToHermesRunnerTests: XCTestCase {
         switch change {
         case .title(let title):
             writes.append((key, "title"))
+            if titlesInUse.contains(title) { throw HermesSessionRefusal(message: "Title '\(title)' is already in use") }
             rows["\(profile)|\(key)"]?["title"] = .string(title)
             return title
         case .pinned(let pinned):

@@ -62,10 +62,10 @@ enum MoveToHermesDraftResult: String, Codable, Sendable {
 /// disk before what it names is sent or saved anywhere else; the rest record what happened.
 enum MoveToHermesEvent: Codable, Equatable, Sendable {
     case pairing(MoveToHermesPairing)
-    /// One import about to go to `profile` with every chat id in it.
-    case importing(profile: String, ids: [String])
+    /// One import about to go to `profile` with every chat id in it, within copy `attempt`.
+    case importing(profile: String, ids: [String], attempt: UUID)
     /// One copy attempt's outcome for each chat it was given.
-    case copied([String: WebuiSessionTransfer.Outcome])
+    case copied([String: WebuiSessionTransfer.Outcome], attempt: UUID)
     /// Reconcile plans read from Hermes; nothing in them is sent before this line is on disk.
     case planned([String: MoveToHermesReconcile.Planned])
     /// One metadata write about to go out. Its result is the next `changed` for the same field.
@@ -89,8 +89,8 @@ enum MoveToHermesEvent: Codable, Equatable, Sendable {
 ///   write never finished, so if it was an intent, nothing it names was sent. If it was an
 ///   outcome, the intent before it is complete and its work counts as in flight: an import is
 ///   sent again (the host skips ids it has), a metadata write is only checked, never resent.
-/// - A complete line that doesn't decode, breaks the numbering, or names a chat or Profile the
-///   plan doesn't hold makes the journal `.damaged`. Nothing is done from a damaged journal;
+/// - A missing log, or a complete line that doesn't decode, breaks the numbering, or names a chat
+///   or Profile the plan doesn't hold, makes the journal `.damaged`. Nothing is done from a damaged journal;
 ///   the user starts over from a fresh scan, as when the journal is lost.
 /// - A file that can't be read now (locked before first unlock, an I/O error, a newer format)
 ///   is `.unreadable`: it is kept and read again later, never treated as damaged or deleted.
@@ -148,12 +148,13 @@ enum MoveToHermesEvent: Codable, Equatable, Sendable {
             try willWrite(.plan)
             try files.createDirectory(at: folder, withIntermediateDirectories: true,
                                       attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
-            let plan = folder.appendingPathComponent("plan.json")
-            try JSONEncoder().encode(review).write(to: plan, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
-            try sync(plan)
+            // The log first: a `plan.json` without its log is a journal that lost its history.
             guard files.createFile(atPath: logURL(in: folder).path, contents: nil,
                                    attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
             else { throw CocoaError(.fileWriteUnknown) }
+            let plan = folder.appendingPathComponent("plan.json")
+            try JSONEncoder().encode(review).write(to: plan, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            try sync(plan)
         } catch {
             try? files.removeItem(at: folder)
             throw error
@@ -171,7 +172,9 @@ enum MoveToHermesEvent: Codable, Equatable, Sendable {
         guard version.version <= MoveToHermesReview.currentVersion else { return .unreadable }
         guard let review = try? JSONDecoder().decode(MoveToHermesReview.self, from: planData) else { return .damaged }
         let log = logURL(in: folder)
-        guard let data = files.fileExists(atPath: log.path) ? try? Data(contentsOf: log) : Data() else { return .unreadable }
+        // Without its log, nothing says what was sent; replaying from an empty one could resend.
+        guard files.fileExists(atPath: log.path) else { return .damaged }
+        guard let data = try? Data(contentsOf: log) else { return .unreadable }
         // Everything after the last newline is a line whose write never finished.
         let complete = data.lastIndex(of: 0x0A).map { data.prefix(through: $0) } ?? Data()
         if complete.count < data.count {
@@ -267,10 +270,10 @@ enum MoveToHermesEvent: Codable, Equatable, Sendable {
             guard decoded.seq == events.count + 1 else { throw Damaged() }
             let named: [String]
             switch decoded.event {
-            case .importing(let profile, let chats):
+            case .importing(let profile, let chats, _):
                 guard destinations.contains(profile) else { throw Damaged() }
                 named = chats
-            case .copied(let outcomes): named = Array(outcomes.keys)
+            case .copied(let outcomes, _): named = Array(outcomes.keys)
             case .planned(let plans): named = Array(plans.keys)
             case .changing(let operation), .changed(let operation, _):
                 guard review.hermesProfiles.contains(operation.profile) else { throw Damaged() }

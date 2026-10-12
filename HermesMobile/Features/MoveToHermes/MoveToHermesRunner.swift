@@ -87,12 +87,17 @@ struct MoveToHermesProgress {
     private(set) var sentTo: [String: String] = [:]
     /// Sent with no outcome logged yet: in flight, or the reply or its line was lost.
     private(set) var awaiting: Set<String> = []
-    /// A send whose result was never known: `.uncertain`, or resent while still awaiting.
+    /// A send whose result was never known: `.uncertain`, or its outcome line lost before a
+    /// later attempt settled the chat.
     private(set) var unconfirmedSend: Set<String> = []
+    /// The copy attempt each awaiting chat was last sent in.
+    private var sentIn: [String: UUID] = [:]
     private(set) var plans: [String: MoveToHermesReconcile.Planned] = [:]
     /// Writes logged as sent with no outcome: settled by reading, never resent.
     private(set) var inFlight: [ChangeKey: MoveToHermesReconcile.Operation] = [:]
     private(set) var changes: [ChangeKey: MoveToHermesReconcile.Outcome] = [:]
+    /// The write each outcome is for, which is the suffixed title after a collision retry.
+    private(set) var changed: [ChangeKey: MoveToHermesReconcile.Operation] = [:]
     private(set) var drafts: [String: MoveToHermesDraftResult] = [:]
     private(set) var finished: MoveToHermesReport?
 
@@ -105,15 +110,18 @@ struct MoveToHermesProgress {
         switch event {
         case .pairing(let result):
             pairing = result
-        case .importing(let profile, let ids):
+        case .importing(let profile, let ids, let attempt):
             for id in ids {
                 if awaiting.contains(id) { unconfirmedSend.insert(id) }
                 sentTo[id] = profile
                 awaiting.insert(id)
+                sentIn[id] = attempt
             }
-        case .copied(let outcomes):
+        case .copied(let outcomes, let attempt):
             for (id, outcome) in outcomes {
-                if awaiting.remove(id) != nil, case .uncertain = outcome { unconfirmedSend.insert(id) }
+                // Still awaiting a send from another attempt: that attempt's outcome was lost.
+                if awaiting.remove(id) != nil, sentIn.removeValue(forKey: id) != attempt { unconfirmedSend.insert(id) }
+                if case .uncertain = outcome { unconfirmedSend.insert(id) }
                 copy[id] = outcome
             }
         case .planned(let planned):
@@ -123,6 +131,7 @@ struct MoveToHermesProgress {
         case .changed(let operation, let outcome):
             inFlight[ChangeKey(operation)] = nil
             changes[ChangeKey(operation)] = outcome
+            changed[ChangeKey(operation)] = operation
         case .drafts(let results):
             drafts.merge(results) { _, new in new }
         case .finished(let report):
@@ -237,13 +246,14 @@ struct MoveToHermesProgress {
                     report.changesUnconfirmed.append(sent)
                     continue
                 }
+                let attempted = changed[key] ?? operation
                 switch changes[key] {
                 case .applied?: report.changesApplied += 1
-                case .changed?: report.changesLeftAlone.append(operation)
-                case .folderMissing?: report.foldersMissing.append(operation)
-                case .rejected?: report.changesRejected.append(operation)
-                case .uncertain?: report.changesUnconfirmed.append(operation)
-                case .missing?, .notSent?, nil: report.changesNotApplied.append(operation)
+                case .changed?: report.changesLeftAlone.append(attempted)
+                case .folderMissing?: report.foldersMissing.append(attempted)
+                case .rejected?: report.changesRejected.append(attempted)
+                case .uncertain?: report.changesUnconfirmed.append(attempted)
+                case .missing?, .notSent?, nil: report.changesNotApplied.append(attempted)
                 }
             }
             let id = plan.target.chat.id
@@ -573,17 +583,18 @@ struct MoveToHermesProgress {
         defer { copyProgress = nil }
         for group in Dictionary(grouping: items, by: \.chat.profile).sorted(by: { $0.key < $1.key }).map(\.value) {
             guard !Task.isCancelled else { break }
+            let attempt = UUID()
             var failure: Error?
             let outcomes = await WebuiSessionTransfer.run(
                 group, hermesProfiles: journal.review.hermesProfiles, source: webui, hermes: hermes,
                 configuration: environment.webuiConfiguration,
                 willDispatch: { [self] dispatch in
-                    do { try logIntent(.importing(profile: dispatch.destination, ids: dispatch.ids), in: journal) }
+                    do { try logIntent(.importing(profile: dispatch.destination, ids: dispatch.ids, attempt: attempt), in: journal) }
                     catch { failure = error; throw error }
                 },
                 progress: { [self] done, _ in copyProgress = (settled + done, items.count) })
             settled += group.count
-            try log(.copied(outcomes), in: journal)
+            try log(.copied(outcomes, attempt: attempt), in: journal)
             if let failure { throw failure }
         }
     }
@@ -610,12 +621,17 @@ struct MoveToHermesProgress {
         let operations = progress.operationsToApply
         guard !operations.isEmpty, !Task.isCancelled else { return }
         var failure: Error?
+        var sent: [MoveToHermesProgress.ChangeKey: MoveToHermesReconcile.Operation] = [:]
         let outcomes = await MoveToHermesReconcile.apply(operations, on: hermes) { [self] operation in
             do { try logIntent(.changing(operation), in: journal) }
             catch { failure = error; throw error }
+            sent[MoveToHermesProgress.ChangeKey(operation)] = operation
         }
         for operation in operations {
-            if let outcome = outcomes[operation] { try log(.changed(operation, outcome), in: journal) }
+            // Logged as the write last sent, so a suffixed title retry reports the title it tried.
+            if let outcome = outcomes[operation] {
+                try log(.changed(sent[MoveToHermesProgress.ChangeKey(operation)] ?? operation, outcome), in: journal)
+            }
         }
         if let failure { throw failure }
     }
@@ -625,9 +641,25 @@ struct MoveToHermesProgress {
         let plans = MoveToHermesProgress(review: journal.review, events: journal.events).plansNeedingDrafts
         guard !plans.isEmpty, !Task.isCancelled, let webui = URL(string: sourceServerID) else { return }
         state = .running(.movingDrafts)
-        let outcomes = await MoveToHermesReconcile.moveDrafts(plans, webui: webui, hermes: hermes, connectionID: connectionID,
-                                                             store: environment.drafts(), on: transport)
-        try log(.drafts(outcomes.mapValues(MoveToHermesDraftResult.init)), in: journal)
+        let store = environment.drafts()
+        for plan in plans {
+            guard !Task.isCancelled else { return }
+            guard record != nil else { throw Stop.destinationRemoved }
+            let outcomes = await MoveToHermesReconcile.moveDrafts([plan], webui: webui, hermes: hermes, connectionID: connectionID,
+                                                                 store: store, on: transport)
+            // The destination went while its row was read: put the draft back under the webui
+            // server rather than leave it under a server that no longer exists.
+            if record == nil {
+                if case .moved(let transfer)? = outcomes[plan.target.chat.id], [.moved, .alreadyMoved].contains(transfer) {
+                    let id = plan.target.chat.id
+                    _ = try? await store.transferDraft(
+                        from: .hermesSession(server: hermes, connectionID: connectionID, profile: plan.target.profile, key: id),
+                        to: .session(server: webui, sessionID: id))
+                }
+                throw Stop.destinationRemoved
+            }
+            try log(.drafts(outcomes.mapValues(MoveToHermesDraftResult.init)), in: journal)
+        }
     }
 
     /// The planned chats whose webui draft is still on this iPhone, for a report made before
