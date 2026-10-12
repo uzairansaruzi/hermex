@@ -43,7 +43,8 @@ extension AuthManager {
     ///
     /// Calling it again for a move this destination already holds returns the entry and
     /// changes nothing. When the Keychain refuses either write, it throws and leaves the
-    /// registry, the saved sign-ins and `servers` as they were.
+    /// registry and `servers` as they were, and puts back what was saved at a new server's
+    /// address (`restoreSignIn`).
     @discardableResult
     func commitMove(from source: ServerAccount, to connection: BotConnection,
                     profiles: [MovedWebuiProfile]) throws -> ServerAccount {
@@ -141,7 +142,10 @@ extension AuthManager {
         guard servers.contains(where: { $0.id == sourceID && $0.kind == .webui }) else {
             throw MoveCommitError.sourceNotWebui
         }
-        guard sourceID != destinationID else { throw MoveCommitError.sameAddress }
+        // A webui id keeps its host's case and a Hermes address lowercases it, so compare them
+        // the way a Hermes address is normalized.
+        let sourceAsHermes = (try? BotConnection.address(sourceID))?.absoluteString ?? sourceID
+        guard sourceAsHermes != destinationID else { throw MoveCommitError.sameAddress }
         if let destination = servers.first(where: { $0.id == destinationID }), destination.kind != .hermes {
             throw MoveCommitError.destinationNotHermes
         }
@@ -153,7 +157,9 @@ extension AuthManager {
     }
 
     /// Puts back the sign-in saved at `server` before a failed commit wrote its own, or
-    /// removes it when there was none.
+    /// removes it when there was none. Best effort: `server` has no registry entry here, so
+    /// whatever a failed rollback leaves is read by nothing, and adding the server later
+    /// replaces it.
     private func restoreSignIn(_ previous: BotConnection?, at server: URL) {
         let bots = BotConnectionStore(keychain: keychain)
         if let previous {

@@ -186,17 +186,19 @@ struct MovedWebuiProfile: Codable, Equatable, Sendable {
         case source, hermesProfile, keepOnWebui
     }
 
-    /// A mapping that names neither destination fails, so the Profile reads as unmapped.
+    /// A mapping that names neither destination, or both, fails, so the Profile reads as
+    /// unmapped rather than guessed.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         source = try container.decode(String.self, forKey: .source)
-        if let profile = try? container.decodeIfPresent(String.self, forKey: .hermesProfile), !profile.isEmpty {
-            destination = .hermes(profile: profile)
-        } else if (try? container.decodeIfPresent(Bool.self, forKey: .keepOnWebui)) == true {
-            destination = .keepOnWebui
-        } else {
+        let profile = (try? container.decodeIfPresent(String.self, forKey: .hermesProfile)).flatMap { $0 }
+        let keeps = (try? container.decodeIfPresent(Bool.self, forKey: .keepOnWebui)) == true
+        switch (profile.flatMap { $0.isEmpty ? nil : $0 }, keeps) {
+        case (let profile?, false): destination = .hermes(profile: profile)
+        case (nil, true): destination = .keepOnWebui
+        default:
             throw DecodingError.dataCorruptedError(forKey: .source, in: container,
-                                                   debugDescription: "A moved Profile names no destination")
+                                                   debugDescription: "A moved Profile names no single destination")
         }
     }
 

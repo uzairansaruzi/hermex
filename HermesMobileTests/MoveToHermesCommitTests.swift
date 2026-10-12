@@ -110,6 +110,10 @@ final class MoveToHermesCommitTests: XCTestCase {
         let atWebui = BotConnection(id: UUID(), name: "B", address: URL(string: webuiDestination.urlString)!, username: "me", password: "p")
 
         XCTAssertEqual(refusal(sourceAccount, sameAddress, mappings), .sameAddress)
+        // A webui id keeps its host's case; a Hermes address is lowercased.
+        let mixedCase = try addWebui(manager, "https://Studio.Example")
+        let lowercased = BotConnection(id: UUID(), name: "S", address: URL(string: "https://studio.example")!, username: "me", password: "p")
+        XCTAssertEqual(refusal(mixedCase, lowercased, mappings), .sameAddress)
         XCTAssertEqual(refusal(sourceAccount, atWebui, mappings), .destinationNotHermes)
         XCTAssertEqual(refusal(hermes, connection(), mappings), .sourceNotWebui)
         XCTAssertEqual(refusal(sourceAccount, connection(), []), .invalidMapping)
@@ -178,7 +182,8 @@ final class MoveToHermesCommitTests: XCTestCase {
           {"sourceServerID": "https://a.test", "completedAt": "not a date", "future": 1,
            "report": {"remaining": "many", "oversized": 2, "recordedAt": 0},
            "profiles": [{"source": "default", "hermesProfile": "default"}, {"source": "work", "keepOnWebui": true},
-                        {"source": "lost"}, {"source": "blank", "hermesProfile": ""}, {"hermesProfile": "x"}]},
+                        {"source": "lost"}, {"source": "blank", "hermesProfile": ""}, {"hermesProfile": "x"},
+                        {"source": "both", "hermesProfile": "default", "keepOnWebui": true}]},
           {"profiles": []},
           {"sourceServerID": "https://b.test", "report": {"remaining": 1}}
         ]}
@@ -192,6 +197,7 @@ final class MoveToHermesCommitTests: XCTestCase {
             MovedWebuiServer(sourceServerID: "https://b.test", profiles: []),
         ])
         XCTAssertNil(account.movedWebuiServers[0].destination(ofProfile: "lost"), "An unreadable mapping is unmapped")
+        XCTAssertNil(account.movedWebuiServers[0].destination(ofProfile: "both"), "Conflicting choices are unmapped")
         let older = try JSONDecoder().decode(ServerAccount.self, from: Data(#"{"id": "https://a.test"}"#.utf8))
         XCTAssertEqual(older.movedWebuiServers, [])
         let roundTrip = try JSONDecoder().decode(ServerAccount.self, from: JSONEncoder().encode(account))
