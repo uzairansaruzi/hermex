@@ -154,6 +154,33 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertEqual(steps, ["switch research", "export a", "switch ops", "export b"])
     }
 
+    /// A switch whose reply names an error or another Profile leaves that Profile's chats
+    /// unreadable, unexported, and the next Profile still copies.
+    func testRefusedSwitchLeavesThatProfileUnreadable() async throws {
+        host.held = ["default": []]
+        MoveWebuiFixture.exports = ["a": exportData("a"), "b": exportData("b"), "c": exportData("c")]
+        MoveWebuiFixture.switchReplies = ["research": #"{"error":"Profile is busy"}"#, "triage": #"{"active":"default"}"#]
+        let hermes = try await hermesClient()
+
+        let outcomes = await copy([item("a", from: "research"), item("c", from: "triage"), item("b", from: "ops")], hermes: hermes)
+
+        XCTAssertEqual(outcomes, ["a": .unreadable, "c": .unreadable, "b": .imported(profile: "default")])
+        XCTAssertEqual(MoveWebuiFixture.requests.compactMap { Self.query($0, "session_id") }, ["b"])
+    }
+
+    /// A rate-limited import wrote nothing but isn't refused for good: it is left for replay.
+    func testRateLimitedImportIsLeftForReplay() async throws {
+        host.held = ["default": []]
+        host.importReplies = [.json(429, .object(["detail": .string("Too Many Requests")]))]
+        MoveWebuiFixture.exports = ["a": exportData("a")]
+        let hermes = try await hermesClient()
+
+        let outcomes = await copy([item("a")], hermes: hermes)
+
+        XCTAssertEqual(outcomes, ["a": .uncertain(profile: "default")])
+        XCTAssertEqual(host.imports.count, 1)
+    }
+
     /// The copy's client has a jar of its own, seeded with the source's sign-in, so a Profile
     /// cookie a switch sets never reaches the shared jar the app's screens use, and no screen's
     /// switch reaches it. (URLProtocol fixtures never see cookies, so the jar is checked directly.)
@@ -414,12 +441,14 @@ final class MoveWebuiFixture: URLProtocol {
     nonisolated(unsafe) static var rows: [[String: BotJSON]] = []
     nonisolated(unsafe) static var allProfiles = true
     nonisolated(unsafe) static var exports: [String: Data] = [:]
+    /// Switch replies by Profile name, ahead of the ordinary `{"active": <name>}`.
+    nonisolated(unsafe) static var switchReplies: [String: String] = [:]
     nonisolated(unsafe) private static var log: [URLRequest] = []
 
     static var requests: [URLRequest] { lock.withLock { log } }
 
     static func reset() {
-        lock.withLock { rows = []; allProfiles = true; exports = [:]; log = [] }
+        lock.withLock { rows = []; allProfiles = true; exports = [:]; switchReplies = [:]; log = [] }
     }
 
     override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "webui.example" }
@@ -438,7 +467,7 @@ final class MoveWebuiFixture: URLProtocol {
                 return (200, try! JSONEncoder().encode(reply))
             case "/api/profile/switch":
                 let name = apiTestBodyData(from: request).flatMap { try? JSONDecoder().decode(BotJSON.self, from: $0) }?["name"].text ?? ""
-                return (200, Data(#"{"active":"\#(name)"}"#.utf8))
+                return (200, Data((Self.switchReplies[name] ?? #"{"active":"\#(name)"}"#).utf8))
             case "/api/session/export":
                 let id = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "session_id" }?.value ?? ""
                 return Self.exports[id].map { (200, $0) } ?? (404, Data(#"{"error":"Session not found"}"#.utf8))

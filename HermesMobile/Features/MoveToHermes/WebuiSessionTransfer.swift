@@ -25,9 +25,10 @@ struct WebuiSource {
 ///
 /// One run is one attempt. Every batch is rechecked by exact id in every Hermes Profile, then
 /// `willDispatch` records it, then it is sent once. A 400 or 413 means the host wrote nothing,
-/// so the run drops the refused chats or splits the batch and sends the rest. Any other failure
-/// leaves the batch `.uncertain`: the runner (#1216) owns replaying those, by running them again,
-/// since the host skips an id it already has.
+/// so the run drops the refused chats or splits the batch and sends the rest; any other 4xx
+/// refuses the batch. A rate limit (429), a timeout or a lost reply leaves it `.uncertain`: the
+/// runner (#1216) owns replaying those, by running them again, since the host skips an id it
+/// already has.
 enum WebuiSessionTransfer {
     /// The host's import limits at the pin (`hermes_state.py`, `web_routers/sessions.py`).
     static let sessionsPerImport = 500
@@ -57,7 +58,8 @@ enum WebuiSessionTransfer {
         case unreadable
         /// A recheck read failed, so it wasn't sent.
         case unknown
-        /// Sent in an import whose result never arrived, or answered without it.
+        /// Sent, but not settled: the result never arrived, the host or a proxy was rate-limiting
+        /// (429), or the reply left it out. The runner replays these.
         case uncertain(profile: String)
         /// Not sent: the run was cancelled, or `willDispatch` failed, first.
         case notSent
@@ -96,12 +98,17 @@ enum WebuiSessionTransfer {
             let group = groups[profile] ?? []
             guard attempt.canSend else { attempt.settle(group.map(\.chat.id), .notSent); continue }
             do {
-                _ = try await webui.switchProfile(name: profile)
+                // A reply naming an error or another Profile would export under the wrong cookie.
+                let reply = try await webui.switchProfile(name: profile)
+                guard (reply.error ?? "").isEmpty, (reply.active ?? profile) == profile else { throw BotFailure.unsupported }
             } catch {
                 attempt.settle(group.map(\.chat.id), Task.isCancelled ? .notSent : .unreadable)
                 continue
             }
-            var pending: [String: [Prepared]] = [:]
+            // One batch is held at a time, so memory stays near one import (25 MB) plus the
+            // exports in flight. Review maps each source Profile to one destination, so a group
+            // rarely flushes early for a change of destination.
+            var pending: (destination: String, batch: [Prepared])?
             for start in stride(from: 0, to: group.count, by: MoveToHermesRequests.perServer) {
                 let window = Array(group[start..<min(start + MoveToHermesRequests.perServer, group.count)])
                 guard attempt.canSend else { attempt.settle(window.map(\.chat.id), .notSent); continue }
@@ -111,19 +118,17 @@ enum WebuiSessionTransfer {
                     case .failed(let outcome):
                         attempt.settle([item.chat.id], outcome)
                     case .ready(let prepared):
-                        let batch = pending[item.destination, default: []]
-                        if fits(batch + [prepared], destination: item.destination) {
-                            pending[item.destination] = batch + [prepared]
+                        if let held = pending, held.destination == item.destination,
+                           fits(held.batch + [prepared], destination: held.destination) {
+                            pending?.batch.append(prepared)
                         } else {
-                            await attempt.importBatch(batch, into: item.destination)
-                            pending[item.destination] = [prepared]
+                            if let held = pending { await attempt.importBatch(held.batch, into: held.destination) }
+                            pending = (item.destination, [prepared])
                         }
                     }
                 }
             }
-            for destination in pending.keys.sorted() {
-                await attempt.importBatch(pending[destination] ?? [], into: destination)
-            }
+            if let held = pending { await attempt.importBatch(held.batch, into: held.destination) }
         }
         return attempt.outcomes
     }
@@ -284,7 +289,8 @@ enum WebuiSessionTransfer {
         }
 
         /// Sends one import of `batch`. A 400 or 413 wrote nothing, so the refused chats are
-        /// dropped, or the batch halved, and the rest sent again; any other failure is uncertain.
+        /// dropped, or the batch halved, and the rest sent again. Any other 4xx refuses the batch;
+        /// a 408, a 429 or any other failure leaves it uncertain.
         private func send(_ batch: [Prepared], into destination: String) async {
             guard !batch.isEmpty else { return }
             guard canSend else { return settle(batch.map(\.id), .notSent) }
@@ -307,7 +313,7 @@ enum WebuiSessionTransfer {
                 await resend(batch, into: destination, after: refusal)
             } catch BotFailure.rejected(413) {
                 await split(batch, into: destination)
-            } catch BotFailure.rejected(let status) where (400..<500).contains(status) && status != 408 {
+            } catch BotFailure.rejected(let status) where (400..<500).contains(status) && ![408, 429].contains(status) {
                 settle(batch.map(\.id), .rejected(reason: BotFailure.rejected(status).localizedDescription))
             } catch {
                 settle(batch.map(\.id), .uncertain(profile: destination))
