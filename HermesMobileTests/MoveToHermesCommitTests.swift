@@ -114,6 +114,8 @@ final class MoveToHermesCommitTests: XCTestCase {
         let mixedCase = try addWebui(manager, "https://Studio.Example")
         let lowercased = BotConnection(id: UUID(), name: "S", address: URL(string: "https://studio.example")!, username: "me", password: "p")
         XCTAssertEqual(refusal(mixedCase, lowercased, mappings), .sameAddress)
+        XCTAssertEqual(refusal(sourceAccount, lowercased, mappings), .destinationNotHermes,
+                       "A webui server saved with capitals still holds the address")
         XCTAssertEqual(refusal(sourceAccount, atWebui, mappings), .destinationNotHermes)
         XCTAssertEqual(refusal(hermes, connection(), mappings), .sourceNotWebui)
         XCTAssertEqual(refusal(sourceAccount, connection(), []), .invalidMapping)

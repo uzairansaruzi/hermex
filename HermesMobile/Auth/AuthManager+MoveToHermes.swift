@@ -144,9 +144,9 @@ extension AuthManager {
         }
         // A webui id keeps its host's case and a Hermes address lowercases it, so compare them
         // the way a Hermes address is normalized.
-        let sourceAsHermes = (try? BotConnection.address(sourceID))?.absoluteString ?? sourceID
-        guard sourceAsHermes != destinationID else { throw MoveCommitError.sameAddress }
-        if let destination = servers.first(where: { $0.id == destinationID }), destination.kind != .hermes {
+        func asHermesAddress(_ id: String) -> String { (try? BotConnection.address(id))?.absoluteString ?? id }
+        guard asHermesAddress(sourceID) != destinationID else { throw MoveCommitError.sameAddress }
+        if servers.contains(where: { $0.kind != .hermes && asHermesAddress($0.id) == destinationID }) {
             throw MoveCommitError.destinationNotHermes
         }
         if let holder = servers.first(where: { server in
