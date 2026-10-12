@@ -111,6 +111,18 @@ final class MoveToHermesReconcileTests: XCTestCase {
         XCTAssertTrue(wire.writes.isEmpty)
     }
 
+    func testApplyLeavesARowHiddenSincePlanningUntouched() async {
+        let wire = ReconcileWire()
+        wire.rows["dev|a"] = ["id": .string("a")]
+        let operations = await plannedOperations(target("a", title: "Notes", pinned: true), on: wire)
+        wire.rows["dev|a"]?["hidden"] = .number(1)
+
+        let outcomes = await Reconcile.apply(operations, on: wire) { _ in }
+
+        XCTAssertEqual(Array(outcomes.values), [.changed, .changed])
+        XCTAssertTrue(wire.writes.isEmpty, "pinned: true would unhide it")
+    }
+
     func testFailedRecordStopsAllSending() async {
         let wire = ReconcileWire()
         wire.rows["dev|a"] = ["id": .string("a")]
@@ -234,9 +246,11 @@ final class MoveToHermesReconcileTests: XCTestCase {
             source("a"): ChatDraft(text: "unsent", quotes: [quote], settings: ChatDraftSettings(modelID: "webui-model")),
         ])
         let store = ChatDraftStore(persistence: persistence)
+        let wire = ReconcileWire()
+        wire.rows["dev|a"] = ["id": .string("a")]
 
         let outcomes = await Reconcile.moveDrafts([plan("a", draftSession: "a")], webui: webui, hermes: hermes,
-                                                  connectionID: connection, store: store)
+                                                  connectionID: connection, store: store, on: wire)
 
         XCTAssertEqual(outcomes["a"], .moved(.moved))
         let saved = await persistence.values
@@ -261,9 +275,10 @@ final class MoveToHermesReconcileTests: XCTestCase {
     func testUnverifiedDraftKeyLeavesTheDraftOnTheWebui() async {
         let persistence = ReconcileDrafts(values: [source("child"): ChatDraft(text: "unsent")])
         let store = ChatDraftStore(persistence: persistence)
+        let wire = ReconcileWire()
 
         let outcomes = await Reconcile.moveDrafts([plan("child", draftSession: nil), plan("empty", draftSession: nil)],
-                                                  webui: webui, hermes: hermes, connectionID: connection, store: store)
+                                                  webui: webui, hermes: hermes, connectionID: connection, store: store, on: wire)
 
         XCTAssertEqual(outcomes["child"], .unverified)
         XCTAssertEqual(outcomes["empty"], .moved(.nothingToMove))
@@ -272,13 +287,33 @@ final class MoveToHermesReconcileTests: XCTestCase {
         XCTAssertEqual(saved.count, 1)
     }
 
+    /// A plan can be old: the session may since be deleted, hidden or continued, or unreadable.
+    func testDraftStaysWhenTheSessionChangedSincePlanning() async {
+        let ids = ["gone", "hidden", "child", "unreadable"]
+        let persistence = ReconcileDrafts(values: Dictionary(uniqueKeysWithValues: ids.map { (source($0), ChatDraft(text: $0)) }))
+        let store = ChatDraftStore(persistence: persistence)
+        let wire = ReconcileWire()
+        wire.rows["dev|hidden"] = ["id": .string("hidden"), "hidden": .bool(true)]
+        wire.rows["dev|child"] = ["id": .string("child"), "parent_session_id": .string("root")]
+        wire.failingReads = ["unreadable"]
+
+        let outcomes = await Reconcile.moveDrafts(ids.map { plan($0, draftSession: $0) }, webui: webui, hermes: hermes,
+                                                  connectionID: connection, store: store, on: wire)
+
+        XCTAssertEqual(outcomes, ["gone": .missing, "hidden": .unverified, "child": .unverified, "unreadable": .failed])
+        let saved = await persistence.values
+        XCTAssertEqual(Set(saved.keys), Set(ids.map(source)))
+    }
+
     func testFailedCopySaveKeepsTheSourceAndAddsNothing() async {
         let persistence = ReconcileDrafts(values: [source("a"): ChatDraft(text: "unsent")])
         await persistence.failWrites(1)
         let store = ChatDraftStore(persistence: persistence)
+        let wire = ReconcileWire()
+        wire.rows["dev|a"] = ["id": .string("a")]
 
         let outcomes = await Reconcile.moveDrafts([plan("a", draftSession: "a")], webui: webui, hermes: hermes,
-                                                  connectionID: connection, store: store)
+                                                  connectionID: connection, store: store, on: wire)
 
         XCTAssertEqual(outcomes["a"], .failed)
         let saved = await persistence.values

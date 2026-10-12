@@ -89,9 +89,13 @@ enum MoveToHermesReconcile {
     /// What became of one chat's draft.
     enum DraftOutcome: Equatable, Sendable {
         case moved(ChatDraftTransfer)
-        /// Its Hermes draft key couldn't be verified (`Plan.draftSession`), so it stays on the webui.
+        /// Its Hermes draft key couldn't be verified (`Plan.draftSession`), or the row now has a
+        /// parent or is hidden, so it stays on the webui.
         case unverified
-        /// Saving failed and both drafts were kept; moving it again is safe.
+        /// Hermes no longer has the session, so the draft stays on the webui.
+        case missing
+        /// Not moved this time: the row couldn't be read or saving failed. Both drafts are kept,
+        /// and moving it again is safe.
         case failed
     }
 
@@ -160,6 +164,8 @@ enum MoveToHermesReconcile {
             case .missing: return .missing
             case .unread: return .notSent
             }
+            // Hidden since planning: `pinned: true` would unhide it, so it is left as Hermes has it.
+            guard !row.hidden else { return .changed }
             switch state(of: operation.change, in: row) {
             case .to: return .applied
             case .other: return .changed
@@ -229,18 +235,34 @@ enum MoveToHermesReconcile {
 
     /// Moves each planned chat's webui draft to its Hermes session draft (`ChatDraftStore.transferDraft`),
     /// keyed by chat id. `webui` and `hermes` are the server URLs the app keys those servers'
-    /// drafts by; `connectionID` is the Hermes connection. A chat whose draft key isn't verified
-    /// keeps its draft on the webui. Chats left out keep theirs too.
+    /// drafts by; `connectionID` is the Hermes connection. Each chat with a draft has its row read
+    /// again first, since a plan can be old: a deleted, hidden or parented row keeps its draft on
+    /// the webui, as does a chat whose plan didn't verify its key. Chats left out keep theirs too.
     @MainActor
     static func moveDrafts(_ plans: [Plan], webui: URL, hermes: URL, connectionID: UUID,
-                           store: ChatDraftStore) async -> [String: DraftOutcome] {
+                           store: ChatDraftStore, on transport: any BotTransport) async -> [String: DraftOutcome] {
         var outcomes: [String: DraftOutcome] = [:]
         for plan in plans {
             let id = plan.target.chat.id
             let source = ChatDraftKey.session(server: webui, sessionID: id)
+            guard await store.draft(for: source)?.isEmpty == false else {
+                outcomes[id] = .moved(.nothingToMove)
+                continue
+            }
             guard let session = plan.draftSession else {
-                let draft = await store.draft(for: source)
-                outcomes[id] = draft?.isEmpty == false ? .unverified : .moved(.nothingToMove)
+                outcomes[id] = .unverified
+                continue
+            }
+            switch await snapshot(session, in: plan.target.profile, on: transport) {
+            case .row(let row) where row.hidden || row.parent != nil:
+                outcomes[id] = .unverified
+                continue
+            case .row: break
+            case .missing:
+                outcomes[id] = .missing
+                continue
+            case .unread:
+                outcomes[id] = .failed
                 continue
             }
             let destination = ChatDraftKey.hermesSession(server: hermes, connectionID: connectionID,
