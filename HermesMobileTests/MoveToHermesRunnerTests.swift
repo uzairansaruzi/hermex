@@ -441,6 +441,32 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path))
     }
 
+    /// Each chat's draft result is saved before the next chat's transfer, so a stop part way
+    /// through keeps the results of drafts already moved.
+    func testADraftResultIsSavedBeforeTheNextChatsTransfer() async throws {
+        exports("a", "b")
+        await drafts.seed([sourceDraft("a"): ChatDraft(text: "first"), sourceDraft("b"): ChatDraft(text: "second")])
+        var draftLines = 0
+        failingWrite = { write in
+            guard case .event(.drafts) = write else { return false }
+            draftLines += 1
+            return draftLines == 2
+        }
+        let runner = makeRunner()
+        await runner.start(review([entry("a"), entry("b")]))
+        XCTAssertEqual(runner.state, .paused(.saveFailed))
+
+        failingWrite = nil
+        let resumed = makeRunner()
+        await resumed.resume()
+
+        guard case .finished(let report) = resumed.state else { return XCTFail("Expected finished, got \(resumed.state)") }
+        XCTAssertEqual(report.draftsMoved, 1, "a's result was saved; b's moved before its line was lost")
+        let saved = await drafts.values
+        XCTAssertEqual(saved[hermesDraft("a")]?.text, "first")
+        XCTAssertEqual(saved[hermesDraft("b")]?.text, "second")
+    }
+
     func testAConflictingDraftIsKeptOnBothSides() async throws {
         exports("a")
         await drafts.seed([sourceDraft("a"): ChatDraft(text: "webui"), hermesDraft("a"): ChatDraft(text: "hermes")])

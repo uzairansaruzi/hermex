@@ -642,13 +642,19 @@ struct MoveToHermesProgress {
         let plans = MoveToHermesProgress(review: journal.review, events: journal.events).plansNeedingDrafts
         guard !plans.isEmpty, !Task.isCancelled, let webui = URL(string: sourceServerID) else { return }
         state = .running(.movingDrafts)
-        // Checked again just before each transfer: a destination removal discards its drafts
-        // before its entry goes, so a draft moved after that point would be lost with it.
-        let outcomes = await MoveToHermesReconcile.moveDrafts(plans, webui: webui, hermes: hermes, connectionID: connectionID,
-                                                             store: environment.drafts(), on: transport,
-                                                             canTransfer: { [self] in record != nil && !Task.isCancelled })
-        guard record != nil else { throw Stop.destinationRemoved }
-        try log(.drafts(outcomes.mapValues(MoveToHermesDraftResult.init)), in: journal)
+        let store = environment.drafts()
+        // One chat at a time, each result logged before the next, so a quit loses at most one
+        // chat's result: its draft has moved, and Resume finds nothing left to move.
+        for plan in plans {
+            guard !Task.isCancelled else { return }
+            // Asked again just before the transfer: a destination removal discards its drafts
+            // before its entry goes, so a draft moved after that point would be lost with it.
+            let outcomes = await MoveToHermesReconcile.moveDrafts([plan], webui: webui, hermes: hermes, connectionID: connectionID,
+                                                                 store: store, on: transport,
+                                                                 canTransfer: { [self] in record != nil && !Task.isCancelled })
+            guard record != nil else { throw Stop.destinationRemoved }
+            try log(.drafts(outcomes.mapValues(MoveToHermesDraftResult.init)), in: journal)
+        }
     }
 
     /// The planned chats whose webui draft is still on this iPhone, for a report made before
