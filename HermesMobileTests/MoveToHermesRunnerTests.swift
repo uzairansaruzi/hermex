@@ -305,6 +305,25 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(host.calls, calls)
     }
 
+    /// A repeat move keeps the record's mapping even when Review no longer lists its Profile;
+    /// an unconfirmed import to it is the runner's own history, not damage.
+    func testARepeatMoveToAProfileReviewNoLongerListsResumes() async throws {
+        exports("a", "b")
+        let first = makeRunner()
+        await first.start(review([entry("a")]))
+        first.acknowledge()
+        host.loseNextImportReply = true
+        let again = makeRunner()
+        await again.start(review([entry("b")], hermesProfiles: ["work"]))
+        XCTAssertEqual(again.state, .paused(.workLeft))
+
+        let resumed = makeRunner()
+        await resumed.resume()
+
+        guard case .finished(let report) = resumed.state else { return XCTFail("Expected finished, got \(resumed.state)") }
+        XCTAssertEqual(report.sentUnconfirmed + report.presentUnconfirmed + report.copied, ["b"])
+    }
+
     /// A plan whose log is gone has lost the record of what was sent.
     func testAMissingLogIsDamaged() async throws {
         exports("a")
@@ -570,11 +589,12 @@ final class MoveToHermesRunnerTests: XCTestCase {
                                   environment: environment)
     }
 
-    private func review(_ entries: [MoveToHermesScan.Entry], profiles: [MovedWebuiProfile]? = nil) -> MoveToHermesRunner.Review {
+    private func review(_ entries: [MoveToHermesScan.Entry], profiles: [MovedWebuiProfile]? = nil,
+                        hermesProfiles: [String] = ["default", "work"]) -> MoveToHermesRunner.Review {
         MoveToHermesRunner.Review(
             source: auth.servers.first { $0.id == webui.absoluteString }!,
             connection: BotConnection(id: connectionID, name: "Hermes", address: hermes, username: "me", password: "secret"),
-            profiles: profiles ?? mapping, hermesProfiles: ["default", "work"],
+            profiles: profiles ?? mapping, hermesProfiles: hermesProfiles,
             scan: MoveToHermesScan.Result(entries: entries, onlyProfile: nil))
     }
 

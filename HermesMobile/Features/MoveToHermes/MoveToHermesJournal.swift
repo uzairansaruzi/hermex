@@ -266,7 +266,9 @@ enum MoveToHermesEvent: Codable, Equatable, Sendable {
     private static func decode(_ data: Data, against review: MoveToHermesReview) throws -> [MoveToHermesEvent] {
         let ids = Set(review.entries.map(\.chat.id))
         let destinations = Set(review.entries.compactMap { review.destination(of: $0.chat) })
-        let profiles = Set(review.hermesProfiles)
+        // An import goes to a mapped destination, which a repeat move takes from the record and
+        // may be missing from the Hermes Profiles listed at its Review.
+        let profiles = Set(review.hermesProfiles).union(destinations)
         var events: [MoveToHermesEvent] = []
         for line in data.split(separator: 0x0A, omittingEmptySubsequences: false).dropLast() {
             let decoded = try JSONDecoder().decode(Line.self, from: line)
