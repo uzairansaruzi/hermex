@@ -155,6 +155,16 @@ import Foundation
         return page
     }
 
+    func sessionScanPage(profile: String, offset: Int) async throws -> HermesScanPage {
+        guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
+        let attempt = self.attempt
+        let data = try await http.data(.sessionScan(profile: profile, offset: offset),
+                                       validateDispatch: { try self.checkOwner(attempt) })
+        try checkOwner(attempt)
+        guard let page = try? JSONDecoder().decode(HermesScanPage.self, from: data) else { throw BotFailure.unsupported }
+        return page
+    }
+
     @discardableResult
     func updateSession(_ change: HermesSessionChange, key: String, profile: String) async throws -> String? {
         guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
@@ -198,7 +208,7 @@ import Foundation
     }
 
     /// A refused payload's reason is the host's `detail`: its text, or the first of its
-    /// `errors`, one per session it refused.
+    /// `errors`, one per session it refused, each kept in the refusal's `entries`.
     func importSessions(body: Data) async throws -> BotJSON {
         guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
         let attempt = self.attempt
@@ -207,9 +217,13 @@ import Foundation
         try checkOwner(attempt)
         let body = try? JSONDecoder().decode(BotJSON.self, from: reply.body)
         guard reply.status == 200 else {
-            let detail = body?["detail"].text ?? body?["detail"]["errors"].list?.first?["error"].text
+            let entries = (body?["detail"]["errors"].list ?? []).compactMap { error -> HermesSessionRefusal.Entry? in
+                guard let index = error["index"].integer, let reason = error["error"].text else { return nil }
+                return HermesSessionRefusal.Entry(index: index, sessionID: error["session_id"].text, reason: reason)
+            }
+            let detail = body?["detail"].text ?? entries.first?.reason
             if reply.status == 400, let detail = detail?.trimmingCharacters(in: .whitespacesAndNewlines), !detail.isEmpty {
-                throw HermesSessionRefusal(message: detail)
+                throw HermesSessionRefusal(message: detail, entries: entries)
             }
             throw BotFailure.rejected(reply.status)
         }

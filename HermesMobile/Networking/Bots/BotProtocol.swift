@@ -183,6 +183,9 @@ enum BotConnectionAdvice {
     /// One page of `profile`'s sessions for the Sessions list, or with `archived` for the
     /// Archived screen (`HermesREST.sessionList`, #1046, #1048).
     func sessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage
+    /// One page of every session `profile` lists, for Move to Hermes's scan
+    /// (`HermesREST.sessionScan`, #1213).
+    func sessionScanPage(profile: String, offset: Int) async throws -> HermesScanPage
     /// Writes one change to a session (`HermesREST.updateSession`, #1046, #1048) and returns the
     /// title the host keeps. A change the host refuses with its reason, such as a title already
     /// in use, throws `HermesSessionRefusal`.
@@ -195,7 +198,7 @@ enum BotConnectionAdvice {
     func sessionRow(key: String, profile: String) async throws -> BotJSON?
     /// Sends one session import, its JSON `body` already encoded (`HermesREST.importSessions`,
     /// #1051), and returns the host's result. A payload the host refuses throws its reason as
-    /// `HermesSessionRefusal`.
+    /// `HermesSessionRefusal`, with every session it named in `entries` (#1213).
     func importSessions(body: Data) async throws -> BotJSON
     /// `profile`'s sessions matching `query`, in the host's order, at most `limit`
     /// (`HermesREST.sessionSearch`, #1053).
@@ -248,6 +251,10 @@ extension BotTransport {
     }
 
     func sessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage {
+        throw BotFailure.unsupported
+    }
+
+    func sessionScanPage(profile: String, offset: Int) async throws -> HermesScanPage {
         throw BotFailure.unsupported
     }
 

@@ -4,7 +4,17 @@ import Foundation
 /// such as a title already in use, over 100 characters, or the canonical Bot Chat's. The
 /// message is the host's own words, shown as they are.
 struct HermesSessionRefusal: LocalizedError, Equatable {
+    /// One session an import's 400 named (#1213): its place in the payload, its id when it had
+    /// one, and the host's reason. The host wrote none of the payload.
+    struct Entry: Equatable, Sendable {
+        let index: Int
+        let sessionID: String?
+        let reason: String
+    }
+
     let message: String
+    /// Every session an import refusal named; empty for any other refusal.
+    var entries: [Entry] = []
     var errorDescription: String? { message }
 }
 
