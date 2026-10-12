@@ -17,6 +17,8 @@ final class MoveToHermesRunnerTests: XCTestCase {
     private var registrar: RunnerRegistrar!
     /// Writes the next run's journal refuses, as a full disk or a crash at that point would.
     private var failingWrite: ((MoveToHermesJournal.Write) -> Bool)?
+    /// Runs inside `removeServer`'s push teardown: after its drafts are discarded, before its entry goes.
+    private var duringRemoval: (@MainActor () async -> Void)?
 
     override func setUp() async throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("move-\(UUID().uuidString)", isDirectory: true)
@@ -31,7 +33,7 @@ final class MoveToHermesRunnerTests: XCTestCase {
             serverRegistry: ServerRegistry(keychain: keychain, identityDefaults: .ephemeral()),
             hermesConnections: HermesConnections(),
             preferences: preferences,
-            forgetPush: { _ in }
+            forgetPush: { [unowned self] _ in await self.duringRemoval?() }
         )
         host = RunnerHermes()
         drafts = RunnerDrafts()
@@ -403,24 +405,34 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(report.changesRejected.map(\.change), [.title(from: nil, to: "Trip (123456)")])
     }
 
-    /// The destination is removed while a chat's row is read for its draft: the draft goes back
-    /// under the webui server instead of staying under a server that is gone.
-    func testADraftReadWhileTheDestinationIsRemovedStaysOnTheWebui() async throws {
+    /// The destination's removal is part way through while a chat's row is read for its draft:
+    /// its drafts are discarded but its entry is still there. The draft stays on the webui.
+    func testADraftReadWhileTheDestinationIsBeingRemovedStaysOnTheWebui() async throws {
         root = MoveToHermesJournal.defaultRoot
         host.rows["default|had"] = ["id": .string("had"), "title": .string("Mine")]
         await drafts.seed([sourceDraft("had"): ChatDraft(text: "unsent")])
         var reads = 0
+        var removal: Task<Void, Never>?
+        var release: CheckedContinuation<Void, Never>?
+        let held = expectation(description: "Removal held after discarding drafts")
+        duringRemoval = {
+            held.fulfill()
+            await withCheckedContinuation { release = $0 }
+        }
         host.onRead = { [unowned self] key in
             guard key == "had" else { return }
             reads += 1
             // The second read is the draft step's; the first is planning's.
-            if reads == 2, let destination = self.auth.servers.first(where: { $0.id == self.hermes.absoluteString }) {
-                await self.auth.removeServer(destination)
-            }
+            guard reads == 2, let destination = self.auth.servers.first(where: { $0.id == self.hermes.absoluteString }) else { return }
+            removal = Task { await self.auth.removeServer(destination) }
+            await self.fulfillment(of: [held], timeout: 5)
         }
         let runner = makeRunner()
 
         await runner.start(review([entry("had", location: .present(profile: "default"))]))
+        XCTAssertNotNil(auth.servers.first { $0.id == hermes.absoluteString }, "The entry is still there mid-removal")
+        release?.resume()
+        await removal?.value
 
         XCTAssertEqual(runner.state, .paused(.destinationRemoved))
         let saved = await drafts.values

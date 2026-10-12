@@ -238,9 +238,12 @@ enum MoveToHermesReconcile {
     /// drafts by; `connectionID` is the Hermes connection. Each chat with a draft has its row read
     /// again first, since a plan can be old: a deleted, hidden or parented row keeps its draft on
     /// the webui, as does a chat whose plan didn't verify its key. Chats left out keep theirs too.
+    /// `canTransfer` is asked just before each transfer; false keeps the draft (`.failed`), as when
+    /// the Hermes server is being removed while its row was read.
     @MainActor
     static func moveDrafts(_ plans: [Plan], webui: URL, hermes: URL, connectionID: UUID,
-                           store: ChatDraftStore, on transport: any BotTransport) async -> [String: DraftOutcome] {
+                           store: ChatDraftStore, on transport: any BotTransport,
+                           canTransfer: @MainActor () -> Bool = { true }) async -> [String: DraftOutcome] {
         var outcomes: [String: DraftOutcome] = [:]
         for plan in plans {
             let id = plan.target.chat.id
@@ -267,6 +270,10 @@ enum MoveToHermesReconcile {
             }
             let destination = ChatDraftKey.hermesSession(server: hermes, connectionID: connectionID,
                                                          profile: plan.target.profile, key: session)
+            guard canTransfer() else {
+                outcomes[id] = .failed
+                continue
+            }
             do {
                 outcomes[id] = .moved(try await store.transferDraft(from: source, to: destination))
             } catch {

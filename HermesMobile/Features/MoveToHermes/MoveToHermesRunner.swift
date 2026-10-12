@@ -405,8 +405,9 @@ struct MoveToHermesProgress {
         MoveToHermesJournal.folder(source: sourceServerID, destination: destinationID, in: environment.root)
     }
 
+    /// The move's record while its destination holds it and isn't being removed.
     private var record: MovedWebuiServer? {
-        guard let held = auth.moveRecord(forSource: sourceServerID), held.destination.id == destinationID else { return nil }
+        guard !auth.removingServerIDs.contains(destinationID), let held = auth.moveRecord(forSource: sourceServerID), held.destination.id == destinationID else { return nil }
         return held.record
     }
 
@@ -641,25 +642,13 @@ struct MoveToHermesProgress {
         let plans = MoveToHermesProgress(review: journal.review, events: journal.events).plansNeedingDrafts
         guard !plans.isEmpty, !Task.isCancelled, let webui = URL(string: sourceServerID) else { return }
         state = .running(.movingDrafts)
-        let store = environment.drafts()
-        for plan in plans {
-            guard !Task.isCancelled else { return }
-            guard record != nil else { throw Stop.destinationRemoved }
-            let outcomes = await MoveToHermesReconcile.moveDrafts([plan], webui: webui, hermes: hermes, connectionID: connectionID,
-                                                                 store: store, on: transport)
-            // The destination went while its row was read: put the draft back under the webui
-            // server rather than leave it under a server that no longer exists.
-            if record == nil {
-                if case .moved(let transfer)? = outcomes[plan.target.chat.id], [.moved, .alreadyMoved].contains(transfer) {
-                    let id = plan.target.chat.id
-                    _ = try? await store.transferDraft(
-                        from: .hermesSession(server: hermes, connectionID: connectionID, profile: plan.target.profile, key: id),
-                        to: .session(server: webui, sessionID: id))
-                }
-                throw Stop.destinationRemoved
-            }
-            try log(.drafts(outcomes.mapValues(MoveToHermesDraftResult.init)), in: journal)
-        }
+        // Checked again just before each transfer: a destination removal discards its drafts
+        // before its entry goes, so a draft moved after that point would be lost with it.
+        let outcomes = await MoveToHermesReconcile.moveDrafts(plans, webui: webui, hermes: hermes, connectionID: connectionID,
+                                                             store: environment.drafts(), on: transport,
+                                                             canTransfer: { [self] in record != nil && !Task.isCancelled })
+        guard record != nil else { throw Stop.destinationRemoved }
+        try log(.drafts(outcomes.mapValues(MoveToHermesDraftResult.init)), in: journal)
     }
 
     /// The planned chats whose webui draft is still on this iPhone, for a report made before
