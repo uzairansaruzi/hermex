@@ -483,6 +483,8 @@ final class AuthManager {
     /// headers, and cookies — leaving the active server's auth untouched (#17).
     func removeServer(_ account: ServerAccount) async {
         guard let serverURL = URL(string: account.urlString) else { return }
+        // A move committed during the awaits below leaves an orphan journal, which `MoveToHermesPending.all` deletes.
+        let movedSources = (servers.first { $0.id == account.id } ?? account).movedWebuiServers.map(\.sourceServerID)
         try? await BotHistoryCache.shared.removeServer(serverURL, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: serverURL))?.id)
         SessionUnreadStore().remove(for: serverURL)
         // Kept through a sign-out, which the Shortcuts picker still lists the server's Profiles across (#1180).
@@ -501,6 +503,8 @@ final class AuthManager {
             serverRegistry.remove(id: account.id)
             refreshServers()
         }
+        // After the entry is gone, so a running Move finds no record and writes nothing more (#1216).
+        MoveToHermesJournal.discard(sources: movedSources, destinationID: account.id)
     }
 
     /// Switches the active server to an already-registered one (the Settings

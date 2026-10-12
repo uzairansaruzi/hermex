@@ -551,6 +551,9 @@
 		A1213000000000000000A005 /* MoveToHermesTransferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1213000000000000000A006 /* MoveToHermesTransferTests.swift */; };
 		A1214000000000000000A001 /* MoveToHermesReconcile.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1214000000000000000A002 /* MoveToHermesReconcile.swift */; };
 		A1214000000000000000A003 /* MoveToHermesReconcileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1214000000000000000A004 /* MoveToHermesReconcileTests.swift */; };
+		A1216000000000000000A001 /* MoveToHermesJournal.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1216000000000000000A002 /* MoveToHermesJournal.swift */; };
+		A1216000000000000000A003 /* MoveToHermesRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1216000000000000000A004 /* MoveToHermesRunner.swift */; };
+		A1216000000000000000A005 /* MoveToHermesRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1216000000000000000A006 /* MoveToHermesRunnerTests.swift */; };
 		E1052000000000000000A001 /* HermesProjects.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1052000000000000000A002 /* HermesProjects.swift */; };
 		C8240A000000000000000001 /* HermesConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8240A000000000000000002 /* HermesConnection.swift */; };
 		E1071000000000000000A001 /* HermesTranscription.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1071000000000000000A002 /* HermesTranscription.swift */; };
@@ -1215,6 +1218,9 @@
 		A1213000000000000000A006 /* MoveToHermesTransferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoveToHermesTransferTests.swift; sourceTree = "<group>"; };
 		A1214000000000000000A002 /* MoveToHermesReconcile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MoveToHermes/MoveToHermesReconcile.swift"; sourceTree = "<group>"; };
 		A1214000000000000000A004 /* MoveToHermesReconcileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoveToHermesReconcileTests.swift; sourceTree = "<group>"; };
+		A1216000000000000000A002 /* MoveToHermesJournal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MoveToHermes/MoveToHermesJournal.swift"; sourceTree = "<group>"; };
+		A1216000000000000000A004 /* MoveToHermesRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MoveToHermes/MoveToHermesRunner.swift"; sourceTree = "<group>"; };
+		A1216000000000000000A006 /* MoveToHermesRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoveToHermesRunnerTests.swift; sourceTree = "<group>"; };
 		E1052000000000000000A002 /* HermesProjects.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesProjects.swift"; sourceTree = "<group>"; };
 		C8240A000000000000000002 /* HermesConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesConnection.swift"; sourceTree = "<group>"; };
 		E1071000000000000000A002 /* HermesTranscription.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesTranscription.swift"; sourceTree = "<group>"; };
@@ -1432,6 +1438,7 @@
 				A760F1A70000000000000002 /* HermesAgentFixtureTests.swift */,
 				A1213000000000000000A006 /* MoveToHermesTransferTests.swift */,
 				A1214000000000000000A004 /* MoveToHermesReconcileTests.swift */,
+				A1216000000000000000A006 /* MoveToHermesRunnerTests.swift */,
 				2F45F15CC7743DD0EF843B5E /* HermexPushProvisioningTests.swift */,
 				A4730000000000000000A004 /* BotAvatarTests.swift */,
 				A4770000000000000000D006 /* HermesDelegatedWorkTests.swift */,
@@ -1748,6 +1755,8 @@
 				A1213000000000000000A002 /* MoveToHermesScan.swift */,
 				A1213000000000000000A004 /* WebuiSessionTransfer.swift */,
 				A1214000000000000000A002 /* MoveToHermesReconcile.swift */,
+				A1216000000000000000A002 /* MoveToHermesJournal.swift */,
+				A1216000000000000000A004 /* MoveToHermesRunner.swift */,
 				3C75DCD3DB974E27A3CB405C /* BotPromptMode.swift */,
 				FFAECFA53DCE4DDF90FBEEE7 /* BotChatControls.swift */,
 				A8D7065880CB4CA7B1ECB65C /* BotChatSettings.swift */,
@@ -2490,6 +2499,8 @@
 				A1213000000000000000A001 /* MoveToHermesScan.swift in Sources */,
 				A1213000000000000000A003 /* WebuiSessionTransfer.swift in Sources */,
 				A1214000000000000000A001 /* MoveToHermesReconcile.swift in Sources */,
+				A1216000000000000000A001 /* MoveToHermesJournal.swift in Sources */,
+				A1216000000000000000A003 /* MoveToHermesRunner.swift in Sources */,
 				9BB85D722406416798DFA518 /* BotPromptMode.swift in Sources */,
 				88EF8F77C1434727A4C84D7D /* BotChatControls.swift in Sources */,
 				1FAEC70E0BFD4CA7AAAFC9B4 /* BotChatSettings.swift in Sources */,
@@ -2861,6 +2872,7 @@
 				A760F1A70000000000000001 /* HermesAgentFixtureTests.swift in Sources */,
 				A1213000000000000000A005 /* MoveToHermesTransferTests.swift in Sources */,
 				A1214000000000000000A003 /* MoveToHermesReconcileTests.swift in Sources */,
+				A1216000000000000000A005 /* MoveToHermesRunnerTests.swift in Sources */,
 				1331AA23B3B0713A5896D0A3 /* HermexPushProvisioningTests.swift in Sources */,
 				A4730000000000000000A003 /* BotAvatarTests.swift in Sources */,
 				A4770000000000000000D005 /* HermesDelegatedWorkTests.swift in Sources */,
