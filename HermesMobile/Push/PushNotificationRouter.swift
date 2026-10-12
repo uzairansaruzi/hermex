@@ -7,7 +7,8 @@ import UserNotifications
 @MainActor enum PushNotificationRouter {
     /// The deep link a tapped relay banner queues on `AppIntentRouter`, or nil when it names
     /// nothing this phone can open and the app simply opens. A webui push opens its webui
-    /// session on a webui server. Any other push goes to the first configured server holding its install, the active
+    /// session on a webui server, or, once that server moved to Hermes and was removed, on the
+    /// Hermes server its pairing passed to (#1217). Any other push goes to the first configured server holding its install, the active
     /// one first, then by URL, that can open it: a Hermes server opens the session through the
     /// session link (#1177), Bot Chats included, whose row opens their bot; a webui server opens
     /// its Bot connection's bot (legacy Bot Mode). One host under both kinds routes by the active one.
@@ -18,6 +19,9 @@ import UserNotifications
         if let destination = webuiDestination(userInfo: userInfo, pairings: pairings, servers: servers,
                                               activeServer: activeServer) {
             return destination.url
+        }
+        if let moved = movedWebuiLink(userInfo: userInfo, pairings: pairings, servers: servers) {
+            return moved
         }
         let payload = PushPayload(userInfo: userInfo)
         let kinds = Dictionary(servers.map { ($0.id, $0.kind) }, uniquingKeysWith: { first, _ in first })
@@ -41,7 +45,9 @@ import UserNotifications
 
     /// Webui taps use the pairing alone: neither Bot Mode nor a Bot connection is
     /// needed. Only a configured webui server opens one, the active alias first, so a host
-    /// also configured as a Hermes server never takes it there.
+    /// also configured as a Hermes server never takes it there. The push is about a run on that
+    /// server, so it opens there even after the server moved to Hermes (`opensOnSource`, #1217),
+    /// where its live stream and approval card are.
     static func webuiDestination(
         userInfo: [AnyHashable: Any], pairings: [URL: PushPairing], servers: [ServerAccount], activeServer: URL? = nil
     ) -> WebuiPushDestination? {
@@ -52,7 +58,39 @@ import UserNotifications
               let server = self.servers(pairedWith: payload.installHash, in: pairings, activeServer: activeServer)
                 .first(where: { webuiServers.contains($0.absoluteString) })
         else { return nil }
-        return WebuiPushDestination(server: server, sessionID: id)
+        return WebuiPushDestination(server: server, sessionID: id, opensOnSource: true)
+    }
+
+    /// A webui push no configured webui server is paired for, after a same-host move (#1217): the
+    /// Hermes server that copied the webui server's pairing holds its install and a move record,
+    /// so the push opens there, looked up in every Profile, since the session's Profile on Hermes
+    /// isn't the webui Profile a preview names. The pairing is the only proof: two such Hermes
+    /// servers open nothing, and a cross-host move's old install is paired with nothing once its
+    /// webui server is removed.
+    private static func movedWebuiLink(userInfo: [AnyHashable: Any], pairings: [URL: PushPairing],
+                                       servers: [ServerAccount]) -> URL? {
+        let payload = PushPayload(userInfo: userInfo)
+        let holders = Set(servers.filter { $0.kind == .hermes && !$0.movedWebuiServers.isEmpty }.map(\.id))
+        guard payload.source == "webui", let key = HermesDeepLink.normalizedSessionID(payload.sessionID) else { return nil }
+        let paired = self.servers(pairedWith: payload.installHash, in: pairings, activeServer: nil)
+            .filter { holders.contains($0.absoluteString) }
+        guard paired.count == 1, let server = paired.first else { return nil }
+        return HermesDeepLink.sessionURL(for: HermesSessionDestination(server: server, profile: nil, key: key))
+    }
+
+    /// The link a tapped local run alert opens (`ResponseCompletionNotificationRequest`), or nil
+    /// when it names no server this phone knows. A webui server that moved to Hermes and was
+    /// removed (#1217) still counts, through the record its destination holds. A webui chat's
+    /// alert is about a run on that server, so it opens there while it is configured, as a push
+    /// does (`opensOnSource`).
+    static func localAlertLink(userInfo: [AnyHashable: Any], servers: [ServerAccount]) -> URL? {
+        let configured = servers.compactMap { URL(string: $0.id) }
+        let removed = servers.flatMap(\.movedWebuiServers).compactMap { URL(string: $0.sourceServerID) }
+            .filter { !configured.contains($0) }
+        guard let link = ResponseCompletionNotificationRequest.destination(userInfo: userInfo, servers: configured + removed)
+        else { return nil }
+        guard let webui = WebuiPushDestination(url: link) else { return link }
+        return WebuiPushDestination(server: webui.server, sessionID: webui.sessionID, opensOnSource: true).url
     }
 
     /// A non-webui push on Hermes server `server`: `session_id` is the session's stored key in
@@ -112,16 +150,29 @@ import UserNotifications
 struct WebuiPushDestination: Hashable {
     let server: URL
     let sessionID: String
+    /// The link names a run on `server` (a relay push, a local run alert, a Live Activity's tap)
+    /// or the Hermes list's fallback (#1217), so it opens on `server` while it is configured, even
+    /// after the server moved to Hermes. Any other webui link on a moved server opens on its
+    /// destination first (`MovedWebuiRoute`).
+    let opensOnSource: Bool
+
+    /// The query item carrying `opensOnSource`.
+    static let onSourceQueryItem = "onSource"
 
     var url: URL? {
-        HermesDeepLink.webuiSessionURL(server: server, sessionID: sessionID)
+        guard let url = HermesDeepLink.webuiSessionURL(server: server, sessionID: sessionID) else { return nil }
+        guard opensOnSource, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        components.queryItems = (components.queryItems ?? []) + [URLQueryItem(name: Self.onSourceQueryItem, value: "1")]
+        return components.url
     }
 
-    init(server: URL, sessionID: String) {
+    init(server: URL, sessionID: String, opensOnSource: Bool = false) {
         self.server = server
         self.sessionID = sessionID
+        self.opensOnSource = opensOnSource
     }
 
+    /// A Live Activity's tap carries its `activity` and opens on its source like a push.
     init?(url: URL) {
         guard url.scheme?.lowercased() == HermesDeepLink.scheme.lowercased(), url.host?.lowercased() == "webui-push",
               let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
@@ -129,7 +180,9 @@ struct WebuiPushDestination: Hashable {
               let server = try? AuthManager.normalizedServerURL(from: rawServer),
               let id = items.first(where: { $0.name == "id" })?.value?.trimmingCharacters(in: .whitespacesAndNewlines),
               !id.isEmpty else { return nil }
-        self.init(server: server, sessionID: id)
+        let onSource = items.contains { $0.name == Self.onSourceQueryItem && $0.value == "1" }
+        self.init(server: server, sessionID: id,
+                  opensOnSource: onSource || AgentRunTapTarget.activityID(from: url) != nil)
     }
 
     enum Route: Equatable {

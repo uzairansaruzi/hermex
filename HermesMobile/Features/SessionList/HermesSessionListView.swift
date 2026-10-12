@@ -537,7 +537,8 @@ struct HermesSessionListView: View {
 
     /// Opens the session the held link names on this list's server (#1176), the way its row
     /// opens, over the rows it brings forward, or says why nothing opened: gone, or in more than one Profile. A room's session
-    /// opens nothing. A lookup that fails (an unreachable host, a store the host can't read) drops
+    /// opens nothing. A moved webui server's link that no Profile has opens on that webui server
+    /// instead (`MovedWebuiRoute.fallback`), never one whose lookup failed. A lookup that fails (an unreachable host, a store the host can't read) drops
     /// the link quietly, except a refused sign-in or a list that left mid-lookup: the server's
     /// sign-out or switch routes the held link again.
     private func openPendingLink() async {
@@ -566,6 +567,11 @@ struct HermesSessionListView: View {
                 covers.chat = opened
             }
         case .gone:
+            // A moved webui server's link opens on that server when no Profile here has it (#1217).
+            if let fallback = MovedWebuiRoute.fallback(for: link) {
+                AppIntentRouter.shared.requestDeepLink(fallback)
+                return
+            }
             let server = home?.title ?? entry.server.host ?? entry.server.absoluteString
             showLinkNotice(String(localized: "That chat is no longer on \(server)."))
         case .ambiguous:
