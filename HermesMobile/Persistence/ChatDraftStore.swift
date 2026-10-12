@@ -936,6 +936,56 @@ final class ChatDraftStore {
         return movedDraft
     }
 
+    /// Move to Hermes's draft step (#1214): moves `source`'s unsent text, quotes and attachment
+    /// records to `destination` without overwriting either side. Settings stay behind: they name
+    /// the old server's models and folders, and an existing session never restores them.
+    ///
+    /// The copy is on disk before the source goes, so a quit between the two leaves the same
+    /// draft in both places, which the next call finishes as `.alreadyMoved`. A destination
+    /// holding a different draft is `.conflict`, and both stay untouched. A failed save puts back
+    /// what this call changed and throws, so neither draft is lost. Attachment files stay where
+    /// they are; only their records move.
+    func transferDraft(from source: ChatDraftKey, to destination: ChatDraftKey) async throws -> ChatDraftTransfer {
+        await loadIfNeeded()
+        guard var moved = drafts[source] else { return .nothingToMove }
+        moved.settings = nil
+        moved.botSubmissionUncertain = false
+        guard !moved.isEmpty else { return .nothingToMove }
+        func holdsMoved(_ key: ChatDraftKey) -> Bool { drafts[key].map { Self.sameContent($0, moved) } ?? false }
+
+        var copied = false
+        if let existing = drafts[destination], !existing.isEmpty {
+            guard holdsMoved(destination) else { return .conflict }
+        } else {
+            updateDraft(for: destination) { $0 = moved }
+            do {
+                try await flush()
+            } catch {
+                if holdsMoved(destination) { updateDraft(for: destination) { $0 = ChatDraft() } }
+                try? await flush()
+                throw error
+            }
+            // Typing in either chat while the copy saved makes them two drafts: keep both.
+            guard holdsMoved(destination) else { return .conflict }
+            copied = true
+        }
+        guard holdsMoved(source), let original = drafts[source] else { return .conflict }
+        updateDraft(for: source) { $0 = ChatDraft() }
+        do {
+            try await flush()
+        } catch {
+            if drafts[source] == nil { drafts[source] = original }
+            try? await flush()
+            throw error
+        }
+        return copied ? .moved : .alreadyMoved
+    }
+
+    /// Whether two drafts hold the same unsent work: text, quotes and attachment records.
+    private static func sameContent(_ lhs: ChatDraft, _ rhs: ChatDraft) -> Bool {
+        lhs.text == rhs.text && lhs.quotes == rhs.quotes && lhs.attachments == rhs.attachments
+    }
+
     @discardableResult
     func restoreAbandonedNewChatDraft(
         from sessionKey: ChatDraftKey,
@@ -1220,6 +1270,16 @@ final class ChatDraftAttachmentLease {
 
 private struct WeakDraftAttachmentLease {
     weak var value: ChatDraftAttachmentLease?
+}
+
+/// What `ChatDraftStore.transferDraft` did with a draft.
+enum ChatDraftTransfer: Equatable, Sendable {
+    case moved
+    /// The destination already held this draft, so only the source was removed.
+    case alreadyMoved
+    case nothingToMove
+    /// The destination holds a different draft, or one side changed during the move: both stay.
+    case conflict
 }
 
 enum ChatDraftStorageError: Error, LocalizedError {
