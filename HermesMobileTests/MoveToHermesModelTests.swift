@@ -258,7 +258,21 @@ final class MoveToHermesModelTests: XCTestCase {
         reopened.copyMissingChatsAgain()
         await reopened.settled()
         XCTAssertEqual(reopened.screen, .review)
+
+        // A chat that starts running while this Review is open stops Move, though the old
+        // journal has nothing left to copy, and the report is still there.
+        MoveWebuiFixture.rows = [row("new", profile: "default"), row("later", profile: "default", streaming: true)]
         reopened.move()
+        await reopened.settled()
+        XCTAssertEqual(reopened.screen, .refused(.running(1)))
+        XCTAssertTrue(host.imports.allSatisfy { !$0.contains("later") }, "Nothing was sent")
+        let again = makeModel()
+        again.open(.details)
+        await again.settled()
+        guard case .finished = again.screen else { return XCTFail("The report was lost, got \(again.screen)") }
+
+        MoveWebuiFixture.rows = [row("new", profile: "default"), row("later", profile: "default")]
+        reopened.retryCheckedPass()
         await reopened.settled()
         guard case .finished(let next) = reopened.screen else { return XCTFail("Expected the next report, got \(reopened.screen)") }
         XCTAssertEqual(next.copied, ["later"])
