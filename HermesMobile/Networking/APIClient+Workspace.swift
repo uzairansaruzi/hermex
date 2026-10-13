@@ -9,6 +9,10 @@ protocol WorkspaceFileClient: Sendable {
     /// The workspace this client reads, for keying the tree's caches: one value per server and
     /// workspace on webui, and per server, Profile, session and folder on Hermes.
     var scope: String { get }
+    /// Whether Files opens every top-level folder on first visit (`FileTree.defaultExpandedPaths`).
+    /// A Hermes host lists folders one at a time and can block for seconds on a protected one, so
+    /// a Hermes chat lists a folder only when it is tapped (#1138).
+    var opensTopLevelFolders: Bool { get }
     func directoryList(path: String) async throws -> DirectoryListResponse
     /// A text file's content for its preview.
     func file(path: String) async throws -> FileResponse
@@ -47,6 +51,7 @@ struct WebUIWorkspaceFileClient: WorkspaceFileClient {
     let apiClient: APIClient
     let sessionID: String
     let scope: String
+    let opensTopLevelFolders = true
 
     /// Nil without a session ID, which every route needs.
     init?(session: SessionSummary, server: URL, apiClient: APIClient? = nil) {

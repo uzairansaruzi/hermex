@@ -402,10 +402,12 @@ final class FileBrowserViewModelTests: APIClientTestCase {
 
     // MARK: - Hermes (#1112)
 
-    /// A Hermes tree lists the chat's folder and builds every row from the folder's relative path
-    /// plus the entry's name, though the host answers with resolved `/private/…` paths.
+    /// A Hermes tree opens with every folder closed and lists only the chat's folder, since the
+    /// host lists one folder at a time and blocks on protected ones (#1138); a folder lists when
+    /// tapped. Every row is the folder's relative path plus the entry's name, though the host
+    /// answers with resolved `/private/…` paths.
     @MainActor
-    func testAHermesTreeListsTheChatFolderAndNamesChildrenRelatively() async throws {
+    func testAHermesTreeOpensClosedAndNamesChildrenRelatively() async throws {
         let cwd = HermesWorkspaceFileClientTests.cwd
         let files = HermesWorkspaceFileClientTests.client { request in
             switch HermesWorkspaceFileClientTests.queryPath(request) {
@@ -417,6 +419,11 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         let viewModel = FileBrowserViewModel(files: files, defaults: defaults)
 
         await viewModel.loadInitialRootIfNeeded()
+
+        XCTAssertEqual(HermesWorkspaceFileClientTests.fileRequests.map(HermesWorkspaceFileClientTests.queryPath), [cwd])
+        XCTAssertEqual(viewModel.visibleNodes(matching: "").map(\.node.path), ["src", "README.md"])
+
+        await viewModel.toggleDirectory("src")
 
         XCTAssertEqual(HermesWorkspaceFileClientTests.fileRequests.map(HermesWorkspaceFileClientTests.queryPath),
                        [cwd, cwd + "/src"])
@@ -441,6 +448,7 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         let viewModel = FileBrowserViewModel(files: files, defaults: defaults)
 
         await viewModel.loadInitialRootIfNeeded()
+        await viewModel.toggleDirectory("src")
 
         XCTAssertEqual(viewModel.loadFailure(for: "src"), "This folder is no longer on the server.")
         XCTAssertNil(viewModel.errorMessage, "A missing subfolder is not the root's failure")
@@ -548,7 +556,7 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         let first = FileBrowserViewModel(files: HermesWorkspaceFileClientTests.client(script), defaults: defaults)
         await first.loadInitialRootIfNeeded()
         await first.toggleDirectory("src")
-        XCTAssertEqual(first.expandedPaths, [])
+        XCTAssertEqual(first.expandedPaths, ["src"])
 
         let others = [
             HermesWorkspaceFileClientTests.context(storedKey: "20261008_101600_def456"),
@@ -558,10 +566,10 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         for context in others {
             let other = FileBrowserViewModel(files: HermesWorkspaceFileClientTests.client(context: context, script), defaults: defaults)
             await other.loadInitialRootIfNeeded()
-            XCTAssertEqual(other.expandedPaths, ["src"], "\(context) starts from the default expansion")
+            XCTAssertEqual(other.expandedPaths, [], "\(context) starts with every folder closed")
         }
         let same = FileBrowserViewModel(files: HermesWorkspaceFileClientTests.client(script), defaults: defaults)
         await same.loadInitialRootIfNeeded()
-        XCTAssertEqual(same.expandedPaths, [], "The same chat and folder remembers its layout")
+        XCTAssertEqual(same.expandedPaths, ["src"], "The same chat and folder remembers its layout")
     }
 }
