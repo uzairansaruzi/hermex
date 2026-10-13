@@ -276,11 +276,10 @@ final class MoveToHermesCommitTests: XCTestCase {
     }
 
     /// The webui server `a.test` signed in and active, with its own custom header, and Bot
-    /// Mode on.
+    /// Mode (beta) off, which a move never needs (#712).
     private func makeManager() throws -> (AuthManager, FailingKeychain) {
         let keychain = FailingKeychain()
         let preferences = UserDefaults.ephemeral()
-        preferences.set(true, forKey: BotModeGate.isEnabledKey)
         try keychain.save(source.absoluteString, forKey: .serverURL)
         try keychain.save([CustomHeader(name: "X-Webui", value: "token")].encodedForStorage() ?? "",
                           forKey: .customHeaders, scope: source.absoluteString)

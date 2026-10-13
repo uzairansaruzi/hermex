@@ -11,8 +11,6 @@ import Foundation
 /// after it (#1216).
 extension AuthManager {
     enum MoveCommitError: Error, Equatable {
-        /// Hermes servers need Bot Mode on (`BotModeGate`), as for `addHermesServer`.
-        case botModeOff
         /// The source isn't a configured webui server.
         case sourceNotWebui
         /// The destination has the source's address. That host moved in place, which
@@ -48,7 +46,6 @@ extension AuthManager {
     @discardableResult
     func commitMove(from source: ServerAccount, to connection: BotConnection,
                     profiles: [MovedWebuiProfile]) throws -> ServerAccount {
-        guard BotModeGate.isEnabled(in: preferences) else { throw MoveCommitError.botModeOff }
         let destinationURL = (try? BotConnection.address(connection.address.absoluteString)) ?? connection.address
         let destinationID = destinationURL.absoluteString
         let sources = profiles.map(\.source)

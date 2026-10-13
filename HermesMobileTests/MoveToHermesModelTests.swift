@@ -23,7 +23,6 @@ final class MoveToHermesModelTests: XCTestCase {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("move-model-\(UUID().uuidString)", isDirectory: true)
         keychain = InMemoryKeychainStore()
         let preferences = UserDefaults.ephemeral()
-        preferences.set(true, forKey: BotModeGate.isEnabledKey)
         try keychain.save(webui.absoluteString, forKey: .serverURL)
         auth = AuthManager(
             keychain: keychain,

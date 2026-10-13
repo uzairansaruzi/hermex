@@ -24,7 +24,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("move-\(UUID().uuidString)", isDirectory: true)
         keychain = RunnerKeychain()
         let preferences = UserDefaults.ephemeral()
-        preferences.set(true, forKey: BotModeGate.isEnabledKey)
         try keychain.save(webui.absoluteString, forKey: .serverURL)
         auth = AuthManager(
             keychain: keychain,

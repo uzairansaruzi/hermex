@@ -1,6 +1,6 @@
 # Hermex
 
-Hermex is a native SwiftUI iPhone app for a self-hosted Hermes agent. It talks directly to the user's `hermes-webui` server over HTTPS and gives them a phone-native control surface: start and steer sessions, watch streaming work, browse the workspace, and recover from wherever they are. The Xcode target and scheme are `HermesMobile`; the App Store name is `Hermex`.
+Hermex is a native SwiftUI iPhone app for a self-hosted Hermes agent. It talks directly to the user's Hermes host over HTTPS (or, for legacy servers, their `hermes-webui`) and gives them a phone-native control surface: start and steer sessions, watch streaming work, browse the workspace, and recover from wherever they are. The Xcode target and scheme are `HermesMobile`; the App Store name is `Hermex`.
 
 You can think of Hermex as an open source "bring-your-own-server" iPhone client for Hermes. The phone is the control and review plane; the server owns execution, tools, models, and the user's data.
 
@@ -46,7 +46,7 @@ We need to be on the same page with terminology. When communicating, use this la
 - **we, us, and maintainer** mean Uzair and the people building Hermex. These are who you are talking to now.
 - **user** means the person using Hermex to direct their Hermes agent.
 - **agent** means the Hermes agent a user runs on their server. Depending on context, that may also include you.
-- **server** means the user-configured `hermes-webui` instance. **upstream** means the `hermes-webui` project itself, whose API can drift.
+- **server** means a user-configured Hermes host (the default) or legacy `hermes-webui` instance. webui servers keep working and get fixes only; new features target Hermes. **upstream** means the `hermes-webui` project itself, whose API can drift.
 - **active server** means the configured server whose auth, identity, cached data, and screens are currently selected.
 - **session** means a server-backed agent conversation. A **stream** is the SSE connection carrying one response's live events.
 - **workspace** means a server-side filesystem location available to a session. A **Profile** is a server-side agent configuration.

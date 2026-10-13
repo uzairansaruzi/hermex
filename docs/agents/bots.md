@@ -25,9 +25,10 @@ A Hermes server's id is its dashboard address as `BotConnection.address(_:)` par
 and its sign-in record is the same `BotConnection` JSON under `bot_connection::<its
 URL>`, so every Bot store, draft, cache, section order and bot link keys by it as they
 do by a webui server. `AuthManager.addHermesServer` saves a sign-in the form already
-verified and activates the server; it needs Bot Mode on and refuses an address already
-in the registry. Turning Bot Mode off later never locks a user out: an existing Hermes
-server still opens, and so do its bot links. Its home (#709) has two sides on one stack
+verified and activates the server, and refuses an address already in the registry.
+Hermes is the default kind (#712), so nothing about a Hermes server needs Bot Mode:
+adding one, moving a webui server to one, and opening one and its bot links all work
+with it off. Its home (#709) has two sides on one stack
 and one shared connection, the Bots inbox and the Sessions list, switched by a bottom bar
 of `(filter) [Bots | Sessions] (new chat)` that each side fills: on Bots the filter holds
 hidden bots and section order and new chat makes a bot or a group chat; on Sessions the
@@ -66,8 +67,7 @@ advice and stop, and a mode switch keeps that advice. Anything else, including a
 address or headers only the webui path accepts, goes on to the webui path unchanged:
 onboarding's `configure`, Add Server's `addServer`. Once a webui answered, the "Will
 connect to" line shows `AuthManager.normalizedServerURL`'s URL instead of the Hermes
-parser's. Header rows without a value are never sent or saved. With Bot Mode off, a
-found dashboard shows a one-tap opt-in instead of its fields. When a webui server's own
+parser's. Header rows without a value are never sent or saved. When a webui server's own
 Hermes connection uses exactly the same parsed address, the form offers "Use the sign-in
 saved on <server>": it fills username, password and headers, and the sign-in still
 expects that record's `install_id`. The copies stay until the address parses to another
@@ -1428,19 +1428,13 @@ panel (#1113) and Git (#1114) read the same context.
   Hermes client composes `cwd + "/" + path`, and it refuses an absolute path, a `..` component
   or a path with nothing past the root before any request. A child's path is its folder's plus
   its `name`, never the listing's `path`, which the host resolves (`/private/var/…` on a Mac) and
-  so may not start with the `cwd` that was asked for. A file's download (`/api/fs/download`)
-  sends its host path with `profile` and no `session_id`: with one, the host 404s until it has
-  stored the session, so Save to Files would fail in a chat before its first message (#1138). A
-  MEDIA path goes as the reply wrote it, with `session_id`, so the host resolves it against the
-  session. Rows, previews and errors show relative paths,
+  so may not start with the `cwd` that was asked for. Downloads (`/api/fs/download`) send the
+  relative path with `profile` and `session_id`, so the host anchors them to the session's own
+  folder; a MEDIA path goes as the reply wrote it. Rows, previews and errors show relative paths,
   and a refusal whose `detail` names a path reads as the generic failure.
 - **ENOENT-as-200.** `GET /api/fs/list` answers a folder it can't read with 200
   `{entries: [], error}`: `ENOENT` or `ENOTDIR` on the root is the folder-missing state, on a
   subfolder that row's failure; `EACCES` is a permission failure. None reports an error.
-- **Lazy folders.** The host lists one folder at a time, and a macOS-protected folder (Desktop,
-  Documents, Downloads, …) can block 6–11 s before answering `Interrupted system call`. So a
-  Hermes chat's Files opens with every folder closed and lists one only when tapped; webui opens
-  its top-level folders (#1138).
 - **Hidden folders.** The listing hides `.git .hg .svn .cache .next .turbo .venv __pycache__
   build dist node_modules target venv` and credential files, as Desktop does; the app adds no
   workaround. A symlinked folder lists as a file, so it is not browsable and opens the preview's
@@ -1826,14 +1820,13 @@ was), and stops once all are idle. Caveats: `waiting` relies on the
 other processes and never appear; a tip the live agent rotated after the roster
 read matches no bot until the next roster read.
 
-Bot Mode ships behind `BotModeGate`, one app-wide `@AppStorage` bool that is off
-by default and owned by the Settings "Bot Mode (beta)" row (#496), which sits
-under Archived Sessions so new users notice it. Off hides the Bots row on the
-session list and pops the Bots inbox if it is open; nothing else changes, and
-Bot connections and drafts stay in the Keychain until it is turned on again. The
-gate is not per-server because it hides screens rather than storing user data.
-It is removed, together with its Settings row and `BotModeGateTests`, in the
-release PR that ships Bot Mode, not before.
+A webui server's Bots row sits behind `BotModeGate`, one app-wide `@AppStorage`
+bool that is off by default and owned by the Settings "Bot Mode (beta)" row (#496),
+which sits under Archived Sessions so new users notice it. Off hides the Bots row on a
+webui server's session list and pops the Bots inbox if it is open; nothing else
+changes, and Bot connections and drafts stay in the Keychain until it is turned on
+again. Hermes servers ignore it (#712). The gate is not per-server because it hides
+screens rather than storing user data.
 
 The Bots inbox is a utility destination of the session list, pushed like Tasks
 (the detail column on iPad), so the system back button returns to Sessions and

@@ -147,7 +147,7 @@ struct SettingsView: View {
                         isOn: $isBotModeEnabled
                     )
 
-                    SettingsFootnote(String(localized: "Bot Mode is unfinished. It adds a Bots row to the main screen for your direct Hermes bots. Each server’s Hermes connection is available with it off."))
+                    SettingsFootnote(String(localized: "Adds a Bots row to a webui server’s main screen. Hermes servers have Bots built in and don’t need it."))
                 }
 
                 SettingsCard(title: String(localized: "Appearance")) {
@@ -2146,7 +2146,8 @@ private struct ServerAvatarBadge: View {
 }
 
 /// One row in the Settings "Servers" list: avatar, name, URL, and an active marker. A webui
-/// server that moved to Hermes shows where, with a Moved pill (B3, #1218).
+/// server shows a Legacy pill (#712), or once it moved to Hermes, where, with a Moved pill
+/// (B3, #1218).
 private struct SettingsServerRow: View {
     let account: ServerAccount
     let isActive: Bool
@@ -2188,6 +2189,8 @@ private struct SettingsServerRow: View {
 
             if movedTo != nil {
                 SettingsStatusPill(label: String(localized: "Moved"), tint: .orange)
+            } else if account.kind == .webui {
+                SettingsStatusPill(label: String(localized: "Legacy"))
             }
 
             if isActive {
@@ -2209,7 +2212,8 @@ private struct SettingsServerRow: View {
 
     private var accessibilityLabel: String {
         let base = isActive ? String(localized: "\(name), \(account.urlString), active server") : String(localized: "\(name), \(account.urlString)")
-        return movedTo.map { base + ", " + String(localized: "Moved to \($0)") } ?? base
+        if let movedTo { return base + ", " + String(localized: "Moved to \(movedTo)") }
+        return account.kind == .webui ? base + ", " + String(localized: "legacy webui server") : base
     }
 }
 
@@ -2288,7 +2292,6 @@ private struct ServerDetailView: View {
     @State private var colorHex: String
     @State private var isConfirmingRemove = false
     @State private var isRemoving = false
-    @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
 
     init(authManager: AuthManager, account: ServerAccount) {
         self.authManager = authManager
@@ -2315,7 +2318,7 @@ private struct ServerDetailView: View {
                     }
                 }
 
-                if account.kind == .webui, isBotModeEnabled {
+                if account.kind == .webui {
                     MoveToHermesCard(authManager: authManager, account: account)
                 }
 
@@ -2491,7 +2494,7 @@ private struct MoveToHermesCard: View {
             if let notice = notices.card(forSource: account.id, in: authManager.servers) {
                 status(notice)
             } else {
-                SettingsFootnote(String(localized: "Use this server's chats in Hermes directly, without hermes-webui. Chats, titles, pins and drafts come along. This entry stays until you remove it."))
+                SettingsFootnote(String(localized: "This is a legacy hermes-webui server. It keeps working and gets fixes, but new features come to Hermes. Moving uses this server's chats in Hermes directly: chats, titles, pins and drafts come along, and this entry stays until you remove it."))
                 if let host = savedHost {
                     SettingsInfoRow(title: String(localized: "Hermes host"), value: String(localized: "\(host) (saved sign-in)"))
                 }
@@ -2734,28 +2737,6 @@ struct AddServerView: View {
             SettingsFootnote(String(localized: "Hermes dashboard found. Sign in with your dashboard username and password."))
         } else if form.showsPasswordField, form.detectedKind != .hermes, form.errorMessage == nil {
             SettingsFootnote(String(localized: "This server requires a password."))
-        }
-
-        if form.needsBotModeOptIn {
-            VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Hermes dashboard found")
-                        .font(AppFont.subheadline(weight: .semibold))
-                    Text("Adding one needs Bot Mode (beta), which is off. Bot Mode is unfinished, and you can turn it off again in Settings.")
-                        .font(AppFont.footnote())
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .accessibilityElement(children: .combine)
-
-                SettingsButton(String(localized: "Turn on Bot Mode (beta) and continue")) {
-                    form.enableBotMode()
-                }
-                .disabled(form.isConnectionLocked)
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
 
         if let errorMessage = form.errorMessage {

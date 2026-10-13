@@ -148,8 +148,7 @@ final class FileBrowserViewModel {
             commitListing(response.entries ?? [], of: FileTree.rootPath)
             if !hasRestoredExpansion {
                 hasRestoredExpansion = true
-                expandedPaths = expansionStore?.load()
-                    ?? (files.opensTopLevelFolders ? FileTree.defaultExpandedPaths(in: tree.rootNodes) : [])
+                expandedPaths = expansionStore?.load() ?? FileTree.defaultExpandedPaths(in: tree.rootNodes)
             }
             isLoadingRoot = false
             await loadOpenDescendants(of: FileTree.rootPath, reloadingLoaded: reloadingOpenDirectories)

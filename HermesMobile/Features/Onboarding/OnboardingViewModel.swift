@@ -97,8 +97,6 @@ final class OnboardingViewModel {
     /// The last Connect found a webui server saved at the dashboard's address, which
     /// `connect(authManager:replacingWebuiServer:)` can replace (#1027).
     private(set) var offersWebuiReplace = false
-    /// Bot Mode (beta), which adding a Hermes server needs, as of the last detection.
-    private(set) var isBotModeEnabled: Bool
     /// The sign-in a `moveDestination` Connect checked, never saved by the form.
     private(set) var verifiedConnection: BotConnection?
     var connectionMessage: String?
@@ -110,7 +108,6 @@ final class OnboardingViewModel {
     /// state) cannot be superseded by mid-flight edits (PR #294 re-gate).
     var isConnectionLocked = false
 
-    @ObservationIgnored private let preferences: UserDefaults
     /// The URL session setup for the form's own Hermes connections; tests script the host with it.
     @ObservationIgnored private let hermesConfiguration: () -> URLSessionConfiguration
     // Identity + generation of the probe that produced `authStatus` or `detectedKind`.
@@ -123,13 +120,10 @@ final class OnboardingViewModel {
         savedServer: URL? = nil,
         savedHeaders: [CustomHeader] = [],
         initialErrorMessage: String? = nil,
-        preferences: UserDefaults = .standard,
         hermesConfiguration: @escaping () -> URLSessionConfiguration = { .ephemeral }
     ) {
         self.entry = entry
-        self.preferences = preferences
         self.hermesConfiguration = hermesConfiguration
-        isBotModeEnabled = BotModeGate.isEnabled(in: preferences)
         if let savedServer {
             serverURLString = savedServer.absoluteString
         }
@@ -151,25 +145,22 @@ final class OnboardingViewModel {
         return authStatus?.passwordAuthEnabled != false
     }
 
-    /// Username and password for a detected dashboard, once Bot Mode is on.
-    var showsHermesSignIn: Bool { detectedKind == .hermes && isBotModeEnabled }
-
-    /// A detected dashboard that can't be added until Bot Mode (beta) is turned on.
-    var needsBotModeOptIn: Bool { detectedKind == .hermes && !isBotModeEnabled }
+    /// Username and password for a detected dashboard.
+    var showsHermesSignIn: Bool { detectedKind == .hermes }
 
     /// The dashboard's password, or the webui's as today: onboarding shows it until a
     /// webui says it needs none, Add Server once a webui asks for one.
     var showsPasswordField: Bool {
-        if detectedKind == .hermes { return isBotModeEnabled }
+        if detectedKind == .hermes { return true }
         return entry == .onboarding ? isPasswordRequired : webuiNeedsPassword
     }
 
-    /// Off without an address, and for a detected dashboard until Bot Mode is on and both
-    /// its username and password are filled in.
+    /// Off without an address, and for a detected dashboard until both its username and
+    /// password are filled in.
     var canSubmit: Bool {
         guard !serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         guard detectedKind == .hermes else { return true }
-        return isBotModeEnabled && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
+        return !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
     }
 
     /// The root Connect will use, for the "Will connect to" line: the URL the webui path
@@ -178,12 +169,6 @@ final class OnboardingViewModel {
     var addressPreview: URL? {
         if detectedKind == .webui { return try? AuthManager.normalizedServerURL(from: serverURLString) }
         return try? BotConnection.address(serverURLString)
-    }
-
-    /// The opt-in's one tap: turns on Bot Mode (beta) for the app and shows the sign-in fields.
-    func enableBotMode() {
-        preferences.set(true, forKey: BotModeGate.isEnabledKey)
-        isBotModeEnabled = true
     }
 
     /// Fills the username, password and headers from `signIn`. It is a copy: Connect still
@@ -380,7 +365,6 @@ final class OnboardingViewModel {
         detectedKind = .hermes
         probedConnectionIdentity = currentConnectionIdentity()
         savedSignIns = authManager.savedHermesSignIns(at: address)
-        isBotModeEnabled = BotModeGate.isEnabled(in: preferences)
     }
 
     func testConnection(authManager: AuthManager) async {
@@ -521,7 +505,6 @@ final class OnboardingViewModel {
     /// the address is replaced only when `replacingWebuiServer`, and only after the sign-in
     /// succeeded; otherwise it stops here with the Replace offer (#1027).
     private func addHermesServer(authManager: AuthManager, token: Int, replacingWebuiServer: Bool) async -> URL? {
-        guard isBotModeEnabled else { return nil }
         let identity = currentConnectionIdentity()
         let address: URL
         let headers: [CustomHeader]

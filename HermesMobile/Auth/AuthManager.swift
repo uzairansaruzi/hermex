@@ -69,7 +69,7 @@ final class AuthManager {
     /// destination as gone from the start, before the removal's first await (#1216).
     @ObservationIgnored private(set) var removingServerIDs: Set<String> = []
 
-    // `keychain`, `serverRegistry`, `preferences` and `refreshServers` are internal for
+    // `keychain`, `serverRegistry` and `refreshServers` are internal for
     // `AuthManager+MoveToHermes`; nothing outside this type and that extension uses them.
     let keychain: any KeychainStoring
     private let clientFactory: (URL) -> any AuthAPIClient
@@ -81,8 +81,8 @@ final class AuthManager {
     private let logoutTimeout: Duration
     let serverRegistry: ServerRegistry
     private let hermesConnections: HermesConnections
-    /// Where the Bot Mode gate is read (`BotModeGate`), which adding a Hermes server needs.
-    let preferences: UserDefaults
+    /// Where a removed server's Profile choice is cleared (`HermesProfilePreference`).
+    private let preferences: UserDefaults
     /// Tears down a server's push pairing when it is signed out of or removed.
     private let forgetPush: @MainActor (URL) async -> Void
 
@@ -311,14 +311,13 @@ final class AuthManager {
 
     /// Adds (and switches to) a Hermes server (#899): `connection` is a sign-in the
     /// connection form or dev sign-in has already verified, and becomes the server's own
-    /// record, saved under its address, which is also the server's id. Needs Bot Mode on
-    /// (`BotModeGate`); refuses an address already in the registry, as `addServer` does, so
-    /// a webui server and a Hermes server never share a URL (`replaceWebuiServer` swaps
-    /// one for the other). Returns whether it was added.
+    /// record, saved under its address, which is also the server's id. Refuses an address
+    /// already in the registry, as `addServer` does, so a webui server and a Hermes server
+    /// never share a URL (`replaceWebuiServer` swaps one for the other). Returns whether it
+    /// was added.
     @discardableResult
     func addHermesServer(_ connection: BotConnection) -> Bool {
         lastErrorMessage = nil
-        guard BotModeGate.isEnabled(in: preferences) else { return false }
         let server = (try? BotConnection.address(connection.address.absoluteString)) ?? connection.address
         guard !serverRegistry.servers.contains(where: { $0.id == server.absoluteString }) else {
             lastErrorMessage = String(localized: "This server is already configured.")
@@ -347,7 +346,6 @@ final class AuthManager {
     /// whether the Hermes server was added.
     func replaceWebuiServer(with connection: BotConnection) async -> Bool {
         lastErrorMessage = nil
-        guard BotModeGate.isEnabled(in: preferences) else { return false }
         let server = (try? BotConnection.address(connection.address.absoluteString)) ?? connection.address
         guard let webui = servers.first(where: { $0.id == server.absoluteString }), webui.kind == .webui else {
             lastErrorMessage = String(localized: "This server is already configured.")

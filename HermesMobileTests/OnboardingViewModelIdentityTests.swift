@@ -457,19 +457,14 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
     /// The connect form against the scripted Hermes host; nil from `script` is a 0.21.5 dashboard.
     private func makeHermesForm(
         entry: OnboardingViewModel.Entry = .onboarding,
-        botMode: Bool = true,
         _ script: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }
-    ) -> (OnboardingViewModel, UserDefaults) {
-        let preferences = UserDefaults.ephemeral()
-        preferences.set(botMode, forKey: BotModeGate.isEnabledKey)
-        let form = OnboardingViewModel(entry: entry, preferences: preferences,
-                                       hermesConfiguration: { HermesHostFixture.configuration(script) })
-        return (form, preferences)
+    ) -> OnboardingViewModel {
+        OnboardingViewModel(entry: entry, hermesConfiguration: { HermesHostFixture.configuration(script) })
     }
 
     func testAHermesStatusRevealsTheDashboardSignInAndNeverReachesTheWebui() async throws {
         let (gatekeeper, manager) = makeOpenWebui()
-        let (form, _) = makeHermesForm()
+        let form = makeHermesForm()
         form.serverURLString = "hermes.example"
         form.customHeaders = [CustomHeader(name: "CF-Access-Client-Id", value: "id.access"),
                               CustomHeader(name: "CF-Access-Client-Secret", value: " ")]
@@ -495,7 +490,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         ]
         for reply in replies {
             let (gatekeeper, manager) = makeOpenWebui()
-            let (form, _) = makeHermesForm { $0.url?.path == "/api/status" ? reply : nil }
+            let form = makeHermesForm { $0.url?.path == "/api/status" ? reply : nil }
             form.serverURLString = "192.168.1.5:8787"
             XCTAssertEqual(form.addressPreview?.absoluteString, "http://192.168.1.5:8787", "Before anything answers")
 
@@ -519,7 +514,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         ]
         for (reply, advice) in rows {
             let (gatekeeper, manager) = makeOpenWebui()
-            let (form, _) = makeHermesForm { $0.url?.path == "/api/status" ? reply : nil }
+            let form = makeHermesForm { $0.url?.path == "/api/status" ? reply : nil }
             form.serverURLString = "hermes.example"
 
             await form.connect(authManager: manager)
@@ -550,7 +545,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         for (path, reply, copy, logins) in rows {
             HermesHostFixture.reset()
             let (_, manager) = makeOpenWebui()
-            let (form, _) = makeHermesForm { $0.url?.path == path ? reply : nil }
+            let form = makeHermesForm { $0.url?.path == path ? reply : nil }
             form.serverURLString = "hermes.example"
             await form.connect(authManager: manager)
             XCTAssertEqual(form.detectedKind, .hermes, copy)
@@ -564,28 +559,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
             XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), logins, copy)
             XCTAssertTrue(manager.servers.isEmpty, copy)
         }
-    }
-
-    func testWithBotModeOffADetectedDashboardOffersTheOptInFirst() async {
-        let (_, manager) = makeOpenWebui()
-        let (form, preferences) = makeHermesForm(botMode: false)
-        form.serverURLString = "hermes.example"
-        await form.connect(authManager: manager)
-
-        XCTAssertTrue(form.needsBotModeOptIn)
-        XCTAssertFalse(form.showsHermesSignIn)
-        XCTAssertFalse(form.canSubmit)
-        form.username = "me"
-        form.password = "secret"
-        await form.connect(authManager: manager)
-        XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0, "Nothing signs in before the opt-in")
-
-        form.enableBotMode()
-
-        XCTAssertTrue(BotModeGate.isEnabled(in: preferences))
-        XCTAssertFalse(form.needsBotModeOptIn)
-        XCTAssertTrue(form.showsHermesSignIn)
-        XCTAssertTrue(form.canSubmit)
     }
 
     func testCloudflareModeOpensTheAccessHeadersAndLeavingDropsOnlyTheEmptyOnes() {
@@ -612,7 +585,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         let manager = AuthManager(keychain: InMemoryKeychainStore(), clientFactory: { _ in client },
                                   probeClientFactory: { _, _ in client }, headerStore: CustomHeaderStore(),
                                   serverRegistry: ServerRegistry.inMemory())
-        let (form, _) = makeHermesForm(entry: .addServer) { $0.url?.path == "/api/status" ? .json(404, .object([:])) : nil }
+        let form = makeHermesForm(entry: .addServer) { $0.url?.path == "/api/status" ? .json(404, .object([:])) : nil }
         form.serverURLString = "b.test"
         XCTAssertFalse(form.showsPasswordField)
 

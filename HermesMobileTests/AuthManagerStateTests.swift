@@ -602,7 +602,6 @@ final class AuthManagerStateTests: XCTestCase {
         preferences: UserDefaults = .ephemeral(),
         forgetPush: @escaping @MainActor (URL) async -> Void = { _ in }
     ) async throws -> AuthManager {
-        preferences.set(true, forKey: BotModeGate.isEnabledKey)
         let manager = AuthManager(
             keychain: keychain,
             clientFactory: { _ in MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: false)) },
@@ -823,23 +822,19 @@ final class AuthManagerStateTests: XCTestCase {
 
     // MARK: - Adding a Hermes server from the connect form (#900)
 
-    /// A manager with Bot Mode on whose webui double answers without auth.
+    /// A manager with Bot Mode (beta) off, which adding a Hermes server never needs (#712),
+    /// whose webui double answers without auth.
     private func makeFormManager(keychain: InMemoryKeychainStore, headerStore: CustomHeaderStore = CustomHeaderStore()) -> AuthManager {
-        let preferences = UserDefaults.ephemeral()
-        preferences.set(true, forKey: BotModeGate.isEnabledKey)
         let webui = MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: false))
         return AuthManager(keychain: keychain, clientFactory: { _ in webui }, probeClientFactory: { _, _ in webui },
                            headerStore: headerStore, serverRegistry: ServerRegistry.inMemory(keychain: keychain),
-                           hermesConnections: HermesConnections(), preferences: preferences)
+                           hermesConnections: HermesConnections(), preferences: .ephemeral())
     }
 
-    /// The connect form for `entry` with Bot Mode on, against the scripted Hermes host.
+    /// The connect form for `entry` against the scripted Hermes host.
     private func makeForm(entry: OnboardingViewModel.Entry,
                           host script: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> OnboardingViewModel {
-        let preferences = UserDefaults.ephemeral()
-        preferences.set(true, forKey: BotModeGate.isEnabledKey)
-        return OnboardingViewModel(entry: entry, preferences: preferences,
-                                   hermesConfiguration: { HermesHostFixture.configuration(script) })
+        OnboardingViewModel(entry: entry, hermesConfiguration: { HermesHostFixture.configuration(script) })
     }
 
     func testTheConnectFormAddsAHermesServerFromOnboardingAndFromAddServer() async throws {
@@ -1096,7 +1091,6 @@ final class AuthManagerStateTests: XCTestCase {
         defer { HermesHostFixture.reset() }
         let keychain = InMemoryKeychainStore()
         let preferences = UserDefaults.ephemeral()
-        preferences.set(true, forKey: BotModeGate.isEnabledKey)
         let webui = MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: true, loggedIn: false))
         let manager = AuthManager(keychain: keychain, clientFactory: { _ in webui }, probeClientFactory: { _, _ in webui },
                                   headerStore: CustomHeaderStore(), serverRegistry: ServerRegistry.inMemory(keychain: keychain),

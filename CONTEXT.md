@@ -5,11 +5,11 @@ Canonical language for Hermex concepts that need consistent names across the pro
 ## Servers
 
 **Webui server**:
-A configured `hermes-webui` server. Hermex signs in to it with its password and cookie, and it opens on the session list.
+A configured `hermes-webui` server, shown as **Legacy**. It keeps working and gets fixes only; new features come to Hermes servers, and Move to Hermes switches it over. Hermex signs in to it with its password and cookie, and it opens on the session list.
 _Avoid_: server (alone, when the kind matters), WebUI
 
 **Hermes server**:
-A configured Hermes dashboard that Hermex reaches directly. Its sign-in is its own Hermes connection, and it opens on the Bots inbox.
+A configured Hermes dashboard that Hermex reaches directly, and the default kind when adding a server. Its sign-in is its own Hermes connection, and it opens on the Bots inbox.
 _Avoid_: Hermes connection (that is the sign-in), bot server
 
 **Connection mode**:
