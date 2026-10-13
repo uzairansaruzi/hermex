@@ -521,6 +521,33 @@ import Observation
         XCTAssertEqual(covers.chat?.target, .new(profile: "research"))
     }
 
+    /// A share arriving while a new-session chat covers a list the trip to the sharing app closed
+    /// (#1212) closes that chat at once, so the list shows and reads the host again, rather than
+    /// waiting for the user to go back to Sessions; the share then opens as a new session.
+    func testAShareOverAChatTheBackgroundClosedOpensAfterTheListReadsAgain() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
+        let list = makeList(wire)
+        await list.openHermes()
+        let entry = HermesSessionListEntry(server: server, connection: connection, profile: "default")
+        var covers = HermesSessionListCovers()
+        covers.chat = HermesSessionChat(server: server, connection: connection, target: .new(profile: "default"))
+        list.pauseHermes()
+        list.closeHermes()
+        let share = SharedImportReservation(itemID: "item", reservationID: "reservation", createdAt: Date(),
+                                            sharedImport: SharedImport(draft: "Read this", attachments: []))
+
+        XCTAssertNil(covers.open(share, on: entry, listed: list.hermesProfile, isLive: list.isHermesLive))
+        XCTAssertNil(covers.chat, "The covering chat closes before the list is live")
+
+        await list.openHermes()
+        guard case .chat(let chat)? = covers.open(share, on: entry, listed: list.hermesProfile,
+                                                   isLive: list.isHermesLive) else {
+            return XCTFail("The share opens a new session once the list reads the host")
+        }
+        XCTAssertEqual(chat.target, .new(profile: "default"))
+    }
+
     // MARK: Fixture
 
     private func makeList(_ wire: HermesSessionListWire, profile: String? = "default",

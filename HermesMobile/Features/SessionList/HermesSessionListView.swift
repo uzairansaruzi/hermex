@@ -282,7 +282,7 @@ struct HermesSessionListView: View {
         // what it opens or says shows here.
         .onChange(of: pendingLink, initial: true) { covers.accept(pendingLink, on: entry.server) }
         .task(id: pendingLink) { await openPendingLink() }
-        // A Shortcut's new session brings the rows forward at once; it and a share open once the
+        // A Shortcut's new session and a share bring the rows forward at once, and open once the
         // list has read the host live, whichever Profile the request names. A share reserved while
         // another moves into its draft opens once that move ends.
         .onChange(of: NewChatReadiness(request: pendingNewChat, share: pendingShare?.reservationID, profile: profile,
@@ -587,14 +587,14 @@ struct HermesSessionListView: View {
         if covers.open(pendingNewChat, on: entry, listed: profile, isLive: viewModel.isHermesLive) { pendingNewChat = nil }
     }
 
-    /// Opens a share (#1181) as a new session over whatever covers the rows, once `transfer` has
-    /// moved it into that session's draft and let it go. The share is claimed for the move, so no
+    /// Opens a share (#1181) as a new session over whatever covers the rows (#1212), once `transfer`
+    /// has moved it into that session's draft and let it go. The share is claimed for the move, so no
     /// home, here or on another server, starts a second one. A transfer that fails stays claimed
     /// and says why, offering Discard (#1196); closing the alert otherwise, or leaving, keeps it
     /// queued. One cut short by leaving hands it back for the next try.
     private func openPendingShare() {
         guard shareTransfer == nil, let share = pendingShare,
-              let opening = share.hermesOpening(on: entry, listed: profile, isLive: viewModel.isHermesLive) else {
+              let opening = covers.open(share, on: entry, listed: profile, isLive: viewModel.isHermesLive) else {
             return
         }
         guard case .chat(let chat) = opening else { return didRouteShare(share) }
@@ -841,9 +841,9 @@ private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSessi
 }
 
 /// What covers a Hermes Sessions list's rows: the chat a row opened, the screens it pushed, and
-/// its sheets and confirmations. A session link (#1176) for the list's server, or a Shortcut's new
-/// session (#1180), clears them all, so its chat, or why it can't open, shows on the list itself; a
-/// closed chat keeps its draft in the draft store.
+/// its sheets and confirmations. A session link (#1176) for the list's server, a Shortcut's new
+/// session (#1180) or a share (#1181) clears them all, so its chat, or why it can't open, shows on
+/// the list itself; a closed chat keeps its draft in the draft store.
 struct HermesSessionListCovers {
     var chat: HermesSessionChat?
     var renaming: SessionSummary?
@@ -890,6 +890,16 @@ struct HermesSessionListCovers {
         guard let chat = request.chat(on: entry, listed: listed, isLive: isLive) else { return false }
         self.chat = chat
         return true
+    }
+
+    /// Takes a share for `entry`'s list (#1181) as `open(_:on:listed:isLive:)` takes a Shortcut's
+    /// new session: the rows come forward first, so a chat that kept the list closed across the trip
+    /// to the sharing app closes, and the list, appearing again, reads the host the share waits on
+    /// (#1212). The chat's draft stays in the draft store. What the share opens, once it can.
+    @MainActor mutating func open(_ share: SharedImportReservation, on entry: HermesSessionListEntry, listed: String?,
+                                  isLive: Bool) -> HermesShareOpening? {
+        bringForward()
+        return share.hermesOpening(on: entry, listed: listed, isLive: isLive)
     }
 
     /// Closes everything over the rows, so what opens next shows on the list itself.
