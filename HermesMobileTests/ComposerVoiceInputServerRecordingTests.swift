@@ -244,11 +244,8 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         let recorder = DictationTestRecorder()
         var authorizations = 0
         let controller = ComposerVoiceInputController(
-            speechRecognizerFactory: { locale in
-                let recognizer = SFSpeechRecognizer(locale: locale)
-                recognizer?.supportsOnDeviceRecognition = true
-                return recognizer
-            },
+            speechRecognizerFactory: { _ in OnDeviceTestRecognizer() },
+            supportedLocales: { [.current] },
             microphonePermission: { true },
             speechAuthorization: { authorizations += 1; return .denied },
             serverRecorder: recorder, mayRecord: { true })
@@ -374,6 +371,18 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         let thirtyMinutesInSeconds = 30 * 60
         let approxBytes = ComposerVoiceInputController.serverRecordingBitrate / 8 * thirtyMinutesInSeconds
         XCTAssertLessThan(approxBytes, PendingAttachment.maximumUploadBytes)
+    }
+}
+
+/// Reports an on-device model without the simulator's speech service. Tests that
+/// use it are denied speech authorization first, so recognition never starts.
+private final class OnDeviceTestRecognizer: ComposerSpeechRecognizing {
+    let supportsOnDeviceRecognition = true
+    func recognitionTask(
+        with request: SFSpeechRecognitionRequest,
+        resultHandler: @escaping (SFSpeechRecognitionResult?, (any Error)?) -> Void
+    ) -> SFSpeechRecognitionTask {
+        preconditionFailure("Recognition starts only after speech authorization is granted")
     }
 }
 
