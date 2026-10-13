@@ -261,7 +261,7 @@ import SwiftUI
         case .status(.available(let loaded)):
             callout("arrow.up.circle.fill", tint: .blue, title: Text("Plugin update available"),
                     message: loaded.map { Text("Your Hermes host has hermex-push \($0.description) loaded. The newest is \(newest).") }
-                        ?? Text("Your Hermes host has an older hermex-push loaded. The newest is \(newest)."),
+                        ?? Text("Your Hermes host has an older hermex-push. The newest is \(newest)."),
                     action: String(localized: "Update plugin…")) { isConfirmingUpdate = true }
         case .updating(let step):
             callout("circle.dashed", tint: .secondary, title: Text("Updating the plugin…"), message: Text(step.progress))
