@@ -23,13 +23,15 @@ struct HermesWorkspaceContext: Hashable, Sendable {
 /// here is the client's own rule, not a security boundary: a workspace-relative path becomes
 /// `cwd + "/" + path` only when it is relative and climbs nowhere (`hostPath`), and a child's
 /// path is its folder's plus its name, never the listing's `path`, which the host resolves
-/// (`/private/var/…` for `/var/…`) and so can leave the folder the chat asked for. Downloads send
-/// the relative path with the Profile and stored key, so the host anchors them to the session's
-/// own folder. Rows, previews and errors carry only relative paths. Checked at the
+/// (`/private/var/…` for `/var/…`) and so can leave the folder the chat asked for. A file's
+/// download sends its host path too, without the stored key, so it works before the host has
+/// stored a new chat (#1138); a MEDIA path keeps the stored key so the host resolves it against
+/// the session. Rows, previews and errors carry only relative paths. Checked at the
 /// `HERMES_AGENT_TESTED_SHA` pin (ca678285) in `hermes_cli/web_routers/files.py`.
 @MainActor final class HermesWorkspaceFileClient: WorkspaceFileClient {
     let context: HermesWorkspaceContext
     nonisolated let scope: String
+    nonisolated let opensTopLevelFolders = false
     private let http: HermesConnection
 
     init(context: HermesWorkspaceContext, http: HermesConnection) {
@@ -73,7 +75,7 @@ struct HermesWorkspaceContext: Hashable, Sendable {
         return FileResponse(
             content: text, path: path, name: name,
             language: reply["language"].text, size: reply["byteSize"].integer,
-            lines: isTruncated ? nil : text.map { $0.reduce(1) { $1 == "\n" ? $0 + 1 : $0 } },
+            lines: isTruncated ? nil : text.map(Self.lineCount),
             error: nil, isBinary: isBinary, isTruncated: isTruncated, isPreviewOnly: true
         )
     }
@@ -81,14 +83,12 @@ struct HermesWorkspaceContext: Hashable, Sendable {
     /// The whole file, for Save to Files and Share: no size cap, as on webui, and an empty file
     /// is the file.
     func rawFileData(path: String) async throws -> Data {
-        _ = try Self.hostPath(path, in: context.cwd)
-        return try await download(path, limit: nil, allowsEmpty: true)
+        try await download(try Self.hostPath(path, in: context.cwd), inSession: false, limit: nil, allowsEmpty: true)
     }
 
     /// At most 25 MB (`BotArtifactBuffer`), for Quick Look.
     func rawFilePreviewData(path: String) async throws -> Data {
-        _ = try Self.hostPath(path, in: context.cwd)
-        return try await download(path)
+        try await download(try Self.hostPath(path, in: context.cwd), inSession: false)
     }
 
     /// An image preview keeps the 25 MB cap of every Hermes preview download.
@@ -100,12 +100,12 @@ struct HermesWorkspaceContext: Hashable, Sendable {
     /// host resolves it against the session and decides what it serves. At most 25 MB, for the
     /// MEDIA viewer's preview.
     func mediaData(path: String) async throws -> Data {
-        try await download(path)
+        try await download(path, inSession: true)
     }
 
     /// `mediaData` for Save and Share: the whole file, as `rawFileData` reads one.
     func mediaExportData(path: String) async throws -> Data {
-        try await download(path, limit: nil, allowsEmpty: true)
+        try await download(path, inSession: true, limit: nil, allowsEmpty: true)
     }
 
     /// The host path of `path`, a workspace-relative path: the folder itself for
@@ -120,9 +120,11 @@ struct HermesWorkspaceContext: Hashable, Sendable {
         return (root == "/" ? "" : root) + "/" + path
     }
 
-    private func download(_ path: String, limit: Int? = BotArtifactBuffer.maximumBytes,
+    /// `inSession` sends the stored key, for a path the host must resolve against the session.
+    private func download(_ path: String, inSession: Bool, limit: Int? = BotArtifactBuffer.maximumBytes,
                           allowsEmpty: Bool = false) async throws -> Data {
-        let request = try HermesREST.downloadArtifact(path: path, profile: context.profile, sessionID: context.storedKey)
+        let request = try HermesREST.downloadArtifact(path: path, profile: context.profile,
+                                                      sessionID: inSession ? context.storedKey : nil)
             .request(base: http.connection.address)
         return try await http.authorized(request) { request, session in
             try await BotArtifactDownload.data(session: session, request: request, limit: limit, allowsEmpty: allowsEmpty)
@@ -138,6 +140,14 @@ struct HermesWorkspaceContext: Hashable, Sendable {
         do { return try HermesCronClient.accepted(reply) } catch let refusal as HermesCronRefusal {
             throw refusal.detail.contains(where: { $0 == "/" || $0 == "\\" }) ? BotArtifactFailure.unavailable : refusal
         }
+    }
+
+    /// Lines as an editor numbers them: a final newline ends the last line rather than starting
+    /// another, and an empty file has none.
+    nonisolated static func lineCount(_ text: String) -> Int {
+        // Bytes, not Characters: Swift reads `\r\n` as one Character that is not `\n`.
+        let newlines = text.utf8.reduce(0) { $1 == 0x0A ? $0 + 1 : $0 }
+        return text.isEmpty || text.utf8.last == 0x0A ? newlines : newlines + 1
     }
 
     /// One file or folder name, so a path joined from names never leaves its folder.

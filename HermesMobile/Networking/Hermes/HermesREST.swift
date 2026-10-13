@@ -102,8 +102,10 @@ enum HermesREST: Equatable, Sendable {
     /// One recording for `profile`'s speech-to-text: `dataURL` is base64 of up to 25 MiB of
     /// audio, and `mimeType` an `audio/*` type.
     case transcribe(profile: String, dataURL: String, mimeType: String)
-    /// One session-scoped file download. `path` is checked against the address.
-    case downloadArtifact(path: String, profile: String, sessionID: String)
+    /// One file download. `path` is checked against the address. With a session the host
+    /// resolves a relative path against that stored session's folder; without one, `path` must
+    /// be absolute, which works before the host has stored the session.
+    case downloadArtifact(path: String, profile: String, sessionID: String?)
     /// Writes one managed environment value at the host root.
     case setEnvironment(key: String, value: String)
     /// Installs an agent plugin, reinstalling over an existing copy.
@@ -325,13 +327,15 @@ enum HermesREST: Equatable, Sendable {
             return try Self.send("POST", try Self.url(base, "api/audio/transcribe", profile: profile),
                                  ["data_url": .string(dataURL), "mime_type": .string(mimeType)])
         case .downloadArtifact(let path, let profile, let sessionID):
-            guard !profile.isEmpty, !sessionID.isEmpty else { throw BotArtifactFailure.invalidReference }
+            guard !profile.isEmpty, sessionID?.isEmpty != true else { throw BotArtifactFailure.invalidReference }
             let path = try BotArtifactReference.path(path, address: base)
-            var parts = URLComponents(url: base.appendingPathComponent("api/fs/download"), resolvingAgainstBaseURL: false)
-            parts?.queryItems = [URLQueryItem(name: "path", value: path),
-                                 URLQueryItem(name: "profile", value: profile),
-                                 URLQueryItem(name: "session_id", value: sessionID)]
-            guard let url = parts?.url else { throw BotArtifactFailure.invalidReference }
+            guard var parts = URLComponents(url: base.appendingPathComponent("api/fs/download"), resolvingAgainstBaseURL: false)
+            else { throw BotArtifactFailure.invalidReference }
+            parts.queryItems = [URLQueryItem(name: "path", value: path), URLQueryItem(name: "profile", value: profile)]
+                + (sessionID.map { [URLQueryItem(name: "session_id", value: $0)] } ?? [])
+            // The host reads a query's `+` as a space; a path keeps its own.
+            parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+            guard let url = parts.url else { throw BotArtifactFailure.invalidReference }
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalCacheData
             return request
