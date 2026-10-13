@@ -6540,6 +6540,364 @@
         }
       }
     },
+    "%lld chats open without a folder" : {
+      "localizations" : {
+        "ar" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld محادثات تُفتح دون مجلد"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld محادثة تُفتح دون مجلد"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld محادثة تُفتح دون مجلد"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld محادثة تُفتح دون مجلد"
+                }
+              },
+              "two" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld محادثة تُفتح دون مجلد"
+                }
+              },
+              "zero" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld محادثة تُفتح دون مجلد"
+                }
+              }
+            }
+          }
+        },
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld Chat öffnet sich ohne Ordner"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld Chats öffnen sich ohne Ordner"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld chat opens without a folder"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld chats open without a folder"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld chat se abre sin carpeta"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld chats se abren sin carpeta"
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld discussion s’ouvre sans dossier"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld discussions s’ouvrent sans dossier"
+                }
+              }
+            }
+          }
+        },
+        "he" : {
+          "variations" : {
+            "plural" : {
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld צ׳אטים ייפתחו בלי תיקייה"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld צ׳אט ייפתח בלי תיקייה"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld צ׳אטים ייפתחו בלי תיקייה"
+                }
+              },
+              "two" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld צ׳אטים ייפתחו בלי תיקייה"
+                }
+              }
+            }
+          }
+        },
+        "it" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld chat si apre senza cartella"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld chat si aprono senza cartella"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 件のチャットはフォルダなしで開きます"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "채팅 %lld개가 폴더 없이 열려요"
+                }
+              }
+            }
+          }
+        },
+        "nl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld chat opent zonder map"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld chats openen zonder map"
+                }
+              }
+            }
+          }
+        },
+        "pl" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld czaty otwierają się bez folderu"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld czatów otwiera się bez folderu"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld czat otwiera się bez folderu"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld czatu otwiera się bez folderu"
+                }
+              }
+            }
+          }
+        },
+        "pt-BR" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld chat abre sem pasta"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld chats abrem sem pasta"
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld чата откроются без папки"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld чатов откроются без папки"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld чат откроется без папки"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld чата откроются без папки"
+                }
+              }
+            }
+          }
+        },
+        "tr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld sohbet klasörsüz açılır"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld sohbet klasörsüz açılır"
+                }
+              }
+            }
+          }
+        },
+        "ur" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld چیٹ بغیر فولڈر کے کھلتی ہے"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld چیٹس بغیر فولڈر کے کھلتی ہیں"
+                }
+              }
+            }
+          }
+        },
+        "zh-HK" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 個聊天開啟時將沒有資料夾"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 个聊天打开时将没有文件夹"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 個聊天開啟時將沒有資料夾"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld chats stay on %@" : {
       "localizations" : {
         "ar" : {
@@ -12327,364 +12685,6 @@
                 "stringUnit" : {
                   "state" : "needs_review",
                   "value" : "%lld 個檔案已更改"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "%lld folders not on this host" : {
-      "localizations" : {
-        "ar" : {
-          "variations" : {
-            "plural" : {
-              "few" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld مجلدات غير موجودة على هذا المضيف"
-                }
-              },
-              "many" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld مجلد غير موجود على هذا المضيف"
-                }
-              },
-              "one" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld مجلد غير موجود على هذا المضيف"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld مجلد غير موجود على هذا المضيف"
-                }
-              },
-              "two" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld مجلد غير موجود على هذا المضيف"
-                }
-              },
-              "zero" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld مجلد غير موجود على هذا المضيف"
-                }
-              }
-            }
-          }
-        },
-        "de" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld Ordner nicht auf diesem Host"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld Ordner nicht auf diesem Host"
-                }
-              }
-            }
-          }
-        },
-        "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld folder not on this host"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld folders not on this host"
-                }
-              }
-            }
-          }
-        },
-        "es" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld carpeta que no está en este host"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld carpetas que no están en este host"
-                }
-              }
-            }
-          }
-        },
-        "fr" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld dossier absent de cet hôte"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld dossiers absents de cet hôte"
-                }
-              }
-            }
-          }
-        },
-        "he" : {
-          "variations" : {
-            "plural" : {
-              "many" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld תיקיות שאינן קיימות במארח הזה"
-                }
-              },
-              "one" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld תיקייה שאינה קיימת במארח הזה"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld תיקיות שאינן קיימות במארח הזה"
-                }
-              },
-              "two" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld תיקיות שאינן קיימות במארח הזה"
-                }
-              }
-            }
-          }
-        },
-        "it" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld cartella non presente su questo host"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld cartelle non presenti su questo host"
-                }
-              }
-            }
-          }
-        },
-        "ja" : {
-          "variations" : {
-            "plural" : {
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "このホストにないフォルダ %lld 件"
-                }
-              }
-            }
-          }
-        },
-        "ko" : {
-          "variations" : {
-            "plural" : {
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "이 호스트에 없는 폴더 %lld개"
-                }
-              }
-            }
-          }
-        },
-        "nl" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld map niet op deze host"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld mappen niet op deze host"
-                }
-              }
-            }
-          }
-        },
-        "pl" : {
-          "variations" : {
-            "plural" : {
-              "few" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "Brak %lld folderów na tym hoście"
-                }
-              },
-              "many" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "Brak %lld folderów na tym hoście"
-                }
-              },
-              "one" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "Brak %lld folderu na tym hoście"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "Brak %lld folderu na tym hoście"
-                }
-              }
-            }
-          }
-        },
-        "pt-BR" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld pasta que não está neste host"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld pastas que não estão neste host"
-                }
-              }
-            }
-          }
-        },
-        "ru" : {
-          "variations" : {
-            "plural" : {
-              "few" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld папки отсутствуют на этом хосте"
-                }
-              },
-              "many" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld папок отсутствуют на этом хосте"
-                }
-              },
-              "one" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld папка отсутствует на этом хосте"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld папки отсутствуют на этом хосте"
-                }
-              }
-            }
-          }
-        },
-        "tr" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld klasör bu ana makinede yok"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld klasör bu ana makinede yok"
-                }
-              }
-            }
-          }
-        },
-        "ur" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld فولڈر جو اس ہوسٹ پر نہیں"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld فولڈرز جو اس ہوسٹ پر نہیں"
-                }
-              }
-            }
-          }
-        },
-        "zh-HK" : {
-          "variations" : {
-            "plural" : {
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld 個資料夾不在此主機上"
-                }
-              }
-            }
-          }
-        },
-        "zh-Hans" : {
-          "variations" : {
-            "plural" : {
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld 个文件夹不在此主机上"
-                }
-              }
-            }
-          }
-        },
-        "zh-Hant" : {
-          "variations" : {
-            "plural" : {
-              "other" : {
-                "stringUnit" : {
-                  "state" : "needs_review",
-                  "value" : "%lld 個資料夾不在此主機上"
                 }
               }
             }
@@ -141901,6 +141901,112 @@
     "This Profile is no longer on the server." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Dieses Profil ist nicht mehr auf dem Server." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Este perfil ya no está en el servidor." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Ce profil n’est plus sur le serveur." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Questo profilo non è più sul server." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Tego profilu nie ma już na serwerze." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Este perfil não está mais no servidor." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Dit profiel staat niet meer op de server." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu profil artık sunucuda değil." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Этого профиля больше нет на сервере." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このプロファイルはサーバー上にもうありません。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "此配置文件已不在服务器上。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 프로필은 더 이상 서버에 없어요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لم يعد ملف التعريف هذا موجودًا على الخادم." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "הפרופיל הזה כבר לא נמצא בשרת." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "یہ پروفائل اب سرور پر نہیں ہے۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "此設定檔已不在伺服器上。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "此設定檔已不在伺服器上。" } } } },
     "This also resumes the Task." : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Dadurch wird die Aufgabe auch fortgesetzt."}},"es":{"stringUnit":{"state":"needs_review","value":"Esto también reanuda la Tarea."}},"fr":{"stringUnit":{"state":"needs_review","value":"Cela reprend aussi la Tâche."}},"it":{"stringUnit":{"state":"needs_review","value":"Questo riprende anche l’Attività."}},"pl":{"stringUnit":{"state":"needs_review","value":"Spowoduje to również wznowienie Zadania."}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Isso também retoma a Tarefa."}},"nl":{"stringUnit":{"state":"needs_review","value":"Hiermee wordt de taak ook hervat."}},"tr":{"stringUnit":{"state":"needs_review","value":"Bu, Görevi de devam ettirir."}},"ru":{"stringUnit":{"state":"needs_review","value":"Это также возобновит задачу."}},"ja":{"stringUnit":{"state":"needs_review","value":"タスクも再開されます。"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"这也会继续该任务。"}},"ko":{"stringUnit":{"state":"needs_review","value":"작업도 재개돼요."}},"ar":{"stringUnit":{"state":"needs_review","value":"يؤدي هذا أيضًا إلى استئناف المهمة."}},"he":{"stringUnit":{"state":"needs_review","value":"פעולה זו גם ממשיכה את המשימה."}},"ur":{"stringUnit":{"state":"needs_review","value":"اس سے ٹاسک بھی دوبارہ شروع ہو جائے گا۔"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"這也會繼續該任務。"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"這也會繼續該任務。"}}}},
     "This host doesn't offer a model named %@." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Dieser Host bietet kein Modell namens %@ an." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Este host no ofrece ningún modelo llamado %@." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Cet hôte ne propose aucun modèle nommé %@." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Questo host non offre un modello chiamato %@." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Ten host nie oferuje modelu o nazwie %@." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Este host não oferece um modelo chamado %@." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Deze host biedt geen model met de naam %@." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu ana makine %@ adlı bir model sunmuyor." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Этот хост не предлагает модель с именем %@." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このホストには %@ という名前のモデルがありません。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "此主机不提供名为 %@ 的模型。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 호스트에는 %@(이)라는 모델이 없습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لا يوفّر هذا المضيف نموذجًا باسم %@." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "המארח הזה לא מציע מודל בשם %@." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "یہ ہوسٹ %@ نام کا کوئی ماڈل پیش نہیں کرتا۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "此主機不提供名為 %@ 的模型。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "此主機不提供名為 %@ 的模型。" } } } },
+    "This host doesn’t have a matching folder." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "لا يحتوي هذا المضيف على مجلد مطابق."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dieser Host hat keinen passenden Ordner."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Este host no tiene una carpeta que coincida."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Cet hôte n’a pas de dossier correspondant."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "אין במארח הזה תיקייה תואמת."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Questo host non ha una cartella corrispondente."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このホストには一致するフォルダがありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 호스트에 일치하는 폴더가 없어요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Deze host heeft geen overeenkomende map."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ten host nie ma pasującego folderu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Este host não tem uma pasta correspondente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "На этом хосте нет подходящей папки."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu ana makinede eşleşen bir klasör yok."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اس ہوسٹ پر کوئی مماثل فولڈر نہیں ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此主機上沒有相符的資料夾。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此主机上没有匹配的文件夹。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "此主機上沒有相符的資料夾。"
+          }
+        }
+      }
+    },
     "This host signs in with single sign-on" : {
       "localizations" : {
         "ar" : {
@@ -145587,112 +145693,6 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "此工作區有未提交的變更。暫時儲存它們，切換分支，然後恢復目標分支的所有已儲存變更。"
-          }
-        }
-      }
-    },
-    "Those chats open without a folder." : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "تُفتح تلك المحادثات دون مجلد."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Diese Chats öffnen sich ohne Ordner."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Esos chats se abren sin carpeta."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Ces discussions s’ouvrent sans dossier."
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "הצ׳אטים האלה ייפתחו בלי תיקייה."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Quelle chat si aprono senza cartella."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "これらのチャットはフォルダなしで開きます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "해당 채팅은 폴더 없이 열려요."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Die chats openen zonder map."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Te czaty otwierają się bez folderu."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Esses chats abrem sem pasta."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Эти чаты откроются без папки."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Bu sohbetler klasörsüz açılır."
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "وہ چیٹس بغیر فولڈر کے کھلتی ہیں۔"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "這些聊天開啟時將沒有資料夾。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "这些聊天打开时将没有文件夹。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "這些聊天開啟時將沒有資料夾。"
           }
         }
       }

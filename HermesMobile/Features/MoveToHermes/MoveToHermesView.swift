@@ -563,8 +563,8 @@ private struct MoveToHermesReportView: View {
                                      detail: String(localized: "\(changeList(report.changesUnconfirmed)). Check them in \(destination)."))
                 }
                 if !report.foldersMissing.isEmpty {
-                    MoveToHermesStep(state: .attention, title: String(localized: "\(report.foldersMissing.count) folders not on this host"),
-                                     detail: String(localized: "Those chats open without a folder."))
+                    MoveToHermesStep(state: .attention, title: String(localized: "\(report.foldersMissing.count) chats open without a folder"),
+                                     detail: String(localized: "This host doesn’t have a matching folder."))
                 }
                 if drafts > 0 {
                     MoveToHermesStep(state: .attention, title: String(localized: "\(drafts) drafts stay on this iPhone under \(source)"),
