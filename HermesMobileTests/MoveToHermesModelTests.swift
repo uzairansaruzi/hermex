@@ -229,6 +229,41 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(notices.banner(for: webui.absoluteString, in: auth.servers)?.stage, .moved)
     }
 
+    /// Copy Missing Chats Again keeps the finished report until Move starts the next pass: a
+    /// scan that can't read the webui leaves the report to reopen, and the next pass replaces it.
+    func testCopyMissingChatsAgainKeepsTheReportUntilMove() async throws {
+        MoveWebuiFixture.rows = [row("new", profile: "default")]
+        MoveWebuiFixture.exports = ["new": exportData("new")]
+        let model = makeModel()
+        model.open(.start)
+        await model.settled()
+        model.move()
+        await model.settled()
+        guard case .finished = model.screen else { return XCTFail("Expected the report, got \(model.screen)") }
+
+        MoveWebuiFixture.listingFailure = 503
+        model.copyMissingChatsAgain()
+        await model.settled()
+        XCTAssertNotEqual(model.screen, .review)
+
+        let reopened = makeModel()
+        reopened.open(.details)
+        await reopened.settled()
+        guard case .finished(let kept) = reopened.screen else { return XCTFail("The report was lost, got \(reopened.screen)") }
+        XCTAssertEqual(kept.copied, ["new"])
+
+        MoveWebuiFixture.listingFailure = nil
+        MoveWebuiFixture.rows.append(row("later", profile: "default"))
+        MoveWebuiFixture.exports["later"] = exportData("later")
+        reopened.copyMissingChatsAgain()
+        await reopened.settled()
+        XCTAssertEqual(reopened.screen, .review)
+        reopened.move()
+        await reopened.settled()
+        guard case .finished(let next) = reopened.screen else { return XCTFail("Expected the next report, got \(reopened.screen)") }
+        XCTAssertEqual(next.copied, ["later"])
+    }
+
     /// Closing mid-move pauses it; the paused details show its counts and that it was closed,
     /// and Resume finishes it.
     func testClosingPausesAndResumeFinishes() async throws {

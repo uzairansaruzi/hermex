@@ -340,16 +340,22 @@ enum MoveToHermesEntry: Equatable {
 
     // MARK: Running
 
-    /// Freezes Review and starts the move: the commit, then the runner's passes.
+    /// Freezes Review and starts the move: the commit, then the runner's passes. A report that
+    /// Copy Missing Chats Again came from stays until this pass is about to start, so a running
+    /// chat or an unreadable webui list still leaves it to reopen.
     func move() {
         guard let review, unchosenProfile == nil, let destinationID, let source else { return }
+        let previous = self.runner
         let runner = makeRunner(destinationID)
         self.runner = runner
         let frozen = MoveToHermesRunner.Review(
             source: source, connection: review.connection,
             profiles: review.profiles.compactMap { choice in mapping[choice.source].map { MovedWebuiProfile(source: choice.source, destination: $0) } },
             hermesProfiles: review.hermesProfiles, scan: review.scan)
-        runPass(checksRunning: true) { await $0.start(frozen) }
+        runPass(checksRunning: true) { runner in
+            if case .finished? = previous?.state { previous?.acknowledge() }
+            await runner.start(frozen)
+        }
     }
 
     /// Another pass; R4 again if a chat started running while the move was paused. Only a pass
@@ -376,12 +382,8 @@ enum MoveToHermesEntry: Equatable {
     }
 
     /// Scans again and copies only what the destination still lacks, with the record's mapping.
-    /// A finished report is acknowledged first, without switching servers.
+    /// A finished report stays saved until Move starts the next pass (`move()`).
     func copyMissingChatsAgain() {
-        if case .finished? = runner?.state {
-            runner?.acknowledge()
-            refreshNotices()
-        }
         guard let destinationID, let url = URL(string: destinationID),
               let saved = try? BotConnectionStore(keychain: auth.keychain).load(server: url) else {
             return phase = .couldNotStart(.commit(.destinationSignedOut))
@@ -535,6 +537,8 @@ struct MoveToHermesNotice: Equatable {
     private(set) var running: Set<String> = []
     /// Moves whose last pass the user closed, until another pass ends (3A).
     @ObservationIgnored private var closed: Set<String> = []
+    /// Refreshes started, so only the latest one publishes.
+    @ObservationIgnored private var refreshes = 0
     /// The journals' folder and draft store the counts read.
     @ObservationIgnored private let environment: MoveToHermesRunner.Environment
 
@@ -547,6 +551,8 @@ struct MoveToHermesNotice: Equatable {
     /// Reads every unclosed move, deleting journal folders no record owns. Unfinished moves get
     /// their counts unless a runner holds them.
     func refresh(_ auth: AuthManager) async {
+        refreshes += 1
+        let generation = refreshes
         var moves: [Move] = []
         for pending in MoveToHermesPending.all(in: auth.servers, root: environment.root) {
             var move = Move(sourceID: pending.sourceServerID, destinationID: pending.destinationID, status: pending.status)
@@ -565,6 +571,8 @@ struct MoveToHermesNotice: Equatable {
             }
             moves.append(move)
         }
+        // A refresh that started later already published newer state.
+        guard generation == refreshes else { return }
         self.moves = moves
     }
 
