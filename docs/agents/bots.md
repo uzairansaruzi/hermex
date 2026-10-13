@@ -2564,7 +2564,9 @@ Settings also offers a plugin update (#851). `HermexPushPlugin.newestVersion` is
 plugin this build knows. Each time the Notifications section appears on a paired server,
 `checkPlugin()` makes one read of the pairing route: its `plugin_version` is the code the
 dashboard process has loaded, and a missing or unparseable one counts as older than every
-known version. Only a plugin that is behind costs a second read, `GET
+known version. A version read that 404s "No such API endpoint" means the dashboard has
+not mounted the plugin since it was installed, so it reads as nothing loaded (#1235): with the
+newest on disk the card is "Restart Hermes to finish", not a refused read. Only a plugin that is behind costs a second read, `GET
 /api/dashboard/plugins/hub`, whose per-plugin `version` is `plugin.yaml` on disk; the newest
 on disk means the update is only waiting for a restart. The answer lives in memory, never in
 `PushPairing`, so "Restart Hermes to finish" always reflects what the host says now. The
@@ -2590,8 +2592,8 @@ route whenever it answers, until the newest plugin is loaded; the old process ca
 just after the 202, so an old version keeps it waiting. A connection dropped on the restart
 request counts as the restart; an HTTP error before it ran is "Couldn't restart Hermes" with
 "Try again". Past the wait, the last answer stands: the old plugin (restart offered again), a
-host that answers but fails the plugin read (a new plugin that failed to import has no routes
-mounted) as a failed read, or silence as "Hermes didn't come back" with "Check again", which
+new plugin that failed to import, which leaves its routes unmounted, as "Restart Hermes to
+finish" on the host, a host that answers but fails the plugin read as a failed read, or silence as "Hermes didn't come back" with "Check again", which
 turns into a failed read once the host answers with an error. Without a configured signing secret the
 dashboard's basic-auth session key is per process, so the first read after a restart signs in
 again. A version read that fails after the reinstall and restart also offers "Check again",
@@ -2600,6 +2602,17 @@ use, at setup or from the test notification) offers the same update. An update s
 never pairs by itself; "Turn on notifications…" stays the way to pair. Turning notifications
 off drops the offer, because its install would enable the plugin again. Bump the constant in
 the release that follows a plugin release (TESTFLIGHT.md's release gates).
+
+Features that call a hermex-push route other than pairing and restart (Git's Fetch, Pull and
+New branch, #1236; provider limits, #1237) gate on what the dashboard has mounted, not on a
+version number: a POST can't be probed without running it. From 0.5.0 the plugin answers `GET
+/api/plugins/hermex-push/capabilities` with `{plugin_version, routes}`, each route a method and
+the path below the mount (`"GET /pairing"`), built from its own router so it can't drift. It has
+no side effects and never answers 409, so a host that uses the plugin without push set up can
+be read. `BotDashboardClient.companionRoutes()` reads it when the feature's screen loads,
+through that server's own connection, with no cache; any 404 (an older plugin, one not
+loaded, one turned off) is `HermexCompanionRoutes.closed`, and the feature just doesn't show.
+The restart nudge stays in Settings → Notifications, which owns the plugin's standing.
 
 Every way out removes this phone at the relay and wipes the keys, except that a relay
 device another entry for the same host still shares stays registered (`push.md`, #1178).

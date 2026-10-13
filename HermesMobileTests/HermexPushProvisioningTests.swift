@@ -930,6 +930,71 @@ import XCTest
         XCTAssertEqual(PushHTTPFixture.calls, [], "A server without push is not checked")
     }
 
+    /// A dashboard that hasn't loaded the plugin since it was installed (#1235): with the newest
+    /// on disk the card asks for a restart on the host, where the read used to fail on its 404.
+    /// One with an older plugin loaded is still offered the update.
+    func testAPairedHostWhosePluginIsOnDiskButNotLoadedAsksForARestart() async throws {
+        let registrar = try await pairedRegistrar(serverA)
+        let newest = newest
+        var pairing = PushHTTPFixture.notMounted
+        var onDisk = newest
+        PushHTTPFixture.handler = { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/pairing": return pairing
+            case "/api/dashboard/plugins/hub": return (200, PushHTTPFixture.hubBody(version: onDisk))
+            default: return nil
+            }
+        }
+        let provisioner = makeProvisioner(server: serverA, registrar: registrar)
+
+        await provisioner.checkPlugin()
+        XCTAssertEqual(provisioner.pluginCard, .status(.restartNeeded(loaded: nil)))
+
+        await provisioner.checkPluginAgain()
+        XCTAssertEqual(provisioner.pluginCard, .status(.restartNeeded(loaded: nil)))
+        XCTAssertNil(provisioner.failure, "Not \"refused the step (HTTP 404)\"")
+        XCTAssertEqual(registrar.actions, [], "Check again on a paired host only reads")
+
+        pairing = (200, PushHTTPFixture.pairingBody(version: "0.4.0"))
+        onDisk = "0.4.0"
+        await provisioner.checkPluginAgain()
+        XCTAssertEqual(provisioner.pluginCard, .status(.available(loaded: HermexPushPluginVersion("0.4.0"))))
+    }
+
+    // MARK: - Companion routes (#1235)
+
+    func testCompanionRoutesListWhatTheDashboardMountedAndA404ClosesTheGate() async throws {
+        var answer: (Int, BotJSON) = (200, .object([
+            "plugin_version": .string("0.5.0"),
+            "routes": .array([.string("GET /capabilities"), .string("GET /pairing"), .string("POST /restart"), .number(7)]),
+            "added_later": .bool(true)
+        ]))
+        PushHTTPFixture.handler = { request in
+            request.url?.path == "/api/plugins/hermex-push/capabilities" ? answer : nil
+        }
+        let connection = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://a.example.com")!,
+                                       username: "user", password: "secret")
+        let client = BotDashboardClient(http: HermesConnection(connection: connection, configuration: PushHTTPFixture.configuration()))
+
+        let routes = try await client.companionRoutes()
+        XCTAssertEqual(routes.pluginVersion, HermexPushPluginVersion("0.5.0"))
+        XCTAssertTrue(routes.supports("POST /restart"))
+        XCTAssertFalse(routes.supports("POST /git/pull"))
+        XCTAssertEqual(routes.routes.count, 3, "An entry that isn't a string is skipped")
+
+        // An older plugin, an unloaded one, one turned off, and a bare 404 all close the gate.
+        for missing in [PushHTTPFixture.notMounted, PushHTTPFixture.pluginNotFound, PushHTTPFixture.headless, (404, .null)] {
+            answer = missing
+            let closed = try await client.companionRoutes()
+            XCTAssertEqual(closed, .closed, "\(missing)")
+        }
+
+        answer = (500, .null)
+        do { _ = try await client.companionRoutes(); XCTFail("A server error is not a closed gate") } catch {
+            XCTAssertEqual(error as? BotFailure, .rejected(500))
+        }
+    }
+
     func testUpdatingReinstallsRestartsAndReadsTheNewlyLoadedVersion() async throws {
         let registrar = try await pairedRegistrar(serverA)
         let newest = newest
@@ -1233,7 +1298,7 @@ import XCTest
     // MARK: - Restart (#934)
 
     /// A newest plugin past the restart route's 0.4.0, so a host can have the route loaded and
-    /// still be behind. This build's own constants never pair the two.
+    /// still be behind. Pinned here so these tests don't move with `newestVersion`.
     private let future = HermexPushPluginVersion("0.5.0")!
 
     func testOnlyAPluginWithTheRestartRouteIsOfferedARestart() async throws {

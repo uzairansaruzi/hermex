@@ -70,19 +70,24 @@ import Foundation
     /// and a 404 whose body says why it is missing throws `HermexPushRouteMissing`; any
     /// other refusal throws `BotFailure.rejected` with its status.
     func pairing() async throws -> PushPairing {
-        let (data, status) = try await http.reply(.pushPairing, deadline: .provisioning)
-        let body = (try? JSONDecoder().decode(BotJSON.self, from: data)) ?? .null
-        guard (200..<300).contains(status) else {
-            if status == 404, let missing = HermexPushPlugin.missingRoute(body) { throw missing }
-            throw BotFailure.rejected(status)
-        }
-        return try HermexPushPlugin.pairing(body)
+        try HermexPushPlugin.pairing(try await readPluginRoute(.pushPairing))
     }
 
     /// The hermex-push version the dashboard process has loaded, from the pairing route;
     /// nil for a plugin too old to say. Keys are not decoded, so an old plugin's still read.
+    /// Its 404s throw as `pairing()`'s do, so an unmounted plugin reads as `notMounted`.
     func loadedPluginVersion() async throws -> HermexPushPluginVersion? {
-        HermexPushPlugin.loadedVersion(try await send(.pushPairing))
+        HermexPushPlugin.loadedVersion(try await readPluginRoute(.pushPairing))
+    }
+
+    /// The hermex-push routes the dashboard has mounted (#1235). Any 404 is
+    /// `HermexCompanionRoutes.closed`, whatever its body says: an older plugin, an unloaded one
+    /// and no plugin at all each mean the feature isn't there. Other refusals throw.
+    func companionRoutes() async throws -> HermexCompanionRoutes {
+        let (data, status) = try await http.reply(.pluginCapabilities)
+        if status == 404 { return .closed }
+        guard (200..<300).contains(status) else { throw BotFailure.rejected(status) }
+        return HermexCompanionRoutes((try? JSONDecoder().decode(BotJSON.self, from: data)) ?? .null)
     }
 
     /// Whether hermex-push is on the host's disk, from the plugins hub; nil when the hub's
@@ -94,6 +99,18 @@ import Foundation
     /// The hermex-push version on the host's disk, from the plugins hub.
     func installedPluginVersion() async throws -> HermexPushPluginVersion? {
         HermexPushPlugin.installedVersion(hub: try await send(.pluginsHub))
+    }
+
+    /// A hermex-push route's body. A 404 whose body says why the route is missing throws
+    /// `HermexPushRouteMissing`; any other non-2xx throws `BotFailure.rejected` with its status.
+    private func readPluginRoute(_ rest: HermesREST) async throws -> BotJSON {
+        let (data, status) = try await http.reply(rest, deadline: .provisioning)
+        let body = (try? JSONDecoder().decode(BotJSON.self, from: data)) ?? .null
+        guard (200..<300).contains(status) else {
+            if status == 404, let missing = HermexPushPlugin.missingRoute(body) { throw missing }
+            throw BotFailure.rejected(status)
+        }
+        return body
     }
 
     /// Any non-2xx is the step's failure, carrying the status so the pairing route's 404

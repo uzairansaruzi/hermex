@@ -17,7 +17,7 @@ enum HermexPushPlugin {
     /// The newest plugin this build knows (#851). A host that has anything older loaded is
     /// offered an update in Settings → Notifications. Bump it in the app release that
     /// follows a plugin release (TESTFLIGHT.md's release gates).
-    static let newestVersion = HermexPushPluginVersion("0.4.0")!
+    static let newestVersion = HermexPushPluginVersion("0.5.0")!
     /// The first plugin with `POST /api/plugins/hermex-push/restart` (#934). Settings offers
     /// "Restart Hermes…" only while a plugin this new is loaded: an older one has no route to
     /// call, so its card keeps asking for a restart on the host.
@@ -112,6 +112,33 @@ enum HermexPushFailure: Error, Equatable, LocalizedError {
             return String(localized: "Connect to this Hermes host first.")
         }
     }
+}
+
+/// What the hermex-push routes the dashboard has mounted, from
+/// `GET /api/plugins/hermex-push/capabilities` (plugin 0.5.0, #1235). Each route is a method
+/// and the path below the plugin's mount, as in `"GET /pairing"`. A feature that needs a
+/// plugin route shows only where `supports` says the route is mounted, since a POST can't be
+/// probed without running it. `closed` supports nothing: an older plugin, or one the
+/// dashboard hasn't loaded since it was installed. Read per screen, never cached, so one
+/// server's answer can't gate another's.
+struct HermexCompanionRoutes: Equatable, Sendable {
+    static let closed = HermexCompanionRoutes(pluginVersion: nil, routes: [])
+
+    let pluginVersion: HermexPushPluginVersion?
+    let routes: Set<String>
+
+    /// Fields the plugin may add later are ignored, and an entry that isn't a string is skipped.
+    init(_ body: BotJSON) {
+        self.init(pluginVersion: HermexPushPlugin.loadedVersion(body),
+                  routes: Set(body["routes"].list?.compactMap(\.text) ?? []))
+    }
+
+    init(pluginVersion: HermexPushPluginVersion?, routes: Set<String>) {
+        self.pluginVersion = pluginVersion
+        self.routes = routes
+    }
+
+    func supports(_ route: String) -> Bool { routes.contains(route) }
 }
 
 /// The pairing route's 404s that say what the host lacks (`HermexPushPlugin.missingRoute`).

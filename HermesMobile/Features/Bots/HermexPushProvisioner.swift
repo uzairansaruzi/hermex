@@ -62,7 +62,8 @@ import UserNotifications
         /// Behind the newest; `loaded` is nil for a plugin too old to report its version.
         case available(loaded: HermexPushPluginVersion?)
         /// The newest is on disk, but the dashboard runs the old code, `loaded`, until it
-        /// restarts. With 0.4.0 or newer loaded, the phone can restart it (#934).
+        /// restarts; nil when it has none loaded (#1235). With 0.4.0 or newer loaded, the
+        /// phone can restart it (#934).
         case restartNeeded(loaded: HermexPushPluginVersion?)
         /// Setup reached a dashboard that hasn't loaded hermex-push (#1178): it was installed
         /// after the dashboard started, or just now. A gateway restart doesn't load it; only
@@ -519,9 +520,9 @@ import UserNotifications
     /// is probed on `restartDelays` (`HermesRestartWait`), and whenever it answers the pairing route is read, until
     /// the newest plugin is loaded. The old process can still answer just after the 202, so an
     /// answer with the old plugin keeps waiting. When the schedule runs out the last answer
-    /// stands: the old plugin, offered the restart again; a host that answers but whose read
-    /// fails (a new plugin that didn't load leaves its routes unmounted), a failed read; or
-    /// silence, "Hermes didn't come back". Like the update, the run outlives Settings.
+    /// stands: the old plugin, offered the restart again; a new plugin that didn't load, which
+    /// leaves its routes unmounted, asked for a restart on the host; a host that answers but
+    /// whose read fails, a failed read; or silence, "Hermes didn't come back". Like the update, the run outlives Settings.
     func restartHermes() async {
         guard !isWorking, let connection, case .restartNeeded(let loaded)? = pluginUpdate,
               HermexPushPlugin.canRestart(loaded) else { return }
@@ -569,8 +570,11 @@ import UserNotifications
     /// Where the host's plugin stands. The hub is read only for a loaded plugin that is
     /// behind: its on-disk version tells a copy waiting for a restart from one that still
     /// needs updating. A host without the hub, or one that fails it, reads as the latter.
+    /// A dashboard that hasn't mounted the plugin has no version loaded, so the newest on
+    /// disk reads as waiting for a restart rather than a refused read (#1235).
     private func pluginStanding(_ client: BotDashboardClient) async throws -> PluginUpdate {
-        let loaded = try await client.loadedPluginVersion()
+        let loaded: HermexPushPluginVersion?
+        do { loaded = try await client.loadedPluginVersion() } catch HermexPushRouteMissing.notMounted { loaded = nil }
         if let loaded, loaded >= newestPlugin { return .upToDate(loaded) }
         if let installed = try? await client.installedPluginVersion(), installed >= newestPlugin {
             return .restartNeeded(loaded: loaded)

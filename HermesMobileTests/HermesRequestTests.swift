@@ -325,6 +325,7 @@ final class HermesRequestTests: XCTestCase {
              "https://hermes.example:9120/api/dashboard/agent-plugins/hermex-push/disable", .object([:]), json),
             (.restartGateway, "POST", "https://hermes.example:9120/api/gateway/restart", .object([:]), json),
             (.pushPairing, "GET", "https://hermes.example:9120/api/plugins/hermex-push/pairing", nil, [:]),
+            (.pluginCapabilities, "GET", "https://hermes.example:9120/api/plugins/hermex-push/capabilities", nil, [:]),
             (.restartDashboard, "POST", "https://hermes.example:9120/api/plugins/hermex-push/restart", .object([:]), json),
             (.pluginsHub, "GET", "https://hermes.example:9120/api/dashboard/plugins/hub", nil, [:]),
             (.sessionMessages(key: "bg_0a5110", profile: "triage"), "GET",

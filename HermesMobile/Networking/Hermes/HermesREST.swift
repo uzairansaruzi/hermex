@@ -113,6 +113,8 @@ enum HermesREST: Equatable, Sendable {
     case setPlugin(name: String, enabled: Bool)
     case restartGateway
     case pushPairing
+    /// hermex-push 0.5.0's mounted routes (#1235): no side effects, never 409.
+    case pluginCapabilities
     /// hermex-push 0.4.0's restart: 202, then the dashboard re-execs itself.
     case restartDashboard
     /// Every agent plugin with its on-disk version.
@@ -351,6 +353,7 @@ enum HermesREST: Equatable, Sendable {
             return try Self.send("POST", url, [:])
         case .restartGateway: return try Self.send("POST", base.appendingPathComponent("api/gateway/restart"), [:])
         case .pushPairing: return Self.get(base.appendingPathComponent("api/plugins/hermex-push/pairing"))
+        case .pluginCapabilities: return Self.get(base.appendingPathComponent("api/plugins/hermex-push/capabilities"))
         case .restartDashboard: return try Self.send("POST", base.appendingPathComponent("api/plugins/hermex-push/restart"), [:])
         case .pluginsHub: return Self.get(base.appendingPathComponent("api/dashboard/plugins/hub"))
         case .sessionMessages(let key, let profile, let offset):

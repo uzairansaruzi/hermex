@@ -18,6 +18,8 @@ see [Push provisioning](bots.md#push-provisioning) and
   it. The dashboard loads the update only when it restarts: a loaded plugin of
   0.4.0 or newer lets the phone restart it, while an older one still needs one
   restart on the host ([Push provisioning](bots.md#push-provisioning)).
+  From 0.5.0 it also lists its mounted routes, which other features that need
+  the plugin gate on, so the plugin is useful without push set up (#1235).
 - **Relay.** A Cloudflare Worker in the same repository. The default is
   `https://hermex-relay.hermex-relay.workers.dev`; a host overrides it with
   `HERMEX_PUSH_RELAY_URL`, so self-hosting is a server-side setting. The relay
