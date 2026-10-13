@@ -143,7 +143,7 @@ import XCTest
 
         XCTAssertEqual(export.data, Data(#""original bytes""#.utf8))
         XCTAssertEqual(Self.fileRequests.map { $0.url?.path }, ["/api/fs/read-text", "/api/fs/download"])
-        XCTAssertEqual(Self.fileRequests.last.flatMap(Self.queryPath), "notes.txt")
+        XCTAssertEqual(Self.fileRequests.last.flatMap(Self.queryPath), Self.cwd + "/notes.txt")
     }
 
     /// A symlinked folder lists as a file; opening it is the preview's No Preview state, not a

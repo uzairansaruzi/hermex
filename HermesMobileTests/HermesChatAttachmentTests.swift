@@ -548,7 +548,7 @@ import UIKit
 
     /// The chat's workspace is its Profile, stored key, and the folder and terminal backend
     /// `session.info` names; a later report moving the folder moves it, and its files download
-    /// on the chat's connection by their relative path. Before any report names a folder there is none.
+    /// on the chat's connection by their host path. Before any report names a folder there is none.
     func testTheWorkspaceFollowsSessionInfoAndReadsOnTheChatsConnection() async throws {
         let chat = await openChat()
         XCTAssertNil(chat.model.hermesWorkspace, "no session.info has named a folder")
@@ -569,9 +569,8 @@ import UIKit
             return .json(200, .string("bytes"))
         }
         _ = try await XCTUnwrap(chat.model.hermesWorkspaceFiles).rawFileData(path: "out/report.pdf")
-        XCTAssertEqual(query, [URLQueryItem(name: "path", value: "out/report.pdf"),
-                               URLQueryItem(name: "profile", value: "default"),
-                               URLQueryItem(name: "session_id", value: "tip")])
+        XCTAssertEqual(query, [URLQueryItem(name: "path", value: "/work/moved/out/report.pdf"),
+                               URLQueryItem(name: "profile", value: "default")])
     }
 
     /// The chat owns its repository's Git writes (#1115): none goes out while a turn runs, and a

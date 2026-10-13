@@ -329,12 +329,13 @@ enum HermesREST: Equatable, Sendable {
         case .downloadArtifact(let path, let profile, let sessionID):
             guard !profile.isEmpty, sessionID?.isEmpty != true else { throw BotArtifactFailure.invalidReference }
             let path = try BotArtifactReference.path(path, address: base)
-            var parts = URLComponents(url: base.appendingPathComponent("api/fs/download"), resolvingAgainstBaseURL: false)
-            parts?.queryItems = [URLQueryItem(name: "path", value: path), URLQueryItem(name: "profile", value: profile)]
+            guard var parts = URLComponents(url: base.appendingPathComponent("api/fs/download"), resolvingAgainstBaseURL: false)
+            else { throw BotArtifactFailure.invalidReference }
+            parts.queryItems = [URLQueryItem(name: "path", value: path), URLQueryItem(name: "profile", value: profile)]
                 + (sessionID.map { [URLQueryItem(name: "session_id", value: $0)] } ?? [])
             // The host reads a query's `+` as a space; a path keeps its own.
-            parts?.percentEncodedQuery = parts?.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-            guard let url = parts?.url else { throw BotArtifactFailure.invalidReference }
+            parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+            guard let url = parts.url else { throw BotArtifactFailure.invalidReference }
             var request = URLRequest(url: url)
             request.cachePolicy = .reloadIgnoringLocalCacheData
             return request

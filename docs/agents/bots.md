@@ -1428,13 +1428,19 @@ panel (#1113) and Git (#1114) read the same context.
   Hermes client composes `cwd + "/" + path`, and it refuses an absolute path, a `..` component
   or a path with nothing past the root before any request. A child's path is its folder's plus
   its `name`, never the listing's `path`, which the host resolves (`/private/var/…` on a Mac) and
-  so may not start with the `cwd` that was asked for. Downloads (`/api/fs/download`) send the
-  relative path with `profile` and `session_id`, so the host anchors them to the session's own
-  folder; a MEDIA path goes as the reply wrote it. Rows, previews and errors show relative paths,
+  so may not start with the `cwd` that was asked for. A file's download (`/api/fs/download`)
+  sends its host path with `profile` and no `session_id`: with one, the host 404s until it has
+  stored the session, so Save to Files would fail in a chat before its first message (#1138). A
+  MEDIA path goes as the reply wrote it, with `session_id`, so the host resolves it against the
+  session. Rows, previews and errors show relative paths,
   and a refusal whose `detail` names a path reads as the generic failure.
 - **ENOENT-as-200.** `GET /api/fs/list` answers a folder it can't read with 200
   `{entries: [], error}`: `ENOENT` or `ENOTDIR` on the root is the folder-missing state, on a
   subfolder that row's failure; `EACCES` is a permission failure. None reports an error.
+- **Lazy folders.** The host lists one folder at a time, and a macOS-protected folder (Desktop,
+  Documents, Downloads, …) can block 6–11 s before answering `Interrupted system call`. So a
+  Hermes chat's Files opens with every folder closed and lists one only when tapped; webui opens
+  its top-level folders (#1138).
 - **Hidden folders.** The listing hides `.git .hg .svn .cache .next .turbo .venv __pycache__
   build dist node_modules target venv` and credential files, as Desktop does; the app adds no
   workaround. A symlinked folder lists as a file, so it is not browsable and opens the preview's
