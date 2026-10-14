@@ -9,6 +9,8 @@ struct SessionRowView: View {
     var showsMessageCount = true
     var showsWorkspace = true
     var isViewingCachedData = false
+    /// The cached row shows while its list connects, so it isn't labelled Cached.
+    var isCachedCopyProvisional = false
     var isUnread = false
     /// The resolved attention state for this row, supplied by the screen that
     /// polls the server (`SessionListViewModel`). Screens that do not poll pass
@@ -96,6 +98,7 @@ struct SessionRowView: View {
     static func accessibilityStateLabels(
         for session: SessionSummary,
         isViewingCachedData: Bool,
+        isCachedCopyProvisional: Bool = false,
         attentionState: SessionRowAttentionState? = nil,
         isUnread: Bool = false,
         labelsArchived: Bool = false
@@ -116,7 +119,7 @@ struct SessionRowView: View {
             labels.append(String(localized: "Pinned"))
         }
 
-        if isViewingCachedData {
+        if isViewingCachedData && !isCachedCopyProvisional {
             labels.append(String(localized: "Cached"))
         }
 
@@ -348,7 +351,7 @@ struct SessionRowView: View {
         // Streaming has no badge: the trailing "Working" label already says it.
         var badges: [SessionRowStateBadgeKind] = []
 
-        if isViewingCachedData {
+        if isViewingCachedData && !isCachedCopyProvisional {
             badges.append(.cached)
         }
 
@@ -424,6 +427,7 @@ struct SessionRowView: View {
         parts.append(contentsOf: Self.accessibilityStateLabels(
             for: session,
             isViewingCachedData: isViewingCachedData,
+            isCachedCopyProvisional: isCachedCopyProvisional,
             attentionState: attentionState,
             isUnread: isUnread,
             labelsArchived: labelsArchived

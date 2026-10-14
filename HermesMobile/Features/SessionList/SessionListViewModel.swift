@@ -90,7 +90,15 @@ final class SessionListViewModel {
     private(set) var isRenamingSession = false
     private(set) var isRenamingProject = false
     private(set) var isMovingSession = false
-    private(set) var isViewingCachedData = false
+    private(set) var isViewingCachedData = false {
+        didSet { if !isViewingCachedData { isCachedCopyProvisional = false } }
+    }
+    /// The cached rows show because the Hermes host has yet to answer this open, not because it
+    /// can't be reached: still read-only, but without the offline banner or Cached labels. Only
+    /// while `isViewingCachedData`.
+    private(set) var isCachedCopyProvisional = false
+    /// The list shows its offline presentation: the banner and each row's Cached label.
+    var showsOfflineCache: Bool { isViewingCachedData && !isCachedCopyProvisional }
     private(set) var projects: [ProjectSummary] = []
     private(set) var errorMessage: String?
     private(set) var actionErrorMessage: String?
@@ -216,8 +224,8 @@ final class SessionListViewModel {
     /// when the socket closed or the user pulled to refresh; the list's next connect or refresh
     /// runs it.
     @ObservationIgnored private var hermesSearchAwaitsConnect = false
-    /// The offline cache the list's pages are written to and read back from while its host
-    /// can't be reached (#1054), from the screen's `openHermes(modelContext:)`.
+    /// The offline cache the list's pages are written to and read back from while it connects
+    /// or its host can't be reached (#1054), from the screen's `openHermes(modelContext:)`.
     @ObservationIgnored private var hermesCache: ModelContext?
 
     /// `hermes` makes this a Hermes server's list; nothing then reaches the webui API.
@@ -1746,8 +1754,9 @@ final class SessionListViewModel {
     /// to the shared socket, names the Profile so the host watches its store, reads the list
     /// and its live states, and reloads on `sessions.changed`. A list a chat covered keeps its
     /// socket and only reads again. Also the pull-to-refresh and foreground path. Each page
-    /// read goes to `modelContext`, the offline cache, which the list shows, read-only, while
-    /// the host can't be reached (#1054); the list keeps it for the reads it makes on its own.
+    /// read goes to `modelContext`, the offline cache (#1054), which an empty list shows,
+    /// read-only, while it connects, and the host's first read replaces; it stays as the offline
+    /// state when the host can't be reached. The list keeps it for the reads it makes on its own.
     func openHermes(modelContext: ModelContext? = nil) async {
         guard let hermes else { return }
         if let modelContext { hermesCache = modelContext }
@@ -1767,7 +1776,7 @@ final class SessionListViewModel {
         let wire = hermes.makeWire(hermes.connection)
         hermesWire = wire
         hermesReadsStatus = true
-        if sessions.isEmpty { isLoading = true }
+        if sessions.isEmpty { isLoading = !showCachedHermesSessions(provisional: true) }
         wire.onEvent = { [weak self, weak wire] event in
             guard let self, let wire, self.hermesWire === wire, self.hermesIsListening,
                   event["type"].text == "sessions.changed" else { return }
@@ -1968,13 +1977,23 @@ final class SessionListViewModel {
         }
     }
 
-    /// A list read that failed because the host can't be reached shows the Profile's cached
-    /// rows instead, or every Profile's while it lists them all, read-only (`isViewingCachedData`), until a read succeeds. Search then reads
-    /// only them, so the host's matches go, and the active search asks the host again once a
-    /// read succeeds. False when it can't: another failure, or nothing cached.
+    /// A list read that failed because the host can't be reached shows the cached rows as the
+    /// offline state. False when it can't: another failure, or nothing cached; rows shown
+    /// provisionally then go, so the failure shows as it would on an empty list.
     @discardableResult
     private func showCachedHermesSessions(after error: Error) -> Bool {
-        guard CacheFallbackPolicy.shouldUseCache(for: error), let hermes, let hermesCache else { return false }
+        if CacheFallbackPolicy.shouldUseCache(for: error), showCachedHermesSessions(provisional: false) { return true }
+        if isCachedCopyProvisional { sessions = []; isViewingCachedData = false }
+        return false
+    }
+
+    /// Shows the Profile's cached rows, or every Profile's while it lists them all, read-only
+    /// (`isViewingCachedData`) until a read succeeds: `provisional` while the host has yet to
+    /// answer, else as the offline state. Search then reads only them, so the host's matches go,
+    /// and the active search asks the host again once a read succeeds. False with nothing cached.
+    @discardableResult
+    private func showCachedHermesSessions(provisional: Bool) -> Bool {
+        guard let hermes, let hermesCache else { return false }
         // A list that never reached the host to settle its Profile reads the server's pick.
         let picked = hermesProfile ?? hermes.preferences.string(forKey: HermesProfilePreference.key(for: server))
         guard hermesShowsAllProfiles || picked != nil else { return false }
@@ -1992,6 +2011,7 @@ final class SessionListViewModel {
         if sessions != cached { sessions = cached }
         hasMoreSessions = false
         isViewingCachedData = true
+        isCachedCopyProvisional = provisional
         errorMessage = nil; sessionLoadError = nil
         setHermesStates([:])
         clearHermesSearchMatches()
@@ -2129,6 +2149,8 @@ final class SessionListViewModel {
     /// shows once no rows do; pull to refresh tries again.
     private func dropHermes(_ error: Error) {
         guard let hermes else { return }
+        // Rows shown while connecting stay only as the offline state.
+        if isCachedCopyProvisional { showCachedHermesSessions(after: error) }
         let listening = hermesIsListening
         closeHermes()
         hermesIsListening = listening

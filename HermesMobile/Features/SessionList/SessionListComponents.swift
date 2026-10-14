@@ -860,6 +860,7 @@ struct SessionInteractiveRow: View {
                 showsMessageCount: showsMessageCount,
                 showsWorkspace: showsWorkspace,
                 isViewingCachedData: viewModel.isViewingCachedData,
+                isCachedCopyProvisional: viewModel.isCachedCopyProvisional,
                 isUnread: viewModel.isUnread(session),
                 attentionState: viewModel.attentionState(for: session),
                 searchExcerpt: viewModel.searchExcerpt(for: session, searchText: searchText),

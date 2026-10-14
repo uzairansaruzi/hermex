@@ -4,8 +4,8 @@ import XCTest
 @testable import HermesMobile
 
 /// A Hermes server's offline cache (#1054) from its screens: the Sessions list and a session's
-/// chat write what they read, and show it, read-only, while the host can't be reached, until a
-/// read succeeds. The list runs on `HermesSessionListWire`, the chat on the scripted host below.
+/// chat write what they read, and show it, read-only, while they connect and while the host can't
+/// be reached, until a read succeeds. The list runs on `HermesSessionListWire`, the chat on the scripted host below.
 @MainActor final class HermesOfflineCacheTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
     private let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://hermes.example")!,
@@ -46,9 +46,12 @@ import XCTest
         await list.openHermes(modelContext: context)
 
         XCTAssertTrue(list.isViewingCachedData)
+        XCTAssertTrue(list.showsOfflineCache, "the rows shown while connecting become the offline state")
         XCTAssertNil(list.errorMessage)
         let shown = list.visibleSessions(searchText: "", selectedProjectID: nil)
         XCTAssertEqual(shown.map(\.title), ["Pinned", "Newest", "Chain"])
+        XCTAssertTrue(SessionRowView.accessibilityStateLabels(for: shown[0], isViewingCachedData: true,
+                                                              isCachedCopyProvisional: list.isCachedCopyProvisional).contains("Cached"))
         XCTAssertTrue(list.isUnread(shown[1]))
         XCTAssertEqual(shown[2].id, "root")
         XCTAssertEqual(shown[2].hermesTarget(listedIn: "default"), .session(profile: "default", key: "tip"))
@@ -118,6 +121,58 @@ import XCTest
         XCTAssertEqual(list.visibleSessions(searchText: "nimbus", selectedProjectID: nil).compactMap(\.sessionId), ["plan", "newer"])
     }
 
+    /// An empty list shows its cached rows while it connects, read-only but without the offline
+    /// banner or Cached labels and with no loading skeleton; the host's first read replaces them.
+    func testAListShowsItsCachedRowsWhileItConnects() async throws {
+        let context = try makeContext()
+        let rows = [HermesSessionRow(id: "a", title: "A", lastActive: 20), HermesSessionRow(id: "b", title: "B", lastActive: 10)]
+        let online = HermesSessionListWire()
+        online.pages["default"] = [0: HermesSessionPage(rows: rows)]
+        await makeList(online).openHermes(modelContext: context)
+
+        let wire = HermesSessionListWire()
+        wire.holdsConnect = true
+        wire.pages["default"] = [0: HermesSessionPage(rows: [HermesSessionRow(id: "c", title: "C", lastActive: 30)] + rows)]
+        let list = makeList(wire)
+        let open = Task { await list.openHermes(modelContext: context) }
+        await waitUntil("the cached rows show") { wire.connects == 1 && !list.sessions.isEmpty }
+
+        XCTAssertEqual(list.sessions.map(\.title), ["A", "B"])
+        XCTAssertTrue(list.isViewingCachedData)
+        XCTAssertTrue(list.isCachedCopyProvisional)
+        XCTAssertFalse(list.showsOfflineCache)
+        XCTAssertFalse(list.isLoading)
+        XCTAssertFalse(SessionRowView.accessibilityStateLabels(for: list.sessions[0], isViewingCachedData: true,
+                                                               isCachedCopyProvisional: true).contains("Cached"))
+        let renamed = await list.rename(list.sessions[0], to: "Too soon")
+        XCTAssertFalse(renamed)
+
+        wire.release()
+        await open.value
+
+        XCTAssertFalse(list.isViewingCachedData)
+        XCTAssertFalse(list.isCachedCopyProvisional)
+        XCTAssertEqual(list.sessions.map(\.title), ["C", "A", "B"])
+    }
+
+    /// A host that answers and refuses drops the rows shown while connecting: the list says why,
+    /// as it does with nothing cached.
+    func testARefusedConnectDropsTheRowsShownWhileConnecting() async throws {
+        let context = try makeContext()
+        let online = HermesSessionListWire()
+        online.pages["default"] = [0: HermesSessionPage(rows: [HermesSessionRow(id: "a", title: "A", lastActive: 1)])]
+        await makeList(online).openHermes(modelContext: context)
+
+        let wire = HermesSessionListWire()
+        wire.connectFailure = BotFailure.rejected(401)
+        let list = makeList(wire)
+        await list.openHermes(modelContext: context)
+
+        XCTAssertEqual(list.sessions, [])
+        XCTAssertFalse(list.isViewingCachedData)
+        XCTAssertEqual(list.errorMessage, "Hermes didn't accept the username or password.")
+    }
+
     /// With nothing cached, a list whose proxy answers for a host that isn't there says so in the
     /// connection's own words, not a webui server's unreachable copy.
     func testAnUnreachableHostWithNothingCachedKeepsItsAdvice() async throws {
@@ -175,6 +230,7 @@ import XCTest
         await chat.model.loadMessages(modelContext: context)
 
         XCTAssertTrue(chat.model.isViewingCachedData)
+        XCTAssertTrue(chat.model.showsOfflineCache, "the transcript shown while connecting becomes the offline state")
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello."])
         XCTAssertEqual(chat.model.messages.map(\.rowID), [1, 2])
         let sent = await chat.model.sendMessage("Still there?")
@@ -186,6 +242,41 @@ import XCTest
         chat.reconnect.open()
         await waitUntil("reattached") { !chat.model.isViewingCachedData }
 
+        XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello.", "Sent from Desktop"])
+        XCTAssertFalse(wire.methods.contains("prompt.submit"))
+    }
+
+    /// A session shows its cached transcript while it connects, read-only but without the
+    /// offline banner or reconnect line, and holds Send without a word; the attach's first
+    /// newest read puts the host's rows in its place.
+    func testASessionShowsItsCachedTranscriptWhileItConnects() async throws {
+        let context = try makeContext()
+        let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]))
+        await visit.model.loadMessages(modelContext: context)
+
+        let wire = HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello."), row(3, "user", "Sent from Desktop")])
+        let connected = Gate()
+        wire.connectGate = connected
+        let chat = makeChat(wire)
+        let load = Task { await chat.model.loadMessages(modelContext: context) }
+        await waitUntil("the cached transcript shows") { !chat.model.messages.isEmpty }
+
+        XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello."])
+        XCTAssertTrue(chat.model.isViewingCachedData)
+        XCTAssertTrue(chat.model.isCachedCopyProvisional)
+        XCTAssertFalse(chat.model.showsOfflineCache)
+        XCTAssertFalse(chat.model.isLoading)
+        XCTAssertNil(ChatView.composerReadOnlyMessage(for: SessionSummary(profile: "default"),
+                                                      isViewingCachedData: chat.model.showsOfflineCache))
+        let sent = await chat.model.sendMessage("Too soon")
+        XCTAssertFalse(sent)
+        XCTAssertNil(chat.model.sendErrorMessage)
+
+        connected.open()
+        await load.value
+
+        XCTAssertFalse(chat.model.isViewingCachedData)
+        XCTAssertFalse(chat.model.isCachedCopyProvisional)
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello.", "Sent from Desktop"])
         XCTAssertFalse(wire.methods.contains("prompt.submit"))
     }
@@ -384,6 +475,7 @@ import XCTest
         await waitUntil("the cached transcript shows") { !chat.model.messages.isEmpty }
 
         XCTAssertTrue(chat.model.isViewingCachedData)
+        XCTAssertFalse(chat.model.showsOfflineCache, "no offline banner while it connects")
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello."])
         XCTAssertEqual(wire.methods, [])
 
@@ -391,6 +483,7 @@ import XCTest
         await load.value
 
         XCTAssertFalse(chat.model.isViewingCachedData)
+        XCTAssertFalse(chat.model.isCachedCopyProvisional)
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello.", "Sent from Desktop"])
     }
 

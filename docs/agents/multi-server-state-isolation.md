@@ -88,11 +88,12 @@ to `CacheStore`. Two consequences:
   cache holds, by cached position, or anywhere once it reached the first row (a
   rewind or undo). Position, not id, since a compaction re-inserts the first
   rows under higher ids. Otherwise it goes by the TTL or the cap.
-- Read only while the host can't be reached (`CacheFallbackPolicy`, which also
-  reads a Hermes `BotFailure`): the list shows the Profile's cached rows and a
-  chat its newest cached page, read-only under the offline banner, until a read
-  succeeds. Sign-out, server removal and `clearCache(for:)` take the Hermes
-  rows with the server's others.
+- Read while an empty list or chat connects, and while the host can't be
+  reached (`CacheFallbackPolicy`, which also reads a Hermes `BotFailure`): the
+  list shows the Profile's cached rows and a chat its newest cached page,
+  read-only, until a read succeeds. Only the unreachable case shows the offline
+  banner. Sign-out, server removal and `clearCache(for:)` take the Hermes rows
+  with the server's others.
 - **A bot's Bot Chat (#1144)** caches its transcript only, never a list row
   (a webui server's list reads and sweeps every session row of its server),
   under `hermes-bot|<connection UUID>|<Profile>|<canonical root>`, which a

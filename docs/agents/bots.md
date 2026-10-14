@@ -1054,11 +1054,15 @@ Checked against `scripts/local-hermes` at the pin: `hermes_cli/web_routers/sessi
 Every list read and every settled transcript a session's chat holds go to the webui offline
 cache (`CacheStore+Hermes.swift`), keyed by server, Profile and lineage root; the keys and the
 no-sweep removal rules are in [multi-server-state-isolation.md](multi-server-state-isolation.md).
+An empty list, and a chat with nothing on screen, show the cached copy at once while they
+connect, read-only through `isViewingCachedData` but provisional (`isCachedCopyProvisional`):
+no offline banner, no Cached labels, and the composer holds Send rather than saying to reconnect.
 When a list read or a chat's attach fails because the host can't be reached
 (`CacheFallbackPolicy`: a connectivity `URLError`, `.transport`, or a proxy's or tunnel's 408,
-502-504 or 520-530), the list shows the Profile's cached rows and a chat with nothing on screen
-its newest cached page, under the offline banner and read-only through `isViewingCachedData`,
-as on webui: no send, row action, history action, New Session or Archived screen. The list
+502-504 or 520-530), the list shows the Profile's cached rows and a chat its newest cached page
+as the offline state, under the offline banner, as on webui: no send, row action, history
+action, New Session or Archived screen. Any other failure drops the provisional copy and shows
+the error as before, but for a Bot Chat's, which stays as the offline state (#1144). The list
 reconnects on its backoff and the chat's engine on its own; the first read that succeeds
 replaces the cached rows with the host's, which share their identities. A chat shows cached
 rows only (no tool or reasoning cards, no compaction card), and search reads only them.

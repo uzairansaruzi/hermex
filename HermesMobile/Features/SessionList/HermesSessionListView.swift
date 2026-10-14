@@ -27,7 +27,8 @@ struct HermesSessionListEntry: Hashable, Identifiable {
 /// one lane, and a row's Move to Project changes the session's working folder. Its search (#1053)
 /// filters the loaded rows at once and then adds the host's matches, which reach past the loaded
 /// pages; a bot's Bot Chat among them opens in that bot. Every page it reads goes to the offline
-/// cache, which it shows, read-only under the offline banner, while the host can't be reached (#1054).
+/// cache (#1054), which it shows, read-only, while it connects, and under the offline banner while
+/// the host can't be reached.
 /// As the home's list it opens the session a link named (#1176), as that session's row would, and
 /// a Shortcut's new session (#1180) and a share (#1181), as New Session would.
 struct HermesSessionListView: View {
@@ -123,7 +124,7 @@ struct HermesSessionListView: View {
                 .sessionsTopChromeListRow()
                 MoveToHermesBanner(serverID: entry.server.absoluteString)
             }
-            if viewModel.isViewingCachedData {
+            if viewModel.showsOfflineCache {
                 OfflineCacheBanner()
                     .padding(.top, 16)
                     .sessionsScreenListRow()
