@@ -158,7 +158,10 @@ access token, held in memory only, as `Authorization: Bearer` on every signed-in
 the socket upgrades still present a ticket. Each launch refreshes once, and a signed-in
 401 refreshes again and resends, as a password connection signs in again. A new
 connection reads the refresh token from the Keychain, never from a copy of the record,
-and `adopt` ignores it. A 401 from the refresh is `.signInExpired`, which signs the active
+and `adopt` ignores it. Retiring a connection never cancels its refresh in flight (the
+host may already have rotated the token), and the next connection on that server waits
+for it to save before reading the token. A save that fails is retried at the next
+rotation. A 401 from the refresh is `.signInExpired`, which signs the active
 Hermes server out to its sign-in form. No extension or App Intent signs in to Hermes, so
 the app is the token's only user.
 

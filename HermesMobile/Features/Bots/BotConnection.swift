@@ -164,9 +164,10 @@ enum BotAddressError: LocalizedError, Equatable {
         try keychain.save(value, forKey: .botConnection, scope: server.absoluteString)
         HermesConnections.shared.retire(server: server, unlessStill: connection)
     }
-    /// Writes the refresh token the host just rotated `sent` into, only while `server`'s
-    /// record is still connection `id` holding `sent`: a record removed or signed in again
-    /// meanwhile keeps what it has. It never retires the live connection, which made the change.
+    /// Writes the refresh token the host just rotated into, only while `server`'s record is
+    /// still connection `id` holding `sent`, the token that connection last saw saved: a
+    /// record removed or signed in again meanwhile keeps what it has. It never retires the
+    /// live connection, which made the change.
     func saveRotatedRefreshToken(_ rotated: String, replacing sent: String, connection id: UUID, server: URL) throws {
         guard var saved = try load(server: server), saved.id == id, saved.oauth?.refreshToken == sent else { return }
         saved.oauth?.refreshToken = rotated
