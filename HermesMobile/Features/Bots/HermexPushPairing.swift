@@ -17,7 +17,7 @@ enum HermexPushPlugin {
     /// The newest plugin this build knows (#851). A host that has anything older loaded is
     /// offered an update in Settings → Notifications. Bump it in the app release that
     /// follows a plugin release (TESTFLIGHT.md's release gates).
-    static let newestVersion = HermexPushPluginVersion("0.5.0")!
+    static let newestVersion = HermexPushPluginVersion("0.6.0")!
     /// The first plugin with `POST /api/plugins/hermex-push/restart` (#934). Settings offers
     /// "Restart Hermes…" only while a plugin this new is loaded: an older one has no route to
     /// call, so its card keeps asking for a restart on the host.

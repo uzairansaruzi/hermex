@@ -113,7 +113,7 @@ enum HermesREST: Equatable, Sendable {
     case setPlugin(name: String, enabled: Bool)
     case restartGateway
     case pushPairing
-    /// hermex-push 0.5.0's mounted routes (#1235): no side effects, never 409.
+    /// hermex-push's mounted routes (#1235, plugin 0.5.0): no side effects, never 409.
     case pluginCapabilities
     /// hermex-push 0.4.0's restart: 202, then the dashboard re-execs itself.
     case restartDashboard
@@ -224,6 +224,13 @@ enum HermesREST: Equatable, Sendable {
     /// here. A remote ref (`origin/name`) would fail, so a remote row goes out by its short name,
     /// which git turns into a tracking branch.
     case gitSwitchBranch(repository: String, branch: String)
+    /// hermex-push 0.6.0's git writes (#1236), which the host's own routes lack: `fetch --prune`,
+    /// a fast-forward-only `pull`, and `switch -c name` from HEAD. Each answers `{ok, message}`,
+    /// or 400 `{detail}` as the host's git routes do. The plugin refuses a name its host's
+    /// sanitizer would rewrite, so `isBranchName` is checked here first.
+    case gitFetch(repository: String)
+    case gitPull(repository: String)
+    case gitCreateBranch(repository: String, name: String)
     /// Replaces or creates the file at a host path, atomically; `{ok, path, byteSize}`. It never
     /// creates folders: a missing parent is 400 "Parent directory does not exist".
     case fsWriteText(path: String, content: String)
@@ -511,6 +518,13 @@ enum HermesREST: Equatable, Sendable {
             guard !repository.isEmpty, Self.isBranchName(branch) else { throw BotFailure.invalidAddress }
             return try Self.send("POST", base.appendingPathComponent("api/git/branch/switch"),
                                  ["path": .string(repository), "branch": .string(branch)])
+        case .gitFetch(let repository):
+            return try Self.pluginGit(base, "fetch", repository: repository, [:])
+        case .gitPull(let repository):
+            return try Self.pluginGit(base, "pull", repository: repository, [:])
+        case .gitCreateBranch(let repository, let name):
+            guard Self.isBranchName(name) else { throw BotFailure.invalidAddress }
+            return try Self.pluginGit(base, "branch", repository: repository, ["name": .string(name)])
         case .fsWriteText(let path, let content):
             return try Self.send("POST", base.appendingPathComponent("api/fs/write-text"),
                                  ["path": .string(path), "content": .string(content)])
@@ -638,6 +652,14 @@ enum HermesREST: Equatable, Sendable {
     }
 
     private static func get(_ url: URL) -> URLRequest { bare("GET", url) }
+
+    /// One of hermex-push's git writes at `repository`, with `fields` beside its `path`.
+    private static func pluginGit(_ base: URL, _ route: String, repository: String,
+                                  _ fields: [String: BotJSON]) throws -> URLRequest {
+        guard !repository.isEmpty else { throw BotFailure.invalidAddress }
+        return try send("POST", base.appendingPathComponent("api/plugins/hermex-push/git").appendingPathComponent(route),
+                        fields.merging(["path": .string(repository)]) { $1 })
+    }
 
     /// A GET of `route` whose query names host paths, each `+` kept as itself: the host reads a
     /// query's `+` as a space.

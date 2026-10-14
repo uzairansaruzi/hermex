@@ -13,7 +13,9 @@ import Foundation
 /// file (`HermesREST.isGitFile`), reads the rows it acts on again, and the guards live here,
 /// ahead of the request (`HermesGitRefusal`); each request also asks the owning chat first
 /// (`WriteOwner`). Each successful write answers the status read again. A branch switch (#1116)
-/// is a write too, refused while the tree has any uncommitted change.
+/// is a write too, refused while the tree has any uncommitted change. Fetch, pull and New Branch
+/// (#1236) go through the host's hermex-push plugin, the only place they exist, and show only
+/// while it lists their routes (`supportsSync()`).
 ///
 /// Neither the root nor git's own output (a refusal's `detail`, which can name host paths) reaches
 /// the screen or a log. Checked at the `HERMES_AGENT_TESTED_SHA` pin (ca678285) in
@@ -321,6 +323,35 @@ import Foundation
         return GitRemoteActionResponse(ok: true, message: nil, status: try? await status())
     }
 
+    // MARK: - Sync (#1236)
+
+    /// hermex-push's fetch, pull and New Branch routes, as `/capabilities` lists them.
+    static let syncRoutes = ["POST /git/fetch", "POST /git/pull", "POST /git/branch"]
+
+    /// Whether the host's hermex-push plugin has all three sync routes loaded, read through the
+    /// chat's own sign-in. A host that can't say (no plugin, an old or unloaded one, a failed read)
+    /// has none.
+    func supportsSync() async -> Bool {
+        guard let routes = try? await BotDashboardClient(http: http).companionRoutes() else { return false }
+        return Self.syncRoutes.allSatisfy(routes.supports)
+    }
+
+    func fetch() async throws -> GitRemoteActionResponse {
+        try await sync(HermesREST.gitFetch)
+    }
+
+    func pull() async throws -> GitRemoteActionResponse {
+        try await sync(HermesREST.gitPull)
+    }
+
+    /// One plugin write at the root; its answer is the status read again, never git's output.
+    private func sync(_ request: (String) -> HermesREST) async throws -> GitRemoteActionResponse {
+        let dispatch = try beginWrite()
+        let root = try await writableRoot()
+        try await write(request(root), dispatch, deadline: .provisioning)
+        return GitRemoteActionResponse(ok: true, message: nil, status: try? await status())
+    }
+
     /// A commit message from the host's model, as Desktop drafts one: `commit-context`'s diff of
     /// what would commit, or the selected files' whole changes, with its recent subjects to match.
     /// `avoiding` is the last suggestion, so Regenerate gives a different one. Before the first
@@ -376,12 +407,20 @@ import Foundation
     /// remote's `name` would leave git to refuse or pick `checkout.defaultRemote`, and a local
     /// `name` would be switched to instead. Refused while the tree has any uncommitted change,
     /// untracked files included, which `git switch` would carry across: there is no stash on
-    /// Hermes. Creating a branch isn't offered on Hermes either, and a name the host would
-    /// rewrite (`HermesREST.isBranchName`) is refused.
+    /// Hermes. A name the host would rewrite (`HermesREST.isBranchName`) is refused. A new branch
+    /// (`newBranch`) is created from HEAD through the plugin (#1236), uncommitted changes and all,
+    /// which is the usual reason to make one.
     func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool) async throws -> GitCheckoutResponse {
+        if let name = target.newBranch {
+            guard HermesREST.isBranchName(name), !stashingChanges else { throw HermesGitRefusal.failed }
+            let dispatch = try beginWrite()
+            let root = try await writableRoot()
+            try await write(.gitCreateBranch(repository: root, name: name), dispatch, deadline: .provisioning)
+            return Self.switched(to: name, status: try? await status())
+        }
         let remote = target.mode != .local
         let branch = remote ? Self.shortName(target.ref) : target.ref
-        guard let branch, HermesREST.isBranchName(branch), target.newBranch == nil, !stashingChanges else {
+        guard let branch, HermesREST.isBranchName(branch), !stashingChanges else {
             throw HermesGitRefusal.failed
         }
         let dispatch = try beginWrite()
@@ -398,9 +437,13 @@ import Foundation
         let summary = try Self.json(try await send(.gitStatus(repository: root)))
         guard summary["changed"].integer == 0 else { throw HermesGitRefusal.uncommittedSwitch }
         try await write(.gitSwitchBranch(repository: root, branch: branch), dispatch, deadline: .provisioning)
-        return GitCheckoutResponse(ok: true, message: nil, status: try? await status(), git: nil, branches: nil,
-                                   currentBranch: branch, stashName: nil, stashed: nil, restoredStash: nil,
-                                   restoreFailed: nil, restoreError: nil, restoreStash: nil)
+        return Self.switched(to: branch, status: try? await status())
+    }
+
+    private nonisolated static func switched(to branch: String, status: GitStatus?) -> GitCheckoutResponse {
+        GitCheckoutResponse(ok: true, message: nil, status: status, git: nil, branches: nil, currentBranch: branch,
+                            stashName: nil, stashed: nil, restoredStash: nil, restoreFailed: nil, restoreError: nil,
+                            restoreStash: nil)
     }
 
     /// A remote-tracking ref's branch name, the part after its remote (`origin/feature/x` is
