@@ -521,8 +521,9 @@ import XCTest
         XCTAssertNil(try store.load(server: server))
     }
 
-    /// A Keychain write that fails leaves the rotated token in memory, and the next rotation
-    /// saves over the token the Keychain still holds.
+    /// A Keychain read that fails stops the sign-in before the token is spent. A write that
+    /// fails leaves the rotated token in memory, and the next rotation saves over the token
+    /// the Keychain still holds.
     func testARotatedTokenTheKeychainRefusedIsSavedAtTheNextRotation() async throws {
         let server = URL(string: "https://hermes.example")!
         let keychain = RefusingKeychain()
@@ -543,7 +544,12 @@ import XCTest
         } }, keychain: keychain)
         keychain.refusesScopedSaves = 1
 
-        _ = try await connections.connection(for: oauthRecord(refreshToken: "refresh-0"), server: server).data(.pushPairing)
+        let http = connections.connection(for: oauthRecord(refreshToken: "refresh-0"), server: server)
+        // A read that fails spends nothing; the next sign-in reads again.
+        keychain.refusesScopedLoads = 1
+        do { try await http.signIn(); XCTFail("Expected the Keychain read to fail") } catch {}
+        XCTAssertEqual(refreshes, 0)
+        _ = try await http.data(.pushPairing)
 
         XCTAssertEqual(refreshes, 2)
         XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: server)?.oauth?.refreshToken, "refresh-2")
@@ -613,10 +619,12 @@ import XCTest
     }
 }
 
-/// An in-memory Keychain that refuses the next `refusesScopedSaves` scoped writes.
+/// An in-memory Keychain that refuses the next `refusesScopedSaves` scoped writes and the
+/// next `refusesScopedLoads` scoped reads.
 private final class RefusingKeychain: KeychainStoring {
     private let base = InMemoryKeychainStore()
     var refusesScopedSaves = 0
+    var refusesScopedLoads = 0
 
     func save(_ value: String, forKey key: KeychainStore.Key) throws { try base.save(value, forKey: key) }
     func load(_ key: KeychainStore.Key) throws -> String? { try base.load(key) }
@@ -625,7 +633,10 @@ private final class RefusingKeychain: KeychainStoring {
         if refusesScopedSaves > 0 { refusesScopedSaves -= 1; throw URLError(.cannotWriteToFile) }
         try base.save(value, forKey: key, scope: scope)
     }
-    func load(_ key: KeychainStore.Key, scope: String) throws -> String? { try base.load(key, scope: scope) }
+    func load(_ key: KeychainStore.Key, scope: String) throws -> String? {
+        if refusesScopedLoads > 0 { refusesScopedLoads -= 1; throw URLError(.cannotOpenFile) }
+        return try base.load(key, scope: scope)
+    }
     func delete(_ key: KeychainStore.Key, scope: String) throws { try base.delete(key, scope: scope) }
 }
 

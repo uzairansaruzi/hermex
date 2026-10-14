@@ -78,10 +78,11 @@ import OSLog
     /// token is used, even when this connection was retired meanwhile: the host has already
     /// retired the sent one. `HermesConnections` saves it.
     var onRefreshTokenRotated: ((String) -> Void)?
-    /// Asked once, at this connection's first refresh, for the refresh token to send instead of
-    /// the record's. `HermesConnections` answers with the saved one, after waiting for a refresh
-    /// a retired connection on the same server still has in flight.
-    var initialRefreshToken: (() async -> String?)?
+    /// Asked at this connection's first refresh for the refresh token to send instead of the
+    /// record's, until it answers. `HermesConnections` answers with the saved one, after waiting
+    /// for a refresh a retired connection on the same server still has in flight; a Keychain
+    /// read that fails throws, so the sign-in fails before any token is spent.
+    var initialRefreshToken: (() async throws -> String?)?
     /// The refresh in flight, which retiring this connection never cancels: once the host has
     /// the request it may already have rotated the token, and only its reply saves the new one.
     private(set) var refreshInFlight: Task<String, Error>?
@@ -213,9 +214,10 @@ import OSLog
     /// refusal is `.rejected` and leaves the token for the next sign-in.
     private func refresh(on session: URLSession) async throws {
         if let source = initialRefreshToken {
-            initialRefreshToken = nil
-            if let saved = await source() { connection.oauth?.refreshToken = saved }
+            let saved = try await source()
             try checkCurrent()
+            initialRefreshToken = nil
+            if let saved { connection.oauth?.refreshToken = saved }
         }
         guard let account = connection.oauth else { throw BotFailure.unsupported }
         let sent = account.refreshToken
@@ -553,7 +555,7 @@ import OSLog
         var saved: String?
         fresh.initialRefreshToken = {
             _ = try? await prior?.value
-            guard let record = try? store.load(server: server), record.id == id else { return nil }
+            guard let record = try store.load(server: server), record.id == id else { return nil }
             saved = record.oauth?.refreshToken
             return saved
         }
