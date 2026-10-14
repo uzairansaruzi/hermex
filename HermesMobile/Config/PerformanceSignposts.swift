@@ -18,8 +18,9 @@ let performanceSignposter = OSSignposter(
     category: "Performance"
 )
 
-/// The one `Launch` interval: from the app's `init` to the first frame of a home list
-/// (webui's or a Hermes server's) that shows session rows, cached or read. Pre-main work
+/// The one `Launch` interval: from the app's `init` to the first frame after a home list
+/// (webui's or a Hermes server's) holds session rows, cached or read. Rows in a collapsed group,
+/// such as webui's scheduled sessions, count. Pre-main work
 /// (dyld, static initializers) is outside it. A launch that never shows rows (onboarding,
 /// an empty list) leaves it open; it is never emitted twice.
 @MainActor

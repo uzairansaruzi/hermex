@@ -276,7 +276,7 @@ The `HERMEX_DEV_*` environment variables (`HERMEX_DEV_SERVER_URL`, `HERMEX_DEV_P
 
 | Interval | Measures | Metadata |
 |---|---|---|
-| `Launch` | The app's `init` to the first frame of a home list (webui or Hermes) showing session rows, cached or read | `rows` |
+| `Launch` | The app's `init` to the first frame after a home list (webui or Hermes) holds session rows, cached or read; rows in a collapsed group count | `rows` |
 | `Session Open` | A session-list open (tap or keyboard, or a Hermes list pushing its chat) to the first transcript frame, or to the empty state when the transcript is empty | `messages` |
 | `Load Earlier` | Load earlier (button or pull) to the layout of the prepended rows | `messages` |
 | `Transcript Apply` | Painting the cached transcript, or applying a reloaded one | `messages` |

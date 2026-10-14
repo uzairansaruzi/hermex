@@ -48,9 +48,10 @@ def launch_once(udid, bundle, wait):
     since = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     sh("xcrun", "simctl", "terminate", udid, bundle, check=False)
     time.sleep(1)
-    sh("xcrun", "simctl", "launch", udid, bundle)
+    pid = int(sh("xcrun", "simctl", "launch", udid, bundle).rsplit(":", 1)[1])
     time.sleep(wait)
-    events = signposts(udid, bundle, since)
+    # Only this process: a previous run's late host write can land in the same log window.
+    events = [e for e in signposts(udid, bundle, since) if e[1] == pid]
     begin = next((e for e in events if e[2] == "begin" and e[3] == "Launch"), None)
     if not begin:
         return None, None
