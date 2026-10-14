@@ -6,10 +6,11 @@ so warmup and network drift favor none. The simulator must already be signed in.
   scripts/benchmark-sim-launch <udid> <A.app> [<B.app> ...] [--rounds 4] [--per-install 3]
 
 Each round installs every build in turn, discards one launch, then measures `--per-install`
-launches. Prints each build's median, range, run count, and failures (a launch whose
-interval never ended within the wait) for two numbers: `Launch` (first rows on screen, cached
-or read) and `live` (from the same start to the end of the first `Cache Write`, the host's
-first page landing), so a build that paints its cache sooner can't hide a slower host read.
+launches. Prints each build's median, range, run count, and misses (no result within the
+wait) for two numbers: `Launch` (first rows on screen, cached or read) and `live` (from the
+same start to the end of the first `Cache Write`, the host's first page landing), so a build
+that paints its cache sooner can't hide a slower host read. Each build launches under the
+bundle ID its own Info.plist names, so a Hermex Branch build measures itself.
 """
 import argparse
 import datetime
@@ -18,7 +19,6 @@ import statistics
 import subprocess
 import time
 
-BUNDLE = "com.uzairansar.hermesmobile"
 LINE = re.compile(r"^(\S+ \S+) Sp \S+\[(\d+):\w+\] \[[^\]]+:Performance\] \[spid \w+, process, +(begin|end)\] ([A-Za-z ]+?)(?:: (.*))?$")
 
 
@@ -26,9 +26,13 @@ def sh(*args, check=True):
     return subprocess.run(args, check=check, capture_output=True, text=True).stdout
 
 
-def signposts(udid, since):
+def bundle_id(app):
+    return sh("/usr/libexec/PlistBuddy", "-c", "Print :CFBundleIdentifier", f"{app}/Info.plist").strip()
+
+
+def signposts(udid, bundle, since):
     out = sh("xcrun", "simctl", "spawn", udid, "log", "show", "--signpost", "--style", "compact",
-             "--start", since, "--predicate", f'subsystem == "{BUNDLE}" AND category == "Performance"', check=False)
+             "--start", since, "--predicate", f'subsystem == "{bundle}" AND category == "Performance"', check=False)
     events = []
     for line in out.splitlines():
         m = LINE.match(line)
@@ -38,19 +42,21 @@ def signposts(udid, since):
     return events
 
 
-def launch_once(udid, wait):
+def launch_once(udid, bundle, wait):
+    """Milliseconds from the `Launch` begin to its end and to the first `Cache Write` end, each
+    None when it did not happen within the wait."""
     since = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    sh("xcrun", "simctl", "terminate", udid, BUNDLE, check=False)
+    sh("xcrun", "simctl", "terminate", udid, bundle, check=False)
     time.sleep(1)
-    sh("xcrun", "simctl", "launch", udid, BUNDLE)
+    sh("xcrun", "simctl", "launch", udid, bundle)
     time.sleep(wait)
-    events = signposts(udid, since)
+    events = signposts(udid, bundle, since)
     begin = next((e for e in events if e[2] == "begin" and e[3] == "Launch"), None)
+    if not begin:
+        return None, None
     end = next((e for e in events if e[2] == "end" and e[3] == "Launch"), None)
     write = next((e for e in events if e[2] == "end" and e[3] == "Cache Write"), None)
-    if not begin or not end or not write:
-        return None, None
-    return (end[0] - begin[0]).total_seconds() * 1000, (write[0] - begin[0]).total_seconds() * 1000
+    return tuple(None if e is None else (e[0] - begin[0]).total_seconds() * 1000 for e in (end, write))
 
 
 def main():
@@ -61,30 +67,31 @@ def main():
     p.add_argument("--per-install", type=int, default=3)
     p.add_argument("--wait", type=float, default=7)
     a = p.parse_args()
-    results = {app: [] for app in a.apps}
-    live = {app: [] for app in a.apps}
-    failures = {app: 0 for app in a.apps}
+    bundles = {app: bundle_id(app) for app in a.apps}
+    results = {app: {"Launch": [], "live": []} for app in a.apps}
+    misses = {app: {"Launch": 0, "live": 0} for app in a.apps}
     for r in range(a.rounds):
         for app in a.apps:
             sh("xcrun", "simctl", "install", a.udid, app)
-            launch_once(a.udid, a.wait)
+            launch_once(a.udid, bundles[app], a.wait)
             for _ in range(a.per_install):
-                ms, live_ms = launch_once(a.udid, a.wait)
-                if ms is None:
-                    failures[app] += 1
-                else:
-                    results[app].append(ms)
-                    live[app].append(live_ms)
-                print(f"round {r} {app}: " + ("FAIL" if ms is None else f"Launch {ms:.0f} ms, live {live_ms:.0f} ms"),
-                      flush=True)
+                pair = launch_once(a.udid, bundles[app], a.wait)
+                for name, ms in zip(("Launch", "live"), pair):
+                    if ms is None:
+                        misses[app][name] += 1
+                    else:
+                        results[app][name].append(ms)
+                print(f"round {r} {app}: " + ", ".join(
+                    f"{name} {'miss' if ms is None else f'{ms:.0f} ms'}" for name, ms in zip(("Launch", "live"), pair)),
+                    flush=True)
     for app in a.apps:
         print(app)
-        for name, xs in (("Launch", results[app]), ("live", live[app])):
+        for name, xs in results[app].items():
             if xs:
                 print(f"  {name} median {statistics.median(xs):.0f} ms, range {min(xs):.0f}-{max(xs):.0f}, "
-                      f"n={len(xs)}, failures={failures[app]}")
+                      f"n={len(xs)}, misses={misses[app][name]}")
             else:
-                print(f"  {name}: no completed launches, failures={failures[app]}")
+                print(f"  {name}: no results, misses={misses[app][name]}")
 
 
 if __name__ == "__main__":
