@@ -239,6 +239,9 @@ def main():
             sim_fd = stack.enter_context(lock(locks_dir / (device["udid"] + ".lock"), owner))
             lock_fds = (work_fd, sim_fd)
             print("Simulator: {name} ({udid}); serial tests".format(**device), flush=True)
+            # Swap at start, so a stalled run can be matched against memory
+            # pressure later (scripts/sim-doctor).
+            run(["sysctl", "hw.memsize", "vm.swapusage"], run_dir / "memory.log", 10)
             boot(device, run_dir, locks_dir, owner, lock_fds, args.boot_timeout)
             # One deadline covers the first attempt and any retry.
             deadline = time.monotonic() + args.test_timeout

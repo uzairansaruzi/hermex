@@ -148,12 +148,34 @@ Exit codes: **0** passed; **1** build/test failure; **2** busy device, setup, or
 result-verification failure; **124** timeout; **130** interrupted. On a busy
 device or infrastructure failure, report the blocker and log path; stop rather
 than rebooting, erasing devices, clearing caches, or rerunning unchanged tests.
+Each run also saves the Mac's swap use at start in `memory.log`.
 For actual test failures, inspect the recorded failure and follow the repo's
 baseline-check procedure where applicable. On timeout or interruption, the runner
 terminates the isolated process group it spawned, including remaining descendants,
 and leaves other jobs and the simulator itself alone.
 
 Runner checks: `python3 -m unittest discover -s scripts/tests -v`.
+
+### Stuck simulators
+
+`scripts/sim-doctor [udid]` says why a simulator is stuck and prints the one
+command that clears it. Every probe has a 20-second limit, so it is safe to run
+while things hang. Exit 0 means nothing needs clearing; 1 prints a `FIX:` line.
+
+- `SERVICE`: CoreSimulator itself stopped answering. Only the owner restarts it,
+  because that stops every booted simulator.
+- `MEMORY`: the device doesn't respond while the Mac is paging. On a 16 GB Mac,
+  simulator processes then sit in uninterruptible waits, and boots and launches
+  stall. Free memory first; booting another simulator makes it worse. Heavy swap
+  alone only warns.
+- `DEVICE`: one simulator stopped answering while CoreSimulator still does. The
+  session that owns it shuts it down and boots it by UDID.
+- `ZOMBIE_APP`: Hermex is a zombie the simulator still lists as running, so
+  `launch` and `terminate` never return. A debugger that detached, or was
+  killed, while the app was stopped leaves this. Restart that simulator. To get
+  a backtrace without causing it, end lldb with `kill`:
+  `lldb -p <pid> --batch -o continue -k "thread backtrace all" -k kill`, and
+  don't `simctl terminate` the app while lldb holds it.
 
 ## PR CI
 

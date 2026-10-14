@@ -61,6 +61,8 @@ class SimulatorRunnerTests(unittest.TestCase):
             if not self.app_installed:
                 raise subprocess.TimeoutExpired(command, timeout)
             return self.terminate_status
+        elif command[0] == "sysctl":
+            output.write_text("vm.swapusage: total = 2048.00M  used = 1024.00M\n")
         elif command[0] == "xcodebuild":
             Path(command[command.index("-resultBundlePath") + 1]).mkdir()
             output.write_text("test log\n")
