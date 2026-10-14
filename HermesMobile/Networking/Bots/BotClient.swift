@@ -8,7 +8,8 @@ import Foundation
 @MainActor final class BotClient: BotTransport {
     private let gateway: HermesGateway
     let consumerID: Int
-    private var http: HermesConnection { gateway.http }
+    /// The connection this client signs in and downloads through, shared with its Bot screens.
+    var http: HermesConnection { gateway.http }
     /// Bumped by `close()`, `connect()` and a lost socket, so this screen's late HTTP
     /// results are dropped.
     private var attempt = 0
@@ -64,7 +65,7 @@ import Foundation
         try await gateway.send(call, for: consumerID, validateDispatch: validateDispatch)
     }
 
-    func artifactData(path: String, context: BotArtifactContext) async throws -> Data {
+    func artifactData(path: String, context: BotArtifactContext, limit: Int?) async throws -> Data {
         guard context.connectionID == http.connection.id, gateway.isAttached(consumerID) else { throw BotFailure.stale }
         let attempt = self.attempt
         let request = try HermesREST.downloadArtifact(path: path, profile: context.profile, sessionID: context.sessionID)
@@ -73,7 +74,7 @@ import Foundation
         let http = self.http
         let task = Task {
             try await http.authorized(request, validateDispatch: { try self.checkOwner(attempt) }) { request, session in
-                try await BotArtifactDownload.data(session: session, request: request)
+                try await BotArtifactDownload.data(session: session, request: request, limit: limit)
             }
         }
         artifactTasks[id] = task
@@ -154,6 +155,16 @@ import Foundation
         return page
     }
 
+    func sessionScanPage(profile: String, offset: Int) async throws -> HermesScanPage {
+        guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
+        let attempt = self.attempt
+        let data = try await http.data(.sessionScan(profile: profile, offset: offset),
+                                       validateDispatch: { try self.checkOwner(attempt) })
+        try checkOwner(attempt)
+        guard let page = try? JSONDecoder().decode(HermesScanPage.self, from: data) else { throw BotFailure.unsupported }
+        return page
+    }
+
     @discardableResult
     func updateSession(_ change: HermesSessionChange, key: String, profile: String) async throws -> String? {
         guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
@@ -197,7 +208,7 @@ import Foundation
     }
 
     /// A refused payload's reason is the host's `detail`: its text, or the first of its
-    /// `errors`, one per session it refused.
+    /// `errors`, one per session it refused, each kept in the refusal's `entries`.
     func importSessions(body: Data) async throws -> BotJSON {
         guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
         let attempt = self.attempt
@@ -206,9 +217,13 @@ import Foundation
         try checkOwner(attempt)
         let body = try? JSONDecoder().decode(BotJSON.self, from: reply.body)
         guard reply.status == 200 else {
-            let detail = body?["detail"].text ?? body?["detail"]["errors"].list?.first?["error"].text
+            let entries = (body?["detail"]["errors"].list ?? []).compactMap { error -> HermesSessionRefusal.Entry? in
+                guard let index = error["index"].integer, let reason = error["error"].text else { return nil }
+                return HermesSessionRefusal.Entry(index: index, sessionID: error["session_id"].text, reason: reason)
+            }
+            let detail = body?["detail"].text ?? entries.first?.reason
             if reply.status == 400, let detail = detail?.trimmingCharacters(in: .whitespacesAndNewlines), !detail.isEmpty {
-                throw HermesSessionRefusal(message: detail)
+                throw HermesSessionRefusal(message: detail, entries: entries)
             }
             throw BotFailure.rejected(reply.status)
         }
@@ -216,10 +231,10 @@ import Foundation
         return body
     }
 
-    func searchSessions(query: String, profile: String) async throws -> [HermesSessionSearchResult] {
+    func searchSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
         guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
         let attempt = self.attempt
-        let data = try await http.data(.sessionSearch(query: query, profile: profile),
+        let data = try await http.data(.sessionSearch(query: query, profile: profile, limit: limit),
                                        validateDispatch: { try self.checkOwner(attempt) })
         try checkOwner(attempt)
         guard let search = try? JSONDecoder().decode(HermesSessionSearch.self, from: data) else { throw BotFailure.unsupported }

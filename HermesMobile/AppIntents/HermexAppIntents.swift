@@ -68,7 +68,8 @@ struct NewChatVoiceIntent: AppIntent {
 /// the user picks when configuring the Shortcut/Siri phrase (issue #339). The chosen
 /// `ProfileEntity` is carried through the same `AppIntentRouter`/deep-link plumbing as the
 /// other New Chat intents, on its own host (`new-chat-profile`) with the profile name as a
-/// query item, so `PendingNewChatView` can create the session pinned to it.
+/// query item, so `PendingNewChatView` can create the session pinned to it. A Hermes server's
+/// Profile (#1180) adds its server, and opens a new Hermes session there.
 struct NewChatInProfileIntent: AppIntent {
     static var title: LocalizedStringResource = "New Chat in Profile"
     static var description = IntentDescription("Open Hermex on a new chat pinned to a specific profile.")
@@ -85,8 +86,9 @@ struct NewChatInProfileIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        let hermes = profile.hermesNewChat
         AppIntentRouter.shared.requestDeepLink(
-            HermesDeepLink.newChatInProfileURL(profileName: profile.id)
+            HermesDeepLink.newChatInProfileURL(profileName: hermes?.profile ?? profile.id, server: hermes?.server)
         )
         return .result()
     }
@@ -128,5 +130,79 @@ struct HermexShortcuts: AppShortcutsProvider {
             shortTitle: "New Chat in Profile",
             systemImageName: "person.crop.circle.badge.plus"
         )
+    }
+}
+
+/// A new Hermes session a Shortcut asked for (#1180): New Chat or New Chat with Voice on the
+/// active Hermes server, or New Chat in Profile on a Hermes server's Profile. `ContentView`
+/// holds it until its server is active and signed in; that server's Sessions list then opens it.
+struct HermesNewChatDestination: Hashable {
+    let server: URL
+    /// The Profile to start in; nil takes the one the Sessions list's New Session uses.
+    let profile: String?
+    var autoStartsVoiceInput = false
+    /// Fresh per request, so running the same Shortcut again opens another chat.
+    let id = UUID()
+
+    enum Route: Equatable {
+        /// The server isn't a configured Hermes server: the app opens as it is.
+        case ignore
+        case waitForSignIn
+        /// Make the server active first; the rebuilt home takes the held request.
+        case switchServer(ServerAccount)
+        case open
+    }
+
+    init(server: URL, profile: String?, autoStartsVoiceInput: Bool = false) {
+        self.server = server
+        self.profile = profile
+        self.autoStartsVoiceInput = autoStartsVoiceInput
+    }
+
+    /// Parses a Hermes Profile's `new-chat-profile?server=…&profile=…`. Nil for any other link,
+    /// including a bare `new-chat-profile?profile=…`, which keeps its webui route (#971).
+    init?(url: URL) {
+        guard HermesDeepLink.isNewChatInProfileURL(url),
+              let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+                  .first(where: { $0.name == HermesDeepLink.serverQueryItem })?.value,
+              let server = Self.server(raw),
+              let profile = HermesDeepLink.profileName(fromNewChatInProfile: url) else { return nil }
+        self.init(server: server, profile: profile)
+    }
+
+    /// The server a Hermes Profile's id or link names: an absolute `http(s)` URL, as the registry
+    /// stores it.
+    static func server(_ raw: String) -> URL? {
+        guard let url = URL(string: raw), ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              url.host?.isEmpty == false else { return nil }
+        return url
+    }
+
+    /// New Chat and New Chat with Voice on the active server when it is a Hermes server, signed in
+    /// or not; nil on a webui server, whose New Chat is unchanged.
+    @MainActor static func onActiveServer(state: AuthManager.State, servers: [ServerAccount],
+                                          autoStartsVoiceInput: Bool) -> Self? {
+        guard let active = state.server,
+              servers.first(where: { $0.id == active.absoluteString })?.kind == .hermes else { return nil }
+        return Self(server: active, profile: nil, autoStartsVoiceInput: autoStartsVoiceInput)
+    }
+
+    /// Decided by the registry and auth state alone, as a session link is (`HermesSessionLinkRouter`).
+    @MainActor func route(state: AuthManager.State, servers: [ServerAccount]) -> Route {
+        guard let account = servers.first(where: { $0.id == server.absoluteString }), account.kind == .hermes else {
+            return .ignore
+        }
+        guard state.server == server else { return .switchServer(account) }
+        if case .loggedIn = state { return .open }
+        return .waitForSignIn
+    }
+
+    /// The chat `entry`'s Sessions list opens: in this request's Profile, else `listed`, the one
+    /// its New Session uses. Nil for another server's list, and until the list `isLive`, having
+    /// read the host and showing no offline cache, whatever Profile the request names.
+    @MainActor func chat(on entry: HermesSessionListEntry, listed: String?, isLive: Bool) -> HermesSessionChat? {
+        guard entry.server == server, isLive, let profile = profile ?? listed else { return nil }
+        return HermesSessionChat(server: server, connection: entry.connection, target: .new(profile: profile),
+                                 autoStartsVoiceInput: autoStartsVoiceInput)
     }
 }

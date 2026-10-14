@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// The Bots inbox: pushed from a webui server's session list, or the Bots side of a Hermes
@@ -6,6 +7,7 @@ import SwiftUI
 /// filter holds hidden bots and section order, and new chat makes a bot or a group chat.
 @MainActor struct BotsInboxView: View {
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var modelContext
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     let server: URL
     private let home: HermesHome?
@@ -337,12 +339,16 @@ import SwiftUI
         updatingSignIn = true; showingSetup = true
     }
 
-    private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
-        BotChatView(server: server, connection: connection, profile: profile, roster: inbox.profiles,
-                    avatars: inbox.avatars, conversation: selection.conversation, onConversationUnavailable: {
-                        selection.profile = nil
-                        toast = String(localized: "That conversation is no longer available.")
-                    }, onUpdateSignIn: { inbox.noteRejectedSignIn(connection); selection.profile = nil; updateSignIn() })
+    /// The selected bot's canonical Bot Chat in the regular chat (#1146), where every bot route
+    /// lands. A chat the bot replaced since a link named it comes back here and says so, and a
+    /// refused password comes back here to the inbox's sign-in form.
+    @ViewBuilder private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
+        if let chat = selection.chat(server: server, connection: connection) {
+            ChatView(hermesSession: chat, onChatReplaced: {
+                selection.profile = nil
+                toast = String(localized: "That conversation is no longer available.")
+            })
+            .modifier(HermesUpdateSignInModifier { inbox.noteRejectedSignIn(connection); selection.profile = nil; updateSignIn() })
             // A composite rather than a concatenation: a Profile name and a
             // conversation root are both arbitrary server strings, so joining them
             // could let two destinations share one identity and keep the wrong
@@ -350,6 +356,7 @@ import SwiftUI
             .id([profile.id, connection.id.uuidString, selection.conversation ?? ""])
             .onAppear { inbox.markSeen(profile) }
             .onDisappear { inbox.noteReturn(from: profile) }
+        }
     }
 
     @ViewBuilder private func editProfile(_ selection: BotProfileEditSelection) -> some View {
@@ -595,7 +602,10 @@ extension BotsInboxView {
             }
             // The subscription lives while the inbox is on screen and the app is not in the
             // background; returning, refreshing and reconnecting all go through the same open().
-            .task(id: revision) { await inbox.open(); hasSettled = true; openPendingDestination() }
+            .task(id: revision) {
+                inbox.offlineCache = modelContext
+                await inbox.open(); hasSettled = true; openPendingDestination()
+            }
             .onChange(of: inbox.link) { openPendingDestination() }
             .onChange(of: pendingDestination) { openPendingDestination() }
             .onChange(of: selection.profile) { if selection.profile == nil { selection.conversation = nil } }

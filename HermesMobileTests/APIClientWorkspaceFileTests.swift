@@ -556,10 +556,8 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
             """, for: request)
         }
         let viewModel = try FilePreviewViewModel(
-            session: makeFilePreviewSession(),
-            server: XCTUnwrap(URL(string: "https://example.test")),
-            path: "Sources/Notes.txt",
-            apiClient: client
+            files: makeFilePreviewFiles(client),
+            path: "Sources/Notes.txt"
         )
 
         await viewModel.load()
@@ -593,10 +591,8 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
             return (try XCTUnwrap(response), rawData)
         }
         let viewModel = try FilePreviewViewModel(
-            session: makeFilePreviewSession(),
-            server: XCTUnwrap(URL(string: "https://example.test")),
-            path: "Build/archive.zip",
-            apiClient: client
+            files: makeFilePreviewFiles(client),
+            path: "Build/archive.zip"
         )
 
         await viewModel.load()
@@ -747,11 +743,9 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
         client: APIClient
     ) throws -> FilePreviewViewModel {
         try FilePreviewViewModel(
-            session: makeFilePreviewSession(),
-            server: XCTUnwrap(URL(string: "https://example.test")),
+            files: makeFilePreviewFiles(client),
             path: path,
-            knownSize: knownSize,
-            apiClient: client
+            knownSize: knownSize
         )
     }
 
@@ -780,10 +774,8 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
             try JSONDecoder().decode(FileResponse.self, from: Data(#"{"path": "Sources/Notes.txt", "content": "warm"}"#.utf8))
         }
         let viewModel = try FilePreviewViewModel(
-            session: makeFilePreviewSession(),
-            server: XCTUnwrap(URL(string: "https://example.test")),
+            files: makeFilePreviewFiles(client),
             path: "Sources/Notes.txt",
-            apiClient: client,
             prefetchedFile: prefetched
         )
 
@@ -808,10 +800,8 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
         }
         prefetched.cancel()
         let viewModel = try FilePreviewViewModel(
-            session: makeFilePreviewSession(),
-            server: XCTUnwrap(URL(string: "https://example.test")),
+            files: makeFilePreviewFiles(client),
             path: "Sources/Notes.txt",
-            apiClient: client,
             prefetchedFile: prefetched
         )
 
@@ -847,12 +837,18 @@ final class APIClientWorkspaceFileTests: APIClientTestCase {
             apiTestJSONResponse(String(decoding: body, as: UTF8.self), for: request)
         }
         let viewModel = try FilePreviewViewModel(
-            session: makeFilePreviewSession(),
-            server: XCTUnwrap(URL(string: "https://example.test")),
-            path: path,
-            apiClient: client
+            files: makeFilePreviewFiles(client),
+            path: path
         )
         await viewModel.load()
         return viewModel.markdownChunks
+    }
+}
+
+private extension APIClientTestCase {
+    /// The webui session `makeFilePreviewSession` names, read through `client`.
+    func makeFilePreviewFiles(_ client: APIClient) throws -> WebUIWorkspaceFileClient? {
+        WebUIWorkspaceFileClient(session: try makeFilePreviewSession(), server: try XCTUnwrap(URL(string: "https://example.test")),
+                                 apiClient: client)
     }
 }

@@ -165,6 +165,13 @@ final class HermesRequestTests: XCTestCase {
             (.groupsRename(roomID: "room", eventID: "e1", name: "Crew"), "groups.rename",
              ["room_id": .string("room"), "event_id": .string("e1"), "name": .string("Crew")]),
             (.groupsDisband(roomID: "room"), "groups.disband", ["room_id": .string("room")]),
+            (.commitMessage(diff: "+a", recentCommits: "fix: b", avoid: nil, sessionID: nil, profile: "triage"), "llm.oneshot",
+             ["template": .string("commit_message"), "temperature": .number(0.8), "profile": .string("triage"),
+              "variables": .object(["diff": .string("+a"), "recent_commits": .string("fix: b")])]),
+            (.commitMessage(diff: "+a", recentCommits: "", avoid: "feat: a", sessionID: "runtime", profile: "triage"), "llm.oneshot",
+             ["template": .string("commit_message"), "temperature": .number(0.8), "profile": .string("triage"),
+              "session_id": .string("runtime"),
+              "variables": .object(["diff": .string("+a"), "recent_commits": .string(""), "avoid": .string("feat: a")])]),
             (.clientCapabilities, "client.capabilities", ["server_requests": .bool(true)])
         ]
         for (call, method, params) in cases {
@@ -219,6 +226,20 @@ final class HermesRequestTests: XCTestCase {
         }
     }
 
+    /// A commit message is asked for a real diff, under a Profile; the runtime and the message to
+    /// avoid are sent only when there are ones (#1115).
+    func testACommitMessageRefusesBlankValues() {
+        let refused: [HermesCall] = [
+            .commitMessage(diff: " \n", recentCommits: "", avoid: nil, sessionID: nil, profile: "triage"),
+            .commitMessage(diff: "+a", recentCommits: "", avoid: " ", sessionID: nil, profile: "triage"),
+            .commitMessage(diff: "+a", recentCommits: "", avoid: nil, sessionID: "", profile: "triage"),
+            .commitMessage(diff: "+a", recentCommits: "", avoid: nil, sessionID: nil, profile: "")
+        ]
+        for call in refused {
+            XCTAssertThrowsError(try call.params(), "\(call)")
+        }
+    }
+
     /// Slash commands go out one typed line at a time, and completion only at a command's
     /// argument stage (#1036).
     func testSlashCallsAdmitOnlyOneNamedLine() {
@@ -235,6 +256,49 @@ final class HermesRequestTests: XCTestCase {
             XCTAssertThrowsError(try HermesCall.completeSlash(text: text, sessionID: "runtime").params(), text)
         }
         XCTAssertThrowsError(try HermesCall.completeSlash(text: "/approvals ", sessionID: "").params())
+    }
+
+    /// The host hands a Git write's `file` to git as a pathspec, where `*` matches other files and
+    /// `.`, a blank or no file the whole tree (#1115): a file goes out literal, and one that isn't a
+    /// single path inside the repository is refused before anything is sent.
+    func testAGitWriteNamesOneExactFile() throws {
+        let base = URL(string: "https://hermes.example")!
+        for file in ["", " ", " \n", ".", "./", "a/./b", "a/..", "../a", "/a", "a//b"] {
+            XCTAssertThrowsError(try HermesREST.gitStage(repository: "/r", file: file).request(base: base), file)
+            XCTAssertThrowsError(try HermesREST.gitUnstage(repository: "/r", file: file).request(base: base), file)
+            XCTAssertThrowsError(try HermesREST.gitRevert(repository: "/r", file: file).request(base: base), file)
+        }
+        XCTAssertThrowsError(try HermesREST.gitRevert(repository: "", file: "a").request(base: base))
+        for file in ["*", " a.txt", "a.txt ", "Sources/", ":(glob)x"] {
+            let request = try HermesREST.gitRevert(repository: "/r", file: file).request(base: base)
+            let body = try request.httpBody.map { try JSONDecoder().decode(BotJSON.self, from: $0) }
+            XCTAssertEqual(body?["file"], .string(":(literal)" + file))
+        }
+    }
+
+    /// The host rewrites a branch name before `git switch` (`_sanitize_branch`), so a name it
+    /// would change, which could reach another branch, is refused before anything is sent (#1116),
+    /// as is a new branch's through hermex-push (#1236).
+    func testABranchSwitchSendsOnlyANameTheHostKeeps() throws {
+        let base = URL(string: "https://hermes.example")!
+        // A decomposed accent (U+0301) or zero-width joiner is stripped by the host, so "cafe\u{301}"
+        // would switch to "cafe"; the precomposed "café" and other letters and numerals pass.
+        for name in ["", "feat+x", "my branch", "-x", "x/", ".x", "a..b", "a//b", "a--b", "a@{1}", "x~1",
+                     "cafe\u{301}", "a\u{200D}b", "x\u{903}"] {
+            XCTAssertThrowsError(try HermesREST.gitSwitchBranch(repository: "/r", branch: name).request(base: base), name)
+        }
+        XCTAssertThrowsError(try HermesREST.gitSwitchBranch(repository: "", branch: "dev").request(base: base))
+        XCTAssertThrowsError(try HermesREST.gitCreateBranch(repository: "/r", name: "-b").request(base: base))
+        XCTAssertThrowsError(try HermesREST.gitCreateBranch(repository: "", name: "dev").request(base: base))
+        XCTAssertThrowsError(try HermesREST.gitFetch(repository: "").request(base: base))
+        for name in ["dev", "feature/x-1", "release_2.0", "caf\u{E9}", "x\u{663}", "\u{216B}", "\u{2B0}x"] {
+            let request = try HermesREST.gitSwitchBranch(repository: "/r", branch: name).request(base: base)
+            let body = try JSONDecoder().decode(BotJSON.self, from: XCTUnwrap(request.httpBody))
+            // String equality is canonical, so compare scalars: the name goes out unnormalized.
+            guard case .object(let fields) = body, case .string(let sent) = fields["branch"] else { return XCTFail(name) }
+            XCTAssertEqual(fields["path"], .string("/r"))
+            XCTAssertEqual(Array(sent.unicodeScalars), Array(name.unicodeScalars), name)
+        }
     }
 
     func testEveryRESTRequestKeepsItsMethodPathQueryAndBody() throws {
@@ -265,6 +329,7 @@ final class HermesRequestTests: XCTestCase {
              "https://hermes.example:9120/api/dashboard/agent-plugins/hermex-push/disable", .object([:]), json),
             (.restartGateway, "POST", "https://hermes.example:9120/api/gateway/restart", .object([:]), json),
             (.pushPairing, "GET", "https://hermes.example:9120/api/plugins/hermex-push/pairing", nil, [:]),
+            (.pluginCapabilities, "GET", "https://hermes.example:9120/api/plugins/hermex-push/capabilities", nil, [:]),
             (.restartDashboard, "POST", "https://hermes.example:9120/api/plugins/hermex-push/restart", .object([:]), json),
             (.pluginsHub, "GET", "https://hermes.example:9120/api/dashboard/plugins/hub", nil, [:]),
             (.sessionMessages(key: "bg_0a5110", profile: "triage"), "GET",
@@ -305,6 +370,31 @@ final class HermesRequestTests: XCTestCase {
              .object(["path": .string("/h/memories/MEMORY.md"), "content": .string("a\n§\nb")]), json),
             (.filesMkdir(path: "/h/memories"), "POST", "https://hermes.example:9120/api/files/mkdir",
              .object(["path": .string("/h/memories")]), json),
+            (.gitStage(repository: "/r/a+b", file: "Sources/A.swift"), "POST", "https://hermes.example:9120/api/git/review/stage",
+             .object(["path": .string("/r/a+b"), "file": .string(":(literal)Sources/A.swift")]), json),
+            (.gitUnstage(repository: "/r", file: "A.swift"), "POST", "https://hermes.example:9120/api/git/review/unstage",
+             .object(["path": .string("/r"), "file": .string(":(literal)A.swift")]), json),
+            (.gitUnstage(repository: "/r", file: nil), "POST", "https://hermes.example:9120/api/git/review/unstage",
+             .object(["path": .string("/r")]), json),
+            (.gitRevert(repository: "/r", file: "notes.txt"), "POST", "https://hermes.example:9120/api/git/review/revert",
+             .object(["path": .string("/r"), "file": .string(":(literal)notes.txt")]), json),
+            (.gitCommit(repository: "/r", message: "fix: a"), "POST", "https://hermes.example:9120/api/git/review/commit",
+             .object(["path": .string("/r"), "message": .string("fix: a"), "push": .bool(false)]), json),
+            (.gitPush(repository: "/r"), "POST", "https://hermes.example:9120/api/git/review/push",
+             .object(["path": .string("/r")]), json),
+            (.gitHead(repository: "/r/a+b"), "GET", "https://hermes.example:9120/api/git/review/rev-parse?path=/r/a%2Bb", nil, [:]),
+            (.gitCommitContext(repository: "/r"), "GET", "https://hermes.example:9120/api/git/review/commit-context?path=/r",
+             nil, [:]),
+            (.gitBranches(repository: "/r/a+b"), "GET", "https://hermes.example:9120/api/git/branches?path=/r/a%2Bb", nil, [:]),
+            (.gitSwitchBranch(repository: "/r", branch: "feature/x"), "POST", "https://hermes.example:9120/api/git/branch/switch",
+             .object(["path": .string("/r"), "branch": .string("feature/x")]), json),
+            (.gitFetch(repository: "/r"), "POST", "https://hermes.example:9120/api/plugins/hermex-push/git/fetch",
+             .object(["path": .string("/r")]), json),
+            (.gitPull(repository: "/r"), "POST", "https://hermes.example:9120/api/plugins/hermex-push/git/pull",
+             .object(["path": .string("/r")]), json),
+            (.gitCreateBranch(repository: "/r", name: "feature/x"), "POST",
+             "https://hermes.example:9120/api/plugins/hermex-push/git/branch",
+             .object(["path": .string("/r"), "name": .string("feature/x")]), json),
             (.config(profile: "research"), "GET", "https://hermes.example:9120/api/config?profile=research", nil, [:]),
             (.profileSoul(name: "research"), "GET", "https://hermes.example:9120/api/profiles/research/soul", nil, [:]),
             (.setProfileSoul(name: "research", content: "Be direct."), "PUT", "https://hermes.example:9120/api/profiles/research/soul",

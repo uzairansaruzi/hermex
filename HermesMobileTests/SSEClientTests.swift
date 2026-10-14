@@ -113,6 +113,39 @@ final class SSEClientTests: XCTestCase {
         client.stop()
     }
 
+    /// A long-lived monitor stream (approval, clarify) that loses its socket must
+    /// tell its consumer, or the consumer keeps believing the stream is attached
+    /// and never falls back to polling or reopens it. LDSwiftEventSource skips
+    /// `onError` when the connection-error handler answers `.shutdown`, so the
+    /// client has to deliver the error itself.
+    func testSSEClientReportsTransportErrorWhenAnOpenStreamDrops() async {
+        DelayedSSEURLProtocol.configure(
+            chunks: [DelayedSSEChunk(text: ": heartbeat\n\n", delayNanoseconds: 0)],
+            keepOpen: true
+        )
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DelayedSSEURLProtocol.self]
+        let client = SSEClient(urlSessionConfiguration: configuration)
+        let heartbeat = expectation(description: "stream is open")
+        let transportError = expectation(description: "dropped connection reported as transportError")
+
+        client.start(url: URL(string: "https://example.test/api/approval/stream?session_id=session-1")!) { event in
+            switch event {
+            case .heartbeat:
+                heartbeat.fulfill()
+            case .transportError:
+                transportError.fulfill()
+            default:
+                break
+            }
+        }
+
+        await fulfillment(of: [heartbeat], timeout: 5)
+        DelayedSSEURLProtocol.failActiveConnection(with: URLError(.networkConnectionLost))
+        await fulfillment(of: [transportError], timeout: 5)
+        client.stop()
+    }
+
     func testDecodesToolStartedEventFromUpstreamPayload() {
         let event = SSEEventDecoder.decode(
             eventType: "tool",
@@ -682,22 +715,44 @@ private struct DelayedSSEChunk {
 private final class DelayedSSEURLProtocol: URLProtocol {
     private static let lock = NSLock()
     private static var chunks: [DelayedSSEChunk] = []
+    private static var keepOpen = false
     private static var lastRequest: URLRequest?
+    private static weak var activeInstance: DelayedSSEURLProtocol?
 
     private var loadingTask: Task<Void, Never>?
 
-    static func configure(chunks: [DelayedSSEChunk]) {
+    /// `keepOpen` leaves the response open after the chunks instead of finishing
+    /// it, so a test can end it with `failActiveConnection(with:)` at a moment it
+    /// controls. A finished response is a clean end-of-stream, which the SSE
+    /// library auto-reconnects; a failure is a dropped connection.
+    static func configure(chunks: [DelayedSSEChunk], keepOpen: Bool = false) {
         lock.lock()
         self.chunks = chunks
+        self.keepOpen = keepOpen
         lastRequest = nil
+        activeInstance = nil
         lock.unlock()
     }
 
     static func reset() {
         lock.lock()
         chunks = []
+        keepOpen = false
         lastRequest = nil
+        activeInstance = nil
         lock.unlock()
+    }
+
+    /// Ends the open response as URLSession reports a reset socket (a server
+    /// restart, a VPN re-key): the task completes with `error`.
+    static func failActiveConnection(with error: Error) {
+        lock.lock()
+        let instance = activeInstance
+        activeInstance = nil
+        lock.unlock()
+        guard let instance else { return }
+        instance.loadingTask?.cancel()
+        instance.client?.urlProtocol(instance, didFailWithError: error)
     }
 
     static func capturedRequest() -> URLRequest? {
@@ -716,9 +771,12 @@ private final class DelayedSSEURLProtocol: URLProtocol {
 
     override func startLoading() {
         let chunks: [DelayedSSEChunk]
+        let keepOpen: Bool
         Self.lock.lock()
         Self.lastRequest = request
+        Self.activeInstance = self
         chunks = Self.chunks
+        keepOpen = Self.keepOpen
         Self.lock.unlock()
 
         guard let url = request.url,
@@ -748,12 +806,17 @@ private final class DelayedSSEURLProtocol: URLProtocol {
                 client?.urlProtocol(self, didLoad: Data(chunk.text.utf8))
             }
 
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, !keepOpen else { return }
             client?.urlProtocolDidFinishLoading(self)
         }
     }
 
     override func stopLoading() {
         loadingTask?.cancel()
+        Self.lock.lock()
+        if Self.activeInstance === self {
+            Self.activeInstance = nil
+        }
+        Self.lock.unlock()
     }
 }

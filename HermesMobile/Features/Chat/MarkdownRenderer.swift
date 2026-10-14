@@ -16,36 +16,18 @@ struct MarkdownRenderer: View {
         self.isStreaming = isStreaming
     }
 
-    /// Keeps the streaming renderer mounted briefly after streaming ends so
-    /// the reveal queue's in-flight glyph cascade can finish instead of
-    /// snapping to the solid static rendering mid-fade.
-    @State private var lingersAfterStreaming = false
-
     var body: some View {
-        Group {
-            if isStreaming || lingersAfterStreaming {
-                StreamingMarkdownRenderer(content: content)
-            } else if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(verbatim: " ")
-            } else if let fallbackReason = MarkdownContentRenderingPolicy.fallbackReason(for: content) {
-                PlainMarkdownFallbackView(
-                    content: content,
-                    reason: fallbackReason
-                )
-            } else {
-                markdownContent
-            }
-        }
-        .onChange(of: isStreaming) { wasStreaming, nowStreaming in
-            if wasStreaming, !nowStreaming {
-                lingersAfterStreaming = true
-            }
-        }
-        .task(id: isStreaming) {
-            guard !isStreaming else { return }
-            try? await Task.sleep(for: .seconds(StreamingTextFadeDefaults.framePauseDelay))
-            guard !Task.isCancelled else { return }
-            lingersAfterStreaming = false
+        if isStreaming {
+            StreamingMarkdownRenderer(content: content)
+        } else if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Text(verbatim: " ")
+        } else if let fallbackReason = MarkdownContentRenderingPolicy.fallbackReason(for: content) {
+            PlainMarkdownFallbackView(
+                content: content,
+                reason: fallbackReason
+            )
+        } else {
+            markdownContent
         }
     }
 
@@ -164,13 +146,6 @@ private struct StreamingMarkdownDisplayedContentView: View, Equatable {
 
 }
 
-/// Lets a surface keep the streaming renderer's cost savings without its
-/// reveal fade. Bot Chat sets it false: its text arrives in coalesced
-/// snapshots, and a whole snapshot fading in leaves the latest edge blank.
-struct AllowsStreamedTextAnimationKey: EnvironmentKey {
-    static let defaultValue = true
-}
-
 /// The background a wide markdown table fades its hidden edges into. Defaults
 /// to the transcript background. Grouped lists set their row colour; a host
 /// on a translucent fill sets nil, which turns the fade off.
@@ -179,11 +154,6 @@ struct MarkdownTableEdgeFadeColorKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    var allowsStreamedTextAnimation: Bool {
-        get { self[AllowsStreamedTextAnimationKey.self] }
-        set { self[AllowsStreamedTextAnimationKey.self] = newValue }
-    }
-
     var markdownTableEdgeFadeColor: SwiftUI.Color? {
         get { self[MarkdownTableEdgeFadeColorKey.self] }
         set { self[MarkdownTableEdgeFadeColorKey.self] = newValue }
@@ -194,40 +164,8 @@ private struct StreamingMarkdownChunkedView: View {
     let content: String
     let colorScheme: ColorScheme
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.allowsStreamedTextAnimation) private var allowsStreamedTextAnimation
-    @AppStorage(StreamedTextAnimationSettings.isEnabledKey) private var isStreamedTextAnimationEnabled = true
-
-    /// First block ordinal still in the fade window. Starts at `Int.max`
-    /// (everything solid) until `onAppear` anchors it at the current block,
-    /// so text already on screen when the view mounts never fades.
-    @State private var firstFadeOrdinal = Int.max
-    /// Ordinal of the current block at mount; only blocks created after it
-    /// arm their stores (pre-existing blocks take the solid baseline).
-    @State private var mountBoundaryCount = Int.max
-    @State private var lastBoundaryCount = 0
-    @State private var lastTouchedAt: [Int: TimeInterval] = [:]
-    @State private var fadesActive = false
-    /// One reveal cursor for all fade blocks of this view, so consecutive
-    /// blocks (paragraphs, list items) appear in reading order even when a
-    /// fast stream backlogs a block's queue toward `maxStampLead`.
-    @State private var chain = StreamingTextFadeStampChain()
-    /// The active tail as of the last fade-window update, so an append can be
-    /// told apart from a replacement without re-splitting the old content.
-    @State private var lastActiveMarkdown = ""
-
     var body: some View {
-        // The one whole-reply split per update; the fade-window callbacks
-        // below reuse it.
         let segments = StreamingMarkdownBlockSplitter.split(content)
-        let blockSplit = StreamingTextFadeTailSplitter.split(
-            segments.activeMarkdown,
-            firstFadeOrdinal: StreamedTextAnimationSettings.effectiveFirstFadeOrdinal(
-                firstFadeOrdinal,
-                reduceMotion: reduceMotion,
-                isEnabled: isStreamedTextAnimationEnabled && allowsStreamedTextAnimation
-            )
-        )
 
         VStack(alignment: .leading, spacing: 0) {
             ForEach(segments.stableChunks) { chunk in
@@ -238,177 +176,12 @@ private struct StreamingMarkdownChunkedView: View {
                 )
             }
 
-            if !blockSplit.head.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if !segments.activeMarkdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 ChatMarkdownView(
-                    content: blockSplit.head,
+                    content: segments.activeMarkdown,
                     colorScheme: colorScheme,
                     isStreaming: true
                 )
-            }
-
-            if !blockSplit.blocks.isEmpty {
-                // One shared frame clock for every fade block. Per frame only
-                // the renderer's clock input changes; each block's markdown
-                // inputs are untouched, so their bodies (and text layout) are
-                // not re-evaluated.
-                TimelineView(.animation(minimumInterval: nil, paused: !fadesActive)) { context in
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(blockSplit.blocks, id: \.ordinal) { block in
-                            StreamingFadeBlockView(
-                                text: block.text,
-                                colorScheme: colorScheme,
-                                fadeEnabled: block.fadeEnabled,
-                                armOnAppear: block.ordinal > mountBoundaryCount,
-                                clock: context.date.timeIntervalSinceReferenceDate,
-                                chain: chain
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        .onAppear {
-            anchorFadeWindowAtCurrentBlock(segments.activeMarkdown)
-        }
-        .onChange(of: content) { _, newContent in
-            // This closure comes from the body pass that split `newContent`;
-            // re-split only if SwiftUI hands over some other value.
-            let newActive = newContent == content
-                ? segments.activeMarkdown
-                : StreamingMarkdownBlockSplitter.split(newContent).activeMarkdown
-            advanceFadeWindow(to: newActive)
-        }
-        .onChange(of: isStreamedTextAnimationEnabled) { _, isEnabled in
-            if isEnabled {
-                anchorFadeWindowAtCurrentBlock(segments.activeMarkdown)
-            }
-        }
-        .onChange(of: reduceMotion) { _, reduceMotion in
-            if !reduceMotion {
-                anchorFadeWindowAtCurrentBlock(segments.activeMarkdown)
-            }
-        }
-        .task(id: content) {
-            // Let queued reveals and the newest fade finish, then pause frame
-            // updates until more content arrives (e.g. the stream stalls on
-            // tool use). A new change cancels this task and restarts it.
-            try? await Task.sleep(for: .seconds(StreamingTextFadeDefaults.framePauseDelay))
-            guard !Task.isCancelled else { return }
-            fadesActive = false
-        }
-    }
-
-    /// Anchors the fade window at the current block: everything visible now
-    /// takes the solid baseline, only text streamed afterwards fades. Used at
-    /// mount, and again whenever fading becomes active mid-stream (animation
-    /// setting flipped on, Reduce Motion turned off) — the window bookkeeping
-    /// keeps advancing while fades route to the head, so without re-anchoring
-    /// the reopened window would arm blocks the user is already reading and
-    /// visibly re-fade them.
-    private func anchorFadeWindowAtCurrentBlock(_ activeMarkdown: String) {
-        let split = StreamingTextFadeTailSplitter.split(activeMarkdown, firstFadeOrdinal: 0)
-        firstFadeOrdinal = split.boundaryCount
-        mountBoundaryCount = split.boundaryCount
-        lastBoundaryCount = split.boundaryCount
-        lastTouchedAt = [:]
-        lastActiveMarkdown = activeMarkdown
-    }
-
-    /// Advances the fade window to the new active tail. Called once per
-    /// content change with the tail the body already split.
-    private func advanceFadeWindow(to newActive: String) {
-        let now = Date().timeIntervalSinceReferenceDate
-        let oldActive = lastActiveMarkdown
-        lastActiveMarkdown = newActive
-        let split = StreamingTextFadeTailSplitter.split(newActive, firstFadeOrdinal: firstFadeOrdinal)
-
-        if !newActive.hasPrefix(oldActive) {
-            // Replaced content or a sealed stable chunk shifted the active
-            // window: ordinals no longer line up, so restart the fade window
-            // at the current block (renders solid, then new text fades).
-            lastTouchedAt = [:]
-            firstFadeOrdinal = split.boundaryCount
-            lastBoundaryCount = split.boundaryCount
-            chain.reset()
-            fadesActive = true
-            return
-        }
-
-        // Only the current block and any blocks newly created by this append
-        // were touched; everything earlier is frozen text aging toward
-        // absorption. min() also covers an item boundary vanishing when its
-        // nested child arrives (the merged block is current again).
-        for block in split.blocks where block.ordinal >= min(lastBoundaryCount, split.boundaryCount) {
-            lastTouchedAt[block.ordinal] = now
-        }
-        lastBoundaryCount = split.boundaryCount
-
-        firstFadeOrdinal = StreamingTextFadeWindow.advanceStart(
-            current: min(firstFadeOrdinal, split.boundaryCount),
-            boundaryCount: split.boundaryCount,
-            lastTouchedAt: lastTouchedAt,
-            now: now
-        )
-        lastTouchedAt = lastTouchedAt.filter { $0.key >= firstFadeOrdinal }
-        fadesActive = true
-    }
-}
-
-/// One block of the streaming fade window, drawn through
-/// `StreamingTextFadeRenderer` with its own stamp store so neighbouring
-/// blocks' character offsets never collide. The block keeps fading after it
-/// completes — it only leaves the window (and joins the solid head) once its
-/// cascade is provably finished, which is what prevents end-of-block snaps.
-private struct StreamingFadeBlockView: View {
-    let text: String
-    let colorScheme: ColorScheme
-    let fadeEnabled: Bool
-    let armOnAppear: Bool
-    let clock: TimeInterval
-
-    @State private var store: StreamingTextFadeStampStore<Text.Layout.CharacterIndex>
-
-    init(
-        text: String,
-        colorScheme: ColorScheme,
-        fadeEnabled: Bool,
-        armOnAppear: Bool,
-        clock: TimeInterval,
-        chain: StreamingTextFadeStampChain
-    ) {
-        self.text = text
-        self.colorScheme = colorScheme
-        self.fadeEnabled = fadeEnabled
-        self.armOnAppear = armOnAppear
-        self.clock = clock
-        _store = State(initialValue: StreamingTextFadeStampStore(chain: chain))
-    }
-
-    var body: some View {
-        Group {
-            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                if fadeEnabled {
-                    ChatMarkdownView(
-                        content: text,
-                        colorScheme: colorScheme,
-                        isStreaming: true
-                    )
-                    .textRenderer(StreamingTextFadeRenderer(clock: clock, store: store))
-                } else {
-                    ChatMarkdownView(
-                        content: text,
-                        colorScheme: colorScheme,
-                        isStreaming: true
-                    )
-                }
-            }
-        }
-        .onAppear {
-            // Blocks appearing after the view mounted are newly streamed text
-            // and must fade from their first glyph; blocks present at mount
-            // are pre-existing text and take the solid baseline instead.
-            if armOnAppear {
-                store.rolloverReset()
             }
         }
     }
@@ -432,18 +205,7 @@ private struct ChatMarkdownView: View {
                 ForegroundColor(.primary)
                 BackgroundColor(nil)
             }
-            .markdownTextStyle(\.code) {
-                FontFamilyVariant(.monospaced)
-                FontSize(.em(0.88))
-                BackgroundColor(SwiftUI.Color(.tertiarySystemGroupedBackground))
-            }
             .markdownCodeSyntaxHighlighter(.plainText)
-            .markdownBlockStyle(\.paragraph) { configuration in
-                configuration.label
-                    .fixedSize(horizontal: false, vertical: true)
-                    .relativeLineSpacing(.em(0.18))
-                    .markdownMargin(top: 0, bottom: 8)
-            }
     }
 }
 

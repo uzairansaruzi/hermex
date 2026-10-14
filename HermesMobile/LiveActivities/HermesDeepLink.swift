@@ -6,7 +6,13 @@ enum HermesDeepLink {
             ?? "hermes-agent"
     }
 
+    /// Host for a session link: a Hermes server's stored session,
+    /// `session?server=…&id=…[&profile=…]` (`sessionURL(for:)`, #1176), and webui's legacy
+    /// `session?id=` (`sessionURL(sessionID:)`), which names no server.
     static let sessionHost = "session"
+
+    /// A session link's flag that its key is a subagent's (`HermesSessionDestination.opensParent`).
+    static let subagentQueryItem = "subagent"
 
     /// Host for the one bot route (#554): `hermes-agent://bot?server=…&connection=…&profile=…`.
     /// The builder, parser and typed `BotDestination` live in `Features/Bots/BotDeepLink.swift`,
@@ -60,22 +66,36 @@ enum HermesDeepLink {
     /// Query-item name carrying the profile's server name.
     static let profileQueryItem = "profile"
 
-    /// `hermes-agent://new-chat-profile?profile=<name>` (scheme follows the active build).
+    /// Query-item name carrying the configured server a bot link (#554) or a Hermes server's
+    /// Profile's new chat (#1180) names.
+    static let serverQueryItem = "server"
+
+    /// `hermes-agent://new-chat-profile?profile=<name>` (scheme follows the active build), with
+    /// `server=` first for a Hermes server's Profile (#1180), which only opens there.
     /// Returns nil for a blank profile name so callers can pass it straight through.
-    static func newChatInProfileURL(profileName: String) -> URL? {
+    static func newChatInProfileURL(profileName: String, server: URL? = nil) -> URL? {
         let trimmed = profileName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
         var components = URLComponents()
         components.scheme = scheme
         components.host = newChatInProfileHost
-        components.queryItems = [URLQueryItem(name: profileQueryItem, value: trimmed)]
+        components.queryItems = (server.map { [URLQueryItem(name: serverQueryItem, value: $0.absoluteString)] } ?? [])
+            + [URLQueryItem(name: profileQueryItem, value: trimmed)]
         return components.url
     }
 
     static func isNewChatInProfileURL(_ url: URL) -> Bool {
         url.scheme?.lowercased() == scheme
             && url.host?.lowercased() == newChatInProfileHost
+    }
+
+    /// A "New Chat in <Profile>" link with no `server=` item: the webui route a Shortcut saved
+    /// before #1180 keeps (#339, #971). One naming a server opens only there, or nowhere.
+    static func isWebuiNewChatInProfileURL(_ url: URL) -> Bool {
+        isNewChatInProfileURL(url)
+            && URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+                .contains(where: { $0.name == serverQueryItem }) != true
     }
 
     /// Extracts the profile name from a "New Chat in <Profile>" URL, or nil when the URL is a
@@ -106,6 +126,27 @@ enum HermesDeepLink {
         return components.url
     }
 
+    /// `hermes-agent://session?server=…&id=…[&profile=…][&subagent=1]`, a Hermes server's stored
+    /// session (#1176).
+    /// Every part rides as a query item, so a Profile name or key is percent-encoded rather than
+    /// mangled into the host. A nil Profile is left out; `""` stays, naming the host's default.
+    /// The main app parses it (`HermesSessionDestination(url:)`) and owns routing; this builder
+    /// is here so the widget can make one too.
+    static func sessionURL(for destination: HermesSessionDestination) -> URL? {
+        guard let key = normalizedSessionID(destination.key) else { return nil }
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = sessionHost
+        var items = [URLQueryItem(name: "server", value: destination.server.absoluteString)]
+        if let profile = destination.profile {
+            items.append(URLQueryItem(name: profileQueryItem, value: profile.trimmingCharacters(in: .whitespacesAndNewlines)))
+        }
+        items.append(URLQueryItem(name: "id", value: key))
+        if destination.opensParent { items.append(URLQueryItem(name: subagentQueryItem, value: "1")) }
+        components.queryItems = items
+        return components.url
+    }
+
     static func sessionURL(sessionID: String) -> URL? {
         guard !sessionID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
@@ -120,6 +161,9 @@ enum HermesDeepLink {
         return components.url
     }
 
+    /// The session a legacy `session?id=` link (or `session/<id>`) names, opened on a webui server.
+    /// Nil for any other link, including one carrying a `server` item: that link opens only on the
+    /// server it names (#1176), or not at all, never on whichever webui server is reachable.
     static func sessionID(from url: URL) -> String? {
         guard url.scheme?.lowercased() == scheme,
               url.host?.lowercased() == sessionHost
@@ -128,6 +172,7 @@ enum HermesDeepLink {
         }
 
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        guard components?.queryItems?.contains(where: { $0.name == "server" }) != true else { return nil }
         if let id = components?.queryItems?.first(where: { item in
             item.name == "id" || item.name == "session_id"
         })?.value {
@@ -140,23 +185,44 @@ enum HermesDeepLink {
         return normalizedSessionID(pathID)
     }
 
-    private static func normalizedSessionID(_ rawValue: String?) -> String? {
+    static func normalizedSessionID(_ rawValue: String?) -> String? {
         let trimmed = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? nil : trimmed
     }
 }
 
+/// A Hermes server's stored session, as a link names it (#1176): the configured server, the
+/// Profile, and the session's stored key. Identity only, so a session is never guessed from a
+/// title. A nil `profile` is unknown, and the app looks in every Profile; `""` is the host's
+/// default Profile. Built here (`HermesDeepLink.sessionURL(for:)`), parsed and resolved by the
+/// main app (`Features/Hermes/HermesSessionLookup.swift`).
+struct HermesSessionDestination: Hashable {
+    let server: URL
+    let profile: String?
+    let key: String
+    /// The key is a subagent's (#1177): the lookup opens the session that delegated to it.
+    var opensParent = false
+    /// The configured webui server a moved webui link named (#1217): when no Profile here has the
+    /// key, the Sessions list opens it there instead (`MovedWebuiRoute`). Never part of a link.
+    var movedFrom: URL?
+}
+
 /// Shared by the Lock Screen and Dynamic Island, and exercised by main-app tests.
 enum AgentRunTapTarget {
-    /// Starts a Hermes session's interim activity key, `hermes:<profile>:<stored key>`
-    /// (#1014). Until #706 such an activity has no destination: a tap opens the app as it is.
+    /// Starts a Hermes session's activity key, `hermes:<profile>:<root>` (#1014, #1179).
     static let hermesSessionPrefix = "hermes:"
 
+    /// A bot's route, a Hermes session's link (#1179), or a webui run's server-owned route, with
+    /// the activity's id. A Hermes session's activity from a build before #1179 has no link and
+    /// gets none: a tap opens the app as it is, never a webui route for its `hermes:` key.
     static func url(attributes: AgentRunActivityAttributes, sessionID: String, activityID: String) -> URL? {
-        guard attributes.bot != nil || !attributes.sessionID.hasPrefix(hermesSessionPrefix) else { return nil }
         let destination: URL?
         if let bot = attributes.bot {
             destination = bot.destinationURL
+        } else if let link = attributes.destinationURL {
+            destination = link
+        } else if attributes.sessionID.hasPrefix(hermesSessionPrefix) {
+            return nil
         } else if let server = attributes.server {
             destination = HermesDeepLink.webuiSessionURL(server: server, sessionID: sessionID)
         } else {

@@ -25,13 +25,6 @@ enum BotPromptMode: CaseIterable, Hashable, SendChoice {
         }
     }
 
-    /// What a send can mean while the bot is working, in the order the card
-    /// lists them. Steer drops out when the draft carries attachments, which
-    /// the host only accepts on a fresh turn.
-    static func busyChoices(hasAttachments: Bool) -> [BotPromptMode] {
-        hasAttachments ? [.queue, .redirect] : [.steer, .queue, .redirect]
-    }
-
     /// Whether this mode starts a fresh turn. Only there will the host expand a
     /// skill invocation, so it is also the only place the `/` panel opens.
     var startsTurn: Bool { self == .send || self == .queue }

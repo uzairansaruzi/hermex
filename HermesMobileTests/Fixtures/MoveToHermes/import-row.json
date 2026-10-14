@@ -1,0 +1,24 @@
+{
+  "id": "a1b2c3d4e5f6",
+  "source": "webui",
+  "archived": true,
+  "started_at": 1791000000,
+  "model": "anthropic/claude-sonnet-5-5",
+  "input_tokens": 1200,
+  "output_tokens": 340,
+  "cache_read_tokens": 800,
+  "cache_write_tokens": 60,
+  "estimated_cost_usd": 0.0123,
+  "messages": [
+    {"role": "user", "content": "Use token [REDACTED] for the deploy.", "timestamp": 1791000000.25},
+    {"role": "user", "content": [
+      {"type": "text", "text": "What is in this picture?"},
+      {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="}}
+    ], "timestamp": 1791000010},
+    {"role": "assistant", "content": "", "reasoning": "Check the workspace first.", "tool_calls": [
+      {"id": "call_1", "type": "function", "function": {"name": "terminal", "arguments": "{\"command\": \"ls\"}"}}
+    ], "timestamp": 1791000020},
+    {"role": "tool", "tool_name": "terminal", "tool_call_id": "call_1", "content": "README.md\nsrc", "timestamp": 1791000021},
+    {"role": "assistant", "content": "The picture is a single dot.", "timestamp": 1791000030}
+  ]
+}

@@ -5,23 +5,21 @@ struct GitWorkspaceView: View {
     /// Forwarded to the diff surface so a line selection can land in the composer.
     let onAddToPrompt: ((String) -> Void)?
 
-    private let session: SessionSummary
-    private let server: URL
+    private let git: (any GitDataClient)?
     @State private var viewModel: GitWorkspaceViewModel
     @State private var selectedFile: GitFile?
     @Environment(\.dismiss) private var dismiss
 
+    /// `git` is the chat's repository client, shared with its toolbar menu.
     init(
-        session: SessionSummary,
-        server: URL,
+        git: (any GitDataClient)?,
         onAPIError: @escaping (Error) -> Void,
         onAddToPrompt: ((String) -> Void)? = nil
     ) {
-        self.session = session
-        self.server = server
+        self.git = git
         self.onAPIError = onAPIError
         self.onAddToPrompt = onAddToPrompt
-        _viewModel = State(initialValue: GitWorkspaceViewModel(session: session, server: server))
+        _viewModel = State(initialValue: GitWorkspaceViewModel(git: git))
     }
 
     var body: some View {
@@ -45,8 +43,7 @@ struct GitWorkspaceView: View {
         .sheet(item: $selectedFile) { file in
             // Every changed file in one surface, opened at the tapped one.
             GitDiffView(
-                session: session,
-                server: server,
+                git: git,
                 files: viewModel.status?.trackedFiles ?? [file],
                 initialFile: file,
                 onAPIError: onAPIError,

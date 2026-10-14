@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The slash panel's dense rows and glass surface, with connection-local bots.
-/// The Bot Chat's combined `@` panel draws the same `BotMentionRow`; rooms keep
+/// A Hermes chat's combined `@` panel draws the same `BotMentionRow`; rooms keep
 /// this members-only panel and never see files.
 struct BotMentionAutocompleteView: View {
     let completions: [BotMentions.Completion]
@@ -28,7 +28,7 @@ struct BotMentionAutocompleteView: View {
     }
 }
 
-/// One roster row: avatar, `@tag`, display name. The Bot Chat and a group room
+/// One roster row: avatar, `@tag`, display name. A Hermes chat and a group room
 /// draw the same row.
 struct BotMentionRow: View {
     let item: BotMentions.Completion

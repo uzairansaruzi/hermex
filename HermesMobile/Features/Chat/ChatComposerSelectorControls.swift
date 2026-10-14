@@ -25,6 +25,31 @@ struct ComposerWorkspaceSelectorButton: View {
     }
 }
 
+/// The Fast chip: a Hermes session's or a bot chat's priority mode (#1142). A tap asks for the
+/// other mode; the chip changes only once the host answers.
+struct ComposerFastModeButton: View {
+    let isOn: Bool
+    let isDisabled: Bool
+    let color: Color
+    let controlFont: Font
+    let chevronFont: Font
+    let onSelect: (Bool) -> Void
+
+    var body: some View {
+        Button { onSelect(!isOn) } label: {
+            ComposerInlineControlLabel(
+                title: isOn ? String(localized: "Fast") : String(localized: "Normal"),
+                systemImage: "bolt", showsChevron: false, color: color,
+                controlFont: controlFont, chevronFont: chevronFont
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled)
+        .accessibilityLabel("Fast")
+        .accessibilityValue(isOn ? String(localized: "On") : String(localized: "Off"))
+    }
+}
+
 struct ComposerProfileSelectorMenu: View {
     let profileOptions: [ProfileSummary]
     let selectedProfileName: String?

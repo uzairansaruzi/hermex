@@ -2,8 +2,8 @@ import XCTest
 import Observation
 @testable import HermesMobile
 
-/// A Hermes session's model, effort and Profile chips and its `/reasoning` and `/personality`
-/// commands in the main chat (#1015, #1016), over #901's
+/// A Hermes session's model, effort, Fast (#1142) and Profile chips and its `/reasoning` and
+/// `/personality` commands in the main chat (#1015, #1016), over #901's
 /// socket-level host. `model.options` rows follow hermes-agent's `inventory.py` at the
 /// `HERMES_AGENT_TESTED_SHA` pin.
 @MainActor final class HermesChatSettingsTests: XCTestCase {
@@ -209,6 +209,104 @@ import Observation
         XCTAssertEqual(chat.writes("config.set"), [])
     }
 
+    // MARK: Fast
+
+    /// The Fast chip shows once `session.info` reports the mode, on a model whose capabilities
+    /// don't rule it out. A model without it still shows the chip while Fast is on, to turn it off.
+    func testTheFastChipFollowsTheSessionAndTheModelsCapabilities() async throws {
+        let chat = await openChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        await controls.reload()
+        XCTAssertNil(chat.model.composerFastMode, "hidden until session.info reports it")
+
+        chat.receive(event(1, "session.info", ["fast": .bool(false)]))
+        await waitUntil("reported") { chat.model.composerFastMode != nil }
+        XCTAssertEqual(chat.model.composerFastMode, false)
+
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-sonnet")))
+        await controls.reload()
+        XCTAssertNil(chat.model.composerFastMode, "claude-sonnet has no fast mode")
+
+        chat.receive(event(2, "session.info", ["fast": .bool(true)]))
+        await waitUntil("on") { chat.model.composerFastMode != nil }
+        XCTAssertEqual(chat.model.composerFastMode, true)
+    }
+
+    /// A toggle sends one session-scoped `config.set fast` and shows the mode the host answers.
+    func testAFastToggleSendsOneSessionScopedConfigSet() async {
+        let chat = await openFastChat()
+        chat.host.next("config.set", .init(result: Self.fastReply("fast")))
+        chat.host.next("config.set", .init(result: Self.fastReply("normal")))
+
+        let on = await chat.model.selectFastMode(true)
+        XCTAssertTrue(on)
+        XCTAssertEqual(chat.model.composerFastMode, true)
+        let off = await chat.model.selectFastMode(false)
+        XCTAssertTrue(off)
+        XCTAssertEqual(chat.model.composerFastMode, false)
+        XCTAssertEqual(chat.writes("config.set"), [
+            ["session_id": .string("runtime"), "profile": .string("work"), "scope": .string("session"),
+             "key": .string("fast"), "value": .string("fast")],
+            ["session_id": .string("runtime"), "profile": .string("work"), "scope": .string("session"),
+             "key": .string("fast"), "value": .string("normal")]
+        ])
+        let again = await chat.model.selectFastMode(false)
+        XCTAssertFalse(again, "the same mode is not resent")
+        XCTAssertEqual(chat.writes("config.set").count, 2)
+        assertNeverWritesHostDefaults(chat)
+    }
+
+    /// A refusal keeps the mode and shows the host's reason; a reply naming another mode is not
+    /// adopted, and nothing is sent again.
+    func testARefusedFastChangeKeepsTheMode() async throws {
+        let chat = await openFastChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        chat.host.next("config.set", .init(error: 4002, message: "fast mode is not available for this model"))
+        let refused = await chat.model.selectFastMode(true)
+        XCTAssertFalse(refused)
+        XCTAssertEqual(chat.model.composerFastMode, false)
+        XCTAssertEqual(controls.errorMessage, "fast mode is not available for this model")
+
+        chat.host.next("config.set", .init(result: Self.fastReply("normal")))
+        let mismatched = await chat.model.selectFastMode(true)
+        XCTAssertFalse(mismatched)
+        XCTAssertEqual(chat.model.composerFastMode, false)
+        XCTAssertEqual(controls.errorMessage, BotSettingFailure.unknownOutcome.localizedDescription)
+        XCTAssertEqual(chat.writes("config.set").count, 2)
+    }
+
+    /// The attach's `session.resume` reports the mode, so the chip keeps it across a reattach;
+    /// a toggle prepared before the reattach is discarded, unsent.
+    func testFastSurvivesAReattachAndAStaleToggleIsDiscarded() async throws {
+        let chat = await openFastChat()
+        let controls = try XCTUnwrap(chat.model.hermesSettings?.controls)
+        let stale = try XCTUnwrap(controls.prepare(.fast(true)))
+        chat.host.always("session.resume", .init(result: .object([
+            "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
+            "messages": .array([]), "info": .object(["profile_name": .string("work"), "fast": .bool(true)])
+        ])))
+
+        chat.model.suspendStreamForNavigation()
+        await chat.model.reconnectStreamIfNeeded()
+        await waitUntil("reattached") { chat.model.composerFastMode == true }
+        await controls.apply(stale)
+        XCTAssertEqual(chat.writes("config.set"), [])
+    }
+
+    /// Once the host refuses `config.set` (403) the chip still shows the mode but can't
+    /// change it, as Bot Chat's chip reads `mayChangeFast`.
+    func testTheFastChipDisablesOnceTheHostRefusesConfigSet() async {
+        let chat = await openFastChat()
+        XCTAssertTrue(chat.model.composerMayChangeFastMode)
+        chat.host.next("config.set", .init(error: 403, message: "forbidden"))
+
+        let refused = await chat.model.selectFastMode(true)
+        XCTAssertFalse(refused)
+        XCTAssertEqual(chat.model.composerFastMode, false, "the chip keeps showing the mode")
+        XCTAssertFalse(chat.model.composerMayChangeFastMode)
+    }
+
     // MARK: Personality
 
     /// Bare `/personality` lists the host's personalities from the one fixed completion.
@@ -331,6 +429,161 @@ import Observation
         XCTAssertEqual(defaults.string(forKey: HermesProfilePreference.key(for: other)), "research")
     }
 
+    // MARK: Working folder (#1117)
+
+    /// The folder picker lists the chat's Profile's folders, read under that Profile only, with
+    /// the chat's own folder first; a typed path completes through the host's folders.
+    func testTheFolderPickerListsTheProfilesFoldersAndCompletesATypedPath() async {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/Users/me/notes")]))
+        await waitUntil("folder") { chat.model.selectedWorkspacePath == "/Users/me/notes" }
+        chat.host.always("projects.tree", .init(result: .object(["projects": .array([
+            .object(["id": .string("p_launch"), "label": .string("Launch"), "path": .string("/Users/me/launch"),
+                     "isAuto": .bool(false), "isNoProject": .bool(false), "sessionIds": .array([])])
+        ])])))
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/sessions" else { return nil }
+            return .json(200, .object(["sessions": .array([
+                .object(["id": .string("a"), "cwd": .string("/Users/me/src/app"), "profile": .string("work")]),
+                .object(["id": .string("b"), "cwd": .string("/Users/me/notes"), "profile": .string("work")])
+            ])]))
+        }
+
+        await chat.model.loadWorkspaceSuggestions(prefix: "")
+        XCTAssertEqual(chat.model.workspaceSuggestions, ["/Users/me/notes", "/Users/me/launch", "/Users/me/src/app"])
+        XCTAssertEqual(chat.writes("projects.tree"), [["profile": .string("work")]])
+        let listed = HermesHostFixture.requests.filter { $0.url?.path == "/api/sessions" }.compactMap { request in
+            request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems?
+                .first { $0.name == "profile" }?.value
+        }
+        XCTAssertEqual(listed, ["work"])
+
+        chat.host.always("complete.path", .init(result: .object(["items": .array([
+            .object(["text": .string("~/src/"), "display": .string("src/"), "meta": .string("dir")])
+        ])])))
+        await chat.model.loadWorkspaceSuggestions(prefix: "~/")
+        XCTAssertEqual(chat.model.workspaceSuggestions, ["~/src/"])
+        XCTAssertEqual(chat.writes("complete.path"), [["word": .string("~/"), "profile": .string("work")]])
+    }
+
+    /// A filter typed while the picker's first read is still out cancels that read, as the
+    /// sheet's `.task(id:)` does; the filter then reads the folders itself and shows the matches.
+    func testAFilterTypedBeforeTheFirstReadStillShowsMatchingFolders() async {
+        let chat = await openChat()
+        chat.host.always("projects.tree", .init(result: .object(["projects": .array([
+            .object(["id": .string("p_launch"), "label": .string("Launch"), "path": .string("/Users/me/launch"),
+                     "isAuto": .bool(false), "isNoProject": .bool(false), "sessionIds": .array([])])
+        ])])))
+        var pages = 0
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/sessions" else { return nil }
+            pages += 1
+            guard pages > 1 else { return .park }
+            return .json(200, .object(["sessions": .array([
+                .object(["id": .string("a"), "cwd": .string("/Users/me/launchpad"), "profile": .string("work")]),
+                .object(["id": .string("b"), "cwd": .string("/Users/me/notes"), "profile": .string("work")]),
+                .object(["id": .string("c"), "cwd": .string("/Users/me/launch-research"), "profile": .string("research")])
+            ])]))
+        }
+        let parked = expectation(description: "first read held")
+        HermesHostFixture.onPark = { parked.fulfill() }
+
+        let first = Task { await chat.model.loadWorkspaceSuggestions(prefix: "") }
+        await fulfillment(of: [parked], timeout: 5)
+        first.cancel()
+        await chat.model.loadWorkspaceSuggestions(prefix: "launch")
+        await first.value
+
+        XCTAssertEqual(chat.model.workspaceSuggestions, ["/Users/me/launch", "/Users/me/launchpad"])
+        XCTAssertEqual(chat.writes("projects.tree"), [["profile": .string("work")], ["profile": .string("work")]])
+    }
+
+    /// A new chat nothing ran in moves at once: one `session.workspace.move` on its stored key,
+    /// and the chip and header take the folder the host answers.
+    func testANewChatMovesAtOnce() async {
+        let chat = await openChat()
+        chat.host.always("session.workspace.move", .init(result: .object([
+            "cwd": .string("/Users/me/launch"), "branch": .null, "git_repo_root": .null
+        ])))
+
+        let moved = await chat.model.selectWorkspacePath("/Users/me/launch/")
+        XCTAssertTrue(moved)
+        XCTAssertNil(chat.model.pendingHermesFolder)
+        XCTAssertEqual(chat.writes("session.workspace.move"), [[
+            "session_key": .string("tip"), "cwd": .string("/Users/me/launch"), "profile": .string("work")
+        ]])
+        XCTAssertEqual(chat.model.selectedWorkspacePath, "/Users/me/launch")
+    }
+
+    /// A stored chat asks first, and sends nothing until confirmed. A folder the host lacks
+    /// (4017) says so, and the chat stays where it was.
+    func testAStoredChatAsksFirstAndAMissingFolderSaysSo() async {
+        let chat = await openChat(target: .session(profile: "work", key: "tip"))
+        chat.receive(event(1, "session.info", ["cwd": .string("/Users/me/notes")]))
+        await waitUntil("folder") { chat.model.selectedWorkspacePath == "/Users/me/notes" }
+
+        let asked = await chat.model.selectWorkspacePath("/Users/me/gone")
+        XCTAssertFalse(asked)
+        XCTAssertEqual(chat.model.pendingHermesFolder, "/Users/me/gone")
+        XCTAssertEqual(chat.writes("session.workspace.move"), [])
+
+        chat.model.cancelHermesFolderMove()
+        XCTAssertNil(chat.model.pendingHermesFolder)
+
+        chat.host.next("session.workspace.move", .init(error: 4017, message: "working directory does not exist: /Users/me/gone"))
+        let moved = await chat.model.confirmHermesFolderMove("/Users/me/gone")
+        XCTAssertFalse(moved)
+        XCTAssertEqual(chat.model.composerConfigurationErrorMessage,
+                       "Hermes can't find the folder /Users/me/gone, so the session didn't move.")
+        XCTAssertEqual(chat.writes("session.workspace.move").count, 1)
+        XCTAssertEqual(chat.model.selectedWorkspacePath, "/Users/me/notes")
+    }
+
+    /// While a reply runs the chat refuses a folder change, though the host would take it.
+    func testAFolderChangeWaitsForTheRunningReply() async {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        await waitUntil("running") { chat.model.activeStreamID != nil }
+
+        let moved = await chat.model.selectWorkspacePath("/Users/me/launch")
+        XCTAssertFalse(moved)
+        XCTAssertEqual(chat.model.composerConfigurationErrorMessage,
+                       "Wait for the current response to finish before changing workspace.")
+        XCTAssertEqual(chat.writes("session.workspace.move"), [])
+    }
+
+    /// A turn that starts (from another client, say) after the chat checked it was idle stops
+    /// the move at the socket: the host never gets it, and the chat says to wait.
+    func testAFolderMoveStopsAtDispatchWhenATurnStarts() async {
+        let chat = await openChat(target: .session(profile: "work", key: "tip"))
+        chat.host.always("session.workspace.move", .init(result: .object(["cwd": .string("/Users/me/launch")])))
+        // Fires as the move begins, after the chat's own idle check and before the socket write.
+        withObservationTracking { _ = chat.model.isUpdatingComposerConfiguration } onChange: {
+            MainActor.assumeIsolated { chat.receive(self.event(1, "message.start")) }
+        }
+
+        let moved = await chat.model.confirmHermesFolderMove("/Users/me/launch")
+        XCTAssertFalse(moved)
+        XCTAssertNotNil(chat.model.activeStreamID)
+        XCTAssertEqual(chat.writes("session.workspace.move"), [])
+        XCTAssertEqual(chat.model.composerConfigurationErrorMessage,
+                       "Wait for the current response to finish before changing workspace.")
+    }
+
+    /// A new chat's first prompt that went out counts as work even when its reply never came
+    /// back, so a later pick asks first.
+    func testANewChatWhosePromptWentOutAsksFirst() async {
+        let chat = await openChat()
+        chat.host.next("prompt.submit", .init(error: 5000, message: "reply lost"))
+        _ = try? await chat.turn.submit("hi", mode: .send)
+        XCTAssertEqual(chat.writes("prompt.submit").count, 1)
+
+        let moved = await chat.model.selectWorkspacePath("/Users/me/launch")
+        XCTAssertFalse(moved)
+        XCTAssertEqual(chat.model.pendingHermesFolder, "/Users/me/launch")
+        XCTAssertEqual(chat.writes("session.workspace.move"), [])
+    }
+
     // MARK: Fixture
 
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
@@ -379,6 +632,11 @@ import Observation
         .object(["key": .string("reasoning"), "value": .string(value)])
     }
 
+    /// `config.set fast`'s answer at the pin: the normalized mode.
+    private static func fastReply(_ value: String) -> BotJSON {
+        .object(["key": .string("fast"), "value": .string(value)])
+    }
+
     private struct Chat {
         let model: ChatViewModel
         let turn: HermesChatTurnCoordinator
@@ -393,8 +651,9 @@ import Observation
         }
     }
 
-    /// A new chat in Profile `work`, attached on `runtime`, with its catalog read.
-    private func openChat() async -> Chat {
+    /// A chat in Profile `work`, a new one unless `target` names a stored one, attached on
+    /// `runtime`, with its catalog read.
+    private func openChat(target: ConversationTarget = .new(profile: "work")) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("session.create", .init(result: .object([
@@ -412,7 +671,7 @@ import Observation
         ])])))
         let client = BotClient(http: host.connection(Self.connection))
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
-                                        target: .new(profile: "work"), wire: client)
+                                        target: target, wire: client)
         let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
         let drafts = ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60))
         let model = ChatViewModel(
@@ -423,6 +682,16 @@ import Observation
         XCTAssertEqual(engine.connectionState, .connected)
         await waitUntil("catalog") { turn.settings.controls.catalog.active != nil }
         return Chat(model: model, turn: turn, host: host, client: client, drafts: drafts)
+    }
+
+    /// A chat on claude-opus, which runs Fast, with `session.info` reporting it off.
+    private func openFastChat() async -> Chat {
+        let chat = await openChat()
+        chat.host.always("model.options", .init(result: Self.catalog(active: "claude-opus")))
+        await chat.turn.settings.controls.reload()
+        chat.receive(event(1, "session.info", ["fast": .bool(false)]))
+        await waitUntil("fast") { chat.model.composerFastMode == false }
+        return chat
     }
 
     /// No request moves the host's defaults: no `--global`, no `refresh`, no Profile switch.

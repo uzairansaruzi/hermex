@@ -167,9 +167,55 @@ import XCTest
         }
     }
 
-    /// The host has no provider limits route and no sessions list here, so neither asks it anything.
-    func testLimitsAndTheSessionsFallbackAskTheHostNothing() async throws {
-        let host = HermesInsightsHost(usage: Self.usage(totals: [:]), models: Self.models([]), counts: .object([:]))
+    /// Where hermex-push mounts the route (#1237), the providers are the Profile's `model.options`
+    /// and each probe names the provider, the Profile and `refresh`. The reply is webui's envelope,
+    /// here the live-captured Codex one, so it becomes webui's card.
+    func testAnOpenGateOffersTheProfilesProvidersAndReadsTheirLimits() async throws {
+        let host = HermesInsightsHost(usage: Self.usage(totals: [:]), models: Self.models([]), options: .object([
+            "model": .string("gpt-5.5"), "provider": .string("openai-codex"),
+            "providers": .array([
+                .object(["slug": .string("anthropic"), "name": .string("Anthropic"), "authenticated": .bool(false)]),
+                .object(["slug": .string("openrouter"), "name": .string("OpenRouter"), "authenticated": .bool(true)]),
+                .object(["slug": .string("openai-codex"), "name": .string("OpenAI Codex"), "authenticated": .bool(true)])
+            ])
+        ])) { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/capabilities":
+                return .json(200, .object(["plugin_version": .string("0.7.0"),
+                                           "routes": .array([.string("GET /capabilities"), .string("GET /provider-quota")])]))
+            case "/api/plugins/hermex-push/provider-quota":
+                return .body(200, Data(APIClientProviderQuotaTests.codexPayload.utf8))
+            default: return nil
+            }
+        }
+        let client = host.client(profile: "research")
+
+        let providers = try await client.providers()
+        let refreshed = try await client.providerQuota(provider: "openai-codex", refresh: true)
+        _ = try await client.providerQuota(provider: "openrouter", refresh: false)
+
+        XCTAssertEqual(providerQuotaSelection(from: providers), ["openai-codex", "openrouter"],
+                       "The active provider first, then the authenticated ones webui probes")
+        let call = try XCTUnwrap(host.sockets.flatMap(\.sentRequests).first { $0["method"].text == "model.options" })
+        XCTAssertEqual(call["params"]["profile"].text, "research")
+        let probes = HermesHostFixture.requests.filter { $0.url?.path == "/api/plugins/hermex-push/provider-quota" }
+        XCTAssertEqual(probes.map { URLComponents(url: $0.url!, resolvingAgainstBaseURL: false)?.queryItems ?? [] }, [
+            [URLQueryItem(name: "provider", value: "openai-codex"), URLQueryItem(name: "profile", value: "research"),
+             URLQueryItem(name: "refresh", value: "1")],
+            [URLQueryItem(name: "provider", value: "openrouter"), URLQueryItem(name: "profile", value: "research")]
+        ])
+        let card = try XCTUnwrap(ProviderLimitCard(provider: "openai-codex", response: refreshed, fetchedAt: .now))
+        XCTAssertEqual(card.title, "OpenAI Codex")
+        XCTAssertEqual(card.rows.map(\.label), ["Session", "Weekly"])
+    }
+
+    /// An older or unloaded plugin answers 404, so no provider is offered: the Limits group never
+    /// probes or shows, and the host is asked for neither `model.options` nor a quota. The host has
+    /// no sessions list here either.
+    func testAClosedGateOffersNoProvidersAndAsksForNoLimits() async throws {
+        let host = HermesInsightsHost(usage: Self.usage(totals: [:]), models: Self.models([]), counts: .object([:])) { request in
+            request.url?.path == "/api/plugins/hermex-push/capabilities" ? .json(404, .object(["detail": .string("Not Found")])) : nil
+        }
         let client = host.client(profile: "default")
 
         let providers = try await client.providers()
@@ -180,7 +226,9 @@ import XCTest
             _ = try await client.sessions()
             XCTFail("A Hermes host has no sessions fallback")
         } catch {}
-        XCTAssertEqual(HermesHostFixture.requests.count, 0)
+        XCTAssertEqual(HermesHostFixture.count("/api/plugins/hermex-push/capabilities"), 1)
+        XCTAssertEqual(HermesHostFixture.count("/api/plugins/hermex-push/provider-quota"), 0)
+        XCTAssertTrue(host.sockets.isEmpty, "No gateway call, so no model.options")
     }
 
     // MARK: - Fixtures
@@ -222,18 +270,20 @@ import XCTest
     }
 }
 
-/// A Hermes host that answers the two analytics reads over HTTP and `insights.get` over its gateway
-/// socket. `script` may answer a request first.
+/// A Hermes host that answers the two analytics reads over HTTP, and `insights.get` and
+/// `model.options` over its gateway socket. `script` may answer a request first.
 @MainActor private final class HermesInsightsHost {
     private(set) var sockets: [BotScriptedSocket] = []
     private let configuration: URLSessionConfiguration
     private let counts: BotJSON?
     private let countsError: BotJSON?
+    private let options: BotJSON?
 
-    init(usage: BotJSON, models: BotJSON, counts: BotJSON? = nil, countsError: BotJSON? = nil,
+    init(usage: BotJSON, models: BotJSON, counts: BotJSON? = nil, countsError: BotJSON? = nil, options: BotJSON? = nil,
          script: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) {
         self.counts = counts
         self.countsError = countsError
+        self.options = options
         configuration = HermesHostFixture.configuration { request in
             if let reply = script(request) { return reply }
             switch request.url?.path {
@@ -247,10 +297,11 @@ import XCTest
     func client(profile: String) -> HermesInsightsClient {
         let record = BotConnection(id: UUID(), name: "Host", address: URL(string: "https://hermes.example")!,
                                    username: "user", password: "secret")
-        let counts = counts, countsError = countsError
+        let counts = counts, countsError = countsError, options = options
         let http = HermesConnection(connection: record, configuration: configuration, gateway: .init { [weak self] _ in
             let socket = BotScriptedSocket()
             socket.reply = { request in
+                if request["method"].text == "model.options" { return .object(["id": request["id"], "result": options ?? .object([:])]) }
                 if let countsError { return .object(["id": request["id"], "error": countsError]) }
                 return .object(["id": request["id"], "result": counts ?? .object([:])])
             }

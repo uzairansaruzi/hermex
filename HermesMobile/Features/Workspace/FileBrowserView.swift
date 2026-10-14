@@ -1,23 +1,22 @@
 import SwiftUI
 
 /// The workspace file tree: folders open in place, search keeps matches with their parents,
-/// and a file row pushes its preview.
+/// and a file row pushes its preview. A client for another workspace, as when a Hermes chat's
+/// folder moves, replaces the whole tree.
 struct FileBrowserView: View {
     let onAPIError: (Error) -> Void
 
-    private let session: SessionSummary
-    private let server: URL
+    private let files: (any WorkspaceFileClient)?
     @State private var viewModel: FileBrowserViewModel
     @State private var searchText = ""
     @State private var openedFile: FileTreeNode?
     /// The warm fetch handed over when `openedFile` was tapped; consumed by that preview only.
     @State private var openedFilePrefetch: Task<FileResponse, Error>?
 
-    init(session: SessionSummary, server: URL, onAPIError: @escaping (Error) -> Void) {
-        self.session = session
-        self.server = server
+    init(files: (any WorkspaceFileClient)?, onAPIError: @escaping (Error) -> Void) {
+        self.files = files
         self.onAPIError = onAPIError
-        _viewModel = State(initialValue: FileBrowserViewModel(session: session, server: server))
+        _viewModel = State(initialValue: FileBrowserViewModel(files: files))
     }
 
     var body: some View {
@@ -31,14 +30,20 @@ struct FileBrowserView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openedFile) { node in
             FilePreviewView(
-                session: session,
-                server: server,
+                files: files,
                 entry: node.entry,
                 prefetchedFile: openedFilePrefetch,
                 onAPIError: onAPIError
             )
         }
-        .task {
+        // A file opened from the old workspace reads through the old client: close it.
+        .onChange(of: files?.scope) {
+            openedFile = nil
+            openedFilePrefetch?.cancel()
+            openedFilePrefetch = nil
+        }
+        .task(id: files?.scope) {
+            await viewModel.switchWorkspace(to: files)
             await viewModel.loadInitialRootIfNeeded()
             handleLastError()
         }

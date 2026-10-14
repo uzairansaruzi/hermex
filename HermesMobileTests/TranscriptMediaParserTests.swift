@@ -418,17 +418,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         )
     }
 
-    /// Bots opt into plain `[label](path)` file links, so any `[` must still
-    /// reach the full parse.
-    func testLocalFileLinkWithoutImageMarkerStillParsesForBots() {
-        let segments = TranscriptMediaParser.segments(
-            in: "Saved [chart](/tmp/chart.png)",
-            includesLocalFileLinks: true
-        )
-
-        XCTAssertEqual(mediaReferences(in: segments).map(\.rawReference), ["/tmp/chart.png"])
-    }
-
     // MARK: - Segment cache (#680)
 
     /// A settled row parses once; later body evaluations read the memoized

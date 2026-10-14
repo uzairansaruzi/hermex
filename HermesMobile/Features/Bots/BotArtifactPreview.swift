@@ -57,9 +57,8 @@ import UniformTypeIdentifiers
 
 }
 
-/// A Bot Chat artifact or staged attachment, or a Hermes session's sent file, in Quick
-/// Look. Once loaded, Save to Files and Share sit beside Done and act on the bytes
-/// already downloaded.
+/// A Hermes chat's sent file or artifact in Quick Look. Once loaded, Save to Files and
+/// Share sit beside Done and act on the bytes already downloaded.
 struct BotArtifactPreview: View {
     let reference: TranscriptMediaReference
     /// The title and saved file name; the reference's file name when nil.

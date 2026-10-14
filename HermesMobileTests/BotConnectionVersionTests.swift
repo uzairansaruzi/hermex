@@ -1,3 +1,4 @@
+import SwiftData
 import XCTest
 @testable import HermesMobile
 
@@ -100,6 +101,27 @@ final class BotConnectionVersionTests: XCTestCase {
             XCTAssertTrue(cleaned)
             XCTAssertEqual(try store.load(server: server), model.saved)
         }
+    }
+
+    /// Removing the connection takes its Bot Chats from the offline cache.
+    func testRemovingTheConnectionDropsItsCachedBotChats() async throws {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        let old = BotConnection(id: UUID(), name: "Home", address: URL(string: "https://hermes.example")!, username: "me", password: "old")
+        try store.save(old, server: server)
+        let context = ModelContext(try ModelContainer(for: CachedSession.self, CachedMessage.self,
+                                                      configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
+        try CacheStore.cacheHermesMessages([ChatMessage(role: "user", content: "Hi", timestamp: 1, messageId: "1", rowID: 1)],
+                                           newestCoverage: .all, serverURL: server,
+                                           scope: CacheStore.hermesBotChatScope(connectionID: old.id, profile: "triage", root: "root"),
+                                           in: context)
+        let model = BotConnectionSetup(server: server, store: store, makeWire: { _ in ConnectionSetupWire() }, discard: { _ in })
+        model.offlineCache = context
+        model.load()
+
+        let removed = await model.remove()
+
+        XCTAssertTrue(removed)
+        XCTAssertNil(try CacheStore.cachedHermesBotChatRoot(serverURL: server, connectionID: old.id, profile: "triage", in: context))
     }
 
     func testAddressDefaultsHonorLocalNetworksAndExplicitSchemes() throws {

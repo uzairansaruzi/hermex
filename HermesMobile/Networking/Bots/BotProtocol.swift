@@ -164,7 +164,9 @@ enum BotConnectionAdvice {
     /// socket write, so an action that went stale while queued is never sent.
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON
     func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String
-    func artifactData(path: String, context: BotArtifactContext) async throws -> Data
+    /// One file the host serves by `path` under `context`'s Profile and session. `limit` caps a
+    /// preview's bytes; nil reads the whole file, as a MEDIA file's export does (#1112).
+    func artifactData(path: String, context: BotArtifactContext, limit: Int?) async throws -> Data
     /// Removes a Profile on the host over the authenticated HTTP session. Only
     /// a 200 with `ok` counts as deleted; anything else leaves the bot in place.
     func deleteProfile(_ name: String) async throws
@@ -181,6 +183,9 @@ enum BotConnectionAdvice {
     /// One page of `profile`'s sessions for the Sessions list, or with `archived` for the
     /// Archived screen (`HermesREST.sessionList`, #1046, #1048).
     func sessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage
+    /// One page of every session `profile` lists, for Move to Hermes's scan
+    /// (`HermesREST.sessionScan`, #1213).
+    func sessionScanPage(profile: String, offset: Int) async throws -> HermesScanPage
     /// Writes one change to a session (`HermesREST.updateSession`, #1046, #1048) and returns the
     /// title the host keeps. A change the host refuses with its reason, such as a title already
     /// in use, throws `HermesSessionRefusal`.
@@ -193,10 +198,11 @@ enum BotConnectionAdvice {
     func sessionRow(key: String, profile: String) async throws -> BotJSON?
     /// Sends one session import, its JSON `body` already encoded (`HermesREST.importSessions`,
     /// #1051), and returns the host's result. A payload the host refuses throws its reason as
-    /// `HermesSessionRefusal`.
+    /// `HermesSessionRefusal`, with every session it named in `entries` (#1213).
     func importSessions(body: Data) async throws -> BotJSON
-    /// `profile`'s sessions matching `query`, in the host's order (`HermesREST.sessionSearch`, #1053).
-    func searchSessions(query: String, profile: String) async throws -> [HermesSessionSearchResult]
+    /// `profile`'s sessions matching `query`, in the host's order, at most `limit`
+    /// (`HermesREST.sessionSearch`, #1053).
+    func searchSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult]
     /// The runtimes this phone's screens attached on the connection (`session.resume`) or branched
     /// (`session.branch`, #1051) and have not closed, so a delete can tell its own from another
     /// app's (#1048).
@@ -214,8 +220,13 @@ extension BotTransport {
         throw BotFailure.unsupported
     }
 
-    func artifactData(path: String, context: BotArtifactContext) async throws -> Data {
+    func artifactData(path: String, context: BotArtifactContext, limit: Int?) async throws -> Data {
         throw BotArtifactFailure.unavailable
+    }
+
+    /// A preview's download: at most 25 MB.
+    func artifactData(path: String, context: BotArtifactContext) async throws -> Data {
+        try await artifactData(path: path, context: context, limit: BotArtifactBuffer.maximumBytes)
     }
 
     func deleteProfile(_ name: String) async throws {
@@ -243,6 +254,10 @@ extension BotTransport {
         throw BotFailure.unsupported
     }
 
+    func sessionScanPage(profile: String, offset: Int) async throws -> HermesScanPage {
+        throw BotFailure.unsupported
+    }
+
     func updateSession(_ change: HermesSessionChange, key: String, profile: String) async throws -> String? {
         throw BotFailure.unsupported
     }
@@ -259,8 +274,13 @@ extension BotTransport {
         throw BotFailure.unsupported
     }
 
-    func searchSessions(query: String, profile: String) async throws -> [HermesSessionSearchResult] {
+    func searchSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
         throw BotFailure.unsupported
+    }
+
+    /// The search at the Sessions list's page size, `HermesREST.sessionSearchLimit`.
+    func searchSessions(query: String, profile: String) async throws -> [HermesSessionSearchResult] {
+        try await searchSessions(query: query, profile: profile, limit: HermesREST.sessionSearchLimit)
     }
 
     var attachedRuntimes: Set<String> { [] }
@@ -285,6 +305,9 @@ struct BotHostStatus: Equatable {
     var heartbeatStale: Double?
     var platformsConnected: Int?
     var platformsConfigured: Int?
+    /// Every Profile's name, which the host reports even behind its sign-in (#1180); nil when
+    /// it reports none.
+    var profiles: [String]?
 
     init(_ json: BotJSON) {
         version = json["version"].text
@@ -294,6 +317,11 @@ struct BotHostStatus: Equatable {
         heartbeatStale = json["gateway_heartbeat_stale_s"].number
         platformsConnected = json["components"]["platforms"]["connected"].integer
         platformsConfigured = json["components"]["platforms"]["configured"].integer
+        profiles = json["profiles"].list.map { items in
+            var seen = Set<String>()
+            return items.compactMap { $0.text?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && seen.insert($0).inserted }
+        }
     }
 }
 
@@ -341,6 +369,37 @@ struct BotHostStatusProbe {
             return .success(BotHostStatus(json))
         } catch {
             return .failure(.unreachable(error.localizedDescription))
+        }
+    }
+}
+
+extension BotJSON {
+    /// Tool arguments in the shared transcript model's JSON type.
+    var argumentDictionary: [String: JSONValue]? {
+        guard case .object(let object) = self, !object.isEmpty else { return nil }
+        return object.mapValues(\.jsonValue)
+    }
+
+    var jsonValue: JSONValue {
+        switch self {
+        case .object(let value): return .object(value.mapValues(\.jsonValue))
+        case .array(let value): return .array(value.map(\.jsonValue))
+        case .string(let value): return .string(value)
+        case .number(let value): return .number(value)
+        case .bool(let value): return .bool(value)
+        case .null: return .null
+        }
+    }
+
+    /// A tool result as the text the shared tool row formatter parses: a string as
+    /// is, any other JSON re-encoded so envelope fields such as `error` are read.
+    var toolResultPreview: String? {
+        switch self {
+        case .null: return nil
+        case .string(let text): return text.isEmpty ? nil : text
+        default:
+            guard let data = try? JSONEncoder().encode(self) else { return nil }
+            return String(decoding: data, as: UTF8.self)
         }
     }
 }

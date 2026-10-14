@@ -2,8 +2,9 @@ import SwiftUI
 import XCTest
 @testable import HermesMobile
 
-/// Display-pacing tests for issue #212: buffered streamed tokens are revealed
-/// word-by-word at an adaptive cadence, while completion paths flush instantly.
+/// Reveal tests for #1126: each tick shows streamed text up to the last
+/// whitespace, a held fragment shows on the next tick, and completion paths
+/// flush everything at once. Ticks are driven by hand; nothing sleeps.
 final class ChatViewModelStreamingPaceTests: XCTestCase {
     override func tearDown() {
         MockURLProtocol.requestHandler = nil
@@ -11,119 +12,147 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
     }
 
     @MainActor
-    func testBufferedBurstRevealsWordByWordAtCadence() async throws {
+    func testBurstShowsWholeOnFirstVisibleTick() async throws {
         let streamClient = PacingSpySSEStreamingClient()
-        // 60s lag bound keeps the quota at one word per tick for this backlog.
-        let viewModel = try makeViewModel(
-            streamClient: streamClient,
-            wordCadenceNanoseconds: 200_000_000,
-            maxLagNanoseconds: 60_000_000_000
-        )
+        // Production tick: a 100-word burst used to drain over about 2 s.
+        let viewModel = try makeViewModel(streamClient: streamClient)
 
         let didStart = await viewModel.sendMessage("Stream a reply")
         XCTAssertTrue(didStart)
 
-        streamClient.emit(.token("alpha beta gamma delta"))
+        let burst = (0..<100).map { "w\($0) " }.joined()
+        streamClient.emit(.token(burst))
 
-        let target = "alpha beta gamma delta"
-        let observed = try await observeAssistantContent(viewModel, until: target)
+        let firstVisible = await nextAssistantContent(of: viewModel)
+        XCTAssertEqual(firstVisible, burst, "a burst must land on the first tick, not drain word by word")
+    }
 
-        XCTAssertEqual(observed.first, "alpha ")
-        XCTAssertEqual(observed.last, target)
-        XCTAssertGreaterThanOrEqual(
-            observed.count, 3,
-            "burst should reveal progressively across cadence ticks, not at once; observed: \(observed)"
-        )
-        for (earlier, later) in zip(observed, observed.dropFirst()) {
-            XCTAssertTrue(
-                later.hasPrefix(earlier),
-                "paced reveal must only append: \(earlier) → \(later)"
-            )
+    @MainActor
+    func testHeldFragmentShowsOnTheNextTick() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let ticks = ManualRevealTicks()
+        let viewModel = try makeViewModel(streamClient: streamClient, revealTick: ticks.tick)
+
+        let didStart = await viewModel.sendMessage("Stream a reply")
+        XCTAssertTrue(didStart)
+
+        streamClient.emit(.token("alpha beta gam"))
+        await waitForTickRequest(ticks, 1)
+        ticks.fire()
+        let firstTick = await nextAssistantContent(of: viewModel)
+        XCTAssertEqual(firstTick, "alpha beta ")
+
+        // The held fragment re-arms a tick; text arriving meanwhile rides it.
+        await waitForTickRequest(ticks, 2)
+        streamClient.emit(.token("ma"))
+        ticks.fire()
+        let secondTick = await nextAssistantContent(of: viewModel) { $0 != "alpha beta " }
+        XCTAssertEqual(secondTick, "alpha beta gamma", "a fragment is held for one tick only")
+
+        // Tokens after the buffer emptied schedule a fresh tick.
+        streamClient.emit(.token(" delta "))
+        await waitForTickRequest(ticks, 3)
+        ticks.fire()
+        let thirdTick = await nextAssistantContent(of: viewModel) { $0 != "alpha beta gamma" }
+        XCTAssertEqual(thirdTick, "alpha beta gamma delta ")
+    }
+
+    @MainActor
+    func testTextWithoutWhitespaceStreamsOneTickBehind() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let ticks = ManualRevealTicks()
+        let viewModel = try makeViewModel(streamClient: streamClient, revealTick: ticks.tick)
+
+        let didStart = await viewModel.sendMessage("Stream a reply")
+        XCTAssertTrue(didStart)
+
+        streamClient.emit(.token("你好世界"))
+        await waitForTickRequest(ticks, 1)
+        ticks.fire()
+        // The tick held the whole fragment and asked for the next one.
+        await waitForTickRequest(ticks, 2)
+        XCTAssertEqual(assistantContent(of: viewModel) ?? "", "")
+
+        ticks.fire()
+        let released = await nextAssistantContent(of: viewModel)
+        XCTAssertEqual(released, "你好世界")
+    }
+
+    @MainActor
+    func testCompletionFlushesTheHeldFragmentImmediately() async throws {
+        for completion in [SSEEvent.done(DoneStreamEvent()), .cancelled] {
+            let streamClient = PacingSpySSEStreamingClient()
+            let ticks = ManualRevealTicks()
+            let viewModel = try makeViewModel(streamClient: streamClient, revealTick: ticks.tick)
+
+            let didStart = await viewModel.sendMessage("Stream a reply")
+            XCTAssertTrue(didStart)
+
+            streamClient.emit(.token("alpha beta gam"))
+            await waitForTickRequest(ticks, 1)
+            ticks.fire()
+            let firstTick = await nextAssistantContent(of: viewModel)
+            XCTAssertEqual(firstTick, "alpha beta ")
+
+            // The held fragment had re-armed tick 2; completion cancels it.
+            await waitForTickRequest(ticks, 2)
+            streamClient.emit(completion)
+            XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gam", "\(completion)")
+
+            // The cancelled tick returning late shows nothing and asks for no more.
+            ticks.release(2)
+            await waitForTickReturn(ticks, 2)
+            XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gam", "\(completion)")
+            XCTAssertEqual(ticks.requestCount, 2, "\(completion)")
         }
-
-        // The drain loop must re-arm for tokens arriving after the buffer emptied.
-        streamClient.emit(.token(" epsilon"))
-        _ = try await observeAssistantContent(viewModel, until: target + " epsilon")
-        XCTAssertEqual(assistantContent(of: viewModel), target + " epsilon")
     }
 
     @MainActor
-    func testLargeBacklogCatchesUpWithinLagBound() async throws {
+    func testCancelledTickReturningLateLeavesTheNewerTickInCharge() async throws {
         let streamClient = PacingSpySSEStreamingClient()
-        // 60 words × 100ms cadence = 6s of backlog; the 300ms lag bound forces a
-        // ~20-word quota per tick, so convergence inside the 4s observation window
-        // proves catch-up scaling (steady one-word cadence would time out).
-        let viewModel = try makeViewModel(
-            streamClient: streamClient,
-            wordCadenceNanoseconds: 100_000_000,
-            maxLagNanoseconds: 300_000_000
-        )
+        let ticks = ManualRevealTicks()
+        let viewModel = try makeViewModel(streamClient: streamClient, revealTick: ticks.tick)
 
         let didStart = await viewModel.sendMessage("Stream a reply")
         XCTAssertTrue(didStart)
 
-        let words = (0..<60).map { "w\($0) " }
-        for word in words {
-            streamClient.emit(.token(word))
-        }
+        streamClient.emit(.token("alpha beta gam"))
+        await waitForTickRequest(ticks, 1)
+        ticks.release(1)
+        let firstTick = await nextAssistantContent(of: viewModel)
+        XCTAssertEqual(firstTick, "alpha beta ")
 
-        let target = words.joined()
-        let observed = try await observeAssistantContent(viewModel, until: target)
+        // A mid-stream flush (interim reply, snapshot save) cancels tick 2, and
+        // the next tokens schedule tick 3 while tick 2 is still suspended.
+        await waitForTickRequest(ticks, 2)
+        viewModel.flushPendingStreamingContent()
+        XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gam")
+        streamClient.emit(.token(" delta eps"))
+        await waitForTickRequest(ticks, 3)
 
-        XCTAssertEqual(observed.last, target)
-        XCTAssertGreaterThanOrEqual(
-            observed.count, 2,
-            "catch-up should drain in scaled chunks, not one dump; observed counts: \(observed.map(\.count))"
-        )
+        // Tick 2 returns late: it must neither reveal text nor free tick 3's slot.
+        ticks.release(2)
+        await waitForTickReturn(ticks, 2)
+        XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gam")
+        XCTAssertEqual(ticks.requestCount, 3, "a stale tick must not schedule another")
+
+        ticks.release(3)
+        let thirdTick = await nextAssistantContent(of: viewModel) { $0 != "alpha beta gam" }
+        XCTAssertEqual(thirdTick, "alpha beta gam delta ")
+
+        await waitForTickRequest(ticks, 4)
+        ticks.release(4)
+        let fourthTick = await nextAssistantContent(of: viewModel) { $0 != "alpha beta gam delta " }
+        XCTAssertEqual(fourthTick, "alpha beta gam delta eps")
+        await waitForTickReturn(ticks, 4)
+        XCTAssertEqual(ticks.requestCount, 4, "the emptied buffer must not re-arm a tick")
     }
 
     @MainActor
-    func testDoneEventFlushesRemainingBufferImmediately() async throws {
+    func testGatedContentConvergesByteIdenticalToTheJoin() async throws {
         let streamClient = PacingSpySSEStreamingClient()
-        let viewModel = try makeStalledDrainViewModel(streamClient: streamClient)
-
-        let didStart = await viewModel.sendMessage("Stream a reply")
-        XCTAssertTrue(didStart)
-
-        streamClient.emit(.token("alpha beta gamma"))
-        _ = try await observeAssistantContent(viewModel, until: "alpha ")
-        XCTAssertEqual(assistantContent(of: viewModel), "alpha ")
-
-        streamClient.emit(.done(DoneStreamEvent()))
-        XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gamma")
-
-        // Nothing may trickle in after completion.
-        try await Task.sleep(nanoseconds: 150_000_000)
-        XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gamma")
-    }
-
-    @MainActor
-    func testCancelledEventFlushesRemainingBufferImmediately() async throws {
-        let streamClient = PacingSpySSEStreamingClient()
-        let viewModel = try makeStalledDrainViewModel(streamClient: streamClient)
-
-        let didStart = await viewModel.sendMessage("Stream a reply")
-        XCTAssertTrue(didStart)
-
-        streamClient.emit(.token("alpha beta gamma"))
-        _ = try await observeAssistantContent(viewModel, until: "alpha ")
-        XCTAssertEqual(assistantContent(of: viewModel), "alpha ")
-
-        streamClient.emit(.cancelled)
-        XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gamma")
-
-        try await Task.sleep(nanoseconds: 150_000_000)
-        XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gamma")
-    }
-
-    @MainActor
-    func testPacedContentConvergesByteIdenticalToUnpacedJoin() async throws {
-        let streamClient = PacingSpySSEStreamingClient()
-        let viewModel = try makeViewModel(
-            streamClient: streamClient,
-            wordCadenceNanoseconds: 1_000_000,
-            maxLagNanoseconds: 50_000_000
-        )
+        let ticks = ManualRevealTicks()
+        let viewModel = try makeViewModel(streamClient: streamClient, revealTick: ticks.tick)
 
         let didStart = await viewModel.sendMessage("Stream a reply")
         XCTAssertTrue(didStart)
@@ -141,24 +170,26 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
             streamClient.emit(.token(chunk))
         }
 
+        await waitForTickRequest(ticks, 1)
+        ticks.fire()
+        await waitForTickRequest(ticks, 2)
+        ticks.fire()
+
         let target = chunks.joined()
-        _ = try await observeAssistantContent(viewModel, until: target)
-        let content = try XCTUnwrap(assistantContent(of: viewModel))
+        let converged = await nextAssistantContent(of: viewModel) { $0 == target }
+        let content = try XCTUnwrap(converged)
         XCTAssertEqual(
             Array(content.utf8),
             Array(target.utf8),
-            "paced content must converge byte-identical to the unpaced concatenation"
+            "gated content must converge byte-identical to the concatenation"
         )
     }
 
     @MainActor
     func testLargeNormalStreamConvergesByteIdenticalWithoutReplayState() async throws {
         let streamClient = PacingSpySSEStreamingClient()
-        let viewModel = try makeViewModel(
-            streamClient: streamClient,
-            wordCadenceNanoseconds: 1_000_000,
-            maxLagNanoseconds: 100_000_000
-        )
+        let ticks = ManualRevealTicks()
+        let viewModel = try makeViewModel(streamClient: streamClient, revealTick: ticks.tick)
 
         let didStart = await viewModel.sendMessage("Stream a long reply")
         XCTAssertTrue(didStart)
@@ -179,13 +210,13 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
             streamClient.emit(.token(chunk))
         }
 
+        // The text ends in whitespace, so one tick shows all of it.
+        await waitForTickRequest(ticks, 1)
+        ticks.fire()
+
         let target = chunks.joined()
-        _ = try await observeAssistantContent(
-            viewModel,
-            until: target,
-            timeoutNanoseconds: 12_000_000_000
-        )
-        let content = try XCTUnwrap(assistantContent(of: viewModel))
+        let shown = await nextAssistantContent(of: viewModel)
+        let content = try XCTUnwrap(shown)
         XCTAssertEqual(
             Array(content.utf8),
             Array(target.utf8),
@@ -200,25 +231,10 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// 60s cadence with a far larger lag bound keeps the quota at one word per
-    /// tick: the first tick reveals one word, then the drain effectively stalls
-    /// so completion-path flushes are observable.
-    @MainActor
-    private func makeStalledDrainViewModel(
-        streamClient: PacingSpySSEStreamingClient
-    ) throws -> ChatViewModel {
-        try makeViewModel(
-            streamClient: streamClient,
-            wordCadenceNanoseconds: 60_000_000_000,
-            maxLagNanoseconds: 3_600_000_000_000
-        )
-    }
-
     @MainActor
     private func makeViewModel(
         streamClient: PacingSpySSEStreamingClient,
-        wordCadenceNanoseconds: UInt64,
-        maxLagNanoseconds: UInt64
+        revealTick: (@Sendable () async throws -> Void)? = nil
     ) throws -> ChatViewModel {
         MockURLProtocol.requestHandler = { request in
             switch request.url?.path {
@@ -258,9 +274,34 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
             approvalStreamClient: PacingSpySSEStreamingClient(),
             clarifyStreamClient: PacingSpySSEStreamingClient(),
             streamingScrollCoalescingDelayNanoseconds: 1_000_000,
-            streamingWordRevealCadenceNanoseconds: wordCadenceNanoseconds,
-            streamingMaxRevealLagNanoseconds: maxLagNanoseconds
+            streamingRevealTick: revealTick ?? { try await Task.sleep(nanoseconds: 50_000_000) }
         )
+    }
+
+    @MainActor
+    private func waitForTickRequest(
+        _ ticks: ManualRevealTicks,
+        _ number: Int,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        let requested = ticks.expectRequest(number)
+        guard await XCTWaiter().fulfillment(of: [requested], timeout: 5) == .completed else {
+            return XCTFail("Reveal tick \(number) was never requested", file: file, line: line)
+        }
+    }
+
+    @MainActor
+    private func waitForTickReturn(
+        _ ticks: ManualRevealTicks,
+        _ number: Int,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
+        let returned = ticks.expectReturn(number)
+        guard await XCTWaiter().fulfillment(of: [returned], timeout: 5) == .completed else {
+            return XCTFail("Reveal tick \(number) never returned", file: file, line: line)
+        }
     }
 
     @MainActor
@@ -268,62 +309,85 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         viewModel.messages.last(where: { $0.role == "assistant" })?.content
     }
 
-    /// Polls assistant content every 5ms until it equals `target` (or times out),
-    /// returning every distinct non-empty value observed in order.
+    /// Waits on observation, not a poll, for the first assistant content
+    /// matching `predicate`, and returns it.
     @MainActor
-    private func observeAssistantContent(
-        _ viewModel: ChatViewModel,
-        until target: String,
-        timeoutNanoseconds: UInt64 = 4_000_000_000,
+    private func nextAssistantContent(
+        of viewModel: ChatViewModel,
         file: StaticString = #filePath,
-        line: UInt = #line
-    ) async throws -> [String] {
-        let pollNanoseconds: UInt64 = 5_000_000
-        var observed: [String] = []
-        var elapsed: UInt64 = 0
-        while elapsed <= timeoutNanoseconds {
-            if let content = assistantContent(of: viewModel), !content.isEmpty,
-               observed.last != content {
-                observed.append(content)
+        line: UInt = #line,
+        where predicate: (String) -> Bool = { !$0.isEmpty }
+    ) async -> String? {
+        while true {
+            if let content = assistantContent(of: viewModel), !content.isEmpty, predicate(content) {
+                return content
             }
-            if observed.last == target {
-                return observed
+            let changed = XCTestExpectation(description: "assistant content changed")
+            withObservationTracking { _ = viewModel.messages } onChange: { changed.fulfill() }
+            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
+                XCTFail("Assistant content never matched", file: file, line: line)
+                return assistantContent(of: viewModel)
             }
-
-            try await Task.sleep(nanoseconds: pollNanoseconds)
-            elapsed += pollNanoseconds
         }
-
-        XCTFail(
-            "timed out waiting for \(target); observed: \(observed)",
-            file: file,
-            line: line
-        )
-        return observed
     }
 }
 
-/// Issue #214: the streaming bottom-follow scroll and active-row growth share
-/// one short cadence-synced animation, disabled entirely under Reduce Motion.
-final class ChatStreamingMotionTests: XCTestCase {
-    func testStreamingFollowUsesShortEaseOut() {
-        XCTAssertEqual(
-            ChatMotion.streamingFollow(reduceMotion: false),
-            .easeOut(duration: 0.15)
-        )
+/// Hands each reveal tick to the test, which releases it with `fire()` or
+/// `release(_:)`. The tick is main-actor isolated, so the view model's code
+/// after it runs in the same main-actor job that marks the tick returned.
+@MainActor
+private final class ManualRevealTicks {
+    private var inFlight: [Int: CheckedContinuation<Void, Never>] = [:]
+    private var requestExpectations: [Int: XCTestExpectation] = [:]
+    private var returnExpectations: [Int: XCTestExpectation] = [:]
+    private var returned: Set<Int> = []
+    private(set) var requestCount = 0
+
+    var tick: @Sendable () async throws -> Void {
+        { @MainActor [weak self] in await self?.wait() }
     }
 
-    func testStreamingFollowIsDisabledUnderReduceMotion() {
-        XCTAssertNil(ChatMotion.streamingFollow(reduceMotion: true))
+    /// Fulfilled once the view model has asked for its `number`th tick.
+    func expectRequest(_ number: Int) -> XCTestExpectation {
+        let expectation = XCTestExpectation(description: "reveal tick \(number) requested")
+        if requestCount >= number {
+            expectation.fulfill()
+        } else {
+            requestExpectations[number] = expectation
+        }
+        return expectation
     }
 
-    func testStreamingFollowIsShorterThanRegularFollowScroll() {
-        // The streaming curve must stay snappier than the regular follow scroll
-        // so per-flush retargeting keeps up with the word reveal cadence.
-        XCTAssertNotEqual(
-            ChatMotion.streamingFollow(reduceMotion: false),
-            ChatMotion.scrollToLatest(reduceMotion: false)
-        )
+    /// Fulfilled once the `number`th tick has returned to the view model.
+    func expectReturn(_ number: Int) -> XCTestExpectation {
+        let expectation = XCTestExpectation(description: "reveal tick \(number) returned")
+        if returned.contains(number) {
+            expectation.fulfill()
+        } else {
+            returnExpectations[number] = expectation
+        }
+        return expectation
+    }
+
+    /// Releases every tick in flight, oldest first.
+    func fire() {
+        inFlight.keys.sorted().forEach(release)
+    }
+
+    /// Releases the `number`th tick, even one its view model already cancelled.
+    func release(_ number: Int) {
+        inFlight.removeValue(forKey: number)?.resume()
+    }
+
+    private func wait() async {
+        let number = requestCount + 1
+        await withCheckedContinuation { continuation in
+            inFlight[number] = continuation
+            requestCount = number
+            requestExpectations.removeValue(forKey: number)?.fulfill()
+        }
+        returned.insert(number)
+        returnExpectations.removeValue(forKey: number)?.fulfill()
     }
 }
 

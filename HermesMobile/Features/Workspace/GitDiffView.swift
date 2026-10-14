@@ -10,10 +10,10 @@ struct GitDiffView: View {
     /// with no composer to add to.
     let onAddToPrompt: ((String) -> Void)?
 
-    private let session: SessionSummary
+    /// Nil for a webui session without an ID.
+    private let git: (any GitDataClient)?
     private let files: [GitFile]
     private let initialFile: GitFile?
-    private let apiClient: APIClient
 
     @State private var rows: [ReviewDiffRow] = []
     @State private var rowsVersion = 0
@@ -30,17 +30,15 @@ struct GitDiffView: View {
     private static let maxConcurrentDiffLoads = 4
 
     init(
-        session: SessionSummary,
-        server: URL,
+        git: (any GitDataClient)?,
         files: [GitFile],
         initialFile: GitFile? = nil,
         onAPIError: @escaping (Error) -> Void,
         onAddToPrompt: ((String) -> Void)? = nil
     ) {
-        self.session = session
+        self.git = git
         self.files = files
         self.initialFile = initialFile
-        self.apiClient = APIClient(baseURL: server)
         self.onAPIError = onAPIError
         self.onAddToPrompt = onAddToPrompt
         _scrollTarget = State(initialValue: initialFile.map { ReviewDiffScrollTarget(fileID: $0.id, token: UUID()) })
@@ -166,17 +164,16 @@ struct GitDiffView: View {
     private func load() async {
         loadGeneration += 1
         let generation = loadGeneration
-        guard let sessionID = session.sessionId else {
+        guard let git else {
             let message = String(localized: "Session ID is missing.")
             publish(files.flatMap { ReviewDiffRowBuilder.rows(for: ReviewDiffFileInput(file: $0, state: .failed(message))) })
             return
         }
-        let client = apiClient
         await ReviewDiffLoader.load(
             files: files,
             firstFile: initialFile,
             maxConcurrent: Self.maxConcurrentDiffLoads,
-            fetch: { file in await Self.fetchDiff(for: file, sessionID: sessionID, apiClient: client) },
+            fetch: { file in await Self.fetchDiff(for: file, git: git) },
             // A dismissed sheet or a newer load owns the rest.
             isCurrent: { generation == loadGeneration },
             publish: publish,
@@ -190,14 +187,9 @@ struct GitDiffView: View {
     }
 
     /// Nil when the request was cancelled: not a failure to show or report.
-    private static func fetchDiff(for file: GitFile, sessionID: String, apiClient: APIClient) async -> ReviewDiffLoader.FileResult? {
+    private static func fetchDiff(for file: GitFile, git: any GitDataClient) async -> ReviewDiffLoader.FileResult? {
         do {
-            let diff = try await apiClient.gitDiff(
-                sessionID: sessionID,
-                path: file.displayPath,
-                kind: file.preferredDiffKind
-            ).diff
-            guard let diff else {
+            guard let diff = try await git.diff(for: file) else {
                 return ReviewDiffLoader.FileResult(fileID: file.id, state: .failed(String(localized: "Could Not Load Changes")), error: nil)
             }
             return ReviewDiffLoader.FileResult(fileID: file.id, state: .loaded(diff), error: nil)

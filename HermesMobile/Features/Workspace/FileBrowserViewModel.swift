@@ -1,14 +1,15 @@
 import Foundation
 
-/// Owns the workspace file tree for one session: lists directories from the server as the
-/// user opens them, remembers which folders are open per server and workspace, and warms
-/// file previews on press-down so the next screen has its content ready.
+/// Owns the workspace file tree for one chat: lists directories through its
+/// `WorkspaceFileClient` as the user opens them, remembers which folders are open per
+/// workspace (`WorkspaceFileClient.scope`), and warms file previews on press-down so the next
+/// screen has its content ready. A nil client is a chat without a session to read from.
 @MainActor
 @Observable
 final class FileBrowserViewModel {
-    private let session: SessionSummary
-    private let apiClient: APIClient
-    private let expansionStore: FileTreeExpansionStore
+    @ObservationIgnored private var files: (any WorkspaceFileClient)?
+    private let defaults: UserDefaults
+    @ObservationIgnored private var expansionStore: FileTreeExpansionStore?
 
     private(set) var tree = FileTree()
     private(set) var expandedPaths: Set<String> = []
@@ -29,10 +30,10 @@ final class FileBrowserViewModel {
     /// opening a file takes its task out so the next visit fetches fresh content.
     private var prefetches: [String: Task<FileResponse, Error>] = [:]
 
-    init(session: SessionSummary, server: URL, apiClient: APIClient? = nil, defaults: UserDefaults = .standard) {
-        self.session = session
-        self.apiClient = apiClient ?? APIClient(baseURL: server)
-        expansionStore = FileTreeExpansionStore(server: server, workspace: session.workspace, defaults: defaults)
+    init(files: (any WorkspaceFileClient)?, defaults: UserDefaults = .standard) {
+        self.files = files
+        self.defaults = defaults
+        expansionStore = files.map { FileTreeExpansionStore(scope: $0.scope, defaults: defaults) }
     }
 
     // MARK: - Reading
@@ -82,6 +83,28 @@ final class FileBrowserViewModel {
         await loadRoot(reloadingOpenDirectories: false)
     }
 
+    /// Moves the tree to another workspace, as when a Hermes chat's folder changes (#1112):
+    /// drops every listing, the expansion, the selection and the prefetches, makes every
+    /// listing in flight stale, then lists the new root with that workspace's own expansion.
+    func switchWorkspace(to files: (any WorkspaceFileClient)?) async {
+        guard files?.scope != self.files?.scope else { return }
+        self.files = files
+        expansionStore = files.map { FileTreeExpansionStore(scope: $0.scope, defaults: defaults) }
+        cancelPrefetches()
+        for path in loadGenerations.keys { _ = bumpGeneration(for: path) }
+        tree = FileTree()
+        expandedPaths = []
+        loadingPaths = [:]
+        failedPaths = [:]
+        selectedPath = nil
+        errorMessage = nil
+        lastError = nil
+        isLoadingRoot = false
+        hasRestoredExpansion = false
+        hasLoadedInitialRoot = true
+        await loadRoot(reloadingOpenDirectories: false)
+    }
+
     /// Opens or closes a directory. Opening lists it on first use; tapping a failed listing retries.
     func toggleDirectory(_ path: String) async {
         if expandedPaths.contains(path), failedPaths[path] == nil {
@@ -109,7 +132,7 @@ final class FileBrowserViewModel {
     }
 
     private func loadRoot(reloadingOpenDirectories: Bool) async {
-        guard let sessionID = session.sessionId else {
+        guard let files else {
             errorMessage = String(localized: "Session ID is missing.")
             return
         }
@@ -120,18 +143,24 @@ final class FileBrowserViewModel {
         lastError = nil
 
         do {
-            let response = try await apiClient.directoryList(sessionID: sessionID, path: FileTree.rootPath)
+            let response = try await files.directoryList(path: FileTree.rootPath)
             guard generation == loadGenerations[FileTree.rootPath] else { return }
             commitListing(response.entries ?? [], of: FileTree.rootPath)
             if !hasRestoredExpansion {
                 hasRestoredExpansion = true
-                expandedPaths = expansionStore.load() ?? FileTree.defaultExpandedPaths(in: tree.rootNodes)
+                expandedPaths = expansionStore?.load()
+                    ?? (files.opensTopLevelFolders ? FileTree.defaultExpandedPaths(in: tree.rootNodes) : [])
             }
             isLoadingRoot = false
             await loadOpenDescendants(of: FileTree.rootPath, reloadingLoaded: reloadingOpenDirectories)
         } catch {
             guard generation == loadGenerations[FileTree.rootPath] else { return }
-            if !Self.isCancellationError(error) {
+            if let failure = error as? WorkspaceFolderReadFailure {
+                // The server's answer about the folder, not a failed request: no error is
+                // reported, and a folder that is gone shows its missing state, not old rows.
+                if failure.isMissing { dropTree() }
+                errorMessage = failure.localizedDescription
+            } else if !Self.isCancellationError(error) {
                 lastError = error
                 errorMessage = error.localizedDescription
             }
@@ -160,7 +189,7 @@ final class FileBrowserViewModel {
     }
 
     private func loadDirectory(_ path: String) async {
-        guard let sessionID = session.sessionId else { return }
+        guard let files else { return }
 
         let generation = bumpGeneration(for: path)
         loadingPaths[path] = generation
@@ -174,7 +203,7 @@ final class FileBrowserViewModel {
         }
 
         do {
-            let response = try await apiClient.directoryList(sessionID: sessionID, path: path)
+            let response = try await files.directoryList(path: path)
             guard generation == loadGenerations[path] else { return }
             // A root refresh that finished meanwhile may have dropped this directory; an
             // orphaned listing would be shown as current if the folder ever came back.
@@ -183,7 +212,9 @@ final class FileBrowserViewModel {
             }
         } catch {
             guard generation == loadGenerations[path] else { return }
-            if !Self.isCancellationError(error) {
+            if error is WorkspaceFolderReadFailure {
+                failedPaths[path] = error.localizedDescription
+            } else if !Self.isCancellationError(error) {
                 lastError = error
                 failedPaths[path] = error.localizedDescription
             }
@@ -204,6 +235,16 @@ final class FileBrowserViewModel {
         }
     }
 
+    /// Forgets every listing and the prefetches, and makes every listing in flight stale,
+    /// including a folder's first, which has no cached children yet.
+    private func dropTree() {
+        for path in loadGenerations.keys where path != FileTree.rootPath { _ = bumpGeneration(for: path) }
+        cancelPrefetches()
+        tree = FileTree()
+        loadingPaths = [:]
+        failedPaths = [:]
+    }
+
     private func bumpGeneration(for path: String) -> Int {
         let next = (loadGenerations[path] ?? 0) + 1
         loadGenerations[path] = next
@@ -212,7 +253,7 @@ final class FileBrowserViewModel {
 
     private func setExpanded(_ paths: Set<String>) {
         expandedPaths = paths
-        expansionStore.save(paths)
+        expansionStore?.save(paths)
     }
 
     // MARK: - Prefetch
@@ -220,13 +261,12 @@ final class FileBrowserViewModel {
     /// Starts fetching a text file's content while the finger is still down on its row.
     func prefetchFile(at path: String) {
         guard prefetches[path] == nil,
-              let sessionID = session.sessionId,
+              let files,
               FilePreviewViewModel.loadsTextPreview(forPath: path) else { return }
 
         cancelPrefetches()
-        let apiClient = apiClient
         prefetches[path] = Task {
-            try await apiClient.file(sessionID: sessionID, path: path)
+            try await files.file(path: path)
         }
     }
 
@@ -264,19 +304,16 @@ final class FileBrowserViewModel {
     }
 }
 
-/// Remembers which folders are open, keyed by server and workspace so one server's layout
-/// never shows up under another. A missing record means "use the default expansion".
+/// Remembers which folders are open, keyed by the client's `scope` so one server's or one
+/// chat's layout never shows up under another: server and workspace on webui; server, Profile,
+/// session and folder on Hermes. A missing record means "use the default expansion".
 struct FileTreeExpansionStore {
     private let defaults: UserDefaults
     private let key: String
 
-    init(server: URL, workspace: String?, defaults: UserDefaults = .standard) {
+    init(scope: String, defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        key = Self.key(server: server, workspace: workspace)
-    }
-
-    static func key(server: URL, workspace: String?) -> String {
-        "fileTree.expanded|\(server.absoluteString)|\(workspace ?? "")"
+        key = "fileTree.expanded|\(scope)"
     }
 
     func load() -> Set<String>? {

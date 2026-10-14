@@ -40,7 +40,7 @@ import SwiftUI
                 // the welcome is (at accessibility text sizes).
                 ZStack {
                     if showsWelcome { Color.clear.containerRelativeFrame(.vertical) }
-                    // Eager over a bounded window, like Bot Chat: member replies are
+                    // Eager over a bounded window: member replies are
                     // hosted selection documents, and a lazy stack places unbuilt rows
                     // from an estimate, so the jump to a search hit missed on a cold
                     // open (issue #553). The window keeps the build to the newest page.
@@ -55,32 +55,26 @@ import SwiftUI
                         if threadID != nil, reader.threads.first(where: { $0.id == threadID })?.root == nil {
                             Text("Earlier messages not loaded").font(.caption).foregroundStyle(.secondary)
                         }
-                        let gapStarts = showsThreadOverview ? Set<Int>() : BotRoomEvent.gapStarts(in: transcriptEvents[start...])
                         let rows = Array(transcriptEvents[start...])
                         ForEach((showsThreadOverview ? Array(rows.reversed()) : rows).map {
                             BotRoomTranscriptRow(event: $0, isOverview: threadID == nil)
                         }) { row in
                             let event = row.event
                             // Thread identity survives new replies and activity reordering.
-                            VStack(spacing: 16) {
-                                if gapStarts.contains(event.seq), let timestamp = event.timestamp {
-                                    TranscriptTimeSeparator(timestamp: timestamp)
+                            if threadID == nil, let thread = reader.threads.first(where: { $0.latest.seq == event.seq }) {
+                                Button { selectedThread = thread.id } label: {
+                                    BotRoomThreadPreview(thread: thread, room: reader.room)
                                 }
-                                if threadID == nil, let thread = reader.threads.first(where: { $0.latest.seq == event.seq }) {
-                                    Button { selectedThread = thread.id } label: {
-                                        BotRoomThreadPreview(thread: thread, room: reader.room)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityIdentifier("room-thread-\(thread.id)")
-                                } else {
-                                    BotRoomEventView(
-                                        event: event,
-                                        room: reader.room,
-                                        roster: roster,
-                                        avatars: avatars,
-                                        transcriptMediaCacheNamespace: "\(reader.key.server.absoluteString)|bot-room:\(reader.room.id)"
-                                    )
-                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("room-thread-\(thread.id)")
+                            } else {
+                                BotRoomEventView(
+                                    event: event,
+                                    room: reader.room,
+                                    roster: roster,
+                                    avatars: avatars,
+                                    transcriptMediaCacheNamespace: "\(reader.key.server.absoluteString)|bot-room:\(reader.room.id)"
+                                )
                             }
                         }
                         if showsThreadOverview && (hasHiddenEvents || reader.hasEarlier) {
@@ -150,7 +144,7 @@ import SwiftUI
             VStack(spacing: 10) {
                 if let pill {
                     BotComposerPillView(pill: pill, onReconnect: { revision = UUID() }, onUpdateSignIn: onUpdateSignIn,
-                        onShowRequest: { showRequestID = UUID() }, onCancelUpload: {},
+                        onShowRequest: { showRequestID = UUID() },
                         onDismissError: { if let text = pill.errorText { dismissedErrors.insert(text) } },
                         onRetrySend: { Task { await reader.send(retry: true, threadID: threadID) } })
                 }
@@ -405,6 +399,8 @@ private struct BotRoomEventView: View {
     let avatars: [String: UIImage]
     let transcriptMediaCacheNamespace: String
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey)
+    private var showsTimestamps = ChatTranscriptDisplaySettings.defaultShowsTimestamps
     @State private var responseIsVisible = false
 
     var body: some View {
@@ -452,11 +448,12 @@ private struct BotRoomEventView: View {
 
     private var messageText: String { event.payload["text"].text ?? "" }
 
-    /// Rooms take the shared reply footer with the time only.
+    /// Rooms take the shared meta row with the time only; Copy stays in the long-press menu.
     @ViewBuilder
     private var footer: some View {
-        if let timestamp = event.timestamp, timestamp.isFinite, timestamp > 0 {
-            BotReplyFooter(isUserMessage: event.kind == "message.user", timestamp: timestamp)
+        if showsTimestamps, let timestamp = event.timestamp, timestamp > 0,
+           let time = ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: timestamp) {
+            ChatMessageMetaRow(isUserMessage: event.kind == "message.user", timeText: time, onCopy: nil)
         }
     }
 

@@ -18,6 +18,12 @@ see [Push provisioning](bots.md#push-provisioning) and
   it. The dashboard loads the update only when it restarts: a loaded plugin of
   0.4.0 or newer lets the phone restart it, while an older one still needs one
   restart on the host ([Push provisioning](bots.md#push-provisioning)).
+  From 0.5.0 it also lists its mounted routes, which other features that need
+  the plugin gate on, so the plugin is useful without push set up (#1235).
+  From 0.6.0 it adds git fetch, pull and branch-create routes for Hermes chats
+  (#1236, [Workspace on a Hermes host](bots.md#workspace-on-a-hermes-host)).
+  From 0.7.0 it serves provider account limits for Hermes Usage
+  (#1237, [Insights on a Hermes host](bots.md#insights-on-a-hermes-host)).
 - **Relay.** A Cloudflare Worker in the same repository. The default is
   `https://hermex-relay.hermex-relay.workers.dev`; a host overrides it with
   `HERMEX_PUSH_RELAY_URL`, so self-hosting is a server-side setting. The relay
@@ -60,7 +66,60 @@ touches may show up under another. A server without a pairing gets local run
 alerts instead, which route the same way: their `server_hash` must match a
 configured server (`ResponseCompletionNotificationRequest.destination`).
 
-One caveat: two configured servers that reach the same host pair with the
-same install, because the host hands out one key pair. A tap on one of that
-host's banners then prefers the active server and otherwise takes the first
-matching server by URL (`PushNotificationRouter.botDestination`).
+A tap only navigates (`PushNotificationRouter.link`). A webui push opens its
+webui session (see Moved webui servers below for one that moved to Hermes). Any other push on a Hermes server opens the session its
+`session_id` names, the stored key, through the Hermes session link (#1176,
+#1177): the Sessions list looks it up under the Profile an opened preview wrote
+back, or in every Profile with previews off, refusing a key two Profiles have.
+A subagent's push opens the session that delegated to it, past the subagent's
+own compression segments, and a Bot Chat's opens its bot. A Hermes
+chat's local run alert carries its Profile and stored key and opens the same
+way. The approval card shows only when the host's own runtime still holds the
+approval; a session another process runs (Hermes Desktop's private backend, a
+standalone TUI) opens with its transcript and no card.
+
+One caveat: two configured servers that reach the same host (LAN and a tunnel,
+webui or Hermes) pair with the same install, because the host hands out one key
+pair. A tap on one of that host's banners then prefers the active server and
+otherwise takes the first matching server by URL, and the chosen server's kind
+picks the route: a webui server's Bot connection or a Hermes server's session.
+A webui push only ever takes a webui server, even while a Hermes alias is active.
+The relay keys a device by install and token, so both entries share one
+registration: removing or turning off one keeps it for the other, and only the
+last one deletes it
+(`PushRegistrar.forget` and `disable`, #1178). Both wait for an in-flight device
+write (a token refresh, preference save, or another entry's enable) before
+deciding, so they judge the tokens the entries end up holding; removing an entry
+that never paired doesn't wait. Another entry keeps only the token it
+holds, and a Keychain that can't list the entries deletes nothing (turning off
+fails instead). Turning one off in Settings also leaves the
+host's plugin enabled while another entry is paired or still registering its
+device; only the last one disables it (`HermexPushProvisioner.disable`). Their preferences are that one
+registration too, so the last choice saved under either entry applies to both.
+
+## Moved webui servers
+
+After Move to Hermes (#707), the Hermes destination holds the webui server's
+move record, which outlives the webui entry and goes with the destination
+(`MovedWebuiRoute`, #1217).
+
+- A webui push, a webui chat's local run alert and a webui Live Activity's
+  tap are about a run on the webui server, so they open there while it is
+  configured, with the run's live stream and approval card. Once it is
+  removed they open on the destination.
+- Any other webui link opens on the destination first, looked up in every
+  Profile, so it finds where the session actually is rather than where Review
+  mapped its Profile. Only when every Profile was read and none has it does it
+  open on the webui server, if that is still configured. A read that fails is
+  never absence.
+- Pairing stays installation-scoped. A same-host move copies the webui
+  server's pairing to the destination (`MovePushPairing.carry`), so after the
+  webui entry is removed its webui pushes still reach the one paired Hermes
+  server holding a record, which opens them; two such servers open nothing. A
+  cross-host move copies nothing, and removing the webui entry ends its old
+  host's pushes as removing any server does.
+- A local alert for a removed webui server matches the record's server hash.
+- Bare `session?id=` links and webui Profile Shortcuts name no server. Once a
+  move could own one, it opens only where every candidate agrees, counting
+  unmoved webui servers, and otherwise opens nothing: the active server never
+  breaks the tie.

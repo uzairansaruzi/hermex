@@ -59,6 +59,11 @@ struct SharedImportReservation: Equatable, Identifiable {
     let sharedImport: SharedImport
 
     var id: String { reservationID }
+
+    /// This share as one occurrence (#1197): stable across retries, releases and relaunch replays
+    /// of one queued item, but new when the same content is shared again after it was consumed,
+    /// whose `itemID` (a content hash) repeats. A Hermes draft records it to add a share once.
+    var occurrenceID: String { "\(itemID)@\(createdAt.timeIntervalSinceReferenceDate)" }
 }
 
 enum HermesShareDraft {

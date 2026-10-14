@@ -1,7 +1,8 @@
 import XCTest
 @testable import HermesMobile
 
-/// Lazy loading, expansion memory, selection reveal, and preview prefetch for the file tree.
+/// Lazy loading, expansion memory, selection reveal, and preview prefetch for the file tree, on
+/// webui's session routes and on a Hermes chat's folder (#1112).
 final class FileBrowserViewModelTests: APIClientTestCase {
 
     private var defaults: UserDefaults!
@@ -15,6 +16,7 @@ final class FileBrowserViewModelTests: APIClientTestCase {
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
+        HermesHostFixture.reset()
         super.tearDown()
     }
 
@@ -106,11 +108,16 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         workspace: String = "/tmp/ws"
     ) throws -> FileBrowserViewModel {
         FileBrowserViewModel(
-            session: try session(workspace: workspace),
-            server: try XCTUnwrap(URL(string: server)),
-            apiClient: client,
+            files: WebUIWorkspaceFileClient(session: try session(workspace: workspace), server: try XCTUnwrap(URL(string: server)),
+                                            apiClient: client),
             defaults: defaults
         )
+    }
+
+    /// Saves the open folders of the webui workspace `makeViewModel` opens by default.
+    private func saveWebUIExpansion(_ paths: Set<String>) throws {
+        let files = WebUIWorkspaceFileClient(sessionID: "s1", workspace: "/tmp/ws", server: try XCTUnwrap(URL(string: "https://example.test")))
+        FileTreeExpansionStore(scope: files.scope, defaults: defaults).save(paths)
     }
 
     // MARK: - Loading
@@ -202,7 +209,7 @@ final class FileBrowserViewModelTests: APIClientTestCase {
                 return apiTestJSONResponse(#"{"error": "not found"}"#, for: request, status: 404)
             }
         }
-        FileTreeExpansionStore(server: try XCTUnwrap(URL(string: "https://example.test")), workspace: "/tmp/ws", defaults: defaults).save([])
+        try saveWebUIExpansion([])
         let viewModel = try makeViewModel(client: client)
         await viewModel.loadInitialRootIfNeeded()
 
@@ -242,7 +249,7 @@ final class FileBrowserViewModelTests: APIClientTestCase {
                 return apiTestJSONResponse(#"{"error": "not found"}"#, for: request, status: 404)
             }
         }
-        FileTreeExpansionStore(server: try XCTUnwrap(URL(string: "https://example.test")), workspace: "/tmp/ws", defaults: defaults).save([])
+        try saveWebUIExpansion([])
         let viewModel = try makeViewModel(client: client)
         await viewModel.loadInitialRootIfNeeded()
 
@@ -280,7 +287,7 @@ final class FileBrowserViewModelTests: APIClientTestCase {
     @MainActor
     func testSelectingAFileOpensAndListsEveryAncestor() async throws {
         let log = RequestLog()
-        FileTreeExpansionStore(server: try XCTUnwrap(URL(string: "https://example.test")), workspace: "/tmp/ws", defaults: defaults).save([])
+        try saveWebUIExpansion([])
         let viewModel = try makeViewModel(client: makeListingClient(log: log))
         await viewModel.loadInitialRootIfNeeded()
         XCTAssertEqual(log.listedPaths, ["."])
@@ -391,5 +398,178 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         XCTAssertFalse(viewModel.isLoadingRoot)
         XCTAssertNil(viewModel.errorMessage)
         XCTAssertNil(viewModel.lastError)
+    }
+
+    // MARK: - Hermes (#1112)
+
+    /// A Hermes tree opens with every folder closed and lists only the chat's folder, since the
+    /// host lists one folder at a time and blocks on protected ones (#1138); a folder lists when
+    /// tapped. Every row is the folder's relative path plus the entry's name, though the host
+    /// answers with resolved `/private/…` paths.
+    @MainActor
+    func testAHermesTreeOpensClosedAndNamesChildrenRelatively() async throws {
+        let cwd = HermesWorkspaceFileClientTests.cwd
+        let files = HermesWorkspaceFileClientTests.client { request in
+            switch HermesWorkspaceFileClientTests.queryPath(request) {
+            case cwd: HermesWorkspaceFileClientTests.listing(cwd, [("src", true), ("README.md", false)])
+            case cwd + "/src": HermesWorkspaceFileClientTests.listing(cwd + "/src", [("Chat", true), ("main.swift", false)])
+            default: nil
+            }
+        }
+        let viewModel = FileBrowserViewModel(files: files, defaults: defaults)
+
+        await viewModel.loadInitialRootIfNeeded()
+
+        XCTAssertEqual(HermesWorkspaceFileClientTests.fileRequests.map(HermesWorkspaceFileClientTests.queryPath), [cwd])
+        XCTAssertEqual(viewModel.visibleNodes(matching: "").map(\.node.path), ["src", "README.md"])
+
+        await viewModel.toggleDirectory("src")
+
+        XCTAssertEqual(HermesWorkspaceFileClientTests.fileRequests.map(HermesWorkspaceFileClientTests.queryPath),
+                       [cwd, cwd + "/src"])
+        XCTAssertEqual(viewModel.visibleNodes(matching: "").map(\.node.path), ["src", "src/Chat", "src/main.swift", "README.md"])
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
+    /// A chat folder that is gone shows the folder-missing state with no rows, as when it was
+    /// deleted after the tree loaded, and reports no error. A missing subfolder fails only its row.
+    @MainActor
+    func testAMissingHermesFolderShowsItsStateAndAMissingSubfolderFailsItsRow() async throws {
+        let cwd = HermesWorkspaceFileClientTests.cwd
+        let rootGone = RequestLog()
+        let missing = HermesHostFixture.Reply.json(200, .object(["entries": .array([]), "error": .string("ENOENT")]))
+        let files = HermesWorkspaceFileClientTests.client { request in
+            switch HermesWorkspaceFileClientTests.queryPath(request) {
+            case cwd: rootGone.shouldFail(cwd) ? missing : HermesWorkspaceFileClientTests.listing(cwd, [("src", true)])
+            case cwd + "/src": missing
+            default: nil
+            }
+        }
+        let viewModel = FileBrowserViewModel(files: files, defaults: defaults)
+
+        await viewModel.loadInitialRootIfNeeded()
+        await viewModel.toggleDirectory("src")
+
+        XCTAssertEqual(viewModel.loadFailure(for: "src"), "This folder is no longer on the server.")
+        XCTAssertNil(viewModel.errorMessage, "A missing subfolder is not the root's failure")
+        XCTAssertNil(viewModel.takeLastError())
+
+        rootGone.setFailing([cwd])
+        await viewModel.refresh()
+
+        XCTAssertEqual(viewModel.errorMessage, "This folder is no longer on the server.")
+        XCTAssertFalse(viewModel.tree.isRootLoaded, "No rows from the folder that is gone")
+        XCTAssertNil(viewModel.takeLastError(), "The host's answer about the folder is not a failed request")
+    }
+
+    /// A folder's first listing still in flight when the chat's folder disappears never lands
+    /// once the folder is back, even after the folder was closed and the root listed again (#188).
+    @MainActor
+    func testAFirstListingInFlightWhenTheFolderDisappearsNeverLands() async throws {
+        let cwd = HermesWorkspaceFileClientTests.cwd
+        let parked = expectation(description: "src's first listing is in flight")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        var rootIsGone = false
+        var srcParks = true
+        let files = HermesWorkspaceFileClientTests.client { request in
+            switch HermesWorkspaceFileClientTests.queryPath(request) {
+            case cwd: return rootIsGone ? .json(200, .object(["entries": .array([]), "error": .string("ENOENT")]))
+                : HermesWorkspaceFileClientTests.listing(cwd, [("src", true)])
+            case cwd + "/src": return srcParks ? .park : HermesWorkspaceFileClientTests.listing(cwd + "/src", [("new.swift", false)])
+            default: return nil
+            }
+        }
+        FileTreeExpansionStore(scope: files.scope, defaults: defaults).save([])
+        let viewModel = FileBrowserViewModel(files: files, defaults: defaults)
+        await viewModel.loadInitialRootIfNeeded()
+        let staleOpen = Task { await viewModel.toggleDirectory("src") }
+        await fulfillment(of: [parked], timeout: 5)
+        await viewModel.toggleDirectory("src")
+
+        HermesHostFixture.script { rootIsGone = true }
+        await viewModel.refresh()
+        HermesHostFixture.script { rootIsGone = false; srcParks = false }
+        await viewModel.refresh()
+        HermesHostFixture.releaseParked(HermesWorkspaceFileClientTests.listing(cwd + "/src", [("old.swift", false)]))
+        await staleOpen.value
+
+        XCTAssertFalse(viewModel.tree.isLoaded("src"), "The listing from before the folder disappeared is stale")
+        await viewModel.toggleDirectory("src")
+        XCTAssertEqual(viewModel.visibleNodes(matching: "").map(\.node.path), ["src", "src/new.swift"])
+    }
+
+    /// The chat's folder moving drops the tree, the expansion and the prefetches, and lists the
+    /// new folder with its own expansion. A listing of the old folder still in flight never lands
+    /// in the new tree, even in a folder of the same name that nothing has listed (#188).
+    @MainActor
+    func testAFolderChangeDropsTheOldTreeAndAStaleListing() async throws {
+        let old = HermesWorkspaceFileClientTests.cwd
+        let new = "/Users/agent/projects/moved"
+        let parked = expectation(description: "the old folder's src listing is in flight")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        let script: (URLRequest) -> HermesHostFixture.Reply? = { request in
+            if request.url?.path == "/api/fs/read-text" { return .json(200, .object(["text": .string("hi")])) }
+            switch HermesWorkspaceFileClientTests.queryPath(request) {
+            case old: return HermesWorkspaceFileClientTests.listing(old, [("src", true), ("notes.txt", false)])
+            case old + "/src": return .park
+            case new: return HermesWorkspaceFileClientTests.listing(new, [("src", true)])
+            case new + "/src": return HermesWorkspaceFileClientTests.listing(new + "/src", [("new.swift", false)])
+            default: return nil
+            }
+        }
+        let oldFiles = HermesWorkspaceFileClientTests.client(script)
+        let newFiles = HermesWorkspaceFileClientTests.client(context: HermesWorkspaceFileClientTests.context(cwd: new), script)
+        FileTreeExpansionStore(scope: oldFiles.scope, defaults: defaults).save([])
+        FileTreeExpansionStore(scope: newFiles.scope, defaults: defaults).save([])
+        let viewModel = FileBrowserViewModel(files: oldFiles, defaults: defaults)
+        await viewModel.loadInitialRootIfNeeded()
+        viewModel.prefetchFile(at: "notes.txt")
+        let prefetch = try XCTUnwrap(viewModel.prefetchedFile(at: "notes.txt"))
+        let staleOpen = Task { await viewModel.toggleDirectory("src") }
+        await fulfillment(of: [parked], timeout: 5)
+
+        await viewModel.switchWorkspace(to: newFiles)
+        HermesHostFixture.releaseParked(HermesWorkspaceFileClientTests.listing(old + "/src", [("old.swift", false)]))
+        await staleOpen.value
+
+        XCTAssertTrue(prefetch.isCancelled)
+        XCTAssertNil(viewModel.prefetchedFile(at: "notes.txt"))
+        XCTAssertEqual(viewModel.expandedPaths, [], "The new folder's own expansion, not the old one's")
+        XCTAssertEqual(viewModel.visibleNodes(matching: "").map(\.node.path), ["src"])
+        XCTAssertFalse(viewModel.tree.isLoaded("src"), "The old folder's src listing is stale")
+        XCTAssertFalse(viewModel.isLoading("src"))
+
+        await viewModel.toggleDirectory("src")
+        XCTAssertEqual(viewModel.visibleNodes(matching: "").map(\.node.path), ["src", "src/new.swift"])
+    }
+
+    /// Expansion is kept per server, Profile, session and folder: two chats on one folder never
+    /// share it.
+    @MainActor
+    func testHermesExpansionIsKeptPerServerProfileAndSession() async throws {
+        let cwd = HermesWorkspaceFileClientTests.cwd
+        let script: (URLRequest) -> HermesHostFixture.Reply? = { request in
+            guard request.url?.path == "/api/fs/list" else { return nil }
+            return HermesWorkspaceFileClientTests.queryPath(request) == cwd
+                ? HermesWorkspaceFileClientTests.listing(cwd, [("src", true)]) : .json(200, .object(["entries": .array([])]))
+        }
+        let first = FileBrowserViewModel(files: HermesWorkspaceFileClientTests.client(script), defaults: defaults)
+        await first.loadInitialRootIfNeeded()
+        await first.toggleDirectory("src")
+        XCTAssertEqual(first.expandedPaths, ["src"])
+
+        let others = [
+            HermesWorkspaceFileClientTests.context(storedKey: "20261008_101600_def456"),
+            HermesWorkspaceFileClientTests.context(profile: "default"),
+            HermesWorkspaceFileClientTests.context(server: URL(string: "https://other.example")!)
+        ]
+        for context in others {
+            let other = FileBrowserViewModel(files: HermesWorkspaceFileClientTests.client(context: context, script), defaults: defaults)
+            await other.loadInitialRootIfNeeded()
+            XCTAssertEqual(other.expandedPaths, [], "\(context) starts with every folder closed")
+        }
+        let same = FileBrowserViewModel(files: HermesWorkspaceFileClientTests.client(script), defaults: defaults)
+        await same.loadInitialRootIfNeeded()
+        XCTAssertEqual(same.expandedPaths, ["src"], "The same chat and folder remembers its layout")
     }
 }

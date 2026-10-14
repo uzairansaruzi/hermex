@@ -49,6 +49,9 @@ final class ComposerFilePathSearch {
 
     private(set) var matches: [Match] = []
     private(set) var isLoading = false
+    /// Bumped by `reset(reloadingOpenQuery: true)`. The panel loads again on it, so a query
+    /// left open while the workspace moved asks the new one rather than showing no rows.
+    private(set) var scopeRevision = 0
 
     /// Directory path → its entries. A composer is short-lived next to a
     /// workspace, and the worst a stale row can do is send the viewer after a
@@ -161,13 +164,17 @@ final class ComposerFilePathSearch {
     /// The session's workspace can be switched underneath a chat (`/workspace`,
     /// or the composer's workspace picker) without the session id changing, and
     /// a folder listed against the old root says nothing about the new one. The
-    /// view model calls this the moment the workspace moves.
-    func reset() {
+    /// view model calls this the moment the workspace moves. `reloadingOpenQuery` asks an
+    /// open panel to load its query again: only for a move the host already applied, such as
+    /// a Hermes chat's `session.info`. A webui switch is optimistic, and a listing taken
+    /// before the server applies it would still answer from the old root.
+    func reset(reloadingOpenQuery: Bool = false) {
         // A listing already in flight belongs to the old workspace; bumping both
         // generations is what stops it reaching the new one's rows and the new
         // one's cache.
         generation &+= 1
         cacheGeneration &+= 1
+        if reloadingOpenQuery { scopeRevision &+= 1 }
         listings.removeAll()
         loadedSessionID = nil
         matches = []

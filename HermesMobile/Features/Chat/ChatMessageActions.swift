@@ -24,37 +24,15 @@ struct ChatMessageActionItem: Identifiable {
         case edit
         case fork
         case copy
-        /// One Tapback; consecutive ones form the menu's inline emoji row.
-        case react(String)
-        case removeReaction
     }
 
     let kind: Kind
-    /// The menu title, and the VoiceOver name of a Tapback, which shows only its emoji.
     let title: String
     let systemImage: String
     let isEnabled: Bool
     let perform: () -> Void
-    /// Draws the item checked; the Tapback row highlights your current reaction.
-    var isSelected = false
 
     var id: Kind { kind }
-
-    @MainActor private static var emojiImages: [String: UIImage] = [:]
-
-    /// A Tapback's emoji drawn as its menu image. A small-element menu row
-    /// shows images only, so the item title stays free for VoiceOver.
-    @MainActor
-    static func emojiImage(_ emoji: String) -> UIImage {
-        if let image = emojiImages[emoji] { return image }
-        let attributes: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 22)]
-        let text = emoji as NSString
-        let image = UIGraphicsImageRenderer(size: text.size(withAttributes: attributes)).image { _ in
-            text.draw(at: .zero, withAttributes: attributes)
-        }.withRenderingMode(.alwaysOriginal)
-        emojiImages[emoji] = image
-        return image
-    }
 }
 
 /// The long-press menu is built from the item list alone, so any transcript
@@ -63,38 +41,15 @@ struct ChatMessageActionItem: Identifiable {
 extension Array where Element == ChatMessageActionItem {
     @MainActor
     func uiMenu() -> UIMenu {
-        var children: [UIMenuElement] = []
-        var tapbacks: [UIAction] = []
-        func closeTapbackRow() {
-            guard !tapbacks.isEmpty else { return }
-            children.append(UIMenu(options: .displayInline, preferredElementSize: .small, children: tapbacks))
-            tapbacks = []
-        }
-        for item in self {
-            let image: UIImage?
-            if case .react(let emoji) = item.kind {
-                image = ChatMessageActionItem.emojiImage(emoji)
-            } else {
-                image = UIImage(systemName: item.systemImage)
-            }
-            let action = UIAction(title: item.title, image: image) { _ in
+        UIMenu(children: map { item in
+            let action = UIAction(title: item.title, image: UIImage(systemName: item.systemImage)) { _ in
                 item.perform()
             }
             if !item.isEnabled {
                 action.attributes = .disabled
             }
-            if item.isSelected {
-                action.state = .on
-            }
-            if case .react = item.kind {
-                tapbacks.append(action)
-            } else {
-                closeTapbackRow()
-                children.append(action)
-            }
-        }
-        closeTapbackRow()
-        return UIMenu(children: children)
+            return action
+        })
     }
 }
 

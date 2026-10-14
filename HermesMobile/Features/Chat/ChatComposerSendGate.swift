@@ -42,7 +42,7 @@ struct ChatComposerSendButton: Equatable {
     let runningBehavior: StreamingSendBehavior?
     /// A Hermes session with files staged (#1012): only a fresh turn takes them, so Steer
     /// drops out and a Steer default queues them. Stop and send stays, text-only, and
-    /// leaves them staged (the Bot rule, `BotPromptMode.busyChoices`).
+    /// leaves them staged.
     let stagedFilesDropSteer: Bool
 
     init(isWaitingForStream: Bool, hasText: Bool, hasQuotes: Bool, defaultBehavior: StreamingSendBehavior,

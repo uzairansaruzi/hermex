@@ -18,7 +18,8 @@ struct GitInlineCommitButton: View {
 
     /// Non-nil while a commit pipeline is running anywhere in the chat.
     let runningPhase: GitCommitPhase?
-    /// Disabled while streaming or viewing cached data (writes are unavailable then).
+    /// Disabled while streaming or viewing cached data (writes are unavailable then), or while
+    /// the commit sheet writes to a Hermes repository.
     let isDisabled: Bool
     let action: () -> Void
 

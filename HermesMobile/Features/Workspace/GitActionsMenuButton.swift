@@ -5,6 +5,9 @@ struct GitActionsMenuButton: View {
     let isEnabled: Bool
     let fetchDisabled: Bool
     let writesDisabled: Bool
+    /// Shows the branch and its distance from upstream as a row and leaves out Fetch and Pull,
+    /// for a repository without sync (`GitWriteAvailability.hidesSync`).
+    var hidesSync = false
     let isRunningAction: Bool
     let onTap: () -> Void
     let onChanges: () -> Void
@@ -21,6 +24,12 @@ struct GitActionsMenuButton: View {
 
     var body: some View {
         Menu {
+            if hidesSync, let branch = presentation.branchSummary {
+                Section {
+                    Label(branch, systemImage: "arrow.triangle.branch")
+                }
+            }
+
             Section("Changes") {
                 Button(action: onChanges) {
                     changesLabel
@@ -33,23 +42,38 @@ struct GitActionsMenuButton: View {
                 .disabled(!presentation.changesAreEnabled || !hasChanges)
             }
 
-            Section("Write") {
-                HapticButton(feedbackStyle: .medium, action: onCommit) {
-                    Label("Commit", systemImage: "checkmark.seal")
-                }
-                .disabled(writesDisabled || isRunningAction || !hasChanges)
+            writeSections
+        } label: {
+            Image(systemName: "arrow.triangle.branch")
+                .frame(width: 24, height: 24)
+        }
+        .disabled(!isEnabled)
+        .simultaneousGesture(TapGesture().onEnded(onTap))
+        .frame(minWidth: 28, minHeight: 28)
+        .accessibilityLabel("Git actions")
+        .accessibilityValue(Text(presentation.accessibilityValue))
+    }
 
-                HapticButton(feedbackStyle: .medium, action: onCommitAndPush) {
-                    Label("Commit & Push", systemImage: "arrow.up.doc")
-                }
-                .disabled(writesDisabled || isRunningAction || !hasChanges)
-
-                HapticButton(feedbackStyle: .medium, action: onPush) {
-                    Label("Push", systemImage: "arrow.up.circle")
-                }
-                .disabled(writesDisabled || isRunningAction)
+    @ViewBuilder
+    private var writeSections: some View {
+        Section("Write") {
+            HapticButton(feedbackStyle: .medium, action: onCommit) {
+                Label("Commit", systemImage: "checkmark.seal")
             }
+            .disabled(writesDisabled || isRunningAction || !hasChanges)
 
+            HapticButton(feedbackStyle: .medium, action: onCommitAndPush) {
+                Label("Commit & Push", systemImage: "arrow.up.doc")
+            }
+            .disabled(writesDisabled || isRunningAction || !hasChanges)
+
+            HapticButton(feedbackStyle: .medium, action: onPush) {
+                Label("Push", systemImage: "arrow.up.circle")
+            }
+            .disabled(writesDisabled || isRunningAction)
+        }
+
+        if !hidesSync {
             Section("Update") {
                 HapticButton(feedbackStyle: .medium, action: onFetch) {
                     Label("Fetch", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
@@ -61,15 +85,7 @@ struct GitActionsMenuButton: View {
                 }
                 .disabled(writesDisabled || isRunningAction)
             }
-        } label: {
-            Image(systemName: "arrow.triangle.branch")
-                .frame(width: 24, height: 24)
         }
-        .disabled(!isEnabled)
-        .simultaneousGesture(TapGesture().onEnded(onTap))
-        .frame(minWidth: 28, minHeight: 28)
-        .accessibilityLabel("Git actions")
-        .accessibilityValue(Text(presentation.accessibilityValue))
     }
 
     @ViewBuilder

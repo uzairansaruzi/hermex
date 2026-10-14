@@ -1,4 +1,5 @@
 import XCTest
+import Observation
 import UIKit
 @testable import HermesMobile
 
@@ -62,6 +63,18 @@ final class BotMentionTests: XCTestCase {
         XCTAssertEqual(mentions.resolve(ignored + "\n@RESEARCH please @research").map(\.id), ["research"])
     }
 
+    func testFileReferencesAreNotMentionsButPunctuatedMentionsAre() {
+        let mentions = BotMentions(roster: [bot("docs"), bot("research")], excluding: "dev")
+        for path in ["@docs/plan.md", "@docs/", "@docs.md", "@docs\\plan.md", "@docs-v2/x", "@research.swift"] {
+            XCTAssertTrue(mentions.annotation(for: "see \(path) please").isEmpty, path)
+        }
+        XCTAssertEqual(mentions.resolve("@docs, look at @research.").map(\.id), ["docs", "research"])
+        XCTAssertEqual(mentions.resolve("ask @research: then (@docs) @docs!").map(\.id), ["research", "docs"])
+        XCTAssertEqual(mentions.resolve("@docs? @research's notes").map(\.id), ["docs", "research"])
+        XCTAssertEqual(mentions.resolve("open @docs/plan.md then ask @docs...").map(\.id), ["docs"])
+        XCTAssertTrue(mentions.resolve("me@docs.io").isEmpty)
+    }
+
     func testExactAnnotationBytesAndMentionOrder() {
         let mentions = BotMentions(roster: [bot("research", title: "Research Buddy"), bot("default")], excluding: "dev")
         let suffix = ". If they want one of these agents contacted, compose your own message and send it with your message_agent tool (agents on other connected machines are reachable too — the Desktop relays it); never forward the user’s text verbatim. If this session has no message_agent tool, agent messaging is unavailable here — say so.]"
@@ -114,85 +127,173 @@ final class BotMentionTests: XCTestCase {
         let sent = original + mentions.annotation(for: original)
         XCTAssertEqual(BotMentions.displayText(sent), original)
         XCTAssertEqual(BotMentions.displayText(sent + "\nmore user text"), sent + "\nmore user text")
-        let projected = BotTranscriptProjection.project(history: [
-            .object(["role": .string("user"), "text": .string(sent)]),
-            .object(["role": .string("assistant"), "text": .string(sent)])
+        let projected = HermesTranscriptProjection.project([
+            .object(["id": .number(1), "role": .string("user"), "content": .string(sent)]),
+            .object(["id": .number(2), "role": .string("assistant"), "content": .string(sent)])
         ], root: "root")
         XCTAssertEqual(projected.messages.map(\.content), [original, sent])
     }
 }
 
-@MainActor final class BotMentionSendingTests: XCTestCase {
-    func testEveryPromptModeAnnotatesTransportAndHidesLiveAndResumedNote() async throws {
-        let target = BotProfile(.object(["name": .string("default"), "display_name": .string("Chief")]))!
-        for mode in BotPromptMode.allCases {
-            let wire = BotFixtureWire()
-            wire.running = mode != .send
-            let model = make(wire, roster: [target])
-            await model.recover()
-            let original = "@chief summarize"
-            model.editDraft(original)
-            let sent = original + model.mentions.annotation(for: original)
-            await model.submit(try XCTUnwrap(model.preparePrompt(mode)))
-            let calls = wire.calls.filter { $0.0 == mode.call(runtime: "", text: "").method }
-            XCTAssertEqual(calls.count, 1)
-            XCTAssertEqual(calls.first?.1["text"], .string(sent))
-            if mode == .send || mode == .queue { XCTAssertEqual(calls.first?.1["queued"], .bool(true)) }
-            XCTAssertEqual(model.draft, "")
-            model.suspend()
-            wire.history = [.object(["role": .string("user"), "text": .string(sent)])]
-            wire.inflight = .object(["user": .string(sent)])
-            await model.recover()
-            XCTAssertEqual(model.messages.first?.content, original)
-            // History already lists the prompt, so the live row yields to it.
-            XCTAssertTrue(model.liveMessages.isEmpty)
-            model.suspend()
+/// `@`mentions in a bot's Bot Chat opened in the main chat (#1145). The host delivers them only
+/// there (`tools/bot_mode_dm.py`), so a session sends `@` text as typed. Over #901's
+/// socket-level host, whose `profiles.list` is this connection's roster.
+@MainActor final class HermesChatMentionTests: XCTestCase {
+    private static let server = URL(string: "https://hermes.example")!
+    private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
+                                                  username: "user", password: "fixture")
+    private static let roster: BotJSON = .object(["profiles": .array([
+        .object(["name": .string("default")]),
+        .object(["name": .string("helper"), "ui_meta": .object(["hermes-bots": .object(["title": .string("Inbox Triage")])])])
+    ])])
+    /// The same roster, both bots with pictures.
+    private static let pictured: BotJSON = .object(["profiles": .array(["default", "helper"].map {
+        .object(["name": .string($0), "has_avatar": .bool(true)])
+    })])
+
+    /// Every prompt mode sends the typed text with Desktop's identification note after it, while
+    /// the chat shows the typed text: the optimistic row, and the queued prompt's receipt.
+    func testEveryPromptModeAnnotatesTheSendAndShowsTheTypedText() async throws {
+        let chat = await openChat(target: .canonicalChat(profile: "default"))
+        XCTAssertEqual(chat.turn.mentions?.completions(query: "").map(\.profile.id), ["helper"],
+                       "this connection's other bots, never the open one")
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("@inbox-triage sort today")
+        let sent = try XCTUnwrap(chat.writes("prompt.submit").last?["text"]?.text)
+        XCTAssertTrue(sent.hasPrefix("@inbox-triage sort today\n\n[@mentions resolved from the Bot Mode roster"))
+        XCTAssertTrue(sent.contains("@helper = agent profile \"helper\" (\"Inbox Triage\")"))
+        XCTAssertEqual(BotMentions.displayText(sent), "@inbox-triage sort today")
+        XCTAssertEqual(chat.model.messages.last?.content, "@inbox-triage sort today")
+
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("queued")])))
+        chat.host.always("session.steer", .init(result: .object(["status": .string("queued")])))
+        chat.host.always("session.redirect", .init(result: .object(["status": .string("queued")])))
+        for mode in [BotPromptMode.queue, .steer, .redirect] {
+            _ = try await chat.turn.submit("@helper \(mode)", mode: mode)
+            let method = mode.call(runtime: "", text: "").method
+            let text = try XCTUnwrap(chat.writes(method).last?["text"]?.text)
+            XCTAssertEqual(BotMentions.displayText(text), "@helper \(mode)")
+            XCTAssertNotEqual(text, "@helper \(mode)", "\(mode) carries the note")
         }
+        XCTAssertEqual(chat.turn.queuedPrompt?.contains("[@mentions"), false, "the receipt shows what was typed")
     }
 
-    func testStaleActionCannotSendAndFailureKeepsUnannotatedDraft() async throws {
-        let target = BotProfile(.object(["name": .string("default")]))!
-        let wire = BotFixtureWire()
-        let model = make(wire, roster: [target])
-        await model.recover()
-        model.editDraft("@hermes hello")
-        let stale = try XCTUnwrap(model.preparePrompt(.send))
-        model.suspend()
-        await model.recover()
-        await model.submit(stale)
-        XCTAssertFalse(wire.calls.contains { $0.0 == "prompt.submit" })
-        wire.submitFailure = .rejected(4002)
-        await model.send()
-        XCTAssertEqual(model.draft, "@hermes hello")
-        model.suspend()
+    /// A restored prompt with an attachment hides its note: the host adds its context footer
+    /// after the note (`agent/context_references.py`), so the footer and reference lines go
+    /// first and the file stays a chip. A note the user typed that only looks like one stays.
+    func testARestoredPromptHidesTheNoteBeforeTheHostsContextFooter() throws {
+        let helper = try XCTUnwrap(BotProfile(Self.roster["profiles"].list?[1] ?? .null))
+        let note = BotMentions(roster: [helper], excluding: "default").annotation(for: "@helper look")
+        let sent = "@helper look\n\n@file:`/work/plan.md`"
+        let footers = ["\n\n--- Attached Context ---\n\n📄 @file:plan.md (12 tokens)\n# Plan",
+                       "\n\n--- Context Warnings ---\n- @file:`/work/plan.md`: file not found",
+                       "\n\n--- Context Warnings ---\n- too large\n\n--- Attached Context ---\n\n# Plan"]
+        for footer in footers {
+            let shown = HermesChatTurnCoordinator.displayed(ChatMessage(role: "user", content: sent + note + footer,
+                                                                        timestamp: nil, messageId: nil))
+            XCTAssertEqual(shown.content, "@helper look", footer)
+            XCTAssertEqual(shown.attachments?.map(\.name), ["plan.md"], footer)
+        }
+
+        let typed = note.replacingOccurrences(of: "@helper = agent profile \"helper\" (\"Inbox Triage\")", with: "my notes")
+        let shown = HermesChatTurnCoordinator.displayed(ChatMessage(role: "user", content: sent + typed + footers[0],
+                                                                    timestamp: nil, messageId: nil))
+        XCTAssertEqual(shown.content, "@helper look" + typed)
+        XCTAssertEqual(shown.attachments?.map(\.name), ["plan.md"])
     }
 
-    func testAttachmentsKeepReferencesAndResolveOnlyTheTypedDraft() async throws {
-        let target = BotProfile(.object(["name": .string("default")]))!
-        let fileBot = BotProfile(.object(["name": .string("file")]))!
-        let wire = BotFixtureWire()
-        let model = make(wire, roster: [target, fileBot])
-        await model.recover()
-        await model.attachments.stage(data: Data("hello".utf8), filename: "note.txt")
-        wire.attachFile = { _ in
-            .object(["attached": .bool(true), "path": .string("/attachments/note.txt"),
-                     "ref_text": .string("@file:/attachments/note.txt")])
-        }
-        model.editDraft("@hermes read this")
-        await model.send()
-        let sent = try XCTUnwrap(wire.calls.first { $0.0 == "prompt.submit" }?.1["text"]?.text)
-        XCTAssertTrue(sent.contains("@file:/attachments/note.txt"))
-        XCTAssertTrue(sent.hasSuffix(model.mentions.annotation(for: "@hermes read this")))
+    /// A file's reference stays in the prompt, and the note resolves only what was typed: the
+    /// `@file:` reference never mentions a bot named "file".
+    func testAttachmentsKeepTheirReferenceAndOnlyTheTypedTextIsResolved() async throws {
+        let roster: BotJSON = .object(["profiles": .array(["default", "helper", "file"].map { .object(["name": .string($0)]) })])
+        let chat = await openChat(target: .canonicalChat(profile: "default"), roster: roster)
+        let ref = "@file:/work/attachments/note.txt"
+        chat.host.always("file.attach", .init(result: .object([
+            "attached": .bool(true), "path": .string("/work/attachments/note.txt"), "ref_text": .string(ref)
+        ])))
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        await chat.model.uploadAttachment(data: Data("hello".utf8), filename: "note.txt")
+        _ = await chat.model.sendMessage("@helper read this")
+        let sent = try XCTUnwrap(chat.writes("prompt.submit").last?["text"]?.text)
+        XCTAssertTrue(sent.hasPrefix("@helper read this\n\n" + ref))
+        let note = try XCTUnwrap(chat.turn.mentions).annotation(for: "@helper read this")
+        XCTAssertFalse(note.isEmpty)
+        XCTAssertTrue(sent.hasSuffix(note))
         XCTAssertFalse(sent.contains("agent profile \"file\""))
-        model.suspend()
     }
 
-    private func make(_ wire: BotFixtureWire, roster: [BotProfile]) -> BotConversation {
-        BotConversation(server: URL(string: "https://webui.example")!,
-                        connection: BotConnection(id: UUID(), name: "Test", address: URL(string: "https://bot.example")!, username: "test", password: "test"),
-                        profile: BotProfile(.object(["name": .string("inbox-triage")]))!, roster: roster,
-                        wire: wire, drafts: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60)),
-                        attachmentCopies: BotAttachmentCopies())
+    /// A session sends `@` text exactly as typed: only a Bot Chat's host delivers a mention.
+    func testASessionSendsMentionsAsTyped() async throws {
+        let chat = await openChat(target: .session(profile: "default", key: "tip"))
+        XCTAssertNil(chat.turn.mentions)
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("@inbox-triage sort today")
+        XCTAssertEqual(chat.writes("prompt.submit").last?["text"], .string("@inbox-triage sort today"))
+    }
+
+    /// A Bot Chat opened straight from its row, never through the Bots inbox, loads the roster's
+    /// pictures itself, for its pill and its `@` panel. A session loads none.
+    func testABotChatLoadsItsRostersPictures() async throws {
+        let chat = await openChat(target: .canonicalChat(profile: "default"), roster: Self.pictured)
+        await waitUntil("the pictures") { chat.turn.settings.avatars.count == 2 }
+        XCTAssertEqual(chat.turn.settings.avatars.keys.sorted(), ["default", "helper"])
+        XCTAssertEqual(chat.writes("profiles.get_asset").compactMap { $0["name"]?.text }, ["default", "helper"])
+
+        let session = await openChat(target: .session(profile: "default", key: "tip"), roster: Self.pictured)
+        XCTAssertEqual(session.writes("profiles.get_asset"), [])
+        XCTAssertTrue(session.turn.settings.avatars.isEmpty)
+    }
+
+    private struct Chat {
+        let model: ChatViewModel
+        let turn: HermesChatTurnCoordinator
+        let host: BotSocketHost
+
+        func writes(_ method: String) -> [[String: BotJSON]] {
+            host.requests.filter { $0["method"].text == method }.compactMap { $0["params"].fields }
+        }
+    }
+
+    /// An idle chat on runtime `runtime` at tip `tip`, once its `roster` has been read.
+    private func openChat(target: ConversationTarget, roster: BotJSON = HermesChatMentionTests.roster) async -> Chat {
+        addTeardownBlock { HermesHostFixture.reset() }
+        let host = BotSocketHost()
+        host.always("session.resume", .init(result: .object([
+            "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
+            "messages": .array([]), "info": .object(["profile_name": .string("default")])
+        ])))
+        host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
+        host.always("profiles.list", .init(result: roster))
+        host.always("profiles.get_asset", .init(result: .object(["found": .bool(true), "data": .string(botAvatarDataURL(side: 4))])))
+        let client = BotClient(http: host.connection(Self.connection))
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/sessions/tip/messages" ? .json(200, .object(["messages": .array([])])) : nil
+        }
+        let engine = HermesConversation(server: Self.server, connection: Self.connection, target: target, wire: client)
+        let turn = HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })
+        let copies = BotAttachmentCopies()
+        let model = ChatViewModel(
+            session: SessionSummary(profile: "default"), server: Self.server, streamingScrollCoalescingDelayNanoseconds: 0,
+            draftAttachmentStore: copies,
+            draftStore: ChatDraftStore(persistence: BotMemoryDrafts(), attachmentStore: copies, debounceDuration: .seconds(60)),
+            backend: .hermes(turn)
+        )
+        await model.loadMessages()
+        XCTAssertEqual(engine.connectionState, .connected)
+        await waitUntil("the roster") { turn.settings.profiles.count == roster["profiles"].list?.count }
+        return Chat(model: model, turn: turn, host: host)
+    }
+
+    /// Waits on observation, never a clock, until `condition` holds.
+    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
+                           _ condition: @escaping @MainActor () -> Bool) async {
+        while !condition() {
+            let changed = XCTestExpectation(description: description)
+            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
+            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
+                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
+            }
+        }
     }
 }
 

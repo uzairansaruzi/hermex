@@ -47,7 +47,7 @@ import XCTest
             XCTAssertTrue(inbox.rooms.isEmpty)
             XCTAssertNil(inbox.searchableRoomIDs)
             let hits = try await cache.search("Message", scope: .init(server: key().server, connectionID: connection.id),
-                                             profileIDs: [], roomIDs: inbox.searchableRoomIDs)
+                                             roomIDs: inbox.searchableRoomIDs)
             let hit = try XCTUnwrap(hits.first)
             XCTAssertEqual(inbox.roomForSearch(hit)?.name, "Comms")
             XCTAssertEqual(inbox.selectRoomSearchHit(hit)?.id, room.id)
@@ -129,7 +129,7 @@ import XCTest
         let cache = BotHistoryCache(), wire = RoomWire(); wire.latest = 500
         let first = makeReader(wire, cache: cache); await first.open(); first.close()
         let hits = try await cache.search("Message 345", scope: .init(server: key().server, connectionID: connection.id),
-                                         profileIDs: [], roomIDs: [key().roomID])
+                                         roomIDs: [key().roomID])
         let selected = try XCTUnwrap(hits.first)
         XCTAssertEqual(selected.message.seq, 345)
         let nextWire = RoomWire(); nextWire.latest = 500
@@ -192,7 +192,8 @@ import XCTest
         XCTAssertEqual(log.events.map(\.seq), [3, 204])
     }
 
-    func testOnlyRoomMessagesDateAGapFromCreatedAt() {
+    /// A room row's footer time is its event's `created_at`, never the phone clock.
+    func testRoomEventTimestampComesFromCreatedAt() {
         func event(_ seq: Int, _ kind: String, at createdAt: Double?) -> BotRoomEvent? {
             var object: [String: BotJSON] = ["seq": .number(Double(seq)), "kind": .string(kind)]
             if let createdAt { object["created_at"] = .number(createdAt) }
@@ -201,14 +202,9 @@ import XCTest
         let events = [
             event(1, "message.user", at: 1_000),
             event(2, "message.member", at: 1_060),
-            event(3, "turn.failed", at: 5_000),
-            event(4, "message.member", at: 1_060 + 1_799),
-            event(5, "message.user", at: nil),
-            event(6, "message.user", at: 1_060 + 1_799 + 1_800)
+            event(3, "message.user", at: nil)
         ].compactMap { $0 }
-        XCTAssertEqual(events.map(\.timestamp), [1_000, 1_060, 5_000, 2_859, nil, 4_659])
-        XCTAssertEqual(BotRoomEvent.gapStarts(in: events), [1, 6], "a system row's created_at neither dates nor resets a gap")
-        XCTAssertEqual(BotRoomEvent.gapStarts(in: events[1...]), [2, 6], "the window's first message is dated")
+        XCTAssertEqual(events.map(\.timestamp), [1_000, 1_060, nil])
     }
 
     func testARoomIsNewUntilItsFirstUserOrMemberMessage() async throws {
@@ -541,6 +537,22 @@ import XCTest
         XCTAssertEqual(reader.draft, "")
         XCTAssertEqual(reader.events.count, 1)
         reader.close()
+    }
+
+    func testAMalformedRoomChoicesOffersOnlyDenyAndAnAbsentListKeepsTheRoomDefault() {
+        func action(_ choices: BotJSON?) -> BotRoomAction {
+            var body: [String: BotJSON] = ["command": .string("echo hello")]
+            if let choices { body["choices"] = choices }
+            return BotRoomAction(.object(["kind": .string("approval"), "member_id": .string("chief"),
+                "task_id": .string("task:1"), "execution_generation": .number(1), "request_id": .string("approval:1"),
+                "approval": .object(body)]))
+        }
+        for malformed: BotJSON in [.null, .string("once"), .object(["once": .bool(true)]), .number(1)] {
+            let room = action(malformed)
+            XCTAssertEqual(room.approval?.choices, [.deny], "\(malformed)")
+            XCTAssertNil(room.call(roomID: "fixture-room", choice: .once), "once cannot be sent for \(malformed)")
+        }
+        XCTAssertEqual(action(nil).approval?.choices, [.once, .deny])
     }
 
     func testStaleApprovalFailsAtActualWriteAndRejectsPermanentChoices() async throws {

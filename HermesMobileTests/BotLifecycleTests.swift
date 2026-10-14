@@ -1,3 +1,4 @@
+import SwiftData
 import XCTest
 @testable import HermesMobile
 
@@ -306,6 +307,31 @@ import XCTest
         XCTAssertEqual(inbox.profiles.map(\.id), ["keep"])
         XCTAssertNil(inbox.notice)
         XCTAssertEqual(BotUnreadStore(defaults: defaults).load(connectionID: inbox.connection!.id).keys.sorted(), ["keep"])
+    }
+
+    /// A deleted bot's Bot Chat leaves the offline cache, so a bot made again under its name
+    /// never shows it; the other bots' stay.
+    func testDeleteDropsTheBotsCachedBotChat() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage"), row("keep")])
+        wire.delete = { _ in wire.roster = [self.row("keep")] }
+        let inbox = try makeInbox(wires: [wire]) { _, _ in }
+        let context = ModelContext(try ModelContainer(for: CachedSession.self, CachedMessage.self,
+                                                      configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
+        inbox.offlineCache = context
+        await inbox.open()
+        let connection = try XCTUnwrap(inbox.connection?.id)
+        for profile in ["triage", "keep"] {
+            try CacheStore.cacheHermesMessages([ChatMessage(role: "user", content: "Hi", timestamp: 1, messageId: "1", rowID: 1)],
+                                               newestCoverage: .all, serverURL: server,
+                                               scope: CacheStore.hermesBotChatScope(connectionID: connection, profile: profile, root: "root"),
+                                               in: context)
+        }
+
+        await inbox.delete(inbox.profiles[0])
+
+        XCTAssertNil(try CacheStore.cachedHermesBotChatRoot(serverURL: server, connectionID: connection, profile: "triage", in: context))
+        XCTAssertEqual(try CacheStore.cachedHermesBotChatRoot(serverURL: server, connectionID: connection, profile: "keep", in: context),
+                       "root")
     }
 
     func testDefaultProfileCannotBeDeleted() async throws {

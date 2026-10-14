@@ -87,9 +87,8 @@ enum HermesCall: Equatable, Sendable {
     case promptSubmit(sessionID: String, text: String)
     /// Cuts the transcript at one durable prompt row and starts the turn again with
     /// `text`, in one call under the host's history lock. Never `queued`: the host
-    /// refuses a cut while busy (4009) instead of queueing or steering it. Bot Chat's
-    /// retry of a failed turn (#878) uses it, and so do a Hermes session's Edit,
-    /// Regenerate and `/retry` (#1049).
+    /// refuses a cut while busy (4009) instead of queueing or steering it. A Hermes
+    /// chat's retry of a failed turn (#878), Edit, Regenerate and `/retry` (#1049) use it.
     case promptRewind(sessionID: String, text: String, beforeRowID: Int)
     /// `/undo` in a Hermes session (#1049): rewinds the last real user turn on `runtime`
     /// and answers `{removed}`. Refused while a turn runs (4009).
@@ -115,8 +114,6 @@ enum HermesCall: Equatable, Sendable {
     case requestAnswer(id: String, result: RequestAnswer)
     case clarifyLock(requestID: String, questionID: String, answer: String)
     case connectionRespond(sessionID: String, opID: String, answer: BotConnectionOperation.Answer)
-    /// Your own Tapback on one persisted row; nil clears it.
-    case messageReact(sessionID: String, rowID: Int, emoji: String?)
 
     // Runtime-scoped session settings
     case modelOptions(sessionID: String, profile: String)
@@ -132,7 +129,10 @@ enum HermesCall: Equatable, Sendable {
     // Composer panels
     case commandsCatalog(sessionID: String)
     case commandDispatch(name: String, argument: String, sessionID: String)
-    case completePath(word: String, sessionID: String, profile: String)
+    /// `timesOutLocally`: the Hermes chat's `@` lookups (#1113) fail only themselves when the
+    /// host never answers; without it the call keeps the required-call policy, ending the
+    /// connection.
+    case completePath(word: String, sessionID: String, profile: String, timesOutLocally: Bool = false)
     /// `complete.path` for a host folder outside any session (#1052): `word` is a path from the
     /// host's root or home (`HermesFolderCompletion.completes`), so no session's folder resolves it.
     case completeFolder(word: String, profile: String)
@@ -142,6 +142,13 @@ enum HermesCall: Equatable, Sendable {
     /// Runs one typed `/name …` line on the session (#1036): the host's built-ins, the user's
     /// quick commands (which can run shell) and plugin commands, as Desktop runs them.
     case slashExec(sessionID: String, command: String)
+
+    // Git (#1115)
+    /// A commit message for `diff`, from `llm.oneshot`'s `commit_message` template at Desktop's
+    /// temperature: one stateless model call outside the conversation, on the model of the
+    /// runtime `sessionID` names when there is one, else the Profile's task backend. `avoid` is the
+    /// last suggestion, which the host is told not to repeat. Answers `{text}`.
+    case commitMessage(diff: String, recentCommits: String, avoid: String?, sessionID: String?, profile: String)
 
     // Usage
     /// The Profile's visible sessions started in the last `days` (1-365) and their messages, over
@@ -293,7 +300,6 @@ enum HermesCall: Equatable, Sendable {
         case .requestAnswer: return "request.answer"
         case .clarifyLock: return "clarify.lock"
         case .connectionRespond: return "connection.respond"
-        case .messageReact: return "message.react"
         case .modelOptions, .configuredModelOptions, .profileModelOptions: return "model.options"
         case .configSet: return "config.set"
         case .sessionCwdSet: return "session.cwd.set"
@@ -305,6 +311,7 @@ enum HermesCall: Equatable, Sendable {
         case .completeSlash: return "complete.slash"
         case .slashExec: return "slash.exec"
         case .insightsGet: return "insights.get"
+        case .commitMessage: return "llm.oneshot"
         case .subagentList: return "subagent.list"
         case .subagentTail: return "subagent.tail"
         case .subagentInterrupt: return "subagent.interrupt"
@@ -412,8 +419,6 @@ enum HermesCall: Equatable, Sendable {
             if Self.predatesSessionOwner(hostVersion) { params["session_id"] = .string(sessionID) }
             else { params["owner"] = .object(["type": .string("session"), "session_id": .string(sessionID)]) }
             return params
-        case .messageReact(let sessionID, let rowID, let emoji):
-            return ["session_id": .string(sessionID), "row_id": .number(Double(rowID)), "emoji": emoji.map(BotJSON.string) ?? .null]
         case .modelOptions(let sessionID, let profile), .sessionControlRead(let sessionID, let profile):
             return ["session_id": .string(sessionID), "profile": .string(profile)]
         case .configuredModelOptions: return ["include_unconfigured": .bool(false)]
@@ -441,12 +446,19 @@ enum HermesCall: Equatable, Sendable {
             return ["session_id": .string(sessionID), "profile": .string(profile), "action": .string(action)]
         case .commandDispatch(let name, let argument, let sessionID):
             return ["name": .string(name), "arg": .string(argument), "session_id": .string(sessionID)]
-        case .completePath(let word, let sessionID, let profile):
+        case .completePath(let word, let sessionID, let profile, _):
             return ["word": .string(word), "session_id": .string(sessionID), "profile": .string(profile)]
         case .completeFolder(let word, let profile): return ["word": .string(word), "profile": .string(profile)]
         case .completeSlash(let text, let sessionID): return ["text": .string(text), "session_id": .string(sessionID)]
         case .slashExec(let sessionID, let command): return ["session_id": .string(sessionID), "command": .string(command)]
         case .insightsGet(let days, let profile): return ["days": .number(Double(days)), "profile": .string(profile)]
+        case .commitMessage(let diff, let recentCommits, let avoid, let sessionID, let profile):
+            var variables: [String: BotJSON] = ["diff": .string(diff), "recent_commits": .string(recentCommits)]
+            if let avoid { variables["avoid"] = .string(avoid) }
+            var params: [String: BotJSON] = ["template": .string("commit_message"), "variables": .object(variables),
+                                             "temperature": .number(0.8), "profile": .string(profile)]
+            if let sessionID { params["session_id"] = .string(sessionID) }
+            return params
         case .subagentTail(let sessionID, let subagentID), .subagentInterrupt(let sessionID, let subagentID):
             return ["session_id": .string(sessionID), "subagent_id": .string(subagentID)]
         case .groupsList(let offset):
@@ -539,7 +551,7 @@ enum HermesCall: Equatable, Sendable {
                 && text.contains(" ")
         case .slashExec(let sessionID, let command):
             valid = !sessionID.isEmpty && Self.isSlashLine(command) && command.dropFirst().first?.isWhitespace == false
-        case .completePath(let word, let sessionID, let profile):
+        case .completePath(let word, let sessionID, let profile, _):
             valid = !word.isEmpty && !word.contains(where: \.isWhitespace) && !sessionID.isEmpty && !profile.isEmpty
         case .subagentTail(let sessionID, let subagentID), .subagentInterrupt(let sessionID, let subagentID):
             valid = !sessionID.isEmpty && !subagentID.isEmpty
@@ -552,8 +564,6 @@ enum HermesCall: Equatable, Sendable {
                 answerIsValid = !target.isEmpty && env.allSatisfy { !$0.key.isEmpty && !$0.value.isEmpty }
             }
             valid = !sessionID.isEmpty && !opID.isEmpty && answerIsValid
-        case .messageReact(let sessionID, _, let emoji):
-            valid = !sessionID.isEmpty && emoji?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != true
         case .promptRewind(let sessionID, let text, let rowID):
             valid = !sessionID.isEmpty && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && rowID > 0
         case .promptBtw(let sessionID, let text), .promptBackground(let sessionID, let text):
@@ -562,6 +572,8 @@ enum HermesCall: Equatable, Sendable {
         case .groupsList(let offset): valid = offset >= 0
         case .profileModelOptions(let profile): valid = !profile.isEmpty
         case .insightsGet(let days, let profile): valid = (1...365).contains(days) && !profile.isEmpty
+        case .commitMessage(let diff, _, let avoid, let sessionID, let profile):
+            valid = !Self.isBlank(diff) && avoid.map(Self.isBlank) != true && sessionID?.isEmpty != true && !profile.isEmpty
         case .groupsState(let roomID), .groupsDisband(let roomID): valid = BotRoomRPC.validID(roomID)
         case .groupsLog(let roomID, let sinceSeq, let limit):
             valid = BotRoomRPC.validID(roomID) && sinceSeq >= 0 && (1...Self.roomPageSize).contains(limit)

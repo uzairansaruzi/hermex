@@ -2,7 +2,8 @@ import SwiftUI
 import UIKit
 
 /// A short confirmation with one action, such as "Archived · Undo" after a
-/// session is archived (#865). `ActionToastState` holds at most one;
+/// session is archived (#865), or a notice with none, such as why a session
+/// link opened nothing (#1176). `ActionToastState` holds at most one;
 /// `ActionToastView` draws it wherever its host places it.
 struct ActionToast: Identifiable {
     let id = UUID()
@@ -11,8 +12,9 @@ struct ActionToast: Identifiable {
     /// What VoiceOver reads in place of `message`, naming what was acted on
     /// ("Planning, Archived").
     let accessibilityLabel: String
-    let actionTitle: String
-    let action: @MainActor () -> Void
+    /// Nil, with `action`, for a notice.
+    var actionTitle: String? = nil
+    var action: (@MainActor () -> Void)? = nil
 }
 
 /// Shows one toast at a time. `show` replaces the current toast and restarts
@@ -81,7 +83,7 @@ final class ActionToastState {
     func performAction(of actedOn: ActionToast) {
         guard toast?.id == actedOn.id else { return }
         dismiss()
-        actedOn.action()
+        actedOn.action?()
     }
 
     func dismiss() {
@@ -122,18 +124,22 @@ struct ActionToastView: View {
 
     @ViewBuilder
     private func toastBody(_ toast: ActionToast) -> some View {
+        // A notice that leaves on its own has no controls, so its text keeps even margins.
+        let hasControls = toast.actionTitle != nil || !state.dismissesAutomatically
         if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 2) {
                 message(toast)
-                HStack(spacing: 4) {
-                    actionButton(toast, horizontalPadding: 0)
-                    Spacer(minLength: 0)
-                    if !state.dismissesAutomatically {
-                        closeButton
+                if hasControls {
+                    HStack(spacing: 4) {
+                        actionButton(toast, horizontalPadding: 0)
+                        Spacer(minLength: 0)
+                        if !state.dismissesAutomatically {
+                            closeButton
+                        }
                     }
                 }
             }
-            .padding(EdgeInsets(top: 14, leading: 18, bottom: 6, trailing: 18))
+            .padding(EdgeInsets(top: 14, leading: 18, bottom: hasControls ? 6 : 14, trailing: 18))
             .frame(maxWidth: .infinity, alignment: .leading)
             .adaptiveGlass(fallbackMaterial: .regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .accessibilityElement(children: .contain)
@@ -143,14 +149,16 @@ struct ActionToastView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 actionButton(toast, horizontalPadding: 10)
                 if !state.dismissesAutomatically {
-                    Rectangle()
-                        .fill(Color(.separator))
-                        .frame(width: 1, height: 20)
-                        .accessibilityHidden(true)
+                    if toast.actionTitle != nil {
+                        Rectangle()
+                            .fill(Color(.separator))
+                            .frame(width: 1, height: 20)
+                            .accessibilityHidden(true)
+                    }
                     closeButton
                 }
             }
-            .padding(EdgeInsets(top: 3, leading: 18, bottom: 3, trailing: 6))
+            .padding(EdgeInsets(top: 3, leading: 18, bottom: 3, trailing: hasControls ? 6 : 18))
             .frame(minHeight: 50)
             .adaptiveGlass(fallbackMaterial: .regularMaterial, in: Capsule())
             .accessibilityElement(children: .contain)
@@ -161,8 +169,9 @@ struct ActionToastView: View {
         HStack(spacing: 9) {
             Image(systemName: toast.systemImage)
                 .foregroundStyle(.secondary)
+            // A notice has the action's room for a second line.
             Text(toast.message)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : toast.actionTitle == nil ? 2 : 1)
         }
         .font(AppFont.subheadline(weight: .semibold))
         .accessibilityElement(children: .ignore)
@@ -170,18 +179,21 @@ struct ActionToastView: View {
         .accessibilityFocused($messageIsFocused)
     }
 
+    @ViewBuilder
     private func actionButton(_ toast: ActionToast, horizontalPadding: CGFloat) -> some View {
-        Button {
-            state.performAction(of: toast)
-        } label: {
-            Text(toast.actionTitle)
-                .font(AppFont.subheadline(weight: .semibold))
-                .foregroundStyle(.tint)
-                .padding(.horizontal, horizontalPadding)
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
+        if let actionTitle = toast.actionTitle {
+            Button {
+                state.performAction(of: toast)
+            } label: {
+                Text(actionTitle)
+                    .font(AppFont.subheadline(weight: .semibold))
+                    .foregroundStyle(.tint)
+                    .padding(.horizontal, horizontalPadding)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
     }
 
     private var closeButton: some View {

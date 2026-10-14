@@ -22,7 +22,7 @@ struct TranscriptMediaImageLightbox: View {
 
     init(
         server: URL,
-        sessionID: String?,
+        files: (any WorkspaceFileClient)?,
         item: TranscriptMediaPreviewItem,
         onAPIError: @escaping (Error) -> Void
     ) {
@@ -31,7 +31,7 @@ struct TranscriptMediaImageLightbox: View {
         _viewModel = State(
             initialValue: TranscriptMediaPreviewViewModel(
                 server: server,
-                sessionID: sessionID,
+                files: files,
                 reference: item.reference
             )
         )

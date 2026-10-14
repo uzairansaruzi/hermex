@@ -35,6 +35,7 @@ to `CacheStore`. Two consequences:
 | State | Server kinds | Where it lives | How it's scoped |
 | --- | --- | --- | --- |
 | Push notification preferences | webui (Hermes: #706) | Server-scoped shared Keychain pairing (`PushPairing.preferences`) | Replies, subagent mute, and previews apply to this device for that server. Every relay registration sends its confirmed choices, including after token rotation. Settings → Interaction → Notifications separates these from the global local-alert and Live Activity excerpt preferences. |
+| Live Activity identity | both | ActivityKit attributes (`AgentRunActivityAttributes`) | A webui run's carries its configured `server` (#566), a bot's names its server and Bot connection in `bot:<connection UUID>:<Profile>` and its route, and a Hermes session's (#1179) carries its `server`, its session link and its stored key under `hermes:<profile>:<root>`. Reuse requires the same server, so equal IDs on two servers never share an activity; relay routes use that server's pairing; a tap opens through the server-qualified route, switching servers first. Cold launch checks an unpaired Hermes session's activity only against the signed-in active Hermes server. A stored key a legacy compression moved lives in the standard defaults (`LiveActivityPushKeys`), keyed by the push server plus the activity's ID and stream. Tested in `LiveActivityTests`, `HermesChatLiveActivityTests` and `PushRegistrationTests`. |
 | Auth cookies | webui | `HTTPCookieStorage` (shared jar) | Cleared/queried per active server URL (#16). Same-host/different-port servers still share the jar — documented #16 limitation. |
 | Custom request headers | webui | Keychain, per-server-scoped keys (#16) | `CustomHeaderStore` is hydrated for the active server; SSE + requests source headers from the active store. |
 | Display name / initials / **Header Logo Color** | both | `ServerAccount` in the Keychain registry blob (`Models/ServerAccount.swift`) | Per-server. The **active** server's identity is mirrored into the global `@AppStorage` keys (`SessionIdentitySettings.*`, `HeaderLogoColor.storageKey`) by `ServerRegistry.mirrorIdentityToDefaults`, on activate / set-active / identity-edit / remove — **never on first insert**, so first-run/single-server behavior is unchanged. Consumers (session-list avatar, header logo tint, New Chat / Send primary-action tint) read the mirrored global keys and therefore follow the active server automatically. |
@@ -45,10 +46,13 @@ to `CacheStore`. Two consequences:
 | Browsed Kanban Board | both | UserDefaults, per-server key (`KanbanBoardPreference.key(for:)` = `kanban.selectedBoard|<server absoluteString>`) | Per-server since #259: `KanbanFeatureState` restores the last locally browsed Board on load after validating it against the server's fresh Board list, and drops a stale slug silently. Local browsing never calls the server's switch endpoint. A Hermes server's Kanban (#1043) uses the same key with its configured URL. Tested in `KanbanFeatureStateTests` (`testBrowsedBoardIsRestoredForTheSameServerAndIsolatedFromOthers`). |
 | "Show CLI sessions" toggle | webui | UserDefaults, per-server key (`SessionRowDisplaySettings.showCliSessionsKey(for:)` = `sessionRow.showCliSessions|<server absoluteString>`) | Per-server since #19: the toggle mirrors the server's own `show_cli_sessions` setting (adopted on Settings load, written back via `POST /api/settings`), so an adopted value on one server cannot leak to another. Reads fall back to the pre-#19 global key as a migration seed, then to shown-by-default. Tested in `CliSessionsSyncModelTests`. |
 | New Hermes session's Profile | Hermes | UserDefaults, per-server key (`HermesProfilePreference.key(for:)` = `hermes.selectedProfile|<server absoluteString>`) | Since #1015: the Profile last picked in a Hermes chat's Profile chip or, since #1046, the Sessions list's Profile menu. New Session and the Sessions list use it while a fresh `profiles.list` still has it, else the host's `/api/profiles/active` `current`, and drops a stale pick silently. Never written to the host. Sign-out and server removal delete it. Tested in `HermesChatSettingsTests.testTheRememberedProfileIsPerServerAndFallsBackToCurrent` and `AuthManagerStateTests.testSigningOutOfAHermesServerDeletesOnlyItsSignInAndShowsItsForm`. |
+| Shortcuts picker's Hermes Profile names | Hermes | App-group UserDefaults, per-server key (`HermesProfileNameCache`, `hermesProfileNames.v1|<SHA-256 of server absoluteString>`) | Since #1180: the Profile names and titles the server's Bots roster last showed, which the New Chat in Profile picker titles that server's section with and lists while its `/api/status` can't be read. Kept through sign-out, which the picker still lists the server across; server removal deletes it. A Hermes Profile entity's id names its server (`<server URL>|<profile>`), so equal names on two servers are two choices. The key is a digest so the app group holds no server URL. Tested in `AppIntentNewChatInProfileTests` and `BotInboxTests.testEachRosterReadLeavesTheProfilesNamesForShortcuts`. |
 | Hermes Sessions list's All Profiles | Hermes | UserDefaults, per-server key (`hermes.sessionsShowAllProfiles|<server absoluteString>`, `HermesProfilePreference.showsAllProfiles(for:)`) | Since #709: whether the home's Sessions list shows every Profile's sessions. Set only while true. Picking one Profile clears it; server removal deletes it. Tested in `HermesSessionListTests.testAllProfilesListsEveryProfileUntilOneIsPicked`. |
 | Bots inbox section order | both | UserDefaults (`BotSectionOrderStore`) | Per-server and per-Bot-connection key `bot-inbox-section-order.<connection UUID>|<server absoluteString>`, holding the Desktop section ids the user placed from "Reorder Sections…". Never sent to Desktop; removing the Bot connection deletes it. Tested in `BotInboxTests.testPlacedSectionsKeepTheirOrderPerConnectionAndResetReturnsToAToZ`. |
 | Chat attachment and linked-image thumbnails | webui | In-memory `TranscriptImageCache` (process-wide `NSCache`, 48 MB / 150 images, emptied on memory warning) | Keyed by `AttachmentImageCacheKey(namespace, path).cacheKey` or `TranscriptMediaImageCacheKey(namespace, reference).cacheKey`, where `namespace` is `server.absoluteString|session`. Each flattened key is `attachment|` or `media|`, then the namespace's UTF-8 length, the namespace, and the path or reference ID, so the two kinds and the namespace boundary can't collide. The cache survives `.id(server)` teardown, so the key—not view identity—is the isolation; it is not cleared on a server switch or sign-out. Callers cannot default to an empty namespace. Tested in `TranscriptMediaParserTests` (`testAttachmentImageCacheKeySeparatesSamePathAcrossServersAndSessions`, `testImageCacheKeySeparatesSameReferenceAcrossSessions`, `testAttachmentAndMediaCacheKeysNeverCollide`). |
 | Server kind and release | both | `ServerAccount.kind` and `serverVersion` in the Keychain registry blob | Set when the server is added; a missing or unknown kind reads as webui, and one unreadable entry never drops the list. A webui server and a Hermes server never share a URL (`addServer`, `addHermesServer` and onboarding refuse one already registered). Tested in `ServerRegistryTests`. |
+| Move to Hermes records | Hermes | `ServerAccount.movedWebuiServers` on the destination's entry in the Keychain registry blob | Since #1215: each record names the webui server that moved (its normalized id), the explicit Profile mapping chosen at Review (a Hermes Profile or Keep on webui; an unreadable mapping reads as unmapped), completion, and the last-known remaining, unchecked and oversized counts (nil is unknown, never zero). At most one record per webui server across the registry. `AuthManager.commitMove` writes the record with its new or adopted destination in one acknowledged Keychain save (`ServerRegistry.commit`); a failed save publishes nothing and puts back a new destination's sign-in. An adopted destination keeps its sign-in, identity, preferences and pairing; a new one takes the source's name, initials and color, never its custom headers. `ServerRegistry.update` keeps the stored records, so an identity edit can't drop them. Records survive removing the webui entry and signing out of the destination, and go when the destination is removed. The commit never switches the active server or touches push; `MovePushPairing.carry`, after Move is confirmed, copies the source's pairing (queued, no relay call) only when the destination host reports the same install and the destination has none. Tested in `MoveToHermesCommitTests`. |
+| Move to Hermes journal | both | Application Support `MoveToHermes/<sha256 of webui id and Hermes id>/` (`plan.json` + `log.jsonl`, `completeUntilFirstUserAuthentication`) | Since #1216: one folder per webui→Hermes move, named by a hash so it holds no address; it keeps chat ids, titles and folders, never credentials. `plan.json` freezes Review (mapping, Hermes Profiles, scan) before the commit; the log records each import and metadata write, flushed before it is sent, and the final report before the record is marked complete. A folder no move record owns is deleted by `MoveToHermesPending.all` unless a runner in this process holds it; removing the destination deletes its folders (`AuthManager.removeServer`). A damaged log stops all work until a fresh scan; an unreadable one is kept and never acted on. Tested in `MoveToHermesRunnerTests`. |
 | Hermes server sign-in | Hermes | Keychain, `bot_connection::<Hermes server URL>` | The same `BotConnection` record a webui server keeps for its own Hermes connection, under the Hermes server's own URL, so every Bot store keys by it unchanged. Sign Out deletes it and its Bot data but keeps the server; removing the server deletes only its record and Bot data, never a same-host webui server's cookies, and never calls the relay. A refused login signs out only the active Hermes server, and a webui 401 never does. Tested in `AuthManagerStateTests`. |
 
 ### Offline cache keying (`Persistence/CacheStore.swift`)
@@ -89,6 +93,22 @@ to `CacheStore`. Two consequences:
   chat its newest cached page, read-only under the offline banner, until a read
   succeeds. Sign-out, server removal and `clearCache(for:)` take the Hermes
   rows with the server's others.
+- **A bot's Bot Chat (#1144)** caches its transcript only, never a list row
+  (a webui server's list reads and sweeps every session row of its server),
+  under `hermes-bot|<connection UUID>|<Profile>|<canonical root>`, which a
+  compaction that moves its stored key leaves in place. Its chat shows the
+  newest cached page, read-only, before the attach, until the first newest
+  read replaces it; an attach that finds another root than the preview's drops
+  it. An archived Bot Chat, opened by its key, keeps its own copy under
+  `hermes-bot-archive|<connection UUID>|<Profile>|<lineage root>`, including a
+  legacy compression chain listed under its tip's "Bot Chat (continued)" title,
+  and reads its bot's copy of that root while it has none. Each copy's newest
+  read drops the rows the host cut from the other copy of the same root too,
+  writing nothing there, so an undo seen in either chat stays undone. It never becomes the
+  bot's preview, and the bot's attach on another root leaves it. Deleting the
+  bot or discarding its connection removes both copies, and a clear or removal revokes the writes of chats already
+  attached until they attach again (`CacheStore.hermesCacheEpoch`).
+  `HermesOfflineCacheTests` covers the root, the list and server isolation.
 
 ## Retained draft attachments
 
@@ -130,9 +150,7 @@ per-server:
 - Session-row display toggles (`SessionRowDisplaySettings`: message count, workspace, cron — the CLI toggle moved to per-server storage in #19, see the per-server table above)
 - Sidebar disclosure state (`sessionSidebar.profilesAreExpanded` / `projectsAreExpanded`)
 - Chat transcript display toggles (`ChatTranscriptDisplaySettings`: thinking/tool cards, attachment paths, timestamps, code-block wrap)
-- Streamed-text animation (`StreamedTextAnimationSettings`)
 - Streaming send behavior (`StreamingSendBehavior`)
-- Bot quick replies (`BotQuickReplyStore`): the user's own text, the same chips for every server, connection and Profile
 - Adaptive Glass preference (`adaptiveGlass.isEnabled`)
 - **Primary-action tint *toggle*** (`PrimaryActionTintSettings.isEnabledKey`) — the
   on/off behavior is global; only the *color* it applies (Header Logo Color) is
@@ -184,6 +202,18 @@ server's content even if the purge fails.
 | Default model/profile | No persisted state to leak (server-fresh per active server); covered by the switch mechanism + `9.3` Settings tests. |
 | Chat thumbnail cache (same path, two servers/sessions; attachment vs. media key) | `TranscriptMediaParserTests` (`testAttachmentImageCacheKeySeparatesSamePathAcrossServersAndSessions`, `testImageCacheKeySeparatesSameReferenceAcrossSessions`, `testAttachmentAndMediaCacheKeysNeverCollide`) |
 
+## Links that name a server
+
+A Bot link (`bot?server=…`), a webui push link (`webui-push?server=…`) and a Hermes session
+link (`session?server=…`, #1176) each name their configured server. Each router reads only the
+registry and auth state, and drops a link for an unconfigured server. A link for another
+server switches to it first; a webui push or session link does so even from another server's
+sign-in form, where a Bot link waits for that sign-in. The session lookup
+then runs on the named server's own saved connection, after the switch, so a link never reads,
+signs in to or opens anything on a server it doesn't name. A webui push or session link
+also replaces every link already held (`PendingLinks`), so the sign-in it waits for never
+routes an older link to another server first. `HermesSessionLinkTests` covers the routing.
+
 ## Bot connection and drafts
 
 Bot Mode has a separate per-server Keychain connection and ephemeral cookie jar.
@@ -209,6 +239,6 @@ before reconnecting, but never restore runtime identity or action permissions.
 The same removal/clear paths invalidate recent snapshots and their writer tokens.
 The bounded local search cache uses a hash
 of the configured server URL plus connection UUID and Profile, and is cleared
-with that server’s offline cache or connection removal. See [Bot Mode](bots.md) for
+with that server’s offline cache or connection removal. See [Hermes server](hermes-server.md) for
 identity, removal and recovery rules. `BotDraftTests` covers disk persistence,
 connection/server removal and compatibility with existing webui records.

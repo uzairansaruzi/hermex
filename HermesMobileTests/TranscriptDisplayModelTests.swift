@@ -805,7 +805,6 @@ final class ChatMotionTests: XCTestCase {
         XCTAssertNil(ChatMotion.disclosure(reduceMotion: true))
         XCTAssertNil(ChatMotion.composerChrome(reduceMotion: true))
         XCTAssertNil(ChatMotion.scrollToLatest(reduceMotion: true))
-        XCTAssertNil(ChatMotion.streamingFollow(reduceMotion: true))
         XCTAssertNil(ChatMotion.clarificationToggle(reduceMotion: true))
     }
 
@@ -815,7 +814,6 @@ final class ChatMotionTests: XCTestCase {
         XCTAssertEqual(ChatMotion.disclosure(reduceMotion: false), .smooth(duration: 0.18, extraBounce: 0))
         XCTAssertEqual(ChatMotion.composerChrome(reduceMotion: false), .smooth(duration: 0.22, extraBounce: 0))
         XCTAssertEqual(ChatMotion.scrollToLatest(reduceMotion: false), .easeOut(duration: 0.20))
-        XCTAssertEqual(ChatMotion.streamingFollow(reduceMotion: false), .easeOut(duration: 0.15))
         XCTAssertEqual(ChatMotion.clarificationToggle(reduceMotion: false), .easeOut(duration: 0.22))
     }
 }

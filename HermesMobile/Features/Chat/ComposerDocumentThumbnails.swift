@@ -28,7 +28,7 @@ struct QuickLookComposerThumbnailGenerator: ComposerThumbnailGenerating {
 
 /// Previews of the documents staged in a composer, drawn from each one's
 /// app-owned draft copy. One cache serves the attachment strip and the
-/// collapsed pill in Sessions and Bot Chat, keyed by `PendingAttachment.id`,
+/// collapsed pill in every chat, keyed by `PendingAttachment.id`,
 /// which a draft restore keeps, so a reopened chat shows its previews at once.
 @MainActor
 final class ComposerDocumentThumbnails {

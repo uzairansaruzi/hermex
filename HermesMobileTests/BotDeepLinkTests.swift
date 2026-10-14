@@ -184,6 +184,39 @@ import XCTest
         XCTAssertEqual(selection.conversation, "expected-root")
     }
 
+    /// Every bot route ends at the inbox's selection (#1146): a row or tile, a link naming the
+    /// root, and a push tap naming none each open the bot's canonical chat in the regular chat,
+    /// a link's root seeded so a replaced chat is refused. The same bot on another server keeps
+    /// its own draft.
+    func testEveryBotRouteOpensItsCanonicalChatInTheRegularChat() throws {
+        let profile = BotProfile(.object(["name": .string("inbox-triage")]))!
+        let connection = BotConnection(id: connectionID, name: "Fixture", address: serverA,
+                                       username: "fixture", password: "fixture")
+        let row = try XCTUnwrap(BotInboxSelection(profile: profile).chat(server: serverA, connection: connection))
+        XCTAssertEqual(row.target, .canonicalChat(profile: "inbox-triage"))
+        XCTAssertEqual(row.server, serverA)
+        XCTAssertEqual(row.connection.id, connectionID)
+        XCTAssertNil(row.linkedRoot)
+        XCTAssertNil(row.botChatRoot)
+
+        for (link, root) in [(destination(conversation: "root-1"), "root-1"), (destination(), nil)] {
+            var selection = BotInboxSelection()
+            let parsed = try XCTUnwrap(HermesDeepLink.botURL(for: link).flatMap(HermesDeepLink.botDestination(from:)))
+            selection.open(parsed, connection: connection, profiles: [profile])
+            let chat = try XCTUnwrap(selection.chat(server: serverA, connection: connection))
+            XCTAssertEqual(chat.target, .canonicalChat(profile: "inbox-triage"))
+            XCTAssertEqual(chat.linkedRoot, root)
+        }
+        XCTAssertNil(BotInboxSelection().chat(server: serverA, connection: connection))
+
+        let elsewhere = BotConnection(id: UUID(), name: "Fixture", address: serverB, username: "fixture", password: "fixture")
+        let other = try XCTUnwrap(BotInboxSelection(profile: profile).chat(server: serverB, connection: elsewhere))
+        XCTAssertEqual(row.target.draftKey(server: row.server, connectionID: row.connection.id),
+                       .bot(server: serverA, connectionID: connectionID, profile: "inbox-triage"))
+        XCTAssertEqual(other.target.draftKey(server: other.server, connectionID: other.connection.id),
+                       .bot(server: serverB, connectionID: elsewhere.id, profile: "inbox-triage"))
+    }
+
     func testAHeldLinkSurvivesAConnectingOrRetryingInboxButNotAMissingConnection() {
         // Only a live roster answers a link…
         XCTAssertTrue(BotDeepLinkRouter.inboxCanAnswer(link: .live, hasConnection: true, hasSettled: true))
@@ -200,7 +233,7 @@ import XCTest
         let wire = BotFixtureWire()
         wire.root = "root-now"
         let model = conversation(named: "root-then", wire: wire)
-        await model.recover()
+        await model.activate()
 
         XCTAssertTrue(model.linkedRootIsStale)
         XCTAssertNotEqual(model.connectionState, .connected)
@@ -213,22 +246,20 @@ import XCTest
         let wire = BotFixtureWire()
         wire.root = "root-now"
         let model = conversation(named: "root-now", wire: wire)
-        await model.recover()
+        await model.activate()
 
         XCTAssertFalse(model.linkedRootIsStale)
         XCTAssertEqual(model.connectionState, .connected)
         model.suspend()
     }
 
-    private func conversation(named conversation: String, wire: BotFixtureWire) -> BotConversation {
-        BotConversation(
+    /// The engine a bot's deep link opens: the bot's chat, seeded with the link's root.
+    private func conversation(named conversation: String, wire: BotFixtureWire) -> HermesConversation {
+        HermesConversation(
             server: serverA,
             connection: BotConnection(id: connectionID, name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                       username: "user", password: "fixture", hermesVersion: nil),
-            profile: BotProfile(.object(["name": .string("inbox-triage")]))!,
-            conversation: conversation,
-            wire: wire,
-            drafts: ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60))
+            target: .canonicalChat(profile: "inbox-triage"), linkedRoot: conversation, wire: wire
         )
     }
 }

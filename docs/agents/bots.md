@@ -1,273 +1,16 @@
 # Bot Mode
 
-Bots use the selected configured Hermex server's direct-Hermes connection: optional on
-a webui server, and on a Hermes server the server's own sign-in (below).
-The connection is a separate Hermes Desktop HTTP/WebSocket backend, not webui.
-The connection record, credentials and stable UUID live in server-scoped Keychain
-storage. The host's identity is the `install_id` public `/api/status` reports (one
-per Hermes root, so every Profile and every address that reaches it agree); the
-record stores it the first time the host reports one (trust on first use; the inbox
-backfills older records). A sign-in whose live id differs from the stored one
-fails with `.differentHost` before the login POST, in `HermesConnection.signIn()`,
-which every Bot surface and push provisioning goes through, so they all refuse
-without sending the password. A missing stored or live id skips the check, and an
-omitted id never clears a stored one. In the connection form, a new address or
-username keeps the UUID when the host reports the stored `install_id`; otherwise a
-different endpoint or username gets a new UUID. Password/name edits retain the
-identity. After `.differentHost`, "Connect to this host instead" saves a new UUID
-and discards the old connection's local data. The id is public: it catches an
-address that now reaches another host, not an impostor. Removing the connection
-deletes its drafts; removing the configured server deletes both its connection and
-all its drafts.
-
-A configured server is a webui server or a Hermes server (`ServerAccount.kind`, #899).
-A Hermes server's id is its dashboard address as `BotConnection.address(_:)` parses it,
-and its sign-in record is the same `BotConnection` JSON under `bot_connection::<its
-URL>`, so every Bot store, draft, cache, section order and bot link keys by it as they
-do by a webui server. `AuthManager.addHermesServer` saves a sign-in the form already
-verified and activates the server; it needs Bot Mode on and refuses an address already
-in the registry. Turning Bot Mode off later never locks a user out: an existing Hermes
-server still opens, and so do its bot links. Its home (#709) has two sides on one stack
-and one shared connection, the Bots inbox and the Sessions list, switched by a bottom bar
-of `(filter) [Bots | Sessions] (new chat)` that each side fills: on Bots the filter holds
-hidden bots and section order and new chat makes a bot or a group chat; on Sessions the
-filter picks a Profile or All Profiles and new chat starts a session. Both sides lead with
-webui's header (`SessionsHeader`): HERMEX, and one pill of search and the server's avatar
-(Settings on tap, switching on hold), with no top bar. On Sessions the pill grows into the
-search field; on Bots it opens the search sheet. The home keeps the inbox and the session
-list's view model across the switch, so a switch shows the last roster or rows at once. It
-reopens on the side last shown (`@SceneStorage`), Sessions at first, and a bot link turns it
-to Bots. The two sides keep their own read marks, live states and identities. Without a
-record (after Sign Out, which deletes the record and Bot data but keeps the server) or
-after the host refuses its saved password at the login step, including the one silent
-re-login a signed-in 401 starts (`HermesConnections.onSignInRejected`), the server is
-`.loggedOut` and shows its connection form as the root: the address locked, the
-password focused, no Remove, the avatar as the way out. No Bot screen exists in that
-state, so nothing sends the refused password again; saving a sign-in signs the server
-back in. A webui server's own connection keeps #884's per-screen flag instead. A
-Hermes server sends no webui request: Settings skips its webui loads and hides their
-rows, a webui 401 never signs it out, and new chats, session links and shares switch
-to the first webui server (or say there is none). It has no push pairing until #706,
-so removing it never calls the relay. Its connection form is reached through Settings
-→ Active Server → Hermes connection or Settings → Servers → the server, and saving it
-from either signs the server back in. That server screen's button is Remove Server
-even while the server is active, because Sign Out keeps a Hermes server. Moving a webui server's connection into a Hermes
-server is #707's; a copy gets a fresh UUID.
-
-Onboarding's Connect page and Settings → Add Server are one connect form
-(`OnboardingViewModel`, #900). Its first Connect for an address reads the public
-`/api/status` there, parsed by `BotConnection.address(_:)` and sent with the form's
-headers on a `HermesConnection` of its own. A JSON object carrying `auth_required` is a
-Hermes dashboard: username and password appear, and the next Connect signs in once
-(`HermesConnection.signIn()`, so the version gate, install check and #880's copy apply),
-then calls `addHermesServer`. Hermes' own Host-header 400 and `.blocked` show their
-advice and stop, and a mode switch keeps that advice. Anything else, including an
-address or headers only the webui path accepts, goes on to the webui path unchanged:
-onboarding's `configure`, Add Server's `addServer`. Once a webui answered, the "Will
-connect to" line shows `AuthManager.normalizedServerURL`'s URL instead of the Hermes
-parser's. Header rows without a value are never sent or saved. With Bot Mode off, a
-found dashboard shows a one-tap opt-in instead of its fields. When a webui server's own
-Hermes connection uses exactly the same parsed address, the form offers "Use the sign-in
-saved on <server>": it fills username, password and headers, and the sign-in still
-expects that record's `install_id`. The copies stay until the address parses to another
-URL, even one differing only in scheme, or a webui answers there; then the unedited
-username and password and every header row still carrying a copied value leave the form.
-It is never matched by `install_id`, which any host can report. The connection mode
-(Same Wi-Fi, Private network, Cloudflare Tunnel) changes only the placeholder, the help
-and, for Cloudflare Tunnel, two empty `CF-Access-Client-*` rows; it is not saved.
-
-The saved connection's HTTP side is one `HermesConnection` (`Networking/Hermes/`):
-an ephemeral cookie jar, a single-flight password sign-in, and the only path Bot HTTP
-requests and gateway upgrades are sent through. `HermesConnections` gives every
-consumer of the active server's saved connection (inbox, chats, rooms, creator,
-editor and push provisioning's `BotDashboardClient`) the same instance, so they sign
-in once; a reconnect only mints a new ticket. The registry holds its one entry weakly
-and keys it by configured server and connection UUID. A request for another server
-or UUID, or for the same UUID with a new address, account, password or headers,
-retires the old connection first: its sign-in in flight stops and its late replies
-throw `.stale`. Switching away from, signing out of or removing the configured server,
-and saving other credentials or headers or removing them, retire it at once rather than
-at the next lookup, so a sign-in finishing afterwards stores nothing and resends nothing; a
-rename or an install id backfill keeps it. Nothing is pooled by hostname, so the same host and account under two
-configured servers get two jars. The connection form and dev auto-login probe
-unsaved credentials on their own `HermesConnection`, never the shared one.
-Cancelling one waiting consumer never cancels the shared sign-in. A signed-in
-request answered 401 signs in again once, sharing that sign-in with every other
-consumer's 401, and is resent: the auth gate refuses `/api/*` before any handler
-runs (`hermes_cli/dashboard_auth/middleware.py`), so the resend cannot repeat a
-write. A Bot screen's delete, upload or download is sent, and resent, only while
-that screen still owns it: one that closed during the sign-in sends nothing. A 401 from the login itself (bad credentials) ends the recovery and leaves
-the connection signed out; the next request signs in again. A transport failure,
-proxy status or 5xx fails only its request and leaves the sign-in as it was, and
-is never resent. Provisioning keeps its 120/180-second deadlines, for its steps and
-for a sign-in it starts, on a second session that shares the jar; everything else
-keeps 15/30.
-
-Connection Headers, for a proxy such as Cloudflare Access, are saved in the
-connection's own Keychain record (`BotConnection.headers`) and edited from the
-connection form with the shared `CustomHeadersEditor`. `HermesConnection` sends them,
-as `HermesHeaders`, on every request to its own origin: the public `/api/status`,
-sign-in, identity, ticket, REST and plugin calls, uploads, downloads, and both socket
-upgrades: the gateway's `/api/ws` and the Kanban event socket (#1045), each on its own
-ticket. The status probe sends them too, and the form signs its unsaved candidate in
-with the form's set. A cross-origin redirect drops them before the push relay or any
-other host, and `PushRelayClient` never sees them. The policy refuses transport names
-(`Host`, `Cookie`, `Sec-WebSocket-*` and similar), the names Hermes reads for its own
-checks (`Origin`, `X-Forwarded-Prefix`, `X-Hermes-Session-Token`) and `Bearer`
-authorization while allowing Cloudflare Access's JSON `Authorization` form; the form
-says why under the row and keeps Connect off. Only one of `CF-Access-Client-Id` and
-`CF-Access-Client-Secret` warns but still connects. A header change keeps the UUID,
-and with it drafts, cache and push pairing; it only retires the live connection. A
-saved list the policy later refuses sends none. The webui's custom headers are never
-a source, and headers are never logged.
-
-Each `HermesConnection` also owns the one gateway WebSocket its Bot screens share,
-`HermesGateway`. Every screen holds its own `BotClient` handle on it: the inbox, each
-open chat (its controls and delegated work use the chat's), a room, the creator and
-the editor. The socket opens when the first screen connects and closes when the last
-one leaves, so it lives while any Bot screen is connected. Each screen leaves on
-`.background` only, not on `.inactive`: Control Center or a notification banner keeps
-the socket and its frames, which is cheaper than a reconnect and keeps a running turn's
-tool rows in place. On `.background`, `ContentView` also has `HermesConnections` close
-the socket once, silently (`closeForBackground()`), so the host sees a clean close
-rather than a half-open socket the tunnel notices only at its idle cutoff. The chat,
-inbox, rooms and editor reconnect on `.active`, onto one fresh socket with a new ticket
-and one handshake; the creators reconnect on their next Create (#902).
-Screens that connect while it opens wait for that one attempt, so screens
-reconnecting after the same drop make one socket, one ticket and one handshake. A
-reply settles only the call that sent it; every event and server request goes to
-every attached screen, which admits only its own (a chat by its runtime ID, the inbox
-`sessions.changed`), and the gateway never answers a server request itself. A screen's
-`close()` fails only its own calls with `.transport`, cancels its uploads and
-downloads and ends its callbacks; the last screen to leave closes the socket without
-a disconnect. Cancelling a read discards its reply; cancelling a call that may have
-reached the agent ends that screen's part as `close()` does and leaves the socket to
-the others. A required call past its deadline ends only its screen, which hears
-`onDisconnect(.transport)` once and reconnects onto the socket the others kept. A lost
-socket (a read or send failure, 45 seconds of silence) is connection-wide: each
-attached screen hears `onDisconnect` once and reconnects as before, and anything later
-from that socket is dropped by its generation. Retiring the connection does the same with `.stale` and refuses
-reconnects. A chat's session stays attached to the shared socket after the chat
-leaves, until the socket closes; leaving a screen never closes a host session. The
-connection form and dev auto-login probe on their own connection, so their own socket.
-
-`HermesConnection` and `HermesGateway` log the connection's lifecycle to the device
-log (`HermesConnectionLog`), under the bundle ID and the category `HermesConnection`:
-each sign-in with its release, or the step that failed (`status`, `login`, `identity`,
-`ticket`) and why; the socket opening or failing to open (a refused upgrade with its
-status); a drop with its reason and any close code the other end sent; 45 seconds of
-silence; the last screen leaving; the app going to the background; retirement; a reply that matched no open call; and a
-call past its deadline, by method. Lines name connections `c1`, `c2`, … and each
-connection's sockets `s0`, `s1`, …, never the server: interpolate only numbers, step,
-case and method names, the release `/api/status` reports (upstream's package version) and
-`HermesConnectionLog.reason(_:)`, each `.public`, and never a host, address, URL,
-session or runtime id, Profile name, title, message text, ticket, replay epoch or
-install id. Events, deltas and keepalive pongs are never logged. `HermesConversation` logs
-through the same logger, counts and codes only: each reattach (automatic retries before
-it, and frames held, applied and dropped) and each `session.resume` refusal it retries.
-
-Requests are typed in `Networking/Hermes/`: every HTTP request (method, path, query, JSON body) is a
-`HermesREST` case, and every JSON-RPC request is a `HermesCall` case, one per
-operation the app uses and none for any other upstream method. A case carries only
-what callers vary; fixed contract values (the canonical title, `queued`, the avatar
-asset) are encoded there. `HermesCall.params()` is the only way to the wire and
-runs admission first, so the "typed exception" rules below hold for every caller;
-`HermesGateway` still runs `validateDispatch` at the socket write and maps errors,
-cancellation and timeouts. Password login requires the basic auth gate, verifies identity,
-and each socket gets a fresh single-use ticket. The upgrade is a `URLRequest`
-(`HermesREST.gatewayUpgrade`) offering the `hermes-gateway-v1` and ticket
-subprotocols in its `Sec-WebSocket-Protocol` header, which is where
-`URLSessionWebSocketTask` takes them from a request; the host splits that header
-on commas (`hermes_cli/web_server_chat.py`). JSON-RPC uses text frames. There is no bootstrap-token,
-OAuth, webui fallback, server provisioning or competing-backend path.
-
-Every socket, reconnects included, runs the same handshake before any other RPC:
-wait for `gateway.ready` (recording `replay_epoch`), then send
-`client.capabilities {server_requests: true}`. From 0.21.4 the host refuses
-every server request (approval withdrawn, clarify answered empty, sudo and
-secret skipped) for a session whose only attached WebSocket clients never sent
-it (`tui_gateway/server_requests.py`, `session_transports.py`). A host older
-than the capability answers -32601; `connect()` ignores any JSON-RPC rejection
-here, as the shared web client does, and connects as before. The host sends no
-JSON heartbeat of its own (`heartbeat: true` in `gateway.ready` only means the
-socket answers pings), so `HermesGateway` sends `gateway.ping` every 15 seconds
-with string ids that never settle an RPC. Any inbound frame resets the 45-second
-silence deadline; a socket quiet for longer is dropped and reconnects.
-
-`HERMES_AGENT_TESTED_SHA` at the repo root pins the tested hermes-agent commit
-(line 1) and the release `/api/status` reports as `version` (line 2), the Bot
-counterpart of `UPSTREAM_TESTED_SHA`. The pin is 0.21.5 (`ca678285`); sections
-below that name an older commit record what was verified at the time. `BotClient.connect()` captures `version`
-and the connection screen stores it on the `BotConnection` record.
-`HermesCompatibility` holds the tested release and the minimum, 0.21.3: 0.21.2
-publishes no gateway contract. `HermesConnection` compares the leading
-`MAJOR.MINOR.PATCH` (a canary reads as its base release) right after the
-`/api/status` read and refuses an older host with `BotFailure.outdated` before the
-install check and the password, so the form, inbox, chats, rooms and push setup all
-show the "update Hermes" copy. A missing or unreadable version proceeds: the pin
-always reports one, so its absence means a proxy or a fork. At or above the
-minimum, sign-in saves and dismisses whatever the release; no version warning is
-shown (#626).
-A host that answers a call with -32601 (method not found) lacks that method:
-`HermesGateway` records it on the connection (`unavailableMethods`, never for the
-handshake's own `client.capabilities`), and `BotChatControls` reads it, so a chat
-control the host lacks stays off in every chat on that connection until a new
-connection starts empty.
-An ordinary 4000 (invalid params) is not that signal. To learn whether a method
-exists before calling it, the first consumer that needs to (#701 onward) sends a
-deliberately invalid-parameter probe, `{"__hermex_probe": true}`: 4000 means
-present, -32601 absent. Nothing sends one yet.
-With a saved connection, the screen's Status section reads the public `/api/status`
-once when the form opens or on "Check again" (no credentials or cookies, only the
-saved Connection Headers; no retries) and shows the live
-version (or the stored one), gateway state and platform counts; scheduled Tasks need
-the gateway, Bot chat notifications do not.
-Each RPC validates the contract just in time. Advancing the pin is described in AGENTS.md
-(Working with the server); update the file and the constant together, then run
-`scripts/capture-hermes-fixtures`. It records what the host really sends for
-`/api/status`, `profiles.list`, `session.resume` and one plain turn's event
-frames into `HermesMobileTests/Fixtures/HermesAgent/`, and
-`HermesAgentFixtureTests` feeds them through the real parsers, so a renamed or
-dropped field fails a test instead of blanking a screen. The capture keeps only
-the `inbox-triage` Profile, replaces every string outside an allow-list of ids,
-event and status vocabulary, the release and the canned turn's text, and writes
-nothing if the output still holds the host, the account, the socket ticket, a
-home path, the install id or another Profile's name. `--keep-raw` and
-`--from-raw` re-sanitize one capture without another live session.
+Bots run on the configured server's direct-Hermes connection: on a Hermes server its
+own sign-in, on a webui server an optional one. The connection itself (sign-in, host
+identity, the connect form, Connection Headers, the shared gateway socket, logging, the
+handshake, the pin, the reconnect contract and feature detection) is in
+[hermes-server.md](hermes-server.md). This file covers what the screens do on top of it.
 
 The disconnected inbox offers one Connect action with the editor's drawn,
 neutral-default playful faces. Motion pauses while covered or inactive and is
 still with Reduce Motion. Setup help copies a generic prompt for the user's
 agent; copying sends nothing and includes no credentials or configured address.
 The prompt discovers the existing backend and asks before changing setup.
-The same connection form serves Bots, Settings and push setup. A schemeless
-address defaults to HTTPS, except recognizable private/local IPs (including
-Tailscale ranges), local names and single-label hosts use HTTP. Explicit schemes
-and ports are preserved; TLS failures never trigger an HTTP downgrade. A pasted
-link is reduced to its root: `ws`/`wss` become `http`/`https`, the query and
-fragment are dropped, and a path starting with `login`, `auth`, `api`, `chat` or
-`sessions` is removed; any other path (a proxy prefix) and credentials are refused.
-While the text parses, the form shows the root it will connect to. Invalid
-addresses display errors even before a transport exists. Cancellation invalidates
-the attempt before late replies can save credentials or dismiss the screen.
-The synchronous Keychain write is the commit point. Saved state changes with it;
-old-connection cleanup then finishes independently of sheet cancellation and the
-committed operation remains successful. Main-app ATS allows plain HTTP to `.local` and
-single-label names through `NSAllowsLocalNetworking`, private/local and Tailscale IPs
-through CIDR exceptions, and explicit `http://` Tailscale names through the `ts.net`
-subdomain exception. Public hosts still require HTTPS.
-A failed sign-in names what to check (`BotConnectionAdvice`): the unreachable host,
-a Host-header 400 (`dashboard.public_url`), a webui address, a proxy or Cloudflare
-status, an access proxy's own sign-in (`.blocked`: a redirect to another host or a
-non-JSON 401 on `/api/status`), a host with browser sign-in only (`.browserSignIn`),
-and a refused gateway upgrade (`.upgradeRefused`). The inbox and chat use the same
-copy for the messages they show, and none of these three retries on its own.
-A rejected password (`.rejected(401)`) offers "Update sign-in" in place of
-Reconnect in the inbox, a chat and a room: it opens the connection form with the
-password focused, from the inbox, because a chat's or room's client is bound to
-the rejected record. The app never resends that password on its own; foregrounding,
-pull to refresh and closing the form unsaved send nothing until the saved record
-changes or the form saves a sign-in.
 
 `HermesConversation` (`Features/Hermes/`) is the conversation engine (#903): it
 attaches one screen to one Hermes session for a `ConversationTarget`, replays what
@@ -278,7 +21,7 @@ drafts and caches, apart from the runtime id, which keys session-scoped calls an
 `seq`, changes after a reap, and is never kept. The Profile goes on every call.
 Recovery only reads; deliberate writes go through its `write`, which revalidates the
 attach and runtime at the socket write, and nothing is resent. Answers to host requests
-go through its `answer`, which Bot Chat and Sessions share: one `write` per call, and the
+go through its `answer`, which every Hermes chat shares: one `write` per call, and the
 host's verdict (answered, already resolved, or a batch still open). The owner gets the
 replay reply and the snapshot whole and restores open requests from them, with its
 own guard against a newer request on screen (see the blocking requests below). Targets:
@@ -295,8 +38,8 @@ own guard against a newer request on screen (see the blocking requests below). T
   are still created only by `BotCreator.ensureChat`.
 
 Each target has its own draft key (`ChatDraftKey.hermesSession` for sessions, which
-`discardBotDrafts` removes with its connection) and recent-transcript key; a Bot
-Chat keeps the keys it always had. Only a Bot Chat writes the search index.
+`discardBotDrafts` removes with its connection); a bot's chat keeps the `.bot` key it always
+had. Nothing a Hermes chat reads is written to the local search index (Local search below).
 
 `HermesChatTurnCoordinator` (`Features/Chat/`) is the engine's Sessions owner (#1010): it
 runs a `.new` or `.session` target in the main chat. It conforms to
@@ -425,7 +168,8 @@ On a host set to legacy rotation
 stored key, which `session.info` (and the compress reply's `info`) reports as
 `stored_session_id`: `HermesConversation.adoptStoredKey` takes it while connected, so later
 pages, uploads and titles follow it, while `root`, the draft key and the list row keep the
-original. `/clear` deletes nothing: it opens a new chat in this one's place,
+original. A bot's `.canonicalChat` follows it too (#1145, reversing #1099), so `/compress`
+leaves it writable; its next attach still finds the tip by title. `/clear` deletes nothing: it opens a new chat in this one's place,
 `ConversationTarget.new(profile:cwd:model:)` with the chip's model (the `model` and `provider`
 `session.info` reported while the chip's catalog is unread or failed) and the last reported `cwd`,
 whose first attach is `session.create {profile, cwd, model, provider}`; reasoning, personality
@@ -446,7 +190,10 @@ webui; the control verbs (the host's `is_goal_control`) run mid-turn, since a go
 turns keep the session busy, and a resume's message then joins the host's queue. A 4004
 refusal keeps the host's message, a 4001 reattaches, and a typed `/goal` that fails keeps
 its draft. The goal menu reads `session.control.read`
-on each attach and every `session.control.update`. `/btw` is `prompt.btw` and works
+on each attach and every `session.control.update`, and lists the loop and heartbeat beside
+the goal (#1142): Pause or Resume, behind one confirmation, is one `session.control
+{action: "loop.pause"…}` whose reply snapshot shows unless a control frame came first, and
+a reattach discards an unconfirmed one. Without `session.control` they show only their state. `/btw` is `prompt.btw` and works
 mid-turn: its panel (the clarification's slot, collapsed to one line when a host request
 takes the slot, or full screen) shows the question, a static waiting line, then
 `btw.complete`'s text, matched by `task_id`; it never enters the transcript, and one
@@ -458,11 +205,54 @@ without a result is read once from `GET /api/sessions/bg_<id>/messages?profile=`
 reply that is not a tool call; a 404 or none reads unavailable). A completion that beats its
 ask's reply is kept until the task id is known. Nothing is resent.
 
-Its host requests are `HermesChatRequests` (#1011), on the Bot request model below and the
-engine's `answer`. An approval takes the Sessions overlay with only the host's choices
-(`ApprovalScope.Host.hermes`); a question or a sudo or secret prompt takes the
-clarification's slot above the composer as the Bot request card. Vault prompts, Desktop's
-own tasks and unknown methods get no card and are never answered. A batch question never
+Its plan and how its last turn ended are `HermesChatActivity` (#1139), which the coordinator
+only forwards frames and snapshots to. The plan is `HermesPlanState`:
+`todo.updated` and a snapshot's `todo_state`, revision-monotonic, an empty list at revision
+1 or later clears it, and a new runtime drops it, since its revisions start again. The host
+keeps one plan across turns, so a plan belongs to a turn only when that turn's `todo.updated`
+revised it, or a snapshot revised it while the chat followed that turn: still running, or ended
+while the chat was away with its prompt the only one the history saved since it began, which
+places the plan. A plan a snapshot restored otherwise (reopening the chat, a new runtime, another
+turn since) is held for revision order but not drawn. While its turn runs with a step open it pins
+above the composer (`HermesPlanStrip`: under the run-status pill, over the request card and `/btw`
+panel; hidden on the offline cache's copy); once every step is done or the turn ends it settles as
+`HermesPlanRowView` after that turn's prompt, by `persisted_turn.user_row_id` or, while the turn is
+the newest and the chat showed its prompt (its own send or a prompt it queued), the last prompt
+shown. A turn another client started shows no prompt here, so its plan settles only by its row.
+A saved row the transcript no longer holds hides the plan, and `/undo` drops the plan of the turn
+it removed, so a cut never moves a plan under an earlier prompt.
+The outcome row (`HermesTurnOutcomeRow`, below) sits under the last turn, and shows in
+an empty chat too, for a first turn that failed before the host saved any row: a
+failed `message.complete` gives the failure and notice, and once the turn settles one
+`session.resume` (no messages) reads the retained `inflight.user` for Retry, then the newest rows
+for its prompt's row. That snapshot can name a later turn than the one the chat saw fail, and a
+failure's `message.complete` may carry no receipt, so the row is always the history's last prompt
+dated at or after the snapshot's `inflight.started_at` (the host saves a prompt at submit, before
+its turn can fail), and only when the prompt before it is dated earlier: a turn submitted between
+the two reads saves a later prompt, and Retry is then not offered. A row once found stays only
+for that same `started_at`. Retry is the
+chat's rewind (`promptRewind`) with that text, from a tap only. A failed turn shows no error line.
+
+Its delegated workers are `HermesChatActivity.delegatedWork` (#1140), a
+`HermesDelegatedWork` (below) on the chat's own socket and attach: listed once connected, on a tap
+of the button or the sheet's refresh, and after coalesced `subagent.*` lifecycle frames, never
+polled; a reset or leaving drops it. While it counts a worker, `ChatView` shows its own glass
+toolbar button after the action cluster (`person.2` and a plain count; hidden on the offline
+cache's copy) that opens `HermesDelegatedWorkView`. A history row with
+`display_kind: "async_delegation_complete"` draws as `HermesDelegationCompletionCard`; live, it
+arrives with the newest rows the delivery's turn re-reads when it ends.
+
+Its host requests are `HermesChatRequests` (#1011, #1141), on the Bot request model below and
+the engine's `answer`. An approval takes the Sessions overlay with only the host's choices
+(`ApprovalScope.Host.hermes`); a question, a sudo or secret prompt, a Desktop task and a
+connection operation take the clarification's slot above the composer as the Bot request
+card, whose copy names Hermes, or the bot in a bot's chat (`HermesRequestSubject`; the
+Desktop-task and connection bodies live in `Features/Chat/HermesRequestCards.swift`). A
+Desktop task is shown, never answered: its card keeps the chat's Stop, which asks first only
+when something else would be lost. A connection operation follows the rules below, answered
+with `connection.respond` from the card; 4004 leaves the card inert and reattaches, and a lost
+reply warns on the card and reconnects. Account operations' global `connection.update` never
+reaches a session. Password-vault prompts and unknown methods get no card and are never answered (#1148). A batch question never
 gets a bare answer: Skip locks each outstanding `qid` empty. Skip all is `config.set {key:
 "yolo", value: "on", scope: "session"}`, then `approval.respond once` for the card on
 screen. The bypass pill reads `session.info`'s `yolo`, which the host also sets for its own
@@ -474,80 +264,77 @@ withdrawal note at the transcript's end, silent for this phone's Stop or Stop & 
 reattach replaces the list from `open_requests`, one per envelope id. A question or
 credential prompt answered in Desktop sends no cancel, so its card stays until the next
 attach, or until an answer here comes back `expired` and it leaves quietly. Any open
-request shows "Waiting for you" in the run-status pill. The `config.set` yolo shape (`{key,
+request shows "Waiting for you" in the run-status pill. A refused password (`.rejected(401)`)
+holds Update sign-in above the composer and blocks every attach on that chat, so foregrounding,
+a network change and a send all send nothing; the pill signs the Hermes server out to its
+sign-in form (`HermesUpdateSignInAction`, installed by `HermesServerHome`), whose save signs it
+back in with fresh chats. The `config.set` yolo shape (`{key,
 value: "1"|"0", scope}` back), `session.info`'s `yolo` and `approval_mode`, and the
 redirect's steer during a tool are verified against `tui_gateway/methods_config_set.py`,
 `tui_gateway/server.py` and `agent/interrupt_control.py` at `ca678285`.
 
-`BotConversation` owns one server/connection/Profile view lifetime and is the engine's
-Bot Chat owner: it keeps the snapshot-driven transcript and the Bot features (mentions,
-reactions, slash commands, file search, delegated work, chat controls). Lookup can
-recover archived history; resume can auto-continue unfinished backend work. Neither
-is guaranteed to be read-only.
+A bot's Bot Chat opens in the main chat (#1145, #1146): a `.canonicalChat` target, or a Bot
+Chat row opened by its key (`HermesSessionChat.botChatRoot`, the row's lineage root, which also
+scopes its cache): a legacy chain's "Bot Chat (continued)" tip from Archived, or a "Forked from"
+parent, since Sessions and Archived send a Bot Chat row itself to its bot. One
+`HermesChatPolicy` keeps Bot Chat's rules (#1127 decision 3), read by `HermesSlashCommands`,
+the message menu and the composer: `/new` (and `/reset`), `/clear` (pointing at `/compress`),
+`/resume`, `/sessions`, `/branch`, `/fork`, `/title`, `/undo` and `/retry` are refused with
+copy before anything is sent and left out of the panel, Hermex's and the host's alike; Edit,
+Regenerate and Fork From Here are not offered (the outcome row's Retry stays); the Profile chip
+shows the bot's Profile and picks no other. `/btw`, `/background`, `/goal`, `/yolo` and
+`/compress` run as in a session. The title is the bot's pill (`HermesBotChatPill` over
+`BotChatTitlePill`): the roster row from the chat's `profiles.list` read (a bare row for
+the Profile until it answers), the avatar from `HermesChatSettings.avatars` (what the shared
+`BotAvatarStore` holds at once, then each picture that read's `profiles.get_asset` pass fetches,
+so a chat opened straight from Archived needs no Bots inbox visit), and the face from the
+turn (`HermesChatTurnCoordinator.titleFace`, with the beat rules below). A tap opens
+`BotProfileEditorView`; closing it reads the roster again. The same roster and pictures give the
+composer's `@` panel this connection's other bots above its files, and the editor their chips; every send
+mode appends Desktop's note to the typed text's mentions and the chat shows the text without it
+(the optimistic row, the snapshot's in-flight prompt and the queued receipt). A session sends
+`@` text as typed. A restored prompt drops the host's context footer and reference lines before
+the note, so an attachment never exposes it. A `.canonicalChat`'s turns drive the Bot Live
+Activity (below), which takes the bot's name and avatar again when a roster read lands
+mid-turn, and draws its avatar again when the bot's picture arrives after the activity started. A row opened by its key keeps the session's `hermes:` activity, whose tap is the session link to
+that key (#1165, #1179): the Bot activity's tap looks the chat up by title, which leaves a
+deliberate archive out and finds a replacement instead, and the client cannot tell a deliberate
+archive from a recoverable one. A `linkedRoot` (a bot link's root) the bot has replaced calls
+`ChatView`'s `onChatReplaced` (#554); Update sign-in is `HermesUpdateSignInAction`. Rooms never
+open here: a room's session (`HermesSessionRow.isRoomSession`, hidden and titled `Group: …`)
+is left out of search results and the Archived screen (#1127 decision 7, #1146).
 
-Live history is rebuilt from a full resume snapshot on open/recovery. A separate
-read-only local cache supports message search; see Local search below.
-Recovery reads in order: `session.list` for the chat, an identity `session.resume`
-with `omit_messages`, `session.events.since` from the last `seq`, then one full
-`session.resume`, the reconnect's only transcript download. That read covers any
-full read asked for before it, including a refresh the disconnect cancelled.
-While recovering, this runtime's live frames are held (#901), up to the 512 events
-the host's replay ring keeps, and applied once the snapshot is in: a frame at or
-below the replay's `latest_seq` is dropped, and a later one takes the live path,
-where a gap clears the live rows and schedules a full read. Past 512 the held
-frames are dropped and the chat is rebuilt from a full read, as after a
-truncated replay. Host requests (string ids) are never held. A held
-`request.cancel` or `connection.*` frame keeps the snapshot from replacing the
-cards, as a live one does, so a card withdrawn mid-recovery keeps its note.
-Replay detects discontinuity but never appends text to an overlapping snapshot.
-Live events coalesce inflight snapshot reads using `omit_messages`; that installed
-handler path avoids history database reads. Completion and session-state events
-request full history. Live recovery never reads the local search cache and has
-no speculative REST adapter.
-Transient socket loss reconnects silently while the chat is active, with delays
-of 1, 2, 4, 8, 16 and then at most 30 seconds. `session.resume` answering 4007
-(swapping in a replacement runtime) or 4009 (a client-gone interrupt settling)
-is retried the same way for 60 seconds from the first refusal in a row, then
-shows the usual advice. It is matched by code alone: a real "session not found"
-is also 4007, and costs at most that minute. The same codes from other calls
-are not retried. Leaving the screen or backgrounding
-cancels recovery. Foreground/recovery reloads canonical identity, history and
-current state before enabling commands. Authentication, identity and unsupported
-host errors still surface actionable messages; commands are never retried.
+Every bot route ends in the Bots inbox (#1146): its row and pinned tile, a bot search result, a
+deep link, a push tap and a Live Activity tap set `BotInboxSelection`, a Sessions search hit
+and an Archived Bot Chat row go through the bot deep link first, and the selection's
+`chat(server:connection:)` opens `ChatView` on the bot's `.canonicalChat` with the link's
+root as `linkedRoot`. The inbox owns what follows: a replaced chat pops back with "That
+conversation is no longer available.", Update sign-in pops back to the inbox's sign-in form
+(it installs its own `HermesUpdateSignInModifier`), and the device-local read mark (#506) is
+set on open and return. A bot link closes the Hermes home's Settings, so one opened from an
+Archived screen under Settings lands on the inbox. A deliberately archived Bot Chat is not the
+bot's canonical chat (the title lookup leaves it out), so its row opens the bot's current chat;
+Unarchive brings it back first.
 
-The transcript follows a stable trailing anchor until the user scrolls into
-history; the shared Sessions down-arrow resumes following. Its visibility uses
-Sessions’ scroll observer, follow latch and near-bottom thresholds,
-so it disappears on reaching the bottom. The live reply renders each coalesced
-text snapshot through the streaming Markdown renderer with its reveal fade off
-(`allowsStreamedTextAnimation`). The live reply bypasses the shared layout
-cache; past the renderer's 6,000-character stable-chunk threshold, sealed
-chunks skip re-layout and their code highlights once, and code in the growing
-part stays plain until the reply settles. Diff and patch fences follow the same
-split: `MarkdownDiffFormatter` tints their added and removed lines once sealed
-or settled, never through Highlightr. A whole snapshot fading in would leave the trailing viewport blank; an
-XCTest renders evolving snapshots and checks the actual visible output.
+Bot Chat's own screen (`BotChatView`, `BotConversation`) was removed in #1148: a bot's
+chat is a Hermes chat on its `.canonicalChat`, and only rooms keep a screen of their own.
+For a bot's chat, the title lookup can recover archived history and resume can
+auto-continue unfinished backend work; neither is guaranteed to be read-only.
 
-Settled messages reuse the Sessions transcript's long-press seam.
-`chatMessageContextMenu` supplies the menu from a plain
-`[ChatMessageActionItem]`, so a transcript names its own actions without owning
-a chat view model; `BotMessageActions` builds that list, and for a Bot it is
-Copy over the Markdown source, by the canonical-chat policy of #481. The host
-does support rewind (`prompt.submit` with `confirm_truncate` and a
-`truncate_before_row_id` taken from the snapshot's durable `row_id`) and
-`session.branch`; Bot Chat uses rewind only to retry a failed turn (below) and
-does not offer edit, regenerate or branch yet (#745). Group rooms use the same
-seam. Under a settled message, one reply footer (`BotReplyFooter`, on
-`ChatMessageMetaRow`) shows the host `timestamp`
-(room `created_at`) on user messages and turn-ending replies, following
-Settings → Chat → Message Timestamps; a dated separator (`TranscriptTimeline`)
-opens the window and any row 30+ minutes after the previous stamped one, and
-shows even with that setting off. Later footer parts join this row rather than
-adding one.
+An attach and every reconnect follow the reconnect contract in
+[hermes-server.md](hermes-server.md#reconnect-contract).
 
-A failed turn gets an outcome row under it (`BotTurnOutcomeRow`, #878), after
+Room messages reuse the Sessions transcript's long-press seam.
+`chatMessageContextMenu` supplies the menu from a plain `[ChatMessageActionItem]`, so a
+transcript names its own actions without owning a chat view model; `BotMessageActions`
+builds that list, Copy over the Markdown source, by the canonical-chat policy of #481.
+Under a message the shared `ChatMessageMetaRow` shows the room's `created_at` on user and
+member messages, following Settings → Chat → Message Timestamps; Copy stays in the menu.
+Rooms draw no dated gap separators (#1147).
+
+A failed turn gets an outcome row under it (`HermesTurnOutcomeRow`, #878), after
 any live reply and before the plan and request card. Its failure half is
-`BotConversation.turnFailure`, decoded by `HermesTurnOutcome` from the
+`HermesChatActivity.failure`, decoded by `HermesTurnOutcome` from the
 snapshot's retained `inflight` (`error`, `error_surface {layer, code,
 retryable, resets_at?, message?}`, `recoverable`). The host keeps that until the
 next turn starts or the session closes, so reopening, backgrounding and a push
@@ -565,94 +352,32 @@ to wait and changes nothing, 4018 says the message can't be changed, hides
 Retry for that row and rereads. The host resolves the cut against its in-memory history, so a
 turn whose agent never started (`runtime`/`agent_init_failed`) always gets 4018:
 its prompt row is saved at submit but never reaches that history.
-`turnNotice` holds what only `message.complete` carries: an `https`
+`HermesChatActivity.notice` holds what only `message.complete` carries: an `https`
 `billing.billing_url` ("Open billing page" in Safari; the host's long billing
 text is left out) and the host's `warning`, shown verbatim even under a
 successful reply. It is live-only: replay rebuilds it while the ring holds the
 turn's frames, and a gap that could hide a newer turn's start drops it. Both
 survive suspend and a continuous reconnect, clear on `message.start` and on the
-next accepted send, and are never cached. Rooms and Sessions are unchanged.
+next accepted send, and are never cached. Rooms are unchanged.
 
-Bot Chat rows take Desktop's Tapbacks (#761). `session.resume` rows carry the
-durable `row_id` (projected as `ChatMessage.rowID`) and
-`display_metadata.reactions` (`[{emoji, author: user|agent, at?, seen?}]`, one
-per author, read tolerantly as `BotReaction`). A settled reply's footer has a
-"…" menu holding React, Desktop's six quick reactions as one inline row; a
-prompt's long-press menu puts the same row above Copy, plus Remove Reaction
-once you have one. Chips follow in the footer: yours removes it, the Bot's is
-static ("reacted by <Bot>"). `message.react({session_id, row_id, emoji})` is a
-typed `BotClient` exception (`emoji` a non-empty string or null; `author` and
-`newest_role` refused). The host toggles a repeated emoji, so picking yours
-sends null. Writes are not optimistic and serialize per row
-(`BotConversation.reactingRowIDs`): the reply's full list patches the row, a
-rejection leaves it and says so, and a lost reply is never resent; the next full
-snapshot decides. The agent's live `message.reaction` event patches only the
-agent's entry on its row: the tool writes on another host thread, so the event
-can land after a newer `message.react` reply and must not replace yours. A full snapshot requested before a patch keeps the patched row's
-list (`reactionPatches`): `session.resume` runs on the host's worker pool and
-can read history before a `message.react` commits. Live rows, rooms and the offline cache have no reactions.
-Reactions are display-only sync with Desktop unless the host enables
-`display.message_reactions` (a Desktop Appearance toggle Hermex never writes);
-then the next user turn tells the model once, and Desktop sessions give the
-agent `react_to_message`.
+Hermex shows no reactions (#1147). The host's `display_metadata.reactions`
+on `session.resume` rows and its live `message.reaction` event are ignored, and
+the phone never calls `message.react`.
 
-Settled bot replies and room member messages sit in a `ResponseTextSelection`
-document, so text selects in place as it does in Sessions. The scroll-view
-context menu outranks the selection long-press, so those rows pass
-`longPress: false`: Copy stays a VoiceOver action and the selection menu
-supplies Copy and Select All. User messages and the live reply keep the
-long-press menu; the live reply is never selectable, because its document would
-be rebuilt on every snapshot. "Ask Hermex" appends a `ComposerQuote` to the Bot
-draft, durable through `ChatDraftStore`, and becomes a Markdown blockquote only
-on the way out, after any skill expansion, so a failed send restores the
-composer exactly. Rooms pass no Ask Hermex handler and the menu omits it. The
-quote detail view stays in issue #564.
+Room member messages sit in a `ResponseTextSelection` document, so text selects in
+place as it does in Sessions. The scroll-view context menu outranks the selection
+long-press, so those rows pass `longPress: false`: Copy stays a VoiceOver action and the
+selection menu supplies Copy and Select All. User messages keep the long-press menu.
 
-Both transcripts are eager `VStack`s because of that document. It is a hosted
-view controller, and a lazy stack places rows it has not built from an
-estimate: under load the latest-edge follow and a room's jump to a search hit
-landed on the wrong rows (`testLongInflightResponseRemainsVisibleAtLatestEdge`,
-`testRoomSearchHitScrollsToItsSequenceAndDoesNotFollowNewMessages`, the latter
-on a cold first iteration). Eager is affordable only over a bounded list,
-which is what incident #463 was about: `BotTranscriptWindow` draws the latest
-50 settled messages with Load earlier above them, the way Sessions pages, and
-`BotRoomTranscriptWindow` draws a room's newest 50 events, anchored by sequence
-number because room history is prepended. The host still sends the whole
-history; the window limits only what is built.
+The room transcript is an eager `VStack` because of that document. It is a hosted view
+controller, and a lazy stack places rows it has not built from an estimate: under load a
+room's jump to a search hit landed on the wrong rows
+(`testRoomSearchHitScrollsToItsSequenceAndDoesNotFollowNewMessages`, on a cold first
+iteration). Eager is affordable only over a bounded list, which is what incident #463 was
+about: `BotRoomTranscriptWindow` draws a room's newest 50 events, anchored by sequence
+number because room history is prepended.
 
-Activity comes from two sources that never overlap. The full snapshot's
-`messages` rows already carry settled tool rows (`role: tool` with `name`,
-`context`, `args`) and assistant `reasoning`; `BotTranscriptProjection` turns
-them into `BotSettledActivity` anchored to the message each block precedes,
-keeping the `<root>/<row index>` identity. The live turn reduces gateway events
-in `BotTurnActivity`: `tool.start`/`tool.complete` keyed by `tool_id`,
-`reasoning.delta`, keyed `notification.show`/`clear`, and `review.summary`
-memory notes, bounded to 64 rows, 32 KB of reasoning and 8 notices.
-`todo.updated` and the snapshot's `todo_state` feed a revision-monotonic
-`BotPlan`. `status.update` and `thinking.delta` feed `workStatus`, a transient
-status line each frame replaces (`thinking.delta` is spinner text, not
-reasoning; an empty one clears it). `reasoning.available` carried the final
-answer text live, so it is consumed and never shown as reasoning; the settled
-snapshot carries the real reasoning. Activity events during known work update local state without a
-snapshot read. Replay rebuilds the current turn's rows when the sequence is
-continuous, or from the last `message.start` the ring still holds; otherwise the
-live rows are dropped and the next full snapshot shows the settled ones, so
-overlap never duplicates a card. Presentation reuses the Sessions log rows
-(`ReasoningBlockView`, `ToolActivityGroupView`, `TranscriptLogRowView`) and the
-global Chat display toggles; the plan row stays visible with cards off.
-Settled Bot turns honour Fold Finished Turns through the Sessions engine
-(`TranscriptTurnFolds`, via `BotTranscriptProjection.turnFolds` over the
-window): the first and last reply stay visible and the rest folds behind
-"Worked for", timed from the prompt to the turn's last timestamp. A
-delegation delivery opens its own turn. The running turn stays open, both
-while its prompt is only live and once the host has persisted it mid-turn
-(`activePromptMessageID`: the last prompt or delivery dated at or after the
-turn's start, since a slash skill's row shows the invocation, not the
-in-flight text). Rooms never fold. Tool
-output is text only. `learning.frames` is deliberately not wired: the frames
-are terminal-sized renders.
-
-Delegated work stays attached to its owning Bot conversation. A toolbar count
+Delegated work stays attached to its owning Hermes chat. A toolbar count
 appears only while `subagent.list({session_id})` reports live workers; it opens a
 sheet with at most 64 rows showing the host's hierarchy, goal, status, model and
 latest tool. The roster is read once after each connection, on an explicit
@@ -664,7 +389,7 @@ A worker tail is loaded only when tapped through
 `subagent.tail({session_id, subagent_id})`. Both host and client cap it at the
 latest 16 KiB and say when earlier output was cut. Cancelling or timing out a
 list/tail read fails only that optional inspection request; it never closes an
-otherwise usable Bot conversation. Interrupt is the only worker write in this
+otherwise usable chat. Interrupt is the only worker write in this
 slice. The phone re-lists immediately before
 `subagent.interrupt({session_id, subagent_id})` and compares the row's
 `started_at` and `delegation_id`, so a worker that finished during confirmation
@@ -706,7 +431,8 @@ envelopes separately from sequenced events and integer-id RPC replies. Both
 Replay always includes the array; resume omits it when empty, so an empty or
 omitted array clears the requests. A newer live request or cancellation cannot be
 overwritten by an older in-flight snapshot. Unknown request methods remain
-needs-attention without an answerable card. The phone never replies to a
+needs-attention without an answerable card, and so are the password-vault prompts,
+which the phone no longer answers (#1148). The phone never replies to a
 request frame, not even with -32601 for a kind it cannot handle: the host treats
 that reply as the answer and would withdraw the request before Desktop could
 answer it. Request payloads and credential values are never cached. A Hermes session in
@@ -716,7 +442,7 @@ the main chat shares this model and the answer dispatch (see `HermesChatRequests
 A disconnect drops the requests and reconnect restores the host's current list,
 independently of replay-ring truncation. The phone never retries an answer.
 
-When the withdrawn envelope is the card on screen, Bot Chat leaves one caption
+When the withdrawn envelope is the card on screen, the chat leaves one caption
 line in its slot (`BotRequestWithdrawal`): `timeout`, `interrupted` or
 `session_closed` (the work stopped), `shutdown`, or any other wording as a
 generic "withdrawn" line, worded per family (approval, question, other).
@@ -755,7 +481,10 @@ sign-in (`authorize`, or an install that turns into OAuth) redirects to the
 host's own loopback, so the phone shows "Finish on the Mac" and only Skip.
 Skip leaves the bot waiting until every row is connected or skipped; Continue
 releases it at once, and Guide or Queue sends Continue first so the message
-does not wait behind the blocked tool. `4004` means the operation had already
+does not wait behind the blocked tool. One answer to an operation is out at a time: a
+Hermes chat's card waits while Continue is out, and Send waits while a row's answer is.
+A Continue whose operation was replaced before the write is not sent, and the message is held.
+`4004` means the operation had already
 settled. Setup values stay in the row's view state and are cleared on send.
 Try again on a failed managed row (`connectors.connect {reconnect}`) and
 `connectors.operation.wake` are not used. The shapes are verified against
@@ -799,23 +528,14 @@ without `answers`, the host's cancel-all shape for a batch.
 
 The phone uses the acknowledged `request.answer` proxy for both live and restored
 requests: unlike a bare response frame, it distinguishes `ok` from `expired`.
-`sudo`, `secret` and the password-vault prompts (`vault.unlock_prompt`,
-`vault.save_login`, `vault.code`) are all `BotCredentialRequest`s and send
-`result: {value}`; an empty value is the host's skip or decline. Credential input
-uses a `SecureField` and passes directly to dispatch without storing the value.
-The field offers AutoFill for its content type (`.password`, or `.oneTimeCode`
-for `vault.code`) and is keyed by request id, so a replacement request never
-inherits a half-typed value. With no associated domain, iOS offers no "Save
-Password?" afterward.
+`sudo` and `secret` are `BotCredentialRequest`s and send `result: {value}`; an empty
+value is the host's skip or decline. Credential input uses a `SecureField` and passes
+directly to dispatch without storing the value. The field offers Password AutoFill
+(`.password`) and is keyed by request id, so a replacement request never inherits a
+half-typed value. With no associated domain, iOS offers no "Save Password?" afterward.
 
-The vault prompts carry `display_name` (unlock), `origin` and `site` (save
-login), and optional `site` and `hint` (code). An unlock's master password goes
-to the password manager's CLI on the host, which keeps only a session token. A
-save-login answer is one JSON-encoded string `{"identifier", "password"}`,
-built by `BotCredentialRequest.saveLoginValue` and sent only when both are
-filled; the host saves it in Hermes's own encrypted vault on the Mac (Desktop →
-Settings → Passwords & Logins), not in 1Password or Bitwarden, and fills the
-page. A code is sent as typed; the host strips spaces and dashes.
+Bot Chat answered the password-vault prompts (#943); with its screen gone they are
+not read (#1148), and a Hermes chat never answered them.
 The old per-kind answer methods (`clarify.respond`, `sudo.respond`,
 `secret.respond`, `mcp.setup.respond`) no longer exist at the pin and are off
 the allowlist.
@@ -838,18 +558,17 @@ at the compatibility pin. The 0.21.1 → 0.21.2 diff does not change public
 strips channel credentials by default; canonical empty chat creation and prompt
 submission retain the shapes Hermex sends.
 
-The card renders in the transcript where the work stopped, so the command sits
-under the tool row that asked for it, and the composer's attention line doubles
-as the way back to it. Placement is the only Bot-specific part: the surfaces,
+A Hermes chat shows the card in its request slot above the composer
+(`HermesChatRequests`); a room shows its approvals in the transcript
+(`BotRoomActionCard`). The surfaces,
 choice buttons, decision buttons and copy are the Sessions approval and
 clarification vocabulary, shared through `PendingRequestSurfaces.swift` and
 `ChatDecisionButtonStyle` rather than copied; the credential field reuses the
 same response field and submit button as the Sessions clarification card. Like Sessions, "Always allow"
 writes a permanent host rule without a second confirmation.
 
-Returned artifacts use the existing transcript media parser with local Markdown
-file-link recognition enabled only for Bots. Assistant images, `MEDIA:` references,
-`file:` links and local document links open in native Quick Look; image thumbnails
+Returned artifacts use the transcript media parser. Assistant images, `MEDIA:`
+references and `file:` links open in native Quick Look; image thumbnails
 are downsampled off the main actor. Text never fades in while snapshots grow.
 Ordinary external web links retain their normal behavior. Remote image URLs and
 unknown media forms do not gain authenticated access to other hosts.
@@ -860,8 +579,8 @@ signed-in connection using `GET /api/fs/download?path=…&profile=…&session_id
 Relative paths are resolved by the host's session cwd; no iOS filesystem base or
 webui transport is used. Known same-origin media/download links contribute only
 their path; embedded auth tokens and identity overrides are discarded. Redirects
-are rejected. Each response is capped at 25 MB, including chunked responses with
-no length header. Disconnect cancels downloads, stale completions are rejected,
+are rejected. Each preview response is capped at 25 MB, including chunked responses
+with no length header; a Hermes chat's MEDIA file export reads the whole file (#1112). Disconnect cancels downloads, stale completions are rejected,
 and dismissal removes the preview's temporary file. No persistent artifact cache
 is shared between conversations. Missing routes, denied files and unknown formats
 leave an explicit preview failure or the native viewer's unsupported-file state.
@@ -874,24 +593,10 @@ public README through the tunnel, bound to an existing session and Profile,
 returned the original bytes with attachment disposition. Native format playback
 still needs owner testing with returned artifacts.
 
-Attachment selection, paste and drop stage only local copies. The composer uses
-Sessions' circular + menu (File, Photos, Camera), glass card, in-card attachment
-strip, collapsed pill previews and circular Send control. Picker presentation
-keeps the card expanded and returns focus to the editor on dismissal.
-
-The shared UIKit editor applies editability changes after `updateUIView` returns.
-Disabling a focused UITextView synchronously inside that callback re-enters the
-SwiftUI responder graph and can freeze the screen at Send. A hosted-composer test
-keeps an upload pending, lays the window out through the focused Send transition,
-then checks editor state.
-
-Copies and records use the Bot draft key (server + connection UUID
-+ Profile); navigation/relaunch never uploads them. Imports allow eight files,
-25 MB each and 50 MB total. Images are converted off the main actor to JPEG
-or PNG when they contain transparency, limited to 4096 pixels on the longest
-edge; PDFs, text, audio and common document
-formats retain their original bytes. Removal deletes the local copy after the
-updated record reaches disk.
+Imports allow eight files, 25 MB each and 50 MB total
+(`BotAttachmentUpload.prepare`). Images are converted off the main actor to JPEG or PNG
+when they contain transparency, limited to 4096 pixels on the longest edge; PDFs, text,
+audio and common document formats retain their original bytes.
 
 Send and Queue upload the selected files and put only acknowledged references in
 that prompt. Steer/Redirect remain text-only. Images use the authenticated
@@ -911,14 +616,6 @@ the session cwd; that warning does not reject the prompt. The path remains
 available to agent tools. Actual document interpretation depends on the host's
 tools and file format.
 
-A sent prompt's bubble shows only the typed text, and Copy copies only that
-(`BotPrompt`, #1017). Each image pair or `@file:` block, read by the Sessions rule
-`MessageAttachment.hermesReferences`, becomes an attachment row under it, the same
-row and preview a reply's media uses: a thumbnail for an image, a file row for a
-document. Both download by the host path the reference names. An attachment-only
-prompt shows only its rows, which then carry the long-press menu. A block the
-rule does not read stays as text.
-
 These upload handlers were rechecked against installed Hermes Agent 0.21.2 source
 on 2026-09-14, together with prompt preprocessing and text-mode image routing.
 No live upload or prompt was executed. The compatibility pin is unchanged.
@@ -930,7 +627,7 @@ Cancel upload retains the local draft. A lost prompt acknowledgment preserves te
 and local copies; recovery silently restores them to the ordinary composer.
 Accepted sends clear the durable record before deleting local copies.
 
-A Hermes session in the main chat shares this path (#1012). `ChatAttachmentCoordinator`
+A Hermes chat takes this path (#1012). `ChatAttachmentCoordinator`
 stages only the local copy under the same limits and image conversion, under the
 session's `ChatDraftKey.hermesSession`; Send and Queue upload in
 `HermesChatTurnCoordinator.submit` on the captured attach and runtime, with Cancel on
@@ -945,7 +642,7 @@ pair, and a lone `@file:` token plain or quoted. It drops the host's saved
 and inlines a text file. No host path is shown, live or after a rebuild, and ↑ recalls
 only the typed text. A chip has a name and no path, so tapping one shows the local copy
 when this phone sent it and otherwise says it has no server path; audio shows as a
-file, not a player. Bot Chat still shows the raw lines (#1017).
+file, not a player.
 
 Dictation in a Hermes session follows the Dictation Provider setting as on webui
 (#1071), but `HermesTranscription` uploads one JSON `POST /api/audio/transcribe` for
@@ -953,9 +650,9 @@ the chat's Profile on the `.provisioning` deadline, never the webui's multipart
 `/api/transcribe`. An empty successful transcript is silence: nothing is inserted and
 nothing fails. The host's `{detail}` is the failure Server first falls back on-device
 from. There is no capability probe, because `/api/audio/voice-config` returns provider
-keys. Bot Chat dictation stays on-device only (#487, #593).
+keys.
 
-Bot drafts extend `ChatDraftStore` with server + connection UUID + Profile context.
+A bot's chat keeps its draft under the `.bot` key: server + connection UUID + Profile.
 After uploads finish, immediately before prompt submission, the client flushes an
 unresolved marker to disk. Upload interruptions never mark a draft ambiguous. An acknowledged
 send consumes the draft; explicit admission failures preserve its text. An
@@ -967,16 +664,6 @@ stays editable, and the next deliberate Send/Steer/Queue/Redirect uses its ordin
 rules. A lost or unrecognized acknowledgment schedules recovery; it never causes
 an automatic prompt retry. Identical text in recovered history cannot reliably
 attribute a submission, so it never silently consumes the restored draft.
-
-Idle, Send starts a turn. While the bot works, Stop sits beside Send in the
-expanded composer and takes its place in the collapsed pill, and Send opens the
-send-choice card (`SendChoiceCard`, the same card a long-press on the Sessions
-Send button opens) listing Steer, Queue and Interrupt from
-`BotPromptMode.busyChoices`. Steer drops out while attachments are staged,
-because the host only accepts them on a fresh turn. A pick submits at once; a
-scrim tap or escape closes the card without sending. Command-Return does what a
-Send tap does. The bot finishing, or the choices changing under the card, closes
-it, so the next send asks again.
 
 `BotPromptMode` validates the acknowledgment for each operation. `session.steer`
 accepts `status: queued` as guidance queued, not read; `session.redirect` accepts
@@ -1005,14 +692,6 @@ mutation: `tui_gateway/methods_session.py` correction handlers,
 only adds a prompt. Queue inspection/edit/remove/resume remain unavailable until
 an installed host exposes a verified safe management contract. The phone does
 not synthesize a queue from receipts or call generic slash commands to manage it.
-
-Aside and background actions remain unavailable in this composer; a Hermes session in
-the main chat offers both (#1013, `HermesChatSideTasks` above). The verified
-`prompt.btw` and `prompt.background` handlers return a `task_id` and emit results
-on the parent runtime as `btw.complete` and `background.complete`. They do not
-append normal canonical chat history. Bot Chat would need its own result
-presentation and recovery before offering either execution mode; neither is a Send
-variant or a reason to create another canonical session.
 
 Stop affects current conversation work, including Desktop work, queued prompts,
 pending approvals and process-wide speech playback. Confirmation actions carry
@@ -1043,9 +722,9 @@ mid-turn, then holds a still lean that only blinks (`BotWorkingBeat` owns the
 rule). An arriving approval, opening the chat onto one, stopping, and the
 `.unknown` reconciliations of stream events and same-turn reconnects never
 start a beat, and the face is still while the app is inactive.
-The title face also reads the turn (`BotConversation.titleFace`): while the bot
+The title face also reads the turn (`HermesChatTurnCoordinator.titleFace`): while the bot
 needs attention (any blocking request, readable or not) it shows Curious eyes and
-only blinks, and after a host-reported failure (`turnFailure`, which also draws
+only blinks, and after a host-reported failure (`HermesChatActivity.failure`, which also draws
 the outcome row) it shows Sad eyes until the next send; a user Stop rests.
 These state faces override a pinned expression, and VoiceOver adds "Needs attention" or "Turn failed" after the name. Inbox rows,
 pinned tiles, rooms, chips and the Live Activity avatar keep the pinned expression.
@@ -1246,8 +925,8 @@ inbox stops on (`BotConnectionAdvice.isRetryable`); pull to refresh tries again.
 ### Row actions (#1048)
 
 A Hermes row's menu and swipes rename, pin, archive, delete, duplicate and Export as JSON
-(`SessionRowActionPolicy`), and Move to Project (below). The host has no HTML export, and Hermes
-deep links are #706. Each action goes to the row's own Profile.
+(`SessionRowActionPolicy`), and Move to Project (below). The host has no HTML export. A session
+link opens a row's session from outside the app (below). Each action goes to the row's own Profile.
 
 - **Pin, archive and rename** are `PATCH /api/sessions/{id}` with one field and `profile` in
   the body (`HermesSessionChange`). `pinned` and `archived` apply across the compression
@@ -1284,9 +963,12 @@ deep links are #706. Each action goes to the row's own Profile.
 - **Archived Sessions**, at the list's end and in Settings, is `ArchivedSessionsView` with a
   `HermesArchiveSource`: `GET /api/sessions?profile=&order=recent&archived=only&limit=100&offset=&exclude_sources=…`
   (no `min_messages`), paged as the list is. The hidden filter is off there, so archived
-  hidden Bot Chats are listed, as "Bot Chat · <Profile>"; the pinned back-fill still brings
-  unarchived pinned rows, so only `archived` rows are kept. Unarchive and Delete work as on
-  the list; a restored Bot Chat is back in the Bots inbox. From the list it shows the list's
+  hidden Bot Chats are listed, as "Bot Chat · <Profile>", and a room's sessions are not; the
+  pinned back-fill still brings unarchived pinned rows, so only `archived` rows are kept. A
+  page of room sessions alone shows no row, so the screen reads on, and says "No archived
+  sessions" only once the pages end. A Bot Chat row opens in its bot on the Bots tab (#1146).
+  Unarchive and Delete work as on the
+  list; a restored Bot Chat is back in the Bots inbox. From the list it shows the list's
   Profile; from Settings, the server's pick, else the dashboard's `current`.
 
 Contract checked against `scripts/local-hermes` at the `HERMES_AGENT_TESTED_SHA` pin
@@ -1354,6 +1036,8 @@ no `pinned`, `unread`, `hidden` or `cwd`.
 - **Snippets.** A content match (one with a `role`) carries FTS `snippet()` text with `>>>`
   and `<<<` around each match; `SessionSearchExcerpt(hermesSnippet:)` bolds those spans and
   never shows the marks. An id match's snippet is only its preview and shows nothing.
+- **Rooms.** A room's session (hidden, titled `Group: …`) is never a match (#1146); the reply
+  has no `hidden`, so the title prefix alone drops it.
 - **Labels.** An archived match shows "Archived", opens as a session and offers no Archive;
   restoring stays on the Archived screen. The payload has no `hidden`, so a match titled
   exactly "Bot Chat" is that Profile's canonical Bot Chat ("Bot Chat · <Profile>"); it opens
@@ -1449,6 +1133,143 @@ path is the folder joined with names from its own listing, never the listing's `
 the host resolves (`/private/var/…` on a Mac). A name that is empty, `.`, `..` or holds a
 separator is refused before any request.
 
+## Workspace on a Hermes host
+
+A Hermes chat's Files, its previews, transcript file links and MEDIA references read the host
+through `HermesWorkspaceFileClient` (#1112), the `WorkspaceFileClient` beside webui's
+`WebUIWorkspaceFileClient`. The chat's workspace (`HermesWorkspaceContext`) is its server,
+Profile, stored key, and the `cwd` and `terminal_backend` the latest `session.info` or attach
+reports; a Move to Project changes `cwd`, and the open tree drops everything and lists the new
+folder. Files and file links show only on a `local` backend, where the folder is on the host the
+dashboard reads; any other backend, or no `session.info` yet, hides them. The composer's `@`
+panel (#1113) and Git (#1114) read the same context.
+
+- **Fence.** `/api/fs/*` reads any host path a signed-in client names, so the fence is the
+  client's rule, not a security boundary. Paths across the seam are workspace-relative; only the
+  Hermes client composes `cwd + "/" + path`, and it refuses an absolute path, a `..` component
+  or a path with nothing past the root before any request. A child's path is its folder's plus
+  its `name`, never the listing's `path`, which the host resolves (`/private/var/…` on a Mac) and
+  so may not start with the `cwd` that was asked for. A file's download (`/api/fs/download`)
+  sends its host path with `profile` and no `session_id`: with one, the host 404s until it has
+  stored the session, so Save to Files would fail in a chat before its first message (#1138). A
+  MEDIA path goes as the reply wrote it, with `session_id`, so the host resolves it against the
+  session. Rows, previews and errors show relative paths,
+  and a refusal whose `detail` names a path reads as the generic failure.
+- **ENOENT-as-200.** `GET /api/fs/list` answers a folder it can't read with 200
+  `{entries: [], error}`: `ENOENT` or `ENOTDIR` on the root is the folder-missing state, on a
+  subfolder that row's failure; `EACCES` is a permission failure. None reports an error.
+- **Lazy folders.** The host lists one folder at a time, and a macOS-protected folder (Desktop,
+  Documents, Downloads, …) can block 6–11 s before answering `Interrupted system call`. So a
+  Hermes chat's Files opens with every folder closed and lists one only when tapped; webui opens
+  its top-level folders (#1138).
+- **Hidden folders.** The listing hides `.git .hg .svn .cache .next .turbo .venv __pycache__
+  build dist node_modules target venv` and credential files, as Desktop does; the app adds no
+  workaround. A symlinked folder lists as a file, so it is not browsable and opens the preview's
+  "can't preview" state.
+- **Reads.** `GET /api/fs/read-text` is the first 512 KiB, decoded with replacement
+  characters, so it is only a preview: Save and Share always download the file. `binary` shows
+  No Preview, and `truncated` shows the start with a "Preview truncated" note, without a line
+  count. A symlinked folder answers 400 `Path points to a directory` to `read-text` and
+  `download` alike (`BotArtifactFailure.folder`), which shows No Preview whatever its name.
+  Image, Quick Look and MEDIA previews and MEDIA thumbnails stop at 25 MB; Save and Share (of a
+  file, or of a MEDIA image or video whose preview stopped there), and an inline MEDIA file's
+  export and audio, have no cap, as on webui. Save and Share accept an empty file; every other
+  download treats an empty body as a failed read. Inline MEDIA in the
+  transcript downloads as sent files do, on the session's Profile and stored key.
+- **Caches.** The tree's expansion is kept per server, Profile, stored key and `cwd`, so two
+  chats in one folder never share it. A `cwd` change closes a file preview or file link opened
+  from the old folder.
+- **`@` panel and chips (#1113).** The composer's `@` panel asks `complete.path` on the
+  attached runtime, not `/api/fs/list`: the host completes against the
+  session's `cwd` and ranks and caps its own rows (30). An `@path` in the draft or transcript
+  becomes a chip when `complete.path` for that path lists it, so a big folder still confirms
+  it. Same `local` gate as Files. A `cwd` or backend change drops the chips and the pass in
+  flight, and the chat checks again in the new folder; an open panel asks again there (a
+  webui switch does not reload it: that switch is optimistic). A `complete.path` with no
+  reply fails only that lookup, never the chat's connection.
+- **Git reads (#1114).** The Git menu, Changes sheet, diffs and turn-changes card read
+  through `HermesGitClient`, the `GitDataClient` beside webui's `WebUIGitClient`, mapped into
+  webui's Git models. Same `local` gate as Files; a folder outside a repository hides Git. It
+  shows the whole repository holding the `cwd`: `GET /api/fs/git-root?path=<cwd>` resolves the
+  root once per folder, and `git/status`, `git/review/list?scope=uncommitted` and
+  `git/review/diff` all take `path=<root>`, since their paths are root-relative. Rows are
+  `review/list`'s (uncapped, sorted) joined by path with `status.files`' flags, which the host
+  caps at 200; a row past the cap has no `unstaged` flag and takes untracked and conflicted from
+  its status letter, so the list is never marked truncated. A staged row past the cap may also
+  have worktree edits, so its diff is `git/file-diff` (the whole change against HEAD) instead of
+  the staged half. Before the first commit there is no HEAD and `file-diff` answers `""`, so a
+  new (`A`) file there shows its current content from `fs/read-text` as all additions. Tool paths
+  are relative to the `cwd` or absolute; the turn-changes card anchors them to the `cwd`,
+  collapses `.` and `..`, and maps them to root-relative row paths before joining. `git-root`
+  resolves symlinks (`/private/tmp/app`) while the `cwd` keeps its spelling (`/tmp/app`), so the
+  `cwd` is matched to the root by the root's trailing folders; a symlink that renames a folder
+  leaves the path unmapped. A diff over 512 KiB shows webui's too-large notice, and a
+  `Binary files … differ` patch the binary one. A failed git call is 400 `{detail}`, git's
+  stderr: it reads as "Repository status unavailable", and neither it nor the root is shown or
+  logged. Fetch and Pull show only through the hermex-push plugin (Sync, below); without it they
+  are hidden and the menu shows the branch and `↑ahead ↓behind` as a row above Changes
+  instead. The turn-end refresh and the
+  Changes card work as on webui. A `cwd` or backend change closes an open Git sheet and reads the
+  new folder's repository.
+- **Git writes (#1115).** Stage Changes, Commit, Commit & Push, Push and the inline commit button
+  go through `HermesGitClient` too, on `git/review/stage|unstage|revert|commit|push` with
+  `path=<root>`, each `{ok}` or 400 `{detail}`. The host guards none of it, so the client does.
+  Stage, unstage and revert always name one `file` (without one the host acts on the whole tree,
+  `git clean -fd .` included), sent as `:(literal)<path>`, since the host hands it to git as a
+  pathspec where `*` would reach other files; `HermesREST.isGitFile` refuses a blank, absolute,
+  `.` or `..` path. Each write reads `git/status` and `review/list` again and acts on the rows
+  matched by exact path, never trimmed: the host keeps an untracked name's spaces but trims a
+  tracked one's, so a path listed twice is refused. A conflicted row (including a `U` past the
+  status cap) can't be staged or discarded; a rename can't be discarded or unstaged (its row
+  names only the new path). A commit refuses with nothing staged (the host would `git add -A`) or with a
+  conflict; push refuses a detached HEAD, which the host skips silently. Discard unstages a staged
+  row, then reverts it, which deletes an untracked or newly added file. "Commit selected" is a
+  sequence (the host has no temporary index): unstage all, stage the selection, check something
+  is staged, commit, stage the other staged files again. `git add` restores only whole files, so
+  it is refused up front while a staged file is partly staged, may be (past the cap), or is a
+  rename, while a staged file's path is blank or listed twice, and before the first commit, where
+  the host's file-less unstage fails; a failure before the commit, once any of its writes went
+  out (a lost reply may hide that the reset ran), restores the staged files, and a failed restore
+  is reported (before the commit as
+  its own refusal, after it as "Committed, but some files couldn’t be staged again." with the
+  sha). After a commit `git/review/rev-parse` gives the sha (null before the first commit). Writes
+  belong to the chat (`HermesChatTurnCoordinator.gitWriteDispatch`): a write begun while a turn
+  runs, a message is sending or the screen shows cached data sends nothing, and each request
+  checks again as it goes out, also stopping once the chat reattached or left the folder. A
+  folder change also retires the chat's Git state (`GitWorkspaceAvailabilityViewModel.retire()`),
+  so a quick commit or push still running there shows no toast or alert in the new folder. The
+  Git menu and the commit sheet share one `GitWriteLock` per repository: while either writes (a
+  quick commit's message wait included), the other's write controls are disabled and its writes
+  refused. A suggested message is `commit-context`'s diff (or the selected files' `file-diff`s,
+  a new file's current content before the first commit, when that is empty), sent to
+  `llm.oneshot` with the `commit_message` template, `recent` as `recent_commits`, the chat's
+  runtime as `session_id`, temperature 0.8 as Desktop sends it, and the last suggestion as
+  `avoid` on Regenerate. Every write reads the status again, and so does a failed one (webui's
+  failed writes don't, and only a Hermes sheet shows the commit's sha: `GitDataClient.isHermes`).
+  A refusal reads as "Git couldn’t finish this change on your Hermes host.", never git's stderr.
+- **Branches (#1116).** The composer's branch picker lists `GET git/branches?path=<root>` (local
+  heads, then remote-tracking refs with no local head) and switches with `POST git/branch/switch
+  {path, branch}`, which runs `git switch`. A remote row goes out by its short name (`origin/x` →
+  `x`), which git turns into a tracking branch. The host rejects `origin/x`, so the remote can't
+  be named: the switch reads the list again and is refused unless that row is the only branch
+  called `x` (another remote's `x` leaves git to refuse or follow `checkout.defaultRemote`). The
+  host rewrites names first, so one it would change (`HermesREST.isBranchName`) is refused. A switch is a write the chat owns, as above, holds
+  the repository's `GitWriteLock` (the picker is disabled while another write holds it), and any
+  uncommitted change, untracked files included, refuses it with "Commit or discard first.":
+  there is no stash, and `git switch` would carry the changes across. After a switch the status
+  and branches are read again.
+- **Sync (#1236).** The host's git routes end at `branch/switch`, so Fetch, Pull and New Branch
+  go through hermex-push 0.6.0's `POST /api/plugins/hermex-push/git/fetch|pull {path}` and
+  `git/branch {path, name}` (`git fetch --prune`, `git pull --ff-only`, `git switch -c name`
+  from HEAD), each `{ok, message}` or 400 `{detail}` as the host's own routes answer. They show
+  only while the plugin's `/capabilities` lists all three (`HermesGitClient.supportsSync()`,
+  read with each Git load through the chat's own connection), and are hidden, exactly as before,
+  for no plugin, an older one or one not loaded. Each is a write the chat owns, holding the
+  `GitWriteLock`, and reads the status again after it; git's `message` is not shown. New Branch
+  is allowed on a dirty tree, carrying the changes, which is the usual reason to make one; a
+  switch to an existing branch still refuses them, and there is still no stash. Pull is
+  fast-forward only, with webui's confirmation copy.
+
 ## Memory on a Hermes host
 
 The Memory screen runs on a Hermes host through `HermesMemoryClient` (#1073), the
@@ -1523,9 +1344,14 @@ little above webui's because the host reports no cache writes. The models card i
 model and billing provider, the provider leading its subtitle, in the host's order; the same
 pair can repeat (auxiliary usage), as on the dashboard's Models page. Messages come from
 `insights.get`, which counts only visible sessions among the newest 500 (no Bot Chats), so
-they read "≈". The host has no hours, provider limits (#710) or sessions list here
-(`InsightsFeatures.hermes`): the picker has no Today, Limits and top sessions never show, and a
-failed read is the screen's error rather than a fallback. A store the host can't read (a 503
+they read "≈". The host has no hours or sessions list here (`InsightsFeatures.hermes`): the
+picker has no Today, top sessions never show, and a failed read is the screen's error rather
+than a fallback. Limits (#1237) show only where hermex-push's capabilities list
+`GET /provider-quota`: the providers come from the Profile's `model.options` (its `provider`
+active, each authenticated row keyed), and each card from
+`GET /api/plugins/hermex-push/provider-quota?provider=&profile=&refresh=`, which answers in webui's
+`/api/provider/quota` envelope, so selection and cards are webui's. An OpenRouter key without a
+spending limit has no window and so no card, where webui shows its credit balance. A store the host can't read (a 503
 whose `detail.error` is `state_db_…`, or 5017) gets its own copy, never the host path the 503
 names. Empty-window sums arrive as null and read as 0. It is the Usage row on the home's
 Sessions side (#709).
@@ -1550,9 +1376,94 @@ the user on that inbox. Opening follows the ordinary canonical resume rules: a
 link never sends a prompt and never auto-continues on its own.
 
 `conversation` is the bot's durable canonical root when the sender knows it. It is
-seeded as `BotConversation.root`, so the existing changed-root rejection refuses to
+seeded as `HermesConversation.root` (`linkedRoot`), so the changed-root rejection refuses to
 open a replacement conversation under the link's identity; the chat reports that
 back and the inbox says the conversation is no longer available.
+
+## Opening a Hermes session from outside the app (#1176)
+
+`hermes-agent://session?server=…&id=<stored key>[&profile=…]` names one stored session on one
+configured server: `HermesSessionDestination`, built by `HermesDeepLink.sessionURL(for:)` (widget-
+shared, Foundation only) and parsed and resolved in `Features/Hermes/HermesSessionLookup.swift`.
+A missing `profile` is unknown; an empty one is the host's default Profile.
+`HermesSessionLinkRouter` routes it as a bot link is routed, from the registry and auth state:
+an unconfigured server drops it; another server, signed in or on its sign-in form, is switched
+away from first; signed out, it waits for sign-in. A webui server's link becomes its
+`WebuiPushDestination`, as `webui-push` and a local alert's do, and `session?id=` without a
+server keeps its webui route (#971). The home turns to Sessions and closes Settings and Add
+Server; its list pops its chat and pushed screens and closes its sheets and confirmations
+(`HermesSessionListCovers`), so the chat or notice shows on the list, and looks the session up
+(`HermesSessionLookup`) on the server's saved connection:
+
+- A named Profile is one `GET /api/sessions/{id}?profile=` read; `""` reads the Profile
+  `profiles.list` marks `is_default`; none reads every Profile at once. One hit opens, none
+  says "That chat is no longer on <server>.", two or more say "That chat is in more than one
+  Profile. Open it from Sessions." and open nothing, both as the list's `ActionToast`.
+- The host resolves an unknown key to the one session it prefixes, so a reply whose `id` isn't
+  the link's key is no hit. The read doesn't follow a compression chain or name its root, so the
+  lookup steps up while the parent ended in `compression` (at most 8 parents): the chat opens by
+  the link's key and caches under that root (`HermesSessionChat.lineageRoot`), as its row does.
+- The found row opens the way its list row does: a Bot Chat through the bot route (#1146), any
+  other session in the main chat. A room's session never opens.
+- A failed read (unreachable host, a 503 store) drops the link with no notice; a refused sign-in
+  keeps it held while the server signs out to its sign-in form (#942), and it opens after.
+  A link never sends a prompt or answers a request.
+
+## Shortcuts on Hermes (#1180)
+
+New Chat and New Chat with Voice on an active Hermes server, signed in or not, open a new session
+there (`HermesNewChatDestination.onActiveServer`), never a webui server; on a webui server they are
+unchanged. New Chat in Profile takes a `ProfileEntity`: a Hermes server's Profile is
+`<server URL>|<profile>`, so the same name on two servers is two choices, and queues
+`new-chat-profile?server=…&profile=…`; one whose server or Profile doesn't parse opens nothing
+(`HermesDeepLink.isWebuiNewChatInProfileURL`). A bare id is a webui profile and keeps its webui
+route, so a Shortcut saved before #1180 opens as it did (#971); every bare id resolves through
+`ProfileEntityProvider.profileServer`, the one place #707 can redirect them.
+
+`PendingLinks.hermesNewChat` routes from the registry and auth state as a session link does: a
+removed server drops it, another active server is switched away from, a signed-out server holds it
+for sign-in. The home turns to Sessions and the list opens `.new(profile:)` over whatever covers
+its rows, in the Shortcut's Profile or the one New Session uses, once the list has read the host
+live (`SessionListViewModel.isHermesLive`), even when the Shortcut names its Profile, and never
+from the offline cache (New Session is off offline). The voice variant starts
+dictation (`HermesSessionChat.autoStartsVoiceInput`). A Profile is a bot: it is listed once and
+opens a new session, never its Bot Chat.
+
+The picker (`ProfileEntityQuery.suggestedEntities`) has a section per configured server, untitled
+when only one server lists anything. A Hermes section reads the public `GET /api/status`
+`profiles` (names only, reported behind the sign-in too) with the server's saved Connection
+Headers and no sign-in, titled by the name the Bots roster last showed
+(`HermesProfileNameCache`, app group, keyed by a digest of the server URL, written on every roster read, kept across sign-out,
+deleted with the server) with the Profile's name under it. An unreadable host lists that cache. A
+webui section, "<server> (Web UI)", is the `profileServer` list with its model · provider subtitle.
+A saved Hermes id resolves from the id while its server is configured, without a network read.
+
+## Shares on Hermes (#1181)
+
+A share while a Hermes server is active opens a new session there, never a webui server. The
+extension and its app-group inbox are unchanged: `ContentView` reserves the next share and hands
+it to `HermesServerHome`, which turns to Sessions; without a saved connection it releases the
+share, which stays queued. Once the list has settled New Session's Profile and read the host live
+(`SharedImportReservation.hermesOpening`, as a Shortcut's new chat), it moves the share into that Profile's new-session
+draft (`transfer`, `moveIntoDraft`, `ChatDraftStore.appendShare`): the text goes after any unsent
+text and the files, prepared as a Hermes send takes them under Bot Chat's limits, after any staged
+ones, all written to disk before `ContentView` consumes the reservation. A file that can't go now
+(its type or size, an unreadable image, a full draft, rechecked as the move commits) fails the
+whole move, which releases the share; one
+cut short by leaving the list hands it back still reserved (`SharedImportQueue.abandon`), so a
+staged share is never lost. The list claims the share as its move starts, and no home, on this
+server or another, is offered it until that move ends, so a server switch mid-write can't put it
+in two servers' drafts. The draft records
+the share's item id with its content (`ChatDraft.sharedImportIDs`), so a retry, or a replay after
+the app quit before consuming, adds nothing and is consumed. A composer already open on that draft
+keeps records it never saw (`setAttachments(_:replacing:for:)`), and a move whose records or text
+are gone by the time its write lands takes back only what it added, on disk before the share is
+released, and stays queued (#1198 tracks the composer's side). The list then pushes `.new(profile:)`, whose composer restores that draft, and the first Send creates
+the session and uploads each file once (#1012). Leaving without sending keeps it for the next New
+Session, and a Profile picked before sending carries the draft into the new Profile's chat
+(#1015), unless a draft already waits there. A webui list opens one share and offers later ones in
+its Open Next banner; the Hermes home has none, so it opens each share as it arrives
+(`SharedImportGate`), and each adds to whatever the same Profile's draft already holds.
 
 ## Bot lifecycle
 
@@ -1594,8 +1505,8 @@ session, because the gateway has no `profiles.delete` RPC; only a 200 with
 `ok` counts. The confirmation names the host and states that the Profile
 folder (instructions, settings, skills, saved keys, chat history) is removed
 and cannot be undone. On success the phone drops its unread mark, avatar,
-drafts (`ChatDraftStore.discardBotDrafts(profile:)`) and cached history
-(`BotHistoryCache.removeProfile`) for that bot, then re-reads the roster. A
+drafts (`ChatDraftStore.discardBotDrafts(profile:)`) and offline-cache copy of its chat
+for that bot, then re-reads the roster. A
 refused delete leaves everything; a lost reply is reported as uncertain and
 settled by the next roster read, which purges the phone's state for a bot the
 host no longer lists and keeps it for one that survived. `default` is never
@@ -1649,18 +1560,17 @@ them. Because `sessions.changed` can miss a turn's end (post-turn work writes
 nothing), the inbox re-reads `session.active_list` alone every five seconds
 while it is open, connected, and some bot is busy (or a read failed while one
 was), and stops once all are idle. Caveats: `waiting` relies on the
-`client.capabilities` handshake above; messaging-gateway and cron turns run in
+`client.capabilities` handshake (`hermes-server.md`); messaging-gateway and cron turns run in
 other processes and never appear; a tip the live agent rotated after the roster
 read matches no bot until the next roster read.
 
-Bot Mode ships behind `BotModeGate`, one app-wide `@AppStorage` bool that is off
-by default and owned by the Settings "Bot Mode (beta)" row (#496), which sits
-under Archived Sessions so new users notice it. Off hides the Bots row on the
-session list and pops the Bots inbox if it is open; nothing else changes, and
-Bot connections and drafts stay in the Keychain until it is turned on again. The
-gate is not per-server because it hides screens rather than storing user data.
-It is removed, together with its Settings row and `BotModeGateTests`, in the
-release PR that ships Bot Mode, not before.
+A webui server's Bots row sits behind `BotModeGate`, one app-wide `@AppStorage`
+bool that is off by default and owned by the Settings "Bot Mode (beta)" row (#496),
+which sits under Archived Sessions so new users notice it. Off hides the Bots row on a
+webui server's session list and pops the Bots inbox if it is open; nothing else
+changes, and Bot connections and drafts stay in the Keychain until it is turned on
+again. Hermes servers ignore it (#712). The gate is not per-server because it hides
+screens rather than storing user data.
 
 The Bots inbox is a utility destination of the session list, pushed like Tasks
 (the detail column on iPad), so the system back button returns to Sessions and
@@ -1668,8 +1578,8 @@ bot chats push on from the inbox. It has no title of its own: the back button
 and its search / new / connection toolbar are the whole header.
 
 New Bot code belongs only to the main app and XCTest target, apart from the Live
-Activity below. Share-extension and App Intent commands still route to webui
-sessions.
+Activity below. Shares open a new Hermes session on a Hermes server (#1181), with the
+extension unchanged; App Intents open Hermes sessions on a Hermes server (#1180).
 Existing external entry points (session deep links, App Intents, shared imports,
 webui push) replace the navigation destination, which pops an open Bots inbox.
 
@@ -1682,9 +1592,9 @@ the MVP complete. Simulator or isolated fixtures are not physical-phone evidence
 
 A working bot shows on the Lock Screen and Dynamic Island through the same
 `AgentLiveActivityManager` and widget as a webui run; there is no second manager
-(#489). `BotConversation.liveActivitySnapshot` projects the conversation into a
-pure value at its state choke points, and the shared `BotLiveActivityFeed` diffs
-those values into manager calls.
+(#489). A bot's chat (`HermesChatTurnCoordinator`) starts, updates and ends the manager
+itself, as a Hermes session does (below); it borrows `BotLiveActivity.writeAvatar` for the
+avatar and `BotLiveActivity.countChips` for the work counts.
 
 - **Identity.** `AgentRunActivityBot.key` is `bot:<connection UUID>:<Profile>` and
   stands in for the session id; the stream id adds the host's turn start. Equal
@@ -1706,26 +1616,37 @@ those values into manager calls.
   paired server takes the same handoff (#566): its attributes carry the configured
   server, it requests a token, and it registers under its webui session ID, which
   webui also gives the agent. Webui runs on unpaired servers stay local-only
-  (`pushType: nil`). A compression that rotates the session ID mid-turn moves the
-  plugin's progress to an ID the relay does not know, so that activity goes stale.
-  Ending an orphaned webui activity, or finding one finished at cold launch,
+  (`pushType: nil`). A legacy compression that moves a bot's or a Hermes session's
+  stored key mid-turn (`session.info`'s `stored_session_id`) moves the driven
+  activity's registration with it (`movePushSession`, #1179): the registrar deletes
+  the old route, then puts the token under the new key, so the plugin's progress
+  still reaches it. Attributes cannot change, so the moved key is also kept in the
+  standard defaults (`LiveActivityPushKeys`, scoped by push server and activity
+  identity, dropped at the activity's end and pruned at cold launch); a relaunch
+  matches, re-registers and retires the activity under it. A webui run's compression
+  still moves its ID out from under the relay. Ending an orphaned webui activity, or finding one finished at cold launch,
   retires its registration so the relay stops holding that session's banners.
   There is no push-to-start.
 - **Attention.** Entering an approval or a question alerts: a paired server's relay
   sends the banner, and otherwise the app's write carries an `AlertConfiguration` when
   it is not in the foreground (`AgentLiveActivityAlertPolicy`, #740). The alert stays
-  owed until a write actually lands, so the feed's same-tick chips write cannot drop
+  owed until a write actually lands, so a same-tick chips write cannot drop
   it, and an ask that arrives while ActivityKit is still creating the activity alerts
   on its first write. A repeated waiting event stays silent. On a paired server the
   run's finish or failure can also alert once, through the relay's final update, under
   the Replies and subagent-mute preferences (see Push previews and taps, #888).
-- **Ownership.** Before every stale or end call the feed checks
+- **Ownership.** Before every stale or end call the chat checks
   `drivenSessionID`, so an activity a webui run or another bot took over is never
   touched. Token rotation and retirement are serialized: an in-flight registration
-  must be cleaned up before its replacement can register the same session. Ending,
+  must be cleaned up before its replacement can register the same session. Those
+  checks compare the relay's route (relay, install, device token, session), not the
+  configured server, so removing one of two entries for one host (#1178) never deletes
+  the route the other registered. Ending,
   dismissal, and server unpairing retire registrations. Cold launch observes paired
-  activities without resuming their chats; legacy/unpaired activities are removed.
-  `BotLiveActivityFeed.decision` is the pure start/update/end/wait decision.
+  activities without resuming their chats; legacy/unpaired bot activities are removed
+  (`LeftoverLiveActivitySettlement`). Its decisions apply only to an activity no chat
+  took over, and whose state and key did not change, while the host read or a route
+  retirement was in flight.
 - **Privacy.** Chips are counts only (plan step, workers, tools). Reply text
   appears only behind the existing response-excerpt setting.
 - **Avatar.** The app renders the bot's photo or drawn face to one PNG under
@@ -1735,19 +1656,31 @@ those values into manager calls.
 
 A Hermes session in the main chat drives the same manager from
 `HermesChatTurnCoordinator` (#1014), starting, updating and ending the activity where
-its turn does, with the webui layouts. The key is the interim
-`hermes:<profile>:<stored key>` and the stream id the host's `turn_started_at`, so a
-reattach, or the session reopened mid-turn, adopts the turn's activity. Only a session's
+its turn does, with the webui layouts. The key is `hermes:<profile>:<root>`, the chat's
+identity (the key it opened by), and the stream id the host's `turn_started_at`, so a
+reattach, or the session reopened mid-turn, adopts the turn's activity, also after a legacy
+compression moved the stored key (#1179). Only a session's
 first turn after an attach is sure to learn `turn_started_at` live; a later one uses the
 chat's own turn id, so reopening the session during it replaces the activity. Reply text
-follows the excerpt setting; with it off, the reply still moves the status on to writing,
-as in the Bot feed. An open approval shows as waiting for approval and any other request
+follows the excerpt setting; with it off, the reply still moves the status on to writing. An open approval shows as waiting for approval and any other request
 as a question. Leaving or a dropped socket marks it stale, and it checks
-`drivenSessionID` like the Bot feed. It has no push, a tap opens the app as it is
-(`AgentRunTapTarget` builds no route for the key), and the orphan reconciler skips it, so a
-leftover one ages out by its stale date. #706 slice 6.2 replaces the key with
-`<server>:<profile>:<lineage root>#<turn_started_at>` and adds the tap destination, push and
-cold-launch reconciliation.
+`drivenSessionID` like a bot's chat. Its attributes carry its server, its tap
+(`destinationURL`, the #1176 session link to the root, which opens the session as its row
+does, an archived Bot Chat row by its key with its Bot Chat root) and the stored key its
+pushes start under (`pushSessionID`). On a paired server it requests a token and the relay
+keeps it fresh like a bot's, moving with the stored key (above). One a build before #1179
+started has neither: no route (a tap opens the app as it is) and no push. The webui orphan
+reconciler skips it. Cold launch adopts a paired one like a bot's; an unpaired one on the
+signed-in active Hermes server is checked with one `session.active_list` read (never
+`session.resume`): listed under its key, the key it last moved to, or its root with any
+status but `idle`, it stays (so does one naming no key);
+otherwise it ends as complete ("Response complete"), since how the run ended is unknown, and
+retires any registration. A read that fails, or another server's activity, leaves it to its
+stale date. A bot's Bot Chat in the main chat (#1145) keeps the Bot identity
+instead: `startBot` with `AgentRunActivityBot` for the bot's `BotDestination` at the canonical
+root, the stored key as its push session, the bot's name as the title (session titles never
+replace it), its rendered avatar, and one stream per `turn_started_at`, so a tap opens the
+bot's chat.
 
 The shared content state accepts both existing local fields and the relay's compact
 `v`, `status`, `tool`, `tool_calls`, `started_at`, `updated_at` shape. With no reply
@@ -1767,7 +1700,7 @@ Rooms have no Live Activity.
 
 ## Bot mentions
 
-The Bot Chat composer offers up to eight `@` completions from the inbox roster
+A bot's chat's composer offers up to eight `@` completions from the roster
 for its own connection, excluding the open bot. The same panel also lists this
 conversation's workspace files below the roster; see File references. It reuses
 the slash panel's presentation and caret-local replacement behavior. Rows show a small static avatar
@@ -1858,34 +1791,15 @@ prompt or mutation was executed.
 
 ## Slash suggestions
 
-Typing `/` at the start of a Bot Chat draft opens the slash panel with this
-connection's **skills**. Commands stay absent from Bot Chat until #1038: the
-gateway runs those only through `slash.exec` and `command.dispatch`'s
-quick/plugin/registry stages, which Bot Chat does not use yet, so a command row
-would insert text nothing runs. Model, effort and workspace already have native
-controls (Chat controls above). A Hermes chat runs commands (below).
-
-`commands.catalog {session_id}` (the live runtime id) is read once per
-conversation, after connecting, driven by the composer. `BotSlashCatalog` reads the `skills` keys for which entries
-are skills and the `pairs` rows for their descriptions, and **drops any skill key
-that also appears in `canon` or `commands`**: those are registry, quick or plugin
-commands, `command.dispatch` resolves them ahead of skills, and a `quick_commands`
-entry of type `exec` runs a shell command on the host. A failed read is silent and
-retried on the next connect; the panel simply does not open and typing and sending
-never wait on it. A reply for a conversation that has moved on is dropped. Nothing
-is shared across servers or connections: `BotConversation` is one
-server/connection/Profile lifetime.
-
-`BotSlashTrigger` narrows `ComposerSlashTrigger` to a `/` that opens the draft and
-ends at its first space — past that the user is typing the skill's argument. The
-panel is closed for Steer and Redirect, which never expand an invocation. A `@`
-mention wins over a `/`, so the two panels never stack. Rows reuse the slash
-panel's dense glass presentation and `SlashSkillFormatter.matching` ranking;
-choosing one inserts the skill's **slug**, which is what `ComposerChipCatalog` is
-keyed by, so the shared composer draws it as an atomic chip through
-`ComposerChipTextView`, exactly as Sessions does. The send path resolves the slug
-back to the host's own key, so a key like `/Weekly_Report` completes as
-`/weekly-report` and still dispatches under its real name.
+A Hermes chat's panel, a bot's chat included, is described under Hermes chats below; a
+bot's chat leaves out the commands `HermesChatPolicy` refuses. `BotSlashCatalog` reads a
+`commands.catalog {session_id}` reply: the `skills` keys for which entries are skills and
+the `pairs` rows for their descriptions, **dropping any skill key that also appears in
+`canon` or `commands`**: those are registry, quick or plugin commands, `command.dispatch`
+resolves them ahead of skills, and a `quick_commands` entry of type `exec` runs a shell
+command on the host. Choosing a skill inserts its **slug**, which `ComposerChipCatalog` is
+keyed by, and the send path resolves the slug back to the host's own key, so a key like
+`/Weekly_Report` completes as `/weekly-report` and still dispatches under its real name.
 
 `prompt.submit` never interprets a leading `/`. So at Send or Queue, a draft that
 opens with a catalog skill is expanded first: `command.dispatch {name, arg,
@@ -1976,36 +1890,11 @@ Contract checked against the `HERMES_AGENT_TESTED_SHA` pin (`3abeca16`, 0.21.2):
 (`_session_home_scope`), so the phone passes the runtime id and the list follows
 that session's Profile and workspace. No live mutation was used for validation.
 
-## Quick replies
-
-Quick replies are short texts the user writes in Settings → Interaction → Quick
-Replies (shown only with Bot Mode on). With at least one saved,
-`BotQuickReplyRow` shows them as one-line chips in the status pill's slot above
-the Bot Chat composer, so the pill and the chips never stack.
-`BotQuickReplyPolicy.showsRow` shows the row only when the draft, quotes and
-attachments are empty, `maySend` is true, no request is pending and no pill is
-showing. It hides while the bot works, needs attention or is disconnected.
-
-A tap calls `BotConversation.applyQuickReply`: it fills an empty draft and
-never sends, so a mistap cannot start agent work. Send stays the existing path,
-including skill expansion for a reply that opens with `/skill`. The composer
-does not take focus, so no keyboard comes up.
-
-The list is client-only: the host has no saved-prompt store (webui's
-`/api/prompts` library is webui-only). `BotQuickReplyStore` keeps it as one JSON
-string in `UserDefaults`, empty by default, and it is one global list for every
-server, connection and Profile. Decoding is tolerant: an unreadable value is an
-empty list and blank or repeated entries are dropped. Suggestions in the editor
-are localized starters; adding one saves its text as a plain reply the user
-owns. Group rooms do not get the row.
-
 ## Chat controls
 
-The Bot composer reuses Sessions' model/effort menu, model sheet, workspace picker
-and context indicator. `BotChatControls` owns their connection/Profile/runtime
-context independently of webui configuration. The ready composer stays quiet;
-the expanded row contains the model/effort, workspace, fast mode and the Sessions context ring.
-Session controls appear in the navigation bar only when the host reports them.
+A Hermes chat's composer reuses Sessions' model/effort menu and model sheet.
+`BotChatControls`, owned by `HermesChatSettings`, holds the model, effort and Fast
+controls' connection/Profile/runtime context independently of webui configuration.
 
 `model.options` supplies provider groups, model choices and the active agent's
 model/provider. Do not take the active selection from `session.info.model`: that
@@ -2015,14 +1904,13 @@ for model, reasoning and fast. Model requires a runtime and an explicit `--sessi
 containing flag tokens or whitespace are rejected before dispatch because the
 host uses a whitespace parser, not shell quoting. The model reply's `key`, `value`, `scope`, `confirm_required`, `confirm_message`
 and `deferred` determine whether to request confirmation, show a next-turn pick,
-or re-read the active model. No pending pick gets an active checkmark. Reads are
-coalesced on session-info, turn-boundary and session-control events, never polled.
+or re-read the active model. No pending pick gets an active checkmark. The catalog is
+read on connect and again when a turn ends with a pick still waiting, never polled.
 
-The catalog projection is `HermesModelCatalog`, shared with a Hermes session's
-composer in the main chat (#1015). That composer reuses `BotChatControls` for its
-model chip without the `session.control.read` its side tasks already make
-(`HermesChatSettings`), and lists `profiles.list` in its Profile chip. Picking
-another Profile opens a new chat in it; the session's Profile never changes.
+The catalog projection is `HermesModelCatalog` (#1015). A goal and side work read
+`session.control` on their own (`HermesChatSideTasks`). The composer lists `profiles.list`
+in its Profile chip; picking another Profile opens a new chat in it, and the session's
+Profile never changes.
 
 Reasoning and fast mode use `config.set` with `{profile, session_id, scope:
 "session", key, value}`. Reasoning sends only `none`, `minimal`, `low`, `medium`,
@@ -2036,11 +1924,28 @@ A Hermes session's composer (#1016) offers the same ladder, without `none` when
 `reasoning: false`. Effort is session-scoped: the next chat in the Profile keeps
 its own. `session.info.reasoning_effort_wire` names the level the model's route
 actually takes; the chip shows it when it differs ("XHigh · sent as High").
-`/reasoning` there refuses the display words. Personality is the opposite:
+`/reasoning` there refuses the display words. Its Fast chip (#1142) is shown
+once `session.info` reports `fast`, unless `capabilities[model].fast` is false and Fast is
+off. The attach's `session.resume` info restores effort and Fast when the controls
+reconnect. Personality is the opposite:
 `config.set {key: "personality"}` always writes the Profile's default (the host
 has no session-only personality) and also switches the session, so
 `/personality <name>` asks first and names the Profile. Its list is
 `complete.slash {text: "/personality ", session_id}`.
+
+A Hermes session's folder chip (#1117) shows the `cwd` its `session.info` reports, as does the
+chat's header. Its picker has no workspace registry to manage: untyped, it lists the chat's
+folder, the Profile's user projects' folders (`projects.tree {profile}`, automatic lanes left
+out) and the `cwd`s on the first page of the Profile's Sessions list, each once; a path from `/`
+or `~/` completes through `complete.path {word, profile}` outside a session, and any other text
+filters the list. A pick is Move to Project's `session.workspace.move {session_key, cwd,
+profile}`, not `session.cwd.set`, so the stored row keeps the folder. A new chat
+nothing can have run in (no prompt reached the socket, whatever its reply, no turn started, no
+saved rows) moves at once: the host re-homes its live runtime and the first prompt's row inherits
+the folder. Any other asks first in Move to Project's words. The client refuses while a reply
+runs, though the host would move it mid-turn, and checks again at the socket write, since another
+client can start a turn meanwhile. 4017 says the folder doesn't exist. A move is a `cwd` change
+like any other: Files, the `@path` chips and Git leave the old folder (#1112–#1116).
 
 **Accepted host limitation (#479):** in the compatibility pin's
 `tui_gateway/methods_config_set.py`, `_set_reasoning` and `_set_fast` fall back to
@@ -2049,83 +1954,58 @@ The maintainer explicitly accepted this race to enable parity with Cadu. A clien
 preflight cannot eliminate it; the host must eventually reject stale runtimes.
 This is not authorization to deliberately write Profile defaults.
 
-`session.cwd.set` accepts `{session_id, profile, cwd}` while idle and returns
-`cwd`; the displayed workspace changes only after acknowledgment. It can be
-changed back through the same picker. `session.control.read` returns `control`
-with optional `goal`, `loop` and `heartbeat` records. The phone exposes only
-pause/resume for known active/paused states, confirms their consequences, and
-uses `session.control`'s returned snapshot. Unknown states are read-only;
-unsupported/denied methods become unavailable. No raw configuration editor,
-control creation, clearing, gate execution or general slash runner is exposed.
-
-The resume snapshot's `info.usage` maps `context_used`/`context_max` and cumulative
-`input`/`output` into the shared context presentation. Missing current-context
-fields show the same disabled “–” ring as Sessions; cumulative input never substitutes for context used.
-No cost, compression threshold or usage breakdown is invented. This slice does
-not call `session.context_breakdown`, which can rebuild the host's prompt merely
-to inspect it.
-
 The contract was checked against the source named by `HERMES_AGENT_TESTED_SHA`:
 `methods_complete.py::model.options`, `inventory.py::build_model_options_payload`,
 `server.py::_session_info`, `methods_config_set.py::_set_model`,
-`model_switch.py::parse_model_switch_args`, `methods_session.py::session.cwd.set`
-and `methods_session_control.py::session.control.read/control`. No live host
-mutation was used. Socket dispatch, read completion and confirmations all validate
-the captured context; disconnect invalidates them and never retries a write.
-Older snapshots cannot overwrite an acknowledged workspace change. Rejections
-keep the previous value and preserve the host's error text.
+and `model_switch.py::parse_model_switch_args`. No live host mutation was used.
+Socket dispatch, read completion and confirmations all validate the captured context;
+disconnect invalidates them and never retries a write. Rejections keep the previous value
+and preserve the host's error text.
 
 ## Recent chat entry
 
-`BotHistoryCache.recent` keeps value snapshots for at most 12 recently visited
-bot/room chats within an 8 MiB estimated payload budget. It is memory-only and
-separate from the lossy disk search index. Bot snapshots retain the last 500
-messages (including long text and display metadata), settled tool/reasoning rows,
-and visible inflight text frozen as history. Room snapshots retain system events
-as well as messages, their replay cursor and earlier boundary. Thumbnails may
-still load separately.
+`BotHistoryCache.recent` keeps each recently visited room's log for at most 12 rooms
+within an 8 MiB estimated payload budget. It is memory-only and separate from the lossy
+disk search index. A room's entry keeps system events as well as messages, its replay
+cursor and earlier boundary. Thumbnails may still load separately.
 
-New views read the projection synchronously before starting network recovery.
-Only a fresh server response grants runtime identity, working state, approvals or
-send permissions. Refresh replaces bot history and continues room delta replay.
-Deep links must match the cached canonical root; a fresh lookup of a replacement
-Bot Chat discards the old preview. Already-open chats keep established read-only
-history on identity loss. Warm room search still anchors to its selected sequence.
+A room's reader reads its entry synchronously before starting network recovery. Only a
+fresh server response grants working state, approvals or send permissions; refresh
+continues delta replay. Warm room search still anchors to its selected sequence.
 
-The store uses configured server hash + connection UUID + bot/room identity.
-Each recovery claims a writer token, so a superseded screen cannot overwrite a
-newer projection. Offline-cache clearing, connection/server removal, deletion and
-authoritative roster pruning invalidate the corresponding entries and writers.
-The small lock only protects in-memory value copies; disk work stays on the
-history actor. No sockets, credentials, pending actions or live permissions are
-cached. App termination discards all recent projections.
+The store uses configured server hash + connection UUID + room ID. Each recovery claims a
+writer token, so a superseded screen cannot overwrite a newer log. Offline-cache clearing,
+connection/server removal, disband and an authoritative room list invalidate the
+corresponding entries and writers. The small lock only protects in-memory value copies;
+disk work stays on the history actor. No sockets, credentials, pending actions or live
+permissions are cached. App termination discards all of it.
 
 ## Local search
 
 The top-right search button opens a sheet with a focused search field and an
 All / Bots / Messages filter. Bot names use the current roster, including hidden
-bots when a query matches. Message search is entirely local: it searches saved
-user/assistant text from full, identity-validated Bot snapshots and user/member
-messages from group room pages this iPhone has loaded. It never uses webui history or calls a server search/resume endpoint.
-The coverage label is “Messages saved on this iPhone.” There is no initial server
-crawl, attachment indexing, or live-token indexing.
+bots when a query matches. A bot's chat is searched on the host (#1146):
+`BotInbox.searchBotChats` asks `HermesREST.sessionSearch` once per roster Profile while the
+inbox is live, keeps each Profile's Bot Chat match (who wrote it, and the FTS snippet), and a
+hit opens that bot's chat. Only the roster's current Bot Chat (`canonical_session` root or tip)
+counts; a replaced one under the same title is not a hit. A match on the session id names no message (no `role`), so that hit
+shows as the bot's plain result. Room messages stay local: user/member messages from group room
+pages this iPhone has loaded, under the label “Messages saved on this iPhone.” Bot Chat's own
+snapshots are dropped from the cache when it loads (#1148). There is no initial server crawl,
+attachment indexing, or live-token indexing.
 
-`BotHistoryCache` serializes disk access and matching off the main actor. It keeps
-one snapshot per configured server hash + connection UUID + Profile, including
-canonical root and compression tip, but no runtime identifier. Refresh replaces
-the snapshot, so undo/compression cannot accumulate obsolete search rows. The
-cache is disposable, under Library/Caches with file protection: 30-day lifetime,
-100 snapshots, 8 MB encoded globally, and up to the latest 500 projected messages
-per bot or room. Messages over 16 KB are omitted. Search returns at most 100 matches and
-asks the user to refine at the cap. Unknown roles, tool output, credentials from
-prompt cards, inflight text, and drafts are not indexed.
+`BotHistoryCache` serializes disk access and matching off the main actor, with no runtime
+identifier. The cache is disposable, under Library/Caches with file protection: 30-day
+lifetime, 100 rooms, 8 MB encoded globally, and up to the latest 500 messages per room.
+Messages over 16 KB are omitted. Search returns at most 100 matches and asks the user to
+refine at the cap. Tool output, credentials from prompt cards and drafts are not indexed.
 
 Room rows use configured server hash + connection UUID + room ID, never the room
 name or member Profile. Completed replay windows append by `seq`; overlaps do
 not replace existing messages. Pages in each window commit together so fetching
 earlier history preserves the newer cached window. Only `message.user` and `message.member` text, sender identity and time
 are saved. The separate cursor includes invisible events. Cached coverage stays
-contiguous; eviction advances its earlier boundary. Bot and room results share
+contiguous; eviction advances its earlier boundary. Every room's results share
 the 100-hit limit and global storage budget. A room hit shows its room and sender
 and opens the normal room at the saved sequence, revalidating the connection and
 room after search dismisses. When the room list is unavailable (including cold
@@ -2136,20 +2016,11 @@ cached fallback, including if it refreshes while search is dismissing. If the ca
 sequence again. Expiry/disband revokes late writes and removes the room rows;
 a complete active room list also removes cached rooms that have disappeared.
 
-A Bot message result holds the selected immutable snapshot and opens a read-only
-text reader at its local message ID. Those IDs belong to the saved projection;
-they never become RPC targets. A bot result deliberately opens its normal chat
-only after the sheet dismisses and the connection/Profile selection is validated
-again. Cache results and reader selections are discarded on connection change;
-backgrounding cancels search. New queries cannot publish old search results.
-When the roster is unavailable, cached message results use the saved bot name;
-a successful roster refresh excludes messages from removed bots.
-
 Clear Offline Cache clears this server's Bot cache too. Removing a Bot connection,
 replacing its endpoint/account, signing out, or removing its configured server
 also removes its saved messages. Removal revokes pending writes for the old
 connection; clearing rejects writes captured before the clear and permits future
-snapshots. Identical Profile names on different connections never share history.
+pages. Identical room IDs on different connections never share history.
 
 ## Group rooms
 
@@ -2297,18 +2168,12 @@ only to the app target; the share extension and Live Activity do not manage room
 
 ## Activity presentation
 
-Bot and room composers share one action pill for requests, errors, reconnect,
-and retry. In rooms, command errors and uncertain-send recovery take precedence
-over a blocked member's request; its inline action card remains available.
-Routine Working/Connecting banners are omitted. Room
+The room composer has one action pill (`BotComposerPill`) for requests, errors, reconnect,
+Update sign-in and retry; a Hermes chat borrows its Update sign-in. In rooms, command
+errors and uncertain-send recovery take precedence over a blocked member's request; its
+inline action card remains available. Routine Working/Connecting banners are omitted. Room
 requests link to their cards; Stop and uncertain-send guards remain in effect.
 
-Single-bot transcripts reuse the Sessions "Working for" row only while connected
-and confirmed running, with a valid server `inflight.started_at` or
-`turn_started_at`. Missing or future timestamps never fall back to a phone clock.
-New-turn events clear the previous timer until their snapshot arrives; reconnect
-restores the server's original start. Waiting, stopping and idle hide the row.
-This is elapsed wall time since the server started the turn, not active CPU time.
 Rooms have no elapsed row: the tested `groups.state` contract exposes aggregate
 activity but no current-work start timestamp.
 
@@ -2340,10 +2205,17 @@ gateway socket). It reads `GET /api/plugins/hermex-push/pairing` first, and only
 route's own answers decide what the host needs: 200 means the relay is set and the plugin
 loaded, so it is paired as it stands, with nothing installed and no restart interrupting
 work; 409 means a loaded plugin with nowhere to send, which needs the address alone, since
-the plugin re-reads it; 404 means the plugin is missing, which needs the full sequence.
-Anything else — a timeout, a server error, keys this build cannot read — is reported as it
-is, because reconfiguring on those would replace a self-hosted relay and restart a gateway
-over a failure that had nothing to do with setup. The full sequence runs
+the plugin re-reads it. A 404 is read by its body (hermes-agent `ca678285`, #1178):
+
+| 404 body | Meaning | Setup |
+| --- | --- | --- |
+| `{"detail":"Plugin not found"}` | off, or not installed (auth middleware) | the full sequence |
+| `{"detail":"No such API endpoint: …"}` | on, but the dashboard never mounted its routes | plugins hub: on disk → "Restart Hermes to finish"; not on disk → the full sequence; no plugins list → Pair step fails, host unchanged |
+| `{"error":"Headless backend (hermes serve): …"}` | `hermes serve`'s catch-all, read like the line above | as above |
+
+Anything else — another 404, a timeout, a server error, keys this build cannot read — is
+reported as it is, because reconfiguring on those would replace a self-hosted relay and
+restart a gateway over a failure that had nothing to do with setup. The full sequence runs
 in the order the host needs: `PUT /api/env` sets
 `HERMEX_PUSH_RELAY_URL` at the root so every Profile inherits it, `POST
 /api/dashboard/agent-plugins/install` and `…/hermex-push/enable` install the
@@ -2359,9 +2231,19 @@ reinstalls instead of refusing. Reinstalling cannot unpair a phone: the plugin k
 key pair in `plugin-data`. The revision is whatever the repository resolves to; pinning a
 `ref` is an open owner decision.
 
-The restart drops the route, so the pairing read retries a missing route, a 409
-from an unread relay address and a refused connection on a fixed schedule before
-the step fails. A failure names its step and leaves nothing half-paired: the keys
+`POST /api/gateway/restart` restarts only the messaging gateway (`hermes gateway restart`),
+not the dashboard that serves the pairing route: the dashboard mounts plugin routes once,
+when it starts. So the restart loads nothing new there; it is kept as it runs today, being
+harmless for push (owner decision, #1178). A plugin turned off after the dashboard
+mounted it answers again once enabled. One the dashboard never mounted — a fresh install,
+or one installed after it started — answers "No such API endpoint", and setup stops at that
+read instead of retrying it: Settings shows the plugin card's "Restart Hermes to finish"
+(`.setupNeedsRestart`), which asks the user to restart `hermes dashboard` on the host, then
+"Check again". The phone never restarts a dashboard that hasn't loaded the plugin, since
+only the plugin's own route can. Check again re-reads the pairing route and pairs a host
+that now answers (setting the relay address first if it answers 409); it installs and
+restarts nothing. Other missing routes, a 409 from an unread relay address and a refused
+connection are retried on a fixed schedule before the step fails. A failure names its step and leaves nothing half-paired: the keys
 are wiped, and the host hands back the same pair on the next attempt, because the
 plugin keeps them in `plugin-data` rather than its install directory.
 
@@ -2419,7 +2301,9 @@ Settings also offers a plugin update (#851). `HermexPushPlugin.newestVersion` is
 plugin this build knows. Each time the Notifications section appears on a paired server,
 `checkPlugin()` makes one read of the pairing route: its `plugin_version` is the code the
 dashboard process has loaded, and a missing or unparseable one counts as older than every
-known version. Only a plugin that is behind costs a second read, `GET
+known version. A version read that 404s "No such API endpoint" means the dashboard has
+not mounted the plugin since it was installed, so it reads as nothing loaded (#1235): with the
+newest on disk the card is "Restart Hermes to finish", not a refused read. Only a plugin that is behind costs a second read, `GET
 /api/dashboard/plugins/hub`, whose per-plugin `version` is `plugin.yaml` on disk; the newest
 on disk means the update is only waiting for a restart. The answer lives in memory, never in
 `PushPairing`, so "Restart Hermes to finish" always reflects what the host says now. The
@@ -2445,8 +2329,8 @@ route whenever it answers, until the newest plugin is loaded; the old process ca
 just after the 202, so an old version keeps it waiting. A connection dropped on the restart
 request counts as the restart; an HTTP error before it ran is "Couldn't restart Hermes" with
 "Try again". Past the wait, the last answer stands: the old plugin (restart offered again), a
-host that answers but fails the plugin read (a new plugin that failed to import has no routes
-mounted) as a failed read, or silence as "Hermes didn't come back" with "Check again", which
+new plugin that failed to import, which leaves its routes unmounted, as "Restart Hermes to
+finish" on the host, a host that answers but fails the plugin read as a failed read, or silence as "Hermes didn't come back" with "Check again", which
 turns into a failed read once the host answers with an error. Without a configured signing secret the
 dashboard's basic-auth session key is per process, so the first read after a restart signs in
 again. A version read that fails after the reinstall and restart also offers "Check again",
@@ -2456,7 +2340,19 @@ never pairs by itself; "Turn on notifications…" stays the way to pair. Turning
 off drops the offer, because its install would enable the plugin again. Bump the constant in
 the release that follows a plugin release (TESTFLIGHT.md's release gates).
 
-Every way out removes this phone at the relay and wipes the keys.
+Features that call a hermex-push route other than pairing and restart (Git's Fetch, Pull and
+New branch, #1236; provider limits, #1237) gate on what the dashboard has mounted, not on a
+version number: a POST can't be probed without running it. From 0.5.0 the plugin answers `GET
+/api/plugins/hermex-push/capabilities` with `{plugin_version, routes}`, each route a method and
+the path below the mount (`"GET /pairing"`), built from its own router so it can't drift. It has
+no side effects and never answers 409, so a host that uses the plugin without push set up can
+be read. `BotDashboardClient.companionRoutes()` reads it when the feature's screen loads,
+through that server's own connection, with no cache; any 404 (an older plugin, one not
+loaded, one turned off) is `HermexCompanionRoutes.closed`, and the feature just doesn't show.
+The restart nudge stays in Settings → Notifications, which owns the plugin's standing.
+
+Every way out removes this phone at the relay and wipes the keys, except that a relay
+device another entry for the same host still shares stays registered (`push.md`, #1178).
 `HermexPushProvisioner.disable()` stops the host sending first, then calls
 `PushRegistrar.disable`, so a failure at either end changes nothing the user has to
 unpick. `PushRegistrar.forget` is the teardown that cannot fail — the keys go whether or
@@ -2489,13 +2385,21 @@ entitlement is the push Keychain group alone: no app group, no networking, no Sw
 rename of `installKey` or `previewKey` in `PushPairing` breaks previews.
 
 The Profile exists only inside the ciphertext, so the extension writes it back to
-`userInfo["hermex_profile"]`. `PushAppDelegate` is the notification-center delegate: a
-tap becomes `PushNotificationRouter.botDestination` — `source == "bot"`, the pairing
-picks the server, that server's Bot connection supplies the UUID — and rides the one bot
-deep link (#554) through `AppIntentRouter`. No conversation is passed: `session_id` is
-the run's live session, not the bot's durable root. A tap only navigates; an approval is
-never answered from a banner. Anything unroutable just opens the app. Webui taps use the install's configured server
-and `session_id`, independently of Bot Mode and preview decryption. After switching to
+`userInfo["hermex_profile"]` (a named Profile only: the default's `""` stays out).
+`PushAppDelegate` is the notification-center delegate, and a tap becomes
+`PushNotificationRouter.link`, queued through `AppIntentRouter`; the pairing picks the
+server, the active one first when one host is configured twice. On a Hermes server every
+non-webui push (`source` is `bot` for `ios`, `desktop` and `tui` sessions alike) becomes
+the Hermes session link (#1177) for its `session_id`, the session's stored key in every
+hook, with the written-back Profile or none. The Sessions list resolves it as any session
+link: gone or in two Profiles says so, a Bot Chat opens its bot, and a legacy compression
+chain opens at its tip. `is_subagent` adds `subagent=1`, and the lookup opens the
+`_delegate_from` key when present; otherwise it walks the child's compression segments
+before taking one `parent_session_id` hop. An approval card appears only from the host's
+`open_requests` on resume. Only on a webui server does `source == "bot"` still open
+`botDestination`, its Bot connection's bot (legacy Bot Mode). A tap only navigates; an
+approval is never answered from a banner. Anything unroutable just opens the app. Webui taps use the install's configured webui server
+(never a Hermes alias of the same host) and `session_id`, independently of Bot Mode and preview decryption. After switching to
 that server (and signing in if needed), a live session lookup opens the conversation;
 a missing session leaves its session list without an error. It never searches another
 server or uses a stale cached session. A paired server suppresses local completion
@@ -2518,7 +2422,7 @@ a phone that is offline when the run ends gets the `end` without the alert.
 
 While the app is open, `PushAppDelegate` presents relay pushes itself (#566); iOS would
 otherwise show none, approvals included. `PushPresence` records the conversation on
-screen (a webui session ID, or a bot's live agent session) and, when that server's
+screen (a webui session ID, or a Hermes session's current stored key) and, when that server's
 "Quiet the Open Chat" preference is on (the default), hides its pushes except
 `approval`, `clarify`, `input` and `turn_error`. The preference travels to the relay as
 `presence_suppression`, but the app never sends the relay's `active_session_id` /

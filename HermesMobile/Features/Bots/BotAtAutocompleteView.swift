@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// What the Bot Chat's one `@` panel draws, in order: this connection's bots,
+/// What a Hermes chat's one `@` panel draws, in order: this connection's bots,
 /// then this conversation's workspace files.
 enum BotAtPanelSection {
     case bots([BotMentions.Completion])
@@ -22,7 +22,7 @@ enum BotAtPanelSection {
     }
 }
 
-/// The Bot Chat's `@` panel: roster rows above workspace file rows, on the
+/// A Hermes chat's `@` panel: roster rows above workspace file rows, on the
 /// slash panel's glass. Section headers are the only chrome.
 ///
 /// Rooms use `BotMentionAutocompleteView` directly and never reach this panel,

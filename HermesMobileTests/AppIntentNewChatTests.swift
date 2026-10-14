@@ -136,4 +136,80 @@ final class AppIntentNewChatTests: XCTestCase {
     func testNewChatRequestCarriesVoiceFlag() {
         XCTAssertTrue(NewChatRequest(autoStartsVoiceInput: true).autoStartsVoiceInput)
     }
+
+    // MARK: - On a Hermes server (#1180)
+
+    private let hermes = URL(string: "https://hermes.example")!
+    private let studio = URL(string: "https://studio.example:9119")!
+    private let webui = URL(string: "https://webui.example")!
+
+    private func account(_ server: URL, _ kind: ServerKind) -> ServerAccount {
+        ServerAccount(id: server.absoluteString, urlString: server.absoluteString, displayName: "", initials: "",
+                      headerLogoColorHex: HeaderLogoColor.defaultHex, createdAt: Date(timeIntervalSince1970: 0),
+                      updatedAt: Date(timeIntervalSince1970: 0), kind: kind)
+    }
+
+    private var servers: [ServerAccount] { [account(hermes, .hermes), account(studio, .hermes), account(webui, .webui)] }
+
+    @MainActor
+    func testNewChatOnAnActiveHermesServerStaysThere() throws {
+        for state in [AuthManager.State.loggedIn(server: hermes), .loggedOut(server: hermes)] {
+            let chat = try XCTUnwrap(HermesNewChatDestination.onActiveServer(state: state, servers: servers,
+                                                                             autoStartsVoiceInput: true))
+            XCTAssertEqual(chat.server, hermes)
+            XCTAssertNil(chat.profile, "New Session's Profile, which the list settles")
+            XCTAssertTrue(chat.autoStartsVoiceInput)
+        }
+        XCTAssertNil(HermesNewChatDestination.onActiveServer(state: .loggedIn(server: webui), servers: servers,
+                                                             autoStartsVoiceInput: false), "A webui server keeps its New Chat")
+        XCTAssertNil(HermesNewChatDestination.onActiveServer(state: .unconfigured, servers: [], autoStartsVoiceInput: false))
+    }
+
+    @MainActor
+    func testAHermesNewChatOpensOnlyOnItsSignedInServer() {
+        let chat = HermesNewChatDestination(server: studio, profile: "dev")
+        XCTAssertEqual(chat.route(state: .loggedIn(server: studio), servers: servers), .open)
+        XCTAssertEqual(chat.route(state: .loggedOut(server: studio), servers: servers), .waitForSignIn)
+        XCTAssertEqual(chat.route(state: .loggedIn(server: webui), servers: servers), .switchServer(account(studio, .hermes)))
+        XCTAssertEqual(chat.route(state: .loggedIn(server: studio), servers: [account(hermes, .hermes)]), .ignore,
+                       "A removed server's Shortcut opens nothing")
+        XCTAssertEqual(HermesNewChatDestination(server: webui, profile: "dev").route(state: .loggedIn(server: webui), servers: servers),
+                       .ignore)
+    }
+
+    @MainActor
+    func testAHeldNewChatReplacesOlderLinksAndWaitsForItsServer() {
+        var links = PendingLinks(deepLinkedSessionID: "legacy", newChatRequest: NewChatRequest())
+        let chat = HermesNewChatDestination(server: studio, profile: "dev")
+
+        XCTAssertEqual(links.open(chat, state: .loggedIn(server: webui), servers: servers), account(studio, .hermes))
+        XCTAssertNil(links.deepLinkedSessionID)
+        XCTAssertNil(links.newChatRequest)
+        XCTAssertEqual(links.hermesNewChat, chat)
+
+        XCTAssertNil(links.reroute(state: .loggedOut(server: studio), servers: servers, isBotModeEnabled: false))
+        XCTAssertEqual(links.hermesNewChat, chat, "Held through the sign-in")
+        XCTAssertNil(links.reroute(state: .loggedIn(server: studio), servers: [account(webui, .webui)], isBotModeEnabled: false))
+        XCTAssertNil(links.hermesNewChat, "Its server was removed")
+    }
+
+    @MainActor
+    func testTheSessionsListOpensTheNewChatInItsProfileOnceItCan() {
+        let connection = BotConnection(id: UUID(), name: "Host", address: studio, username: "me", password: "secret")
+        let entry = HermesSessionListEntry(server: studio, connection: connection, profile: nil)
+        let voice = HermesNewChatDestination(server: studio, profile: nil, autoStartsVoiceInput: true)
+
+        XCTAssertNil(voice.chat(on: entry, listed: nil, isLive: true), "Waits for New Session's Profile")
+        XCTAssertNil(voice.chat(on: entry, listed: "default", isLive: false), "Waits for the host, as New Session does")
+        let opened = voice.chat(on: entry, listed: "default", isLive: true)
+        XCTAssertEqual(opened?.target, .new(profile: "default"))
+        XCTAssertEqual(opened?.server, studio)
+        XCTAssertEqual(opened?.autoStartsVoiceInput, true)
+
+        let named = HermesNewChatDestination(server: studio, profile: "dev").chat(on: entry, listed: "default", isLive: true)
+        XCTAssertEqual(named?.target, .new(profile: "dev"), "The Shortcut's Profile wins over the list's")
+        XCTAssertEqual(named?.autoStartsVoiceInput, false)
+        XCTAssertNil(HermesNewChatDestination(server: hermes, profile: "dev").chat(on: entry, listed: "default", isLive: true),
+                     "Another server's list opens nothing")
+    }
 }

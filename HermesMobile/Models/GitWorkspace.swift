@@ -7,6 +7,8 @@ import Foundation
 // `.convertFromSnakeCase`, so snake_case JSON keys (`is_git`, `old_path`, `too_large`, …)
 // map onto these camelCase properties automatically.
 //
+// A Hermes chat's repository maps into the same models in `HermesGitClient` (#1114).
+//
 // Endpoint contract (verified against `.codex-tmp/hermes-webui/api/workspace_git.py`):
 // - GET /api/git-info  → { "git": {...} | null }
 // - GET /api/git/status → { "git": {...} }   (non-repo: is_git=false, HTTP 200)
@@ -136,6 +138,25 @@ struct GitFile: Decodable, Equatable, Identifiable {
 }
 
 extension GitFile {
+    /// A changed file a client assembles itself, as `HermesGitClient` does from a Hermes host's
+    /// rows (#1114), keyed by its path.
+    init(path: String, status: String?, staged: Bool?, unstaged: Bool?, untracked: Bool?, conflict: Bool?,
+         additions: Int?, deletions: Int?) {
+        id = path.isEmpty ? UUID().uuidString : path
+        self.path = path
+        oldPath = nil
+        workspacePath = nil
+        self.status = status
+        self.staged = staged
+        self.unstaged = unstaged
+        self.untracked = untracked
+        ignored = nil
+        self.conflict = conflict
+        self.additions = additions
+        self.deletions = deletions
+        binary = nil
+    }
+
     /// A normalized change kind derived from the booleans first (the reliable signal),
     /// falling back to the raw `status` code. UI maps this to a localized chip + colour.
     enum ChangeKind: Equatable {
@@ -288,6 +309,13 @@ struct GitCommitResponse: Decodable, Equatable {
     let paths: [String]?
     let status: GitStatus?
     let git: GitStatus?
+    /// Set by a Hermes Commit Selected (#1115) whose commit landed but which couldn't stage the
+    /// other staged files again. Never decoded.
+    var stagingNotRestored = false
+
+    enum CodingKeys: String, CodingKey {
+        case ok, commit, paths, status, git
+    }
 
     var resolvedStatus: GitStatus? { status ?? git }
     /// Short SHA produced by the commit, trimmed for display.

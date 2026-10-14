@@ -1,13 +1,14 @@
 import Foundation
 import UniformTypeIdentifiers
 
+/// One workspace file's preview and export, read through the chat's `WorkspaceFileClient`.
+/// A nil client is a chat without a session to read from.
 @Observable
 final class FilePreviewViewModel {
-    private let session: SessionSummary
+    private let files: (any WorkspaceFileClient)?
     private let path: String
     /// The listing's byte count, when known; a file over the Quick Look cap skips the download.
     private let knownSize: Int?
-    private let apiClient: APIClient
 
     private(set) var preview: FilePreviewContent?
     /// Lazy-render chunks for a large Markdown preview; nil renders the file as one document.
@@ -23,17 +24,14 @@ final class FilePreviewViewModel {
     private var prefetchedFile: Task<FileResponse, Error>?
 
     init(
-        session: SessionSummary,
-        server: URL,
+        files: (any WorkspaceFileClient)?,
         path: String,
         knownSize: Int? = nil,
-        apiClient: APIClient? = nil,
         prefetchedFile: Task<FileResponse, Error>? = nil
     ) {
-        self.session = session
+        self.files = files
         self.path = path
         self.knownSize = knownSize
-        self.apiClient = apiClient ?? APIClient(baseURL: server)
         self.prefetchedFile = prefetchedFile
     }
 
@@ -42,13 +40,13 @@ final class FilePreviewViewModel {
         ["md", "markdown", "mdown", "mkd"].contains(pathExtension(of: path))
     }
 
-    /// True for paths that load through `/api/file` as text rather than as image or raw bytes.
+    /// True for paths that load through `WorkspaceFileClient.file` as text rather than as image or raw bytes.
     static func loadsTextPreview(forPath path: String) -> Bool {
         !rasterImageExtensions.contains(pathExtension(of: path)) && BinaryFilePreview(path: path) == nil
     }
 
     var canExportFile: Bool {
-        session.sessionId?.isEmpty == false && !path.isEmpty
+        files != nil && !path.isEmpty
     }
 
     var canSaveImageToPhotos: Bool {
@@ -57,7 +55,7 @@ final class FilePreviewViewModel {
 
     @MainActor
     func load() async {
-        guard let sessionID = session.sessionId else {
+        guard let files else {
             errorMessage = String(localized: "Session ID is missing.")
             return
         }
@@ -74,7 +72,7 @@ final class FilePreviewViewModel {
 
         do {
             if isRasterImagePath {
-                let data = try await apiClient.rawFileData(sessionID: sessionID, path: path)
+                let data = try await files.imagePreviewData(path: path)
                 exportData = data
                 if let previewData = ImagePreviewDownsampler.previewData(
                     from: data,
@@ -85,9 +83,9 @@ final class FilePreviewViewModel {
                     preview = .unavailable(String(localized: "Could not decode this image."))
                 }
             } else if binaryPreview == .quickLook {
-                let apiClient = apiClient
+                let path = path
                 let loaded = try await FilePreviewContent.loadQuickLook(name: exportFilename, knownSize: knownSize) {
-                    try await apiClient.rawFilePreviewData(sessionID: sessionID, path: path)
+                    try await files.rawFilePreviewData(path: path)
                 }
                 exportData = loaded.data
                 preview = loaded.content
@@ -100,14 +98,22 @@ final class FilePreviewViewModel {
                 if let prefetched, let result = try? await prefetched.value {
                     file = result
                 } else {
-                    file = try await apiClient.file(sessionID: sessionID, path: path)
+                    file = try await files.file(path: path)
                 }
-                exportData = Data((file.content ?? "").utf8)
-                markdownChunks = Self.isMarkdownPath(path)
-                    ? MarkdownPreviewChunker.chunks(for: file.content ?? "")
-                    : nil
-                preview = .text(file)
+                if file.isBinary {
+                    preview = .unavailable(String(localized: "Preview is not available for this file type."))
+                } else {
+                    // A preview-only text is not the file: export downloads it instead.
+                    exportData = file.isPreviewOnly ? nil : Data((file.content ?? "").utf8)
+                    markdownChunks = Self.isMarkdownPath(path)
+                        ? MarkdownPreviewChunker.chunks(for: file.content ?? "")
+                        : nil
+                    preview = .text(file)
+                }
             }
+        } catch BotArtifactFailure.folder {
+            // A symlinked folder a Hermes host lists as a file (#1112): nothing to preview or retry.
+            preview = .unavailable(String(localized: "Preview is not available for this file type."))
         } catch {
             lastError = error
             errorMessage = error.localizedDescription
@@ -118,7 +124,7 @@ final class FilePreviewViewModel {
 
     @MainActor
     func exportPayload() async throws -> FileExportPayload {
-        guard let sessionID = session.sessionId else {
+        guard let files else {
             throw FileExportError.missingSessionID
         }
 
@@ -138,7 +144,7 @@ final class FilePreviewViewModel {
         }
 
         do {
-            let data = try await apiClient.rawFileData(sessionID: sessionID, path: path)
+            let data = try await files.rawFileData(path: path)
             exportData = data
             return payload(with: data)
         } catch {

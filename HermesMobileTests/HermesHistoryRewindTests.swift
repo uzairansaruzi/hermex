@@ -192,6 +192,30 @@ import Observation
         XCTAssertEqual(chat.writes("slash.exec"), [], "never the host's own /undo")
     }
 
+    /// `/undo` takes the plan of the exchange it removes, its saved row not yet known: the plan
+    /// is not drawn under the earlier prompt that is now last.
+    func testUndoTakesTheUndoneTurnsPlan() async {
+        let chat = await openChat(threeTurns)
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("Plan it")
+        chat.transcript.rows = threeTurns + [row(7, "user", "Plan it"), row(8, "assistant", "Done.")]
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "todo.updated", ["revision": .number(1), "todos": .array([
+            .object(["id": .string("a"), "content": .string("Read"), "status": .string("completed")])
+        ])]))
+        chat.receive(event(3, "message.complete", ["status": .string("complete"), "text": .string("Done.")]))
+        chat.receive(event(4, "session.info", ["running": .bool(false)]))
+        XCTAssertEqual(chat.model.hermesActivity?.settledPlan?.followsLastPrompt, true)
+
+        chat.host.always("session.undo", .init(result: .object(["removed": .number(2)])))
+        chat.transcript.rows = threeTurns
+        let result = await chat.model.runHermesSlashCommand("/undo")
+
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(chat.model.messages.last?.content, "Third answer.")
+        XCTAssertNil(chat.model.hermesActivity?.settledPlan, "the plan went with its exchange")
+    }
+
     /// An `/undo` the host took whose newest-page read then fails still shows the exchange, so
     /// it is not reported done: Send waits, and the reattach's read shows it gone. A retried
     /// `/undo` would remove another exchange for good.
@@ -224,6 +248,154 @@ import Observation
         XCTAssertEqual(results.filter { $0 == .notDelivered }.count, 1)
         XCTAssertEqual(chat.writes("session.undo").count, 1)
         XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 3, 4])
+    }
+
+    // MARK: Retry on a failed turn (#1139)
+
+    /// Retry on the outcome row resends the host's raw prompt (`inflight.user`) once, cut at the
+    /// failed prompt's saved row, from a tap: a second tap while it runs sends nothing, and the
+    /// draft is never touched. The failed turn's rows give way to the retried prompt.
+    func testRetryResendsTheHostsRawPromptOnceAtTheFailedPromptsRow() async throws {
+        let chat = await openChat(threeTurns)
+        try await failTurn(chat, prompt: "Fourth")
+        XCTAssertEqual(chat.writes("prompt.submit").count, 1, "only the failed send went out")
+        let messages = chat.model.messages.map(\.content)
+
+        async let first: Void = chat.model.retryHermesFailedTurn()
+        async let second: Void = chat.model.retryHermesFailedTurn()
+        _ = await (first, second)
+
+        XCTAssertEqual(chat.writes("prompt.submit").dropFirst().map { [$0["text"], $0["truncate_before_row_id"]] },
+                       [[.string(Self.rawFailedPrompt), .number(7)]], "one retry, of the host's raw prompt")
+        XCTAssertEqual(chat.model.messages.map(\.content), Array(messages.dropLast()) + ["Fourth"],
+                       "the retried prompt takes the failed turn's place, its file as a chip")
+        XCTAssertEqual(chat.model.messages.last?.attachments?.map(\.name), ["notes.txt"])
+        XCTAssertNil(chat.model.hermesActivity?.failure, "the new turn clears the outcome")
+        XCTAssertNotNil(chat.model.activeStreamID)
+    }
+
+    /// A failure whose `message.complete` names no saved row, as an agent that failed to start
+    /// sends it, still offers Retry: the host saved the prompt at submit, so the chat finds it in
+    /// the newest rows, dated from the failed turn's start, and cuts there.
+    func testRetryAfterAFailureWithNoReceiptCutsAtThePromptTheHostSaved() async throws {
+        let chat = await openChat(threeTurns)
+        try await failTurn(chat, prompt: "Fourth", receipt: false)
+
+        await chat.model.retryHermesFailedTurn()
+        XCTAssertEqual(chat.writes("prompt.submit").dropFirst().map { [$0["text"], $0["truncate_before_row_id"]] },
+                       [[.string(Self.rawFailedPrompt), .number(7)]])
+    }
+
+    /// Retry on a turn another client started, whose prompt this chat never showed, cuts at that
+    /// prompt's saved row on the host; the earlier exchange the chat shows last is not that
+    /// turn's, so it stays, and the retried prompt follows it.
+    func testRetryOfATurnWhosePromptTheChatNeverShowedKeepsTheEarlierExchange() async {
+        let chat = await openChat(threeTurns)
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        chat.host.always("session.resume", .init(result: .object([
+            "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
+            "messages": .array([]), "info": .object(["profile_name": .string("default")]),
+            "inflight": .object(["user": .string("Elsewhere"), "assistant": .string(""), "started_at": .number(1_790_000_009),
+                                 "error": .string("HTTP 429"), "status": .string("error"), "recoverable": .bool(true),
+                                 "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"),
+                                                           "retryable": .bool(true)])])
+        ])))
+        chat.transcript.rows = threeTurns + [row(9, "user", "Elsewhere")]
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "message.complete", [
+            "status": .string("error"), "text": .string("HTTP 429"), "error": .string("HTTP 429"), "recoverable": .bool(true),
+            "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"), "retryable": .bool(true)])
+        ]))
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+        await waitUntil("Retry offered") { chat.model.hermesActivity?.retryTarget != nil }
+        let shown = chat.model.messages.map(\.content)
+        XCTAssertEqual(shown, ["First", "First answer.", "Second", "Second answer.", "Third", "Third answer."])
+
+        await chat.model.retryHermesFailedTurn()
+
+        XCTAssertEqual(chat.writes("prompt.submit").map { [$0["text"], $0["truncate_before_row_id"]] },
+                       [[.string("Elsewhere"), .number(9)]])
+        XCTAssertEqual(chat.model.messages.map(\.content), shown + ["Elsewhere"], "the earlier exchange stays")
+    }
+
+    /// The failure read can name a later turn than this chat's own failed send, one another client
+    /// started. Retry cuts at that turn's row on the host; the chat's own prompt, saved earlier as
+    /// row 7, is not that turn's, so it stays.
+    func testRetryOfALaterTurnThanTheChatsOwnKeepsItsPrompt() async {
+        let chat = await openChat(threeTurns)
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("Fourth")
+        chat.host.always("session.resume", .init(result: .object([
+            "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
+            "messages": .array([]), "info": .object(["profile_name": .string("default")]),
+            "inflight": .object(["user": .string("Elsewhere"), "assistant": .string(""), "started_at": .number(1_790_000_009),
+                                 "error": .string("HTTP 429"), "status": .string("error"), "recoverable": .bool(true),
+                                 "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"),
+                                                           "retryable": .bool(true)])])
+        ])))
+        chat.transcript.rows = threeTurns + [row(7, "user", "Fourth"), row(9, "user", "Elsewhere")]
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "message.complete", [
+            "status": .string("error"), "text": .string("HTTP 429"), "error": .string("HTTP 429"), "recoverable": .bool(true),
+            "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"), "retryable": .bool(true)]),
+            "persisted_turn": .object(["row_ids": .array([.number(7)]), "complete": .bool(false), "user_row_id": .number(7)])
+        ]))
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+        await waitUntil("Retry offered") { chat.model.hermesActivity?.retryTarget?.rowID == 9 }
+        let shown = chat.model.messages.map(\.content)
+        XCTAssertEqual(shown.last, "Fourth")
+
+        await chat.model.retryHermesFailedTurn()
+
+        XCTAssertEqual(chat.writes("prompt.submit").dropFirst().map { [$0["text"], $0["truncate_before_row_id"]] },
+                       [[.string("Elsewhere"), .number(9)]])
+        XCTAssertEqual(chat.model.messages.map(\.content), shown + ["Elsewhere"], "the chat's own prompt stays")
+    }
+
+    /// Retry on a failed skill turn replaces the typed line the chat showed, though the host kept
+    /// the expanded skill, which reads nothing like it: the prompt is the failed turn's own.
+    func testRetryOfAFailedSkillTurnLeavesOnePrompt() async throws {
+        let chat = await openChat(threeTurns)
+        await waitUntil("the catalog") { chat.model.hermesSlashCommands?.catalog.skills.isEmpty == false }
+        chat.host.always("command.dispatch", .init(result: .object([
+            "type": .string("skill"), "name": .string("demo-skill"), "message": .string(Self.skillPrompt),
+            "display": .string("/demo-skill do it")
+        ])))
+        try await failTurn(chat, prompt: "/demo-skill do it", raw: Self.skillPrompt)
+        let shown = chat.model.messages.map(\.content)
+        XCTAssertEqual(shown.last, "/demo-skill do it")
+
+        await chat.model.retryHermesFailedTurn()
+
+        XCTAssertEqual(chat.writes("prompt.submit").dropFirst().map { [$0["text"], $0["truncate_before_row_id"]] },
+                       [[.string(Self.skillPrompt), .number(7)]])
+        XCTAssertEqual(chat.model.messages.dropLast().map(\.content), Array(shown.dropLast()), "the failed line gives way")
+        XCTAssertEqual(chat.model.messages.filter { $0.role == "user" }.count, 4, "one prompt for the retried turn")
+    }
+
+    /// A busy host (4009) says to wait and changes nothing; Retry stays. A row the host can no
+    /// longer cut (4018) hides Retry for that row, and the chat reads the session again.
+    func testARetryRefusalSaysWhyAndA4018HidesRetry() async throws {
+        let chat = await openChat(threeTurns)
+        try await failTurn(chat, prompt: "Fourth")
+        let messages = chat.model.messages
+
+        chat.host.next("prompt.submit", .init(error: 4009, message: "session busy"))
+        await chat.model.retryHermesFailedTurn()
+        XCTAssertEqual(chat.model.sendErrorMessage, "Wait for the current reply to finish.")
+        XCTAssertEqual(chat.model.messages, messages, "a busy host changed nothing")
+        XCTAssertNotNil(chat.model.hermesActivity?.retryTarget, "Retry stays")
+
+        chat.host.next("prompt.submit", .init(error: 4018, message: "target user message is no longer in session history"))
+        let reads = HermesHostFixture.count("/api/sessions/tip/messages")
+        await chat.model.retryHermesFailedTurn()
+        XCTAssertEqual(chat.model.sendErrorMessage, "This message can’t be changed any more.")
+        XCTAssertNil(chat.model.hermesActivity?.retryTarget, "the same cut would fail again")
+        await waitUntil("reread") { chat.model.messages.last?.rowID == 7 }
+        XCTAssertEqual(HermesHostFixture.count("/api/sessions/tip/messages"), reads + 1, "the chat read the session again")
+        XCTAssertNotNil(chat.model.hermesActivity?.failure, "the outcome stays; only Retry goes")
+        XCTAssertNil(chat.model.hermesActivity?.retryTarget, "a reread does not bring it back")
+        XCTAssertEqual(chat.writes("prompt.submit").count, 3)
     }
 
     // MARK: Fixture
@@ -274,7 +446,8 @@ import Observation
         }
     }
 
-    /// A chat attached to an idle session `tip` on runtime `runtime`, whose settled rows are `rows`.
+    /// A chat attached to an idle session `tip` on runtime `runtime`, whose settled rows are `rows`
+    /// and whose host lists one skill, `demo-skill`.
     private func openChat(_ rows: [BotJSON]) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
@@ -282,6 +455,7 @@ import Observation
             "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
             "messages": .array([]), "info": .object(["profile_name": .string("default")])
         ])))
+        host.always("commands.catalog", .init(result: .object(["skills": .object(["/demo-skill": .object(["origin": .string("local")])])])))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
         let client = BotClient(http: host.connection(Self.connection))
         let transcript = Transcript(rows)
@@ -301,6 +475,46 @@ import Observation
         await model.loadMessages()
         XCTAssertEqual(engine.connectionState, .connected)
         return Chat(model: model, host: host, client: client, transcript: transcript)
+    }
+
+    /// The prompt a failed turn's host kept (`inflight.user`): what it received, file reference included.
+    private static let rawFailedPrompt = "Fourth\n\n@file:/a/notes.txt"
+    /// What the host received for `/demo-skill do it`: the expanded skill (`command.dispatch`).
+    private static let skillPrompt = "[IMPORTANT: The user has invoked the \"demo-skill\" skill.]\n\nSay hello.\n\n"
+        + "The user has provided the following instruction alongside the skill invocation: do it"
+
+    /// Sends `prompt`, a `/` line as a slash command, and fails its turn on a rate limit: the host
+    /// received it as `raw`, saved that as row 7 and keeps the failure, which the chat reads once
+    /// the turn settles. Without a `receipt` the failure's `message.complete` names no saved row.
+    private func failTurn(_ chat: Chat, prompt: String, raw: String = rawFailedPrompt, receipt: Bool = true) async throws {
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        if prompt.hasPrefix("/") {
+            _ = await chat.model.runHermesSlashCommand(prompt)
+        } else {
+            _ = await chat.model.sendMessage(prompt)
+        }
+        let failed = BotJSON.object([
+            "session_id": .string("runtime"), "session_key": .string("tip"), "running": .bool(false),
+            "messages": .array([]), "info": .object(["profile_name": .string("default")]),
+            "inflight": .object(["user": .string(raw), "assistant": .string(""), "started_at": .number(1_790_000_007),
+                                 "error": .string("HTTP 429"), "status": .string("error"), "recoverable": .bool(true),
+                                 "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"),
+                                                           "retryable": .bool(true)])])
+        ])
+        chat.host.always("session.resume", .init(result: failed))
+        chat.transcript.rows = threeTurns + [row(7, "user", raw)]
+        chat.receive(event(1, "message.start"))
+        var completion: [String: BotJSON] = [
+            "status": .string("error"), "text": .string("HTTP 429"), "error": .string("HTTP 429"), "recoverable": .bool(true),
+            "error_surface": .object(["layer": .string("provider"), "code": .string("rate_limit"), "retryable": .bool(true)])
+        ]
+        if receipt {
+            completion["persisted_turn"] = .object(["row_ids": .array([.number(7)]), "complete": .bool(false), "user_row_id": .number(7)])
+        }
+        chat.receive(event(2, "message.complete", completion))
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+        await waitUntil("Retry offered") { chat.model.hermesActivity?.retryTarget != nil }
+        XCTAssertTrue(chat.model.mayRetryHermesTurn)
     }
 
     private func context(_ chat: Chat, at index: Int) throws -> MessageActionContext {

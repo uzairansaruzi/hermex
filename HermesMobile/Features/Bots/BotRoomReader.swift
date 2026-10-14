@@ -87,7 +87,7 @@ import Observation
         self.cache = cache; self.initialSequence = initialSequence
         self.onChanged = onChanged; self.onDisbanded = onDisbanded
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: key.server) }; self.onExpired = onExpired
-        if case .room(let recent)? = cache.recent.snapshot(for: .room(key)) {
+        if let recent = cache.recent.log(for: .init(key)) {
             log = recent; publishLog()
             hasRecentLog = true
         }
@@ -103,13 +103,13 @@ import Observation
         suspend()
         if preservingLoadedHistory && !log.events.isEmpty {
             hasRecentLog = true
-        } else if case .room(let recent)? = cache.recent.snapshot(for: .room(key)) {
+        } else if let recent = cache.recent.log(for: .init(key)) {
             log = recent; publishLog()
             hasRecentLog = true
         } else {
             log = BotRoomLog(); events = []; threads = []; hasEarlier = false; hasRecentLog = false
         }
-        recentOwner = cache.recent.begin(.room(key))
+        recentOwner = cache.recent.begin(.init(key))
         // Checked before `makeWire`, which can retire a newer shared connection.
         if needsSignIn {
             await historyRemoval?.value
@@ -465,12 +465,12 @@ import Observation
     private func saveRecentTranscript() {
         // Pending send bubbles stay private until their acknowledgment is known.
         guard link == .live, !busy, !uncertainDisband, let recentOwner else { return }
-        cache.recent.save(.room(log.recentWindow()), for: .room(key), owner: recentOwner)
+        cache.recent.save(log.recentWindow(), for: .init(key), owner: recentOwner)
     }
 
     private func discardHistory() {
         let cache = cache, key = key
-        cache.recent.remove { $0 == .room(key) }
+        cache.recent.remove { $0 == .init(key) }
         recentOwner = nil
         // Deletion intentionally outlives the screen; it never mutates view state.
         historyRemoval = Task { try? await cache.removeRoom(key) }

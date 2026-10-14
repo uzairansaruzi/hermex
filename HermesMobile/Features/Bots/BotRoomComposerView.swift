@@ -82,7 +82,7 @@ struct BotRoomComposerView: View {
 }
 
 /// Room handles are server routing keys. Friendly names only help searching;
-/// unlike Bot Chat, room sends must never append an identification annotation.
+/// unlike a bot's chat, room sends must never append an identification annotation.
 enum BotRoomMentions {
     static func completions(room: BotGroupRoom, query: String) -> [BotMentions.Completion] {
         let members = room.members.compactMap { member -> BotMentions.Completion? in
@@ -129,5 +129,83 @@ struct BotRoomActionCard: View {
     private var identity: String {
         let member = reader.room.members.first { $0.id == action.id.member }
         return [member?.name, reader.room.name, reader.connection.name].compactMap { $0 }.joined(separator: " · ")
+    }
+}
+
+/// The one thing worth a pill above a room's composer, highest priority first. A
+/// request outranks an error because it has somewhere to go; an error outranks
+/// recovery because the user can read it. `ChatView` borrows `.updateSignIn` (#942).
+enum BotComposerPill: Equatable {
+    /// A blocking request with a card in the transcript to jump to.
+    case request(String)
+    /// A blocking request the phone cannot show; the line is the whole message.
+    case notice(String)
+    case error(String)
+    case reconnect
+    /// Reconnect's slot after the host refused the saved password: reconnecting
+    /// would only send it again, so the button opens the sign-in form instead.
+    case updateSignIn
+    case retrySend
+
+    var errorText: String? { if case .error(let text) = self { return text }; return nil }
+
+    /// Rooms' host exposes no turn start time, so routine working/connecting states
+    /// stay quiet; requests and recovery remain reachable. `needsSignIn` holds Update
+    /// sign-in in place even while a background leaves the room idle, because the room
+    /// never signs in again with a rejected password.
+    static func room(link: BotRoomReader.Link, blocked: Bool, hasActions: Bool,
+                     mayRetry: Bool, needsSignIn: Bool = false, errorText: String?) -> BotComposerPill? {
+        if let errorText { return .error(errorText) }
+        if needsSignIn { return .updateSignIn }
+        if link == .stopped { return .reconnect }
+        if mayRetry { return .retrySend }
+        if link == .live && blocked {
+            return hasActions ? .request(String(localized: "Waiting for your answer"))
+                : .notice(String(localized: "Waiting on Hermes Desktop"))
+        }
+        return nil
+    }
+}
+
+/// One centered capsule with material and no motion of its own. Request, Reconnect,
+/// Update sign-in and Retry send are buttons; an error is tappable to dismiss.
+struct BotComposerPillView: View {
+    let pill: BotComposerPill
+    var onReconnect: () -> Void = {}
+    let onUpdateSignIn: () -> Void
+    var onShowRequest: () -> Void = {}
+    var onDismissError: () -> Void = {}
+    var onRetrySend: () -> Void = {}
+
+    var body: some View {
+        Group {
+            switch pill {
+            case .request(let text):
+                Button(action: onShowRequest) { Label(text, systemImage: "arrow.down.circle") }
+            case .notice(let text):
+                Label(text, systemImage: "exclamationmark.circle")
+            case .error(let text):
+                Button(action: onDismissError) { Label(text, systemImage: "exclamationmark.triangle") }
+                    .accessibilityHint(Text("Dismisses this message"))
+            case .reconnect:
+                Button(action: onReconnect) { Label("Reconnect", systemImage: "arrow.clockwise") }
+            case .updateSignIn:
+                Button(action: onUpdateSignIn) { Label("Update sign-in", systemImage: "key") }
+            case .retrySend:
+                Button(action: onRetrySend) { Label("Retry send", systemImage: "arrow.up") }
+            }
+        }
+        .buttonStyle(.plain)
+        .font(AppFont.footnote())
+        .lineLimit(3)
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 14).padding(.vertical, 9)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().stroke(.primary.opacity(0.10), lineWidth: 1))
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
+        .padding(.horizontal, 24)
+        .accessibilityIdentifier("bot-chat-status")
     }
 }

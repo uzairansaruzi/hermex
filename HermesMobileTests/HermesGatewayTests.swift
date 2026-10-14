@@ -271,6 +271,27 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.count("/api/auth/ws-ticket"), 1)
     }
 
+    /// Bot Chat's `@` lookup keeps the required-call policy: left unanswered, it ends its
+    /// screen's connection, as it did before the Hermes chat's own lookup (#1113) failed alone.
+    func testBotChatsUnansweredCompletionEndsItsConsumer() async throws {
+        let http = connection(rpcDeadline: .milliseconds(50))
+        let chat = BotClient(http: http)
+        try await chat.connect()
+        defer { chat.close() }
+        var lost: [BotFailure?] = []
+        let told = expectation(description: "the chat told")
+        chat.onDisconnect = { lost.append($0 as? BotFailure); told.fulfill() }
+        let socket = try XCTUnwrap(sockets.first)
+        socket.withholdReply = { $0["method"].text == "complete.path" }
+
+        do {
+            _ = try await chat.call(.completePath(word: "Sou", sessionID: "runtime", profile: "default"))
+            XCTFail("An unanswered call cannot succeed")
+        } catch { XCTAssertEqual(error as? BotFailure, .transport) }
+        await fulfillment(of: [told], timeout: 2)
+        XCTAssertEqual(lost, [.transport])
+    }
+
     /// `session.compress` waits on the model's summary as Desktop does (#1050): the usual
     /// deadline, which still ends another screen's call, never ends it.
     func testACompressionOutlivesTheUsualDeadline() async throws {

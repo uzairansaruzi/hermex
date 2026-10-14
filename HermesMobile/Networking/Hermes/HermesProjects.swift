@@ -76,3 +76,20 @@ enum HermesFolderCompletion {
         return Suggestions(folders: folders, needsMoreTyping: folders.isEmpty && items.count >= hostListingLimit)
     }
 }
+
+extension HermesFolderCompletion {
+    /// The folders a Hermes chat's folder picker offers before anything is typed (#1117): the
+    /// chat's `current` folder, the user's project folders from `projects`, then the folders the
+    /// Profile's recent `sessions` worked in, each once. Automatic lanes are left out, as are
+    /// rows that name another Profile.
+    static func choices(current: String?, projects: HermesProjectTree?, sessions: [HermesSessionRow],
+                        profile: String) -> [String] {
+        let projectFolders = (projects?.projects ?? []).compactMap { $0.hermes?.isAutomatic == false ? $0.hermes?.folder : nil }
+        let recentFolders = sessions.compactMap { row -> String? in
+            guard row.profile.map({ $0.isEmpty || $0 == profile }) ?? true else { return nil }
+            return row.cwd
+        }
+        var seen = Set<String>()
+        return ([current].compactMap { $0 } + projectFolders + recentFolders).filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+}

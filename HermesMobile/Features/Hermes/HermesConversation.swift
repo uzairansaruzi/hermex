@@ -24,32 +24,16 @@ enum ConversationTarget: Hashable, Sendable {
     }
 
     /// The composer draft's key, which its attachments share. A Bot Chat keeps the key it
-    /// has always had, so no saved draft moves.
-    func draftKey(server: URL, connectionID: UUID) -> ChatDraftKey {
+    /// has always had, so no saved draft moves. A session in a legacy compression chain keys by
+    /// the chain's `lineageRoot` when its row or link named one, so every segment's chat shares
+    /// the list row's draft (#1176).
+    func draftKey(server: URL, connectionID: UUID, lineageRoot: String? = nil) -> ChatDraftKey {
         switch self {
         case .canonicalChat(let profile): return .bot(server: server, connectionID: connectionID, profile: profile)
         case .session(let profile, let key):
-            return .hermesSession(server: server, connectionID: connectionID, profile: profile, key: key)
+            return .hermesSession(server: server, connectionID: connectionID, profile: profile, key: lineageRoot ?? key)
         case .new(let profile, _, _): return .hermesSession(server: server, connectionID: connectionID, profile: profile, key: nil)
         }
-    }
-
-    /// The key of the transcript kept for a warm return; nil for a session not created yet.
-    /// A Bot Chat keeps the key it has always had.
-    func recentKey(server: URL, connectionID: UUID) -> BotRecentTranscripts.Key? {
-        switch self {
-        case .canonicalChat(let profile): return .bot(server: server, connectionID: connectionID, profile: profile)
-        case .session(let profile, let key): return .session(server: server, connectionID: connectionID, profile: profile, key: key)
-        case .new: return nil
-        }
-    }
-
-    /// The Profile whose entry in `BotHistoryCache`'s search index this conversation
-    /// replaces. Nil for sessions: the index has one entry per Profile, and a hit opens
-    /// that Profile's Bot Chat.
-    var historyIndexProfile: String? {
-        if case .canonicalChat(let profile) = self { return profile }
-        return nil
     }
 }
 
@@ -71,15 +55,13 @@ enum HermesRequestAnswer: Equatable {
 
 /// What a `HermesConversation` asks of the screen model that owns it. The engine calls
 /// these in order on the main actor; an async one that throws ends the attach as a failure.
-/// The owner renders: Bot Chat rebuilds its text from snapshots, a Hermes session reduces
-/// the frames' deltas. The owner also restores open requests (`open_requests`) from the
+/// The owner renders: it reduces the frames' deltas and reads settled history from REST
+/// pages (#1047). The owner also restores open requests (`open_requests`) from the
 /// replay reply and the snapshot, since which cards are on screen, and whether a newer
 /// request or answer arrived while a read was in flight, is screen state.
 @MainActor protocol HermesConversationOwner: AnyObject {
     /// A new attach or `suspend()` cleared the connection. Drop what belonged to it.
     func conversationDidReset()
-    /// Before connecting: restore local state, such as the draft. `attempt` is the attach's generation.
-    func conversationWillAttach(_ attempt: Int) async throws
     /// The attach found the session's root: the Bot Chat's canonical root, or the session's key.
     /// After `session.create`, `target` is already `.session`, so its keys exist from here.
     /// The owner moves anything saved under the `.new` target's keys, such as the draft, once
@@ -91,11 +73,8 @@ enum HermesRequestAnswer: Equatable {
     /// The `session.events.since` reply and the events after the cursor, in order. When
     /// `replayWasReset` some were lost: rebuild from the snapshot that follows.
     func conversationDidReplay(_ reply: BotJSON, frames: [BotJSON])
-    /// Whether the attach's last `session.resume` carries the transcript. A Hermes session's
-    /// chat reads its settled history from REST pages instead (#1047), so it asks without.
-    var readsSnapshotHistory: Bool { get }
-    /// The attach's last `session.resume`: live state, and the transcript when
-    /// `readsSnapshotHistory`. The owner may read more before the frames held meanwhile go out.
+    /// The attach's last `session.resume`: live state without the transcript. The owner may
+    /// read more before the frames held meanwhile go out.
     func conversationDidReadSnapshot(_ snapshot: BotJSON, runtime: String, attempt: Int) async throws
     /// Connected, with the frames held while attaching applied.
     func conversationDidConnect(runtime: String, attempt: Int) async throws
@@ -104,15 +83,14 @@ enum HermesRequestAnswer: Equatable {
     /// One of this runtime's frames, in `seq` order with duplicates dropped. `afterGap`
     /// when frames before it were lost: the rebuild signal, and `replayWasReset` is set.
     func conversation(didReceive frame: BotJSON, afterGap: Bool)
-    /// Frames were lost with none to apply: one came without a `seq`, or more arrived
-    /// while attaching than the hold keeps. Rebuild from a full snapshot.
+    /// Frames were lost with none to apply: one came without a `seq`, more arrived while
+    /// attaching than the hold keeps, or the host reclaimed the runtime. Rebuild from a
+    /// full snapshot.
     func conversationDidLoseFrames()
     /// A frame held while attaching; it is handed over once connected.
     func conversation(didHold frame: BotJSON)
     /// A host request envelope (a string `id`) for this runtime. Never sequenced or held.
     func conversation(didReceiveRequest envelope: BotJSON)
-    /// After every event while attaching or connected, this runtime's or not.
-    func conversationDidReceiveEvent()
     /// The connection is about to drop: state that needs it still connected goes now.
     func conversationWillDisconnect()
     /// Disconnected with `failure`. `retrying` when the engine reconnects on its own.
@@ -120,15 +98,12 @@ enum HermesRequestAnswer: Equatable {
 }
 
 extension HermesConversationOwner {
-    var readsSnapshotHistory: Bool { true }
-    func conversationWillAttach(_ attempt: Int) async throws {}
     func conversationDidIdentify(root: String) {}
     func conversationWillReplay(newRuntime: Bool) {}
     func conversationDidConnect(runtime: String, attempt: Int) async throws {}
     func conversationDidFailToAttach(_ error: Error) {}
     func conversation(didHold frame: BotJSON) {}
     func conversation(didReceiveRequest envelope: BotJSON) {}
-    func conversationDidReceiveEvent() {}
     func conversationWillDisconnect() {}
 }
 
@@ -137,7 +112,7 @@ extension HermesConversationOwner {
 /// An attach reads, in order: the session's identity (`session.list` for a Bot Chat;
 /// `session.create` once for a new session), an identity `session.resume` with
 /// `omit_messages`, `session.events.since` from the last `seq`, then one more
-/// `session.resume`, with the transcript when the owner reads it from there. Frames that
+/// `session.resume` for live state; the owner reads settled history itself. Frames that
 /// land meanwhile are held (#901) and handed over once the owner has the snapshot. A drop
 /// reconnects on a backoff while the screen is active.
 /// Recovery only reads; a prompt, answer, stop or setting goes out through `write`, once,
@@ -230,11 +205,10 @@ extension HermesConversationOwner {
     /// `session.info`'s `stored_session_id` reports. Later reads and writes use it; `root`, the
     /// draft's and the list's identity, stays, and the next attach resumes from the target's
     /// key, which the host follows to the same tip. Only while connected, since a replayed
-    /// frame can carry the key from before the move. A Bot Chat keeps its own tip rule
-    /// (`identify`).
+    /// frame can carry the key from before the move. A Bot Chat follows it too (#1145), so
+    /// `/compress` leaves it writable; its next attach still finds the tip by title (`identify`).
     func adoptStoredKey(_ key: String?) {
         guard let key, !key.isEmpty, key != storedKey, connectionState == .connected else { return }
-        if case .canonicalChat = target { return }
         storedKey = key
     }
 
@@ -266,14 +240,14 @@ extension HermesConversationOwner {
         }
     }
 
-    /// Reads the session's live state; `full` asks for the transcript as well. The host
+    /// Reads the session's live state, never its transcript. The host
     /// answers 4007 while it swaps in a replacement runtime and 4009 while a client-gone
     /// interrupt settles, and both clear on their own, so they come back as
     /// `ResumeRefusal` for the reconnect window. Matched by code alone: a real "session
     /// not found" also says 4007, and only the host's wording, which can change, differs.
-    func resume(full: Bool, attempt: Int) async throws -> BotJSON {
+    func resume(attempt: Int) async throws -> BotJSON {
         do {
-            return try await request(.sessionResume(profile: target.profile, sessionID: storedKey ?? "", omitMessages: !full),
+            return try await request(.sessionResume(profile: target.profile, sessionID: storedKey ?? "", omitMessages: true),
                                      attempt: attempt)
         } catch BotFailure.rejected(let code) where [4007, 4009].contains(code) {
             throw ResumeRefusal(code: code)
@@ -315,7 +289,7 @@ extension HermesConversationOwner {
         scheduleReconnect()
     }
 
-    /// A `session.resume` the host refused for now (see `resume(full:attempt:)`).
+    /// A `session.resume` the host refused for now (see `resume(attempt:)`).
     private struct ResumeRefusal: Error { let code: Int }
 
     /// Sends `answer` to the host request `action` names and reads the host's verdict:
@@ -323,7 +297,7 @@ extension HermesConversationOwner {
     /// surface, or expired); nil for a batch whose remaining questions the host still holds,
     /// which the owner reconciles. Each call goes out once through `write`, and `stillCurrent`
     /// is the owner's check, at every socket write, that the request is still the one on
-    /// screen. Bot Chat and a Hermes session's chat (#1011) both answer through here.
+    /// screen. Every Hermes chat answers through here (#1011).
     func answer(_ answer: HermesRequestAnswer, _ action: HermesAnswerAction,
                 stillCurrent: @escaping () throws -> Void) async throws -> BotRequestResolution.Outcome? {
         func send(_ call: HermesCall) async throws -> BotJSON {
@@ -341,7 +315,9 @@ extension HermesConversationOwner {
             let reply = try await send(.approvalRespond(sessionID: action.runtime, requestID: action.requestID, choice: choice))
             // `resolved` counts what the host actually unblocked. Zero means the queue no
             // longer held this request: an action failure, not a delivery one.
-            return (reply["resolved"].integer ?? 0) > 0 ? .answered : .alreadyResolved
+            // A missing, non-integer or negative count is no verdict at all.
+            guard let resolved = reply["resolved"].integer, resolved >= 0 else { return .uncertain }
+            return resolved > 0 ? .answered : .alreadyResolved
         case .value(let value):
             // The host tolerates a late answer to a prompt it already dropped and says so
             // rather than erroring; nothing was applied.
@@ -389,13 +365,11 @@ extension HermesConversationOwner {
         let attempt = generation
         connectionState = .recovering
         do {
-            try await owner?.conversationWillAttach(attempt)
-            try check(attempt)
             try await wire.connect()
             try check(attempt)
             try await identify(attempt)
-            // Identity only: the read after the replay is the one that carries the transcript.
-            let first = try await resume(full: false, attempt: attempt)
+            // Identity only: the read after the replay is the one that carries live state.
+            let first = try await resume(attempt: attempt)
             guard let foundKey = attachedKey(first), let foundRuntime = first["session_id"].text,
                   !foundRuntime.isEmpty, let foundEpoch = wire.replayEpoch else { throw BotFailure.wrongIdentity }
             replayWasReset = epoch != foundEpoch || runtime != foundRuntime
@@ -406,7 +380,7 @@ extension HermesConversationOwner {
             let replay = try await request(.sessionEventsSince(sessionID: foundRuntime, lastSeen: sequence), attempt: attempt)
             let missed = try reconcile(replay)
             owner?.conversationDidReplay(replay, frames: missed)
-            let snapshot = try await resume(full: owner?.readsSnapshotHistory ?? true, attempt: attempt)
+            let snapshot = try await resume(attempt: attempt)
             try await owner?.conversationDidReadSnapshot(snapshot, runtime: foundRuntime, attempt: attempt)
             try check(attempt)
             guard connectionState == .recovering else { throw BotFailure.transport }
@@ -494,10 +468,11 @@ extension HermesConversationOwner {
     }
 
     /// Routes one event from the shared socket, which carries other screens' sessions
-    /// too: only this runtime's frames and host requests reach the owner.
+    /// too: only this runtime's frames and host requests reach the owner, and a
+    /// `session.reclaimed` naming this runtime or stored key.
     private func receive(_ event: BotJSON) {
         guard connectionState != .disconnected, runtime != nil else { return }
-        defer { owner?.conversationDidReceiveEvent() }
+        if event["type"].text == "session.reclaimed" { return reclaim(event["payload"]) }
         if let session = Self.requestSession(event) {
             guard session == runtime else { return }
             owner?.conversation(didReceiveRequest: event)
@@ -510,6 +485,20 @@ extension HermesConversationOwner {
             return
         }
         admit(event)
+    }
+
+    /// The host tore down a runtime the client never closed (idle timeout, LRU eviction, an
+    /// orphan reap) and broadcast it to every client, with both ids in the payload. When it
+    /// was this session's, the rest of its frames are lost: the owner rebuilds as after a
+    /// gap, which reattaches to the stored key now, so the next write finds a live runtime
+    /// instead of failing with 4001. A close this client asked for is never announced.
+    private func reclaim(_ payload: BotJSON) {
+        let ownRuntime = payload["session_id"].text == runtime
+        let ownKey = storedKey.map { payload["stored_session_id"].text == $0 } ?? false
+        guard ownRuntime || ownKey else { return }
+        let reason = payload["reason"].text ?? "unknown", name = logName
+        HermesConnectionLog.logger.notice("\(name, privacy: .public): the host reclaimed the runtime (\(reason, privacy: .public)); reattaching")
+        owner?.conversationDidLoseFrames()
     }
 
     /// The session a host request envelope names: a string `id`, a `method` and

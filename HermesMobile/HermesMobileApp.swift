@@ -94,28 +94,18 @@ struct HermesMobileApp: App {
     var body: some Scene {
         WindowGroup {
             #if DEBUG
-            // Launch argument hook so the Streaming Lab can be opened without
-            // UI navigation (agent-driven simulator diagnosis, issue #234):
-            // `xcrun simctl launch <udid> com.uzairansar.hermesmobile --streaming-lab`
-            if ProcessInfo.processInfo.arguments.contains("--streaming-lab") {
-                NavigationStack {
-                    StreamingLabView()
-                }
+            ContentView(authManager: authManager)
+                .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
                 .onAppear { PhoneWatchConnectivityHost.shared.activate() }
-            } else {
-                ContentView(authManager: authManager)
-                    .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
-                    .onAppear { PhoneWatchConnectivityHost.shared.activate() }
-                    // Signs in from `HERMEX_DEV_*` launch environment variables
-                    // (`scripts/sim-login`); a no-op when they are absent.
-                    .task(id: authManager.state) { await DevAutoLogin.run(authManager: authManager) }
-                    .overlay(alignment: .topLeading) {
-                        // `--hitch-meter`: frame-hitch readout for profiling (#870).
-                        if HitchMeter.isEnabled {
-                            HitchMeterOverlay()
-                        }
+                // Signs in from `HERMEX_DEV_*` launch environment variables
+                // (`scripts/sim-login`); a no-op when they are absent.
+                .task(id: authManager.state) { await DevAutoLogin.run(authManager: authManager) }
+                .overlay(alignment: .topLeading) {
+                    // `--hitch-meter`: frame-hitch readout for profiling (#870).
+                    if HitchMeter.isEnabled {
+                        HitchMeterOverlay()
                     }
-            }
+                }
             #else
             ContentView(authManager: authManager)
                 .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)

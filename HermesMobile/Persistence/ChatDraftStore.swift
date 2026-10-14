@@ -78,6 +78,10 @@ struct ChatDraft: Equatable, Sendable {
     // loss must survive relaunch (#508).
     var botSubmissionUncertain = false
     var lastUsedAt: Date?
+    /// The shares (`SharedImportReservation.occurrenceID`s) already moved into this draft,
+    /// so a retried or replayed share isn't added twice (#1181, #1197). Rides along with the content; never
+    /// keeps a draft alive on its own.
+    var sharedImportIDs: Set<String> = []
 
     var isEmpty: Bool {
         text.isEmpty && quotes.isEmpty && attachments.isEmpty && (settings?.isEmpty ?? true) && !botSubmissionUncertain
@@ -397,6 +401,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         var connectionID: UUID?
         var profile: String?
         var botSubmissionUncertain: Bool?
+        var sharedImportIDs: [String]?
 
         let lastUsedAt: Date?
 
@@ -407,7 +412,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case text
             case quotes
             case attachments
-            case settings, connectionID, profile, botSubmissionUncertain, lastUsedAt
+            case settings, connectionID, profile, botSubmissionUncertain, lastUsedAt, sharedImportIDs
         }
 
         init(key: ChatDraftKey, draft: ChatDraft) {
@@ -436,6 +441,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             quotes = draft.quotes.map { FailableQuote(value: QuoteRecord($0)) }
             attachments = draft.attachments.map { FailableAttachment(value: AttachmentRecord($0)) }
             settings = draft.settings.map { SettingsRecord($0) }
+            sharedImportIDs = draft.sharedImportIDs.isEmpty ? nil : draft.sharedImportIDs.sorted()
         }
 
         init(from decoder: Decoder) throws {
@@ -455,6 +461,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             quotes = (try? container.decodeIfPresent([FailableQuote].self, forKey: .quotes)) ?? nil
             attachments = (try? container.decodeIfPresent([FailableAttachment].self, forKey: .attachments)) ?? nil
             settings = (try? container.decodeIfPresent(SettingsRecord.self, forKey: .settings)) ?? nil
+            sharedImportIDs = (try? container.decodeIfPresent([String].self, forKey: .sharedImportIDs)) ?? nil
         }
 
         var draft: (key: ChatDraftKey, draft: ChatDraft)? {
@@ -496,7 +503,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 attachments: (attachments ?? []).compactMap(\.value?.attachment),
                 settings: settings?.settings,
                 botSubmissionUncertain: ["bot", "hermesSession"].contains(context) && (botSubmissionUncertain ?? false),
-                lastUsedAt: lastUsedAt
+                lastUsedAt: lastUsedAt,
+                sharedImportIDs: Set(sharedImportIDs ?? [])
             )
             guard !draft.isEmpty else { return nil }
             return (key, draft)
@@ -679,10 +687,21 @@ final class ChatDraftStore {
     }
 
     /// Replaces the draft's staged-attachment records without disturbing its
-    /// text or settings.
-    func setAttachments(_ attachments: [ChatDraftAttachment], for key: ChatDraftKey) {
+    /// text or settings. A composer passes the records it last synced as
+    /// `previous`: records it never saw, such as a share moved in meanwhile
+    /// (#1181), stay after its own. Nil replaces every record.
+    func setAttachments(
+        _ attachments: [ChatDraftAttachment], replacing previous: [ChatDraftAttachment]? = nil, for key: ChatDraftKey
+    ) {
         markChangedBeforeLoad(key)
-        updateDraft(for: key) { $0.attachments = attachments }
+        updateDraft(for: key) { draft in
+            var unseen: [ChatDraftAttachment] = []
+            if let previous {
+                let seen = Set((previous + attachments).map(\.id))
+                unseen = draft.attachments.filter { !seen.contains($0.id) }
+            }
+            draft.attachments = attachments + unseen
+        }
     }
 
     /// Parks the messages queued behind a run in the chat's draft, in one
@@ -704,6 +723,86 @@ final class ChatDraftStore {
         )
         updateDraft(for: key) { $0 = merged }
         return drafts[key]
+    }
+
+    /// Adds share `shareID` to `key`'s draft (#1181): `text` after any unsent
+    /// text and `files` after any staged ones, so an earlier share waiting there
+    /// is kept. Each file gets its durable copy first; the records, text and
+    /// `shareID` then land in one change that is on disk, and still in the
+    /// draft, before this returns, so the caller can let go of the share. A
+    /// share already there (a retry, or a replay after the app quit before
+    /// letting go) adds nothing and returns once it is on disk. `fits` vets the
+    /// draft's records with the share's files added, in the same step that adds
+    /// them, and throws if they don't fit. A throw (cancellation, storage, a limit,
+    /// a record or the text dropped meanwhile) takes back only what this share
+    /// added, on disk before its copies go, so the share can be moved again.
+    func appendShare(
+        _ shareID: String, text: String, files: [(data: Data, name: String, mime: String, image: Bool)],
+        to key: ChatDraftKey, maximumFileBytes: Int, admitting fits: ([ChatDraftAttachment]) throws -> Void = { _ in }
+    ) async throws {
+        await loadIfNeeded()
+        func isHere() -> Bool { drafts[key]?.sharedImportIDs.contains(shareID) == true }
+        let lease = makeAttachmentLease(key: key)
+        var records: [ChatDraftAttachment] = []
+        func deleteCopies() async {
+            for file in records.compactMap(\.file) {
+                lease.files.remove(file)
+                await deleteAttachmentIfUnreferenced(file)
+            }
+        }
+        do {
+            for file in files where !isHere() {
+                let id = UUID()
+                let copy = try await stageAttachment(
+                    data: file.data, filename: file.name, lease: lease, attachmentID: id, maximumFileBytes: maximumFileBytes
+                )
+                records.append(ChatDraftAttachment(id: id, name: file.name, mime: file.mime, size: file.data.count,
+                                                   isImage: file.image, file: copy))
+            }
+            if !isHere() { try Task.checkCancellation() }
+        } catch {
+            await deleteCopies()
+            throw error
+        }
+        guard !isHere() else {
+            await deleteCopies()
+            try await flush()
+            guard isHere() else { throw ChatDraftStorageError.unavailable }
+            return
+        }
+        if !records.isEmpty {
+            // Checked in the step that commits, so files a composer added meanwhile count.
+            do { try fits((drafts[key]?.attachments ?? []) + records) } catch {
+                await deleteCopies()
+                throw error
+            }
+        }
+        let unsent = drafts[key]?.text ?? ""
+        updateDraft(for: key) { draft in
+            let trimmed = draft.text.trimmingCharacters(in: .newlines)
+            if !text.isEmpty { draft.text = trimmed.isEmpty ? text : trimmed + "\n\n" + text }
+            draft.attachments += records
+            draft.sharedImportIDs.insert(shareID)
+        }
+        let merged = drafts[key]?.text
+        let ids = Set(records.map(\.id))
+        do {
+            try await flush()
+            // A composer's send, snapshot or typing during the write may have dropped a record or the text.
+            guard isHere(), ids.isSubset(of: Set(drafts[key]?.attachments.map(\.id) ?? [])),
+                  text.isEmpty || drafts[key]?.text.contains(text) == true else {
+                throw ChatDraftStorageError.unavailable
+            }
+        } catch {
+            updateDraft(for: key) { draft in
+                draft.sharedImportIDs.remove(shareID)
+                draft.attachments.removeAll { ids.contains($0.id) }
+                if draft.text == merged { draft.text = unsent }
+            }
+            // A replay after a quit must not find the share here. Unsaved, the copies stay.
+            if (try? await flush()) != nil { await deleteCopies() }
+            throw error
+        }
     }
 
     /// Replaces the draft's settings snapshot without disturbing its text or
@@ -835,6 +934,56 @@ final class ChatDraftStore {
         }
         schedulePersist()
         return movedDraft
+    }
+
+    /// Move to Hermes's draft step (#1214): moves `source`'s unsent text, quotes and attachment
+    /// records to `destination` without overwriting either side. Settings stay behind: they name
+    /// the old server's models and folders, and an existing session never restores them.
+    ///
+    /// The copy is on disk before the source goes, so a quit between the two leaves the same
+    /// draft in both places, which the next call finishes as `.alreadyMoved`. A destination
+    /// holding a different draft is `.conflict`, and both stay untouched. A failed save puts back
+    /// what this call changed and throws, so neither draft is lost. Attachment files stay where
+    /// they are; only their records move.
+    func transferDraft(from source: ChatDraftKey, to destination: ChatDraftKey) async throws -> ChatDraftTransfer {
+        await loadIfNeeded()
+        guard var moved = drafts[source] else { return .nothingToMove }
+        moved.settings = nil
+        moved.botSubmissionUncertain = false
+        guard !moved.isEmpty else { return .nothingToMove }
+        func holdsMoved(_ key: ChatDraftKey) -> Bool { drafts[key].map { Self.sameContent($0, moved) } ?? false }
+
+        var copied = false
+        if let existing = drafts[destination], !existing.isEmpty {
+            guard holdsMoved(destination) else { return .conflict }
+        } else {
+            updateDraft(for: destination) { $0 = moved }
+            do {
+                try await flush()
+            } catch {
+                if holdsMoved(destination) { updateDraft(for: destination) { $0 = ChatDraft() } }
+                try? await flush()
+                throw error
+            }
+            // Typing in either chat while the copy saved makes them two drafts: keep both.
+            guard holdsMoved(destination) else { return .conflict }
+            copied = true
+        }
+        guard holdsMoved(source), let original = drafts[source] else { return .conflict }
+        updateDraft(for: source) { $0 = ChatDraft() }
+        do {
+            try await flush()
+        } catch {
+            if drafts[source] == nil { drafts[source] = original }
+            try? await flush()
+            throw error
+        }
+        return copied ? .moved : .alreadyMoved
+    }
+
+    /// Whether two drafts hold the same unsent work: text, quotes and attachment records.
+    private static func sameContent(_ lhs: ChatDraft, _ rhs: ChatDraft) -> Bool {
+        lhs.text == rhs.text && lhs.quotes == rhs.quotes && lhs.attachments == rhs.attachments
     }
 
     @discardableResult
@@ -1121,6 +1270,16 @@ final class ChatDraftAttachmentLease {
 
 private struct WeakDraftAttachmentLease {
     weak var value: ChatDraftAttachmentLease?
+}
+
+/// What `ChatDraftStore.transferDraft` did with a draft.
+enum ChatDraftTransfer: Equatable, Sendable {
+    case moved
+    /// The destination already held this draft, so only the source was removed.
+    case alreadyMoved
+    case nothingToMove
+    /// The destination holds a different draft, or one side changed during the move: both stay.
+    case conflict
 }
 
 enum ChatDraftStorageError: Error, LocalizedError {

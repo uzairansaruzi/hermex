@@ -270,6 +270,63 @@ import Observation
         XCTAssertEqual(archive.sessions.map(\.sessionId), ["old"])
     }
 
+    /// The Archived screen leaves a Profile's room sessions out, since a regular chat must never
+    /// open one, and a Bot Chat row opens in its bot through the bot route rather than by its key
+    /// (#1146).
+    func testArchivedRoomSessionsAreLeftOutAndABotChatRowOpensItsBot() async throws {
+        let host = BotSocketHost()
+        let connection = host.connection(record)
+        let page = BotJSON.object(["sessions": .array([
+            .object(["id": .string("old"), "title": .string("Old plan"), "archived": .bool(true), "hidden": .number(0)]),
+            .object(["id": .string("room"), "title": .string("Group: room-1"), "archived": .bool(true), "hidden": .number(1)]),
+            .object(["id": .string("desktop-room"), "title": .string("Group: Launch · Ops"), "archived": .bool(true),
+                     "hidden": .number(1)]),
+            .object(["id": .string("bot"), "title": .string("Bot Chat"), "archived": .bool(true), "hidden": .number(1)])
+        ])])
+        _ = HermesHostFixture.configuration { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/api/sessions"): return .json(200, page)
+            default: return nil
+            }
+        }
+        let archive = ArchivedSessionsViewModel(server: server, hermes: HermesArchiveSource(
+            connection: record, profile: "research", makeWire: { _ in BotClient(http: connection) }, preferences: defaults
+        ))
+
+        await archive.load()
+
+        XCTAssertEqual(archive.sessions.map(\.sessionId), ["old", "bot"])
+        let plain = archive.sessions[0], bot = archive.sessions[1]
+        XCTAssertEqual(archive.hermesBot(for: bot), BotDestination(server: server, connectionID: record.id, profile: "research"))
+        XCTAssertNil(archive.hermesChat(for: bot))
+        XCTAssertNil(archive.hermesBot(for: plain))
+        XCTAssertEqual(archive.hermesChat(for: plain)?.target, .session(profile: "research", key: "old"))
+    }
+
+    /// A first page of room sessions alone shows nothing, so the screen reads on (#1146): the
+    /// archived row on the next page appears, rather than "No archived sessions".
+    func testArchivedReadsPastAFirstPageOfRoomsAlone() async throws {
+        let host = BotSocketHost()
+        let connection = host.connection(record)
+        let rows: [BotJSON] = (0..<HermesREST.sessionPageSize).map {
+            .object(["id": .string("room\($0)"), "title": .string("Group: room-\($0)"), "archived": .bool(true), "hidden": .number(1)])
+        } + [.object(["id": .string("old"), "title": .string("Old plan"), "archived": .bool(true), "hidden": .number(0)])]
+        _ = HermesHostFixture.configuration { request in
+            guard request.httpMethod == "GET", request.url?.path == "/api/sessions" else { return nil }
+            let query = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems ?? []
+            let offset = Int(query.first { $0.name == "offset" }?.value ?? "") ?? 0
+            return .json(200, .object(["sessions": .array(Array(rows.dropFirst(offset).prefix(HermesREST.sessionPageSize)))]))
+        }
+        let archive = ArchivedSessionsViewModel(server: server, hermes: HermesArchiveSource(
+            connection: record, profile: "research", makeWire: { _ in BotClient(http: connection) }, preferences: defaults
+        ))
+
+        await archive.load()
+
+        XCTAssertEqual(archive.sessions.map(\.sessionId), ["old"])
+        XCTAssertFalse(archive.hasMore)
+    }
+
     /// A restore moves the host's later archived rows up one, so Load more reads from where they
     /// now start: the row just past the first page still appears.
     func testLoadMoreAfterARestoreStillReachesTheRowPastTheFirstPage() async throws {

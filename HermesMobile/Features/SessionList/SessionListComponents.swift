@@ -102,7 +102,7 @@ struct SessionListRowActions {
 
 /// Which row actions a session offers. A Hermes server's row (#1046, #1048) offers pin,
 /// rename, archive, delete, Export as JSON, Move to Project (#1052) and Duplicate (#1051); the
-/// host has no HTML export, and Hermes deep links are #706.
+/// host has no HTML export.
 enum SessionRowActionPolicy {
     /// Pin, rename, move, archive and delete. A bot's Bot Chat, which a Hermes search lists
     /// (#1053), belongs to its bot: pinning would also unhide it, and renaming orphans it.

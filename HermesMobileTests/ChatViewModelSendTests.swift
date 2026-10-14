@@ -10516,6 +10516,26 @@ final class ChatViewModelSendTests: XCTestCase {
         return components?.queryItems?.first { $0.name == "path" }?.value ?? "."
     }
 
+    /// A webui chat's `@` panel lists its own session's workspace, one folder per query.
+    @MainActor
+    func testTheAtPanelListsTheSessionsWorkspace() async throws {
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            XCTAssertEqual(request.url?.path, "/api/list")
+            let query = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems
+            XCTAssertEqual(query?.first { $0.name == "session_id" }?.value, "session-abc")
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+        XCTAssertTrue(viewModel.offersFilePathSearch)
+
+        await viewModel.searchFilePaths("a/")
+
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertEqual(viewModel.filePathSearch.matches.map(\.path), ["a/b.md", "a/c.md"])
+    }
+
     /// What the composer picked dies with the view model, so a chat re-entered
     /// from the session list has to ask the server whether a `@word` in the
     /// restored draft is really a file before it can draw the chip again.
@@ -10720,6 +10740,26 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
     }
 
+    /// A webui workspace switch is optimistic: `/api/list` still answers from the old root
+    /// until the server applies it, so an open `@` panel must not load its query again on
+    /// the switch. Only a Hermes chat's folder move, which `session.info` reports already
+    /// applied, reloads it (#1113).
+    @MainActor
+    func testAWebuiWorkspaceSwitchLeavesAnOpenPanelsQueryAlone() async throws {
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse(#"""
+            {"session": {"session_id": "session-abc", "workspace": "/tmp/other", "model": "gpt-5.4"}}
+            """#, for: request)
+        }
+        let panelScope = viewModel.filePathSearch.scopeRevision
+        let chipScope = viewModel.fileChipScopeRevision
+
+        await viewModel.selectWorkspacePath("/tmp/other")
+
+        XCTAssertGreaterThan(viewModel.fileChipScopeRevision, chipScope, "the switch still resets")
+        XCTAssertEqual(viewModel.filePathSearch.scopeRevision, panelScope)
+    }
+
     /// A pass still listing the old workspace's folders when the workspace moves
     /// is cancelled outright: it stops before the next folder, settles nothing,
     /// and the candidates are asked again under the new root.
@@ -10905,7 +10945,9 @@ final class ChatViewModelSendTests: XCTestCase {
             streamClient: resolvedStreamClient,
             approvalStreamClient: approvalStreamClient ?? SpySSEStreamingClient(),
             clarifyStreamClient: clarifyStreamClient ?? SpySSEStreamingClient(),
-            liveActivityManager: liveActivityManager,
+            // Default to a spy so unit tests never drive ActivityKit, whose synchronous reads
+            // can hold the main actor for seconds and starve a test's waits.
+            liveActivityManager: liveActivityManager ?? SpyChatLiveActivityManager(),
             pollingIntervals: pollingIntervals,
             steeringConfirmationDismissDelay: steeringConfirmationDismissDelay,
             streamingScrollCoalescingDelayNanoseconds: streamingScrollCoalescingDelayNanoseconds,

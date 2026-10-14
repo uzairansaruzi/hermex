@@ -94,7 +94,6 @@ struct SettingsView: View {
     @AppStorage(ChatTranscriptDisplaySettings.showsResponseSpeedKey) private var showsResponseSpeed = false
     @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
-    @AppStorage(StreamedTextAnimationSettings.isEnabledKey) private var isStreamedTextAnimationEnabled = true
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @AppStorage(SessionIdentitySettings.displayNameKey) private var identityDisplayName = ""
@@ -109,7 +108,6 @@ struct SettingsView: View {
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsChatFilesButton = true
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsChatGitControls = true
     @AppStorage(BotModeGate.isEnabledKey) private var isBotModeEnabled = false
-    @AppStorage(BotQuickReplyStore.storageKey) private var storedQuickReplies = ""
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -149,7 +147,7 @@ struct SettingsView: View {
                         isOn: $isBotModeEnabled
                     )
 
-                    SettingsFootnote(String(localized: "Bot Mode is unfinished. It adds a Bots row to the main screen for your direct Hermes bots. Each server’s Hermes connection is available with it off."))
+                    SettingsFootnote(String(localized: "Adds a Bots row to a webui server’s main screen. Hermes servers have Bots built in and don’t need it."))
                 }
 
                 SettingsCard(title: String(localized: "Appearance")) {
@@ -206,34 +204,31 @@ struct SettingsView: View {
 
                     SettingsDivider()
 
-                    // Push on a Hermes server waits for #706.
-                    if !isHermesServer {
-                        // A wrapper carries the scroll anchor: the section's own id is its server.
-                        VStack(alignment: .leading, spacing: 0) {
-                            HermexPushSectionView(server: server, startsExpanded: initialScrollTarget == .notifications) {
-                                SettingsToggleRow(
-                                    title: String(localized: "Response Complete Alerts"),
-                                    systemImage: "bell",
-                                    isOn: responseCompletionNotificationBinding
-                                )
-                                SettingsFootnote(String(localized: "Alerts when a reply finishes or fails, for servers without push notifications."))
-                                if let notificationStatusText {
-                                    SettingsFootnote(notificationStatusText)
-                                }
-                                SettingsDivider()
-                                SettingsToggleRow(
-                                    title: String(localized: "Live Activity Excerpts"),
-                                    systemImage: "lock",
-                                    isOn: $showsLiveActivityResponseExcerpts
-                                )
-                                SettingsFootnote(String(localized: "Shows short response text on the Lock Screen and Dynamic Island."))
+                    // A wrapper carries the scroll anchor: the section's own id is its server.
+                    VStack(alignment: .leading, spacing: 0) {
+                        HermexPushSectionView(server: server, startsExpanded: initialScrollTarget == .notifications) {
+                            SettingsToggleRow(
+                                title: String(localized: "Response Complete Alerts"),
+                                systemImage: "bell",
+                                isOn: responseCompletionNotificationBinding
+                            )
+                            SettingsFootnote(String(localized: "Alerts when a reply finishes or fails, for servers without push notifications."))
+                            if let notificationStatusText {
+                                SettingsFootnote(notificationStatusText)
                             }
-                            .id(server)
+                            SettingsDivider()
+                            SettingsToggleRow(
+                                title: String(localized: "Live Activity Excerpts"),
+                                systemImage: "lock",
+                                isOn: $showsLiveActivityResponseExcerpts
+                            )
+                            SettingsFootnote(String(localized: "Shows short response text on the Lock Screen and Dynamic Island."))
                         }
-                        .id(SettingsScrollAnchor.notifications)
-
-                        SettingsDivider()
+                        .id(server)
                     }
+                    .id(SettingsScrollAnchor.notifications)
+
+                    SettingsDivider()
 
                     SettingsPickerRow(
                         title: String(localized: "Send While Responding"),
@@ -248,25 +243,6 @@ struct SettingsView: View {
                     SettingsFootnote(String(localized: "Long-press Send to choose for one message."))
 
                     SettingsDivider()
-
-                    if isBotModeEnabled {
-                        NavigationLink {
-                            BotQuickRepliesEditorView()
-                        } label: {
-                            let count = BotQuickReplyStore.decode(storedQuickReplies).count
-                            SettingsAccessoryRow(
-                                title: String(localized: "Quick Replies"),
-                                value: count > 0 ? count.formatted() : nil,
-                                systemImage: "text.bubble"
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityHint("Opens the quick replies editor.")
-
-                        SettingsFootnote(String(localized: "Short replies above the Bot Chat composer. A tap fills the draft."))
-
-                        SettingsDivider()
-                    }
 
                     SettingsPickerRow(
                         title: String(localized: "Dictation Provider"),
@@ -333,16 +309,6 @@ struct SettingsView: View {
                     )
 
                     SettingsFootnote(String(localized: "Collapses a finished turn's thinking, tool calls, and interim replies behind one row that shows how long it took. Tap the row to expand it."))
-
-                    SettingsDivider()
-
-                    SettingsToggleRow(
-                        title: String(localized: "Streamed Text Animation"),
-                        systemImage: "sparkles",
-                        isOn: $isStreamedTextAnimationEnabled
-                    )
-
-                    SettingsFootnote(String(localized: "Fades words in as a response streams. Turn off to show text instantly."))
 
                     SettingsDivider()
 
@@ -720,20 +686,13 @@ struct SettingsView: View {
                     }
 
                     NavigationLink {
-                        StreamingLabView()
-                    } label: {
-                        SettingsAccessoryRow(title: "Streaming Lab", systemImage: "waveform.path.ecg")
-                    }
-                    .buttonStyle(.plain)
-
-                    NavigationLink {
                         ProviderGlyphGalleryView()
                     } label: {
                         SettingsAccessoryRow(title: "Provider Glyphs", systemImage: "square.grid.2x2")
                     }
                     .buttonStyle(.plain)
 
-                    SettingsFootnote("Debug builds only. Replay a canned reply and tune the streamed-text fade feel live.")
+                    SettingsFootnote("Debug builds only.")
                 }
                 #endif
 
@@ -891,7 +850,9 @@ struct SettingsView: View {
                 } label: {
                     SettingsServerRow(
                         account: account,
-                        isActive: account.id == authManager.activeServerID
+                        isActive: account.id == authManager.activeServerID,
+                        movedTo: account.kind == .webui
+                            ? authManager.moveRecord(forSource: account.id).map { MoveToHermesModel.name($0.destination) } : nil
                     )
                 }
                 .buttonStyle(.plain)
@@ -974,7 +935,15 @@ struct SettingsView: View {
 
     private var signOutMessage: String {
         if isHermesServer { return String(localized: "Deletes this server's saved sign-in and shows its sign-in form.") }
-        return authManager.servers.count > 1
+        // Signing out of a webui server removes it, so a moved one says what stays behind (S2).
+        if let account = activeAccount, let moved = MoveToHermesRemoval.message(for: account, servers: authManager.servers) {
+            return usualSignOutMessage + " " + moved
+        }
+        return usualSignOutMessage
+    }
+
+    private var usualSignOutMessage: String {
+        authManager.servers.count > 1
             ? String(localized: "You'll switch to another configured server. Sign in again to use this one.")
             : String(localized: "You'll return to onboarding and need the server URL and password to sign back in.")
     }
@@ -2176,10 +2145,13 @@ private struct ServerAvatarBadge: View {
     }
 }
 
-/// One row in the Settings "Servers" list: avatar, name, URL, and an active marker.
+/// One row in the Settings "Servers" list: avatar, name, URL, and an active marker. A webui
+/// server shows a Legacy pill (#712), or once it moved to Hermes, where, with a Moved pill
+/// (B3, #1218).
 private struct SettingsServerRow: View {
     let account: ServerAccount
     let isActive: Bool
+    var movedTo: String?
 
     private var hostFallback: String {
         URL(string: account.urlString)?.host ?? account.urlString
@@ -2206,7 +2178,7 @@ private struct SettingsServerRow: View {
                     .font(AppFont.subheadline(weight: .medium))
                     .lineLimit(1)
 
-                Text(account.urlString)
+                Text(movedTo.map { String(localized: "Moved to \($0)") } ?? account.urlString)
                     .font(AppFont.caption())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -2214,6 +2186,12 @@ private struct SettingsServerRow: View {
             }
 
             Spacer(minLength: 8)
+
+            if movedTo != nil {
+                SettingsStatusPill(label: String(localized: "Moved"), tint: .orange)
+            } else if account.kind == .webui {
+                SettingsStatusPill(label: String(localized: "Legacy"))
+            }
 
             if isActive {
                 SettingsStatusPill(label: String(localized: "Active"))
@@ -2228,8 +2206,14 @@ private struct SettingsServerRow: View {
         .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(isActive ? String(localized: "\(name), \(account.urlString), active server") : String(localized: "\(name), \(account.urlString)"))
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Opens server details to switch, edit, or remove.")
+    }
+
+    private var accessibilityLabel: String {
+        let base = isActive ? String(localized: "\(name), \(account.urlString), active server") : String(localized: "\(name), \(account.urlString)")
+        if let movedTo { return base + ", " + String(localized: "Moved to \(movedTo)") }
+        return account.kind == .webui ? base + ", " + String(localized: "legacy webui server") : base
     }
 }
 
@@ -2332,6 +2316,10 @@ private struct ServerDetailView: View {
                     SettingsValueRow(title: String(localized: "Status")) {
                         SettingsStatusPill(label: isActive ? String(localized: "Active") : String(localized: "Inactive"))
                     }
+                }
+
+                if account.kind == .webui {
+                    MoveToHermesCard(authManager: authManager, account: account)
                 }
 
                 // Not behind the Bot Mode preview gate (#557): this login is what push
@@ -2445,7 +2433,14 @@ private struct ServerDetailView: View {
     }
 
     private var removeAlertTitle: String {
-        signsOut ? String(localized: "Sign out of this server?") : String(localized: "Remove this server?")
+        if signsOut { return String(localized: "Sign out of this server?") }
+        if moveRemovalMessage != nil { return String(localized: "Remove \(displayName.isEmpty ? hostFallback : displayName)?") }
+        return String(localized: "Remove this server?")
+    }
+
+    /// What removing a server a move involves leaves behind and keeps routing (S2, S3).
+    private var moveRemovalMessage: String? {
+        MoveToHermesRemoval.message(for: account, servers: authManager.servers)
     }
 
     private var removeFootnote: String {
@@ -2459,6 +2454,12 @@ private struct ServerDetailView: View {
     }
 
     private var removeAlertMessage: String {
+        guard let moved = moveRemovalMessage else { return usualRemovalMessage }
+        // S2 replaces the usual copy for a webui server; a destination keeps it and adds S3.
+        return signsOut || isActive || account.kind == .hermes ? usualRemovalMessage + " " + moved : moved
+    }
+
+    private var usualRemovalMessage: String {
         if signsOut {
             return hasOtherServers
                 ? String(localized: "You'll switch to another configured server. Sign in again to use this one.")
@@ -2475,6 +2476,75 @@ private struct ServerDetailView: View {
     }
 }
 
+/// A webui server's Move to Hermes card (#1218): A1 before a move, then where it stands (1A):
+/// moving, paused, finished with its report waiting for Done, or moved. Each opens the guided sheet.
+private struct MoveToHermesCard: View {
+    @Bindable var authManager: AuthManager
+    let account: ServerAccount
+    @State private var request: Request?
+    private let notices = MoveToHermesNotices.shared
+
+    private struct Request: Identifiable {
+        let entry: MoveToHermesEntry
+        var id: String { "\(entry)" }
+    }
+
+    var body: some View {
+        SettingsCard(title: String(localized: "Move to Hermes")) {
+            if let notice = notices.card(forSource: account.id, in: authManager.servers) {
+                status(notice)
+            } else {
+                SettingsFootnote(String(localized: "This is a legacy hermes-webui server. It keeps working and gets fixes, but new features come to Hermes. Moving uses this server's chats in Hermes directly: chats, titles, pins and drafts come along, and this entry stays until you remove it."))
+                if let host = savedHost {
+                    SettingsInfoRow(title: String(localized: "Hermes host"), value: String(localized: "\(host) (saved sign-in)"))
+                }
+                SettingsButton(String(localized: "Move to Hermes…")) { request = Request(entry: .start) }
+            }
+        }
+        .sheet(item: $request) { MoveToHermesSheet(auth: authManager, sourceID: account.id, entry: $0.entry) }
+    }
+
+    /// The host this server's saved Hermes sign-in names, as the move would show it.
+    private var savedHost: String? {
+        guard let url = URL(string: account.id),
+              let saved = try? BotConnectionStore(keychain: authManager.keychain).load(server: url) else { return nil }
+        let id = MoveToHermesRunner.destinationID(for: saved)
+        if let configured = authManager.servers.first(where: { $0.id == id }) { return MoveToHermesModel.name(configured) }
+        return saved.name.isEmpty ? (saved.address.host ?? saved.address.absoluteString) : saved.name
+    }
+
+    @ViewBuilder
+    private func status(_ notice: MoveToHermesNotice) -> some View {
+        let destination = MoveToHermesModel.name(notice.destination)
+        let counts = notice.inHermes.flatMap { inHermes in notice.total.map { String(localized: "\(inHermes) of \($0) in \(destination)") } }
+        switch notice.stage {
+        case .running:
+            SettingsInfoRow(title: String(localized: "Moving to \(destination)"), value: "")
+        case .paused(let canResume):
+            SettingsInfoRow(title: String(localized: "Paused"), value: counts ?? "")
+            if canResume { SettingsButton(String(localized: "Resume")) { request = Request(entry: .resume) } }
+            SettingsButton(String(localized: "Details")) { request = Request(entry: .details) }
+        case .finished:
+            SettingsInfoRow(title: String(localized: "Finished"), value: counts ?? "")
+            SettingsButton(String(localized: "See Report")) { request = Request(entry: .details) }
+        case .moved:
+            SettingsInfoRow(title: String(localized: "Moved to"), value: destination)
+            SettingsDivider()
+            SettingsInfoRow(title: String(localized: "May be only here"), value: onlyHere(notice.report))
+            SettingsFootnote(notice.report.map {
+                String(localized: "Last counted \($0.recordedAt.formatted(date: .abbreviated, time: .omitted)). Sending here too can split a conversation.")
+            } ?? String(localized: "Sending here too can split a conversation."))
+            SettingsButton(String(localized: "Copy Missing Chats Again…")) { request = Request(entry: .copyMissingAgain) }
+        }
+    }
+
+    /// Chats the last count left only here, or unknown: never zero when the move couldn't count.
+    private func onlyHere(_ report: MovedWebuiReport?) -> String {
+        guard let remaining = report?.remaining, let unchecked = report?.unchecked else { return String(localized: "Not counted") }
+        return String(localized: "\(remaining + unchecked) chats")
+    }
+}
+
 /// Add Server: onboarding's connect form (`OnboardingViewModel`, #900) in a sheet, plus
 /// the new server's identity. A webui address goes through `AuthManager.addServer`, which
 /// never disturbs the active server on failure (#17); a Hermes dashboard gets username
@@ -2484,13 +2554,22 @@ struct AddServerView: View {
     @Bindable var authManager: AuthManager
     @Environment(\.dismiss) private var dismiss
 
-    @State private var form = OnboardingViewModel(entry: .addServer)
+    /// Set by Move to Hermes's host choice (#1218): the form only checks a Hermes sign-in and
+    /// hands it back unsaved, adding and activating no server (`Entry.moveDestination`).
+    private let onVerified: ((BotConnection) -> Void)?
+    @State private var form: OnboardingViewModel
     /// The Add in flight; closing the sheet cancels it before a Hermes server is added.
     @State private var operation: Task<Void, Never>?
     @State private var isConfirmingReplace = false
     @State private var displayName = ""
     @State private var initials = ""
     @State private var colorHex = HeaderLogoColor.defaultHex
+
+    init(authManager: AuthManager, onVerified: ((BotConnection) -> Void)? = nil) {
+        self.authManager = authManager
+        self.onVerified = onVerified
+        _form = State(initialValue: OnboardingViewModel(entry: onVerified == nil ? .addServer : .moveDestination))
+    }
 
     private var canSubmit: Bool { form.canSubmit && !form.isWorking }
 
@@ -2522,13 +2601,15 @@ struct AddServerView: View {
                     }
                     .disabled(form.isConnectionLocked)
 
-                    SettingsCard(title: String(localized: "Identity")) {
-                        ServerIdentityEditor(
-                            displayName: $displayName,
-                            initials: $initials,
-                            colorHex: $colorHex,
-                            fallbackName: form.addressPreview?.host ?? ""
-                        )
+                    if onVerified == nil {
+                        SettingsCard(title: String(localized: "Identity")) {
+                            ServerIdentityEditor(
+                                displayName: $displayName,
+                                initials: $initials,
+                                colorHex: $colorHex,
+                                fallbackName: form.addressPreview?.host ?? ""
+                            )
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -2536,14 +2617,14 @@ struct AddServerView: View {
                 .padding(.bottom, 36)
             }
             .background(Color(.systemBackground))
-            .navigationTitle("Add Server")
+            .navigationTitle(onVerified == nil ? String(localized: "Add Server") : String(localized: "Sign In to Hermes"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Add", action: submit)
+                    Button(onVerified == nil ? String(localized: "Add") : String(localized: "Sign In"), action: submit)
                         .disabled(!canSubmit)
                 }
             }
@@ -2658,28 +2739,6 @@ struct AddServerView: View {
             SettingsFootnote(String(localized: "This server requires a password."))
         }
 
-        if form.needsBotModeOptIn {
-            VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Hermes dashboard found")
-                        .font(AppFont.subheadline(weight: .semibold))
-                    Text("Adding one needs Bot Mode (beta), which is off. Bot Mode is unfinished, and you can turn it off again in Settings.")
-                        .font(AppFont.footnote())
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .accessibilityElement(children: .combine)
-
-                SettingsButton(String(localized: "Turn on Bot Mode (beta) and continue")) {
-                    form.enableBotMode()
-                }
-                .disabled(form.isConnectionLocked)
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-
         if let errorMessage = form.errorMessage {
             Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                 .font(AppFont.footnote())
@@ -2697,6 +2756,15 @@ struct AddServerView: View {
 
     private func submit(replacingWebuiServer: Bool) {
         guard canSubmit, !form.isConnectionLocked else { return }
+        if let onVerified {
+            operation = Task {
+                guard await form.connect(authManager: authManager) != nil, let verified = form.verifiedConnection,
+                      !Task.isCancelled else { return }
+                onVerified(verified)
+                dismiss()
+            }
+            return
+        }
         operation = Task {
             // A URL means the server is already saved, so its chosen identity applies even
             // when the sheet closed meanwhile.

@@ -1,8 +1,8 @@
 import Foundation
 
 /// `model.options` projected into the shared native picker: providers the host has not
-/// authenticated, models it marks unavailable, and providers left with none are left out. Bot Chat's model menu and a
-/// Hermes session's composer (#1015) both read it; no webui transport participates.
+/// authenticated, models it marks unavailable, and providers left with none are left out. A
+/// Hermes chat's composer (#1015) reads it; no webui transport participates.
 struct HermesModelCatalog {
     // Accepted by the pinned host's parse_reasoning_effort; "off" is a display command.
     static let effortLevels = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"]

@@ -116,6 +116,25 @@ final class BotFaceMotionTests: XCTestCase {
         XCTAssertEqual(schedule.pose(at: now).gazeX, BotFacePose.settledWorking.gazeX)
     }
 
+    /// Waiting and failed replace the pinned eyes and say so to VoiceOver; only work sways.
+    func testTitleFaceOverridesThePinOnlyToWaitOrFail() {
+        XCTAssertEqual(BotTitleFace.waiting.expression, .curious)
+        XCTAssertEqual(BotTitleFace.failed.expression, .sad)
+        XCTAssertNil(BotTitleFace.working.expression)
+        XCTAssertNil(BotTitleFace.resting.expression)
+
+        let beat = Date(timeIntervalSince1970: 1_000)
+        XCTAssertEqual(BotTitleFace.working.motion(beatStart: beat), .working(since: beat))
+        XCTAssertEqual(BotTitleFace.waiting.motion(beatStart: beat), .idle, "an approval never sways")
+        XCTAssertEqual(BotTitleFace.failed.motion(beatStart: beat), .idle)
+        XCTAssertEqual(BotTitleFace.resting.motion(beatStart: beat), .idle)
+
+        XCTAssertEqual(BotTitleFace.waiting.accessibilityValue, String(localized: "Needs attention"))
+        XCTAssertEqual(BotTitleFace.failed.accessibilityValue, String(localized: "Turn failed"))
+        XCTAssertNil(BotTitleFace.working.accessibilityValue)
+        XCTAssertNil(BotTitleFace.resting.accessibilityValue)
+    }
+
     func testWorkingBeatStartsOnlyWhenWorkStartsOrTheChatReturns() {
         var beat = BotWorkingBeat()
         let t = { Date(timeIntervalSinceReferenceDate: $0) }
@@ -126,11 +145,8 @@ final class BotFaceMotionTests: XCTestCase {
         beat.observe(.unknown, at: t(3)); beat.observe(.running, at: t(4))
         XCTAssertEqual(beat.start, t(4), "an answered approval resumes work")
 
-        // Stream reconciliation, a same-turn reconnect, stopping and a new approval don't restart it.
+        // A same-turn reconnect doesn't restart it.
         beat.observe(.unknown, at: t(10)); beat.observe(.running, at: t(11))
-        beat.observe(.uncertain, at: t(12)); beat.observe(.running, at: t(13))
-        beat.observe(.stopping, at: t(14))
-        beat.observe(.needsAttention, at: t(15))
         XCTAssertEqual(beat.start, t(4))
 
         // A new prompt from idle starts one; so does returning to the foreground mid-turn.

@@ -90,13 +90,16 @@ enum TurnFileChangeAggregator {
     /// - Parameters:
     ///   - toolCalls: the turn's tool calls (live during streaming, or the archived group).
     ///   - status: the latest `git/status`, joined for line counts and chips (`nil` ok).
-    static func summarize(toolCalls: [ToolCall], status: GitStatus?) -> TurnFileChangeSummary {
+    ///   - rowPath: maps a normalized tool path to the path status rows use, as
+    ///     `GitDataClient.rowPath(forToolPath:)` does; webui's are the same.
+    static func summarize(toolCalls: [ToolCall], status: GitStatus?,
+                          rowPath: (String) -> String = { $0 }) -> TurnFileChangeSummary {
         var orderedPaths: [String] = []
         var actionByPath: [String: TurnFileChange.Action] = [:]
 
         for toolCall in toolCalls {
             for candidate in candidates(from: toolCall) {
-                guard let path = normalize(candidate.path) else { continue }
+                guard let path = normalize(candidate.path).map(rowPath) else { continue }
 
                 if let existing = actionByPath[path] {
                     // A path edited and (re)created in the same turn reads better as the

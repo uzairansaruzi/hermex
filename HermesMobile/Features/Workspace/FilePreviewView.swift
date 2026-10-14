@@ -26,8 +26,7 @@ struct FilePreviewView: View {
     /// `initialLine` is one-based; the source surface scrolls to it and highlights it.
     /// `prefetchedFile` is a text fetch the file tree already started; the first load reuses it.
     init(
-        session: SessionSummary,
-        server: URL,
+        files: (any WorkspaceFileClient)?,
         entry: WorkspaceEntry,
         initialLine: Int? = nil,
         prefetchedFile: Task<FileResponse, Error>? = nil,
@@ -37,8 +36,7 @@ struct FilePreviewView: View {
         self.initialLine = initialLine
         self.onAPIError = onAPIError
         _viewModel = State(initialValue: FilePreviewViewModel(
-            session: session,
-            server: server,
+            files: files,
             path: entry.path ?? "",
             knownSize: entry.size,
             prefetchedFile: prefetchedFile
@@ -318,6 +316,12 @@ struct FilePreviewView: View {
             if let metadataText {
                 Text(metadataText)
                     .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            if case let .text(file) = viewModel.preview, file.isTruncated {
+                Label("Preview truncated", systemImage: "scissors")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }

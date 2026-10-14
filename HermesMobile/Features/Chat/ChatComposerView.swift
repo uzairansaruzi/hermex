@@ -208,13 +208,20 @@ struct MessageComposerView: View {
     /// the "New Chat with Voice" App Intent (#338). Defaults to false for normal composers.
     let autoStartsVoiceInput: Bool
     let apiClient: APIClient?
-    /// This chat's server-side session, which the `@` panel lists workspace
-    /// files for. Nil before the session exists, which keeps the panel closed.
+    /// This chat's server-side session. Nil before the session exists.
     let sessionID: String?
+    /// Loads one query's rows into `filePathSearch`: the chat's workspace listing, or a
+    /// Hermes chat's `complete.path` (#1113). Nil keeps the `@` panel closed.
+    let searchFilePaths: ((String) async -> Void)?
     /// The workspace files already picked in this chat. The editor draws their
     /// `@path` references as chips; the view model owns the set so the sent
     /// transcript can draw the same ones.
     let chipFilePaths: Set<String>
+    /// A bot's chat's `@`mention roster (#1145): its bots lead the `@` panel and draw as chips in
+    /// the editor. Nil everywhere else.
+    var botMentions: BotMentions? = nil
+    /// Those bots' avatars, keyed by Profile, from this connection only.
+    var mentionAvatars: [String: UIImage] = [:]
     /// The `@` panel's rows and its directory listings. Owned by the view model
     /// so a folder listed to confirm a restored draft's references is not listed
     /// again the first time the panel opens.
@@ -269,9 +276,9 @@ struct MessageComposerView: View {
     let onSelectGitBranch: (GitCheckoutTarget) -> Void
     let onCreateGitBranch: (GitCheckoutTarget) -> Void
     let onRefreshGitBranches: () -> Void
-    /// False on a Hermes session (#1010): the workspace selector, the branch picker and voice
-    /// notes stay hidden until their phases land. The + menu, dictation and the context
-    /// indicator stay.
+    /// False on a Hermes session (#1010): voice notes stay hidden until their phase lands, and
+    /// the workspace picker takes a typed path (#1117). The + menu, dictation, the context
+    /// indicator and the branch picker (#1116) stay.
     var showsSessionControls = true
     /// The commands the `/` panel lists and runs: a Hermes chat's own and its host's (#1036).
     var slashScope = SlashCommandScope.webui
@@ -280,14 +287,21 @@ struct MessageComposerView: View {
     /// Asks the host to complete a host command's argument: the draft up to the caret, or nil
     /// once the caret leaves one. Called again on each change; a newer call replaces it.
     var onCompleteHostSlashArgument: (String?) async -> Void = { _ in }
-    /// A Hermes session's model and Profile chips (#1015), shown while the rest of
-    /// `showsSessionControls` stays hidden.
+    /// A Hermes session's model, folder and Profile chips (#1015, #1117), shown while the rest
+    /// of `showsSessionControls` stays hidden. Its folder picker takes a typed path, which the
+    /// host checks.
     var showsModelAndProfileControls = false
     /// A configuration change that has not landed yet, such as a model the host applies
     /// after the running response. Shown below any configuration error.
     var configurationNotice: String?
     /// The effort a Hermes host sends when the model takes less than the one picked (#1016).
     var sentReasoningEffort: String?
+    /// A Hermes session's Fast mode (#1142); nil hides the chip.
+    var fastMode: Bool?
+    /// Whether the host takes a Fast change now; the chip shows disabled otherwise.
+    var mayChangeFastMode = false
+    /// Asks the host for the other Fast mode.
+    var onSelectFastMode: (Bool) -> Void = { _ in }
     /// A Hermes session (#1012): staged files upload when they are sent, under Bot Chat's
     /// rules. Up to eight, and Steer drops out while a response runs.
     var uploadsAttachmentsOnSend = false
@@ -356,24 +370,15 @@ struct MessageComposerView: View {
 
     /// The `@…` the caret is sitting in, or `nil` when there is none.
     ///
-    /// Needs a session to list, since every path the panel offers comes from
-    /// that session's workspace.
+    /// Needs `searchFilePaths`, since every path the panel offers comes from
+    /// the chat's own workspace.
     private var fileTrigger: ComposerFileTrigger? {
-        guard !isReadOnly, apiClient != nil, fileReferenceSessionID != nil else { return nil }
+        guard !isReadOnly, searchFilePaths != nil || botMentions != nil else { return nil }
         return ComposerFileTrigger.detect(in: draftMessage, selection: composerSelection.range)
     }
 
     private var showsFileAutocomplete: Bool {
         fileTrigger != nil
-    }
-
-    private var fileReferenceSessionID: String? {
-        guard let sessionID = sessionID?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !sessionID.isEmpty
-        else {
-            return nil
-        }
-        return sessionID
     }
 
     /// What the panel filters on, or `nil` when it should be closed.
@@ -461,6 +466,31 @@ struct MessageComposerView: View {
         ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
     }
 
+    /// A bot's chat's `@` panel (#1145), as Bot Chat draws it: this connection's other bots, then
+    /// the chat's workspace files. Its task asks for files, so the container stands while the
+    /// first answer is out; it shows once there is a row or a lookup in flight.
+    private func botAutocomplete(_ trigger: ComposerFileTrigger, mentions: BotMentions) -> some View {
+        let bots = mentions.completions(query: trigger.query)
+        return Group {
+            if !bots.isEmpty || !filePathSearch.matches.isEmpty || filePathSearch.isLoading {
+                BotAtAutocompleteView(
+                    botCompletions: bots, avatars: mentionAvatars,
+                    fileMatches: filePathSearch.matches, isLoadingFiles: filePathSearch.isLoading,
+                    onSelectBot: { item in
+                        let completed = trigger.applying("@" + item.tag + " ", to: draftMessage)
+                        editDraft(completed.draft)
+                        composerSelection = composerSelection.moved(to: completed.selection)
+                        ChatHaptics.autocompleteAccepted(isEnabled: isHapticsEnabled)
+                    },
+                    onSelectFile: applyFileCompletion
+                )
+                .padding(.horizontal)
+                .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+            }
+        }
+        .task(id: trigger.query) { await searchFilePaths?(trigger.query) }
+    }
+
     /// Swaps the `@…` at the caret for the picked entry.
     ///
     /// A file finishes the reference: `@path` plus a space, recorded so the
@@ -540,13 +570,13 @@ struct MessageComposerView: View {
                 }
 
                 Group {
-                    if let fileTrigger, let sessionID = fileReferenceSessionID, let apiClient {
+                    if let fileTrigger, let botMentions {
+                        botAutocomplete(fileTrigger, mentions: botMentions)
+                    } else if let fileTrigger, let searchFilePaths {
                         FilePathAutocompleteView(
                             query: fileTrigger.query,
                             search: filePathSearch,
-                            load: { query in
-                                await filePathSearch.search(query, sessionID: sessionID, apiClient: apiClient)
-                            },
+                            load: searchFilePaths,
                             onSelect: applyFileCompletion
                         )
                         .padding(.horizontal)
@@ -779,6 +809,7 @@ struct MessageComposerView: View {
         }
         .sheet(isPresented: $showsWorkspaceSheet, onDismiss: restoreFocusAfterPresentationIfNeeded) {
             ComposerWorkspacePickerSheet(
+                allowsCustomPath: !showsSessionControls,
                 workspaceRoots: workspaceRoots,
                 selectedWorkspacePath: displayedWorkspacePath,
                 suggestions: workspaceSuggestions,
@@ -929,6 +960,7 @@ struct MessageComposerView: View {
                     verticalPadding: 12,
                     chipSkills: skillSuggestions,
                     chipFilePaths: chipFilePaths,
+                    chipBots: botMentions?.chipReferences(avatars: mentionAvatars) ?? [:],
                     quotes: quotes,
                     onKeyboardSend: actionButtonTapped,
                     onPasteFileProviders: onPasteFileProviders,
@@ -974,11 +1006,18 @@ struct MessageComposerView: View {
                 if showsSessionControls || showsModelAndProfileControls {
                     modelEffortControl
 
-                    if showsSessionControls { workspaceSelector }
+                    workspaceSelector
 
                     profileSelector
 
-                    if showsSessionControls { gitBranchPicker }
+                    if let fastMode {
+                        ComposerFastModeButton(
+                            isOn: fastMode, isDisabled: isConfigurationControlDisabled || !mayChangeFastMode, color: metaControlColor,
+                            controlFont: metaControlFont, chevronFont: metaChevronFont, onSelect: onSelectFastMode
+                        )
+                    }
+
+                    gitBranchPicker
                 }
 
                 voiceControlButton
@@ -1164,14 +1203,17 @@ struct MessageComposerView: View {
     @ViewBuilder
     private var gitBranchPicker: some View {
         // One "Git Actions" toggle covers every git control in chat (#189), so the
-        // branch chip goes with the toolbar menu rather than lingering alone.
-        if showsGitControls, gitViewModel.hasRepository {
+        // branch chip goes with the toolbar menu rather than lingering alone. A Hermes chat
+        // creates a branch only through hermex-push (#1236), and nothing switches while another
+        // write holds the repository's lock.
+        if showsGitControls, gitViewModel.hasRepository, gitViewModel.supportsBranches {
             GitBranchPickerButton(
                 currentBranch: gitViewModel.currentBranchName,
                 branches: gitViewModel.branches,
                 isLoading: gitViewModel.isLoadingBranches,
                 isSwitching: gitViewModel.isSwitchingBranch,
-                isDisabled: isReadOnly || isWaitingForStream,
+                isDisabled: isReadOnly || isWaitingForStream || gitViewModel.isWriteLocked,
+                allowsCreate: gitViewModel.supportsSync,
                 onSelect: onSelectGitBranch,
                 onCreate: onCreateGitBranch,
                 onRefresh: onRefreshGitBranches

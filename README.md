@@ -62,6 +62,8 @@ Hermex is a client only — it does not ship with, host, or provision a backend.
 2. **Make it reachable from your phone** (see options below).
 3. **Connect.** [Download Hermex](https://apps.apple.com/app/hermex/id6767006319), enter your server URL (e.g. `https://hermes.yourdomain.com`) and password, and you're in.
 
+**Running a Hermes host instead?** Hermex can also sign in to Hermes's own dashboard (`hermes dashboard`, port 9119). Onboarding's first step gives your agent a prompt that sets it up: username and password sign-in under `dashboard.basic_auth`, a persistent `dashboard.basic_auth.secret` so sign-ins survive a restart, and `dashboard.public_url` set to the address your phone uses, reached through one of the options below. Those examples use the Web UI's port 8787; substitute your dashboard's port (9119 by default) in addresses and forwarding commands. Hermes refuses to serve beyond `127.0.0.1` without that sign-in.
+
 Self-hosting the server, securing it, and keeping it reachable are your responsibility.
 
 ### Making the server reachable

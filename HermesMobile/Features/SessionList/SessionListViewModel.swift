@@ -155,6 +155,12 @@ final class SessionListViewModel {
     private(set) var hermesShowsAllProfiles = false
     /// The Hermes host's Profiles, for the Profile menu; empty until `profiles.list` answers.
     private(set) var hermesProfiles: [String] = []
+    /// The Hermes list has read the host's rows on its current connection, so its Profile is the
+    /// host's. Closing or dropping the connection clears it until the next read.
+    private var hasReadHermes = false
+    /// A Hermes session started now reaches the host: the list has read it and isn't showing the
+    /// offline cache. A Shortcut's new chat waits for it (#1180).
+    var isHermesLive: Bool { hasReadHermes && !isViewingCachedData }
     /// The host's reason for refusing the last Hermes rename, shown in the rename sheet (#1048).
     private(set) var renameErrorMessage: String?
     /// More of the Profile's sessions wait on the host.
@@ -1810,6 +1816,7 @@ final class SessionListViewModel {
         hermesReadSerial += 1
         isLoading = false; isLoadingMoreSessions = false
         hermesWire?.close(); hermesWire = nil
+        hasReadHermes = false
         // Matches past the loaded pages change only when the host is searched again.
         if activeRemoteSearchQuery?.isEmpty == false { hermesSearchAwaitsConnect = true }
     }
@@ -1943,6 +1950,7 @@ final class SessionListViewModel {
         hermesReturnedFrom = []
         if sessions != rows { sessions = rows }
         if isViewingCachedData { isViewingCachedData = false }
+        if !hasReadHermes { hasReadHermes = true }
         errorMessage = nil; sessionLoadError = nil
         cacheHermesRows(pages)
     }
