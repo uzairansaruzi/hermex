@@ -1611,9 +1611,14 @@ little above webui's because the host reports no cache writes. The models card i
 model and billing provider, the provider leading its subtitle, in the host's order; the same
 pair can repeat (auxiliary usage), as on the dashboard's Models page. Messages come from
 `insights.get`, which counts only visible sessions among the newest 500 (no Bot Chats), so
-they read "≈". The host has no hours, provider limits (#710) or sessions list here
-(`InsightsFeatures.hermes`): the picker has no Today, Limits and top sessions never show, and a
-failed read is the screen's error rather than a fallback. A store the host can't read (a 503
+they read "≈". The host has no hours or sessions list here (`InsightsFeatures.hermes`): the
+picker has no Today, top sessions never show, and a failed read is the screen's error rather
+than a fallback. Limits (#1237) show only where hermex-push's capabilities list
+`GET /provider-quota`: the providers come from the Profile's `model.options` (its `provider`
+active, each authenticated row keyed), and each card from
+`GET /api/plugins/hermex-push/provider-quota?provider=&profile=&refresh=`, which answers in webui's
+`/api/provider/quota` envelope, so selection and cards are webui's. An OpenRouter key without a
+spending limit has no window and so no card, where webui shows its credit balance. A store the host can't read (a 503
 whose `detail.error` is `state_db_…`, or 5017) gets its own copy, never the host path the 503
 names. Empty-window sums arrive as null and read as 0. It is the Usage row on the home's
 Sessions side (#709).

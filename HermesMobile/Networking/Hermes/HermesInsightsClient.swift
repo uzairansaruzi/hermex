@@ -5,9 +5,10 @@ import Foundation
 /// `/api/analytics/usage` (totals, cost and the daily chart) and `/api/analytics/models` (the
 /// models card), both `?days=&profile=`, and `insights.get` over the shared gateway socket for
 /// the message count. They become webui's `InsightsResponse` (`init(hermesUsage:models:counts:now:)`).
-/// The host reports no hours, no provider limits until #710, and has no sessions list here
-/// (`insightsFeatures`), so Limits stay empty and a failed read is the screen's error. A store
-/// the host can't read, its 503 or `insights.get`'s 5017, is `HermesInsightsUnavailable`.
+/// Provider limits come from the host's hermex-push plugin where it mounts `GET /provider-quota`
+/// (#1237), and are absent otherwise. The host reports no hours and has no sessions list here
+/// (`insightsFeatures`), so a failed read is the screen's error. A store the host can't read,
+/// its 503 or `insights.get`'s 5017, is `HermesInsightsUnavailable`.
 @MainActor final class HermesInsightsClient: InsightsDataClient {
     nonisolated var insightsFeatures: InsightsFeatures { .hermes }
     /// The Profile every read names: the inbox's selected one.
@@ -31,17 +32,31 @@ import Foundation
         return try await InsightsResponse(hermesUsage: usage, models: models, counts: counts)
     }
 
-    /// No provider is offered, so the Limits group never probes or shows (#710 adds the route).
+    /// The Profile's providers from `model.options`, read only where the host's hermex-push mounts
+    /// `GET /provider-quota` (#1237): the active one is the Profile's, and each authenticated one
+    /// has a key. Without the route no provider is offered, so the Limits group never probes or shows.
     func providers() async throws -> ProvidersResponse {
-        ProvidersResponse(providers: [], activeProvider: nil)
+        guard try await BotDashboardClient(http: http).companionRoutes().supports("GET /provider-quota") else {
+            return ProvidersResponse(providers: [], activeProvider: nil)
+        }
+        let options = try await gateway(.profileModelOptions(profile: profile))
+        let providers = (options["providers"].list ?? []).compactMap { row -> ProviderSummary? in
+            guard let slug = row["slug"].text, !slug.isEmpty else { return nil }
+            return ProviderSummary(id: slug, displayName: row["name"].text, hasKey: row["authenticated"].flag != false)
+        }
+        return ProvidersResponse(providers: providers, activeProvider: options["provider"].text)
     }
 
-    // The screen never asks a Hermes host for these (`insightsFeatures`).
+    /// One provider's limits for the Profile from hermex-push, in webui's envelope. The long
+    /// deadline is for a Codex read, which the host retries after a 401 with a refreshed sign-in.
+    func providerQuota(provider: String, refresh: Bool) async throws -> ProviderQuotaResponse {
+        let reply = try await http.reply(.companionProviderQuota(provider: provider, profile: profile, refresh: refresh),
+                                         deadline: .provisioning)
+        return try Self.quotaDecoder.decode(ProviderQuotaResponse.self, from: HermesCronClient.accepted(reply))
+    }
 
+    /// The screen never asks a Hermes host for this (`insightsFeatures`).
     func sessions() async throws -> SessionsResponse { throw BotFailure.unsupported }
-    func providerQuota(provider _: String, refresh _: Bool) async throws -> ProviderQuotaResponse {
-        throw BotFailure.unsupported
-    }
 
     // MARK: - Wire
 
@@ -70,6 +85,13 @@ import Foundation
             throw HermesInsightsUnavailable()
         }
     }
+
+    /// The envelope's snake_case keys, read as `APIClient` reads webui's.
+    private static let quotaDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return decoder
+    }()
 }
 
 /// The host could not read the Profile's session store (#1074).

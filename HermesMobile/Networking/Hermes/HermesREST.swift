@@ -115,6 +115,9 @@ enum HermesREST: Equatable, Sendable {
     case pushPairing
     /// hermex-push 0.5.0's mounted routes (#1235): no side effects, never 409.
     case pluginCapabilities
+    /// hermex-push's account limits for one provider and Profile (#1237), in webui's
+    /// `/api/provider/quota` envelope. `refresh` skips the plugin's 45 s cache.
+    case companionProviderQuota(provider: String, profile: String, refresh: Bool)
     /// hermex-push 0.4.0's restart: 202, then the dashboard re-execs itself.
     case restartDashboard
     /// Every agent plugin with its on-disk version.
@@ -354,6 +357,13 @@ enum HermesREST: Equatable, Sendable {
         case .restartGateway: return try Self.send("POST", base.appendingPathComponent("api/gateway/restart"), [:])
         case .pushPairing: return Self.get(base.appendingPathComponent("api/plugins/hermex-push/pairing"))
         case .pluginCapabilities: return Self.get(base.appendingPathComponent("api/plugins/hermex-push/capabilities"))
+        case .companionProviderQuota(let provider, let profile, let refresh):
+            guard var parts = URLComponents(url: base.appendingPathComponent("api/plugins/hermex-push/provider-quota"),
+                                            resolvingAgainstBaseURL: false) else { throw BotFailure.invalidAddress }
+            parts.queryItems = [URLQueryItem(name: "provider", value: provider), URLQueryItem(name: "profile", value: profile)]
+                + (refresh ? [URLQueryItem(name: "refresh", value: "1")] : [])
+            guard let url = parts.url else { throw BotFailure.invalidAddress }
+            return Self.get(url)
         case .restartDashboard: return try Self.send("POST", base.appendingPathComponent("api/plugins/hermex-push/restart"), [:])
         case .pluginsHub: return Self.get(base.appendingPathComponent("api/dashboard/plugins/hub"))
         case .sessionMessages(let key, let profile, let offset):
