@@ -337,6 +337,7 @@ describe RPC, and `gateway.ready` lists no methods.
 | Probe | Answer | Meaning |
 | :--- | :--- | :--- |
 | `GET /api/status` (public) | JSON object carrying `auth_required` | A Hermes dashboard; its `version` meets the minimum or the sign-in stops (connect form, `HermesConnection.signIn()`). |
+| `GET /api/status` | Hermes' Host-header 400, or `.blocked` (an access proxy's own sign-in) | The connect form shows its advice and stops; it does not try webui. |
 | `GET /api/status` | anything else | Not Hermes: the connect form goes on to the webui path. |
 | `client.capabilities` in the handshake | -32601 | A host before 0.21.4; connect anyway. |
 | Any RPC | -32601 | The method is absent: `unavailableMethods`, and its control stays off. |
