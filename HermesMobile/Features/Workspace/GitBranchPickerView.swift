@@ -13,8 +13,9 @@ struct GitBranchPickerButton: View {
     let onSelect: (GitCheckoutTarget) -> Void
     let onCreate: (GitCheckoutTarget) -> Void
     let onRefresh: () -> Void
-
-    @State private var showsPicker = false
+    /// Owned by the host so it can keep this button on screen while the popover
+    /// (and its New Branch alert, which takes the keyboard) is up.
+    @Binding var showsPicker: Bool
 
     var body: some View {
         Button {
