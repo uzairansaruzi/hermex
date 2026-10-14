@@ -299,6 +299,26 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertEqual(record.password, "")
     }
 
+    /// A signed-out Hermes server whose status read failed can't tell whether it signs in
+    /// through the browser, so it offers to read it again; one that answered doesn't.
+    func testASignedOutServerWhoseStatusFailedOffersToCheckAgain() async {
+        var reply: Result<BotHostStatus, BotHostProbeFailure> = .failure(.unreachable("offline"))
+        let model = BotConnectionSetup(server: URL(string: "https://hermes.example")!, isServerSignIn: true,
+                                       store: BotConnectionStore(keychain: InMemoryKeychainStore()),
+                                       probe: { _, _ in reply })
+        model.load()
+        await model.checkStatus()
+        XCTAssertTrue(model.offersStatusRetry)
+        XCTAssertFalse(model.signsInWithBrowser)
+
+        var status = BotHostStatus(HermesBrowserSignInTests.browserStatus)
+        status.signsInWithBrowser = true
+        reply = .success(status)
+        await model.checkStatus()
+        XCTAssertFalse(model.offersStatusRetry)
+        XCTAssertTrue(model.signsInWithBrowser)
+    }
+
     func testFailedLoginAndSaveNeverReportSuccess() async throws {
         let wire = ConnectionSetupWire(); wire.failure = BotFailure.rejected(401)
         let model = BotConnectionSetup(server: server, store: BotConnectionStore(keychain: InMemoryKeychainStore()),

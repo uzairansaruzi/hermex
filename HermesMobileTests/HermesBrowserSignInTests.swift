@@ -81,16 +81,18 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
     }
 
-    /// Closing the sheet is a cancel, with nothing exchanged; a code the host refuses, as it
+    /// Closing the sheet, or cancelling the form's task, is a cancel, with nothing exchanged; a code the host refuses, as it
     /// does once 120 seconds pass or the code was used, is a failed browser sign-in.
     func testClosingTheSheetCancelsAndARefusedCodeFails() async throws {
         let http = HermesConnection(connection: candidate, configuration: HermesHostFixture.configuration { request in
             request.url?.path == "/auth/native/token"
                 ? .json(400, .object(["detail": .string("Invalid or expired authorization code.")])) : nil
         })
-        let closed = HermesBrowserSignIn.Presenter { _ in throw ASWebAuthenticationSessionError(.canceledLogin) }
-        do { try await HermesBrowserSignIn.signIn(http, presenter: closed); XCTFail("Expected a cancel") } catch {
-            XCTAssertTrue(error is CancellationError, "\(error)")
+        for closing in [ASWebAuthenticationSessionError(.canceledLogin), CancellationError()] as [Error] {
+            let closed = HermesBrowserSignIn.Presenter { _ in throw closing }
+            do { try await HermesBrowserSignIn.signIn(http, presenter: closed); XCTFail("Expected a cancel") } catch {
+                XCTAssertTrue(error is CancellationError, "\(closing) became \(error)")
+            }
         }
         XCTAssertEqual(HermesHostFixture.count("/auth/native/token"), 0)
 
@@ -99,6 +101,14 @@ import XCTest
             XCTAssertEqual(error as? BotFailure, .browserSignInFailed)
         }
         XCTAssertNil(http.connection.oauth)
+    }
+
+    /// A callback that TCP splits is read until its request line ends.
+    func testTheListenerWaitsForTheWholeRequestLine() {
+        let request = "GET /callback?code=c1&state=s1 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
+        XCTAssertNil(HermesLoopbackListener.requestTarget(in: Data("GET /callback?code=c1&sta".utf8)))
+        XCTAssertNil(HermesLoopbackListener.requestTarget(in: Data("GET /callback?code=c1&state=s1 HTTP/1.1".utf8)))
+        XCTAssertEqual(HermesLoopbackListener.requestTarget(in: Data(request.utf8)), "/callback?code=c1&state=s1")
     }
 
     // MARK: - Fixtures

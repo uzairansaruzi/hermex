@@ -73,8 +73,10 @@ import SwiftUI
             try await presenter.present(url)
         } catch where listener.code == nil {
             // An error after the code arrived is only the sheet closing; without one, the
-            // user closed it or it never showed.
-            if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin { throw CancellationError() }
+            // user closed it, the form's task was cancelled, or it never showed.
+            if error is CancellationError || (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
+                throw CancellationError()
+            }
             throw error is BotFailure ? error : BotFailure.browserSignInFailed
         } catch {}
         guard let code = listener.code else { throw BotFailure.browserSignInFailed }
@@ -188,16 +190,38 @@ final class HermesLoopbackListener: @unchecked Sendable {
         listener = nil
     }
 
+    /// The most a request may send before its request line ends.
+    private static let requestLineLimit = 16_384
+
     private func accept(_ connection: NWConnection) {
         connection.start(queue: .main)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 16_384) { [weak self] data, _, _, _ in
-            guard let self, let data, !data.isEmpty else { connection.cancel(); return }
-            self.handle(String(decoding: data, as: UTF8.self), on: connection)
+        receive(on: connection, buffered: Data())
+    }
+
+    /// Reads until the request line is complete, however TCP splits it.
+    private func receive(on connection: NWConnection, buffered: Data) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: Self.requestLineLimit) { [weak self] data, _, isComplete, error in
+            guard let self else { connection.cancel(); return }
+            let buffered = buffered + (data ?? Data())
+            if let target = Self.requestTarget(in: buffered) {
+                self.handle(target, on: connection)
+            } else if isComplete || error != nil || buffered.count >= Self.requestLineLimit {
+                connection.cancel()
+            } else {
+                self.receive(on: connection, buffered: buffered)
+            }
         }
     }
 
-    private func handle(_ request: String, on connection: NWConnection) {
-        let target = request.components(separatedBy: "\r\n").first?.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
+    /// The request target of `request`'s request line (`GET <target> HTTP/1.1`), or nil
+    /// until that line has ended.
+    static func requestTarget(in request: Data) -> String? {
+        guard let end = request.firstRange(of: Data("\r\n".utf8)) else { return nil }
+        let line = String(decoding: request[..<end.lowerBound], as: UTF8.self)
+        return line.split(separator: " ").dropFirst().first.map(String.init) ?? "/"
+    }
+
+    private func handle(_ target: String, on connection: NWConnection) {
         let components = URLComponents(string: "http://127.0.0.1\(target)")
         guard components?.path == "/callback" else {
             return respond(connection, "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")

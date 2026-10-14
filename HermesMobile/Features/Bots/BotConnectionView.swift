@@ -74,6 +74,15 @@ import Observation
                         .foregroundStyle(.red)
                         .accessibilityIdentifier("hermes-connection-error")
                     }
+                    if setup.offersStatusRetry {
+                        // A signed-out server's status says whether it signs in through the
+                        // browser; there is no status section to check it again from.
+                        Button("Check again") {
+                            statusCheck?.cancel()
+                            statusCheck = Task { await setup.checkStatus() }
+                        }
+                        .accessibilityIdentifier("hermes-connection-check-status")
+                    }
                     if !setup.isServerSignIn {
                         // The trailing mark keeps a URL ending in a neutral character, such as an
                         // IPv6 literal's "]", in one left-to-right run inside right-to-left text.
@@ -437,6 +446,14 @@ extension BotHostStatus {
             headers = saved?.headers ?? []
         } catch { errorMessage = String(localized: "Could not read saved sign-in details.") }
         notificationRelay = relay(server)
+    }
+
+    /// A signed-out Hermes server's status read failed, so the form can't tell whether it signs
+    /// in through the browser: the sign-in section offers to read it again, such as after the
+    /// network or the Connection Headers change.
+    var offersStatusRetry: Bool {
+        guard isServerSignIn, saved == nil, case .unreachable = hostStatus else { return false }
+        return true
     }
 
     /// The address whose status the form reads: the saved one, else a Hermes server's own.
