@@ -115,7 +115,7 @@ enum HermesREST: Equatable, Sendable {
     case pushPairing
     /// hermex-push 0.5.0's mounted routes (#1235): no side effects, never 409.
     case pluginCapabilities
-    /// hermex-push's account limits for one provider and Profile (#1237), in webui's
+    /// hermex-push 0.7.0's account limits for one provider and Profile (#1237), in webui's
     /// `/api/provider/quota` envelope. `refresh` skips the plugin's 45 s cache.
     case companionProviderQuota(provider: String, profile: String, refresh: Bool)
     /// hermex-push 0.4.0's restart: 202, then the dashboard re-execs itself.
