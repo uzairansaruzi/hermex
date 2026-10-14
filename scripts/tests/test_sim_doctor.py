@@ -2,9 +2,11 @@
 
 import importlib.machinery
 import importlib.util
+import json
 from pathlib import Path
 import time
 import unittest
+from unittest.mock import patch
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "sim-doctor"
@@ -35,19 +37,15 @@ class DiagnoseTests(unittest.TestCase):
         self.assertIn("killall -9 com.apple.CoreSimulator.CoreSimulatorService", fix)
 
     def test_silent_device_with_free_memory_is_restarted_by_udid(self):
-        self.assertEqual(self.verdict(spawn_answers=False)[::2], (
-            "DEVICE", "The session that owns it may run: xcrun simctl shutdown SIM-A && xcrun simctl boot SIM-A"))
+        self.assertEqual(self.verdict(spawn_answers=False), (
+            "DEVICE", "This simulator (Booted) does not answer but CoreSimulator does.",
+            "The session that owns it may run: xcrun simctl shutdown SIM-A && xcrun simctl boot SIM-A"))
 
     def test_silent_device_while_paging_blames_memory(self):
         for paging in (dict(swap_used_mb=12000), dict(stalled=19)):
             with self.subTest(**paging):
                 self.assertEqual(self.verdict(spawn_answers=False, **paging)[0], "MEMORY")
 
-    def test_zombie_app_is_cleared_by_restarting_the_simulator(self):
-        verdict, explanation, fix = self.verdict(zombie_pid=46848)
-        self.assertEqual(verdict, "ZOMBIE_APP")
-        self.assertIn("46848", explanation)
-        self.assertIn("xcrun simctl shutdown SIM-A", fix)
 
     def test_paging_alone_only_warns(self):
         verdict, explanation, fix = self.verdict(swap_used_mb=12000)
@@ -58,10 +56,59 @@ class DiagnoseTests(unittest.TestCase):
         self.assertEqual(self.verdict(state="Shutdown")[::2], ("NOT_BOOTED", None))
 
 
+class GatherTests(unittest.TestCase):
+    """Runs gather() and diagnose() against canned command output; None is a
+    command that hung or failed."""
+
+    def doctor_says(self, state, jobs, host_state=""):
+        listing = json.dumps({"devices": {"iOS-27-0": [dict(udid=UDID, state=state)]}})
+
+        def fake_probe(command, timeout=doctor.PROBE_TIMEOUT):
+            if command[:2] == ["sysctl", "-n"]:
+                return "17179869184" if command[2] == "hw.memsize" else "used = 1024.00M"
+            if command[:4] == ["xcrun", "simctl", "list", "devices"]:
+                return listing
+            if command[-2:] == ["launchctl", "list"]:
+                return jobs
+            if command[:2] == ["ps", "-o"]:
+                return host_state
+            return ""
+
+        with patch.object(doctor, "probe", fake_probe):
+            return doctor.diagnose(doctor.gather(UDID), UDID)
+
+    def test_zombie_app_is_cleared_by_restarting_the_simulator(self):
+        jobs = "PID\tStatus\tLabel\n46848\t0\tUIKitApplication:com.uzairansar.hermesmobile[e626][rb-legacy]\n"
+        verdict, explanation, fix = self.doctor_says("Booted", jobs, host_state="Z\n")
+        self.assertEqual(verdict, "ZOMBIE_APP")
+        self.assertIn("PID 46848", explanation)
+        self.assertIn("xcrun simctl shutdown SIM-A", fix)
+
+    def test_running_app_is_healthy(self):
+        jobs = "46848\t0\tUIKitApplication:com.uzairansar.hermesmobile[e626]\n"
+        self.assertEqual(self.doctor_says("Booted", jobs, host_state="Ss\n")[0], "OK")
+
+    def test_failed_app_listing_is_not_reported_healthy(self):
+        self.assertEqual(self.doctor_says("Booted", None)[0], "DEVICE")
+
+    def test_simulator_stuck_booting_is_not_reported_harmless(self):
+        self.assertEqual(self.doctor_says("Booting", None)[:2], (
+            "DEVICE", "This simulator (Booting) does not answer but CoreSimulator does."))
+
+
 class ProbeTests(unittest.TestCase):
     def test_hung_command_returns_none_and_stops_its_children(self):
         started = time.monotonic()
         self.assertIsNone(doctor.probe(["sh", "-c", "sleep 30 & sleep 30; wait"], timeout=0.5))
+        self.assertLess(time.monotonic() - started, 5)
+
+    def test_gives_up_on_a_child_that_outlives_the_kill(self):
+        # The grandchild leaves the process group but keeps the pipe open, like
+        # a child stuck in an uninterruptible wait.
+        started = time.monotonic()
+        escaped = "import os, time; os.setsid(); time.sleep(8)"
+        self.assertIsNone(doctor.probe(["sh", "-c", 'python3 -c "{}" & sleep 30'.format(escaped)],
+                                       timeout=0.5))
         self.assertLess(time.monotonic() - started, 5)
 
     def test_answering_command_returns_its_output(self):
