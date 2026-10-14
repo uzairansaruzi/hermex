@@ -21570,6 +21570,112 @@
         }
       }
     },
+    "About Hermex" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "حول Hermex"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Über Hermex"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Acerca de Hermex"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "À propos de Hermex"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "אודות Hermex"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Info su Hermex"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermexについて"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex 정보"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Over Hermex"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Informacje o Hermex"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sobre o Hermex"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "О Hermex"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex Hakkında"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex کے بارے میں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "關於 Hermex"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "关于 Hermex"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "關於 Hermex"
+          }
+        }
+      }
+    },
     "Adds a Bots row to a webui server’s main screen. Hermes servers have Bots built in and don’t need it." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Fügt dem Hauptbildschirm eines webui-Servers eine Bots-Zeile hinzu. Hermes-Server haben Bots eingebaut und brauchen das nicht." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Añade una fila Bots a la pantalla principal de un servidor webui. Los servidores Hermes ya incluyen Bots y no lo necesitan." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Ajoute une ligne Bots à l’écran principal d’un serveur webui. Les serveurs Hermes intègrent déjà les Bots et n’en ont pas besoin." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Aggiunge una riga Bot alla schermata principale di un server webui. I server Hermes hanno già i Bot integrati e non ne hanno bisogno." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Dodaje wiersz Boty na ekranie głównym serwera webui. Serwery Hermes mają wbudowane Boty i tego nie potrzebują." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Adiciona uma linha Bots à tela principal de um servidor webui. Servidores Hermes já têm Bots integrados e não precisam disso." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Voegt een rij Bots toe aan het hoofdscherm van een webui-server. Hermes-servers hebben Bots ingebouwd en hebben dit niet nodig." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bir webui sunucusunun ana ekranına bir Botlar satırı ekler. Hermes sunucularında Botlar yerleşiktir ve buna ihtiyaç duymaz." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Добавляет строку «Боты» на главный экран сервера webui. В серверах Hermes боты встроены, и им это не нужно." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "webui サーバのメイン画面に「ボット」行を追加します。Hermes サーバにはボットが組み込まれているため不要です。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "在 webui 服务器的主屏幕添加一个“机器人”行。Hermes 服务器已内置机器人，无需开启。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "webui 서버의 메인 화면에 봇 행을 추가합니다. Hermes 서버에는 봇이 기본으로 들어 있어 필요하지 않습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "يضيف صف «الروبوتات» إلى الشاشة الرئيسية لخادم webui. خوادم Hermes تتضمن الروبوتات مسبقًا ولا تحتاج إليه." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "מוסיף שורת בוטים למסך הראשי של שרת webui. בשרתי Hermes הבוטים מובנים והם לא צריכים את זה." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "webui سرور کی مرکزی اسکرین پر ایک بوٹس قطار شامل کرتا ہے۔ Hermes سرورز میں بوٹس پہلے سے موجود ہیں اور انہیں اس کی ضرورت نہیں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "在 webui 伺服器的主畫面加入「機器人」列。Hermes 伺服器已內建機器人，不需要開啟。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "在 webui 伺服器的主畫面加入「機械人」列。Hermes 伺服器已內建機械人，不需要開啟。" } } } },
     "API key" : {
       "localizations" : {
@@ -27225,6 +27331,112 @@
       }
     },
     "Apple refused the test notification. Turn notifications off and on again for this server." : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Apple hat die Testmitteilung abgelehnt. Deaktiviere die Mitteilungen für diesen Server und aktiviere sie erneut."}},"es":{"stringUnit":{"state":"needs_review","value":"Apple rechazó la notificación de prueba. Desactiva y vuelve a activar las notificaciones de este servidor."}},"fr":{"stringUnit":{"state":"needs_review","value":"Apple a refusé la notification de test. Désactivez puis réactivez les notifications pour ce serveur."}},"it":{"stringUnit":{"state":"needs_review","value":"Apple ha rifiutato la notifica di prova. Disattiva e riattiva le notifiche per questo server."}},"pl":{"stringUnit":{"state":"needs_review","value":"Apple odrzucił powiadomienie testowe. Wyłącz i ponownie włącz powiadomienia dla tego serwera."}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"A Apple recusou a notificação de teste. Desative e ative novamente as notificações deste servidor."}},"nl":{"stringUnit":{"state":"needs_review","value":"Apple heeft de testmelding geweigerd. Schakel meldingen voor deze server uit en weer in."}},"tr":{"stringUnit":{"state":"needs_review","value":"Apple test bildirimini reddetti. Bu sunucu için bildirimleri kapatıp yeniden açın."}},"ru":{"stringUnit":{"state":"needs_review","value":"Apple отклонил тестовое уведомление. Выключите и снова включите уведомления для этого сервера."}},"ja":{"stringUnit":{"state":"needs_review","value":"Apple がテスト通知を拒否しました。このサーバーの通知をオフにしてから、もう一度オンにしてください。"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"Apple 拒绝了测试通知。请为此服务器关闭通知后再重新打开。"}},"ko":{"stringUnit":{"state":"needs_review","value":"Apple이 테스트 알림을 거부했습니다. 이 서버의 알림을 껐다가 다시 켜세요."}},"ar":{"stringUnit":{"state":"needs_review","value":"رفضت Apple الإشعار التجريبي. أوقف إشعارات هذا الخادم ثم شغّلها مرة أخرى."}},"he":{"stringUnit":{"state":"needs_review","value":"Apple דחתה את התראת הבדיקה. יש לכבות ולהפעיל מחדש את ההתראות עבור שרת זה."}},"ur":{"stringUnit":{"state":"needs_review","value":"Apple نے آزمائشی اطلاع مسترد کر دی۔ اس سرور کے لیے اطلاعات آف کر کے دوبارہ آن کریں۔"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"Apple 拒絕了測試通知。請為此伺服器關閉通知後再重新開啟。"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"Apple 拒絕了測試通知。請為此伺服器關閉通知後再重新開啟。"}}}},
+    "Applies on this iPhone to every server." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ينطبق على هذا iPhone لكل الخوادم."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gilt auf diesem iPhone für alle Server."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Se aplica en este iPhone a todos los servidores."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "S’applique sur cet iPhone à tous les serveurs."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "חל ב-iPhone זה על כל השרתים."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vale su questo iPhone per tutti i server."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このiPhoneのすべてのサーバーに適用されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 iPhone의 모든 서버에 적용됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Geldt op deze iPhone voor alle servers."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dotyczy wszystkich serwerów na tym iPhonie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vale neste iPhone para todos os servidores."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Действует на этом iPhone для всех серверов."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu iPhone’da tüm sunucular için geçerlidir."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اس iPhone پر تمام سرورز پر لاگو ہوتا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "適用於此 iPhone 上的所有伺服器。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "适用于此 iPhone 上的所有服务器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "適用於此 iPhone 上的所有伺服器。"
+          }
+        }
+      }
+    },
     "Applies to Sessions on this device." : {"localizations": {"de": {"stringUnit": {"state": "needs_review", "value": "Gilt für Sitzungen auf diesem Gerät."}}, "es": {"stringUnit": {"state": "needs_review", "value": "Se aplica a las sesiones de este dispositivo."}}, "fr": {"stringUnit": {"state": "needs_review", "value": "S’applique aux sessions sur cet appareil."}}, "it": {"stringUnit": {"state": "needs_review", "value": "Si applica alle sessioni su questo dispositivo."}}, "pl": {"stringUnit": {"state": "needs_review", "value": "Dotyczy sesji na tym urządzeniu."}}, "pt-BR": {"stringUnit": {"state": "needs_review", "value": "Aplica-se às sessões neste dispositivo."}}, "nl": {"stringUnit": {"state": "needs_review", "value": "Geldt voor sessies op dit apparaat."}}, "tr": {"stringUnit": {"state": "needs_review", "value": "Bu cihazdaki oturumlar için geçerlidir."}}, "ru": {"stringUnit": {"state": "needs_review", "value": "Применяется к сеансам на этом устройстве."}}, "ja": {"stringUnit": {"state": "needs_review", "value": "このデバイスのセッションに適用されます。"}}, "zh-Hans": {"stringUnit": {"state": "needs_review", "value": "适用于此设备上的会话。"}}, "ko": {"stringUnit": {"state": "needs_review", "value": "이 기기의 세션에 적용됩니다."}}, "ar": {"stringUnit": {"state": "needs_review", "value": "ينطبق على الجلسات على هذا الجهاز."}}, "he": {"stringUnit": {"state": "needs_review", "value": "חל על הפעלות במכשיר זה."}}, "ur": {"stringUnit": {"state": "needs_review", "value": "اس آلے کے سیشنز پر لاگو ہوتا ہے۔"}}, "zh-Hant": {"stringUnit": {"state": "needs_review", "value": "適用於此裝置上的工作階段。"}}, "zh-HK": {"stringUnit": {"state": "needs_review", "value": "適用於此裝置上的工作階段。"}}}},
     "Apply" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Anwenden" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Aplicar" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Appliquer" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Applica" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zastosuj" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Aplicar" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Toepassen" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Uygula" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Применить" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "適用" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "应用" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "적용" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تطبيق" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "החלה" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "لاگو کریں" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "套用" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "套用" } } } },
     "Apply your header color to these primary buttons." : {
@@ -39969,6 +40181,112 @@
         }
       }
     },
+    "Composer" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "محرر الرسائل"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Eingabefeld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Redactor"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Saisie"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "עורך ההודעות"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Composer"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "入力欄"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "입력창"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Invoerveld"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Edytor wiadomości"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Editor de mensagens"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Поле ввода"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mesaj Yazma"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "پیغام لکھیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "輸入框"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "输入框"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "輸入框"
+          }
+        }
+      }
+    },
     "Composer Option" : {
       "localizations" : {
         "ar" : {
@@ -51936,6 +52254,112 @@
         }
       }
     },
+    "Defaults" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "الإعدادات الافتراضية"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Standards"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Predeterminados"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Par défaut"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ברירות מחדל"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Predefiniti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "デフォルト"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "기본값"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Standaarden"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Domyślne"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Padrões"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "По умолчанию"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Varsayılanlar"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "طے شدہ"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "預設"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "默认"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "預設"
+          }
+        }
+      }
+    },
     "Degraded" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Eingeschränkt"}},"es":{"stringUnit":{"state":"needs_review","value":"Degradado"}},"fr":{"stringUnit":{"state":"needs_review","value":"Dégradé"}},"it":{"stringUnit":{"state":"needs_review","value":"Degradato"}},"pl":{"stringUnit":{"state":"needs_review","value":"Ograniczone działanie"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Degradado"}},"nl":{"stringUnit":{"state":"needs_review","value":"Verminderd"}},"tr":{"stringUnit":{"state":"needs_review","value":"Kısıtlı"}},"ru":{"stringUnit":{"state":"needs_review","value":"Работает с ошибками"}},"ja":{"stringUnit":{"state":"needs_review","value":"機能低下"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"降级"}},"ko":{"stringUnit":{"state":"needs_review","value":"성능 저하"}},"ar":{"stringUnit":{"state":"needs_review","value":"متدهور"}},"he":{"stringUnit":{"state":"needs_review","value":"פגוע"}},"ur":{"stringUnit":{"state":"needs_review","value":"کمزور کارکردگی"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"效能降級"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"效能降級"}}}},
     "Delegated" : {
       "localizations" : {
@@ -63675,6 +64099,112 @@
       }
     },
     "Fully stage or fully unstage partly staged or renamed files before committing selected files" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Stage oder unstage teilweise gestagte oder umbenannte Dateien vollständig, bevor du ausgewählte Dateien committest" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Prepara o quita por completo los archivos preparados en parte o renombrados antes de confirmar los archivos seleccionados" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Indexez ou désindexez entièrement les fichiers partiellement indexés ou renommés avant de faire un commit des fichiers sélectionnés" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Aggiungi o rimuovi completamente dallo stage i file parzialmente in stage o rinominati prima del commit dei file selezionati" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Dodaj w całości do indeksu lub całkowicie z niego usuń pliki częściowo dodane albo o zmienionej nazwie przed zatwierdzeniem wybranych plików" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Prepare ou remova totalmente da preparação os arquivos parcialmente preparados ou renomeados antes de fazer o commit dos arquivos selecionados" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Stage of unstage gedeeltelijk gestagede of hernoemde bestanden volledig voordat je geselecteerde bestanden commit" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Seçili dosyaları commit etmeden önce kısmen hazırlanmış veya yeniden adlandırılmış dosyaları tamamen hazırlayın ya da hazırlıktan çıkarın" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Полностью проиндексируйте или уберите из индекса частично проиндексированные или переименованные файлы перед коммитом выбранных файлов" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "選択したファイルをコミットする前に、一部だけステージされたファイルや名前を変更したファイルを完全にステージするか、ステージを解除してください" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "提交所选文件前，请完全暂存或完全取消暂存部分暂存或已重命名的文件" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "선택한 파일을 커밋하기 전에 일부만 스테이지되었거나 이름이 바뀐 파일을 완전히 스테이지하거나 스테이지 해제하세요" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "جهّز الملفات المجهزة جزئيًا أو المعاد تسميتها بالكامل أو ألغِ تجهيزها بالكامل قبل الالتزام بالملفات المحددة" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "יש לסמן במלואם או לבטל במלואו את הסימון של קבצים שסומנו בחלקם או ששמם שונה לפני ההתחייבות לקבצים שנבחרו" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "منتخب فائلیں کمٹ کرنے سے پہلے جزوی طور پر اسٹیج یا نام بدلی گئی فائلوں کو پوری طرح اسٹیج یا ان اسٹیج کریں" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "提交所選檔案前，請完全暫存或完全取消暫存部分暫存或已重新命名的檔案" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "提交所選檔案前，請完全暫存或完全取消暫存部分暫存或已重新命名的檔案" } } } },
+    "General" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "عام"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Allgemein"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "General"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Général"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "כללי"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Generali"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "一般"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "일반"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Algemeen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ogólne"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Geral"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Основные"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Genel"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "عمومی"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "一般"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "通用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "一般"
+          }
+        }
+      }
+    },
     "Generating commit message..." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Commit-Nachricht wird generiert..." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Generando mensaje de confirmación..." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Génération du message de commit..." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Generazione messaggio di commit..." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Generowanie komunikatu zatwierdzenia..." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Gerando mensagem de commit..." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Commitbericht genereren..." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Commit mesajı oluşturuluyor..." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Создание сообщения коммита..." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "コミットメッセージを生成中..." } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "正在生成提交信息..." } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "커밋 메시지 생성 중..." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "جارٍ إنشاء رسالة الالتزام..." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "יוצר הודעת התחייבות..." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "کمٹ پیغام بنایا جا رہا ہے..." } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "正在產生提交訊息..." } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "正在產生提交訊息..." } } } },
     "Get Started" : {
       "localizations" : {
@@ -72762,6 +73292,218 @@
       }
     },
     "Legacy" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Legacy" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Heredado" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Ancien" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Legacy" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Starszy" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Legado" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Legacy" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Eski" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Старый" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "レガシー" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "旧版" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "레거시" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "قديم" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "ישן" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "پرانا" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "舊版" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "舊版" } } } },
+    "Push off" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "إشعارات الدفع متوقفة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push aus"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push desactivado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push désactivé"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push כבוי"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push disattivato"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "プッシュ無効"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "푸시 꺼짐"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push uit"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push wyłączone"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push desativado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push выключены"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push kapalı"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "پش بند"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "推送已關閉"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "推送已关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "推播已關閉"
+          }
+        }
+      }
+    },
+    "Push on" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "إشعارات الدفع مفعّلة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push an"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push activado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push activé"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push פעיל"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push attivato"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "プッシュ有効"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "푸시 켜짐"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push aan"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push włączone"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push ativado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push включены"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Push açık"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "پش فعال"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "推送已開啟"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "推送已开启"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "推播已開啟"
+          }
+        }
+      }
+    },
     "Sign In with Browser" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Im Browser anmelden" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Iniciar sesión con el navegador" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Se connecter avec le navigateur" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Accedi con il browser" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zaloguj się w przeglądarce" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Entrar com o navegador" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Aanmelden met browser" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Tarayıcıyla Oturum Aç" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Войти через браузер" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "ブラウザでサインイン" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "使用浏览器登录" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "브라우저로 로그인" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تسجيل الدخول عبر المتصفح" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "התחברות דרך הדפדפן" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "براؤزر سے سائن اِن کریں" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "使用瀏覽器登入" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "使用瀏覽器登入" } } } },
     "The browser sign-in didn't finish. Try again." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Die Anmeldung im Browser wurde nicht abgeschlossen. Versuche es erneut." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "El inicio de sesión en el navegador no terminó. Inténtalo de nuevo." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "La connexion dans le navigateur n’a pas abouti. Réessayez." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "L’accesso nel browser non è stato completato. Riprova." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Logowanie w przeglądarce nie zostało dokończone. Spróbuj ponownie." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "O login no navegador não foi concluído. Tente novamente." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "De aanmelding in de browser is niet voltooid. Probeer het opnieuw." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Tarayıcıda oturum açma tamamlanmadı. Yeniden deneyin." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Вход через браузер не завершён. Попробуйте ещё раз." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "ブラウザでのサインインが完了しませんでした。もう一度お試しください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "浏览器登录未完成。请重试。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "브라우저 로그인이 완료되지 않았습니다. 다시 시도하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لم يكتمل تسجيل الدخول عبر المتصفح. حاول مرة أخرى." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "ההתחברות בדפדפן לא הושלמה. נסה שוב." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "براؤزر میں سائن اِن مکمل نہیں ہوا۔ دوبارہ کوشش کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "瀏覽器登入未完成。請再試一次。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "瀏覽器登入未完成。請再試一次。" } } } },
     "This server signs in through the browser, so Hermex sends its own Authorization header. Remove this header to connect. For Cloudflare Access, use the CF-Access-Client-Id and CF-Access-Client-Secret headers instead." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Dieser Server meldet sich über den Browser an, daher sendet Hermex einen eigenen Authorization-Header. Entferne diesen Header, um dich zu verbinden. Verwende für Cloudflare Access stattdessen die Header CF-Access-Client-Id und CF-Access-Client-Secret." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Este servidor inicia sesión a través del navegador, así que Hermex envía su propio encabezado Authorization. Quita este encabezado para conectarte. Para Cloudflare Access, usa en su lugar los encabezados CF-Access-Client-Id y CF-Access-Client-Secret." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Ce serveur se connecte via le navigateur, donc Hermex envoie son propre en-tête Authorization. Supprimez cet en-tête pour vous connecter. Pour Cloudflare Access, utilisez plutôt les en-têtes CF-Access-Client-Id et CF-Access-Client-Secret." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Questo server accede tramite il browser, quindi Hermex invia una propria intestazione Authorization. Rimuovi questa intestazione per connetterti. Per Cloudflare Access, usa invece le intestazioni CF-Access-Client-Id e CF-Access-Client-Secret." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Ten serwer loguje się przez przeglądarkę, więc Hermex wysyła własny nagłówek Authorization. Usuń ten nagłówek, aby się połączyć. W przypadku Cloudflare Access użyj zamiast tego nagłówków CF-Access-Client-Id i CF-Access-Client-Secret." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Este servidor faz login pelo navegador, então o Hermex envia o próprio cabeçalho Authorization. Remova este cabeçalho para conectar. Para o Cloudflare Access, use os cabeçalhos CF-Access-Client-Id e CF-Access-Client-Secret." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Deze server meldt aan via de browser, dus Hermex stuurt een eigen Authorization-header. Verwijder deze header om verbinding te maken. Gebruik voor Cloudflare Access in plaats daarvan de headers CF-Access-Client-Id en CF-Access-Client-Secret." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu sunucu tarayıcı üzerinden oturum açar, bu yüzden Hermex kendi Authorization başlığını gönderir. Bağlanmak için bu başlığı kaldırın. Cloudflare Access için bunun yerine CF-Access-Client-Id ve CF-Access-Client-Secret başlıklarını kullanın." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Этот сервер выполняет вход через браузер, поэтому Hermex отправляет собственный заголовок Authorization. Удалите этот заголовок, чтобы подключиться. Для Cloudflare Access используйте вместо него заголовки CF-Access-Client-Id и CF-Access-Client-Secret." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このサーバーはブラウザでサインインするため、Hermex が独自の Authorization ヘッダーを送信します。接続するには、このヘッダーを削除してください。Cloudflare Access の場合は、代わりに CF-Access-Client-Id と CF-Access-Client-Secret ヘッダーを使用してください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "此服务器通过浏览器登录，因此 Hermex 会发送它自己的 Authorization 请求头。请移除此请求头以连接。如使用 Cloudflare Access，请改用 CF-Access-Client-Id 和 CF-Access-Client-Secret 请求头。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 서버는 브라우저로 로그인하므로 Hermex가 자체 Authorization 헤더를 보냅니다. 연결하려면 이 헤더를 삭제하세요. Cloudflare Access에는 대신 CF-Access-Client-Id 및 CF-Access-Client-Secret 헤더를 사용하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "يسجّل هذا الخادم الدخول عبر المتصفح، لذا يرسل Hermex ترويسة Authorization الخاصة به. أزل هذه الترويسة للاتصال. في Cloudflare Access، استخدم بدلًا منها الترويستين CF-Access-Client-Id وCF-Access-Client-Secret." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "השרת הזה מתחבר דרך הדפדפן, ולכן Hermex שולח כותרת Authorization משלו. הסר את הכותרת הזו כדי להתחבר. עבור Cloudflare Access, השתמש במקום זאת בכותרות CF-Access-Client-Id ו-CF-Access-Client-Secret." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "یہ سرور براؤزر کے ذریعے سائن اِن کرتا ہے، اس لیے Hermex اپنا Authorization ہیڈر بھیجتا ہے۔ کنیکٹ کرنے کے لیے یہ ہیڈر ہٹا دیں۔ Cloudflare Access کے لیے اس کی بجائے CF-Access-Client-Id اور CF-Access-Client-Secret ہیڈرز استعمال کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "此伺服器透過瀏覽器登入，因此 Hermex 會傳送它自己的 Authorization 標頭。請移除此標頭以連線。若使用 Cloudflare Access，請改用 CF-Access-Client-Id 和 CF-Access-Client-Secret 標頭。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "此伺服器透過瀏覽器登入，因此 Hermex 會傳送它自己的 Authorization 請求標頭。請移除此請求標頭以連線。若使用 Cloudflare Access，請改用 CF-Access-Client-Id 和 CF-Access-Client-Secret 請求標頭。" } } } },

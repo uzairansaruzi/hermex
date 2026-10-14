@@ -544,7 +544,6 @@ struct HermesServerHome: View {
     /// so a sign-in changed in Settings or the inbox gets a fresh list.
     @State private var sessions: HermesSessionsSide?
     @State private var isShowingSettings = false
-    @State private var settingsTarget: SettingsScrollAnchor?
     @State private var isPresentingAddServer = false
 
     init(authManager: AuthManager, server: URL, pendingBotDestination: Binding<BotDestination?>,
@@ -586,7 +585,7 @@ struct HermesServerHome: View {
             }
             .onAppear(perform: readConnection)
             .navigationDestination(isPresented: $isShowingSettings) {
-                SettingsView(authManager: authManager, server: server, initialScrollTarget: settingsTarget)
+                SettingsView(authManager: authManager, server: server)
             }
         }
         // A Hermes chat's Update sign-in (#942) signs the server out to its sign-in form, which
@@ -636,10 +635,10 @@ struct HermesServerHome: View {
             color: HeaderLogoColor.color(for: identity.colorHex),
             foreground: HeaderLogoColor.prefersDarkForeground(for: identity.colorHex) ? .black : .white,
             servers: AvatarServerSwitcherModel(servers: authManager.servers, activeServerID: authManager.activeServerID),
-            openSettings: { settingsTarget = nil; isShowingSettings = true },
+            openSettings: { isShowingSettings = true },
             switchToServer: { authManager.switchActiveServer(to: $0) },
             addServer: { isPresentingAddServer = true },
-            manageServers: { settingsTarget = .servers; isShowingSettings = true }
+            manageServers: { isShowingSettings = true }
         )
     }
 }
@@ -703,7 +702,6 @@ struct HermesServerSignIn: View {
     @Bindable var authManager: AuthManager
     let server: URL
     @State private var isShowingSettings = false
-    @State private var settingsTarget: SettingsScrollAnchor?
     @State private var isPresentingAddServer = false
 
     var body: some View {
@@ -714,18 +712,18 @@ struct HermesServerSignIn: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HermesServerAvatarButton(authManager: authManager, server: server) {
-                        settingsTarget = nil; isShowingSettings = true
+                        isShowingSettings = true
                     } addServer: {
                         isPresentingAddServer = true
                     } manageServers: {
-                        settingsTarget = .servers; isShowingSettings = true
+                        isShowingSettings = true
                     }
                 }
             }
         }
         .sheet(isPresented: $isShowingSettings) {
             NavigationStack {
-                SettingsView(authManager: authManager, server: server, initialScrollTarget: settingsTarget)
+                SettingsView(authManager: authManager, server: server)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) { Button("Done") { isShowingSettings = false } }
                     }

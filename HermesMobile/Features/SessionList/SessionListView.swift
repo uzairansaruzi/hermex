@@ -536,11 +536,11 @@ struct SessionListView: View {
     /// Opens Settings → Notifications for a chat's one-time offer (#863). On compact
     /// width a fork or a chat under Settings → Archived Sessions can sit above the
     /// destination, and retargeting the destination leaves it on top. So compact pops
-    /// to the list first, and the list opens Settings once it is back on screen.
+    /// to the list first, and the list opens Notifications once it is back on screen.
     /// Regular width pops the detail column on every root selection already.
     private func showNotificationSettings() {
         guard horizontalSizeClass != .regular, navigationState.destination != nil else {
-            selectDestination(.settings(.notifications))
+            selectDestination(.notificationSettings)
             return
         }
         opensNotificationSettingsOnReturn = true
@@ -578,7 +578,7 @@ struct SessionListView: View {
                         // The pop `showNotificationSettings` started has landed.
                         guard opensNotificationSettingsOnReturn else { return }
                         opensNotificationSettingsOnReturn = false
-                        selectDestination(.settings(.notifications))
+                        selectDestination(.notificationSettings)
                     }
             }
         }
@@ -659,13 +659,14 @@ struct SessionListView: View {
     private func utilityDestination(_ destination: SessionListUtilityDestination) -> some View {
         Group {
             switch destination {
-            case .settings(let scrollTo):
+            case .settings:
                 SettingsView(
                     authManager: authManager,
                     server: server,
-                    initialScrollTarget: scrollTo,
                     onDefaultProfileSelected: viewModel.adoptDefaultProfileSelection
                 )
+            case .notificationSettings:
+                SettingsNotificationsPage(server: server)
             case .bots:
                 BotsInboxView(server: server, pendingDestination: $pendingBotDestination)
             case .tasks:
@@ -827,10 +828,10 @@ struct SessionListView: View {
                 color: selectedHeaderLogoColor,
                 foreground: initialsAvatarForegroundColor,
                 servers: AvatarServerSwitcherModel(servers: authManager.servers, activeServerID: authManager.activeServerID),
-                openSettings: { selectDestination(.settings(nil)) },
+                openSettings: { selectDestination(.settings) },
                 switchToServer: { account in authManager.switchActiveServer(to: account) },
                 addServer: { isPresentingAddServer = true },
-                manageServers: { selectDestination(.settings(.servers)) }
+                manageServers: { selectDestination(.settings) }
             ),
             field: SessionsHeader.Field(
                 isExpanded: searchChromeIsExpanded, text: $searchText, isFocused: $searchFieldIsFocused, close: closeSearch
@@ -1795,10 +1796,9 @@ struct PendingNewChatRoute: Identifiable, Hashable {
 }
 
 enum SessionListUtilityDestination: Hashable, Identifiable {
-    /// Optional section to scroll to when Settings opens — "Manage Servers"
-    /// passes `.servers`, a plain avatar tap passes `nil` (#283), and the chat's
-    /// notification offer passes `.notifications` (#863).
-    case settings(SettingsScrollAnchor?)
+    case settings
+    /// Settings → Notifications on its own, for the chat's one-time offer (#863).
+    case notificationSettings
     /// The direct-Hermes Bots inbox, shown while Bot Mode (beta) is on.
     case bots
     case tasks

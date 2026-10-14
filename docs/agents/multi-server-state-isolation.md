@@ -34,7 +34,7 @@ to `CacheStore`. Two consequences:
 
 | State | Server kinds | Where it lives | How it's scoped |
 | --- | --- | --- | --- |
-| Push notification preferences | webui (Hermes: #706) | Server-scoped shared Keychain pairing (`PushPairing.preferences`) | Replies, subagent mute, and previews apply to this device for that server. Every relay registration sends its confirmed choices, including after token rotation. Settings → Interaction → Notifications separates these from the global local-alert and Live Activity excerpt preferences. |
+| Push notification preferences | webui (Hermes: #706) | Server-scoped shared Keychain pairing (`PushPairing.preferences`) | Replies, subagent mute, and previews apply to this device for that server. Every relay registration sends its confirmed choices, including after token rotation. Settings → Notifications separates these from the global local-alert and Live Activity excerpt preferences. |
 | Live Activity identity | both | ActivityKit attributes (`AgentRunActivityAttributes`) | A webui run's carries its configured `server` (#566), a bot's names its server and Bot connection in `bot:<connection UUID>:<Profile>` and its route, and a Hermes session's (#1179) carries its `server`, its session link and its stored key under `hermes:<profile>:<root>`. Reuse requires the same server, so equal IDs on two servers never share an activity; relay routes use that server's pairing; a tap opens through the server-qualified route, switching servers first. Cold launch checks an unpaired Hermes session's activity only against the signed-in active Hermes server. A stored key a legacy compression moved lives in the standard defaults (`LiveActivityPushKeys`), keyed by the push server plus the activity's ID and stream. Tested in `LiveActivityTests`, `HermesChatLiveActivityTests` and `PushRegistrationTests`. |
 | Auth cookies | webui | `HTTPCookieStorage` (shared jar) | Cleared/queried per active server URL (#16). Same-host/different-port servers still share the jar — documented #16 limitation. |
 | Custom request headers | webui | Keychain, per-server-scoped keys (#16) | `CustomHeaderStore` is hydrated for the active server; SSE + requests source headers from the active store. |
@@ -170,7 +170,7 @@ long-press menu) — there is no separate on-screen server label.
 
 ## Clear-cache behavior (issue #18 change)
 
-"Clear Offline Cache" (Settings → Offline Data) is **scoped to the active
+"Clear Offline Cache" (Settings → Servers → the active webui server → Offline Data) is **scoped to the active
 server**: `CacheStore.clearCache(for: server, in:)` deletes only that server's
 cached sessions/messages. Other configured servers' offline data and the Hermes
 server itself are untouched. The footnote and confirmation copy state this

@@ -467,11 +467,11 @@ final class SessionNavigationStateTests: XCTestCase {
 
     func testUtilityDestinationRemainsSelectedAcrossLayoutReevaluation() {
         var state = SessionNavigationState()
-        state.select(SessionListUtilityDestination.settings(nil))
+        state.select(SessionListUtilityDestination.settings)
 
         let reevaluatedState = state
 
-        XCTAssertEqual(reevaluatedState.destination, .utility(.settings(nil)))
+        XCTAssertEqual(reevaluatedState.destination, .utility(.settings))
         XCTAssertNil(reevaluatedState.selectedSessionID)
     }
 

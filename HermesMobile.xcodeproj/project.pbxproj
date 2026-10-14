@@ -314,6 +314,14 @@
 		C04400000000000000000003 /* CacheFallbackPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04400000000000000000004 /* CacheFallbackPolicyTests.swift */; };
 		C86900000000000000000003 /* NetworkPathMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C86900000000000000000004 /* NetworkPathMonitorTests.swift */; };
 		1A2B3C4D5E6F7000000000F5 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */; };
+		125200000000000000000002 /* SettingsRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000001 /* SettingsRows.swift */; };
+		125200000000000000000004 /* SettingsAppPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000003 /* SettingsAppPages.swift */; };
+		125200000000000000000006 /* SettingsAboutPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000005 /* SettingsAboutPage.swift */; };
+		125200000000000000000008 /* SettingsNotificationsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000007 /* SettingsNotificationsPage.swift */; };
+		12520000000000000000000A /* SettingsServerPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000009 /* SettingsServerPage.swift */; };
+		12520000000000000000000C /* WebuiServerSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12520000000000000000000B /* WebuiServerSettings.swift */; };
+		125200000000000000000010 /* WebuiServerSettingsModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12520000000000000000000F /* WebuiServerSettingsModel.swift */; };
+		12520000000000000000000E /* AddServerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12520000000000000000000D /* AddServerView.swift */; };
 		E1075000000000000000A005 /* HermesUpdateCallout.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1075000000000000000A006 /* HermesUpdateCallout.swift */; };
 		E1075000000000000000A003 /* HermesUpdateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1075000000000000000A004 /* HermesUpdateMachine.swift */; };
 		1A2B3C4D5E6F7000000000F8 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000F9 /* AppConfig.swift */; };
@@ -515,7 +523,7 @@
 		13FED0A00B8A4C06B7F30BF0 /* BotConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A712D3AE91645C9B8C27745 /* BotConnection.swift */; };
 		A4730000000000000000A001 /* BotAvatarStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4730000000000000000A002 /* BotAvatarStore.swift */; };
 		A4770000000000000000D001 /* HermesDelegatedWork.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4770000000000000000D002 /* HermesDelegatedWork.swift */; };
-		325E432BC1E464DC8678D298 /* HermexPushSectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62920C6E58407FA35B380660 /* HermexPushSectionView.swift */; };
+		325E432BC1E464DC8678D298 /* HermexPushSettingsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62920C6E58407FA35B380660 /* HermexPushSettingsPage.swift */; };
 		24676011C3AD546FE1848199 /* HermexPushProvisioner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94D3E33AAB500B0D0B956289 /* HermexPushProvisioner.swift */; };
 		D04C75E073B6B4661647A495 /* HermexPushPairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 475ED41B3C6AC2391C39ED44 /* HermexPushPairing.swift */; };
 		A4770000000000000000D003 /* HermesDelegatedWorkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4770000000000000000D004 /* HermesDelegatedWorkView.swift */; };
@@ -978,6 +986,14 @@
 		C04400000000000000000004 /* CacheFallbackPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CacheFallbackPolicyTests.swift; sourceTree = "<group>"; };
 		C86900000000000000000004 /* NetworkPathMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPathMonitorTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		125200000000000000000001 /* SettingsRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRows.swift; sourceTree = "<group>"; };
+		125200000000000000000003 /* SettingsAppPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAppPages.swift; sourceTree = "<group>"; };
+		125200000000000000000005 /* SettingsAboutPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAboutPage.swift; sourceTree = "<group>"; };
+		125200000000000000000007 /* SettingsNotificationsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNotificationsPage.swift; sourceTree = "<group>"; };
+		125200000000000000000009 /* SettingsServerPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsServerPage.swift; sourceTree = "<group>"; };
+		12520000000000000000000B /* WebuiServerSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebuiServerSettings.swift; sourceTree = "<group>"; };
+		12520000000000000000000F /* WebuiServerSettingsModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebuiServerSettingsModel.swift; sourceTree = "<group>"; };
+		12520000000000000000000D /* AddServerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddServerView.swift; sourceTree = "<group>"; };
 		E1075000000000000000A006 /* HermesUpdateCallout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesUpdateCallout.swift; sourceTree = "<group>"; };
 		E1075000000000000000A004 /* HermesUpdateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesUpdateMachine.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000F9 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
@@ -1187,7 +1203,7 @@
 		0A712D3AE91645C9B8C27745 /* BotConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotConnection.swift"; sourceTree = "<group>"; };
 		A4730000000000000000A002 /* BotAvatarStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/BotAvatarStore.swift"; sourceTree = "<group>"; };
 		A4770000000000000000D002 /* HermesDelegatedWork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesDelegatedWork.swift; sourceTree = "<group>"; };
-		62920C6E58407FA35B380660 /* HermexPushSectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/HermexPushSectionView.swift"; sourceTree = "<group>"; };
+		62920C6E58407FA35B380660 /* HermexPushSettingsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/HermexPushSettingsPage.swift"; sourceTree = "<group>"; };
 		94D3E33AAB500B0D0B956289 /* HermexPushProvisioner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/HermexPushProvisioner.swift"; sourceTree = "<group>"; };
 		475ED41B3C6AC2391C39ED44 /* HermexPushPairing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bots/HermexPushPairing.swift"; sourceTree = "<group>"; };
 		A4770000000000000000D004 /* HermesDelegatedWorkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesDelegatedWorkView.swift; sourceTree = "<group>"; };
@@ -1789,7 +1805,7 @@
 				40877A8534C94AAF97EA1C7C /* BotConnectionView.swift */,
 				0A712D3AE91645C9B8C27745 /* BotConnection.swift */,
 				A4730000000000000000A002 /* BotAvatarStore.swift */,
-				62920C6E58407FA35B380660 /* HermexPushSectionView.swift */,
+				62920C6E58407FA35B380660 /* HermexPushSettingsPage.swift */,
 				94D3E33AAB500B0D0B956289 /* HermexPushProvisioner.swift */,
 				475ED41B3C6AC2391C39ED44 /* HermexPushPairing.swift */,
 				A48400000000000000000902 /* BotSlashCommands.swift */,
@@ -2073,6 +2089,14 @@
 			isa = PBXGroup;
 			children = (
 				1A2B3C4D5E6F7000000000F6 /* SettingsView.swift */,
+				125200000000000000000001 /* SettingsRows.swift */,
+				125200000000000000000003 /* SettingsAppPages.swift */,
+				125200000000000000000005 /* SettingsAboutPage.swift */,
+				125200000000000000000007 /* SettingsNotificationsPage.swift */,
+				125200000000000000000009 /* SettingsServerPage.swift */,
+				12520000000000000000000B /* WebuiServerSettings.swift */,
+				12520000000000000000000F /* WebuiServerSettingsModel.swift */,
+				12520000000000000000000D /* AddServerView.swift */,
 				E1075000000000000000A006 /* HermesUpdateCallout.swift */,
 				E1075000000000000000A004 /* HermesUpdateMachine.swift */,
 				C012400000000000000003 /* AppIconSettingsSection.swift */,
@@ -2537,7 +2561,7 @@
 				13FED0A00B8A4C06B7F30BF0 /* BotConnection.swift in Sources */,
 				A4730000000000000000A001 /* BotAvatarStore.swift in Sources */,
 				A4770000000000000000D001 /* HermesDelegatedWork.swift in Sources */,
-				325E432BC1E464DC8678D298 /* HermexPushSectionView.swift in Sources */,
+				325E432BC1E464DC8678D298 /* HermexPushSettingsPage.swift in Sources */,
 				24676011C3AD546FE1848199 /* HermexPushProvisioner.swift in Sources */,
 				D04C75E073B6B4661647A495 /* HermexPushPairing.swift in Sources */,
 				A4770000000000000000D003 /* HermesDelegatedWorkView.swift in Sources */,
@@ -2647,6 +2671,14 @@
 				C28702000000000000000001 /* ChatDraftStore.swift in Sources */,
 				C28702000000000000000005 /* ChatDraftAttachmentStore.swift in Sources */,
 				1A2B3C4D5E6F7000000000F5 /* SettingsView.swift in Sources */,
+				125200000000000000000002 /* SettingsRows.swift in Sources */,
+				125200000000000000000004 /* SettingsAppPages.swift in Sources */,
+				125200000000000000000006 /* SettingsAboutPage.swift in Sources */,
+				125200000000000000000008 /* SettingsNotificationsPage.swift in Sources */,
+				12520000000000000000000A /* SettingsServerPage.swift in Sources */,
+				12520000000000000000000C /* WebuiServerSettings.swift in Sources */,
+				125200000000000000000010 /* WebuiServerSettingsModel.swift in Sources */,
+				12520000000000000000000E /* AddServerView.swift in Sources */,
 				E1075000000000000000A005 /* HermesUpdateCallout.swift in Sources */,
 				E1075000000000000000A003 /* HermesUpdateMachine.swift in Sources */,
 				C012400000000000000004 /* AppIconSettingsSection.swift in Sources */,

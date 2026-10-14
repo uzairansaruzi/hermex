@@ -2185,8 +2185,7 @@ push needs that login, and push serves the server's webui sessions too, so
 stays gated. Its copy says "Hermes connection" and why a webui-only user would
 add one.
 
-Notification controls live in Settings → Interaction → Notifications, collapsed by
-default. That group owns push setup/disable, the per-device reply/subagent/preview/open-chat
+Notification controls live on the Settings → Notifications page. It owns push setup/disable, the per-device reply/subagent/preview/open-chat
 choices for the selected server, and the existing global local-alert and Live
 Activity excerpt controls. The Hermes connection screen only edits the host login.
 Push preferences live with the pairing in server-scoped Keychain storage; older

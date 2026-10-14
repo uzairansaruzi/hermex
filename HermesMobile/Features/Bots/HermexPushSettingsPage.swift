@@ -1,56 +1,36 @@
 import SwiftUI
 
-/// The single notification home under Settings → Interaction. Push choices belong
-/// to this server and device; the caller supplies the existing global alert controls.
-@MainActor struct HermexPushSectionView<SharedSettings: View>: View {
+/// Settings → Notifications (#1252): push for this server and device first, then the
+/// sections the caller supplies for alerts that apply on this iPhone to every server.
+@MainActor struct HermexPushSettingsPage<SharedSections: View>: View {
     let server: URL
     @Environment(\.scenePhase) private var scenePhase
     @State private var provisioner: HermexPushProvisioner
-    @State private var isExpanded = false
     @State private var isConfirmingEnable = false
     @State private var isConfirmingDisable = false
     @State private var isConfirmingUpdate = false
     @State private var isConfirmingRestart = false
     @State private var preferenceTask: Task<Void, Never>?
-    private let sharedSettings: SharedSettings
+    private let sharedSections: SharedSections
 
-    /// `startsExpanded` opens the section for the chat's one-time notification offer (#863).
-    init(server: URL, startsExpanded: Bool = false, @ViewBuilder sharedSettings: () -> SharedSettings) {
+    init(server: URL, @ViewBuilder sharedSections: () -> SharedSections) {
         self.server = server
-        self.sharedSettings = sharedSettings()
-        _isExpanded = State(initialValue: startsExpanded)
+        self.sharedSections = sharedSections()
         _provisioner = State(initialValue: HermexPushProvisioner(
             server: server, connection: try? BotConnectionStore().load(server: server)))
     }
 
     var body: some View {
-        DisclosureGroup(isExpanded: $isExpanded) {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Push · Current server")
-                    .font(AppFont.caption()).foregroundStyle(.secondary)
+        List {
+            Section {
                 pushSettings
-                Divider()
-                Text("On this iPhone · All servers")
-                    .font(AppFont.caption()).foregroundStyle(.secondary)
-                sharedSettings
+            } header: {
+                Text("Push · Current server")
             }
-            .padding(.top, 12)
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "bell").foregroundStyle(Color.secondary)
-                    .frame(width: 24).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Notifications").font(AppFont.subheadline(weight: .medium))
-                    Text(provisioner.pairing == nil
-                         ? String(localized: "Push off · Current server")
-                         : String(localized: "Push on · Current server"))
-                        .font(AppFont.caption()).foregroundStyle(Color.secondary)
-                    if let card = provisioner.pluginCard { pluginLine(card) }
-                }
-            }
-            .foregroundStyle(Color.primary)
-            .frame(minHeight: 44)
+
+            sharedSections
         }
+        .settingsPage(String(localized: "Notifications"))
         .transaction { $0.animation = nil }
         .task {
             await provisioner.reload()
@@ -110,11 +90,8 @@ import SwiftUI
                 .frame(minHeight: 44)
             } else {
                 preferenceToggle(String(localized: "Reply Notifications"), keyPath: \.replies)
-                Divider()
                 preferenceToggle(String(localized: "Subagent Notifications"), keyPath: \.muteSubagents, inverted: true)
-                Divider()
                 preferenceToggle(String(localized: "Show Previews"), keyPath: \.previews)
-                Divider()
                 preferenceToggle(String(localized: "Quiet the Open Chat"), keyPath: \.presenceSuppression)
                 Text("For this iPhone and the selected server. Quiet the Open Chat hides banners for the chat on screen, except approvals, questions and errors. Previews include message text; your iPhone’s notification settings still apply.")
                     .font(AppFont.caption()).foregroundStyle(.secondary)
@@ -150,19 +127,9 @@ import SwiftUI
         }
         // Also available after pairing, so an expired sign-in can be repaired
         // without searching through the server's detail screen.
-        NavigationLink {
+        NavigationLink(provisioner.connection == nil ? String(localized: "Connect Hermes…") : String(localized: "Hermes connection")) {
             BotConnectionView(server: server)
-        } label: {
-            HStack {
-                Text(provisioner.connection == nil ? String(localized: "Connect Hermes…") : String(localized: "Hermes connection"))
-                Spacer()
-                Image(systemName: "chevron.forward")
-                    .foregroundStyle(Color.secondary).accessibilityHidden(true)
-            }
-            .font(AppFont.subheadline()).frame(minHeight: 44)
-            .foregroundStyle(Color.primary)
         }
-        .buttonStyle(.plain)
         .disabled(provisioner.isWorking)
         if let failure = provisioner.failure {
             switch failure.remedy {
@@ -331,40 +298,6 @@ import SwiftUI
         } else {
             card.accessibilityElement(children: .combine)
         }
-    }
-
-    /// The collapsed label's second line: the card's state in a few words, so every card that
-    /// asks for an action shows without opening the section. "Up to date" needs no line.
-    @ViewBuilder private func pluginLine(_ card: HermexPushProvisioner.PluginCard) -> some View {
-        switch card {
-        case .failed(let failure) where failure.remedy == .retryRestart:
-            captionLine("arrow.clockwise.circle.fill", tint: .orange, text: String(localized: "Restart Hermes to finish"),
-                        textTint: .secondary)
-        case .status(.available), .failed:
-            captionLine("arrow.up.circle.fill", tint: .blue, text: String(localized: "Plugin update available"), textTint: .blue)
-        case .updating:
-            captionLine("circle.dashed", tint: .secondary, text: String(localized: "Updating plugin…"), textTint: .secondary)
-        case .restarting:
-            captionLine("circle.dashed", tint: .secondary, text: String(localized: "Restarting Hermes…"), textTint: .secondary)
-        case .status(.restartNeeded), .status(.setupNeedsRestart):
-            captionLine("arrow.clockwise.circle.fill", tint: .orange, text: String(localized: "Restart Hermes to finish"),
-                        textTint: .secondary)
-        case .status(.restartTimedOut):
-            captionLine("exclamationmark.triangle.fill", tint: .red, text: String(localized: "Hermes didn’t come back"),
-                        textTint: .secondary)
-        case .status(.checkFailed(let failure)):
-            captionLine("exclamationmark.triangle.fill", tint: .red, text: failure.title, textTint: .secondary)
-        case .status(.upToDate):
-            EmptyView()
-        }
-    }
-
-    private func captionLine(_ symbol: String, tint: Color, text: String, textTint: Color) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-            Image(systemName: symbol).foregroundStyle(tint).accessibilityHidden(true)
-            Text(text).foregroundStyle(textTint)
-        }
-        .font(AppFont.caption())
     }
 
     private func failureRow(_ failure: HermexPushProvisioner.Failure) -> some View {

@@ -63,9 +63,9 @@ rows, a webui 401 never signs it out, and webui's serverless session links (`ses
 bare-Profile New Chat in Profile links switch to the first webui server, or open nothing without
 one. New chats (#1180) and shares (#1181) stay on it. It has no push pairing until #706,
 so removing it never calls the relay. Its connection form is reached through Settings
-→ Active Server → Hermes connection or Settings → Servers → the server, and saving it
-from either signs the server back in. That server screen's button is Remove Server
-even while the server is active, because Sign Out keeps a Hermes server. Moving a webui server's connection into a Hermes
+→ Servers → the server → Hermes connection, and saving it signs the server back in. The
+active Hermes server's page has both Sign Out of This Server, which keeps the server and
+shows its sign-in form, and Remove Server. Moving a webui server's connection into a Hermes
 server is #707's; a copy gets a fresh UUID.
 
 ## Connect form
