@@ -17,6 +17,8 @@ struct HermesHome {
 /// list leads with the session list's header (`SessionsHeader`), and a bottom bar of
 /// `(filter) [Bots | Sessions] (new chat)` whose ends each side fills. The title names a pushed
 /// screen's back button, and stays inline so a pushed screen such as Tasks keeps the one-line bar.
+/// On iOS 26 the bar's glass pills float over the list: the system's bottom scroll edge effect
+/// read as a solid band behind them, so it is hidden.
 struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
     let home: HermesHome
     @ViewBuilder let filter: Filter
@@ -24,6 +26,7 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            .modifier(HiddenBottomScrollEdge())
             .navigationTitle(home.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
@@ -40,6 +43,16 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
                 }
                 ToolbarItem(placement: .bottomBar) { newChat }
             }
+    }
+}
+
+private struct HiddenBottomScrollEdge: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.scrollEdgeEffectHidden(true, for: .bottom)
+        } else {
+            content
+        }
     }
 }
 

@@ -4039,7 +4039,6 @@ struct ChatToolbarActionCluster<Content: View>: View {
         HStack(spacing: 4) {
             content
         }
-        .padding(.horizontal, 4)
         .frame(minHeight: 44)
         .modifier(LegacyToolbarClusterStyle())
         .accessibilityElement(children: .contain)
@@ -4048,8 +4047,9 @@ struct ChatToolbarActionCluster<Content: View>: View {
 
 /// On iOS 26+ the navigation toolbar already renders this trailing item inside a
 /// Liquid Glass pill, so styling the cluster ourselves stacked a second capsule
-/// and produced the double border reported in #333. Below iOS 26 the system
-/// supplies no pill, so we keep the original material capsule there.
+/// and produced the double border reported in #333. Its padding is ours too: on iOS 26 it
+/// stretched a lone 44pt button's round glass into an oval beside the round back button.
+/// Below iOS 26 the system supplies no pill, so we keep the original material capsule there.
 private struct LegacyToolbarClusterStyle: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -4059,6 +4059,7 @@ private struct LegacyToolbarClusterStyle: ViewModifier {
             content
         } else {
             content
+                .padding(.horizontal, 4)
                 .background(
                     Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.24 : 0.42),
                     in: Capsule()
