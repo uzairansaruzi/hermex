@@ -125,9 +125,10 @@ import Foundation
 
     /// Listen's speech (#1072). The host may install its TTS engine on first use, so this runs
     /// on the provisioning deadline. Its reply is read bounded, like a download, and decoded off
-    /// the main actor. Not sent once this screen closes; the caller drops a late result itself.
+    /// the main actor. Plain HTTP, so it needs no attached socket and reaches the host while the
+    /// chat reconnects. A close or reconnect during its sign-in stops the send; the caller drops
+    /// a late result itself.
     func speech(text: String, profile: String) async throws -> Data {
-        guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
         let attempt = self.attempt
         let request = try HermesREST.speak(text: text, profile: profile).request(base: http.connection.address)
         return try await http.authorized(request, deadline: .provisioning,

@@ -11097,7 +11097,12 @@ final class ChatViewModelSendTests: XCTestCase {
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,
                                                   username: "user", password: "fixture")
 
+    /// The last `openHermesChat`'s conversation. Its reconnects wait until `suspend()`.
+    private var engine: HermesConversation?
+
     override func tearDown() {
+        engine?.suspend()
+        engine = nil
         HermesHostFixture.reset()
         super.tearDown()
     }
@@ -11170,6 +11175,31 @@ final class ChatViewModelSendTests: XCTestCase {
         }
     }
 
+    /// Speech is plain HTTP, so Listen still reaches the host while the chat's socket is down
+    /// and reconnecting.
+    func testAHermesReplyPlaysInTheHostsVoiceWhileTheChatReconnects() async throws {
+        let speech = SpySpeechSynthesizer()
+        let player = SpyListenAudioPlayer()
+        let model = await openHermesChat(speech: speech) { _ in player }
+        let engine = try XCTUnwrap(engine)
+        engine.disconnect(BotFailure.transport)
+        XCTAssertTrue(engine.isReconnecting)
+        var sent = 0
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/audio/speak" else { return nil }
+            sent += 1
+            return .json(200, .object(["ok": .bool(true), "data_url": .string("data:audio/mpeg;base64,//MYxA=="),
+                                       "mime_type": .string("audio/mpeg"), "provider": .string("edge")]))
+        }
+
+        model.toggleListening(to: try Self.reply("Hello while reconnecting."))
+        await model.listenPreparationTask?.value
+
+        XCTAssertEqual(sent, 1)
+        XCTAssertEqual(player.playCount, 1)
+        XCTAssertEqual(speech.spokenStrings, [])
+    }
+
     /// Audio the host sends after the user stopped Listen never plays.
     func testStoppingWhileTheHostSpeaksPlaysNothingWhenTheAudioArrives() async throws {
         let speech = SpySpeechSynthesizer()
@@ -11208,7 +11238,9 @@ final class ChatViewModelSendTests: XCTestCase {
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: .session(profile: "work", key: "tip"),
-                                        wire: BotClient(http: host.connection(Self.connection)))
+                                        wire: BotClient(http: host.connection(Self.connection)),
+                                        reconnectDelay: { _ in try await Task.sleep(for: .seconds(3600)) })
+        self.engine = engine
         let model = ChatViewModel(
             session: SessionSummary(profile: "work"), server: URL(string: "https://hermes.example")!,
             streamingScrollCoalescingDelayNanoseconds: 0, speechSynthesizerFactory: { speech },
