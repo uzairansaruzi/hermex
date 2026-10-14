@@ -7,8 +7,9 @@ so warmup and network drift favor none. The simulator must already be signed in.
 
 Each round installs every build in turn, discards one launch, then measures `--per-install`
 launches. Prints each build's median, range, run count, and failures (a launch whose
-interval never ended within the wait), plus its Hermes list's first `Cache Write` rows as
-evidence that the host was read.
+interval never ended within the wait) for two numbers: `Launch` (first rows on screen, cached
+or read) and `live` (from the same start to the end of the first `Cache Write`, the host's
+first page landing), so a build that paints its cache sooner can't hide a slower host read.
 """
 import argparse
 import datetime
@@ -46,10 +47,10 @@ def launch_once(udid, wait):
     events = signposts(udid, since)
     begin = next((e for e in events if e[2] == "begin" and e[3] == "Launch"), None)
     end = next((e for e in events if e[2] == "end" and e[3] == "Launch"), None)
-    write = next((e[4] for e in events if e[2] == "end" and e[3] == "Cache Write"), "")
-    if not begin or not end:
-        return None, write
-    return (end[0] - begin[0]).total_seconds() * 1000, f"{end[4]} first-write {write}"
+    write = next((e for e in events if e[2] == "end" and e[3] == "Cache Write"), None)
+    if not begin or not end or not write:
+        return None, None
+    return (end[0] - begin[0]).total_seconds() * 1000, (write[0] - begin[0]).total_seconds() * 1000
 
 
 def main():
@@ -61,25 +62,29 @@ def main():
     p.add_argument("--wait", type=float, default=7)
     a = p.parse_args()
     results = {app: [] for app in a.apps}
+    live = {app: [] for app in a.apps}
     failures = {app: 0 for app in a.apps}
     for r in range(a.rounds):
         for app in a.apps:
             sh("xcrun", "simctl", "install", a.udid, app)
             launch_once(a.udid, a.wait)
             for _ in range(a.per_install):
-                ms, note = launch_once(a.udid, a.wait)
+                ms, live_ms = launch_once(a.udid, a.wait)
                 if ms is None:
                     failures[app] += 1
                 else:
                     results[app].append(ms)
-                print(f"round {r} {app.split('/')[-3] if app.count('/') > 2 else app}: "
-                      f"{'FAIL' if ms is None else f'{ms:.0f} ms'} {note}", flush=True)
-    for app, xs in results.items():
-        if xs:
-            print(f"{app}\n  median {statistics.median(xs):.0f} ms, range {min(xs):.0f}-{max(xs):.0f}, "
-                  f"n={len(xs)}, failures={failures[app]}")
-        else:
-            print(f"{app}\n  no completed launches, failures={failures[app]}")
+                    live[app].append(live_ms)
+                print(f"round {r} {app}: " + ("FAIL" if ms is None else f"Launch {ms:.0f} ms, live {live_ms:.0f} ms"),
+                      flush=True)
+    for app in a.apps:
+        print(app)
+        for name, xs in (("Launch", results[app]), ("live", live[app])):
+            if xs:
+                print(f"  {name} median {statistics.median(xs):.0f} ms, range {min(xs):.0f}-{max(xs):.0f}, "
+                      f"n={len(xs)}, failures={failures[app]}")
+            else:
+                print(f"  {name}: no completed launches, failures={failures[app]}")
 
 
 if __name__ == "__main__":
