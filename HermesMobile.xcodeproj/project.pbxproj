@@ -425,6 +425,7 @@
 		B5A100000000000000000008 /* ShareInputReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A100000000000000000018 /* ShareInputReader.swift */; };
 		B5A100000000000000000009 /* ShareInputReaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A100000000000000000019 /* ShareInputReaderTests.swift */; };
 		B5A100000000000000000060 /* AuthManagerStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A100000000000000000061 /* AuthManagerStateTests.swift */; };
+		B5A1000000000000000FA001 /* TestHostStateGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A1000000000000000FA002 /* TestHostStateGuard.swift */; };
 		B5A220000000000000000001 /* ChatMarkerMessageClassifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A220000000000000000002 /* ChatMarkerMessageClassifier.swift */; };
 		B5A220000000000000000003 /* MarkerMessageCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A220000000000000000004 /* MarkerMessageCardView.swift */; };
 		C22300000000000000000001 /* CompressionAnchorResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22300000000000000000002 /* CompressionAnchorResolver.swift */; };
@@ -1143,6 +1144,7 @@
 		B5A100000000000000000016 /* SharedDraftStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedDraftStoreTests.swift; sourceTree = "<group>"; };
 		B5A100000000000000000019 /* ShareInputReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareInputReaderTests.swift; sourceTree = "<group>"; };
 		B5A100000000000000000061 /* AuthManagerStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManagerStateTests.swift; sourceTree = "<group>"; };
+		B5A1000000000000000FA002 /* TestHostStateGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHostStateGuard.swift; sourceTree = "<group>"; };
 		B5A220000000000000000002 /* ChatMarkerMessageClassifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMarkerMessageClassifier.swift; sourceTree = "<group>"; };
 		B5A220000000000000000004 /* MarkerMessageCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkerMessageCardView.swift; sourceTree = "<group>"; };
 		C22300000000000000000002 /* CompressionAnchorResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompressionAnchorResolver.swift; sourceTree = "<group>"; };
@@ -1633,6 +1635,7 @@
 				B5A100000000000000000016 /* SharedDraftStoreTests.swift */,
 				B5A100000000000000000019 /* ShareInputReaderTests.swift */,
 				B5A100000000000000000061 /* AuthManagerStateTests.swift */,
+				B5A1000000000000000FA002 /* TestHostStateGuard.swift */,
 				B5A220000000000000000006 /* ChatMarkerMessageClassifierTests.swift */,
 				D1FF76200000000000000003 /* MarkdownDiffFormatterTests.swift */,
 				031031031031031031031004 /* MarkdownMathRendererTests.swift */,
@@ -3091,6 +3094,7 @@
 				C0DE89400000000000000007 /* ComposerDocumentThumbnailsTests.swift in Sources */,
 				B5A100000000000000000009 /* ShareInputReaderTests.swift in Sources */,
 				B5A100000000000000000060 /* AuthManagerStateTests.swift in Sources */,
+				B5A1000000000000000FA001 /* TestHostStateGuard.swift in Sources */,
 				B5A220000000000000000005 /* ChatMarkerMessageClassifierTests.swift in Sources */,
 				031031031031031031031003 /* MarkdownMathRendererTests.swift in Sources */,
 				D1FF76200000000000000004 /* MarkdownDiffFormatterTests.swift in Sources */,
@@ -3356,6 +3360,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPrincipalClass = HermesMobileTests.TestHostStateGuard;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -3380,6 +3385,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPrincipalClass = HermesMobileTests.TestHostStateGuard;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

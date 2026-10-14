@@ -86,6 +86,12 @@ main checkout normally uses **iPhone 17**. Resolve its UDID with
 are ambiguous, so pass the UDID. The runner never chooses another device or
 creates one, and refuses to boot a fifth simulator.
 
+The tests run inside the installed app, so a test can change its real Keychain,
+cookies and defaults. `HermesMobileTests/TestHostStateGuard.swift` snapshots
+them when the test bundle starts and restores them when it finishes. A simulator
+signed in with `scripts/sim-login` stays signed in after a run. A run killed
+before it finishes can still sign it out.
+
 ```zsh
 # Focused tests; repeat --only for multiple classes or individual test methods.
 scripts/test-sim <simulator-udid> --only HermesMobileTests/BotLiveActivityTests
