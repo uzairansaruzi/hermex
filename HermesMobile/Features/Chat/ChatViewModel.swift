@@ -7964,17 +7964,22 @@ extension ChatViewModel: HermesChatTurnDelegate {
 
     /// A chat opening shows its cached transcript at once, read-only, provisionally until the
     /// attach's first newest read puts the host's rows in its place (#1144). Not once attached,
-    /// when the host's rows, even none, are the transcript. An attach that already failed, as
-    /// one `ChatView` starts as it appears can, has had its answer: a Bot Chat's copy shows as
-    /// the offline state, and a session's only as that failure showed it.
+    /// when the host's rows, even none, are the transcript, unless that read failed: a Bot Chat
+    /// then keeps its copy as the offline state. An attach that already failed, as one
+    /// `ChatView` starts as it appears can, has had its answer: a Bot Chat's copy shows as the
+    /// offline state, and a session's only as that failure showed it.
     private func showCachedHermesTranscriptBeforeAttach(_ hermes: HermesChatTurnCoordinator) {
         let engine = hermes.engine
-        guard engine.connectionState != .connected else { return }
+        let isBotChat = if case .canonicalChat = engine.target { true } else { false }
+        if engine.connectionState == .connected {
+            if isBotChat && hermes.hasHistoryFailure { showCachedHermesTranscript(provisional: false) }
+            return
+        }
         guard hermes.needsSignIn || engine.isActive && engine.connectionState == .disconnected else {
             showCachedHermesTranscript(provisional: true)
             return
         }
-        if case .canonicalChat = engine.target { showCachedHermesTranscript(provisional: false) }
+        if isBotChat { showCachedHermesTranscript(provisional: false) }
     }
 
     /// With nothing on screen, shows the newest page of the chat's cached transcript, read-only

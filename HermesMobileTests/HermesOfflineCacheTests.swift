@@ -222,6 +222,7 @@ import XCTest
         XCTAssertFalse(list.canToggleUnread(cached))
         list.toggleUnread(cached)
         list.beginViewing(cached)
+        XCTAssertTrue(list.isUnread(cached))
         XCTAssertEqual(wire.unreadWrites, [])
 
         wire.release()
@@ -615,6 +616,25 @@ import XCTest
 
         let wire = HermesOfflineWire(rows: [])
         wire.connectFailure = BotFailure.rejected(401)
+        let chat = makeChat(wire, target: .canonicalChat(profile: "default"))
+        await chat.model.reconnectStreamIfNeeded(modelContext: context)
+        chat.model.prepareInitialMessageLoad(modelContext: context)
+        await chat.model.loadMessages(modelContext: context)
+
+        XCTAssertEqual(chat.model.messages.map(\.content), ["Hi"])
+        XCTAssertTrue(chat.model.showsOfflineCache)
+        XCTAssertFalse(chat.model.isCachedCopyProvisional)
+    }
+
+    /// A Bot Chat whose attach connected before the cache could show, but whose history read
+    /// failed, keeps its cached copy as the offline state rather than an empty screen (#1144).
+    func testABotChatAttachedBeforeItsCacheShowsKeepsItWhenHistoryFails() async throws {
+        let context = try makeContext()
+        let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), target: .canonicalChat(profile: "default"))
+        await visit.model.loadMessages(modelContext: context)
+
+        let wire = HermesOfflineWire(rows: [])
+        wire.messagesFailure = BotFailure.rejected(500)
         let chat = makeChat(wire, target: .canonicalChat(profile: "default"))
         await chat.model.reconnectStreamIfNeeded(modelContext: context)
         chat.model.prepareInitialMessageLoad(modelContext: context)
