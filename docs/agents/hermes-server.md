@@ -91,6 +91,37 @@ It is never matched by `install_id`, which any host can report. The connection m
 (Same Wi-Fi, Private network, Cloudflare Tunnel) changes only the placeholder, the help
 and, for Cloudflare Tunnel, two empty `CF-Access-Client-*` rows; it is not saved.
 
+### Browser sign-in (#708)
+
+A host whose status offers browser sign-in (`auth_flows ∋ native_pkce`) and no `basic`
+password provider (`HermesBrowserSignIn.isRequired(by:)`) asks for no username or
+password: the connect form and a Hermes server's own sign-in form (`BotConnectionSetup`,
+which reads the server's status even when signed out) show "Sign In with Browser"
+instead. It binds a loopback listener on `127.0.0.1` at an ephemeral port, opens the
+host's `/auth/native/authorize` (S256 PKCE, `state`, every query value percent-encoded,
+no `provider`: the host picks its only interactive provider itself and renders its own
+chooser for several) in an ephemeral `ASWebAuthenticationSession`, and keeps the first
+`GET /callback` whose `state` matches. The listener answers every callback `302
+hermexsignin://done`, which closes the sheet. The code, single-use and valid for 120
+seconds, goes straight to `/auth/native/token` (`HermesConnection.signIn(browserCode:verifier:)`),
+which makes the form's connection a browser sign-in's (`BotConnection.oauth`, the host's
+user id as username, no password) and signs in with the bearer, so the version gate,
+install check and identity check apply. Closing the sheet shows nothing; a sheet closed
+without a code or a refused code shows `.browserSignInFailed`. Signing the same account
+in again from the server's form keeps the connection's UUID. A webui server's Bots
+connection and Move to Hermes's destination keep to a password sign-in: Move saves its
+destination's record long after the check, apart from the connection that would rotate
+its token, so a browser host is refused there with `.browserSignIn`. Not built: a
+foreground rebind of the listener and a background task (on the 8.1 device the socket
+survived 82 s of suspension; a reclaimed one shows "can't connect" in the sheet, and
+signing in again recovers) and a revoke at sign-out (sign-out deletes the record and
+its refresh token).
+
+Debug and Hermex Branch builds have Settings → Testing → "Browser sign-in on password
+hosts" (`HermesBrowserSignIn.isForcedForTesting`): a host that also offers `basic` then
+signs in through the browser too, its `/login` form inside the sheet, which exercises
+the whole path against a password host. It applies the next time a form reads the status.
+
 The same connection form serves Bots, Settings and push setup. A schemeless
 address defaults to HTTPS, except recognizable private/local IPs (including
 Tailscale ranges), local names and single-label hosts use HTTP. Explicit schemes
@@ -110,7 +141,7 @@ subdomain exception. Public hosts still require HTTPS.
 A failed sign-in names what to check (`BotConnectionAdvice`): the unreachable host,
 a Host-header 400 (`dashboard.public_url`), a webui address, a proxy or Cloudflare
 status, an access proxy's own sign-in (`.blocked`: a redirect to another host or a
-non-JSON 401 on `/api/status`), a host with browser sign-in only (`.browserSignIn`),
+non-JSON 401 on `/api/status`), a host with no sign-in Hermex can use (`.browserSignIn`),
 and a refused gateway upgrade (`.upgradeRefused`). The inbox and chat use the same
 copy for the messages they show, and none of these three retries on its own.
 A rejected password (`.rejected(401)`) offers "Update sign-in" in place of

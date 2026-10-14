@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 struct OnboardingView: View {
@@ -15,6 +16,7 @@ struct OnboardingView: View {
     @State private var isShowingCopyReminder = false
     @FocusState private var focusedField: OnboardingConnectField?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
     init(authManager: AuthManager, savedServer: URL? = nil) {
         self.authManager = authManager
@@ -189,10 +191,16 @@ struct OnboardingView: View {
 
     private var connectButton: some View {
         Button {
-            Task { await viewModel.connect(authManager: authManager) }
+            Task { await viewModel.connect(authManager: authManager, browser: .init(webAuthenticationSession)) }
         } label: {
-            Label("Connect", systemImage: "checkmark.circle.fill")
-                .frame(maxWidth: .infinity)
+            Group {
+                if viewModel.signsInWithBrowser {
+                    Label("Sign In with Browser", systemImage: "safari")
+                } else {
+                    Label("Connect", systemImage: "checkmark.circle.fill")
+                }
+            }
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(OnboardingPrimaryButtonStyle())
         .disabled(viewModel.isWorking || !viewModel.canSubmit)

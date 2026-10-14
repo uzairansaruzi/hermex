@@ -98,6 +98,9 @@ enum HermesREST: Equatable, Sendable {
     /// or 401 `{error: "session_expired"}` once the host no longer accepts it. Public, without
     /// a cookie; `provider` only says which provider to ask first.
     case nativeRefresh(refreshToken: String, provider: String)
+    /// Trades a browser sign-in's single-use loopback code and its PKCE verifier for the
+    /// same tokens `nativeRefresh` answers (#708); any refusal is a generic 400. Public.
+    case nativeToken(code: String, verifier: String)
     case identity
     /// `{active, current}`: `current` is the Profile this dashboard is scoped to, which a new
     /// session runs under (#1010); `active` is only the CLI's sticky default.
@@ -335,6 +338,10 @@ enum HermesREST: Equatable, Sendable {
         case .nativeRefresh(let refreshToken, let provider):
             return try Self.send("POST", base.appendingPathComponent("auth/native/refresh"), [
                 "refresh_token": .string(refreshToken), "provider": .string(provider)
+            ])
+        case .nativeToken(let code, let verifier):
+            return try Self.send("POST", base.appendingPathComponent("auth/native/token"), [
+                "code": .string(code), "code_verifier": .string(verifier)
             ])
         case .identity: return Self.get(base.appendingPathComponent("api/auth/me"))
         case .profilesActive: return Self.get(base.appendingPathComponent("api/profiles/active"))

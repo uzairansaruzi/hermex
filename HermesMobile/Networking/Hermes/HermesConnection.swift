@@ -171,7 +171,7 @@ import OSLog
                         throw BotFailure.wrongIdentity
                     }
                 } else {
-                    // #708 replaces this branch with the browser sign-in flow.
+                    // A browser-only host signs in from its form (`HermesBrowserSignIn`), never here.
                     guard status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.browserSignIn }
                     step = "login"
                     _ = try await decoded(.login(username: connection.username, password: connection.password), on: session)
@@ -205,6 +205,36 @@ import OSLog
         }
         signInTask = attempt
         return attempt
+    }
+
+    /// Finishes a browser sign-in on a connection not yet saved (#708): trades the loopback
+    /// `code` and its PKCE `verifier` for tokens at `/auth/native/token`, makes this a
+    /// browser sign-in's connection (`connection.oauth`, with the host's user id as its
+    /// username and no password), and signs in with the access token, which checks the
+    /// release, the install and the identity. The caller saves `connection`. A refused
+    /// code (400) is `.browserSignInFailed`.
+    func signIn(browserCode code: String, verifier: String) async throws {
+        try checkCurrent()
+        let request = prepared(try HermesREST.nativeToken(code: code, verifier: verifier).request(base: connection.address))
+        let (data, response) = try await Self.exchange(request, on: session, redirectGuard: redirectGuard)
+        try checkCurrent()
+        switch response.statusCode {
+        case 200: break
+        case 400: throw BotFailure.browserSignInFailed
+        case let code: throw BotFailure.rejected(code)
+        }
+        let tokens = try JSONDecoder().decode(BotJSON.self, from: data)
+        guard let access = tokens["access_token"].text, !access.isEmpty,
+              let refresh = tokens["refresh_token"].text, !refresh.isEmpty,
+              let provider = tokens["provider"].text, !provider.isEmpty,
+              let user = tokens["user_id"].text, !user.isEmpty else { throw BotFailure.unsupported }
+        let old = connection
+        connection = BotConnection(id: old.id, name: old.name, address: old.address, username: user, password: "",
+                                   hermesVersion: old.hermesVersion, installID: old.installID, headers: old.headers,
+                                   oauth: HermesOAuth(provider: provider, userID: user, refreshToken: refresh))
+        isSignedIn = false
+        accessToken = access
+        try await signIn()
     }
 
     /// Trades the refresh token for an access token and the rotated refresh token, which is

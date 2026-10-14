@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 import SwiftData
 import UIKit
@@ -18,6 +19,8 @@ struct SettingsView: View {
     /// When set, Settings scrolls to this section once on first appear (#283).
     let initialScrollTarget: SettingsScrollAnchor?
     let onDefaultProfileSelected: (DefaultProfileSelection) -> Void
+    /// The testing toggle `HermesBrowserSignIn.isForcedForTesting` reads (#708).
+    @AppStorage(HermesBrowserSignIn.forcedKey) private var forcesBrowserSignIn = false
 
     init(
         authManager: AuthManager,
@@ -695,6 +698,14 @@ struct SettingsView: View {
                     SettingsFootnote("Debug builds only.")
                 }
                 #endif
+
+                // Maintainer testing for #708, in Debug and Hermex Branch builds; not localized.
+                if HermesBrowserSignIn.offersTestingToggle {
+                    SettingsCard(title: "Testing") {
+                        Toggle(isOn: $forcesBrowserSignIn) { Text(verbatim: "Browser sign-in on password hosts") }
+                        SettingsFootnote("Hermes hosts that offer a password sign in through the browser instead, the next time a sign-in form opens. Debug and Hermex Branch builds only.")
+                    }
+                }
 
                 if !isHermesServer {
                     SettingsCard(title: String(localized: "Offline Data")) {
@@ -2572,6 +2583,7 @@ struct AddServerView: View {
     }
 
     private var canSubmit: Bool { form.canSubmit && !form.isWorking }
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
     var body: some View {
         NavigationStack {
@@ -2660,7 +2672,7 @@ struct AddServerView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
 
-        if form.showsHermesSignIn {
+        if form.showsHermesCredentials {
             savedSignInRows
 
             SettingsDivider()
@@ -2734,7 +2746,9 @@ struct AddServerView: View {
         if form.isWorking {
             SettingsFootnote(String(localized: "Checking server…"))
         } else if form.showsHermesSignIn, form.errorMessage == nil {
-            SettingsFootnote(String(localized: "Hermes dashboard found. Sign in with your dashboard username and password."))
+            SettingsFootnote(form.signsInWithBrowser
+                ? String(localized: "Hermes dashboard found. It signs in through your browser.")
+                : String(localized: "Hermes dashboard found. Sign in with your dashboard username and password."))
         } else if form.showsPasswordField, form.detectedKind != .hermes, form.errorMessage == nil {
             SettingsFootnote(String(localized: "This server requires a password."))
         }
@@ -2758,7 +2772,8 @@ struct AddServerView: View {
         guard canSubmit, !form.isConnectionLocked else { return }
         if let onVerified {
             operation = Task {
-                guard await form.connect(authManager: authManager) != nil, let verified = form.verifiedConnection,
+                guard await form.connect(authManager: authManager, browser: .init(webAuthenticationSession)) != nil,
+                      let verified = form.verifiedConnection,
                       !Task.isCancelled else { return }
                 onVerified(verified)
                 dismiss()
@@ -2768,7 +2783,8 @@ struct AddServerView: View {
         operation = Task {
             // A URL means the server is already saved, so its chosen identity applies even
             // when the sheet closed meanwhile.
-            guard let url = await form.connect(authManager: authManager, replacingWebuiServer: replacingWebuiServer) else { return }
+            guard let url = await form.connect(authManager: authManager, replacingWebuiServer: replacingWebuiServer,
+                                               browser: .init(webAuthenticationSession)) else { return }
             // A replaced webui server's name, initials and color stay unless new ones were chosen.
             let choseIdentity = !displayName.isEmpty || !initials.isEmpty || colorHex != HeaderLogoColor.defaultHex
             if !replacingWebuiServer || choseIdentity { applyIdentity(to: url) }

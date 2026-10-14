@@ -45,12 +45,16 @@ enum BotFailure: Error, Equatable, LocalizedError {
     /// (an access proxy's login page), or `/api/status` answered a 401 whose body is not a
     /// JSON object. Permanent.
     case blocked
-    /// The host requires sign-in but offers no `basic` provider, only a browser (OIDC)
-    /// one Hermex can't use yet. Permanent.
+    /// The host requires sign-in but offers neither a `basic` provider nor browser sign-in
+    /// (`auth_flows ∋ native_pkce`), or a form that can't sign in through the browser met
+    /// one that offers only that, such as Move to Hermes's destination. Permanent.
     case browserSignIn
     /// The host no longer accepts a browser sign-in's refresh token (#708): 401
     /// `session_expired` from `/auth/native/refresh`. The user has to sign in again. Permanent.
     case signInExpired
+    /// A browser sign-in that closed without a code, or whose code the host no longer
+    /// accepts (it lasts 120 seconds and works once). Trying again starts a new one.
+    case browserSignInFailed
     /// The gateway upgrade was refused with this HTTP status after a good sign-in, usually
     /// by a proxy that drops the ticket header or has no WebSocket support. Permanent;
     /// 408, 429 and 5xx arrive as `.rejected` instead (`init(upgradeStatus:)`).
@@ -80,6 +84,7 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .blocked: return String(localized: "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address.")
         case .browserSignIn: return String(localized: "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.")
         case .signInExpired: return String(localized: "Your Hermes sign-in expired. Sign in again.")
+        case .browserSignInFailed: return String(localized: "The browser sign-in didn't finish. Try again.")
         case .upgradeRefused: return String(localized: "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through.")
         case .outdated(let version):
             return String(localized: "This Hermes host runs \(version). Hermex needs Hermes \(HermesCompatibility.minimumVersion) or later. Update Hermes on the host, then try again.")
@@ -312,6 +317,8 @@ struct BotHostStatus: Equatable {
     /// Every Profile's name, which the host reports even behind its sign-in (#1180); nil when
     /// it reports none.
     var profiles: [String]?
+    /// Whether the host asks for browser sign-in (`HermesBrowserSignIn.isRequired(by:)`).
+    var signsInWithBrowser: Bool
 
     init(_ json: BotJSON) {
         version = json["version"].text
@@ -326,6 +333,7 @@ struct BotHostStatus: Equatable {
             return items.compactMap { $0.text?.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty && seen.insert($0).inserted }
         }
+        signsInWithBrowser = HermesBrowserSignIn.isRequired(by: json)
     }
 }
 

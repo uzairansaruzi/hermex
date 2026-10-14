@@ -258,6 +258,47 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertTrue(side.offersRemoval)
     }
 
+    /// A Hermes server whose host signs in through the browser (#708) shows no username or
+    /// password, and signing the same account in again keeps the connection's UUID, and with it
+    /// its drafts, cache and push pairing, with the new refresh token.
+    func testAHermesServerSignsInAgainThroughTheBrowserAndKeepsItsConnection() async throws {
+        defer { HermesHostFixture.reset() }
+        let hermes = URL(string: "https://hermes.example")!
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        var expired = BotConnection(id: UUID(), name: "Host", address: hermes, username: "u1", password: "", installID: "install-1")
+        expired.oauth = HermesOAuth(provider: "nous", userID: "u1", refreshToken: "dead")
+        try store.save(expired, server: hermes)
+        var status = BotHostStatus(HermesBrowserSignInTests.browserStatus)
+        status.signsInWithBrowser = true
+        let model = BotConnectionSetup(
+            server: hermes, isServerSignIn: true, store: store, makeWire: { _ in XCTFail("No password wire"); return ConnectionSetupWire() },
+            discard: { _ in XCTFail("The same account keeps its data") }, probe: { _, _ in .success(status) },
+            hermesConfiguration: { HermesHostFixture.configuration { request in
+                switch request.url?.path {
+                case "/api/status": return .json(200, HermesBrowserSignInTests.browserStatus)
+                case "/auth/native/token":
+                    var tokens = HermesBrowserSignInTests.tokens.fields ?? [:]
+                    tokens["refresh_token"] = .string("fresh")
+                    return .json(200, .object(tokens))
+                case "/api/auth/me": return .json(200, .object(["provider": .string("nous"), "user_id": .string("u1")]))
+                default: return nil
+                }
+            } })
+        model.load()
+        await model.checkStatus()
+        XCTAssertTrue(model.signsInWithBrowser)
+        XCTAssertTrue(model.canConnect, "No username or password to fill in")
+
+        let presenter = HermesBrowserSignIn.Presenter { url in _ = try await HermesBrowserSignInTests.callback(url, code: "code-1") }
+        let saved = await model.connect(browser: presenter)
+
+        XCTAssertTrue(saved)
+        let record = try XCTUnwrap(store.load(server: hermes))
+        XCTAssertEqual(record.id, expired.id)
+        XCTAssertEqual(record.oauth, HermesOAuth(provider: "nous", userID: "u1", refreshToken: "fresh"))
+        XCTAssertEqual(record.password, "")
+    }
+
     func testFailedLoginAndSaveNeverReportSuccess() async throws {
         let wire = ConnectionSetupWire(); wire.failure = BotFailure.rejected(401)
         let model = BotConnectionSetup(server: server, store: BotConnectionStore(keychain: InMemoryKeychainStore()),
