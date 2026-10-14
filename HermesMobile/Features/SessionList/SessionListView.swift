@@ -414,6 +414,7 @@ struct SessionListView: View {
             .onChange(of: viewModel.isLoading) {
                 refreshAfterForegroundReturnIfReady()
             }
+            .onChange(of: viewModel.sessions.count, initial: true) { LaunchSignpost.end(rows: viewModel.sessions.count) }
             .onChange(of: didCompleteInitialLoad) {
                 refreshAfterForegroundReturnIfReady()
             }

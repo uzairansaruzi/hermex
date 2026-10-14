@@ -307,7 +307,9 @@ struct HermesSessionListView: View {
         }
         .onChange(of: covers.chat) { old, new in
             if case .session(_, let key)? = old?.target, new?.id != old?.id { viewModel.noteHermesReturn(from: key) }
+            if let new, new.id != old?.id { SessionOpenSignpost.begin(sessionID: new.id.uuidString) }
         }
+        .onChange(of: viewModel.sessions.count, initial: true) { LaunchSignpost.end(rows: viewModel.sessions.count) }
         .onChange(of: scenePhase) {
             switch scenePhase {
             case .background: viewModel.closeHermes()

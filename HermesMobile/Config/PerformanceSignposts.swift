@@ -3,8 +3,8 @@ import OSLog
 /// Signpost intervals on the paths users feel most, for Instruments' `os_signpost`
 /// instrument: filter by the app's subsystem and category `Performance`
 /// (`DEVELOPMENT.md` § Launch arguments and profiling). The intervals are
-/// `Session Open`, `Transcript Apply`, `Markdown Parse`, `Stream Batch Apply`,
-/// `Cache Read`, and `Cache Write`.
+/// `Launch`, `Session Open`, `Load Earlier`, `Transcript Apply`, `Markdown Parse`,
+/// `Stream Batch Apply`, `Cache Read`, and `Cache Write`.
 ///
 /// Compiled into every build, because Instruments profiles Release builds and an
 /// idle signposter costs almost nothing until a recording turns it on.
@@ -18,12 +18,36 @@ let performanceSignposter = OSSignposter(
     category: "Performance"
 )
 
+/// The one `Launch` interval: from the app's `init` to the first frame of a home list
+/// (webui's or a Hermes server's) that shows session rows, cached or read. Pre-main work
+/// (dyld, static initializers) is outside it. A launch that never shows rows (onboarding,
+/// an empty list) leaves it open; it is never emitted twice.
+@MainActor
+enum LaunchSignpost {
+    private static var state: OSSignpostIntervalState?
+    private static var ended = false
+
+    static func begin() {
+        state = performanceSignposter.beginInterval("Launch", id: performanceSignposter.makeSignpostID())
+    }
+
+    /// Ends the interval on the next main-queue turn, so it includes the rows' layout.
+    static func end(rows: Int) {
+        guard !ended, rows > 0, let state else { return }
+        ended = true
+        DispatchQueue.main.async {
+            performanceSignposter.endInterval("Launch", state, "rows=\(rows, privacy: .public)")
+        }
+    }
+}
+
 /// The one open `Session Open` interval: from a session-list open
-/// (`SessionListView.startOpeningSession`, so taps and keyboard opens alike) to
-/// the first transcript frame in `ChatView`. Deep links, App Intents, and
-/// notification taps are not measured.
+/// (`SessionListView.startOpeningSession`, so taps and keyboard opens alike, or a Hermes
+/// list pushing its chat, which also covers its links and shares) to the first transcript
+/// frame in `ChatView`. Webui deep links, App Intents, and notification taps are not measured.
 ///
-/// The session ID only matches an end to its begin and is never emitted.
+/// The session ID (a Hermes chat's `HermesSessionChat.id`) only matches an end to its begin
+/// and is never emitted.
 @MainActor
 enum SessionOpenSignpost {
     private static var pending: (sessionID: String, state: OSSignpostIntervalState)?

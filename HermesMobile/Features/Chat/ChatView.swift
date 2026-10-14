@@ -309,6 +309,8 @@ struct ChatView: View {
     let onHermesChatReplaced: (() -> Void)?
     /// A Hermes session's dictation goes to its host for its Profile (#1071).
     private let hermesTranscriber: ComposerTranscriber?
+    /// Matches a Hermes chat's `Session Open` signpost to the list push that began it.
+    private let hermesSessionChatID: String?
     /// Returns to the Sessions list under this Hermes chat, in the entry's Profile (this chat's)
     /// and searching the query `/sessions` or `/resume` named (#1053). Nil pushes a list on top
     /// instead.
@@ -466,6 +468,7 @@ struct ChatView: View {
         self.restoresDraftSettings = restoresDraftSettings
         self.onConversationStarted = onConversationStarted
         isHermesSession = hermesSession != nil
+        hermesSessionChatID = hermesSession?.id.uuidString
         hermesParentKey = hermesSession?.parentKey
         self.onReplaceHermesSession = onReplaceHermesSession
         self.onHermesChatReplaced = onHermesChatReplaced
@@ -2422,7 +2425,7 @@ struct ChatView: View {
     /// Ends this session's `Session Open` interval on the next main-queue turn, so
     /// it includes the layout of the first transcript frame (or the empty state).
     private func endSessionOpenSignpost() {
-        let sessionID = session.sessionId
+        let sessionID = hermesSessionChatID ?? session.sessionId
         let messages = viewModel.messages.count
         DispatchQueue.main.async {
             SessionOpenSignpost.end(sessionID: sessionID, messages: messages)
@@ -2491,7 +2494,13 @@ struct ChatView: View {
     private func loadOlderMessages() async -> Bool {
         followLatch.isFollowing = false
 
+        let signpost = performanceSignposter.beginInterval("Load Earlier")
         let didLoad = await viewModel.loadOlderMessages(modelContext: modelContext)
+        let messages = viewModel.messages.count
+        // The next main-queue turn, so the interval includes the prepended rows' layout.
+        DispatchQueue.main.async {
+            performanceSignposter.endInterval("Load Earlier", signpost, "messages=\(messages, privacy: .public)")
+        }
         if let lastError = viewModel.lastError {
             onAPIError(lastError)
         }
