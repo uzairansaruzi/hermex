@@ -1,7 +1,7 @@
 import Foundation
 import OSLog
 
-/// One direct-Hermes connection: one ephemeral cookie jar, one password sign-in, the path
+/// One direct-Hermes connection: one ephemeral cookie jar, one sign-in, the path
 /// every Bot HTTP request and gateway upgrade is sent through, and the one gateway socket
 /// its Bot screens share (`gateway`). `HermesConnections` gives every consumer of a
 /// server's saved connection (the Bot screens' `BotClient`s and push provisioning's
@@ -10,7 +10,12 @@ import OSLog
 ///
 /// Sign-in is single-flight: it reads the public `/api/status`, refuses a release older
 /// than `HermesCompatibility.minimumVersion` and checks the install identity before the
-/// password goes out, then verifies the identity the host returns.
+/// password goes out, then verifies the identity the host returns. A password connection
+/// signs in with its username and password, and the host's session cookie authenticates what
+/// follows. A browser sign-in's connection (`BotConnection.oauth`, #708) trades its refresh
+/// token for an access token instead, held in memory only and sent as `Authorization: Bearer`
+/// on every signed-in request; the host rotates the refresh token each time, and the new one
+/// is saved (`onRefreshTokenRotated`) before the access token is used.
 /// Cancelling one waiting consumer never cancels it. A signed-in request the host answers
 /// with 401 signs in again once, sharing that sign-in with any other consumer's 401, and
 /// is resent: the auth gate refuses before any handler runs, so the resend cannot repeat
@@ -56,14 +61,23 @@ import OSLog
     /// The gateway while some screen's `BotClient` holds it; nil while none does.
     private(set) weak var liveGateway: HermesGateway?
     private var isSignedIn = false
+    /// A browser sign-in's access token from the last refresh; nil for a password connection
+    /// and until the first refresh. A 401 or a failed sign-in drops it, so the next sign-in
+    /// refreshes.
+    private var accessToken: String?
     /// Counts sign-ins, so a 401 can tell whether another consumer has already recovered.
     private var epoch = 0
     private var signInTask: Task<Void, Error>?
     private(set) var isRetired = false
-    /// Called when the login step answers 401, before the failure reaches any consumer,
-    /// including the re-login a signed-in 401 starts. `HermesConnections` sets it so
-    /// `AuthManager` can sign a Hermes server out (#899); nothing here remembers it.
-    var onLoginRejected: (() -> Void)?
+    /// Called with `.rejected(401)` when the login step answers 401, and with `.signInExpired`
+    /// when the host refuses a browser sign-in's refresh token, before the failure reaches any
+    /// consumer, including the re-sign-in a signed-in 401 starts. `HermesConnections` sets it
+    /// so `AuthManager` can sign a Hermes server out (#899); nothing here remembers it.
+    var onLoginRejected: ((BotFailure) -> Void)?
+    /// Called with the refresh token the host rotated the sent one into, and the sent one,
+    /// before the new access token is used, even when this connection was retired meanwhile:
+    /// the host has already retired the sent one. `HermesConnections` saves it.
+    var onRefreshTokenRotated: ((_ rotated: String, _ sent: String) -> Void)?
     /// Numbers connections in this process (`c1`, `c2`, …), so log lines from two servers
     /// can be told apart without naming either.
     let serial: Int
@@ -137,15 +151,28 @@ import OSLog
                 if let version = serverVersion, !HermesCompatibility.isSupported(version) { throw BotFailure.outdated(version) }
                 try connection.requireSameInstall(serverInstallID)
                 guard status["auth_required"].flag == true else { throw BotFailure.unsupported }
-                // #708 replaces this branch with the browser sign-in flow.
-                guard status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.browserSignIn }
-                step = "login"
-                _ = try await decoded(.login(username: connection.username, password: connection.password), on: session)
-                try checkCurrent()
-                step = "identity"
-                let identity = try await decoded(.identity, on: session)
-                try checkCurrent()
-                guard identity["provider"].text == "basic" else { throw BotFailure.wrongIdentity }
+                if let account = connection.oauth {
+                    if accessToken == nil {
+                        step = "refresh"
+                        try await refresh(account, on: session)
+                    }
+                    step = "identity"
+                    let identity = try await decoded(.identity, on: session)
+                    try checkCurrent()
+                    guard identity["provider"].text == account.provider, identity["user_id"].text == account.userID else {
+                        throw BotFailure.wrongIdentity
+                    }
+                } else {
+                    // #708 replaces this branch with the browser sign-in flow.
+                    guard status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.browserSignIn }
+                    step = "login"
+                    _ = try await decoded(.login(username: connection.username, password: connection.password), on: session)
+                    try checkCurrent()
+                    step = "identity"
+                    let identity = try await decoded(.identity, on: session)
+                    try checkCurrent()
+                    guard identity["provider"].text == "basic" else { throw BotFailure.wrongIdentity }
+                }
                 // Trust on first use, in memory only: a later sign-in here must reach the same install.
                 if connection.installID == nil { connection.installID = serverInstallID }
                 isSignedIn = true
@@ -153,17 +180,47 @@ import OSLog
                 let release = serverVersion ?? "unreported"
                 HermesConnectionLog.logger.notice("c\(self.serial, privacy: .public): signed in, release \(release, privacy: .public)")
             } catch {
+                // A failed sign-in keeps no access token, so the next one refreshes.
+                accessToken = nil
                 // A retired connection has already logged that it was retired.
                 if !isRetired {
                     let reason = HermesConnectionLog.reason(error), failedStep = step
                     HermesConnectionLog.logger.error("c\(self.serial, privacy: .public): sign-in failed at \(failedStep, privacy: .public): \(reason, privacy: .public)")
-                    if step == "login", error as? BotFailure == .rejected(401) { onLoginRejected?() }
+                    switch (failedStep, error as? BotFailure) {
+                    case ("login", .rejected(401)?): onLoginRejected?(.rejected(401))
+                    case ("refresh", .signInExpired?): onLoginRejected?(.signInExpired)
+                    default: break
+                    }
                 }
                 throw error
             }
         }
         signInTask = attempt
         return attempt
+    }
+
+    /// Trades `account`'s refresh token for an access token and the rotated refresh token,
+    /// which is saved before the access token is kept. 401 means the host no longer accepts
+    /// the refresh token (`.signInExpired`); any other refusal is `.rejected` and leaves the
+    /// token for the next sign-in.
+    private func refresh(_ account: HermesOAuth, on session: URLSession) async throws {
+        let sent = account.refreshToken
+        let request = prepared(try HermesREST.nativeRefresh(refreshToken: sent, provider: account.provider)
+            .request(base: connection.address))
+        let (data, response) = try await Self.exchange(request, on: session, redirectGuard: redirectGuard)
+        switch response.statusCode {
+        case 200: break
+        case 401: throw BotFailure.signInExpired
+        case let code: throw BotFailure.rejected(code)
+        }
+        let tokens = try JSONDecoder().decode(BotJSON.self, from: data)
+        guard let access = tokens["access_token"].text, !access.isEmpty else { throw BotFailure.unsupported }
+        if let rotated = tokens["refresh_token"].text, !rotated.isEmpty, rotated != sent {
+            connection.oauth?.refreshToken = rotated
+            onRefreshTokenRotated?(rotated, sent)
+        }
+        try checkCurrent()
+        accessToken = access
     }
 
     /// Reads the public `/api/status` once, with this connection's headers and no
@@ -242,16 +299,16 @@ import OSLog
         try validateDispatch?()
         let sentEpoch = epoch
         do {
-            let value = try await perform(request, session)
+            let value = try await perform(bearing(request), session)
             try checkCurrent()
             return value
         } catch BotFailure.rejected(401) {
             try checkCurrent()
             // The first reply to show the session expired drops it; later ones join the same sign-in.
-            if epoch == sentEpoch { isSignedIn = false }
+            if epoch == sentEpoch { isSignedIn = false; accessToken = nil }
             try await signIn(deadline: deadline)
             try validateDispatch?()
-            let value = try await perform(request, session)
+            let value = try await perform(bearing(request), session)
             try checkCurrent()
             return value
         }
@@ -287,14 +344,19 @@ import OSLog
         }
     }
 
-    /// Whether `saved` is still this connection: the same UUID, address, account,
-    /// password and headers, and no conflicting install id. A newly backfilled install id
-    /// is taken.
+    /// Whether `saved` is still this connection: the same UUID, address, account, password,
+    /// headers and browser sign-in account, and no conflicting install id. A newly
+    /// backfilled install id is taken.
     func adopt(_ saved: BotConnection) -> Bool {
         guard !isRetired, saved.id == connection.id, saved.address == connection.address,
               saved.username == connection.username, saved.password == connection.password,
               (saved.headers ?? []) == (connection.headers ?? []) else { return false }
         if let live = connection.installID, let stored = saved.installID, live != stored { return false }
+        // A browser sign-in is the same account whatever its refresh token, which only this
+        // connection's copy is sure to hold.
+        guard saved.oauth?.provider == connection.oauth?.provider, saved.oauth?.userID == connection.oauth?.userID else {
+            return false
+        }
         if connection.installID == nil { connection.installID = saved.installID }
         return true
     }
@@ -306,6 +368,7 @@ import OSLog
         HermesConnectionLog.logger.notice("c\(self.serial, privacy: .public): connection retired")
         isRetired = true
         isSignedIn = false
+        accessToken = nil
         signInTask?.cancel()
         signInTask = nil
         liveGateway?.retire()
@@ -313,7 +376,7 @@ import OSLog
 
     /// The login and identity reads, which run before there is a session.
     private func decoded(_ rest: HermesREST, on session: URLSession) async throws -> BotJSON {
-        let data = try await Self.send(prepared(try rest.request(base: connection.address)), on: session,
+        let data = try await Self.send(bearing(prepared(try rest.request(base: connection.address))), on: session,
                                        accepting: 200..<201, redirectGuard: redirectGuard)
         return try JSONDecoder().decode(BotJSON.self, from: data)
     }
@@ -366,6 +429,15 @@ import OSLog
         headers.applied(to: request, origin: connection.address)
     }
 
+    /// `request` with the browser sign-in's access token, when there is one. The socket
+    /// upgrades never carry it: they present a ticket the bearer minted.
+    private func bearing(_ request: URLRequest) -> URLRequest {
+        guard let accessToken else { return request }
+        var request = request
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
     private func checkCurrent() throws {
         if isRetired { throw BotFailure.stale }
     }
@@ -379,27 +451,45 @@ import OSLog
 /// across those), retires the old connection first, so no cookie, sign-in, socket or late
 /// reply crosses servers, accounts, credentials or headers.
 /// Credentials and headers are compared on the live connection and never kept in a key.
+/// A browser sign-in's connection starts from the refresh token saved in the Keychain, not
+/// the one in `saved`, and saves each rotated one there (#708).
 @MainActor final class HermesConnections {
     static let shared = HermesConnections()
-    /// Told which configured server's saved username or password the host refused at the
-    /// login step. `AuthManager` sets it and signs that server out when it is the active
-    /// Hermes server (#899).
-    var onSignInRejected: ((URL) -> Void)?
+    /// Told which configured server's sign-in the host refused: `.rejected(401)` for a
+    /// saved username or password at the login step, `.signInExpired` for a browser
+    /// sign-in's refresh token. `AuthManager` sets it and signs that server out when it is
+    /// the active Hermes server (#899).
+    var onSignInRejected: ((URL, BotFailure) -> Void)?
     private let configuration: () -> URLSessionConfiguration
+    private let store: BotConnectionStore
     private var server: String?
     private weak var current: HermesConnection?
 
     /// `configuration` makes each new connection's URL session setup, with a cookie jar of
-    /// its own; tests script the host with it.
-    init(configuration: @escaping () -> URLSessionConfiguration = { .ephemeral }) {
+    /// its own; tests script the host with it. `keychain` holds the saved records whose
+    /// refresh tokens the connections read and rotate.
+    init(configuration: @escaping () -> URLSessionConfiguration = { .ephemeral },
+         keychain: any KeychainStoring = KeychainStore()) {
         self.configuration = configuration
+        store = BotConnectionStore(keychain: keychain)
     }
 
     func connection(for saved: BotConnection, server: URL) -> HermesConnection {
         if let current, self.server == server.absoluteString, current.adopt(saved) { return current }
         current?.retire()
-        let fresh = HermesConnection(connection: saved, configuration: configuration())
-        fresh.onLoginRejected = { [weak self] in self?.onSignInRejected?(server) }
+        var record = saved
+        if record.oauth != nil, let latest = try? store.load(server: server), latest.id == record.id,
+           let token = latest.oauth?.refreshToken {
+            record.oauth?.refreshToken = token
+        }
+        let fresh = HermesConnection(connection: record, configuration: configuration())
+        fresh.onLoginRejected = { [weak self] failure in self?.onSignInRejected?(server, failure) }
+        let store = store, id = record.id, serial = fresh.serial
+        fresh.onRefreshTokenRotated = { rotated, sent in
+            do { try store.saveRotatedRefreshToken(rotated, replacing: sent, connection: id, server: server) } catch {
+                HermesConnectionLog.logger.error("c\(serial, privacy: .public): rotated refresh token not saved: \(HermesConnectionLog.reason(error), privacy: .public)")
+            }
+        }
         current = fresh
         self.server = server.absoluteString
         return fresh
@@ -461,18 +551,23 @@ enum HermesRestartWait {
 /// gateway upgrade, `X-Forwarded-Prefix` for the session cookie's path,
 /// `X-Hermes-Session-Token`), and no `Bearer` authorization, which Hermes also reads as
 /// its session token. Any other `Authorization` value passes, such as Cloudflare Access's
-/// single-header JSON service token. The only source is the Hermes connection's own
+/// single-header JSON service token, except on a browser sign-in's connection (#708), whose
+/// own bearer is its `Authorization`: there Access takes its two-header form. The only source is the Hermes connection's own
 /// record (`BotConnection.headers`, edited as Connection Headers in its form), never the
 /// webui's custom headers.
 struct HermesHeaders: Sendable {
     enum Rejection: Error, Equatable, LocalizedError {
         case malformed(String), reserved(String), bearer
+        /// Any `Authorization` header on a connection that signs in through the browser.
+        case authorization
 
         /// Shown under the connection form's Connection Headers row.
         var errorDescription: String? {
             switch self {
             case .bearer:
                 return String(localized: "Hermes reads Authorization: Bearer as its own sign-in and refuses it. Remove this header to connect.")
+            case .authorization:
+                return String(localized: "This server signs in through the browser, so Hermex sends its own Authorization header. Remove this header to connect. For Cloudflare Access, use the CF-Access-Client-Id and CF-Access-Client-Secret headers instead.")
             case .reserved(let name):
                 // First-strong isolates keep the name in one left-to-right run in right-to-left text.
                 let shown = "\u{2068}\(name)\u{2069}"
@@ -493,7 +588,9 @@ struct HermesHeaders: Sendable {
 
     let values: [CustomHeader]
 
-    init(_ headers: [CustomHeader]) throws {
+    /// Admits `headers` for a connection, which `signsInWithBrowser` when it sends its own
+    /// bearer (`BotConnection.oauth`).
+    init(_ headers: [CustomHeader], signsInWithBrowser: Bool = false) throws {
         for header in headers {
             let name = header.sanitizedName.lowercased()
             guard header.isApplicable else { throw Rejection.malformed(header.sanitizedName) }
@@ -502,6 +599,7 @@ struct HermesHeaders: Sendable {
             }
             let scheme = header.sanitizedValue.split(whereSeparator: \.isWhitespace).first?.lowercased()
             if name == "authorization", scheme == "bearer" { throw Rejection.bearer }
+            if name == "authorization", signsInWithBrowser { throw Rejection.authorization }
         }
         values = headers
     }
@@ -512,7 +610,7 @@ struct HermesHeaders: Sendable {
     /// none: the connection form shows why under its Connection Headers row and keeps
     /// Connect off until it is fixed.
     init(saved: BotConnection) {
-        self = (try? HermesHeaders(saved.headers ?? [])) ?? .none
+        self = (try? HermesHeaders(saved.headers ?? [], signsInWithBrowser: saved.oauth != nil)) ?? .none
     }
 
     /// `request` with these headers added when it is for `origin`. A header the request

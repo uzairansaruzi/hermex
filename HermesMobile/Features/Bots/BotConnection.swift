@@ -20,6 +20,10 @@ struct BotConnection: Codable, Equatable, Identifiable {
     /// (`HermesHeaders`). Saved as the form admitted them; nil when there are none,
     /// including records saved before they existed. Never the webui's custom headers.
     var headers: [CustomHeader]?
+    /// Set when this connection signs in through the host's browser sign-in rather than a
+    /// password (#708). Its `username` is then the host's user id and its `password` empty.
+    /// Nil for a password connection, including records saved before it existed.
+    var oauth: HermesOAuth?
 
     /// The `install_id` a `/api/status` reply reports, or nil when it is omitted. The host
     /// omits it, rather than sending null, whenever it cannot read or persist the id.
@@ -109,6 +113,18 @@ struct BotConnection: Codable, Equatable, Identifiable {
     }
 }
 
+/// The account and refresh token of a connection signed in through the host's browser
+/// sign-in (#708). The host rotates `refreshToken` on every refresh, so the live
+/// `HermesConnection` holds the current one and saves it here
+/// (`BotConnectionStore.saveRotatedRefreshToken`) before using the access token it came
+/// with; an in-memory copy of this record can hold a token the host has since replaced.
+struct HermesOAuth: Codable, Equatable {
+    /// The host's provider name, such as `nous`, sent with every refresh.
+    let provider: String
+    let userID: String
+    var refreshToken: String
+}
+
 /// Why the connection form's address can't be used. Thrown only by
 /// `BotConnection.address(_:)`, so typing mistakes stay apart from `BotFailure`
 /// connection failures and never reach the inbox's retry rules.
@@ -147,6 +163,15 @@ enum BotAddressError: LocalizedError, Equatable {
         let value = String(decoding: try JSONEncoder().encode(connection), as: UTF8.self)
         try keychain.save(value, forKey: .botConnection, scope: server.absoluteString)
         HermesConnections.shared.retire(server: server, unlessStill: connection)
+    }
+    /// Writes the refresh token the host just rotated `sent` into, only while `server`'s
+    /// record is still connection `id` holding `sent`: a record removed or signed in again
+    /// meanwhile keeps what it has. It never retires the live connection, which made the change.
+    func saveRotatedRefreshToken(_ rotated: String, replacing sent: String, connection id: UUID, server: URL) throws {
+        guard var saved = try load(server: server), saved.id == id, saved.oauth?.refreshToken == sent else { return }
+        saved.oauth?.refreshToken = rotated
+        let value = String(decoding: try JSONEncoder().encode(saved), as: UTF8.self)
+        try keychain.save(value, forKey: .botConnection, scope: server.absoluteString)
     }
     func remove(server: URL) throws {
         try keychain.delete(.botConnection, scope: server.absoluteString)

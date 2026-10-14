@@ -123,7 +123,7 @@ changes or the form saves a sign-in.
 ## The shared connection
 
 The saved connection's HTTP side is one `HermesConnection` (`Networking/Hermes/`):
-an ephemeral cookie jar, a single-flight password sign-in, and the only path Bot HTTP
+an ephemeral cookie jar, a single-flight sign-in, and the only path Bot HTTP
 requests and gateway upgrades are sent through. `HermesConnections` gives every
 consumer of the active server's saved connection (inbox, chats, rooms, creator,
 editor and push provisioning's `BotDashboardClient`) the same instance, so they sign
@@ -149,6 +149,19 @@ is never resent. Provisioning keeps its 120/180-second deadlines, for its steps 
 for a sign-in it starts, on a second session that shares the jar; everything else
 keeps 15/30.
 
+A connection signed in through the host's browser sign-in (#708) keeps
+`BotConnection.oauth` (provider, user id and refresh token) in its record instead of a
+password. Its sign-in posts the refresh token to `/auth/native/refresh`, saves the
+rotated one (`BotConnectionStore.saveRotatedRefreshToken`, only while the record is still
+that connection holding that token) before the access token is used, and sends the
+access token, held in memory only, as `Authorization: Bearer` on every signed-in request;
+the socket upgrades still present a ticket. Each launch refreshes once, and a signed-in
+401 refreshes again and resends, as a password connection signs in again. A new
+connection reads the refresh token from the Keychain, never from a copy of the record,
+and `adopt` ignores it. A 401 from the refresh is `.signInExpired`, which signs the active
+Hermes server out to its sign-in form. No extension or App Intent signs in to Hermes, so
+the app is the token's only user.
+
 ## Connection Headers
 
 Connection Headers, for a proxy such as Cloudflare Access, are saved in the
@@ -168,6 +181,13 @@ says why under the row and keeps Connect off. Only one of `CF-Access-Client-Id` 
 and with it drafts, cache and push pairing; it only retires the live connection. A
 saved list the policy later refuses sends none. The webui's custom headers are never
 a source, and headers are never logged.
+
+A browser sign-in's own bearer is its `Authorization`, so on that connection the policy
+refuses any custom `Authorization`, Cloudflare Access's JSON form included; Access takes
+its two-header `CF-Access-Client-Id` and `CF-Access-Client-Secret` form there. The browser
+leg can't carry Connection Headers at all (`ASWebAuthenticationSession`'s extra headers
+reach only the first load, and only `X-` names), so a proxy that gates on headers needs
+its own sign-in inside the browser sheet.
 
 ## The gateway socket
 

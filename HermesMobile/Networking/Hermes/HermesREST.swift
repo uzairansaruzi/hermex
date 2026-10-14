@@ -75,6 +75,11 @@ import Foundation
 /// Move to Hermes's scan listing (#1213) is read at the same pin: `limit` is at most 100, every
 /// page also back-fills every pinned row it missed, hidden rows are left out, and `total` counts
 /// the rows the scope matches, so paging ends at `total`, never at a short page.
+/// The native sign-in routes (#708) are read at the same pin (`dashboard_auth/routes.py`) and
+/// were exercised on a phone against a 0.21.5 host: `/auth/native/token` and
+/// `/auth/native/refresh` answer the tokens in the body and set no cookie, a bearer passes the
+/// gate on every `/api/*` route, an expired or unknown one is 401 `{error: "session_expired"}`,
+/// and the WebSocket upgrades still present a ticket, which the bearer can mint.
 enum HermesREST: Equatable, Sendable {
     /// The most rows `GET /api/sessions` lists in one page.
     static let sessionPageSize = 100
@@ -88,6 +93,11 @@ enum HermesREST: Equatable, Sendable {
     /// Public, so it reads the host before any credential is sent.
     case status
     case login(username: String, password: String)
+    /// Trades a browser sign-in's refresh token for a new access token and a rotated refresh
+    /// token (#708): `{access_token, refresh_token, token_type, expires_at, provider, user_id}`,
+    /// or 401 `{error: "session_expired"}` once the host no longer accepts it. Public, without
+    /// a cookie; `provider` only says which provider to ask first.
+    case nativeRefresh(refreshToken: String, provider: String)
     case identity
     /// `{active, current}`: `current` is the Profile this dashboard is scoped to, which a new
     /// session runs under (#1010); `active` is only the CLI's sticky default.
@@ -321,6 +331,10 @@ enum HermesREST: Equatable, Sendable {
         case .login(let username, let password):
             return try Self.send("POST", base.appendingPathComponent("auth/password-login"), [
                 "provider": .string("basic"), "username": .string(username), "password": .string(password)
+            ])
+        case .nativeRefresh(let refreshToken, let provider):
+            return try Self.send("POST", base.appendingPathComponent("auth/native/refresh"), [
+                "refresh_token": .string(refreshToken), "provider": .string(provider)
             ])
         case .identity: return Self.get(base.appendingPathComponent("api/auth/me"))
         case .profilesActive: return Self.get(base.appendingPathComponent("api/profiles/active"))

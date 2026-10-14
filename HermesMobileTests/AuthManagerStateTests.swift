@@ -705,6 +705,25 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(manager.state, .loggedIn(server: webuiServer))
     }
 
+    /// The host refusing a browser sign-in's refresh token (#708) shows the server's sign-in
+    /// form saying the sign-in expired, not that a password was wrong.
+    func testAnExpiredBrowserSignInSignsAHermesServerOutAsExpired() async throws {
+        defer { HermesHostFixture.reset() }
+        let keychain = InMemoryKeychainStore()
+        let connections = HermesConnections(configuration: { HermesHostFixture.configuration { request in
+            request.url?.path == "/auth/native/refresh" ? .json(401, .object(["error": .string("session_expired")])) : nil
+        } }, keychain: keychain)
+        let manager = try await makeHermesManager(keychain: keychain, connections: connections)
+        var saved = try XCTUnwrap(BotConnectionStore(keychain: keychain).load(server: hermesServer))
+        saved.oauth = HermesOAuth(provider: "nous", userID: "me", refreshToken: "refresh")
+        try BotConnectionStore(keychain: keychain).save(saved, server: hermesServer)
+
+        do { try await connections.connection(for: saved, server: hermesServer).signIn(); XCTFail("The refresh was refused") } catch {}
+
+        XCTAssertEqual(manager.state, .loggedOut(server: hermesServer))
+        XCTAssertEqual(manager.lastErrorMessage, "Your Hermes sign-in expired. Sign in again.")
+    }
+
     func testOtherSignInFailuresKeepAHermesServerSignedIn() async throws {
         defer { HermesHostFixture.reset() }
         var login: HermesHostFixture.Reply = .json(200, .object([:]))

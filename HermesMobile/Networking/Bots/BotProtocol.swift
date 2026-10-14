@@ -48,6 +48,9 @@ enum BotFailure: Error, Equatable, LocalizedError {
     /// The host requires sign-in but offers no `basic` provider, only a browser (OIDC)
     /// one Hermex can't use yet. Permanent.
     case browserSignIn
+    /// The host no longer accepts a browser sign-in's refresh token (#708): 401
+    /// `session_expired` from `/auth/native/refresh`. The user has to sign in again. Permanent.
+    case signInExpired
     /// The gateway upgrade was refused with this HTTP status after a good sign-in, usually
     /// by a proxy that drops the ticket header or has no WebSocket support. Permanent;
     /// 408, 429 and 5xx arrive as `.rejected` instead (`init(upgradeStatus:)`).
@@ -76,6 +79,7 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .invalidAddress: return String(localized: "Enter a Hermes HTTP or HTTPS address without a path, credentials or query.")
         case .blocked: return String(localized: "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address.")
         case .browserSignIn: return String(localized: "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.")
+        case .signInExpired: return String(localized: "Your Hermes sign-in expired. Sign in again.")
         case .upgradeRefused: return String(localized: "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through.")
         case .outdated(let version):
             return String(localized: "This Hermes host runs \(version). Hermex needs Hermes \(HermesCompatibility.minimumVersion) or later. Update Hermes on the host, then try again.")
@@ -92,14 +96,14 @@ enum BotConnectionAdvice {
     /// Whether a screen that lost its connection to `error` should reconnect on its backoff
     /// (the inbox, the Sessions list). False for a refusal the user has to act on: sign-in,
     /// an unsupported host or address, an address that now reaches a different host or is not
-    /// a dashboard, an access proxy's own sign-in, a host with browser sign-in only, a refused
-    /// gateway upgrade, a Hermes release older than the minimum, and any other permanent HTTP
-    /// client error (a 404 is not a Hermes host). Server errors, rate limits and JSON-RPC
+    /// a dashboard, an access proxy's own sign-in, a host with browser sign-in only, an expired
+    /// browser sign-in, a refused gateway upgrade, a Hermes release older than the minimum, and
+    /// any other permanent HTTP client error (a 404 is not a Hermes host). Server errors, rate limits and JSON-RPC
     /// faults other than "method missing" are the retry loop's problem.
     static func isRetryable(_ error: Error) -> Bool {
         switch error as? BotFailure {
         case .unsupported, .wrongIdentity, .differentHost, .invalidAddress, .notDashboard,
-             .blocked, .browserSignIn, .upgradeRefused, .outdated: return false
+             .blocked, .browserSignIn, .signInExpired, .upgradeRefused, .outdated: return false
         case .rejected(-32601), .rejected(4090), .rejected(4130): return false
         case .rejected(408), .rejected(429): return true
         case .rejected(let code): return !(400..<500).contains(code)
