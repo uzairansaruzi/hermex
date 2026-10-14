@@ -134,6 +134,14 @@ _Avoid_: job run, execution
 A named group of sessions in the session list. On a webui server it is a tag the session carries, which Move to Project sets. On a Hermes server it is a set of host folders: a session belongs to the project with the deepest folder its working folder sits in, the host groups the rest into automatic per-repository projects, and Move to Project changes the session's working folder.
 _Avoid_: tag (for a Hermes project), workspace
 
+**Stored key**:
+The durable id that names a Hermes session, together with its Profile. Hermex caches, links, drafts and registers push by it, and REST routes and `session.resume` take it. Lists and caches identify a row by its lineage root (`_lineage_root_id ?? id`), so a session that a legacy compression continued under a new key stays one row.
+_Avoid_: session id (when the kind matters)
+
+**Runtime ID**:
+The id of the host's live runtime for a session, returned by `session.resume` or `session.create`. Session-scoped RPCs and the event `seq` use it. It changes when the host reaps the runtime (4001), so Hermex never stores it; reattaching to the stored key returns the new one.
+_Avoid_: session id (when the kind matters)
+
 ## Chat
 
 **Fork**:

@@ -239,6 +239,6 @@ before reconnecting, but never restore runtime identity or action permissions.
 The same removal/clear paths invalidate recent snapshots and their writer tokens.
 The bounded local search cache uses a hash
 of the configured server URL plus connection UUID and Profile, and is cleared
-with that server’s offline cache or connection removal. See [Bot Mode](bots.md) for
+with that server’s offline cache or connection removal. See [Hermes server](hermes-server.md) for
 identity, removal and recovery rules. `BotDraftTests` covers disk persistence,
 connection/server removal and compatibility with existing webui records.
