@@ -380,11 +380,16 @@ final class GitWorkspaceAvailabilityViewModel {
     }
 
     /// Re-fetch info, status and branches after the advanced staging sheet mutates the
-    /// working tree, or a Hermes write here fails partway, so the toolbar badge and Changes row
-    /// stay in sync.
+    /// working tree, a turn ends, or a Hermes write here fails partway, so the toolbar badge and
+    /// Changes row stay in sync. A closed sync gate is asked again, so a host whose plugin read
+    /// failed, or that has loaded the plugin since, shows sync without reopening the chat; an open
+    /// one isn't, and a route that has gone fails as any write does.
     @MainActor
     func refreshAfterExternalMutation() async {
+        let gate = supportsSync ? nil : git
+        async let sync = gate?.supportsSync()
         await refreshGitInfo()
+        if let open = await sync { supportsSync = open }
         guard let git, hasRepository else { return }
         if let refreshed = try? await git.status() {
             status = refreshed

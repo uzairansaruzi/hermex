@@ -1848,6 +1848,28 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(HermesGitHost.writes, [])
     }
 
+    /// A gate read that failed at load is asked again by the next refresh (a turn's end), so sync
+    /// shows once the host answers, without reopening the chat. An open gate isn't read again.
+    @MainActor
+    func testAHermesSyncGateThatFailedAtLoadOpensOnTheNextRefresh() async throws {
+        nonisolated(unsafe) var failing = true
+        let git = HermesGitHost.client { request in
+            guard request.url?.path == "/api/plugins/hermex-push/capabilities" else { return Self.branchHost(request, branch: "main") }
+            return failing ? .json(500, .null) : HermesGitHost.capabilities()
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        await availability.load()
+        let closedAtLoad = availability.supportsSync
+        HermesHostFixture.script { failing = false }
+
+        await availability.refreshAfterExternalMutation()
+        await availability.refreshAfterExternalMutation()
+
+        XCTAssertFalse(closedAtLoad)
+        XCTAssertTrue(availability.supportsSync)
+        XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path == "/api/plugins/hermex-push/capabilities" }.count, 2)
+    }
+
     /// A pull the host refuses (diverged, auth, timeout) shows the write-failure copy, never git's
     /// output, and reads the repository again.
     @MainActor
