@@ -164,7 +164,7 @@ import SwiftUI
         }
         .disabled(!provisioner.canSendTest)
         .frame(minHeight: 44)
-        Text("Goes to every iPhone paired with this host.")
+        Text("Reaches every paired iPhone; doesn’t test your host.")
             .font(AppFont.caption()).foregroundStyle(.secondary)
         if !pairing.effectivePreferences.replies {
             Text("Turn on Reply Notifications to send a test.")

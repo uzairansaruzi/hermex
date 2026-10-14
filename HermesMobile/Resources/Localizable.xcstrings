@@ -65805,112 +65805,6 @@
     },
     "Goes straight to %@ on this bot's Mac to unlock it for this chat. Hermex never saves it." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Geht direkt an %@ auf dem Mac dieses Bots, um es für diesen Chat zu entsperren. Hermex speichert es nie." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Va directamente a %@ en el Mac de este bot para desbloquearlo en este chat. Hermex nunca lo guarda." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Envoyé directement à %@ sur le Mac de ce bot pour le déverrouiller dans cette discussion. Hermex ne l’enregistre jamais." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Va direttamente a %@ sul Mac di questo bot per sbloccarlo in questa chat. Hermex non la salva mai." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Trafia bezpośrednio do aplikacji %@ na Macu tego bota, aby odblokować ją na potrzeby tego czatu. Hermex nigdy tego nie zapisuje." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Vai direto para %@ no Mac deste bot para desbloqueá-lo neste chat. O Hermex nunca a salva." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Gaat rechtstreeks naar %@ op de Mac van deze bot om het voor deze chat te ontgrendelen. Hermex bewaart het nooit." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu sohbet için kilidini açmak üzere doğrudan bu botun Mac’indeki %@ uygulamasına gider. Hermex bunu asla kaydetmez." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Передаётся напрямую в %@ на Mac этого бота, чтобы разблокировать его для этого чата. Hermex никогда это не сохраняет." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このチャットでロックを解除するため、このボットのMac上の%@に直接送信されます。Hermexには保存されません。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "将直接发送到此机器人 Mac 上的 %@，以便在此聊天中解锁。Hermex 绝不会保存它。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 채팅에서 잠금을 해제하기 위해 이 봇의 Mac에 있는 %@(으)로 바로 전송됩니다. Hermex는 이 값을 저장하지 않습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تُرسل مباشرةً إلى %@ على جهاز Mac الخاص بهذا الروبوت لفتح قفله في هذه الدردشة. لا يحفظها Hermex أبدًا." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "נשלח ישירות אל %@ ב‑Mac של הבוט הזה כדי לבטל את הנעילה עבור הצ׳אט הזה. ‏Hermex לעולם אינו שומר אותו." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اس چیٹ کے لیے غیر مقفل کرنے کو سیدھا اس بوٹ کے Mac پر %@ کو جاتا ہے۔ Hermex اسے کبھی محفوظ نہیں کرتا۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "會直接傳送至此機器人 Mac 上的 %@，以在此聊天中解鎖。Hermex 絕不會儲存它。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "會直接傳送至此機械人 Mac 上的 %@，以在此對話中解鎖。Hermex 絕不會儲存它。" } } } },
     "Goes straight to the password manager on this bot's Mac to unlock it for this chat. Hermex never saves it." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Geht direkt an den Passwort-Manager auf dem Mac dieses Bots, um ihn für diesen Chat zu entsperren. Hermex speichert es nie." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Va directamente al gestor de contraseñas en el Mac de este bot para desbloquearlo en este chat. Hermex nunca lo guarda." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Envoyé directement au gestionnaire de mots de passe sur le Mac de ce bot pour le déverrouiller dans cette discussion. Hermex ne l’enregistre jamais." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Va direttamente al gestore di password sul Mac di questo bot per sbloccarlo in questa chat. Hermex non la salva mai." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Trafia bezpośrednio do menedżera haseł na Macu tego bota, aby odblokować go na potrzeby tego czatu. Hermex nigdy tego nie zapisuje." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Vai direto para o gerenciador de senhas no Mac deste bot para desbloqueá-lo neste chat. O Hermex nunca a salva." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Gaat rechtstreeks naar de wachtwoordbeheerder op de Mac van deze bot om die voor deze chat te ontgrendelen. Hermex bewaart het nooit." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu sohbet için kilidini açmak üzere doğrudan bu botun Mac’indeki parola yöneticisine gider. Hermex bunu asla kaydetmez." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Передаётся напрямую в менеджер паролей на Mac этого бота, чтобы разблокировать его для этого чата. Hermex никогда это не сохраняет." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このチャットでロックを解除するため、このボットのMac上のパスワードマネージャに直接送信されます。Hermexには保存されません。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "将直接发送到此机器人 Mac 上的密码管理器，以便在此聊天中解锁。Hermex 绝不会保存它。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 채팅에서 잠금을 해제하기 위해 이 봇의 Mac에 있는 비밀번호 관리자로 바로 전송됩니다. Hermex는 이 값을 저장하지 않습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تُرسل مباشرةً إلى مدير كلمات المرور على جهاز Mac الخاص بهذا الروبوت لفتح قفله في هذه الدردشة. لا يحفظها Hermex أبدًا." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "נשלח ישירות אל מנהל הסיסמאות ב‑Mac של הבוט הזה כדי לבטל את הנעילה עבור הצ׳אט הזה. ‏Hermex לעולם אינו שומר אותו." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اس چیٹ کے لیے غیر مقفل کرنے کو سیدھا اس بوٹ کے Mac پر پاس ورڈ مینیجر کو جاتا ہے۔ Hermex اسے کبھی محفوظ نہیں کرتا۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "會直接傳送至此機器人 Mac 上的密碼管理工具，以在此聊天中解鎖。Hermex 絕不會儲存它。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "會直接傳送至此機械人 Mac 上的密碼管理工具，以在此對話中解鎖。Hermex 絕不會儲存它。" } } } },
-    "Goes to every iPhone paired with this host." : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "يُرسل إلى كل iPhone مقترن بهذا المضيف."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Geht an jedes iPhone, das mit diesem Host gekoppelt ist."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Llega a cada iPhone vinculado con este host."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Arrive sur chaque iPhone jumelé à cet hôte."
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "נשלח לכל iPhone שמוצמד למארח הזה."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Arriva a ogni iPhone abbinato a questo host."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "このホストとペアリングされたすべてのiPhoneに届きます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "이 호스트와 페어링된 모든 iPhone으로 전송됩니다."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Gaat naar elke iPhone die met deze host is gekoppeld."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Trafia do każdego iPhone’a sparowanego z tym hostem."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Vai para cada iPhone pareado com este host."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Приходит на каждый iPhone, связанный с этим хостом."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Bu ana bilgisayarla eşlenen her iPhone’a gider."
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "اس ہوسٹ سے جوڑے گئے ہر iPhone پر جاتا ہے۔"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "會傳送到與此主機配對的每部 iPhone。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "会发送到与此主机配对的每部 iPhone。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "會傳送到與此主機配對的每部 iPhone。"
-          }
-        }
-      }
-    },
     "Gold" : {
       "localizations" : {
         "ar" : {
@@ -75620,6 +75514,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "推播已開啟"
+          }
+        }
+      }
+    },
+    "Reaches every paired iPhone; doesn’t test your host." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يصل إلى كل iPhone مقترن؛ ولا يختبر مضيفك."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Erreicht jedes gekoppelte iPhone; testet deinen Host nicht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Llega a cada iPhone vinculado; no prueba tu host."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Atteint chaque iPhone jumelé ; ne teste pas votre hôte."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "מגיע לכל iPhone מוצמד; לא בודק את המארח שלך."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Raggiunge ogni iPhone abbinato; non verifica il tuo host."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ペアリング済みのすべてのiPhoneに届きます。ホストはテストしません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "페어링된 모든 iPhone에 전송되며, 호스트는 테스트하지 않습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bereikt elke gekoppelde iPhone; test je host niet."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Trafia do każdego sparowanego iPhone’a; nie testuje hosta."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Chega a cada iPhone pareado; não testa seu host."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Приходит на каждый связанный iPhone; хост не проверяет."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Eşlenen her iPhone’a ulaşır; ana bilgisayarınızı test etmez."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ہر جوڑے گئے iPhone تک پہنچتا ہے؛ آپ کے ہوسٹ کو نہیں جانچتا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "會送達每部已配對的 iPhone；不會測試你的主機。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "会送达每部已配对的 iPhone；不会测试你的主机。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "會送達每部已配對的 iPhone；不會測試你的主機。"
           }
         }
       }
