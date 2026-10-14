@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 // The Hermex pages on the Settings index (#1252). Each applies on this iPhone to every server.
 
@@ -21,11 +20,7 @@ struct SettingsAppearancePage: View {
                 }
 
                 Toggle(isOn: $tintsPrimaryActions) {
-                    SettingsLabel(
-                        title: String(localized: "Tint New Chat & Send"),
-                        systemImage: "paintbrush.pointed",
-                        note: String(localized: "Apply your header color to these primary buttons.")
-                    )
+                    SettingsLabel(title: String(localized: "Tint New Chat & Send"), systemImage: "paintbrush.pointed")
                 }
             }
 
@@ -74,7 +69,7 @@ struct SettingsComposerPage: View {
                     SettingsLabel(
                         title: String(localized: "Dictation Provider"),
                         systemImage: "mic",
-                        note: String(localized: "On-device only keeps composer dictation audio off your Hermes server.")
+                        note: String(localized: "On-device only keeps audio on this iPhone.")
                     )
                 }
             }
@@ -85,11 +80,7 @@ struct SettingsComposerPage: View {
                 }
 
                 Toggle(isOn: $showsChatGitControls) {
-                    SettingsLabel(
-                        title: String(localized: "Git Actions"),
-                        systemImage: "arrow.triangle.branch",
-                        note: String(localized: "Hides the git menu, branch picker, and commit controls.")
-                    )
+                    SettingsLabel(title: String(localized: "Git Actions"), systemImage: "arrow.triangle.branch")
                 }
             }
         }
@@ -99,9 +90,7 @@ struct SettingsComposerPage: View {
 
 /// How a chat's transcript shows turns, details, and long lines.
 struct SettingsChatPage: View {
-    @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
-    @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var thinkingCardsStartExpanded = false
-    @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var toolCardsStartExpanded = false
+    @AppStorage(ChatTranscriptDisplaySettings.thinkingAndToolCardsKey) private var thinkingAndToolCards = ThinkingAndToolCards.collapsed
     @AppStorage(ChatTranscriptDisplaySettings.foldsSettledTurnsKey) private var foldsSettledTurns = true
     @AppStorage(SessionChatPreferences.completionPositionKey) private var completionPositionRawValue = SessionChatPreferences.CompletionPosition.latest.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey) private var showsAssistantTurnTimestamps = ChatTranscriptDisplaySettings.defaultShowsTimestamps
@@ -113,27 +102,19 @@ struct SettingsChatPage: View {
     var body: some View {
         List {
             Section {
-                Toggle(isOn: $showsThinkingAndToolCards) {
-                    SettingsLabel(title: String(localized: "Thinking and Tool Cards"), systemImage: "brain.head.profile")
+                Picker(selection: $thinkingAndToolCards) {
+                    ForEach(ThinkingAndToolCards.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                } label: {
+                    SettingsLabel(title: String(localized: "Thinking & Tools"), systemImage: "brain.head.profile")
                 }
 
-                Toggle(isOn: $thinkingCardsStartExpanded) {
-                    SettingsLabel(title: String(localized: "Expand Thinking by Default"), systemImage: "rectangle.expand.vertical")
-                }
-
-                Toggle(isOn: $toolCardsStartExpanded) {
-                    SettingsLabel(title: String(localized: "Expand Tools by Default"), systemImage: "wrench.and.screwdriver")
-                }
-            } footer: {
-                Text("Thinking and Tool cards start expanded instead of collapsed. Tapping a card still toggles it.")
-            }
-
-            Section {
                 Toggle(isOn: $foldsSettledTurns) {
                     SettingsLabel(
                         title: String(localized: "Fold Finished Turns"),
                         systemImage: "rectangle.compress.vertical",
-                        note: String(localized: "Collapses a finished turn's thinking, tool calls, and interim replies behind one row that shows how long it took. Tap the row to expand it.")
+                        note: String(localized: "Collapses a finished turn behind one row.")
                     )
                 }
 
@@ -142,21 +123,13 @@ struct SettingsChatPage: View {
                         Text(position.title).tag(position.rawValue)
                     }
                 } label: {
-                    SettingsLabel(
-                        title: String(localized: "Position after response completes"),
-                        systemImage: "text.alignleft",
-                        note: String(localized: "Applies to Sessions on this device.")
-                    )
+                    SettingsLabel(title: String(localized: "Position after response completes"), systemImage: "text.alignleft")
                 }
             }
 
             Section {
                 Toggle(isOn: $showsAssistantTurnTimestamps) {
-                    SettingsLabel(
-                        title: String(localized: "Message Timestamps"),
-                        systemImage: "clock",
-                        note: String(localized: "Shows the time under your messages and under each finished response.")
-                    )
+                    SettingsLabel(title: String(localized: "Message Timestamps"), systemImage: "clock")
                 }
 
                 Toggle(isOn: $showsResponseSpeed) {
@@ -167,7 +140,7 @@ struct SettingsChatPage: View {
                     SettingsLabel(
                         title: String(localized: "Hide Attachment Paths"),
                         systemImage: "eye.slash",
-                        note: String(localized: "Hides the appended file-path line in your sent messages. Attachments still appear as previews, and the server still receives the paths.")
+                        note: String(localized: "The server still receives them.")
                     )
                 }
             }
@@ -177,7 +150,7 @@ struct SettingsChatPage: View {
                     SettingsLabel(
                         title: String(localized: "Wrap Code Block Lines"),
                         systemImage: "arrow.turn.down.left",
-                        note: String(localized: "Wraps long lines in code blocks to fit the screen instead of scrolling sideways. You can also tap the wrap button in any code block.")
+                        note: String(localized: "Or tap wrap in any code block.")
                     )
                 }
 
@@ -185,7 +158,7 @@ struct SettingsChatPage: View {
                     SettingsLabel(
                         title: String(localized: "Right-to-Left Chat Layout"),
                         systemImage: "text.alignright",
-                        note: String(localized: "Lays out messages and the composer right-to-left for Arabic, Hebrew, Persian, and Urdu. Code, math, tables, and tool output stay left-to-right. Other screens are unaffected.")
+                        note: String(localized: "Messages and the composer only; code stays left-to-right.")
                     )
                 }
             }
@@ -194,7 +167,7 @@ struct SettingsChatPage: View {
     }
 }
 
-/// Haptics, the app lock, and Siri & Shortcuts.
+/// Haptics and the app lock.
 struct SettingsGeneralPage: View {
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(AppHaptics.streamingPulseIsEnabledKey) private var isStreamingPulseEnabled = false
@@ -218,20 +191,6 @@ struct SettingsGeneralPage: View {
             }
 
             AppLockSection()
-
-            if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
-                Section {
-                    SettingsExternalLink(
-                        title: String(localized: "Open Hermex Settings"),
-                        systemImage: "gearshape",
-                        destination: settingsURL
-                    )
-                } header: {
-                    Text("Siri & Shortcuts")
-                } footer: {
-                    Text("Run Hermex actions like New Chat from Siri, Spotlight, the Lock Screen, or the iPhone Action button. Open Hermex Settings to manage its Siri & Search options. To assign an action to the Action button, open the iOS Settings app, choose Action Button, then Shortcut, and pick a Hermex action.")
-                }
-            }
         }
         .settingsPage(String(localized: "General"))
     }
@@ -261,7 +220,7 @@ private struct AppLockSection: View {
             Text("Privacy")
         } footer: {
             Text(capability.hasPasscode
-                ? String(localized: "Locks Hermex when it opens and after a minute away. Notifications, Live Activities and the share sheet still show their content.")
+                ? String(localized: "Notifications, Live Activities and sharing still show content.")
                 : String(localized: "Set a passcode in iOS Settings to use this."))
         }
     }

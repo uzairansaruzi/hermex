@@ -347,19 +347,73 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         XCTAssertFalse(ChatTranscriptDisplaySettings.isCardExpanded(userToggled: false, startsExpanded: true))
     }
 
-    func testCardStartExpandedKeysAreStableAndDistinct() {
-        XCTAssertEqual(
-            ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey,
-            "chatTranscript.thinkingCardsStartExpanded"
-        )
-        XCTAssertEqual(
-            ChatTranscriptDisplaySettings.toolCardsStartExpandedKey,
-            "chatTranscript.toolCardsStartExpanded"
-        )
-        XCTAssertNotEqual(
-            ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey,
-            ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey
-        )
+    /// Every combination of the three toggles the picker replaced (#1254) lands on one mode,
+    /// and the old keys are gone afterwards.
+    func testThinkingAndToolCardsMigrationMapsEveryLegacyCombination() throws {
+        let cases: [(shows: Bool, thinking: Bool, tools: Bool, expected: ThinkingAndToolCards)] = [
+            (false, false, false, .hidden), (false, true, false, .hidden),
+            (false, false, true, .hidden), (false, true, true, .hidden),
+            (true, false, false, .collapsed), (true, true, false, .expanded),
+            (true, false, true, .expanded), (true, true, true, .expanded),
+        ]
+        for item in cases {
+            let defaults = try makeDefaults()
+            defaults.set(item.shows, forKey: "chatTranscript.showsThinkingAndToolCards")
+            defaults.set(item.thinking, forKey: "chatTranscript.thinkingCardsStartExpanded")
+            defaults.set(item.tools, forKey: "chatTranscript.toolCardsStartExpanded")
+
+            ChatTranscriptDisplaySettings.migrateThinkingAndToolCards(in: defaults)
+
+            XCTAssertEqual(defaults.string(forKey: "chatTranscript.thinkingAndToolCards"), item.expected.rawValue, "\(item)")
+            XCTAssertNil(defaults.object(forKey: "chatTranscript.showsThinkingAndToolCards"))
+            XCTAssertNil(defaults.object(forKey: "chatTranscript.thinkingCardsStartExpanded"))
+            XCTAssertNil(defaults.object(forKey: "chatTranscript.toolCardsStartExpanded"))
+        }
+    }
+
+    /// Only an expand toggle was ever touched: cards were on by default, so it is Expanded.
+    func testThinkingAndToolCardsMigrationTreatsUnsetShowToggleAsOn() throws {
+        let defaults = try makeDefaults()
+        defaults.set(true, forKey: "chatTranscript.toolCardsStartExpanded")
+
+        ChatTranscriptDisplaySettings.migrateThinkingAndToolCards(in: defaults)
+
+        XCTAssertEqual(defaults.string(forKey: "chatTranscript.thinkingAndToolCards"), "expanded")
+    }
+
+    func testThinkingAndToolCardsMigrationKeepsAChoiceAlreadyMade() throws {
+        let defaults = try makeDefaults()
+        defaults.set("hidden", forKey: "chatTranscript.thinkingAndToolCards")
+        defaults.set(true, forKey: "chatTranscript.thinkingCardsStartExpanded")
+
+        ChatTranscriptDisplaySettings.migrateThinkingAndToolCards(in: defaults)
+
+        XCTAssertEqual(defaults.string(forKey: "chatTranscript.thinkingAndToolCards"), "hidden")
+        XCTAssertNil(defaults.object(forKey: "chatTranscript.thinkingCardsStartExpanded"))
+    }
+
+    func testThinkingAndToolCardsMigrationLeavesAFreshInstallOnTheDefault() throws {
+        let defaults = try makeDefaults()
+
+        ChatTranscriptDisplaySettings.migrateThinkingAndToolCards(in: defaults)
+
+        XCTAssertNil(defaults.object(forKey: "chatTranscript.thinkingAndToolCards"))
+    }
+
+    /// Each mode drives the transcript the way its old toggles did.
+    func testThinkingAndToolCardsModesMatchTheOldToggles() {
+        XCTAssertEqual(ThinkingAndToolCards.hidden.showsCards, false)
+        XCTAssertEqual(ThinkingAndToolCards.collapsed.showsCards, true)
+        XCTAssertEqual(ThinkingAndToolCards.collapsed.startsExpanded, false)
+        XCTAssertEqual(ThinkingAndToolCards.expanded.showsCards, true)
+        XCTAssertEqual(ThinkingAndToolCards.expanded.startsExpanded, true)
+    }
+
+    private func makeDefaults() throws -> UserDefaults {
+        let suite = "TranscriptDisplayModelTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return defaults
     }
 
     func testHidesAttachmentPathsKeyIsStableAndDistinct() {
@@ -369,7 +423,7 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         )
         XCTAssertNotEqual(
             ChatTranscriptDisplaySettings.hidesAttachmentPathsKey,
-            ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey
+            ChatTranscriptDisplaySettings.thinkingAndToolCardsKey
         )
     }
 

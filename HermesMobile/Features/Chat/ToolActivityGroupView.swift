@@ -21,7 +21,7 @@ struct ToolActivityGroupView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
-    @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
+    @AppStorage(ChatTranscriptDisplaySettings.thinkingAndToolCardsKey) private var thinkingAndToolCards = ThinkingAndToolCards.collapsed
     @State private var userToggledExpansion: Bool?
 
     /// Whether previous rows are shown. Follows "Expand Tools by Default"
@@ -29,7 +29,7 @@ struct ToolActivityGroupView: View {
     private var isExpanded: Bool {
         ChatTranscriptDisplaySettings.isCardExpanded(
             userToggled: userToggledExpansion,
-            startsExpanded: startsExpanded
+            startsExpanded: thinkingAndToolCards.startsExpanded
         )
     }
 

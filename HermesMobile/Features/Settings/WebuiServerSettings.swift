@@ -57,7 +57,7 @@ struct WebuiServerSections: View {
                 SettingsLabel(
                     title: String(localized: "Hermes connection"),
                     systemImage: "bell.badge",
-                    note: String(localized: "Sign in to this server’s Hermes backend to turn on notifications for it, and to use Bots.")
+                    note: String(localized: "Needed for notifications and Bots.")
                 )
             }
         }
@@ -139,13 +139,13 @@ struct WebuiServerSections: View {
                 SettingsLabel(
                     title: String(localized: "Bot Mode (beta)"),
                     systemImage: "cpu",
-                    note: String(localized: "Adds a Bots row to a webui server’s main screen. Hermes servers have Bots built in and don’t need it.")
+                    note: String(localized: "Adds a Bots row to this server's home.")
                 )
             }
         } header: {
             Text("Main Page")
         } footer: {
-            Text("Turn off the entries you never use to shorten the top of the session list. Each one is the only way into its screen, so turn it back on here when you need it again.")
+            Text("An entry you turn off comes back only from here.")
         }
 
         Section(String(localized: "Defaults")) {
@@ -195,7 +195,7 @@ struct WebuiServerSections: View {
         } header: {
             Text("Offline Data")
         } footer: {
-            Text(model.cacheStatusMessage ?? String(localized: "Cached sessions and messages are kept for offline viewing. Clearing removes this server's cache only — other servers and the Hermes server are not affected."))
+            Text(model.cacheStatusMessage ?? String(localized: "Clears this server's cache only."))
         }
     }
 
@@ -211,7 +211,7 @@ struct WebuiServerSections: View {
             }
         } else if model.cliSessionsSync.serverSyncsCliSessions
             || model.cliSessionsSync.serverSyncsClaudeCodeSessions {
-            Text("Session visibility is synced with this server, so the WebUI follows it too.")
+            Text("Synced with this server's WebUI.")
         }
     }
 

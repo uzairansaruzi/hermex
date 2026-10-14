@@ -203,10 +203,56 @@ enum AgentRunLiveActivityPrivacy {
     static let showsResponseExcerptsKey = "agentRunLiveActivity.showsResponseExcerpts"
 }
 
+/// Settings → Chat "Thinking & Tools" (#1254): whether a chat shows thinking and tool
+/// cards, and whether they start open.
+enum ThinkingAndToolCards: String, CaseIterable, Identifiable {
+    case hidden
+    case collapsed
+    case expanded
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .hidden: String(localized: "Hidden")
+        case .collapsed: String(localized: "Collapsed")
+        case .expanded: String(localized: "Expanded")
+        }
+    }
+
+    var showsCards: Bool { self != .hidden }
+    var startsExpanded: Bool { self == .expanded }
+}
+
 enum ChatTranscriptDisplaySettings {
-    static let showsThinkingAndToolCardsKey = "chatTranscript.showsThinkingAndToolCards"
-    static let thinkingCardsStartExpandedKey = "chatTranscript.thinkingCardsStartExpanded"
-    static let toolCardsStartExpandedKey = "chatTranscript.toolCardsStartExpanded"
+    static let thinkingAndToolCardsKey = "chatTranscript.thinkingAndToolCards"
+
+    /// The three toggles the Thinking & Tools picker replaced (#1254). Read only by
+    /// `migrateThinkingAndToolCards`.
+    private static let legacyShowsCardsKey = "chatTranscript.showsThinkingAndToolCards"
+    private static let legacyThinkingExpandedKey = "chatTranscript.thinkingCardsStartExpanded"
+    private static let legacyToolsExpandedKey = "chatTranscript.toolCardsStartExpanded"
+
+    /// Carries the three old toggles into the picker once, at launch: cards off is Hidden,
+    /// either expand toggle on is Expanded, otherwise Collapsed. Afterwards it finds no old
+    /// keys and does nothing.
+    static func migrateThinkingAndToolCards(in defaults: UserDefaults = .standard) {
+        let legacyKeys = [legacyShowsCardsKey, legacyThinkingExpandedKey, legacyToolsExpandedKey]
+        guard legacyKeys.contains(where: { defaults.object(forKey: $0) != nil }) else { return }
+        if defaults.object(forKey: thinkingAndToolCardsKey) == nil {
+            let mode: ThinkingAndToolCards
+            if defaults.object(forKey: legacyShowsCardsKey) as? Bool == false {
+                mode = .hidden
+            } else if defaults.bool(forKey: legacyThinkingExpandedKey) || defaults.bool(forKey: legacyToolsExpandedKey) {
+                mode = .expanded
+            } else {
+                mode = .collapsed
+            }
+            defaults.set(mode.rawValue, forKey: thinkingAndToolCardsKey)
+        }
+        legacyKeys.forEach(defaults.removeObject(forKey:))
+    }
+
     static let hidesAttachmentPathsKey = "chatTranscript.hidesAttachmentPaths"
     /// Settings → Chat "Message Timestamps": the time under each user message
     /// and each finished reply. The key name predates the move under the

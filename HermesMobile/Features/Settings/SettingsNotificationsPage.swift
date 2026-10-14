@@ -18,7 +18,7 @@ struct SettingsNotificationsPage: View {
                     SettingsLabel(
                         title: String(localized: "Response Complete Alerts"),
                         systemImage: "bell",
-                        note: String(localized: "Alerts when a reply finishes or fails, for servers without push notifications.")
+                        note: String(localized: "For servers without push.")
                     )
                 }
 
@@ -26,7 +26,7 @@ struct SettingsNotificationsPage: View {
                     SettingsLabel(
                         title: String(localized: "Live Activity Excerpts"),
                         systemImage: "lock",
-                        note: String(localized: "Shows short response text on the Lock Screen and Dynamic Island.")
+                        note: String(localized: "Reply text on the Lock Screen and Dynamic Island.")
                     )
                 }
             } header: {

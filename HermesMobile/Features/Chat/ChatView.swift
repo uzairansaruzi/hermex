@@ -273,7 +273,7 @@ struct ChatView: View {
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @AppStorage(AgentRunLiveActivityPrivacy.showsResponseExcerptsKey) private var showsLiveActivityResponseExcerpts = false
-    @AppStorage(ChatTranscriptDisplaySettings.showsThinkingAndToolCardsKey) private var showsThinkingAndToolCards = true
+    @AppStorage(ChatTranscriptDisplaySettings.thinkingAndToolCardsKey) private var thinkingAndToolCards = ThinkingAndToolCards.collapsed
     @AppStorage(ChatTranscriptDisplaySettings.foldsSettledTurnsKey) private var foldsSettledTurns = true
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsFilesButton = true
@@ -1978,7 +1978,7 @@ struct ChatView: View {
             activeStreamRecoveryState: viewModel.activeStreamRecoveryState,
             clarificationPromptID: requestInsetID,
             hidesRunStatusAccessibility: activeRunStatusPresentation != nil,
-            showsThinkingAndToolCards: showsThinkingAndToolCards,
+            showsThinkingAndToolCards: thinkingAndToolCards.showsCards,
             workingRowStartedAt: workingRowStartedAt,
             requestWithdrawal: viewModel.hermesRequests?.withdrawal,
             showsScrollToBottomButton: showsScrollToBottomButton,
@@ -2309,7 +2309,7 @@ struct ChatView: View {
     private func turnFolds(reasoningGroups: [ReasoningGroup]) -> TranscriptTurnFolds {
         guard foldsSettledTurns else { return .none }
 
-        let activityAnchorIDs: Set<String> = showsThinkingAndToolCards
+        let activityAnchorIDs: Set<String> = thinkingAndToolCards.showsCards
             ? Set(reasoningGroups.compactMap(\.anchorMessageID))
                 .union(viewModel.completedToolCallGroups.compactMap(\.anchorMessageID))
             : []

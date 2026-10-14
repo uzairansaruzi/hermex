@@ -10,7 +10,7 @@ struct ReasoningBlockView: View {
     let text: String
     let liveStreamID: String?
 
-    @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var startsExpanded = false
+    @AppStorage(ChatTranscriptDisplaySettings.thinkingAndToolCardsKey) private var thinkingAndToolCards = ThinkingAndToolCards.collapsed
     @State private var userToggledExpansion: Bool?
 
     init(text: String, liveStreamID: String? = nil) {
@@ -21,7 +21,7 @@ struct ReasoningBlockView: View {
     private var isExpanded: Bool {
         ChatTranscriptDisplaySettings.isCardExpanded(
             userToggled: userToggledExpansion,
-            startsExpanded: startsExpanded
+            startsExpanded: thinkingAndToolCards.startsExpanded
         )
     }
 

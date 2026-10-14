@@ -151,8 +151,6 @@ struct SettingsServerPage: View {
             HermesUpdateCallout(model: HermesUpdateModel.for(server: server), version: account.serverVersion)
         } header: {
             Text("Server")
-        } footer: {
-            Text("Sign-in and connection headers for this Hermes host.")
         }
 
         if let hermesConnection {
@@ -188,9 +186,7 @@ struct SettingsServerPage: View {
                     SettingsLabel(
                         title: String(localized: "Hermes connection"),
                         systemImage: account.kind == .hermes ? "person.badge.key" : "bell.badge",
-                        note: account.kind == .hermes
-                            ? String(localized: "Sign-in and connection headers for this Hermes host.")
-                            : String(localized: "Sign in to this server’s Hermes backend to turn on notifications for it, and to use Bots.")
+                        note: account.kind == .hermes ? nil : String(localized: "Needed for notifications and Bots.")
                     )
                 }
             }
@@ -206,8 +202,6 @@ struct SettingsServerPage: View {
                 Button(String(localized: "Switch to This Server")) {
                     authManager.switchActiveServer(to: account)
                 }
-            } footer: {
-                Text("Makes this the active server. Sessions, chats, and settings reload for it.")
             }
         }
 
@@ -219,7 +213,7 @@ struct SettingsServerPage: View {
                     isConfirmingSignOut = true
                 }
             } footer: {
-                Text("Deletes this server's saved sign-in and shows its sign-in form.")
+                Text("Deletes the saved sign-in; the server stays.")
             }
         }
 
@@ -291,13 +285,9 @@ struct SettingsServerPage: View {
     }
 
     private var removeFootnote: String {
-        if signsOut {
-            return hasOtherServers
-                ? String(localized: "Signs out and switches to another configured server.")
-                : String(localized: "Signs out and returns to onboarding.")
-        }
-        if isActive { return activeHermesRemovalText }
-        return String(localized: "Removes this server and its saved settings on this device. Your active server is unaffected.")
+        signsOut
+            ? String(localized: "Signs out and removes this server from this iPhone.")
+            : String(localized: "Removes this server from this iPhone.")
     }
 
     private var removeAlertMessage: String {
@@ -358,7 +348,7 @@ private struct MoveToHermesSection: View {
                 } ?? String(localized: "Sending here too can split a conversation."))
             }
         } else {
-            Text("This is a legacy hermes-webui server. It keeps working and gets fixes, but new features come to Hermes. Moving uses this server's chats in Hermes directly: chats, titles, pins and drafts come along, and this entry stays until you remove it.")
+            Text("Moving brings chats, pins and drafts to Hermes.")
         }
     }
 

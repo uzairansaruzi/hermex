@@ -85,6 +85,7 @@ struct HermesMobileApp: App {
     init() {
         // Record installation age even before a server has been configured.
         _ = RatingPromptState.shared
+        ChatTranscriptDisplaySettings.migrateThinkingAndToolCards()
         NetworkPathMonitor.shared.start()
     }
 
