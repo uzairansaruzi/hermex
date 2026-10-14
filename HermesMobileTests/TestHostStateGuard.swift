@@ -9,7 +9,8 @@ import XCTest
 /// back when it finishes, for `scripts/test-sim`, Xcode and CI alike. A run killed before it
 /// finishes leaves whatever the tests wrote.
 final class TestHostStateGuard: NSObject, XCTestObservation {
-    private var keychainItems: [[String: Any]] = []
+    /// Nil when the Keychain could not be read, so the restore leaves it alone.
+    private var keychainItems: [[String: Any]]?
     private var cookies: [HTTPCookie] = []
     private var defaults: [String: Any]?
 
@@ -25,13 +26,15 @@ final class TestHostStateGuard: NSObject, XCTestObservation {
     }
 
     func testBundleDidFinish(_ testBundle: Bundle) {
-        for item in Self.genericPasswords(returningData: false) {
-            SecItemDelete(Self.identity(of: item) as CFDictionary)
-        }
-        for item in keychainItems {
-            var restored = Self.identity(of: item)
-            for key in Self.restoredAttributes { restored[key] = item[key] }
-            SecItemAdd(restored as CFDictionary, nil)
+        if let keychainItems, let current = Self.genericPasswords(returningData: false) {
+            for item in current {
+                SecItemDelete(Self.identity(of: item) as CFDictionary)
+            }
+            for item in keychainItems {
+                var restored = Self.identity(of: item)
+                for key in Self.restoredAttributes { restored[key] = item[key] }
+                SecItemAdd(restored as CFDictionary, nil)
+            }
         }
 
         HTTPCookieStorage.shared.cookies?.forEach(HTTPCookieStorage.shared.deleteCookie)
@@ -45,8 +48,9 @@ final class TestHostStateGuard: NSObject, XCTestObservation {
         }
     }
 
-    /// Every generic password the host app can reach, in all of its access groups.
-    private static func genericPasswords(returningData: Bool) -> [[String: Any]] {
+    /// Every generic password the host app can reach, in all of its access groups; nil when the
+    /// read fails, which must never pass for an empty Keychain.
+    private static func genericPasswords(returningData: Bool) -> [[String: Any]]? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
@@ -55,8 +59,11 @@ final class TestHostStateGuard: NSObject, XCTestObservation {
             kSecReturnData as String: returningData,
         ]
         var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess else { return [] }
-        return result as? [[String: Any]] ?? []
+        switch SecItemCopyMatching(query as CFDictionary, &result) {
+        case errSecSuccess: return result as? [[String: Any]]
+        case errSecItemNotFound: return []
+        default: return nil
+        }
     }
 
     /// The attributes that name one item, for deleting it or adding it back.
