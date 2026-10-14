@@ -1056,7 +1056,11 @@ cache (`CacheStore+Hermes.swift`), keyed by server, Profile and lineage root; th
 no-sweep removal rules are in [multi-server-state-isolation.md](multi-server-state-isolation.md).
 An empty list, and a chat with nothing on screen, show the cached copy at once while they
 connect, read-only through `isViewingCachedData` but provisional (`isCachedCopyProvisional`):
-no offline banner, no Cached labels, and the composer holds Send rather than saying to reconnect.
+no offline banner, no Cached labels, no read marks, and the composer holds Send rather than
+saying to reconnect. A list without a Profile or a pick shows the Profile it last read
+(`HermesProfilePreference.lastListed`) without taking it, and a chat paints from
+`prepareInitialMessageLoad`, before its push animation ends. A chat whose attach already failed
+(one `ChatView` starts as it appears) shows a Bot Chat's copy as the offline state at once.
 When a list read or a chat's attach fails because the host can't be reached
 (`CacheFallbackPolicy`: a connectivity `URLError`, `.transport`, or a proxy's or tunnel's 408,
 502-504 or 520-530), the list shows the Profile's cached rows and a chat its newest cached page

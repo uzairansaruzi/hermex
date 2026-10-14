@@ -32,6 +32,22 @@ enum HermesProfilePreference {
         "hermes.sessionsShowAllProfiles|\(server.absoluteString)"
     }
 
+    /// The Profile the server's Sessions list last applied a host read for, whose cached rows a
+    /// list opened without a Profile or a pick shows while it connects. Never a pick: the host
+    /// still settles the list's Profile and New Session's.
+    static func lastListed(for server: URL, in defaults: UserDefaults = .standard) -> String? {
+        defaults.string(forKey: lastListedKey(for: server))
+    }
+
+    static func saveLastListed(_ profile: String?, for server: URL, in defaults: UserDefaults = .standard) {
+        guard defaults.string(forKey: lastListedKey(for: server)) != profile else { return }
+        if let profile { defaults.set(profile, forKey: lastListedKey(for: server)) } else { defaults.removeObject(forKey: lastListedKey(for: server)) }
+    }
+
+    private static func lastListedKey(for server: URL) -> String {
+        "hermes.lastListedProfile|\(server.absoluteString)"
+    }
+
     /// The Profile New Session opens in: the saved pick while `listed` (a fresh
     /// `profiles.list`) still has it, else the host's `current`. A pick the host no longer
     /// lists is dropped without a word; an empty list proves nothing, so it keeps the pick.

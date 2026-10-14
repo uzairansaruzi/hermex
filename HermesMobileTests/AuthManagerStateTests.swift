@@ -766,6 +766,7 @@ final class AuthManagerStateTests: XCTestCase {
                                                   forgetPush: { forgottenPush.append($0) })
         HermesProfilePreference.save("work", for: hermesServer, in: preferences)
         HermesProfilePreference.save("work", for: webuiServer, in: preferences)
+        HermesProfilePreference.saveLastListed("work", for: hermesServer, in: preferences)
         let side = BotConnection(id: UUID(), name: "Side", address: hermesServer, username: "me", password: "secret")
         try BotConnectionStore(keychain: keychain).save(side, server: webuiServer)
         let cookies = HTTPCookieStorage.shared
@@ -780,6 +781,7 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(cookies.cookies(for: webuiServer)?.count, 1)
         XCTAssertNil(preferences.string(forKey: HermesProfilePreference.key(for: hermesServer)),
                      "the remembered Profile goes with the sign-in (#1015)")
+        XCTAssertNil(HermesProfilePreference.lastListed(for: hermesServer, in: preferences))
         XCTAssertEqual(preferences.string(forKey: HermesProfilePreference.key(for: webuiServer)), "work")
         XCTAssertEqual(forgottenPush, [hermesServer], "this iPhone stops getting the host's pushes")
     }

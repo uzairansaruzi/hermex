@@ -710,8 +710,11 @@ final class SessionListViewModel {
     }
 
     /// Not on a Bot Chat a Hermes search lists (#1053): the Bots inbox keeps its own read mark.
+    /// Nor on a cached Hermes row, whose mark is the host's to change.
     func canToggleUnread(_ session: SessionSummary) -> Bool {
-        if let hermes = session.hermes { return !hermes.isBotChat && Self.nonEmpty(session.sessionId) != nil }
+        if let hermes = session.hermes {
+            return !isViewingCachedData && !hermes.isBotChat && Self.nonEmpty(session.sessionId) != nil
+        }
         return Self.nonEmpty(session.sessionId) != nil
             && Self.messageTime(for: session) != nil
             && !SessionRowView.isActiveStreaming(session)
@@ -1950,16 +1953,18 @@ final class SessionListViewModel {
         let marks = hermesUnreadMarks.filter { $0.value.settledBefore.map { $0 > readSerial } ?? true }
         if marks.count != hermesUnreadMarks.count { hermesUnreadMarks = marks }
         let rows = hermesRows(pages)
+        // Ahead of the marks below, which a cached list never writes.
+        if isViewingCachedData { isViewingCachedData = false }
         // By the host's own mark: one this phone wrote as the chat opened came before the reply.
         for row in rows where row.sessionId.map(hermesReturnedFrom.contains) == true && row.hermes?.unread == true {
             setHermesUnread(false, row)
         }
         hermesReturnedFrom = []
         if sessions != rows { sessions = rows }
-        if isViewingCachedData { isViewingCachedData = false }
         if !hasReadHermes { hasReadHermes = true }
         errorMessage = nil; sessionLoadError = nil
         cacheHermesRows(pages)
+        if let hermes, let hermesProfile { HermesProfilePreference.saveLastListed(hermesProfile, for: server, in: hermes.preferences) }
     }
 
     /// Writes each listed Profile's rows read so far to its offline cache, every row it read,
@@ -1994,12 +1999,14 @@ final class SessionListViewModel {
     @discardableResult
     private func showCachedHermesSessions(provisional: Bool) -> Bool {
         guard let hermes, let hermesCache else { return false }
-        // A list that never reached the host to settle its Profile reads the server's pick.
+        // A list that never reached the host to settle its Profile reads the server's pick, else
+        // the Profile it last read, which it shows without taking: the host still settles that.
         let picked = hermesProfile ?? hermes.preferences.string(forKey: HermesProfilePreference.key(for: server))
-        guard hermesShowsAllProfiles || picked != nil else { return false }
+        let profile = picked ?? HermesProfilePreference.lastListed(for: server, in: hermes.preferences)
+        guard hermesShowsAllProfiles || profile != nil else { return false }
         let cached: [SessionSummary]
         do {
-            cached = try CacheStore.cachedHermesSessions(serverURL: server, profile: hermesShowsAllProfiles ? nil : picked,
+            cached = try CacheStore.cachedHermesSessions(serverURL: server, profile: hermesShowsAllProfiles ? nil : profile,
                                                          in: hermesCache)
         } catch {
             cacheErrorMessage = error.localizedDescription
@@ -2044,8 +2051,9 @@ final class SessionListViewModel {
     /// Shows the host's mark as `unread` at once and writes it once the session's earlier write
     /// has landed, so the host takes them in the order they were made; a refused or lost write
     /// shows the host's again. A later write to the same session replaces this one's outcome.
+    /// Nothing while the rows are cached: the socket may be up before the host's rows are in.
     private func setHermesUnread(_ unread: Bool, _ session: SessionSummary) {
-        guard let wire = hermesWire, let key = Self.nonEmpty(session.sessionId),
+        guard !isViewingCachedData, let wire = hermesWire, let key = Self.nonEmpty(session.sessionId),
               let profile = Self.nonEmpty(session.profile) ?? hermesProfile else { return }
         let mark = HermesUnreadMark(unread: unread)
         hermesUnreadMarks[key] = mark
