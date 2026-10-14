@@ -81,7 +81,7 @@ import SwiftUI
         if let card = provisioner.pluginCard { pluginCallout(card) }
         if let pairing = provisioner.pairing {
             if pairing.preferencesNeedSync == true {
-                Text("Preferences aren’t confirmed. Try again to sync this iPhone with the relay.")
+                Text("Not synced with the relay yet.")
                     .font(AppFont.caption()).foregroundStyle(.secondary)
                 Button("Try again.") {
                     preferenceTask = Task { await provisioner.updatePreferences(pairing.effectivePreferences) }
@@ -93,7 +93,7 @@ import SwiftUI
                 preferenceToggle(String(localized: "Subagent Notifications"), keyPath: \.muteSubagents, inverted: true)
                 preferenceToggle(String(localized: "Show Previews"), keyPath: \.previews)
                 preferenceToggle(String(localized: "Quiet the Open Chat"), keyPath: \.presenceSuppression)
-                Text("For this iPhone and the selected server. Quiet the Open Chat hides banners for the chat on screen, except approvals, questions and errors. Previews include message text; your iPhone’s notification settings still apply.")
+                Text("Previews include message text.")
                     .font(AppFont.caption()).foregroundStyle(.secondary)
             }
             if provisioner.phase == .savingPreferences {
@@ -107,7 +107,7 @@ import SwiftUI
                 .disabled(provisioner.isWorking)
                 .frame(minHeight: 44)
             if provisioner.notificationsOff {
-                notificationsOffRow(title: nil, message: String(localized: "Notifications are off for Hermex, so this server’s notifications can’t show on this iPhone."))
+                notificationsOffRow(title: nil, message: String(localized: "Notifications are off for Hermex in iOS Settings."))
             }
         } else if provisioner.connection != nil {
             Button(provisioner.isWorking ? String(localized: "Setting up…") : String(localized: "Turn on notifications…")) {
@@ -117,12 +117,12 @@ import SwiftUI
             .frame(minHeight: 44)
             if provisioner.notificationsOff {
                 notificationsOffRow(title: String(localized: "Notifications are off for Hermex"),
-                                    message: String(localized: "Allow notifications for Hermex in iOS Settings, then turn this on again."))
+                                    message: String(localized: "Allow them in iOS Settings, then try again."))
             }
             if provisioner.showsSteps {
                 ForEach(HermexPushProvisioner.Step.allCases) { step in stepRow(step) }
             }
-            Text("Hermex sets this Hermes host up for push and pairs this iPhone with its relay. Your host encrypts every notification’s text: the relay only ever sees ciphertext.")
+            Text("The relay only ever sees encrypted text.")
                 .font(AppFont.caption()).foregroundStyle(.secondary)
         }
         // Also available after pairing, so an expired sign-in can be repaired
@@ -164,14 +164,14 @@ import SwiftUI
         }
         .disabled(!provisioner.canSendTest)
         .frame(minHeight: 44)
-        Text("Sends one test through the relay to every iPhone paired with this Hermes host. It checks the relay, Apple and this iPhone, not your host’s connection to the relay.")
+        Text("Goes to every iPhone paired with this host.")
             .font(AppFont.caption()).foregroundStyle(.secondary)
         if !pairing.effectivePreferences.replies {
             Text("Turn on Reply Notifications to send a test.")
                 .font(AppFont.caption()).foregroundStyle(.secondary)
         } else if provisioner.testDelivered {
             Label {
-                Text("Sent. Apple accepted the test; it should arrive in a few seconds.")
+                Text("Sent. It should arrive in a few seconds.")
             } icon: {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
             }
@@ -235,11 +235,11 @@ import SwiftUI
         case .status(.restartNeeded(let loaded)) where HermexPushPlugin.canRestart(loaded):
             // The loaded plugin has the restart route, so restarting is the card's one action.
             callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
-                    message: Text("The new plugin is installed, but Hermes loads plugins only when it starts."),
+                    message: Text("Hermes loads the new plugin when it restarts."),
                     action: String(localized: "Restart Hermes…")) { isConfirmingRestart = true }
         case .status(.restartNeeded), .status(.setupNeedsRestart):
             callout("arrow.clockwise.circle.fill", tint: .orange, title: Text("Restart Hermes to finish"),
-                    message: Text("The new plugin is installed, but Hermes loads plugins only when it starts. Restart `hermes dashboard` on your host, then check again. Hermex can’t restart it from this iPhone."),
+                    message: Text("Restart `hermes dashboard` on your host, then check again."),
                     action: provisioner.phase == .checkingPlugin ? String(localized: "Checking…") : String(localized: "Check again")) {
                 Task { await provisioner.checkPluginAgain() }
             }
@@ -248,7 +248,7 @@ import SwiftUI
                     message: Text("Waiting for Hermes to come back"))
         case .status(.restartTimedOut):
             callout("exclamationmark.triangle.fill", tint: .red, title: Text("Hermes didn’t come back"),
-                    message: Text("Hermes hasn’t answered since it restarted. If it stopped, start `hermes dashboard` on your host, then check again."),
+                    message: Text("If it stopped, start `hermes dashboard` on your host."),
                     action: provisioner.phase == .checkingPlugin ? String(localized: "Checking…") : String(localized: "Check again")) {
                 Task { await provisioner.checkPluginAgain() }
             }

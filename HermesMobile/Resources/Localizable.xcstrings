@@ -21783,6 +21783,112 @@
         }
       }
     },
+    "Allow them in iOS Settings, then try again." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اسمح بها في إعدادات iOS، ثم حاول مرة أخرى."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Erlaube sie in den iOS-Einstellungen und versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Permítelas en los Ajustes de iOS y vuelve a intentarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Autorisez-les dans les Réglages iOS, puis réessayez."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "אפשר אותן בהגדרות iOS ונסה שוב."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Consentile nelle Impostazioni di iOS, poi riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "iOSの設定で許可してから、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "iOS 설정에서 허용한 뒤 다시 시도하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sta ze toe in iOS-instellingen en probeer het opnieuw."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zezwól na nie w Ustawieniach iOS i spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Permita-as nos Ajustes do iOS e tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Разрешите их в настройках iOS и повторите попытку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "iOS Ayarları’nda izin verin, sonra yeniden deneyin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انہیں iOS سیٹنگز میں اجازت دیں، پھر دوبارہ کوشش کریں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請在 iOS 設定中允許，然後再試一次。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "请在 iOS 设置中允许，然后再试一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請在 iOS 設定中允許，然後再試一次。"
+          }
+        }
+      }
+    },
     "An entry you turn off comes back only from here." : {
       "localizations" : {
         "ar" : {
@@ -65699,6 +65805,112 @@
     },
     "Goes straight to %@ on this bot's Mac to unlock it for this chat. Hermex never saves it." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Geht direkt an %@ auf dem Mac dieses Bots, um es für diesen Chat zu entsperren. Hermex speichert es nie." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Va directamente a %@ en el Mac de este bot para desbloquearlo en este chat. Hermex nunca lo guarda." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Envoyé directement à %@ sur le Mac de ce bot pour le déverrouiller dans cette discussion. Hermex ne l’enregistre jamais." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Va direttamente a %@ sul Mac di questo bot per sbloccarlo in questa chat. Hermex non la salva mai." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Trafia bezpośrednio do aplikacji %@ na Macu tego bota, aby odblokować ją na potrzeby tego czatu. Hermex nigdy tego nie zapisuje." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Vai direto para %@ no Mac deste bot para desbloqueá-lo neste chat. O Hermex nunca a salva." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Gaat rechtstreeks naar %@ op de Mac van deze bot om het voor deze chat te ontgrendelen. Hermex bewaart het nooit." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu sohbet için kilidini açmak üzere doğrudan bu botun Mac’indeki %@ uygulamasına gider. Hermex bunu asla kaydetmez." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Передаётся напрямую в %@ на Mac этого бота, чтобы разблокировать его для этого чата. Hermex никогда это не сохраняет." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このチャットでロックを解除するため、このボットのMac上の%@に直接送信されます。Hermexには保存されません。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "将直接发送到此机器人 Mac 上的 %@，以便在此聊天中解锁。Hermex 绝不会保存它。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 채팅에서 잠금을 해제하기 위해 이 봇의 Mac에 있는 %@(으)로 바로 전송됩니다. Hermex는 이 값을 저장하지 않습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تُرسل مباشرةً إلى %@ على جهاز Mac الخاص بهذا الروبوت لفتح قفله في هذه الدردشة. لا يحفظها Hermex أبدًا." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "נשלח ישירות אל %@ ב‑Mac של הבוט הזה כדי לבטל את הנעילה עבור הצ׳אט הזה. ‏Hermex לעולם אינו שומר אותו." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اس چیٹ کے لیے غیر مقفل کرنے کو سیدھا اس بوٹ کے Mac پر %@ کو جاتا ہے۔ Hermex اسے کبھی محفوظ نہیں کرتا۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "會直接傳送至此機器人 Mac 上的 %@，以在此聊天中解鎖。Hermex 絕不會儲存它。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "會直接傳送至此機械人 Mac 上的 %@，以在此對話中解鎖。Hermex 絕不會儲存它。" } } } },
     "Goes straight to the password manager on this bot's Mac to unlock it for this chat. Hermex never saves it." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Geht direkt an den Passwort-Manager auf dem Mac dieses Bots, um ihn für diesen Chat zu entsperren. Hermex speichert es nie." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Va directamente al gestor de contraseñas en el Mac de este bot para desbloquearlo en este chat. Hermex nunca lo guarda." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Envoyé directement au gestionnaire de mots de passe sur le Mac de ce bot pour le déverrouiller dans cette discussion. Hermex ne l’enregistre jamais." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Va direttamente al gestore di password sul Mac di questo bot per sbloccarlo in questa chat. Hermex non la salva mai." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Trafia bezpośrednio do menedżera haseł na Macu tego bota, aby odblokować go na potrzeby tego czatu. Hermex nigdy tego nie zapisuje." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Vai direto para o gerenciador de senhas no Mac deste bot para desbloqueá-lo neste chat. O Hermex nunca a salva." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Gaat rechtstreeks naar de wachtwoordbeheerder op de Mac van deze bot om die voor deze chat te ontgrendelen. Hermex bewaart het nooit." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu sohbet için kilidini açmak üzere doğrudan bu botun Mac’indeki parola yöneticisine gider. Hermex bunu asla kaydetmez." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Передаётся напрямую в менеджер паролей на Mac этого бота, чтобы разблокировать его для этого чата. Hermex никогда это не сохраняет." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このチャットでロックを解除するため、このボットのMac上のパスワードマネージャに直接送信されます。Hermexには保存されません。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "将直接发送到此机器人 Mac 上的密码管理器，以便在此聊天中解锁。Hermex 绝不会保存它。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 채팅에서 잠금을 해제하기 위해 이 봇의 Mac에 있는 비밀번호 관리자로 바로 전송됩니다. Hermex는 이 값을 저장하지 않습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تُرسل مباشرةً إلى مدير كلمات المرور على جهاز Mac الخاص بهذا الروبوت لفتح قفله في هذه الدردشة. لا يحفظها Hermex أبدًا." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "נשלח ישירות אל מנהל הסיסמאות ב‑Mac של הבוט הזה כדי לבטל את הנעילה עבור הצ׳אט הזה. ‏Hermex לעולם אינו שומר אותו." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اس چیٹ کے لیے غیر مقفل کرنے کو سیدھا اس بوٹ کے Mac پر پاس ورڈ مینیجر کو جاتا ہے۔ Hermex اسے کبھی محفوظ نہیں کرتا۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "會直接傳送至此機器人 Mac 上的密碼管理工具，以在此聊天中解鎖。Hermex 絕不會儲存它。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "會直接傳送至此機械人 Mac 上的密碼管理工具，以在此對話中解鎖。Hermex 絕不會儲存它。" } } } },
+    "Goes to every iPhone paired with this host." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يُرسل إلى كل iPhone مقترن بهذا المضيف."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Geht an jedes iPhone, das mit diesem Host gekoppelt ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Llega a cada iPhone vinculado con este host."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Arrive sur chaque iPhone jumelé à cet hôte."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "נשלח לכל iPhone שמוצמד למארח הזה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Arriva a ogni iPhone abbinato a questo host."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "このホストとペアリングされたすべてのiPhoneに届きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이 호스트와 페어링된 모든 iPhone으로 전송됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gaat naar elke iPhone die met deze host is gekoppeld."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Trafia do każdego iPhone’a sparowanego z tym hostem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vai para cada iPhone pareado com este host."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Приходит на каждый iPhone, связанный с этим хостом."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bu ana bilgisayarla eşlenen her iPhone’a gider."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اس ہوسٹ سے جوڑے گئے ہر iPhone پر جاتا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "會傳送到與此主機配對的每部 iPhone。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "会发送到与此主机配对的每部 iPhone。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "會傳送到與此主機配對的每部 iPhone。"
+          }
+        }
+      }
+    },
     "Gold" : {
       "localizations" : {
         "ar" : {
@@ -66466,6 +66678,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "Hermes 未確認 /%@。再次執行前請先檢查。"
+          }
+        }
+      }
+    },
+    "Hermes loads the new plugin when it restarts." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يحمّل Hermes الإضافة الجديدة عند إعادة تشغيله."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes lädt das neue Plugin beim Neustart."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes carga el nuevo plugin al reiniciarse."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes charge le nouveau plugin au redémarrage."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes טוען את התוסף החדש כשהוא מופעל מחדש."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes carica il nuovo plugin al riavvio."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermesは再起動時に新しいプラグインを読み込みます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes는 다시 시작할 때 새 플러그인을 불러옵니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes laadt de nieuwe plug-in bij het herstarten."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes wczyta nową wtyczkę po ponownym uruchomieniu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O Hermes carrega o novo plugin ao reiniciar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes загрузит новый плагин после перезапуска."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes yeni eklentiyi yeniden başladığında yükler."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes دوبارہ شروع ہونے پر نیا پلگ اِن لوڈ کرتا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 會在重新啟動時載入新外掛。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 会在重新启动时加载新插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermes 會在重新啟動時載入新外掛。"
           }
         }
       }
@@ -70242,6 +70560,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "身分"
+          }
+        }
+      }
+    },
+    "If it stopped, start `hermes dashboard` on your host." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "إذا توقف، شغّل `hermes dashboard` على مضيفك."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Falls es angehalten hat, starte `hermes dashboard` auf deinem Host."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Si se detuvo, inicia `hermes dashboard` en tu host."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "S’il s’est arrêté, lancez `hermes dashboard` sur votre hôte."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "אם הוא נעצר, הפעל את `hermes dashboard` במארח שלך."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Se si è fermato, avvia `hermes dashboard` sul tuo host."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "停止している場合は、ホストで `hermes dashboard` を起動してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "멈췄다면 호스트에서 `hermes dashboard`를 시작하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Als het is gestopt, start `hermes dashboard` op je host."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Jeśli się zatrzymał, uruchom `hermes dashboard` na hoście."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Se ele parou, inicie `hermes dashboard` no seu host."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Если он остановился, запустите `hermes dashboard` на хосте."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Durduysa ana bilgisayarınızda `hermes dashboard` komutunu başlatın."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اگر یہ رک گیا ہو تو اپنے ہوسٹ پر `hermes dashboard` شروع کریں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "如果已停止，請在主機上啟動 `hermes dashboard`。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "如果已停止，请在主机上启动 `hermes dashboard`。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "如果已停止，請在主機上啟動 `hermes dashboard`。"
           }
         }
       }
@@ -74352,6 +74776,218 @@
         }
       }
     },
+    "Not synced with the relay yet." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "لم تتم المزامنة مع المرحّل بعد."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Noch nicht mit dem Relay synchronisiert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aún no se sincronizó con el relay."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pas encore synchronisé avec le relais."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "עדיין לא סונכרן עם הממסר."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Non ancora sincronizzato con il relay."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "まだリレーと同期されていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "아직 릴레이와 동기화되지 않았습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nog niet gesynchroniseerd met de relay."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Jeszcze niezsynchronizowane z przekaźnikiem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ainda não sincronizado com o relay."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ещё не синхронизировано с ретранслятором."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Henüz aktarıcıyla eşitlenmedi."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ابھی ریلے کے ساتھ ہم آہنگ نہیں ہوا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "尚未與中繼同步。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "尚未与中继同步。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "尚未與中繼同步。"
+          }
+        }
+      }
+    },
+    "Notifications are off for Hermex in iOS Settings." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "الإشعارات متوقفة لـ Hermex في إعدادات iOS."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mitteilungen für Hermex sind in den iOS-Einstellungen aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Las notificaciones de Hermex están desactivadas en los Ajustes de iOS."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Les notifications de Hermex sont désactivées dans les Réglages iOS."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ההתראות של Hermex כבויות בהגדרות iOS."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Le notifiche di Hermex sono disattivate nelle Impostazioni di iOS."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "iOSの設定でHermexの通知がオフになっています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "iOS 설정에서 Hermex 알림이 꺼져 있습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Meldingen voor Hermex staan uit in iOS-instellingen."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Powiadomienia Hermex są wyłączone w Ustawieniach iOS."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "As notificações do Hermex estão desativadas nos Ajustes do iOS."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Уведомления Hermex отключены в настройках iOS."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex bildirimleri iOS Ayarları’nda kapalı."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "iOS سیٹنگز میں Hermex کی اطلاعات بند ہیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex 的通知已在 iOS 設定中關閉。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex 的通知已在 iOS 设置中关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex 的通知已在 iOS 設定中關閉。"
+          }
+        }
+      }
+    },
     "Notifications, Live Activities and sharing still show content." : {
       "localizations" : {
         "ar" : {
@@ -74666,6 +75302,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "或在任何程式碼區塊中點一下換行。"
+          }
+        }
+      }
+    },
+    "Previews include message text." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تتضمن المعاينات نص الرسالة."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vorschauen enthalten Nachrichtentext."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Las vistas previas incluyen el texto del mensaje."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Les aperçus incluent le texte du message."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "תצוגות מקדימות כוללות את טקסט ההודעה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Le anteprime includono il testo del messaggio."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "プレビューにはメッセージの本文が含まれます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "미리보기에는 메시지 텍스트가 포함됩니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Voorvertoningen bevatten berichttekst."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Podglądy zawierają treść wiadomości."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "As prévias incluem o texto da mensagem."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Предпросмотр включает текст сообщения."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Önizlemeler mesaj metnini içerir."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "پیش نظاروں میں پیغام کا متن شامل ہوتا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "預覽包含訊息文字。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "预览包含消息文字。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "預覽包含訊息文字。"
           }
         }
       }
@@ -75094,6 +75836,218 @@
         }
       }
     },
+    "Restart `hermes dashboard` on your host, then check again." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "أعد تشغيل `hermes dashboard` على مضيفك، ثم تحقق مرة أخرى."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Starte `hermes dashboard` auf deinem Host neu und prüfe dann erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Reinicia `hermes dashboard` en tu host y vuelve a comprobar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Redémarrez `hermes dashboard` sur votre hôte, puis vérifiez à nouveau."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הפעל מחדש את `hermes dashboard` במארח שלך ובדוק שוב."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Riavvia `hermes dashboard` sul tuo host, poi controlla di nuovo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ホストで `hermes dashboard` を再起動してから、もう一度確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "호스트에서 `hermes dashboard`를 다시 시작한 뒤 다시 확인하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Herstart `hermes dashboard` op je host en controleer opnieuw."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Uruchom ponownie `hermes dashboard` na hoście, a potem sprawdź znowu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Reinicie `hermes dashboard` no seu host e verifique novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Перезапустите `hermes dashboard` на хосте и проверьте снова."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ana bilgisayarınızda `hermes dashboard` komutunu yeniden başlatın, sonra tekrar kontrol edin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اپنے ہوسٹ پر `hermes dashboard` دوبارہ شروع کریں، پھر دوبارہ چیک کریں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請在主機上重新啟動 `hermes dashboard`，然後再檢查一次。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "请在主机上重新启动 `hermes dashboard`，然后再检查一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "請在主機上重新啟動 `hermes dashboard`，然後再檢查一次。"
+          }
+        }
+      }
+    },
+    "Sent. It should arrive in a few seconds." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تم الإرسال. يُفترض أن يصل خلال ثوانٍ."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gesendet. Sie sollte in wenigen Sekunden ankommen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Enviada. Debería llegar en unos segundos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Envoyée. Elle devrait arriver dans quelques secondes."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "נשלח. אמור להגיע בעוד כמה שניות."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Inviata. Dovrebbe arrivare tra pochi secondi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "送信しました。数秒で届くはずです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "전송했습니다. 몇 초 안에 도착할 것입니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Verstuurd. Hij zou binnen een paar seconden moeten aankomen."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wysłano. Powinno dotrzeć w ciągu kilku sekund."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Enviada. Deve chegar em alguns segundos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Отправлено. Должно прийти через несколько секунд."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gönderildi. Birkaç saniye içinde gelmesi gerekir."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "بھیج دیا گیا۔ چند سیکنڈ میں پہنچ جانا چاہیے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已傳送，應會在幾秒內送達。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已发送，应会在几秒内送达。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已傳送，應會在幾秒內送達。"
+          }
+        }
+      }
+    },
     "Sign In with Browser" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Im Browser anmelden" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Iniciar sesión con el navegador" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Se connecter avec le navigateur" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Accedi con il browser" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zaloguj się w przeglądarce" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Entrar com o navegador" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Aanmelden met browser" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Tarayıcıyla Oturum Aç" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Войти через браузер" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "ブラウザでサインイン" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "使用浏览器登录" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "브라우저로 로그인" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تسجيل الدخول عبر المتصفح" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "התחברות דרך הדפדפן" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "براؤزر سے سائن اِن کریں" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "使用瀏覽器登入" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "使用瀏覽器登入" } } } },
     "Signs out and removes this server from this iPhone." : {
       "localizations" : {
@@ -75308,6 +76262,112 @@
       }
     },
     "The browser sign-in didn't finish. Try again." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Die Anmeldung im Browser wurde nicht abgeschlossen. Versuche es erneut." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "El inicio de sesión en el navegador no terminó. Inténtalo de nuevo." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "La connexion dans le navigateur n’a pas abouti. Réessayez." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "L’accesso nel browser non è stato completato. Riprova." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Logowanie w przeglądarce nie zostało dokończone. Spróbuj ponownie." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "O login no navegador não foi concluído. Tente novamente." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "De aanmelding in de browser is niet voltooid. Probeer het opnieuw." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Tarayıcıda oturum açma tamamlanmadı. Yeniden deneyin." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Вход через браузер не завершён. Попробуйте ещё раз." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "ブラウザでのサインインが完了しませんでした。もう一度お試しください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "浏览器登录未完成。请重试。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "브라우저 로그인이 완료되지 않았습니다. 다시 시도하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "لم يكتمل تسجيل الدخول عبر المتصفح. حاول مرة أخرى." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "ההתחברות בדפדפן לא הושלמה. נסה שוב." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "براؤزر میں سائن اِن مکمل نہیں ہوا۔ دوبارہ کوشش کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "瀏覽器登入未完成。請再試一次。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "瀏覽器登入未完成。請再試一次。" } } } },
+    "The relay only ever sees encrypted text." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "لا يرى المرحّل إلا نصًا مشفرًا."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Das Relay sieht nur verschlüsselten Text."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "El relay solo ve texto cifrado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Le relais ne voit jamais que du texte chiffré."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הממסר רואה רק טקסט מוצפן."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Il relay vede solo testo cifrato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "リレーが見るのは暗号化されたテキストだけです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "릴레이는 암호화된 텍스트만 봅니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "De relay ziet alleen versleutelde tekst."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Przekaźnik widzi tylko zaszyfrowany tekst."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O relay só vê texto criptografado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ретранслятор видит только зашифрованный текст."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aktarıcı yalnızca şifrelenmiş metin görür."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ریلے صرف خفیہ کردہ متن دیکھتا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "中繼只會看到加密文字。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "中继只会看到加密文字。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "中繼只會看到加密文字。"
+          }
+        }
+      }
+    },
     "The server still receives them." : {
       "localizations" : {
         "ar" : {
