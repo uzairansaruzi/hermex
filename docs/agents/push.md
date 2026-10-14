@@ -20,6 +20,8 @@ see [Push provisioning](bots.md#push-provisioning) and
   restart on the host ([Push provisioning](bots.md#push-provisioning)).
   From 0.5.0 it also lists its mounted routes, which other features that need
   the plugin gate on, so the plugin is useful without push set up (#1235).
+  From 0.6.0 it adds git fetch, pull and branch-create routes for Hermes chats
+  (#1236, [Workspace on a Hermes host](bots.md#workspace-on-a-hermes-host)).
   From 0.7.0 it serves provider account limits for Hermes Usage
   (#1237, [Insights on a Hermes host](bots.md#insights-on-a-hermes-host)).
 - **Relay.** A Cloudflare Worker in the same repository. The default is

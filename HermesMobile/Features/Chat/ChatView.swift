@@ -1618,7 +1618,7 @@ struct ChatView: View {
     /// webui pushes to the configured upstream. A Hermes host pushes there too, or to origin as
     /// the branch's new upstream when it has none (#1115), so its copy names the branch and both.
     private var pushConfirmationMessage: String {
-        guard !gitAvailabilityViewModel.supportsSync else {
+        guard gitAvailabilityViewModel.git?.isHermes == true else {
             return String(localized: "Push the current branch to its configured upstream remote?")
         }
         let branch = gitAvailabilityViewModel.currentBranchName
@@ -2429,14 +2429,11 @@ struct ChatView: View {
     }
 
     /// A fresh Git state for the chat's repository: webui's session, or a Hermes chat's folder
-    /// while Files can read it (#1114), which has no fetch or pull. Without one, Git stays hidden.
+    /// while Files can read it (#1114), which syncs only through hermex-push (#1236). Without one,
+    /// Git stays hidden.
     private func loadInitialGitAvailability() async {
         let availabilityViewModel = if isHermesSession {
-            GitWorkspaceAvailabilityViewModel(
-                session: session,
-                server: server,
-                git: browsableHermesWorkspace == nil ? nil : viewModel.hermesWorkspaceGit
-            )
+            GitWorkspaceAvailabilityViewModel(git: browsableHermesWorkspace == nil ? nil : viewModel.hermesWorkspaceGit)
         } else {
             GitWorkspaceAvailabilityViewModel(session: session, server: server)
         }

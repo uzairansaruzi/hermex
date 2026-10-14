@@ -1485,8 +1485,9 @@ panel (#1113) and Git (#1114) read the same context.
   leaves the path unmapped. A diff over 512 KiB shows webui's too-large notice, and a
   `Binary files … differ` patch the binary one. A failed git call is 400 `{detail}`, git's
   stderr: it reads as "Repository status unavailable", and neither it nor the root is shown or
-  logged. Fetch and Pull are webui-only and hidden; the menu shows the branch and
-  `↑ahead ↓behind` as a row above Changes instead. The turn-end refresh and the
+  logged. Fetch and Pull show only through the hermex-push plugin (Sync, below); without it they
+  are hidden and the menu shows the branch and `↑ahead ↓behind` as a row above Changes
+  instead. The turn-end refresh and the
   Changes card work as on webui. A `cwd` or backend change closes an open Git sheet and reads the
   new folder's repository.
 - **Git writes (#1115).** Stage Changes, Commit, Commit & Push, Push and the inline commit button
@@ -1534,8 +1535,19 @@ panel (#1113) and Git (#1114) read the same context.
   host rewrites names first, so one it would change (`HermesREST.isBranchName`) is refused. A switch is a write the chat owns, as above, holds
   the repository's `GitWriteLock` (the picker is disabled while another write holds it), and any
   uncommitted change, untracked files included, refuses it with "Commit or discard first.":
-  there is no stash, and `git switch` would carry the changes across. New Branch, Fetch and Pull
-  stay hidden. After a switch the status and branches are read again.
+  there is no stash, and `git switch` would carry the changes across. After a switch the status
+  and branches are read again.
+- **Sync (#1236).** The host's git routes end at `branch/switch`, so Fetch, Pull and New Branch
+  go through hermex-push 0.6.0's `POST /api/plugins/hermex-push/git/fetch|pull {path}` and
+  `git/branch {path, name}` (`git fetch --prune`, `git pull --ff-only`, `git switch -c name`
+  from HEAD), each `{ok, message}` or 400 `{detail}` as the host's own routes answer. They show
+  only while the plugin's `/capabilities` lists all three (`HermesGitClient.supportsSync()`,
+  read with each Git load through the chat's own connection), and are hidden, exactly as before,
+  for no plugin, an older one or one not loaded. Each is a write the chat owns, holding the
+  `GitWriteLock`, and reads the status again after it; git's `message` is not shown. New Branch
+  is allowed on a dirty tree, carrying the changes, which is the usual reason to make one; a
+  switch to an existing branch still refuses them, and there is still no stash. Pull is
+  fast-forward only, with webui's confirmation copy.
 
 ## Memory on a Hermes host
 

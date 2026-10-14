@@ -30,6 +30,12 @@ protocol GitDataClient: Sendable {
     /// Commits what is staged, or only `files` when they are named.
     func commit(message: String, only files: [GitFile]?) async throws -> GitCommitResponse
     func push() async throws -> GitRemoteActionResponse
+    /// Whether this repository can fetch, pull and create a branch: always on webui, and on a
+    /// Hermes host once its hermex-push plugin has their routes loaded (#1236).
+    func supportsSync() async -> Bool
+    func fetch() async throws -> GitRemoteActionResponse
+    /// Fast-forward only: it never makes a merge commit.
+    func pull() async throws -> GitRemoteActionResponse
     /// A suggested message for what is staged, or for `files`. `previous` is the last suggestion,
     /// which a client that can ask for a different one avoids.
     func suggestMessage(for files: [GitFile]?, avoiding previous: String?) async throws -> GitCommitMessageResponse
@@ -37,7 +43,8 @@ protocol GitDataClient: Sendable {
     /// The branch picker's local and remote branches.
     func branches() async throws -> GitBranches?
     /// Switches to `target`'s branch, or creates one (`newBranch`). With `stashingChanges` webui
-    /// stashes uncommitted changes first; a Hermes host refuses any (#1116).
+    /// stashes uncommitted changes first; a Hermes host refuses a switch with any (#1116), but
+    /// creates a branch carrying them (#1236).
     func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool) async throws -> GitCheckoutResponse
 }
 
@@ -118,6 +125,16 @@ struct WebUIGitClient: GitDataClient {
 
     func push() async throws -> GitRemoteActionResponse {
         try await apiClient.gitPush(sessionID: sessionID)
+    }
+
+    func supportsSync() async -> Bool { true }
+
+    func fetch() async throws -> GitRemoteActionResponse {
+        try await apiClient.gitFetch(sessionID: sessionID)
+    }
+
+    func pull() async throws -> GitRemoteActionResponse {
+        try await apiClient.gitPull(sessionID: sessionID)
     }
 
     /// webui has no way to ask for a different message, so `previous` goes unused.

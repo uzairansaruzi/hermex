@@ -68,13 +68,10 @@ final class GitWorkspaceViewModel {
 /// Lightweight toolbar probe for whether a chat's workspace is a git repository.
 /// The toolbar stays hidden unless the server confirms `is_git == true`.
 ///
-/// Reads, commits, pushes and branch switches go through `git` (#1114, #1115, #1116). Fetch and
-/// pull go to webui's session routes and need `session`'s ID, so a Hermes chat, which has none,
-/// has none.
+/// Everything goes through `git` (#1114, #1115, #1116): reads, commits, pushes, branch switches,
+/// and fetch, pull and New Branch where `supportsSync` (#1236).
 @Observable
 final class GitWorkspaceAvailabilityViewModel {
-    private let session: SessionSummary
-    private let apiClient: APIClient
     /// What the menu, Changes sheet and diffs read; nil when the chat has no repository to read.
     let git: (any GitDataClient)?
 
@@ -93,20 +90,21 @@ final class GitWorkspaceAvailabilityViewModel {
     private(set) var commitPhase: GitCommitPhase?
     private(set) var actionErrorMessage: String?
     private(set) var lastActionMessage: String?
+    /// Whether fetch, pull and New Branch show: always on webui, and on a Hermes chat while the
+    /// host's hermex-push plugin lists their routes (#1236), read with each load. Stash-and-switch
+    /// stays webui's alone: a Hermes switch never asks for it (#1116).
+    private(set) var supportsSync = false
     private var hasLoaded = false
     /// Set once the chat leaves this repository (`retire()`).
     private(set) var isRetired = false
 
-    init(session: SessionSummary, server: URL, git: (any GitDataClient)?, apiClient: APIClient? = nil) {
-        self.session = session
-        self.apiClient = apiClient ?? APIClient(baseURL: server)
+    init(git: (any GitDataClient)?) {
         self.git = git
     }
 
     /// A webui session's repository, read and written through its session routes.
     convenience init(session: SessionSummary, server: URL, apiClient: APIClient? = nil) {
-        let client = apiClient ?? APIClient(baseURL: server)
-        self.init(session: session, server: server, git: WebUIGitClient(session: session, apiClient: client), apiClient: client)
+        self.init(git: WebUIGitClient(session: session, apiClient: apiClient ?? APIClient(baseURL: server)))
     }
 
     /// Called when the chat leaves this repository, as a Hermes chat does when its folder changes:
@@ -121,10 +119,6 @@ final class GitWorkspaceAvailabilityViewModel {
 
     /// Whether the composer's branch picker lists and switches branches.
     var supportsBranches: Bool { git != nil }
-
-    /// Whether fetch, pull, New Branch and stash-and-switch are available: webui's routes, which
-    /// take its session ID. False on a Hermes chat.
-    var supportsSync: Bool { session.sessionId != nil }
 
     @MainActor
     func loadIfNeeded() async {
@@ -141,11 +135,13 @@ final class GitWorkspaceAvailabilityViewModel {
         }
 
         isLoading = true
+        async let sync = git.supportsSync()
 
         do {
             let info = try await git.info()
             gitInfo = info
             hasRepository = info?.isGit == true
+            supportsSync = await sync
             lastError = nil
 
             if hasRepository {
@@ -279,17 +275,13 @@ final class GitWorkspaceAvailabilityViewModel {
         }
     }
 
-    /// Push through the repository client; fetch and pull through webui's session routes.
+    /// The repository client's call for `action`; fetch and pull only where `supportsSync`.
     private func remoteCall(_ action: GitRemoteAction) -> (() async throws -> GitRemoteActionResponse)? {
+        guard let git else { return nil }
         switch action {
-        case .push:
-            guard let git else { return nil }
-            return { try await git.push() }
-        case .fetch, .pull:
-            guard let sessionID = session.sessionId else { return nil }
-            let apiClient = apiClient
-            return action == .fetch ? { try await apiClient.gitFetch(sessionID: sessionID) }
-                : { try await apiClient.gitPull(sessionID: sessionID) }
+        case .push: return { try await git.push() }
+        case .fetch: return supportsSync ? { try await git.fetch() } : nil
+        case .pull: return supportsSync ? { try await git.pull() } : nil
         }
     }
 
@@ -388,11 +380,16 @@ final class GitWorkspaceAvailabilityViewModel {
     }
 
     /// Re-fetch info, status and branches after the advanced staging sheet mutates the
-    /// working tree, or a Hermes write here fails partway, so the toolbar badge and Changes row
-    /// stay in sync.
+    /// working tree, a turn ends, or a Hermes write here fails partway, so the toolbar badge and
+    /// Changes row stay in sync. A closed sync gate is asked again, so a host whose plugin read
+    /// failed, or that has loaded the plugin since, shows sync without reopening the chat; an open
+    /// one isn't, and a route that has gone fails as any write does.
     @MainActor
     func refreshAfterExternalMutation() async {
+        let gate = supportsSync ? nil : git
+        async let sync = gate?.supportsSync()
         await refreshGitInfo()
+        if let open = await sync { supportsSync = open }
         guard let git, hasRepository else { return }
         if let refreshed = try? await git.status() {
             status = refreshed
@@ -527,8 +524,8 @@ enum GitQuickCommitOutcome: Equatable {
 struct GitWriteAvailability: Equatable {
     let isStreaming: Bool
     let isViewingCachedData: Bool
-    /// A Hermes chat's repository has no fetch or pull (#1114, #1115): those entries are
-    /// hidden, not disabled.
+    /// Fetch and pull are hidden, not disabled, where the repository can't sync: a Hermes chat
+    /// whose host lacks hermex-push's routes (#1114, #1236).
     var hidesSync = false
 
     var writesDisabled: Bool { isStreaming || isViewingCachedData }

@@ -906,8 +906,8 @@ extension APIClientGitTests {
         XCTAssertEqual(refusal, String(localized: "Git couldn’t finish this change on your Hermes host."))
     }
 
-    /// Nothing is sent for a dirty tree, a name the host would rewrite, a new branch or a stash,
-    /// none of which a Hermes picker offers but the first.
+    /// Nothing is sent for a dirty tree, a name the host would rewrite or a stash, none of which a
+    /// Hermes picker offers but the first. (A new branch goes through hermex-push, #1236.)
     @MainActor
     func testAHermesSwitchIsRefusedBeforeItIsSent() async throws {
         nonisolated(unsafe) var dirty = true
@@ -924,10 +924,9 @@ extension APIClientGitTests {
         HermesHostFixture.script { dirty = false }
         await attempt(GitCheckoutTarget(ref: "feat+x", mode: .local))
         await attempt(GitCheckoutTarget(ref: "origin", mode: .remote, track: true))
-        await attempt(GitCheckoutTarget(ref: "main", mode: .local, newBranch: "dev"))
         await attempt(GitCheckoutTarget(ref: "dev", mode: .local), stashing: true)
 
-        XCTAssertEqual(refusals, [.uncommittedSwitch, .failed, .failed, .failed, .failed])
+        XCTAssertEqual(refusals, [.uncommittedSwitch, .failed, .failed, .failed])
         XCTAssertEqual(HermesGitHost.writes, [])
     }
 
@@ -953,6 +952,85 @@ extension APIClientGitTests {
 
         XCTAssertEqual(refusals, [.failed, .failed, .failed])
         XCTAssertEqual(HermesGitHost.writes, ["switch solo"])
+    }
+
+    // MARK: - Sync through hermex-push (#1236)
+
+    /// Sync shows only while the plugin lists all three routes. A plugin without them, an older
+    /// one (404), and a read that fails all mean none.
+    @MainActor
+    func testAHermesRepositorySyncsOnlyWhileThePluginListsEveryRoute() async throws {
+        let answers: [(HermesHostFixture.Reply, Bool)] = [
+            (HermesGitHost.capabilities(), true),
+            (HermesGitHost.capabilities(["GET /capabilities", "POST /git/fetch", "POST /git/pull"]), false),
+            (.json(404, .object(["detail": .string("Not Found")])), false),
+            (.json(500, .null), false),
+        ]
+        for (reply, expected) in answers {
+            HermesHostFixture.reset()
+            let git = HermesGitHost.client { request in
+                request.url?.path == "/api/plugins/hermex-push/capabilities" ? reply : HermesGitHost.repositoryReply(request)
+            }
+            let supports = await git.supportsSync()
+            XCTAssertEqual(supports, expected, "\(reply)")
+        }
+    }
+
+    /// Fetch, pull and New Branch name the root, from a subfolder too, and answer the status read
+    /// again rather than git's output. A new branch is made from HEAD on a dirty tree.
+    @MainActor
+    func testAHermesFetchPullAndNewBranchGoThroughThePluginAtTheRoot() async throws {
+        let git = HermesGitHost.client(cwd: HermesGitHost.repository + "/Sources") { request in
+            if request.url?.path.hasPrefix("/api/plugins/hermex-push/git/") == true {
+                return .json(200, .object(["ok": .bool(true), "message": .string("From /Users/agent/remote")]))
+            }
+            return HermesGitHost.repositoryReply(request, rows: [("a.swift", 1, 0, "M", false)],
+                                                 flags: [("a.swift", false, true, false, false)])
+        }
+
+        let fetched = try await git.fetch()
+        let pulled = try await git.pull()
+        let created = try await git.checkout(GitCheckoutTarget(ref: "main", mode: .local, newBranch: "feature/y"),
+                                             stashingChanges: false)
+
+        let posts = HermesGitHost.requests.filter { $0.httpMethod == "POST" }
+        XCTAssertEqual(posts.map { $0.url?.path }, ["fetch", "pull", "branch"].map { "/api/plugins/hermex-push/git/" + $0 })
+        XCTAssertEqual(posts.map(HermesCronFixture.body), [
+            .object(["path": .string(HermesGitHost.repository)]),
+            .object(["path": .string(HermesGitHost.repository)]),
+            .object(["path": .string(HermesGitHost.repository), "name": .string("feature/y")]),
+        ])
+        XCTAssertNil(fetched.message)
+        XCTAssertNil(pulled.message)
+        XCTAssertEqual(pulled.status?.changedCount, 1)
+        XCTAssertEqual(created.currentBranch, "feature/y")
+    }
+
+    /// A diverged pull, an auth failure or a timeout is the host's 400 or a failed request: the
+    /// write-failure copy, never git's stderr or a host path. A name the plugin would refuse, or a
+    /// stash, sends nothing.
+    @MainActor
+    func testAHermesSyncRefusalNeverShowsGitsOutput() async throws {
+        let git = HermesGitHost.client { request in
+            request.url?.path.hasPrefix("/api/plugins/hermex-push/git/") == true
+                ? .json(400, .object(["detail": .string("fatal: Not possible to fast-forward, aborting. /Users/agent/x")]))
+                : HermesGitHost.repositoryReply(request)
+        }
+        var messages: [String] = []
+        do { _ = try await git.pull() } catch { messages.append(error.localizedDescription) }
+        do { _ = try await git.fetch() } catch { messages.append(error.localizedDescription) }
+        let sent = HermesGitHost.writes
+        var refusals: [HermesGitRefusal?] = []
+        for (name, stashing) in [("my branch", false), ("-b", false), ("dev", true)] {
+            do {
+                _ = try await git.checkout(GitCheckoutTarget(ref: "main", mode: .local, newBranch: name), stashingChanges: stashing)
+            } catch { refusals.append(error as? HermesGitRefusal) }
+        }
+
+        XCTAssertEqual(messages, Array(repeating: String(localized: "Git couldn’t finish this change on your Hermes host."), count: 2))
+        XCTAssertEqual(sent, ["pull", "fetch"])
+        XCTAssertEqual(refusals, [.failed, .failed, .failed])
+        XCTAssertEqual(HermesGitHost.writes, sent)
     }
 }
 
@@ -1050,7 +1128,8 @@ enum HermesGitHost {
     static let contextDiff = diffText(for: "staged.swift")
     static let recentSubjects = "feat(app): add the list\nfix(app): keep the row"
 
-    /// The writes sent, in order, as `stage a.swift`, `unstage (all)`, `commit "message"` or `switch dev`, each
+    /// The writes sent, in order, as `stage a.swift`, `unstage (all)`, `commit "message"`, `switch dev`,
+    /// `fetch` or hermex-push's `branch dev` (#1236), each
     /// followed by ` path=…` unless it named the repository root. A file sent without its
     /// `:(literal)` prefix shows as `glob:a.swift`.
     @MainActor static var writes: [String] {
@@ -1059,7 +1138,7 @@ enum HermesGitHost {
             let route = request.url?.lastPathComponent ?? ""
             let file = body["file"].text.map { $0.hasPrefix(":(literal)") ? String($0.dropFirst(10)) : "glob:" + $0 }
             let detail = file ?? body["message"].text.map { "\"\($0)\"" + (body["push"].flag == false ? "" : " push") }
-                ?? body["branch"].text ?? (route == "unstage" ? "(all)" : nil)
+                ?? body["branch"].text ?? body["name"].text ?? (route == "unstage" ? "(all)" : nil)
             let root = body["path"].text == repository ? nil : "path=\(body["path"].text ?? "none")"
             return ([route] + [detail, root].compactMap { $0 }).joined(separator: " ")
         }
@@ -1070,11 +1149,18 @@ enum HermesGitHost {
         "diff --git a/\(file) b/\(file)\n--- /dev/null\n+++ b/\(file)\n@@ -0,0 +1 @@\n+\(file)\n"
     }
 
-    /// The requests to the git routes, without the sign-in's.
+    /// The requests to the git routes and hermex-push's (#1236), without the sign-in's or the
+    /// plugin's `/capabilities`.
     static var requests: [URLRequest] {
         HermesHostFixture.requests.filter {
-            $0.url?.path.hasPrefix("/api/git/") == true || $0.url?.path == "/api/fs/git-root"
+            ["/api/git/", "/api/plugins/hermex-push/git/"].contains(where: $0.url?.path.hasPrefix ?? { _ in false })
+                || $0.url?.path == "/api/fs/git-root"
         }
+    }
+
+    /// hermex-push's `/capabilities` answer listing `routes` (#1235), or the sync routes by default.
+    static func capabilities(_ routes: [String] = HermesGitClient.syncRoutes) -> HermesHostFixture.Reply {
+        .json(200, .object(["plugin_version": .string("0.6.0"), "routes": .array(routes.map(BotJSON.string))]))
     }
 
     /// A request's route and query, as `/api/git/status path=/repo`.
