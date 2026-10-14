@@ -384,3 +384,44 @@ private struct MathTranscriptBenchmarkView: View {
         }
     }
 }
+
+/// Grows after its first layout, like MarkdownUI's block margins and async highlighting.
+private struct LateGrowingResponse: View {
+    let onTextTop: (CGFloat) -> Void
+    @State private var grown = false
+
+    var body: some View {
+        Text("Reply").responseSelectableText("Reply")
+            .onGeometryChange(for: CGFloat.self, of: { $0.frame(in: .global).minY }, action: onTextTop)
+            .frame(maxWidth: .infinity, minHeight: grown ? 300 : 100, alignment: .topLeading)
+            .task { grown = true }
+    }
+}
+
+extension ResponseSelectionTests {
+    func testRowsAroundAResponseStayClearWhenItGrowsAfterFirstLayout() async throws {
+        var headerBottom: CGFloat = 0
+        var textTop: CGFloat = 0
+        var footerTop: CGFloat = 0
+        let controller = UIHostingController(rootView: VStack(spacing: 0) {
+            Color.clear.frame(height: 40)
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { headerBottom = $0 }
+            ResponseTextSelection(identity: "response") {
+                LateGrowingResponse { textTop = $0 }
+            }
+            Color.clear.frame(height: 20)
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { footerTop = $0 }
+            Spacer(minLength: 0)
+        })
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 800))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        await render(window)
+        await render(window)
+        await render(window)
+
+        XCTAssertEqual(footerTop - headerBottom, 300, accuracy: 0.5, "The response keeps its first, shorter height")
+        XCTAssertEqual(textTop, headerBottom, accuracy: 0.5, "The response spills up under the header")
+    }
+}

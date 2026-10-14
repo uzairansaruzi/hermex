@@ -10,6 +10,12 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     var onAskHermex: ((String) -> Void)?
     @ViewBuilder let content: () -> Content
     @Environment(\.self) private var environment
+    /// The hosted content's height. The content can grow after its first layout
+    /// (MarkdownUI block margins, async code highlighting); reading this in
+    /// `updateUIViewController` turns that growth into an update, so SwiftUI asks
+    /// `sizeThatFits` again instead of keeping a stale height that lets the reply
+    /// spill under the rows above and below it.
+    @State private var contentHeight: CGFloat = 0
 
     func makeUIViewController(context: Context) -> ResponseSelectionController {
         ResponseSelectionController()
@@ -22,7 +28,10 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
             controller.input.selectedTextRange = nil
             controller.identity = identity
         }
+        _ = contentHeight
+        let contentHeight = $contentHeight
         controller.host.rootView = AnyView(content()
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight.wrappedValue = $0 }
             .responseSelectionDocument(controller.scope)
             .textSelection(.disabled)
             .environment(\.self, environment))
