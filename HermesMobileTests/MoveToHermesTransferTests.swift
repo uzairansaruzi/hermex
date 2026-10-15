@@ -461,7 +461,8 @@ private final class FakeHermes: @unchecked Sendable {
 }
 
 /// A scripted webui: the scan listing, Profile switches and JSON exports. Answers only
-/// `webui.example`.
+/// `webui.example` and `studio.example`, the second webui server Move Next opens, with the
+/// same script.
 final class MoveWebuiFixture: URLProtocol {
     private static let lock = NSLock()
     nonisolated(unsafe) static var rows: [[String: BotJSON]] = []
@@ -479,7 +480,9 @@ final class MoveWebuiFixture: URLProtocol {
         lock.withLock { rows = []; allProfiles = true; listingFailure = nil; exports = [:]; switchReplies = [:]; log = [] }
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "webui.example" }
+    override class func canInit(with request: URLRequest) -> Bool {
+        ["webui.example", "studio.example"].contains(request.url?.host)
+    }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func stopLoading() {}
 
