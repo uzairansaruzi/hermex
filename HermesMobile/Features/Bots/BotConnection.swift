@@ -216,6 +216,8 @@ struct BotProfile: Identifiable, Hashable {
     /// (`ui_meta_revisions["hermes-bots"]`). Nil when the host or bot has none; the
     /// avatar is then refetched on every roster load instead of served from memory.
     let lookRevision: Int?
+    /// True when the look marks the asset as an uploaded photo (`imageKind`), not a copy of the face.
+    var isPhoto: Bool { look["imageKind"]?.text == "photo" }
 
     init?(_ row: BotJSON) {
         guard let profile = row["name"].text, !profile.isEmpty else { return nil }
