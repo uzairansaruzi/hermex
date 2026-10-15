@@ -109,9 +109,10 @@ user id as username, no password) and signs in with the bearer, so the version g
 install check and identity check apply. Closing the sheet shows nothing; a sheet closed
 without a code or a refused code shows `.browserSignInFailed`. Signing the same account
 in again from the server's form keeps the connection's UUID. A webui server's Bots
-connection and Move to Hermes's destination keep to a password sign-in: Move saves its
-destination's record long after the check, apart from the connection that would rotate
-its token, so a browser host is refused there with `.browserSignIn`. Not built: a
+connection keeps to a password sign-in. Move to Hermes's host choice opens this same
+form (#1266), which saves the destination as a Hermes server at once, without switching
+to it, so a browser host can be a destination and its own connection rotates the token
+the move then refreshes from (#1265). Not built: a
 foreground rebind of the listener and a background task (on the 8.1 device the socket
 survived 82 s of suspension; a reclaimed one shows "can't connect" in the sheet, and
 signing in again recovers) and a revoke at sign-out (sign-out deletes the record and
@@ -216,8 +217,10 @@ authorization while allowing Cloudflare Access's JSON `Authorization` form; the 
 says why under the row and keeps Connect off. Only one of `CF-Access-Client-Id` and
 `CF-Access-Client-Secret` warns but still connects. A header change keeps the UUID,
 and with it drafts, cache and push pairing; it only retires the live connection. A
-saved list the policy later refuses sends none. The webui's custom headers are never
-a source, and headers are never logged.
+saved list the policy later refuses sends none. The webui's custom headers are a source
+only on a tap: opened from Move to Hermes, the form offers "Use <webui server>'s
+Headers", which fills that server's rows in visibly (#1266). The address is never
+copied. Headers are never logged.
 
 A browser sign-in's own bearer is its `Authorization`, so on that connection the policy
 refuses any custom `Authorization`, Cloudflare Access's JSON form included; Access takes

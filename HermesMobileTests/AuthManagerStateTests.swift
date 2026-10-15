@@ -853,9 +853,9 @@ final class AuthManagerStateTests: XCTestCase {
     }
 
     /// The connect form for `entry` against the scripted Hermes host.
-    private func makeForm(entry: OnboardingViewModel.Entry,
+    private func makeForm(entry: OnboardingViewModel.Entry, moveSource: OnboardingViewModel.MoveSource? = nil,
                           host script: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> OnboardingViewModel {
-        OnboardingViewModel(entry: entry, hermesConfiguration: { HermesHostFixture.configuration(script) })
+        OnboardingViewModel(entry: entry, moveSource: moveSource, hermesConfiguration: { HermesHostFixture.configuration(script) })
     }
 
     func testTheConnectFormAddsAHermesServerFromOnboardingAndFromAddServer() async throws {
@@ -890,38 +890,55 @@ final class AuthManagerStateTests: XCTestCase {
         }
     }
 
-    /// Move to Hermes's host choice (#1218): the form checks the dashboard sign-in and hands it
-    /// back, saving, adding and activating nothing; a webui address is refused.
-    func testTheMoveDestinationFormOnlyChecksAHermesSignIn() async throws {
+    /// Opened from Move to Hermes (#1266), the normal form offers the webui server's headers as
+    /// one tap that fills in exactly those, leaves the address blank, and adds the Hermes server
+    /// without switching to it or offering a move; a webui address is refused.
+    func testTheFormOpenedFromAMoveAddsTheHermesServerWithoutSwitching() async throws {
         defer { HermesHostFixture.reset() }
         HermesHostFixture.reset()
         let keychain = InMemoryKeychainStore()
         let manager = makeFormManager(keychain: keychain)
         await manager.configure(serverURLString: webuiServer.absoluteString, password: "")
-        let form = makeForm(entry: .moveDestination)
+        let webuiHeaders = [CustomHeader(name: "CF-Access-Client-Id", value: "id.access"),
+                            CustomHeader(name: "CF-Access-Client-Secret", value: "secret.access")]
+        let form = makeForm(entry: .addServer, moveSource: .init(name: "Home", headers: webuiHeaders))
+        form.connectionMode = .cloudflareTunnel
+        XCTAssertTrue(form.offersMoveSourceHeaders)
+        XCTAssertEqual(form.customHeaders.map(\.value), ["", ""], "Never filled in on its own")
+
+        form.useMoveSourceHeaders()
+
+        XCTAssertEqual(form.customHeaders.map { [$0.name, $0.value] },
+                       [["CF-Access-Client-Id", "id.access"], ["CF-Access-Client-Secret", "secret.access"]])
+        XCTAssertFalse(form.offersMoveSourceHeaders, "The row goes once used")
+        XCTAssertEqual(form.serverURLString, "", "The address stays blank")
         form.serverURLString = "hermes.example"
         let found = await form.connect(authManager: manager)
         XCTAssertNil(found, "The first Connect only finds the dashboard")
         form.username = "me"
         form.password = "secret"
 
-        let checked = await form.connect(authManager: manager)
+        let added = await form.connect(authManager: manager)
 
-        XCTAssertEqual(checked, hermesServer)
-        let verified = try XCTUnwrap(form.verifiedConnection)
-        XCTAssertEqual(verified.username, "me")
-        XCTAssertEqual(verified.hermesVersion, "0.21.5")
-        XCTAssertEqual(manager.state, .loggedIn(server: webuiServer), "Nothing is activated")
-        XCTAssertFalse(manager.servers.contains { $0.id == hermesServer.absoluteString }, "Nothing is added")
-        XCTAssertNil(try BotConnectionStore(keychain: keychain).load(server: hermesServer), "Nothing is saved")
+        XCTAssertEqual(added, hermesServer)
+        XCTAssertEqual(manager.state, .loggedIn(server: webuiServer), "The move's sheet stays on the webui server")
+        XCTAssertEqual(manager.kind(of: hermesServer), .hermes)
+        XCTAssertNil(manager.moveOffer, "The move goes on by itself")
+        let saved = try XCTUnwrap(BotConnectionStore(keychain: keychain).load(server: hermesServer))
+        XCTAssertEqual(saved.headers?.map(\.value), ["id.access", "secret.access"])
+        let login = HermesHostFixture.requests.first { $0.url?.path == "/auth/password-login" }
+        XCTAssertEqual(login?.value(forHTTPHeaderField: "CF-Access-Client-Secret"), "secret.access")
 
         HermesHostFixture.reset()
-        let webuiForm = makeForm(entry: .moveDestination) { $0.url?.path == "/api/status" ? .json(404, .object([:])) : nil }
+        let webuiForm = makeForm(entry: .addServer, moveSource: .init(name: "Home", headers: [])) {
+            $0.url?.path == "/api/status" ? .json(404, .object([:])) : nil
+        }
+        XCTAssertFalse(webuiForm.offersMoveSourceHeaders, "No headers, no row")
         webuiForm.serverURLString = "webui.example:8787"
         let refused = await webuiForm.connect(authManager: manager)
         XCTAssertNil(refused)
         XCTAssertNotNil(webuiForm.errorMessage, "Only a Hermes dashboard can be a destination")
-        XCTAssertEqual(manager.servers.count, 1)
+        XCTAssertEqual(manager.servers.count, 2)
     }
 
     func testASavedSignInIsOfferedOnlyAtExactlyTheSameAddress() async throws {

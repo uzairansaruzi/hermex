@@ -53,9 +53,10 @@ final class MoveToHermesModelTests: XCTestCase {
     // MARK: Review
 
     /// The scan reads both servers and changes nothing. A same-name Profile is preselected and
-    /// any other waits for a choice; Move stays off until every Profile has one.
+    /// any other starts on the host's default Profile (#1266), which the user can still change.
     func testReviewPreselectsSameNameProfilesAndChangesNothing() async throws {
         host.listed = ["default": ["had"]]
+        host.defaultProfile = "research"
         MoveWebuiFixture.rows = [row("had", profile: "default"), row("new", profile: "default"),
                                  row("big", profile: "research", messages: 12_000), row("ops1", profile: "ops")]
         await draftFile.seed([.session(server: webui, sessionID: "new"): ChatDraft(text: "unsent")])
@@ -67,12 +68,12 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(model.screen, .review)
         XCTAssertEqual(model.destinationName, "Hermes Home")
         XCTAssertEqual(model.review?.profiles.map(\.source), ["default", "ops", "research"])
-        XCTAssertEqual(model.mapping, ["default": .hermes(profile: "default"), "research": .hermes(profile: "research")])
-        XCTAssertEqual(model.unchosenProfile, "ops", "An unmatched Profile is never defaulted")
-        XCTAssertEqual(model.counts, .init(present: 1, toCopy: 1, overLimit: 1, unchecked: 0, drafts: 1))
+        XCTAssertEqual(model.mapping, ["default": .hermes(profile: "default"), "research": .hermes(profile: "research"),
+                                       "ops": .hermes(profile: "research")], "An unmatched Profile starts on the host's default")
+        XCTAssertNil(model.unchosenProfile)
+        XCTAssertEqual(model.counts, .init(present: 1, toCopy: 2, overLimit: 1, unchecked: 0, drafts: 1))
 
         model.mapping["ops"] = .keepOnWebui
-        XCTAssertNil(model.unchosenProfile)
         XCTAssertEqual(model.counts.toCopy, 1, "A kept Profile's chats aren't copied")
 
         XCTAssertNil(auth.moveRecord(forSource: webui.absoluteString), "Nothing is committed at Review")
@@ -96,10 +97,11 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(model.counts, .init(present: 0, toCopy: 1, overLimit: 0, unchecked: 1, drafts: 0))
     }
 
-    /// R1 to R3 are the host's own sign-in refusals; any other failure shows its advice inline.
+    /// R1 and R3 are the host's own sign-in refusals; any other failure shows its advice inline.
+    /// A browser sign-in is never refused (#1266): its failure is advice like any other.
     func testRefusalsComeFromTheHostSignInCheck() async throws {
         let cases: [(BotFailure, MoveToHermesModel.Screen?)] = [
-            (.unsupported, .refused(.noSignIn)), (.browserSignIn, .refused(.singleSignOn)),
+            (.unsupported, .refused(.noSignIn)), (.browserSignIn, nil),
             (.outdated("0.20.9"), .refused(.outdated("0.20.9"))), (.rejected(401), nil)
         ]
         for (failure, expected) in cases {
@@ -167,20 +169,91 @@ final class MoveToHermesModelTests: XCTestCase {
         guard case .finished = model.screen else { return XCTFail("Try Again runs the same pass, got \(model.screen)") }
     }
 
-    /// Without a saved Hermes sign-in, D asks; a signed-in Hermes server is offered, never matched silently.
+    /// Without a saved Hermes sign-in, D asks. Its "Sign in to a Hermes host" is the normal
+    /// sign-in (#1266), which adds the server without switching to it; the move then scans it
+    /// with that server's own sign-in, adopts it at the commit, and only Done switches.
     func testWithoutASavedSignInTheHostIsChosen() async throws {
         try BotConnectionStore(keychain: keychain).remove(server: webui)
+        MoveWebuiFixture.rows = [row("new", profile: "default")]
+        MoveWebuiFixture.exports = ["new": exportData("new")]
         let model = makeModel()
 
         model.open(.start)
 
         XCTAssertEqual(model.screen, .chooseHost)
         XCTAssertTrue(model.hostChoices.isEmpty)
-        model.useVerified(BotConnection(id: UUID(), name: "", address: hermes, username: "admin", password: "secret"))
+        let signedIn = BotConnection(id: UUID(), name: "", address: hermes, username: "admin", password: "secret")
+        XCTAssertTrue(auth.addHermesServer(signedIn, activating: false))
+        XCTAssertEqual(auth.activeServerID, webui.absoluteString, "A sign-in opened from a move never switches servers")
+        model.signedIn(at: hermes)
         await model.settled()
         XCTAssertEqual(model.screen, .review)
-        XCTAssertNil(auth.moveRecord(forSource: webui.absoluteString), "A verified sign-in is saved only by the commit")
-        XCTAssertNil(try BotConnectionStore(keychain: keychain).load(server: hermes))
+        XCTAssertEqual(model.review?.connection.id, signedIn.id, "Scanned with the server's own sign-in")
+        XCTAssertNil(auth.moveRecord(forSource: webui.absoluteString), "Nothing is committed at Review")
+
+        model.move()
+        await model.settled()
+
+        guard case .finished = model.screen else { return XCTFail("Expected the report, got \(model.screen)") }
+        XCTAssertEqual(auth.moveRecord(forSource: webui.absoluteString)?.destination.id, hermes.absoluteString)
+        XCTAssertEqual(auth.servers.filter { $0.kind == .hermes }.count, 1, "The signed-in server is adopted, not added again")
+        XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: hermes)?.id, signedIn.id)
+        XCTAssertEqual(auth.activeServerID, webui.absoluteString)
+        model.done()
+        XCTAssertEqual(auth.activeServerID, hermes.absoluteString)
+    }
+
+    /// The offer after a sign-in scans the server it names, even where the webui server's Bots
+    /// connection names another host; a Bots connection alone skips the host choice as before.
+    func testTheOfferScansTheServerJustSignedIn() async throws {
+        let other = URL(string: "https://other.example")!
+        XCTAssertTrue(auth.addHermesServer(BotConnection(id: UUID(), name: "", address: other, username: "me", password: "pw")))
+        let model = makeModel()
+
+        model.open(.offer(destinationID: other.absoluteString))
+        await model.settled()
+
+        XCTAssertEqual(model.screen, .review)
+        XCTAssertEqual(model.review?.connection.address, other)
+
+        let bots = makeModel()
+        bots.open(.start)
+        await bots.settled()
+        XCTAssertEqual(bots.review?.connection.address, hermes, "The Bots connection still names the host")
+    }
+
+    /// Adding a Hermes server offers the first webui server in the list without a move record,
+    /// one at a time; a sign-in opened from a move offers nothing.
+    func testAHermesSignInOffersTheFirstWebuiServerThatHasntMoved() async throws {
+        let studio = URL(string: "https://studio.example")!
+        await auth.configure(serverURLString: studio.absoluteString, password: "")
+        XCTAssertEqual(auth.servers.map(\.id), [webui.absoluteString, studio.absoluteString])
+        func signIn(_ host: String, activating: Bool = true) -> BotConnection {
+            let connection = BotConnection(id: UUID(), name: "", address: URL(string: "https://\(host)")!, username: "me", password: "pw")
+            XCTAssertTrue(auth.addHermesServer(connection, activating: activating))
+            return connection
+        }
+        func moveRecord(_ source: URL, to destination: BotConnection) throws {
+            let account = try XCTUnwrap(auth.servers.first { $0.id == source.absoluteString })
+            try auth.commitMove(from: account, to: destination,
+                                profiles: [MovedWebuiProfile(source: "default", destination: .hermes(profile: "default"))])
+        }
+
+        let fromMove = signIn("hermes.example", activating: false)
+        XCTAssertNil(auth.moveOffer, "A sign-in opened from a move offers nothing")
+
+        _ = signIn("one.example")
+        XCTAssertEqual(auth.moveOffer?.destinationID, "https://one.example")
+        XCTAssertEqual(auth.moveOffer?.sourceID, webui.absoluteString, "The first webui server in the list")
+
+        try moveRecord(webui, to: fromMove)
+        let two = signIn("two.example")
+        XCTAssertEqual(auth.moveOffer?.destinationID, "https://two.example")
+        XCTAssertEqual(auth.moveOffer?.sourceID, studio.absoluteString, "A webui server with a move record isn't offered")
+
+        try moveRecord(studio, to: two)
+        _ = signIn("three.example")
+        XCTAssertNil(auth.moveOffer, "Every webui server has a move record")
     }
 
     /// Closing during the scan cancels it: nothing is committed and no Review appears.
@@ -488,6 +561,8 @@ final class MoveToHermesModelTests: XCTestCase {
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
     var profiles = ["default", "research"]
+    /// The Profile `profiles.list` marks `is_default`.
+    var defaultProfile: String?
     var connectFailure: BotFailure?
     /// Ids each Profile's listing shows.
     var listed: [String: [String]] = [:]
@@ -505,7 +580,8 @@ final class MoveToHermesModelTests: XCTestCase {
 
     func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
         switch call {
-        case .profilesList: return .object(["profiles": .array(profiles.map { .object(["name": .string($0)]) })])
+        case .profilesList:
+            return .object(["profiles": .array(profiles.map { .object(["name": .string($0), "is_default": .bool($0 == defaultProfile)]) })])
         case .sessionWorkspaceMove(let profile, let key, let cwd):
             rows["\(profile)|\(key)"]?["cwd"] = .string(cwd)
             return .object(["cwd": .string(cwd)])

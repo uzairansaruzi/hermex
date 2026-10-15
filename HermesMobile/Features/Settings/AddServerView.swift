@@ -5,14 +5,14 @@ import SwiftUI
 /// the new server's identity. A webui address goes through `AuthManager.addServer`, which
 /// never disturbs the active server on failure (#17); a Hermes dashboard gets username
 /// and password and becomes a Hermes server. Presented from Settings and from the
-/// avatar's long-press switcher on every home (#283, #899).
+/// avatar's long-press switcher on every home (#283, #899), and as "Sign In to Hermes" from
+/// Move to Hermes's host choice (#1266), which adds the server without switching to it.
 struct AddServerView: View {
     @Bindable var authManager: AuthManager
     @Environment(\.dismiss) private var dismiss
 
-    /// Set by Move to Hermes's host choice (#1218): the form only checks a Hermes sign-in and
-    /// hands it back unsaved, adding and activating no server (`Entry.moveDestination`).
-    private let onVerified: ((BotConnection) -> Void)?
+    /// Told the address of the server it added, before the sheet closes.
+    private let onAdded: (URL) -> Void
     @State private var form: OnboardingViewModel
     /// The Add in flight; closing the sheet cancels it before a Hermes server is added.
     @State private var operation: Task<Void, Never>?
@@ -21,13 +21,14 @@ struct AddServerView: View {
     @State private var initials = ""
     @State private var colorHex = HeaderLogoColor.defaultHex
 
-    init(authManager: AuthManager, onVerified: ((BotConnection) -> Void)? = nil) {
+    init(authManager: AuthManager, moveSource: OnboardingViewModel.MoveSource? = nil, onAdded: @escaping (URL) -> Void = { _ in }) {
         self.authManager = authManager
-        self.onVerified = onVerified
-        _form = State(initialValue: OnboardingViewModel(entry: onVerified == nil ? .addServer : .moveDestination))
+        self.onAdded = onAdded
+        _form = State(initialValue: OnboardingViewModel(entry: .addServer, moveSource: moveSource))
     }
 
     private var canSubmit: Bool { form.canSubmit && !form.isWorking }
+    private var isMoveSignIn: Bool { form.moveSource != nil }
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
     var body: some View {
@@ -51,22 +52,28 @@ struct AddServerView: View {
                     }
 
                     SettingsCard(title: String(localized: "Connection Headers")) {
+                        if let source = form.moveSource, form.offersMoveSourceHeaders {
+                            moveSourceHeadersRow(source)
+                        }
                         if form.connectionMode == .cloudflareTunnel {
                             SettingsFootnote(String(localized: "Cloudflare Access: paste your service token’s Client ID and Client Secret as the values. Leave both empty if Access is off."))
                         }
                         CustomHeadersEditor(headers: $form.customHeaders)
+                        if let source = form.moveSource, !source.headers.isEmpty {
+                            SettingsFootnote(form.usedMoveSourceHeaders
+                                ? String(localized: "Copied from \(source.name). Edit or remove them if this host uses a different token.")
+                                : String(localized: "If the same Cloudflare Access protects both hosts, \(source.name)’s service token works here too."))
+                        }
                     }
                     .disabled(form.isConnectionLocked)
 
-                    if onVerified == nil {
-                        SettingsCard(title: String(localized: "Identity")) {
-                            ServerIdentityEditor(
-                                displayName: $displayName,
-                                initials: $initials,
-                                colorHex: $colorHex,
-                                fallbackName: form.addressPreview?.host ?? ""
-                            )
-                        }
+                    SettingsCard(title: String(localized: "Identity")) {
+                        ServerIdentityEditor(
+                            displayName: $displayName,
+                            initials: $initials,
+                            colorHex: $colorHex,
+                            fallbackName: form.addressPreview?.host ?? ""
+                        )
                     }
                 }
                 .padding(.horizontal, 16)
@@ -74,14 +81,14 @@ struct AddServerView: View {
                 .padding(.bottom, 36)
             }
             .background(Color(.systemBackground))
-            .navigationTitle(onVerified == nil ? String(localized: "Add Server") : String(localized: "Sign In to Hermes"))
+            .navigationTitle(isMoveSignIn ? String(localized: "Sign In to Hermes") : String(localized: "Add Server"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(onVerified == nil ? String(localized: "Add") : String(localized: "Sign In"), action: submit)
+                    Button(isMoveSignIn ? String(localized: "Sign In") : String(localized: "Add"), action: submit)
                         .disabled(!canSubmit)
                 }
             }
@@ -185,6 +192,33 @@ struct AddServerView: View {
         }
     }
 
+    /// "Use <webui server>'s Headers" (#1266): one tap fills the move source's headers in, visibly.
+    private func moveSourceHeadersRow(_ source: OnboardingViewModel.MoveSource) -> some View {
+        Button {
+            form.useMoveSourceHeaders()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.down.doc.fill")
+                    .font(AppFont.subheadline(weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Use \(source.name)’s Headers")
+                        .font(AppFont.subheadline(weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                    Text("\(source.headers.count) headers")
+                        .font(AppFont.caption())
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+    }
+
     /// What the last Add found, under the address it is about.
     @ViewBuilder
     private var statusBanner: some View {
@@ -215,16 +249,6 @@ struct AddServerView: View {
 
     private func submit(replacingWebuiServer: Bool) {
         guard canSubmit, !form.isConnectionLocked else { return }
-        if let onVerified {
-            operation = Task {
-                guard await form.connect(authManager: authManager, browser: .init(webAuthenticationSession)) != nil,
-                      let verified = form.verifiedConnection,
-                      !Task.isCancelled else { return }
-                onVerified(verified)
-                dismiss()
-            }
-            return
-        }
         operation = Task {
             // A URL means the server is already saved, so its chosen identity applies even
             // when the sheet closed meanwhile.
@@ -233,6 +257,7 @@ struct AddServerView: View {
             // A replaced webui server's name, initials and color stay unless new ones were chosen.
             let choseIdentity = !displayName.isEmpty || !initials.isEmpty || colorHex != HeaderLogoColor.defaultHex
             if !replacingWebuiServer || choseIdentity { applyIdentity(to: url) }
+            if !Task.isCancelled { onAdded(url) }
             dismiss()
         }
     }

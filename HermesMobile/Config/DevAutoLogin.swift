@@ -88,6 +88,8 @@ enum DevAutoLogin {
             if !authManager.addHermesServer(connection) {
                 NSLog("DevAutoLogin: adding the Hermes server failed: %@", authManager.lastErrorMessage ?? "Bot Mode is off")
             }
+            // A scripted sign-in isn't the user's, so it doesn't cover the screen with the move offer.
+            authManager.moveOffer = nil
         } catch {
             NSLog("DevAutoLogin: Hermes server login failed: %@", String(describing: error))
         }

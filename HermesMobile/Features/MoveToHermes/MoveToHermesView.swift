@@ -31,7 +31,9 @@ struct MoveToHermesSheet: View {
         .task { model.open(entry) }
         .onDisappear { model.close() }
         .sheet(isPresented: $isSigningIn) {
-            AddServerView(authManager: auth) { model.useVerified($0) }
+            AddServerView(authManager: auth, moveSource: .init(name: source, headers: model.sourceHeaders)) {
+                model.signedIn(at: $0)
+            }
         }
         .alert("Finish without the rest?", isPresented: $isConfirmingFinish) {
             Button("Finish Move", role: .destructive) { model.finishEarly() }
@@ -116,7 +118,7 @@ struct MoveToHermesSheet: View {
                 }
                 Button { isSigningIn = true } label: {
                     MoveToHermesRow(title: String(localized: "Sign in to a Hermes host"),
-                                    detail: String(localized: "Address, username and password"), chevron: true)
+                                    detail: String(localized: "Password or browser sign-in"), chevron: true)
                 }
             }
         }
@@ -170,12 +172,6 @@ struct MoveToHermesSheet: View {
                 }
                 .buttonStyle(.bordered)
                 Button("Try Again") { model.scan() }.buttonStyle(.borderedProminent)
-            }
-        case .singleSignOn:
-            MoveToHermesNoticeScreen(
-                tint: .orange, title: String(localized: "This host signs in with single sign-on"),
-                message: String(localized: "Hermex can’t sign in to it yet. Add a password sign-in on the host to move now. \(source) keeps working as it is.")) {
-                Button("OK") { dismiss() }.buttonStyle(.borderedProminent)
             }
         case .outdated(let version):
             MoveToHermesNoticeScreen(
@@ -842,15 +838,16 @@ struct MoveToHermesBanner: View {
 }
 
 extension View {
-    /// Applied once at the root (`ContentView`): hands `auth` to the Move banners and keeps
-    /// `MoveToHermesNotices` current when the registry changes and on foreground.
+    /// Applied once at the root (`ContentView`): hands `auth` to the Move banners, keeps
+    /// `MoveToHermesNotices` current when the registry changes and on foreground, and shows
+    /// the offer after a Hermes sign-in (`AuthManager.moveOffer`), above any server's screens.
     func moveToHermesNotices(_ auth: AuthManager) -> some View {
         modifier(MoveToHermesNoticesRefresh(auth: auth))
     }
 }
 
 private struct MoveToHermesNoticesRefresh: ViewModifier {
-    let auth: AuthManager
+    @Bindable var auth: AuthManager
     @Environment(\.scenePhase) private var scenePhase
 
     func body(content: Content) -> some View {
@@ -861,5 +858,63 @@ private struct MoveToHermesNoticesRefresh: ViewModifier {
                 guard scenePhase == .active else { return }
                 Task { await MoveToHermesNotices.shared.refresh(auth) }
             }
+            .sheet(item: $auth.moveOffer) { MoveToHermesOfferSheet(auth: auth, offer: $0) }
+    }
+}
+
+/// "Signed in to <host>" (#1266, 3A): offers to bring a webui server's chats to the Hermes
+/// server just added. Bring My Chats turns this sheet into the guided move, scanning that
+/// server; Not Now and closing leave everything as it is.
+private struct MoveToHermesOfferSheet: View {
+    let auth: AuthManager
+    let offer: MoveToHermesOffer
+    @Environment(\.dismiss) private var dismiss
+    @State private var isBringing = false
+
+    var body: some View {
+        Group {
+            if isBringing {
+                MoveToHermesSheet(auth: auth, sourceID: offer.sourceID, entry: .offer(destinationID: offer.destinationID))
+            } else {
+                question
+            }
+        }
+        .presentationDetents(isBringing ? [.large] : [.medium, .large])
+    }
+
+    private func name(_ id: String) -> String {
+        auth.servers.first { $0.id == id }.map(MoveToHermesModel.name) ?? URL(string: id)?.host ?? id
+    }
+
+    private var question: some View {
+        let source = name(offer.sourceID)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Signed in to \(URL(string: offer.destinationID)?.host ?? offer.destinationID)")
+                    .font(.title3.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Text("Bring your chats from \(source)? Hermex checks which ones Hermes already has, then shows you what it will copy before it starts.")
+                    .foregroundStyle(.secondary)
+                VStack(spacing: 10) {
+                    Button { isBringing = true } label: {
+                        Text("Bring My Chats").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button { dismiss() } label: {
+                        Text("Not Now").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .controlSize(.large)
+                .padding(.top, 8)
+                Text("You can do this later in Settings › \(source).")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }

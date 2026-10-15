@@ -12692,6 +12692,364 @@
         }
       }
     },
+    "%lld headers" : {
+      "localizations" : {
+        "ar" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld ترويسات"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld ترويسة"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "ترويسة واحدة"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld ترويسة"
+                }
+              },
+              "two" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "ترويستان"
+                }
+              },
+              "zero" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld ترويسة"
+                }
+              }
+            }
+          }
+        },
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld Header"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld Header"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld header"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld headers"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld encabezado"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld encabezados"
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld en-tête"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld en-têtes"
+                }
+              }
+            }
+          }
+        },
+        "he" : {
+          "variations" : {
+            "plural" : {
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld כותרות"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "כותרת אחת"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld כותרות"
+                }
+              },
+              "two" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "שתי כותרות"
+                }
+              }
+            }
+          }
+        },
+        "it" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld intestazione"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld intestazioni"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 件のヘッダ"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "헤더 %lld개"
+                }
+              }
+            }
+          }
+        },
+        "nl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld header"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld headers"
+                }
+              }
+            }
+          }
+        },
+        "pl" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld nagłówki"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld nagłówków"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld nagłówek"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld nagłówka"
+                }
+              }
+            }
+          }
+        },
+        "pt-BR" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld cabeçalho"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld cabeçalhos"
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld заголовка"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld заголовков"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld заголовок"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld заголовка"
+                }
+              }
+            }
+          }
+        },
+        "tr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld başlık"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld başlık"
+                }
+              }
+            }
+          }
+        },
+        "ur" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld ہیڈر"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld ہیڈرز"
+                }
+              }
+            }
+          }
+        },
+        "zh-HK" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 個標頭"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 个标头"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "needs_review",
+                  "value" : "%lld 個標頭"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld in %@" : {
       "localizations" : {
         "ar" : {
@@ -24723,112 +25081,6 @@
       }
     },
     "Adding a suggestion saves it as your own text. Edit it freely." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Ein hinzugefügter Vorschlag wird als dein eigener Text gespeichert. Bearbeite ihn nach Belieben." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Al añadir una sugerencia, se guarda como tu propio texto. Edítala libremente." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Une suggestion ajoutée est enregistrée comme votre propre texte. Modifiez-la librement." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Aggiungendo un suggerimento lo salvi come testo tuo. Modificalo liberamente." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Dodana sugestia zostaje zapisana jako Twój własny tekst. Możesz ją dowolnie edytować." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Ao adicionar uma sugestão, ela é salva como seu próprio texto. Edite à vontade." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Een toegevoegde suggestie wordt als je eigen tekst bewaard. Bewerk hem vrij." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Eklenen öneri kendi metniniz olarak kaydedilir. Dilediğiniz gibi düzenleyin." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Добавленное предложение сохраняется как ваш собственный текст. Редактируйте его как угодно." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "候補を追加すると、自分のテキストとして保存されます。自由に編集できます。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "添加的建议会保存为你自己的文本，可随意编辑。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "추천 항목을 추가하면 내 텍스트로 저장됩니다. 자유롭게 편집하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "عند إضافة اقتراح يُحفظ كنصك الخاص. عدّله كما تشاء." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "הצעה שנוספה נשמרת כטקסט שלך. אפשר לערוך אותה בחופשיות." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "تجویز شامل کرنے پر وہ آپ کے اپنے متن کے طور پر محفوظ ہو جاتی ہے۔ اس میں آزادی سے ترمیم کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "加入的建議會儲存為你自己的文字，可隨意編輯。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "加入的建議會儲存為你自己的文字，可隨意編輯。" } } } },
-    "Address, username and password" : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "العنوان واسم المستخدم وكلمة المرور"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Adresse, Benutzername und Passwort"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Dirección, usuario y contraseña"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Adresse, nom d’utilisateur et mot de passe"
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "כתובת, שם משתמש וסיסמה"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Indirizzo, nome utente e password"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "アドレス、ユーザ名、パスワード"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "주소, 사용자 이름 및 비밀번호"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Adres, gebruikersnaam en wachtwoord"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Adres, nazwa użytkownika i hasło"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Endereço, usuário e senha"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Адрес, имя пользователя и пароль"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Adres, kullanıcı adı ve parola"
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "پتہ، صارف نام اور پاس ورڈ"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "地址、用戶名稱和密碼"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "地址、用户名和密码"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "位址、使用者名稱和密碼"
-          }
-        }
-      }
-    },
     "Adds another Hermes server." : {
       "localizations" : {
         "ar" : {
@@ -31886,6 +32138,218 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "分公司"
+          }
+        }
+      }
+    },
+    "Bring My Chats" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انقل محادثاتي"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Chats mitnehmen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Traer mis chats"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Récupérer mes discussions"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "להביא את הצ׳אטים"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Porta le mie chat"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "チャットを移す"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "채팅 가져오기"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Chats meenemen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Przenieś czaty"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Trazer minhas conversas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Перенести чаты"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sohbetlerimi Taşı"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "میری چیٹس لائیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "帶來我的聊天"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "带来我的聊天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "帶來我的聊天"
+          }
+        }
+      }
+    },
+    "Bring your chats from %@? Hermex checks which ones Hermes already has, then shows you what it will copy before it starts." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "هل تريد نقل محادثاتك من %@؟ يتحقق Hermex مما يملكه Hermes منها بالفعل، ثم يعرض لك ما سينسخه قبل أن يبدأ."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Deine Chats von %@ mitnehmen? Hermex prüft, welche Hermes schon hat, und zeigt dir dann, was es kopiert, bevor es beginnt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "¿Traer tus chats de %@? Hermex comprueba cuáles ya tiene Hermes y te muestra lo que copiará antes de empezar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Récupérer vos discussions depuis %@ ? Hermex vérifie celles que Hermes possède déjà, puis vous montre ce qu’il va copier avant de commencer."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "להביא את הצ׳אטים שלך מ‑%@? Hermex בודק אילו מהם כבר נמצאים ב‑Hermes, ואז מראה לך מה יועתק לפני שהוא מתחיל."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vuoi portare le tue chat da %@? Hermex controlla quali ha già Hermes, poi ti mostra cosa copierà prima di iniziare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ のチャットを移しますか？Hermex は Hermes にすでにあるチャットを確認し、開始前にコピーする内容を表示します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@의 채팅을 가져올까요? Hermex가 Hermes에 이미 있는 채팅을 확인한 후, 시작하기 전에 복사할 항목을 보여 드려요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Je chats van %@ meenemen? Hermex controleert welke Hermes al heeft en laat je zien wat het kopieert voordat het begint."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Przenieść czaty z %@? Hermex sprawdzi, które Hermes już ma, a przed rozpoczęciem pokaże, co skopiuje."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Trazer suas conversas de %@? O Hermex verifica quais o Hermes já tem e mostra o que vai copiar antes de começar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Перенести чаты с %@? Hermex проверит, какие из них уже есть в Hermes, и перед началом покажет, что будет скопировано."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ sohbetlerin taşınsın mı? Hermex, Hermes’te hangilerinin zaten olduğunu kontrol eder ve başlamadan önce neyi kopyalayacağını gösterir."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "‏%@ سے اپنی چیٹس لائیں؟ Hermex دیکھتا ہے کہ Hermes کے پاس کون سی پہلے سے ہیں، پھر شروع کرنے سے پہلے دکھاتا ہے کہ وہ کیا کاپی کرے گا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "要從 %@ 帶來你的聊天嗎？Hermex 會檢查 Hermes 已經有哪些，並在開始前顯示將會複製的內容。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "要从 %@ 带来你的聊天吗？Hermex 会检查 Hermes 已有哪些，并在开始前显示将要复制的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "要從 %@ 帶來你的聊天嗎？Hermex 會檢查 Hermes 已經有哪些，並在開始前顯示將會複製的內容。"
           }
         }
       }
@@ -43163,6 +43627,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "已複製程式碼"
+          }
+        }
+      }
+    },
+    "Copied from %@. Edit or remove them if this host uses a different token." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "نُسخت من %@. عدّلها أو أزِلها إذا كان هذا المضيف يستخدم رمزًا مختلفًا."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Von %@ kopiert. Bearbeite oder entferne sie, wenn dieser Host ein anderes Token verwendet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copiados de %@. Edítalos o elimínalos si este host usa otro token."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copiés depuis %@. Modifiez-les ou supprimez-les si cet hôte utilise un autre jeton."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הועתקו מ‑%@. ערוך או הסר אותן אם המארח הזה משתמש באסימון אחר."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copiate da %@. Modificale o rimuovile se questo host usa un token diverso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ からコピーしました。このホストで別のトークンを使う場合は、編集または削除してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@에서 복사했어요. 이 호스트가 다른 토큰을 쓴다면 편집하거나 삭제하세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gekopieerd van %@. Wijzig of verwijder ze als deze host een ander token gebruikt."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Skopiowano z %@. Edytuj je lub usuń, jeśli ten host używa innego tokenu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copiados de %@. Edite ou remova se este host usar outro token."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Скопировано с %@. Измените или удалите их, если этот хост использует другой токен."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ kaynağından kopyalandı. Bu ana makine farklı bir belirteç kullanıyorsa düzenle veya kaldır."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "‏%@ سے کاپی کیے گئے۔ اگر یہ ہوسٹ کوئی اور ٹوکن استعمال کرتا ہے تو انہیں ترمیم کریں یا ہٹا دیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已從 %@ 複製。如果這部主機使用其他權杖，請編輯或移除。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已从 %@ 复制。如果这台主机使用其他令牌，请编辑或移除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已從 %@ 複製。如果這台主機使用其他權杖，請編輯或移除。"
           }
         }
       }
@@ -69322,112 +69892,6 @@
       }
     },
     "Hermex can’t lock" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Hermex kann nicht sperren"}},"es":{"stringUnit":{"state":"needs_review","value":"Hermex no puede bloquearse"}},"fr":{"stringUnit":{"state":"needs_review","value":"Hermex ne peut pas se verrouiller"}},"it":{"stringUnit":{"state":"needs_review","value":"Hermex non può bloccarsi"}},"pl":{"stringUnit":{"state":"needs_review","value":"Hermex nie może się zablokować"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"O Hermex não pode ser bloqueado"}},"nl":{"stringUnit":{"state":"needs_review","value":"Hermex kan niet vergrendelen"}},"tr":{"stringUnit":{"state":"needs_review","value":"Hermex kilitlenemiyor"}},"ru":{"stringUnit":{"state":"needs_review","value":"Hermex не может заблокироваться"}},"ja":{"stringUnit":{"state":"needs_review","value":"Hermexをロックできません"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"Hermex 无法锁定"}},"ko":{"stringUnit":{"state":"needs_review","value":"Hermex를 잠글 수 없습니다"}},"ar":{"stringUnit":{"state":"needs_review","value":"لا يمكن قفل Hermex"}},"he":{"stringUnit":{"state":"needs_review","value":"לא ניתן לנעול את Hermex"}},"ur":{"stringUnit":{"state":"needs_review","value":"Hermex لاک نہیں ہو سکتا"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"Hermex 無法鎖定"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"Hermex 無法鎖定"}}}},
-    "Hermex can’t sign in to it yet. Add a password sign-in on the host to move now. %@ keeps working as it is." : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "لا يمكن لـ Hermex تسجيل الدخول إليه بعد. أضف تسجيل دخول بكلمة مرور على المضيف للنقل الآن. يستمر %@ في العمل كما هو."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Hermex kann sich dort noch nicht anmelden. Richte auf dem Host eine Anmeldung per Passwort ein, um jetzt umzuziehen. %@ funktioniert weiter wie bisher."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Hermex aún no puede iniciar sesión allí. Añade un inicio de sesión con contraseña en el host para trasladar ahora. %@ sigue funcionando como hasta ahora."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Hermex ne peut pas encore s’y connecter. Ajoutez une connexion par mot de passe sur l’hôte pour transférer maintenant. %@ continue de fonctionner comme avant."
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "‏Hermex עדיין לא יכול להתחבר אליו. כדי להעביר עכשיו, יש להוסיף כניסה עם סיסמה במארח. %@ ממשיך לפעול כרגיל."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Hermex non può ancora accedervi. Aggiungi un accesso con password sull’host per trasferire ora. %@ continua a funzionare come prima."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Hermex はまだこのホストにサインインできません。今すぐ移動するには、ホストでパスワードによるサインインを追加してください。%@ はこれまでどおり使えます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Hermex가 아직 이 호스트에 로그인할 수 없어요. 지금 이동하려면 호스트에 비밀번호 로그인을 추가하세요. %@은(는) 지금처럼 계속 작동해요."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Hermex kan hier nog niet op inloggen. Voeg op de host inloggen met wachtwoord toe om nu te verplaatsen. %@ blijft gewoon werken zoals nu."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Hermex nie może się jeszcze na nim zalogować. Dodaj na hoście logowanie hasłem, aby przenieść teraz. Serwer %@ działa dalej bez zmian."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "O Hermex ainda não consegue entrar nele. Adicione um acesso por senha no host para transferir agora. %@ continua funcionando como está."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Hermex пока не может на нём войти. Добавьте на хосте вход по паролю, чтобы перенести сейчас. Сервер %@ продолжает работать как прежде."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Hermex henüz burada oturum açamıyor. Şimdi taşımak için ana makinede parolayla oturum açmayı ekleyin. %@ sunucusu olduğu gibi çalışmaya devam eder."
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "‏Hermex ابھی اس میں سائن اِن نہیں کر سکتا۔ ابھی منتقل کرنے کے لیے ہوسٹ پر پاس ورڈ سائن اِن شامل کریں۔ %@ جیسے کام کر رہا ہے ویسے ہی کرتا رہے گا۔"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Hermex 暫時無法登入此主機。若要現在移動，請在主機上加入密碼登入。%@ 會照常運作。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Hermex 暂时无法登录此主机。若要现在移动，请在主机上添加密码登录。%@ 会照常工作。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Hermex 暫時無法登入此主機。若要現在移動，請在主機上加入密碼登入。%@ 會照常運作。"
-          }
-        }
-      }
-    },
     "Hermex couldn’t save the files on this iPhone." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex konnte die Dateien nicht auf diesem iPhone speichern." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex no pudo guardar los archivos en este iPhone." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex n’a pas pu enregistrer les fichiers sur cet iPhone." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex non è riuscito a salvare i file su questo iPhone." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex nie mógł zapisać plików na tym iPhonie." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "O Hermex não conseguiu salvar os arquivos neste iPhone." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex kan de bestanden niet op deze iPhone bewaren." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex dosyaları bu iPhone’a kaydedemedi." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex не удалось сохранить файлы на этом iPhone." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "HermexはこのiPhoneにファイルを保存できませんでした。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex 无法将文件存储到此 iPhone。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex가 이 iPhone에 파일을 저장할 수 없습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تعذّر على Hermex حفظ الملفات على جهاز iPhone هذا." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex לא הצליח לשמור את הקבצים ב-iPhone הזה." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex اس iPhone پر فائلیں محفوظ نہیں کر سکا۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex 無法將檔案儲存到此 iPhone。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermex 無法將檔案儲存到此 iPhone。" } } } },
     "Hermex is free and open source, with no ads and no tracking. Supporters make that possible." : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Hermex ist kostenlos und Open Source, ohne Werbung und ohne Tracking. Unterstützer machen das möglich."}},"es":{"stringUnit":{"state":"needs_review","value":"Hermex es gratuito y de código abierto, sin anuncios ni rastreo. Quienes lo apoyan lo hacen posible."}},"fr":{"stringUnit":{"state":"needs_review","value":"Hermex est gratuit et open source, sans publicité ni pistage. Ce sont ses soutiens qui rendent cela possible."}},"it":{"stringUnit":{"state":"needs_review","value":"Hermex è gratuito e open source, senza pubblicità né tracciamento. Sono i sostenitori a renderlo possibile."}},"pl":{"stringUnit":{"state":"needs_review","value":"Hermex jest darmowy i otwartoźródłowy, bez reklam i śledzenia. To wspierający sprawiają, że to możliwe."}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"O Hermex é gratuito e de código aberto, sem anúncios nem rastreamento. Os apoiadores tornam isso possível."}},"nl":{"stringUnit":{"state":"needs_review","value":"Hermex is gratis en open source, zonder advertenties en zonder tracking. Supporters maken dat mogelijk."}},"tr":{"stringUnit":{"state":"needs_review","value":"Hermex ücretsiz ve açık kaynaklıdır; reklam ve takip yoktur. Bunu destekçiler mümkün kılıyor."}},"ru":{"stringUnit":{"state":"needs_review","value":"Hermex бесплатный и с открытым исходным кодом, без рекламы и отслеживания. Это возможно благодаря тем, кто его поддерживает."}},"ja":{"stringUnit":{"state":"needs_review","value":"Hermexは無料のオープンソースで、広告もトラッキングもありません。それを支えているのはサポーターの皆さんです。"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"Hermex 免费且开源，没有广告，也没有追踪。这一切都离不开支持者。"}},"ko":{"stringUnit":{"state":"needs_review","value":"Hermex는 무료 오픈 소스이며 광고도 추적도 없습니다. 후원자분들 덕분에 가능한 일입니다."}},"ar":{"stringUnit":{"state":"needs_review","value":"Hermex مجاني ومفتوح المصدر، بلا إعلانات ولا تتبع. الداعمون هم من يجعلون ذلك ممكنًا."}},"he":{"stringUnit":{"state":"needs_review","value":"Hermex חינמי ובקוד פתוח, בלי פרסומות ובלי מעקב. התומכים הם שמאפשרים את זה."}},"ur":{"stringUnit":{"state":"needs_review","value":"Hermex مفت اور اوپن سورس ہے، نہ اشتہارات نہ ٹریکنگ۔ یہ حمایتیوں کی بدولت ممکن ہے۔"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"Hermex 免費且開源，沒有廣告，也沒有追蹤。這一切都有賴支持者。"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"Hermex 免費兼開源，冇廣告，亦冇追蹤。全靠支持者先做得到。"}}}},
     "Hermex is locked" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Hermex ist gesperrt"}},"es":{"stringUnit":{"state":"needs_review","value":"Hermex está bloqueado"}},"fr":{"stringUnit":{"state":"needs_review","value":"Hermex est verrouillé"}},"it":{"stringUnit":{"state":"needs_review","value":"Hermex è bloccato"}},"pl":{"stringUnit":{"state":"needs_review","value":"Hermex jest zablokowany"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"O Hermex está bloqueado"}},"nl":{"stringUnit":{"state":"needs_review","value":"Hermex is vergrendeld"}},"tr":{"stringUnit":{"state":"needs_review","value":"Hermex kilitli"}},"ru":{"stringUnit":{"state":"needs_review","value":"Hermex заблокирован"}},"ja":{"stringUnit":{"state":"needs_review","value":"Hermexはロックされています"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"Hermex 已锁定"}},"ko":{"stringUnit":{"state":"needs_review","value":"Hermex가 잠겨 있습니다"}},"ar":{"stringUnit":{"state":"needs_review","value":"Hermex مقفل"}},"he":{"stringUnit":{"state":"needs_review","value":"Hermex נעול"}},"ur":{"stringUnit":{"state":"needs_review","value":"Hermex لاک ہے"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"Hermex 已鎖定"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"Hermex 已鎖定"}}}},
@@ -70560,6 +71024,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "如果已停止，請在主機上啟動 `hermes dashboard`。"
+          }
+        }
+      }
+    },
+    "If the same Cloudflare Access protects both hosts, %@’s service token works here too." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "إذا كان Cloudflare Access نفسه يحمي المضيفين، فإن رمز الخدمة الخاص بـ %@ يعمل هنا أيضًا."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wenn dasselbe Cloudflare Access beide Hosts schützt, funktioniert das Service-Token von %@ auch hier."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Si el mismo Cloudflare Access protege ambos hosts, el token de servicio de %@ también funciona aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Si le même Cloudflare Access protège les deux hôtes, le jeton de service de %@ fonctionne aussi ici."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "אם אותו Cloudflare Access מגן על שני המארחים, אסימון השירות של %@ יעבוד גם כאן."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Se lo stesso Cloudflare Access protegge entrambi gli host, il token di servizio di %@ funziona anche qui."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "同じ Cloudflare Access が両方のホストを保護している場合、%@ のサービストークンはここでも使えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "같은 Cloudflare Access가 두 호스트를 모두 보호한다면 %@의 서비스 토큰을 여기서도 쓸 수 있어요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Als dezelfde Cloudflare Access beide hosts beschermt, werkt het servicetoken van %@ hier ook."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Jeśli ten sam Cloudflare Access chroni oba hosty, token usługi z %@ zadziała także tutaj."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Se o mesmo Cloudflare Access protege os dois hosts, o token de serviço de %@ também funciona aqui."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Если оба хоста защищает один и тот же Cloudflare Access, сервисный токен %@ подойдёт и здесь."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Her iki ana makineyi de aynı Cloudflare Access koruyorsa %@ hizmet belirteci burada da çalışır."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اگر ایک ہی Cloudflare Access دونوں ہوسٹس کی حفاظت کرتا ہے تو %@ کا سروس ٹوکن یہاں بھی کام کرتا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "如果兩部主機都受同一個 Cloudflare Access 保護，%@ 的服務權杖在這裡也適用。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "如果两台主机受同一个 Cloudflare Access 保护，%@ 的服务令牌在这里也适用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "如果兩台主機都受同一個 Cloudflare Access 保護，%@ 的服務權杖在這裡也適用。"
           }
         }
       }
@@ -74670,6 +75240,112 @@
         }
       }
     },
+    "Not Now" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ليس الآن"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nicht jetzt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ahora no"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Plus tard"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "לא עכשיו"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Non ora"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "今はしない"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "나중에"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Niet nu"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nie teraz"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Agora não"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Не сейчас"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Şimdi Değil"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ابھی نہیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "稍後"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "以后再说"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "稍後"
+          }
+        }
+      }
+    },
     "Not synced with the relay yet." : {
       "localizations" : {
         "ar" : {
@@ -75196,6 +75872,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "或在任何程式碼區塊中點一下換行。"
+          }
+        }
+      }
+    },
+    "Password or browser sign-in" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "كلمة مرور أو تسجيل دخول عبر المتصفح"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Passwort oder Anmeldung im Browser"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Contraseña o inicio de sesión en el navegador"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Mot de passe ou connexion dans le navigateur"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "סיסמה או התחברות בדפדפן"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Password o accesso dal browser"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "パスワードまたはブラウザでサインイン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "비밀번호 또는 브라우저 로그인"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Wachtwoord of inloggen via browser"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hasło lub logowanie w przeglądarce"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Senha ou login pelo navegador"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Пароль или вход через браузер"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Parola veya tarayıcıyla oturum açma"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "پاس ورڈ یا براؤزر سائن اِن"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "密碼或瀏覽器登入"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "密码或浏览器登录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "密碼或瀏覽器登入"
           }
         }
       }
@@ -76582,6 +77364,218 @@
     },
     "This server signs in through the browser, so Hermex sends its own Authorization header. Remove this header to connect. For Cloudflare Access, use the CF-Access-Client-Id and CF-Access-Client-Secret headers instead." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Dieser Server meldet sich über den Browser an, daher sendet Hermex einen eigenen Authorization-Header. Entferne diesen Header, um dich zu verbinden. Verwende für Cloudflare Access stattdessen die Header CF-Access-Client-Id und CF-Access-Client-Secret." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Este servidor inicia sesión a través del navegador, así que Hermex envía su propio encabezado Authorization. Quita este encabezado para conectarte. Para Cloudflare Access, usa en su lugar los encabezados CF-Access-Client-Id y CF-Access-Client-Secret." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Ce serveur se connecte via le navigateur, donc Hermex envoie son propre en-tête Authorization. Supprimez cet en-tête pour vous connecter. Pour Cloudflare Access, utilisez plutôt les en-têtes CF-Access-Client-Id et CF-Access-Client-Secret." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Questo server accede tramite il browser, quindi Hermex invia una propria intestazione Authorization. Rimuovi questa intestazione per connetterti. Per Cloudflare Access, usa invece le intestazioni CF-Access-Client-Id e CF-Access-Client-Secret." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Ten serwer loguje się przez przeglądarkę, więc Hermex wysyła własny nagłówek Authorization. Usuń ten nagłówek, aby się połączyć. W przypadku Cloudflare Access użyj zamiast tego nagłówków CF-Access-Client-Id i CF-Access-Client-Secret." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Este servidor faz login pelo navegador, então o Hermex envia o próprio cabeçalho Authorization. Remova este cabeçalho para conectar. Para o Cloudflare Access, use os cabeçalhos CF-Access-Client-Id e CF-Access-Client-Secret." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Deze server meldt aan via de browser, dus Hermex stuurt een eigen Authorization-header. Verwijder deze header om verbinding te maken. Gebruik voor Cloudflare Access in plaats daarvan de headers CF-Access-Client-Id en CF-Access-Client-Secret." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu sunucu tarayıcı üzerinden oturum açar, bu yüzden Hermex kendi Authorization başlığını gönderir. Bağlanmak için bu başlığı kaldırın. Cloudflare Access için bunun yerine CF-Access-Client-Id ve CF-Access-Client-Secret başlıklarını kullanın." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Этот сервер выполняет вход через браузер, поэтому Hermex отправляет собственный заголовок Authorization. Удалите этот заголовок, чтобы подключиться. Для Cloudflare Access используйте вместо него заголовки CF-Access-Client-Id и CF-Access-Client-Secret." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このサーバーはブラウザでサインインするため、Hermex が独自の Authorization ヘッダーを送信します。接続するには、このヘッダーを削除してください。Cloudflare Access の場合は、代わりに CF-Access-Client-Id と CF-Access-Client-Secret ヘッダーを使用してください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "此服务器通过浏览器登录，因此 Hermex 会发送它自己的 Authorization 请求头。请移除此请求头以连接。如使用 Cloudflare Access，请改用 CF-Access-Client-Id 和 CF-Access-Client-Secret 请求头。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 서버는 브라우저로 로그인하므로 Hermex가 자체 Authorization 헤더를 보냅니다. 연결하려면 이 헤더를 삭제하세요. Cloudflare Access에는 대신 CF-Access-Client-Id 및 CF-Access-Client-Secret 헤더를 사용하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "يسجّل هذا الخادم الدخول عبر المتصفح، لذا يرسل Hermex ترويسة Authorization الخاصة به. أزل هذه الترويسة للاتصال. في Cloudflare Access، استخدم بدلًا منها الترويستين CF-Access-Client-Id وCF-Access-Client-Secret." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "השרת הזה מתחבר דרך הדפדפן, ולכן Hermex שולח כותרת Authorization משלו. הסר את הכותרת הזו כדי להתחבר. עבור Cloudflare Access, השתמש במקום זאת בכותרות CF-Access-Client-Id ו-CF-Access-Client-Secret." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "یہ سرور براؤزر کے ذریعے سائن اِن کرتا ہے، اس لیے Hermex اپنا Authorization ہیڈر بھیجتا ہے۔ کنیکٹ کرنے کے لیے یہ ہیڈر ہٹا دیں۔ Cloudflare Access کے لیے اس کی بجائے CF-Access-Client-Id اور CF-Access-Client-Secret ہیڈرز استعمال کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "此伺服器透過瀏覽器登入，因此 Hermex 會傳送它自己的 Authorization 標頭。請移除此標頭以連線。若使用 Cloudflare Access，請改用 CF-Access-Client-Id 和 CF-Access-Client-Secret 標頭。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "此伺服器透過瀏覽器登入，因此 Hermex 會傳送它自己的 Authorization 請求標頭。請移除此請求標頭以連線。若使用 Cloudflare Access，請改用 CF-Access-Client-Id 和 CF-Access-Client-Secret 請求標頭。" } } } },
     "This server signs in through your browser." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Dieser Server meldet sich über deinen Browser an." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Este servidor inicia sesión a través de tu navegador." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Ce serveur se connecte via votre navigateur." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Questo server accede tramite il tuo browser." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Ten serwer loguje się przez Twoją przeglądarkę." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Este servidor faz login pelo seu navegador." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Deze server meldt aan via je browser." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Bu sunucu tarayıcınız üzerinden oturum açar." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Этот сервер выполняет вход через ваш браузер." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "このサーバーはブラウザでサインインします。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "此服务器通过你的浏览器登录。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "이 서버는 브라우저로 로그인합니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "يسجّل هذا الخادم الدخول عبر متصفحك." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "השרת הזה מתחבר דרך הדפדפן שלך." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "یہ سرور آپ کے براؤزر کے ذریعے سائن اِن کرتا ہے۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "此伺服器透過你的瀏覽器登入。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "此伺服器透過你的瀏覽器登入。" } } } },
+    "Use %@’s Headers" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "استخدام ترويسات %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Header von %@ verwenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Usar los encabezados de %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Utiliser les en-têtes de %@"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "שימוש בכותרות של %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Usa le intestazioni di %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ のヘッダを使用"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@의 헤더 사용"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Headers van %@ gebruiken"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Użyj nagłówków z %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Usar os cabeçalhos de %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Использовать заголовки %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ Başlıklarını Kullan"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "‏%@ کے ہیڈرز استعمال کریں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "使用 %@ 的標頭"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "使用 %@ 的标头"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "使用 %@ 的標頭"
+          }
+        }
+      }
+    },
+    "You can do this later in Settings › %@." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يمكنك فعل ذلك لاحقًا من الإعدادات › %@."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Du kannst das später unter Einstellungen › %@ erledigen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Puedes hacerlo más tarde en Ajustes › %@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vous pourrez le faire plus tard dans Réglages › %@."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "אפשר לעשות זאת מאוחר יותר בהגדרות › %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Puoi farlo più tardi in Impostazioni › %@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "あとで「設定」›「%@」から行えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "나중에 설정 › %@에서 할 수 있어요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Je kunt dit later doen via Instellingen › %@."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Możesz to zrobić później w Ustawienia › %@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Você pode fazer isso depois em Ajustes › %@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Это можно сделать позже в разделе «Настройки» › %@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bunu daha sonra Ayarlar › %@ bölümünden yapabilirsin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "آپ یہ بعد میں ترتیبات › %@ میں کر سکتے ہیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "你可以稍後在「設定」›「%@」中進行。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "你可以稍后在“设置”›“%@”中进行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "你可以稍後在「設定」›「%@」中進行。"
+          }
+        }
+      }
+    },
     "Your Hermes sign-in expired. Sign in again." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Deine Hermes-Anmeldung ist abgelaufen. Melde dich erneut an." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Tu inicio de sesión en Hermes caducó. Vuelve a iniciar sesión." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Votre connexion à Hermes a expiré. Reconnectez-vous." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "L’accesso a Hermes è scaduto. Accedi di nuovo." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Twoje logowanie do Hermes wygasło. Zaloguj się ponownie." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Seu login no Hermes expirou. Entre novamente." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Je aanmelding bij Hermes is verlopen. Meld je opnieuw aan." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes oturumunuzun süresi doldu. Yeniden oturum açın." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Срок вашего входа в Hermes истёк. Войдите снова." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes のサインインの有効期限が切れました。もう一度サインインしてください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "你的 Hermes 登录已过期。请重新登录。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 로그인이 만료되었습니다. 다시 로그인하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "انتهت صلاحية تسجيل دخولك إلى Hermes. سجّل الدخول مرة أخرى." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "תוקף ההתחברות שלך ל-Hermes פג. התחבר שוב." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "آپ کے Hermes سائن اِن کی میعاد ختم ہو گئی۔ دوبارہ سائن اِن کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "你的 Hermes 登入已過期。請重新登入。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "你的 Hermes 登入已過期。請重新登入。" } } } },
     "legacy webui server" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Legacy-webui-Server" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "servidor webui heredado" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "ancien serveur webui" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "server webui legacy" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "starszy serwer webui" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "servidor webui legado" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "legacy webui-server" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "eski webui sunucusu" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "старый сервер webui" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "レガシー webui サーバ" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "旧版 webui 服务器" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "레거시 webui 서버" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "خادم webui قديم" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "שרת webui ישן" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "پرانا webui سرور" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "舊版 webui 伺服器" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "舊版 webui 伺服器" } } } },
     "Light" : {
@@ -145826,112 +146820,6 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "此主機上沒有相符的資料夾。"
-          }
-        }
-      }
-    },
-    "This host signs in with single sign-on" : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "يستخدم هذا المضيف تسجيل الدخول الموحّد"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Dieser Host nutzt Single Sign-on"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Este host usa inicio de sesión único"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Cet hôte utilise l’authentification unique"
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "המארח הזה מתחבר באמצעות כניסה יחידה"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Questo host usa il single sign-on"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "このホストはシングルサインオンでサインインします"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "이 호스트는 통합 로그인(SSO)을 사용함"
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Deze host gebruikt eenmalige aanmelding"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Ten host używa logowania jednokrotnego"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Este host usa logon único"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Этот хост использует единый вход"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Bu ana makine tek oturum açma kullanıyor"
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "یہ ہوسٹ سنگل سائن آن سے سائن اِن کرتا ہے"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "此主機使用單一登入"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "此主机使用单点登录"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "此主機使用單一登入"
           }
         }
       }

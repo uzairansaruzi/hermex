@@ -517,6 +517,39 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertEqual(saved.hermesVersion, "0.21.5")
     }
 
+    /// Opened from Move to Hermes, a browser sign-in host is no longer refused (#1266): it signs
+    /// in and is added, without switching to it.
+    func testABrowserHostSignsInFromAMoveWithoutSwitching() async throws {
+        let keychain = InMemoryKeychainStore()
+        let gatekeeper = OnboardingGateKeeper()
+        gatekeeper.drainEverything()
+        let manager = makeGatedManager(GatedAuthAPIClient(gatekeeper: gatekeeper, outcome: .succeed(
+            AuthStatusResponse(authEnabled: false))), keychain: keychain)
+        await manager.configure(serverURLString: "https://webui.example", password: "")
+        let form = OnboardingViewModel(entry: .addServer, moveSource: .init(name: "Home", headers: []), hermesConfiguration: {
+            HermesHostFixture.configuration { request in
+                switch request.url?.path {
+                case "/api/status": return .json(200, HermesBrowserSignInTests.browserStatus)
+                case "/auth/native/token": return .json(200, HermesBrowserSignInTests.tokens)
+                case "/api/auth/me": return .json(200, .object(["provider": .string("nous"), "user_id": .string("u1")]))
+                default: return nil
+                }
+            }
+        })
+        form.serverURLString = "hermes.example"
+        await form.connect(authManager: manager)
+        XCTAssertTrue(form.signsInWithBrowser)
+
+        let presenter = HermesBrowserSignIn.Presenter { url in _ = try await HermesBrowserSignInTests.callback(url, code: "code-1") }
+        let added = await form.connect(authManager: manager, browser: presenter)
+
+        let server = URL(string: "https://hermes.example")!
+        XCTAssertEqual(added, server)
+        XCTAssertNil(form.errorMessage)
+        XCTAssertEqual(manager.state, .loggedIn(server: URL(string: "https://webui.example")!))
+        XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: server)?.oauth?.refreshToken, "refresh-1")
+    }
+
     func testAWebuiAnswerOnTheStatusRouteFallsThroughToHealth() async {
         let replies: [HermesHostFixture.Reply] = [
             .json(401, .object(["error": .string("Authentication required")])),

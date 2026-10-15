@@ -377,6 +377,23 @@ final class ServerRegistry: @unchecked Sendable {
         return result
     }
 
+    /// Inserts a server without changing the active one, as `activate` inserts it: seeded from
+    /// the global identity defaults. An id already present is returned untouched. Used for a
+    /// Hermes server signed in from Move to Hermes, which switches only at its Done (#1266).
+    @discardableResult
+    func add(url: URL, kind: ServerKind, serverVersion: String?) -> ServerAccount {
+        let id = url.absoluteString
+        return storage.withLock { snapshot in
+            if let existing = snapshot.servers.first(where: { $0.id == id }) { return existing }
+            var account = makeSeededAccount(id: id, url: url)
+            account.kind = kind
+            account.serverVersion = serverVersion
+            snapshot.servers.append(account)
+            persist(snapshot)
+            return account
+        }
+    }
+
     /// Marks an already-registered server active (the Settings switcher, #17).
     /// No-op — returning nil — when `id` isn't registered or is already active.
     /// Mirrors the newly active server's identity into the global identity

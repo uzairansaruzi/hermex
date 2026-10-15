@@ -68,6 +68,9 @@ final class AuthManager {
     /// Servers `removeServer` is part way through removing. A Move to Hermes runner treats its
     /// destination as gone from the start, before the removal's first await (#1216).
     @ObservationIgnored private(set) var removingServerIDs: Set<String> = []
+    /// "Bring your chats" after adding a Hermes server (#1266), which the root presents; nil
+    /// once it is answered or no webui server is left to move.
+    var moveOffer: MoveToHermesOffer?
 
     // `keychain`, `serverRegistry` and `refreshServers` are internal for
     // `AuthManager+MoveToHermes`; nothing outside this type and that extension uses them.
@@ -317,8 +320,12 @@ final class AuthManager {
     /// already in the registry, as `addServer` does, so a webui server and a Hermes server
     /// never share a URL (`replaceWebuiServer` swaps one for the other). Returns whether it
     /// was added.
+    ///
+    /// Switching to it offers to move a webui server there (`moveOffer`). A sign-in opened
+    /// from Move to Hermes passes `activating: false`: the server is only added, so the move's
+    /// sheet stays up and scans it next, and the move's Done switches (#1266).
     @discardableResult
-    func addHermesServer(_ connection: BotConnection) -> Bool {
+    func addHermesServer(_ connection: BotConnection, activating: Bool = true) -> Bool {
         lastErrorMessage = nil
         let server = (try? BotConnection.address(connection.address.absoluteString)) ?? connection.address
         guard !serverRegistry.servers.contains(where: { $0.id == server.absoluteString }) else {
@@ -327,16 +334,22 @@ final class AuthManager {
         }
         do {
             try BotConnectionStore(keychain: keychain).save(connection, server: server)
-            try keychain.save(server.absoluteString, forKey: .serverURL)
+            if activating { try keychain.save(server.absoluteString, forKey: .serverURL) }
         } catch {
             lastErrorMessage = String(localized: "Could not save sign-in details on this iPhone.")
             return false
+        }
+        guard activating else {
+            serverRegistry.add(url: server, kind: .hermes, serverVersion: connection.hermesVersion)
+            refreshServers()
+            return true
         }
         serverRegistry.activate(url: server, kind: .hermes, serverVersion: connection.hermesVersion)
         refreshServers()
         // The Shortcuts Profile list belonged to the server this replaces as active (#339).
         ProfileEntityCache.shared.save([])
         enterActiveServer(server)
+        moveOffer = MoveToHermesOffer(destinationID: server.absoluteString, servers: servers)
         return true
     }
 

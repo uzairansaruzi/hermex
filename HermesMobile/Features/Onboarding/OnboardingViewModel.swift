@@ -7,14 +7,20 @@ import Observation
 /// own and becomes a Hermes server (`AuthManager.addHermesServer`). Anything else goes on
 /// to today's webui path: onboarding's `configure`, or Add Server's `addServer`, which
 /// leaves the active server alone until the new one succeeds. Move to Hermes's host choice
-/// (#1218) runs it to check a Hermes sign-in only: nothing is saved or added.
+/// opens Add Server with a `MoveSource` (#1266).
 @MainActor
 @Observable
 final class OnboardingViewModel {
-    /// Where the form runs, which picks its webui path. `moveDestination` accepts only a
-    /// Hermes dashboard and keeps its checked sign-in in `verifiedConnection`, unsaved: the
-    /// move's commit saves it (`AuthManager.commitMove`).
-    enum Entry { case onboarding, addServer, moveDestination }
+    /// Where the form runs, which picks its webui path.
+    enum Entry { case onboarding, addServer }
+
+    /// The webui server a Move to Hermes opened this sign-in for (#1266). The form then accepts
+    /// only a Hermes dashboard and adds it without switching to it, so the move's sheet stays
+    /// and scans it next. Its headers are offered, never filled in on their own.
+    struct MoveSource {
+        let name: String
+        let headers: [CustomHeader]
+    }
 
     /// How this iPhone reaches the host. It changes only the placeholder, the help and
     /// which header rows show: it is not saved, and no request depends on it. The scheme
@@ -66,6 +72,7 @@ final class OnboardingViewModel {
     nonisolated static let accessHeaderNames = ["CF-Access-Client-Id", "CF-Access-Client-Secret"]
 
     let entry: Entry
+    let moveSource: MoveSource?
     var serverURLString = "" {
         didSet {
             invalidateProbedAuthStatusIfNeeded()
@@ -100,8 +107,8 @@ final class OnboardingViewModel {
     /// The detected dashboard signs in through the browser (#708), so it asks for no
     /// username or password and Connect shows its sign-in page.
     private(set) var signsInWithBrowser = false
-    /// The sign-in a `moveDestination` Connect checked, never saved by the form.
-    private(set) var verifiedConnection: BotConnection?
+    /// `useMoveSourceHeaders` filled the move source's headers in, so the offer is gone.
+    private(set) var usedMoveSourceHeaders = false
     var connectionMessage: String?
     var errorMessage: String?
     var isWorking = false
@@ -120,12 +127,14 @@ final class OnboardingViewModel {
 
     init(
         entry: Entry = .onboarding,
+        moveSource: MoveSource? = nil,
         savedServer: URL? = nil,
         savedHeaders: [CustomHeader] = [],
         initialErrorMessage: String? = nil,
         hermesConfiguration: @escaping () -> URLSessionConfiguration = { .ephemeral }
     ) {
         self.entry = entry
+        self.moveSource = moveSource
         self.hermesConfiguration = hermesConfiguration
         if let savedServer {
             serverURLString = savedServer.absoluteString
@@ -193,6 +202,21 @@ final class OnboardingViewModel {
         username = signIn.connection.username
         password = signIn.connection.password
         reusedSignIn = signIn
+    }
+
+    /// The headers section's "Use <webui server>'s Headers" row, until it is used.
+    var offersMoveSourceHeaders: Bool {
+        !usedMoveSourceHeaders && moveSource?.headers.isEmpty == false
+    }
+
+    /// Fills in exactly the move source's headers, in place of rows with the same names and of
+    /// empty rows (Cloudflare Tunnel's), keeping any other row already filled in.
+    func useMoveSourceHeaders() {
+        guard !isConnectionLocked, let headers = moveSource?.headers, !headers.isEmpty else { return }
+        let names = Set(headers.map { $0.sanitizedName.lowercased() })
+        customHeaders = customHeaders.filter { !$0.sanitizedValue.isEmpty && !names.contains($0.sanitizedName.lowercased()) }
+            + headers
+        usedMoveSourceHeaders = true
     }
 
     // MARK: - Connection identity (issue #285)
@@ -491,7 +515,7 @@ final class OnboardingViewModel {
             }
         }
 
-        if entry == .moveDestination, detectedKind != .hermes {
+        if moveSource != nil, detectedKind != .hermes {
             errorMessage = (try? BotConnection.address(serverURLString))
                 .map { BotConnectionAdvice.message(for: BotFailure.notDashboard, address: $0) }
                 ?? BotFailure.notDashboard.localizedDescription
@@ -507,17 +531,15 @@ final class OnboardingViewModel {
             return nil
         case .addServer:
             return await addWebuiServer(authManager: authManager, token: token)
-        case .moveDestination:
-            return nil
         }
     }
 
     /// Signs the detected dashboard in once with the form's username, password and headers
-    /// on a connection of its own, then adds it as a Hermes server, or for `moveDestination`
-    /// only keeps the checked sign-in in `verifiedConnection`. A failure shows
-    /// `BotConnectionAdvice`'s copy, and nothing is retried (#884). A webui server saved at
-    /// the address is replaced only when `replacingWebuiServer`, and only after the sign-in
-    /// succeeded; otherwise it stops here with the Replace offer (#1027).
+    /// on a connection of its own, then adds it as a Hermes server, switching to it unless a
+    /// move opened the form. A failure shows `BotConnectionAdvice`'s copy, and nothing is
+    /// retried (#884). A webui server saved at the address is replaced only when
+    /// `replacingWebuiServer`, and only after the sign-in succeeded; otherwise it stops here
+    /// with the Replace offer (#1027), which a move never makes: it could remove its own source.
     private func addHermesServer(authManager: AuthManager, token: Int, replacingWebuiServer: Bool,
                                  browser: HermesBrowserSignIn.Presenter) async -> URL? {
         let identity = currentConnectionIdentity()
@@ -532,7 +554,7 @@ final class OnboardingViewModel {
         }
         let saved = authManager.servers.first { $0.id == address.absoluteString }
         if let saved, !(replacingWebuiServer && saved.kind == .webui) {
-            offersWebuiReplace = saved.kind == .webui && entry != .moveDestination
+            offersWebuiReplace = saved.kind == .webui && moveSource == nil
             errorMessage = offersWebuiReplace
                 ? String(localized: "A webui server is saved at this address.")
                 : String(localized: "This server is already configured.")
@@ -543,12 +565,6 @@ final class OnboardingViewModel {
             username: username.trimmingCharacters(in: .whitespacesAndNewlines), password: password,
             installID: reusedSignIn?.connection.installID, headers: headers.isEmpty ? nil : headers
         )
-        // A move's destination is saved later, apart from the connection that would rotate its
-        // refresh token, so it keeps to a password sign-in for now.
-        if signsInWithBrowser, entry == .moveDestination {
-            errorMessage = BotFailure.browserSignIn.localizedDescription
-            return nil
-        }
         let http = HermesConnection(connection: candidate, configuration: hermesConfiguration())
         do {
             if signsInWithBrowser {
@@ -567,12 +583,8 @@ final class OnboardingViewModel {
         var record = http.connection
         record.hermesVersion = http.serverVersion
         record.installID = http.serverInstallID ?? candidate.installID
-        if entry == .moveDestination {
-            verifiedConnection = record
-            return address
-        }
         let added = saved == nil
-            ? authManager.addHermesServer(record)
+            ? authManager.addHermesServer(record, activating: moveSource == nil)
             : await authManager.replaceWebuiServer(with: record)
         guard added else {
             errorMessage = authManager.lastErrorMessage
