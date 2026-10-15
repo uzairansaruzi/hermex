@@ -640,6 +640,28 @@ import XCTest
         }
     }
 
+    /// A second chat on a Profile whose note is still being checked waits for that check, so the
+    /// host does not build its agent before the note is written.
+    func testASecondChatWaitsForTheNoteBeingChecked() async throws {
+        let parked = expectation(description: "the config read is parked")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
+            request.url?.path == "/api/config" && request.httpMethod == "GET" ? .park : nil
+        })
+        let first = Task { await http.keepPlatformNote(profile: "research") }
+        await fulfillment(of: [parked])
+
+        let second = Task {
+            await http.keepPlatformNote(profile: "research")
+            return HermesHostFixture.requests.filter { $0.url?.path == "/api/config" }.map { $0.httpMethod ?? "" }
+        }
+        HermesHostFixture.releaseParked(.json(200, .object([:])))
+        await first.value
+
+        let seenBySecond = await second.value
+        XCTAssertEqual(seenBySecond, ["GET", "PUT"], "The second returns only once the note is written, and reads nothing itself")
+    }
+
     /// A config read that fails leaves the Profile unchecked, so the next chat tries again.
     func testAFailedPlatformNoteReadIsTriedAgain() async throws {
         var refusals = 1

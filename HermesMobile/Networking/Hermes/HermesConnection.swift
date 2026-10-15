@@ -51,9 +51,10 @@ import OSLog
     /// runtimes do; one the host has since reaped stays here and is never in
     /// `session.active_list` again.
     private(set) var attachedRuntimes: Set<String> = []
-    /// Profiles whose config `keepPlatformNote` found current or wrote on this connection, or
-    /// is checking now, so each is read once per sign-in.
-    private var notedProfiles: Set<String> = []
+    /// Each Profile's `keepPlatformNote` check on this connection, by Profile: one that found the
+    /// note current or wrote it, or one still running, which a later call waits for. A failed
+    /// check is dropped, so each Profile is read once per sign-in unless a read fails.
+    private var platformNoteChecks: [String: Task<Bool, Never>] = [:]
     /// The standard-deadline session. The gateway socket opens on it, with its cookies.
     let session: URLSession
     /// Shares `session`'s cookie jar; only its deadlines differ.
@@ -137,16 +138,29 @@ import OSLog
     /// Keeps `HermesREST.platformNote` as `profile`'s `platform_hints.hermex.append` (#1278), the
     /// note the host gives an agent built for a session that runs as `HermesCall.source`. Reads
     /// the config once per Profile on this connection and writes only a missing or changed note;
-    /// a Profile already being checked returns at once. A failure only lets the next call try
-    /// again: a chat opens without the note rather than not at all.
+    /// a call while that check runs waits for it, so no chat's agent is built before the note is
+    /// written. A failure only lets the next call try again: a chat opens without the note rather
+    /// than not at all.
     func keepPlatformNote(profile: String) async {
-        guard !profile.isEmpty, notedProfiles.insert(profile).inserted else { return }
+        guard !profile.isEmpty else { return }
+        let check = platformNoteChecks[profile] ?? Task { [weak self] in
+            await self?.writePlatformNoteIfChanged(profile: profile) ?? false
+        }
+        platformNoteChecks[profile] = check
+        if await !check.value, platformNoteChecks[profile] == check { platformNoteChecks[profile] = nil }
+    }
+
+    /// Whether `profile`'s config holds the current note, after writing it when it was missing or
+    /// different.
+    private func writePlatformNoteIfChanged(profile: String) async -> Bool {
         do {
             let config = try JSONDecoder().decode(BotJSON.self, from: try await data(.config(profile: profile)))
-            guard config["platform_hints"][HermesCall.source]["append"].text != HermesREST.platformNote else { return }
-            _ = try await data(.setPlatformNote(profile: profile))
+            if config["platform_hints"][HermesCall.source]["append"].text != HermesREST.platformNote {
+                _ = try await data(.setPlatformNote(profile: profile))
+            }
+            return true
         } catch {
-            notedProfiles.remove(profile)
+            return false
         }
     }
 
