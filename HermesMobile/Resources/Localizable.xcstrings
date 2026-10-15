@@ -3492,6 +3492,112 @@
     "%@: done" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"%@: fertig"}},"es":{"stringUnit":{"state":"needs_review","value":"%@: hecho"}},"fr":{"stringUnit":{"state":"needs_review","value":"%@ : terminé"}},"it":{"stringUnit":{"state":"needs_review","value":"%@: completato"}},"pl":{"stringUnit":{"state":"needs_review","value":"%@: gotowe"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"%@: concluído"}},"nl":{"stringUnit":{"state":"needs_review","value":"%@: klaar"}},"tr":{"stringUnit":{"state":"needs_review","value":"%@: tamamlandı"}},"ru":{"stringUnit":{"state":"needs_review","value":"%@: готово"}},"ja":{"stringUnit":{"state":"needs_review","value":"%@：完了"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"%@：已完成"}},"ko":{"stringUnit":{"state":"needs_review","value":"%@: 완료"}},"ar":{"stringUnit":{"state":"needs_review","value":"%@: تم"}},"he":{"stringUnit":{"state":"needs_review","value":"%@: הושלם"}},"ur":{"stringUnit":{"state":"needs_review","value":"%@: مکمل"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"%@：已完成"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"%@：已完成"}}}},
     "%@: waiting" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"%@: wartet"}},"es":{"stringUnit":{"state":"needs_review","value":"%@: en espera"}},"fr":{"stringUnit":{"state":"needs_review","value":"%@ : en attente"}},"it":{"stringUnit":{"state":"needs_review","value":"%@: in attesa"}},"pl":{"stringUnit":{"state":"needs_review","value":"%@: oczekuje"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"%@: aguardando"}},"nl":{"stringUnit":{"state":"needs_review","value":"%@: wachten"}},"tr":{"stringUnit":{"state":"needs_review","value":"%@: bekliyor"}},"ru":{"stringUnit":{"state":"needs_review","value":"%@: ожидание"}},"ja":{"stringUnit":{"state":"needs_review","value":"%@：待機中"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"%@：等待中"}},"ko":{"stringUnit":{"state":"needs_review","value":"%@: 대기 중"}},"ar":{"stringUnit":{"state":"needs_review","value":"%@: في الانتظار"}},"he":{"stringUnit":{"state":"needs_review","value":"%@: ממתין"}},"ur":{"stringUnit":{"state":"needs_review","value":"%@: منتظر"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"%@：等待中"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"%@：等待中"}}}},
     "%@: working" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"%@: läuft"}},"es":{"stringUnit":{"state":"needs_review","value":"%@: en curso"}},"fr":{"stringUnit":{"state":"needs_review","value":"%@ : en cours"}},"it":{"stringUnit":{"state":"needs_review","value":"%@: in corso"}},"pl":{"stringUnit":{"state":"needs_review","value":"%@: w toku"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"%@: em andamento"}},"nl":{"stringUnit":{"state":"needs_review","value":"%@: bezig"}},"tr":{"stringUnit":{"state":"needs_review","value":"%@: sürüyor"}},"ru":{"stringUnit":{"state":"needs_review","value":"%@: выполняется"}},"ja":{"stringUnit":{"state":"needs_review","value":"%@：実行中"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"%@：进行中"}},"ko":{"stringUnit":{"state":"needs_review","value":"%@: 진행 중"}},"ar":{"stringUnit":{"state":"needs_review","value":"%@: قيد التنفيذ"}},"he":{"stringUnit":{"state":"needs_review","value":"%@: בתהליך"}},"ur":{"stringUnit":{"state":"needs_review","value":"%@: جاری"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"%@：進行中"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"%@：進行中"}}}},
+    "%@’s chats stay on its host. Only Hermex’s copy of the server is removed." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تبقى محادثات %@ على مضيفها. تُزال نسخة Hermex من الخادم فقط."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Die Chats von %@ bleiben auf seinem Host. Nur die Kopie des Servers in Hermex wird entfernt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Los chats de %@ se quedan en su host. Solo se elimina la copia del servidor en Hermex."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Les discussions de %@ restent sur son hôte. Seule la copie du serveur dans Hermex est supprimée."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הצ׳אטים של %@ נשארים במארח שלו. רק העותק של השרת ב‑Hermex מוסר."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Le chat di %@ restano sul suo host. Viene rimossa solo la copia del server in Hermex."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ のチャットはホストに残ります。削除されるのは Hermex 内のサーバ情報だけです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@의 채팅은 호스트에 남아 있어요. Hermex에 있는 서버 사본만 제거돼요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "De chats van %@ blijven op de host. Alleen de kopie van de server in Hermex wordt verwijderd."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Czaty z serwera %@ pozostają na jego hoście. Usuwana jest tylko kopia serwera w Hermex."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Os chats de %@ ficam no host dele. Só a cópia do servidor no Hermex é removida."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Чаты сервера %@ остаются на его хосте. Удаляется только копия сервера в Hermex."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ sunucusunun sohbetleri kendi ana makinesinde kalır. Yalnızca Hermex’teki sunucu kopyası kaldırılır."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "‏%@ کی چیٹس اس کے ہوسٹ پر رہتی ہیں۔ صرف Hermex میں موجود سرور کی کاپی ہٹائی جاتی ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ 的聊天仍會留在其主機上。只會移除 Hermex 中的伺服器副本。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ 的聊天仍保留在其主机上。只会移除 Hermex 中的服务器副本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ 的聊天仍會留在其主機上。只會移除 Hermex 中的伺服器副本。"
+          }
+        }
+      }
+    },
     "%@’s notifications stop with it. %@’s own notifications aren’t affected." : {
       "localizations" : {
         "ar" : {
@@ -75240,6 +75346,112 @@
         }
       }
     },
+    "Move %@ Next" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "نقل %@ بعد ذلك"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Als Nächstes %@ umziehen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Trasladar %@ a continuación"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Transférer %@ ensuite"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "העברת %@ בהמשך"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Poi trasferisci %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "次に %@ を移動"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "다음으로 %@ 이동"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hierna %@ verplaatsen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Następnie przenieś %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Transferir %@ em seguida"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Затем перенести %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sonra %@ sunucusunu taşı"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اگلا %@ منتقل کریں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "接著移動 %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "接着移动 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "接著移動 %@"
+          }
+        }
+      }
+    },
     "Move %@ to Hermes" : {
       "localizations" : {
         "ar" : {
@@ -76826,6 +77038,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "會送達每部已配對的 iPhone；不會測試你的主機。"
+          }
+        }
+      }
+    },
+    "Remove %@…" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "إزالة %@…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ entfernen…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Eliminar %@…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Supprimer %@…"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הסרת %@…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Rimuovi %@…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ を削除…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ 제거…"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ verwijderen…"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Usuń %@…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Remover %@…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Удалить %@…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ sunucusunu kaldır…"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "‏%@ ہٹائیں…"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "移除 %@…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "移除 %@…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "移除 %@…"
           }
         }
       }

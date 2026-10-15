@@ -1,3 +1,4 @@
+import SwiftData
 import XCTest
 import UIKit
 @testable import HermesMobile
@@ -581,6 +582,54 @@ final class MoveToHermesModelTests: XCTestCase {
         await notices.refresh(auth)
         XCTAssertNil(notices.banner(for: hermes.absoluteString, in: auth.servers))
         XCTAssertEqual(notices.banner(for: webui.absoluteString, in: auth.servers)?.stage, .moved)
+    }
+
+    /// Remove from the report switches to the destination as Done does, then removes the webui
+    /// server; the destination keeps the move record, so old links still route (#1224).
+    func testRemovingFromTheReportKeepsTheMoveRecord() async throws {
+        MoveWebuiFixture.rows = [row("new", profile: "default")]
+        MoveWebuiFixture.exports = ["new": exportData("new")]
+        let model = makeModel()
+        model.open(.start)
+        await model.settled()
+        model.move()
+        await model.settled()
+        guard case .finished = model.screen else { return XCTFail("Expected the report, got \(model.screen)") }
+        let context = ModelContext(try ModelContainer(for: CachedSession.self, CachedMessage.self,
+                                                      configurations: ModelConfiguration(isStoredInMemoryOnly: true)))
+
+        await model.removeSource(modelContext: context)
+
+        XCTAssertEqual(auth.servers.map(\.id), [hermes.absoluteString])
+        XCTAssertEqual(auth.activeServerID, hermes.absoluteString)
+        let held = try XCTUnwrap(auth.moveRecord(forSource: webui.absoluteString))
+        XCTAssertEqual(held.destination.id, hermes.absoluteString)
+        XCTAssertNotNil(held.record.completedAt)
+        await notices.refresh(auth)
+        XCTAssertNil(notices.banner(for: hermes.absoluteString, in: auth.servers), "The report was acknowledged")
+    }
+
+    /// "Move <next> Next" names another configured webui server only while one hasn't moved.
+    func testTheNextServerIsOfferedOnlyWhileOneHasntMoved() throws {
+        let model = makeModel()
+        XCTAssertNil(model.nextSource, "The only webui server is the one moving")
+
+        let studio = ServerAccount(id: "https://studio.example", urlString: "https://studio.example", displayName: "Studio",
+                                   initials: "ST", headerLogoColorHex: HeaderLogoColor.defaultHex, createdAt: .now, updatedAt: .now)
+        let destination = ServerAccount(id: hermes.absoluteString, urlString: hermes.absoluteString, displayName: "Hermes Home",
+                                        initials: "HH", headerLogoColorHex: HeaderLogoColor.defaultHex, createdAt: .now,
+                                        updatedAt: .now, kind: .hermes)
+        try auth.serverRegistry.commit { servers, _ in servers += [destination, studio] }
+        auth.refreshServers()
+        XCTAssertEqual(model.nextSource?.id, studio.id)
+
+        try auth.serverRegistry.commit { servers, _ in
+            servers[servers.firstIndex { $0.id == destination.id }!].movedWebuiServers = [
+                MovedWebuiServer(sourceServerID: studio.id, profiles: [], completedAt: .now, report: nil),
+            ]
+        }
+        auth.refreshServers()
+        XCTAssertNil(model.nextSource, "Studio has moved too")
     }
 
     /// Copy Missing Chats Again keeps the finished report until Move starts the next pass: a

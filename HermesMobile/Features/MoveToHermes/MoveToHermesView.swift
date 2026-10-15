@@ -5,12 +5,15 @@ import UIKit
 /// The guided Move to Hermes sheet (#1218): host choice (D), the checking scan (A1b), refusals
 /// (R), Review with Profile mapping (A2, M), progress (A3), paused details and pauses (finish-early
 /// A, 3A, 4C), and the report kept until Done (A4). Static rows, no spinners or repeating
-/// animation. Closing it pauses a move; Done switches to the destination.
+/// animation. Closing it pauses a move; Done switches to the destination. The report can also
+/// remove the webui server or move the next one in this sheet (#1268).
 struct MoveToHermesSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
     @State private var model: MoveToHermesModel
     @State private var isSigningIn = false
     @State private var isConfirmingFinish = false
+    @State private var isConfirmingRemove = false
     @State private var copiedPrompt = false
     private let auth: AuthManager
     private let entry: MoveToHermesEntry
@@ -41,6 +44,14 @@ struct MoveToHermesSheet: View {
         } message: {
             Text(finishMessage)
         }
+        .alert(String(localized: "Remove \(source)?"), isPresented: $isConfirmingRemove) {
+            Button("Cancel", role: .cancel) {}
+            Button("Remove Server", role: .destructive) { removeSource() }
+        } message: {
+            if let account = model.source {
+                Text(MoveToHermesRemoval.message(for: account, servers: auth.servers) ?? "")
+            }
+        }
     }
 
     private var source: String { model.sourceName }
@@ -64,11 +75,10 @@ struct MoveToHermesSheet: View {
         switch model.screen {
         case .chooseHost, .checking, .review, .refused:
             ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-        case .finished:
-            ToolbarItem(placement: .confirmationAction) { Button("Done") { finish() } }
         case .paused:
             ToolbarItem(placement: .confirmationAction) { Button("Close") { dismiss() } }
-        case .loading, .progress, .couldNotStart:
+        // The report's Done is its first button (5A).
+        case .loading, .progress, .finished, .couldNotStart:
             ToolbarItem(placement: .cancellationAction) { EmptyView() }
         }
     }
@@ -83,16 +93,36 @@ struct MoveToHermesSheet: View {
         case .review: review
         case .progress(let step): progress(step)
         case .paused(let pause): paused(pause)
-        case .finished(let report): MoveToHermesReportView(report: report, source: source, destination: destination,
-                                                          keptProfiles: keptProfiles, canCopyAgain: model.source != nil,
-                                                          copyAgain: model.copyMissingChatsAgain, open: finish)
+        case .finished(let report):
+            MoveToHermesReportView(report: report, source: source, destination: destination, keptProfiles: keptProfiles,
+                                   canCopyAgain: model.source != nil, next: model.nextSource.map(MoveToHermesModel.name),
+                                   copyAgain: model.copyMissingChatsAgain, done: finish, moveNext: moveNext,
+                                   remove: model.source == nil ? nil : { isConfirmingRemove = true })
         case .couldNotStart(let failure): couldNotStart(failure)
         }
     }
 
-    /// Done and Open both acknowledge the report, then switch to the destination.
+    /// Done acknowledges the report, then switches to the destination.
     private func finish() {
         model.done()
+        dismiss()
+    }
+
+    /// "Move <next> Next" acknowledges the report, then shows the next webui server's move from
+    /// its first step, as its Settings "Move to Hermes…" does.
+    private func moveNext() {
+        guard let next = model.nextSource else { return }
+        model.acknowledge()
+        model = MoveToHermesModel(auth: auth, sourceID: next.id)
+        model.open(.start)
+    }
+
+    /// Remove's confirmation: switches to the destination as Done does, then removes the webui
+    /// server. The removal outlives the sheet, which the switch may tear down.
+    private func removeSource() {
+        let model = model
+        let modelContext = modelContext
+        Task { await model.removeSource(modelContext: modelContext) }
         dismiss()
     }
 
@@ -521,15 +551,22 @@ private struct MoveToHermesProfilePicker: View {
 
 // MARK: - A4
 
-/// The move's report, kept until Done (A4, A4b, finish-early A3).
+/// The move's report, kept until Done (A4, A4b, finish-early A3), with its actions stacked
+/// below (5A): Done, "Move <next> Next" while another webui server hasn't moved, and Remove
+/// while the webui server is still configured.
 private struct MoveToHermesReportView: View {
     let report: MoveToHermesReport
     let source: String
     let destination: String
     let keptProfiles: [String]
     let canCopyAgain: Bool
+    /// The next webui server's name, while one hasn't moved.
+    let next: String?
     let copyAgain: () -> Void
-    let open: () -> Void
+    let done: () -> Void
+    let moveNext: () -> Void
+    /// Asks to remove the webui server; nil once it is gone.
+    let remove: (() -> Void)?
 
     var body: some View {
         List {
@@ -571,13 +608,39 @@ private struct MoveToHermesReportView: View {
                                      detail: String(localized: "\(destination) is a different host from \(source). Its own notifications are unchanged; set them up in its Settings if they’re off. \(source) keeps its own until you remove it."))
                 }
             }
-            Section {
-                if canCopyAgain, report.notCopied.count + report.rejected.count + report.unchecked.count + report.sentUnconfirmed.count > 0 {
+            if canCopyAgain, report.notCopied.count + report.rejected.count + report.unchecked.count + report.sentUnconfirmed.count > 0 {
+                Section {
                     Button("Copy Missing Chats Again", action: copyAgain)
                 }
-                Button(String(localized: "Open \(destination)"), action: open).fontWeight(.semibold)
             }
         }
+        .safeAreaInset(edge: .bottom) { actions }
+    }
+
+    private var actions: some View {
+        VStack(spacing: 8) {
+            Button(action: done) { Text("Done").frame(maxWidth: .infinity) }
+                .buttonStyle(.borderedProminent)
+            if let next {
+                Button(action: moveNext) { Text("Move \(next) Next").frame(maxWidth: .infinity) }
+                    .buttonStyle(.bordered)
+                    .tint(.primary)
+            }
+            if let remove {
+                Button(role: .destructive, action: remove) { Text("Remove \(source)…").frame(maxWidth: .infinity) }
+                    .buttonStyle(.bordered)
+                Text("\(source)’s chats stay on its host. Only Hermex’s copy of the server is removed.")
+                    .font(.footnote)
+                    .fontWeight(.regular)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .controlSize(.large)
+        .fontWeight(.semibold)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.bar)
     }
 
     private var staying: Int { report.notCopied.count + report.rejected.count + report.oversized.count + report.keptOnWebui.count }

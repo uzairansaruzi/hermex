@@ -44,7 +44,8 @@ struct MoveToHermesQuestion: Identifiable, Equatable {
 ///
 /// The sheet owns every task this runs (`perform`), so closing it (`close`) cancels the scan,
 /// which changes nothing, or pauses a move, which Resume picks up. Done acknowledges the report,
-/// then switches to the destination; nothing switches servers before that.
+/// then switches to the destination; nothing switches servers before that. The report can also
+/// remove the webui server or move the next one (#1268).
 @MainActor @Observable final class MoveToHermesModel {
     enum Refusal: Equatable {
         /// R1: the host takes no password (`auth_required` false).
@@ -417,14 +418,33 @@ struct MoveToHermesQuestion: Identifiable, Equatable {
     /// Finish with What's Done: sends nothing, then shows the report.
     func finishEarly() { runPass { await $0.finishEarly() } }
 
-    /// Done: deletes the finished move's journal, then makes the destination the active server.
+    /// Done: acknowledges the report, then makes the destination the active server.
     func done() {
-        work?.cancel()
-        runner?.acknowledge()
+        acknowledge()
         if let destinationID, let destination = auth.servers.first(where: { $0.id == destinationID }) {
             auth.switchActiveServer(to: destination)
         }
+    }
+
+    /// Deletes the finished move's journal, so its report stops waiting. "Move <next> Next"
+    /// calls it without switching servers, then opens `nextSource`'s move.
+    func acknowledge() {
+        work?.cancel()
+        runner?.acknowledge()
         refreshNotices()
+    }
+
+    /// Another configured webui server that hasn't moved, which the report offers to move next.
+    var nextSource: ServerAccount? {
+        auth.servers.first { $0.kind == .webui && $0.id != sourceID && auth.moveRecord(forSource: $0.id) == nil }
+    }
+
+    /// Remove <webui server>…: switches to the destination as Done does, then removes the webui
+    /// server as Remove This Server does. The destination keeps the move record (#1224).
+    func removeSource(modelContext: ModelContext) async {
+        guard let source else { return }
+        done()
+        await MoveToHermesRemoval.remove(source, auth: auth, modelContext: modelContext)
     }
 
     /// Scans again and copies only what the destination still lacks, with the record's mapping.
