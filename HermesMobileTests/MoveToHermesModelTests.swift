@@ -344,6 +344,121 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNil(auth.moveOffer, "The webui server has a move record")
     }
 
+    // MARK: The one-time question and its banner (#1267)
+
+    /// Each webui server is asked once, one server a launch, the active one first. Its second
+    /// line follows whether it has a Bots connection, and the banner follows the question.
+    func testEachWebuiServerIsAskedOnceAndOneALaunch() async throws {
+        let studio = URL(string: "https://studio.example")!
+        await auth.configure(serverURLString: studio.absoluteString, password: "")
+        XCTAssertEqual(auth.activeServerID, studio.absoluteString)
+        XCTAssertFalse(auth.showsMoveInvite(for: studio.absoluteString), "No banner before the question")
+
+        auth.askAboutMoveIfDue()
+        XCTAssertEqual(auth.moveQuestion, MoveToHermesQuestion(sourceID: studio.absoluteString, hasBotsSignIn: false),
+                       "The active server first, though another comes first in the list")
+        XCTAssertTrue(auth.showsMoveInvite(for: studio.absoluteString))
+        XCTAssertFalse(auth.showsMoveInvite(for: webui.absoluteString), "The banner is per server")
+
+        auth.moveQuestion = nil
+        auth.askAboutMoveIfDue()
+        XCTAssertNil(auth.moveQuestion, "One question a launch")
+        auth.switchActiveServer(to: try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString }))
+        auth.askAboutMoveIfDue()
+        XCTAssertNil(auth.moveQuestion, "Switching servers isn't a launch")
+
+        relaunch()
+        auth.askAboutMoveIfDue()
+        XCTAssertEqual(auth.moveQuestion, MoveToHermesQuestion(sourceID: webui.absoluteString, hasBotsSignIn: true))
+        XCTAssertTrue(auth.showsMoveInvite(for: webui.absoluteString))
+        XCTAssertTrue(auth.showsMoveInvite(for: studio.absoluteString))
+
+        relaunch()
+        auth.askAboutMoveIfDue()
+        XCTAssertNil(auth.moveQuestion, "Every webui server was asked")
+    }
+
+    /// ✕ hides one server's banner for good: across a server switch, an identity edit from an
+    /// older copy of the entry, and a relaunch. The other server keeps its banner.
+    func testADismissedBannerStaysDismissedForItsServerOnly() async throws {
+        let studio = URL(string: "https://studio.example")!
+        await auth.configure(serverURLString: studio.absoluteString, password: "")
+        auth.noteMovePrompt(.asked, forSource: webui.absoluteString)
+        auth.noteMovePrompt(.asked, forSource: studio.absoluteString)
+        let olderCopy = try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString })
+
+        auth.noteMovePrompt(.dismissed, forSource: webui.absoluteString)
+        XCTAssertFalse(auth.showsMoveInvite(for: webui.absoluteString))
+        XCTAssertTrue(auth.showsMoveInvite(for: studio.absoluteString))
+
+        auth.noteMovePrompt(.asked, forSource: webui.absoluteString)
+        auth.updateServerIdentity(olderCopy, displayName: "Home", initials: "H", headerLogoColorHex: HeaderLogoColor.defaultHex)
+        auth.switchActiveServer(to: try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString }))
+        XCTAssertFalse(auth.showsMoveInvite(for: webui.absoluteString), "Dismissing is permanent")
+
+        relaunch()
+        XCTAssertFalse(auth.showsMoveInvite(for: webui.absoluteString))
+        XCTAssertTrue(auth.showsMoveInvite(for: studio.absoluteString))
+        auth.askAboutMoveIfDue()
+        XCTAssertNil(auth.moveQuestion)
+    }
+
+    /// A webui server with a move record, in progress or finished, gets neither the question nor
+    /// the invite; its Paused, Finished and Moved banners speak for it (#1225).
+    func testAServerWithAMoveRecordIsNeverAskedOrInvited() throws {
+        let account = try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString })
+        try auth.commitMove(from: account, to: BotConnection(id: UUID(), name: "", address: hermes, username: "admin", password: "secret"),
+                            profiles: [MovedWebuiProfile(source: "default", destination: .hermes(profile: "default"))])
+        XCTAssertNil(auth.moveRecord(forSource: webui.absoluteString)?.record.completedAt, "A move in progress")
+
+        auth.askAboutMoveIfDue()
+        XCTAssertNil(auth.moveQuestion)
+        auth.noteMovePrompt(.asked, forSource: webui.absoluteString)
+        XCTAssertFalse(auth.showsMoveInvite(for: webui.absoluteString))
+
+        try auth.updateMoveRecord(forSource: webui.absoluteString) { $0.completedAt = .now }
+        XCTAssertFalse(auth.showsMoveInvite(for: webui.absoluteString), "A finished move")
+        XCTAssertFalse(auth.showsMoveInvite(for: hermes.absoluteString), "A Hermes server is never invited")
+    }
+
+    /// The question never stacks on the sign-in offer, and an offer shown this launch takes the
+    /// launch's one move sheet. A signed-out server isn't asked over its sign-in.
+    func testTheQuestionWaitsForTheOfferAndASignIn() async throws {
+        let one = URL(string: "https://one.example")!
+        XCTAssertTrue(auth.addHermesServer(BotConnection(id: UUID(), name: "", address: one, username: "me", password: "pw")))
+        XCTAssertNotNil(auth.moveOffer)
+        auth.askAboutMoveIfDue()
+        XCTAssertNil(auth.moveQuestion, "Never over the offer")
+        auth.moveOffer = nil
+        auth.askAboutMoveIfDue()
+        XCTAssertNil(auth.moveQuestion, "The offer was this launch's move sheet")
+        XCTAssertNil(auth.servers.first { $0.id == webui.absoluteString }?.moveToHermesPrompt, "Still unasked")
+
+        await auth.signOut()
+        relaunch()
+        XCTAssertEqual(auth.state, .loggedOut(server: one))
+        auth.askAboutMoveIfDue()
+        XCTAssertNil(auth.moveQuestion, "Not over a sign-in form")
+        auth.switchActiveServer(to: try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString }))
+        auth.askAboutMoveIfDue()
+        XCTAssertEqual(auth.moveQuestion?.sourceID, webui.absoluteString)
+    }
+
+    /// Removing a webui server forgets its question and banner with it; added back, it is new.
+    func testRemovingAServerForgetsItsQuestion() async throws {
+        let studio = URL(string: "https://studio.example")!
+        await auth.configure(serverURLString: studio.absoluteString, password: "")
+        auth.noteMovePrompt(.dismissed, forSource: studio.absoluteString)
+        await auth.removeServer(try XCTUnwrap(auth.servers.first { $0.id == studio.absoluteString }))
+        auth.noteMovePrompt(.asked, forSource: webui.absoluteString)
+
+        await auth.configure(serverURLString: studio.absoluteString, password: "")
+        XCTAssertNil(auth.servers.first { $0.id == studio.absoluteString }?.moveToHermesPrompt)
+        relaunch()
+        auth.askAboutMoveIfDue()
+        XCTAssertEqual(auth.moveQuestion?.sourceID, studio.absoluteString)
+    }
+
     /// Closing during the scan cancels it: nothing is committed and no Review appears.
     func testClosingBeforeMoveChangesNothing() async throws {
         MoveWebuiFixture.rows = [row("new", profile: "default")]
@@ -604,6 +719,19 @@ final class MoveToHermesModelTests: XCTestCase {
         environment.registrar = { ModelRegistrar() }
         environment.drafts = { [unowned self] in drafts }
         return environment
+    }
+
+    /// A new app launch over the same Keychain: a fresh `AuthManager` and registry.
+    private func relaunch() {
+        auth = AuthManager(
+            keychain: keychain,
+            clientFactory: { _ in MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: false)) },
+            headerStore: CustomHeaderStore(),
+            serverRegistry: ServerRegistry(keychain: keychain, identityDefaults: .ephemeral()),
+            hermesConnections: HermesConnections(),
+            preferences: .ephemeral(),
+            forgetPush: { _ in }
+        )
     }
 
     private func makeModel() -> MoveToHermesModel {

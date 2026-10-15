@@ -342,6 +342,18 @@ final class ServerRegistryTests: XCTestCase {
         XCTAssertEqual(registry.servers.map(\.kind), [.webui, .webui, .webui, .hermes])
     }
 
+    /// The one-time Move to Hermes question's stage (#1267) loads as written; a missing,
+    /// unknown or mistyped one reads as unasked without dropping the entry.
+    func testAMoveQuestionStageLoadsAndAnUnknownOneReadsAsUnasked() throws {
+        let keychain = InMemoryKeychainStore()
+        try keychain.save(#"{"servers":[{"id":"https://a.test","moveToHermesPrompt":"dismissed"},{"id":"https://b.test","moveToHermesPrompt":"asked"},{"id":"https://c.test","moveToHermesPrompt":"snoozed"},{"id":"https://d.test","moveToHermesPrompt":3},{"id":"https://e.test"}]}"#,
+                          forKey: .servers)
+
+        let registry = ServerRegistry(keychain: keychain)
+
+        XCTAssertEqual(registry.servers.map(\.moveToHermesPrompt), [.dismissed, .asked, nil, nil, nil])
+    }
+
     func testAHermesServersKindAndVersionSurviveARelaunch() throws {
         let keychain = InMemoryKeychainStore()
         let registry = makeRegistry(keychain: keychain)

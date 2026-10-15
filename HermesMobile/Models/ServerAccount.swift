@@ -52,6 +52,10 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
     /// written only by `AuthManager.commitMove` and `updateMoveRecord`: `ServerRegistry.update`
     /// keeps the stored list, so an identity edit from an older copy can't drop it.
     var movedWebuiServers: [MovedWebuiServer]
+    /// How far a webui server's one-time Move to Hermes question went (#1267); nil before it is
+    /// asked. Kept on the server's own entry so it is per server and goes when the server is
+    /// removed. Written only by `AuthManager.noteMovePrompt`: `ServerRegistry.update` keeps it.
+    var moveToHermesPrompt: MoveToHermesPrompt?
 
     init(
         id: String,
@@ -63,7 +67,8 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         updatedAt: Date,
         kind: ServerKind = .webui,
         serverVersion: String? = nil,
-        movedWebuiServers: [MovedWebuiServer] = []
+        movedWebuiServers: [MovedWebuiServer] = [],
+        moveToHermesPrompt: MoveToHermesPrompt? = nil
     ) {
         self.id = id
         self.urlString = urlString
@@ -75,6 +80,7 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         self.kind = kind
         self.serverVersion = serverVersion
         self.movedWebuiServers = movedWebuiServers
+        self.moveToHermesPrompt = moveToHermesPrompt
     }
 
     enum CodingKeys: String, CodingKey {
@@ -88,6 +94,7 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         case kind
         case serverVersion
         case movedWebuiServers
+        case moveToHermesPrompt
     }
 
     init(from decoder: Decoder) throws {
@@ -118,7 +125,19 @@ struct ServerAccount: Codable, Identifiable, Equatable, Sendable {
         // One unreadable record is dropped on its own; the entry still loads.
         movedWebuiServers = ((try? container.decodeIfPresent([Lossy<MovedWebuiServer>].self, forKey: .movedWebuiServers)) ?? [])
             .compactMap(\.value)
+        // Read as text so a stage from a newer build reads as unasked instead of failing the entry.
+        moveToHermesPrompt = (try? container.decodeIfPresent(String.self, forKey: .moveToHermesPrompt))
+            .flatMap(MoveToHermesPrompt.init(rawValue:))
     }
+}
+
+/// How far a webui server's one-time Move to Hermes question went (#1267). Each stage only
+/// moves forward: the question, then the chat list's banner until its ✕.
+enum MoveToHermesPrompt: String, Codable, Sendable {
+    /// The sheet asked; the banner keeps the move in reach.
+    case asked
+    /// The banner was dismissed; nothing more shows for this server.
+    case dismissed
 }
 
 /// A webui server whose chats moved to the Hermes server holding this record (#707). The
@@ -447,8 +466,8 @@ final class ServerRegistry: @unchecked Sendable {
     }
 
     /// Replaces the stored entry for `account.id` (per-server identity edits,
-    /// #17), bumping `updatedAt`, and keeps the stored `movedWebuiServers`, which only
-    /// `commit` writes. No-op for an unregistered id. Mirrors to the
+    /// #17), bumping `updatedAt`, and keeps the stored `movedWebuiServers` and
+    /// `moveToHermesPrompt`, which only `commit` writes. No-op for an unregistered id. Mirrors to the
     /// global identity defaults when the updated server is the active one, so the
     /// active server's edits show up live without each consumer reading the
     /// registry directly.
@@ -461,6 +480,7 @@ final class ServerRegistry: @unchecked Sendable {
             var updated = account
             updated.updatedAt = now()
             updated.movedWebuiServers = snapshot.servers[index].movedWebuiServers
+            updated.moveToHermesPrompt = snapshot.servers[index].moveToHermesPrompt
             snapshot.servers[index] = updated
             persist(snapshot)
             if snapshot.activeServerID == account.id {

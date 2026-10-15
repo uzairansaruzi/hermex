@@ -32354,6 +32354,112 @@
         }
       }
     },
+    "Bring your chats to Hermes." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انقل محادثاتك إلى Hermes."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nimm deine Chats zu Hermes mit."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Lleva tus chats a Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Emmenez vos discussions vers Hermes."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "הבא את הצ׳אטים שלך ל‑Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Porta le tue chat su Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "チャットを Hermes に移しましょう。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "채팅을 Hermes로 가져오세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Neem je chats mee naar Hermes."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Przenieś swoje czaty do Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Leve suas conversas para o Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Перенесите свои чаты в Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sohbetlerini Hermes’e taşı."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "اپنی چیٹس Hermes میں لائیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "把你的聊天帶到 Hermes。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "把你的聊天带到 Hermes。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "把你的聊天帶到 Hermes。"
+          }
+        }
+      }
+    },
     "Brown" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Braun" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Marrón" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Marron" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Marrone" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Brązowy" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Marrom" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Bruin" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Kahverengi" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Коричневый" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "茶色" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "棕色" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "갈색" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "بني" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "חום" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "بھورا" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "棕色" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "棕色" } } } },
     "Browse Board" : {
       "localizations" : {
@@ -70107,6 +70213,112 @@
         }
       }
     },
+    "Hermex now talks to Hermes directly. Your chats, titles, pins and drafts come with you." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يتواصل Hermex الآن مع Hermes مباشرةً. تنتقل معك محادثاتك وعناوينها والتثبيتات والمسودات."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex spricht jetzt direkt mit Hermes. Deine Chats, Titel, Pins und Entwürfe kommen mit."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex ahora se comunica directamente con Hermes. Tus chats, títulos, fijados y borradores vienen contigo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex communique désormais directement avec Hermes. Vos discussions, titres, épingles et brouillons vous suivent."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex מתקשר עכשיו ישירות עם Hermes. הצ׳אטים, הכותרות, ההצמדות והטיוטות שלך עוברים איתך."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex ora comunica direttamente con Hermes. Chat, titoli, elementi fissati e bozze vengono con te."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex は Hermes と直接やり取りするようになりました。チャット、タイトル、ピン、下書きもそのまま移ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "이제 Hermex가 Hermes와 직접 통신합니다. 채팅, 제목, 고정 항목, 초안도 함께 옮겨집니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex praat nu rechtstreeks met Hermes. Je chats, titels, pins en concepten gaan mee."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex łączy się teraz bezpośrednio z Hermes. Twoje czaty, tytuły, przypięcia i wersje robocze przejdą razem z Tobą."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O Hermex agora fala diretamente com o Hermes. Suas conversas, títulos, fixados e rascunhos vêm junto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Теперь Hermex работает с Hermes напрямую. Ваши чаты, названия, закрепления и черновики переедут вместе с вами."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex artık doğrudan Hermes ile konuşuyor. Sohbetlerin, başlıkların, sabitlemelerin ve taslakların seninle gelir."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex اب براہِ راست Hermes سے بات کرتا ہے۔ آپ کی چیٹس، عنوانات، پِنز اور ڈرافٹس آپ کے ساتھ آتے ہیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex 現在直接連接 Hermes。你的聊天、標題、釘選和草稿都會一併帶過去。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex 现在直接连接 Hermes。你的聊天、标题、置顶和草稿都会一起带过去。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hermex 現在直接連接 Hermes。你的聊天、標題、釘選和草稿都會一併帶過去。"
+          }
+        }
+      }
+    },
     "Hermex refreshed the Board, but cannot prove whether workers started. Review the current Board before running Dispatcher again." : { "localizations" : {
       "de" : { "stringUnit" : { "state" : "translated", "value" : "Hermex hat das Board aktualisiert, kann aber nicht bestätigen, ob Worker gestartet wurden. Prüfe das aktuelle Board, bevor du den Dispatcher erneut ausführst." } },
       "es" : { "stringUnit" : { "state" : "translated", "value" : "Hermex actualizó el tablero, pero no puede confirmar si se iniciaron trabajadores. Revisa el tablero actual antes de volver a ejecutar el despachador." } },
@@ -75028,6 +75240,112 @@
         }
       }
     },
+    "Move %@ to Hermes" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "انقل %@ إلى Hermes"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ zu Hermes umziehen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Trasladar %@ a Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Transférer %@ vers Hermes"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "העברת %@ ל‑Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Trasferisci %@ su Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ を Hermes へ移動"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@을(를) Hermes로 이동"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ naar Hermes verplaatsen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Przenieś %@ do Hermes"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Transferir %@ para o Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Перенести %@ в Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "%@ sunucusunu Hermes’e taşı"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "‏%@ کو Hermes پر منتقل کریں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "將 %@ 移至 Hermes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "将 %@ 移至 Hermes"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "將 %@ 移至 Hermes"
+          }
+        }
+      }
+    },
     "Moving brings chats, pins and drafts to Hermes." : {
       "localizations" : {
         "ar" : {
@@ -75448,6 +75766,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "尚未與中繼同步。"
+          }
+        }
+      }
+    },
+    "Nothing is deleted. %@ keeps working until you remove it." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "لا يُحذف شيء. يظل %@ يعمل حتى تزيله."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nichts wird gelöscht. %@ funktioniert weiter, bis du es entfernst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "No se elimina nada. %@ sigue funcionando hasta que lo quites."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Rien n’est supprimé. %@ continue de fonctionner jusqu’à ce que vous le supprimiez."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "שום דבר לא נמחק. %@ ממשיך לעבוד עד שתסיר אותו."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Non viene eliminato nulla. %@ continua a funzionare finché non lo rimuovi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "何も削除されません。%@ は削除するまで引き続き使えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "아무것도 삭제되지 않습니다. %@은(는) 제거할 때까지 계속 작동합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Er wordt niets verwijderd. %@ blijft werken tot je het verwijdert."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nic nie zostanie usunięte. %@ działa dalej, dopóki go nie usuniesz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nada é apagado. %@ continua funcionando até você removê-lo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ничего не удаляется. %@ продолжит работать, пока вы его не удалите."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Hiçbir şey silinmez. %@, sen kaldırana kadar çalışmaya devam eder."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "کچھ بھی حذف نہیں ہوتا۔ ‏%@ تب تک کام کرتا رہے گا جب تک آپ اسے ہٹا نہ دیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "不會刪除任何內容。%@ 會繼續運作，直到你將它移除。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "不会删除任何内容。%@ 会继续运行，直到你将其移除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "不會刪除任何內容。%@ 會繼續運作，直到你將它移除。"
           }
         }
       }
@@ -77470,6 +77894,112 @@
         }
       }
     },
+    "Uses the Hermes sign-in you set up for Bots." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "يستخدم تسجيل الدخول إلى Hermes الذي أعددته للروبوتات."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Nutzt die Hermes-Anmeldung, die du für Bots eingerichtet hast."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Usa el inicio de sesión de Hermes que configuraste para los bots."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Utilise la connexion Hermes que vous avez configurée pour les bots."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "משתמש בהתחברות ל‑Hermes שהגדרת עבור הבוטים."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Usa l’accesso a Hermes che hai configurato per i bot."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ボット用に設定した Hermes のサインインを使います。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "봇용으로 설정한 Hermes 로그인을 사용합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gebruikt de Hermes-aanmelding die je voor bots hebt ingesteld."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Używa logowania do Hermes skonfigurowanego dla botów."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Usa o login do Hermes que você configurou para os bots."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Используется вход в Hermes, настроенный для ботов."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Botlar için ayarladığın Hermes oturumunu kullanır."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "وہی Hermes سائن اِن استعمال کرتا ہے جو آپ نے بوٹس کے لیے سیٹ کیا تھا۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "使用你為機械人設定的 Hermes 登入。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "使用你为机器人设置的 Hermes 登录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "使用你為機器人設定的 Hermes 登入。"
+          }
+        }
+      }
+    },
     "You can do this later in Settings › %@." : {
       "localizations" : {
         "ar" : {
@@ -77577,6 +78107,112 @@
       }
     },
     "Your Hermes sign-in expired. Sign in again." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Deine Hermes-Anmeldung ist abgelaufen. Melde dich erneut an." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Tu inicio de sesión en Hermes caducó. Vuelve a iniciar sesión." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Votre connexion à Hermes a expiré. Reconnectez-vous." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "L’accesso a Hermes è scaduto. Accedi di nuovo." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Twoje logowanie do Hermes wygasło. Zaloguj się ponownie." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Seu login no Hermes expirou. Entre novamente." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Je aanmelding bij Hermes is verlopen. Meld je opnieuw aan." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes oturumunuzun süresi doldu. Yeniden oturum açın." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Срок вашего входа в Hermes истёк. Войдите снова." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes のサインインの有効期限が切れました。もう一度サインインしてください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "你的 Hermes 登录已过期。请重新登录。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 로그인이 만료되었습니다. 다시 로그인하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "انتهت صلاحية تسجيل دخولك إلى Hermes. سجّل الدخول مرة أخرى." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "תוקף ההתחברות שלך ל-Hermes פג. התחבר שוב." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "آپ کے Hermes سائن اِن کی میعاد ختم ہو گئی۔ دوبارہ سائن اِن کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "你的 Hermes 登入已過期。請重新登入。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "你的 Hermes 登入已過期。請重新登入。" } } } },
+    "You’ll sign in to your Hermes host first." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ستسجّل الدخول إلى مضيف Hermes أولًا."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Du meldest dich zuerst bei deinem Hermes-Host an."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Primero iniciarás sesión en tu host de Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vous vous connecterez d’abord à votre hôte Hermes."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "קודם תתחבר למארח Hermes שלך."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Prima accederai al tuo host Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "最初に Hermes ホストにサインインします。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "먼저 Hermes 호스트에 로그인합니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Je logt eerst in bij je Hermes-host."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Najpierw zalogujesz się do swojego hosta Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Primeiro, você vai entrar no seu host do Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Сначала вы войдёте на свой хост Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Önce Hermes ana makinende oturum açacaksın."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "پہلے آپ اپنے Hermes ہوسٹ میں سائن اِن کریں گے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "你會先登入你的 Hermes 主機。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "你会先登录你的 Hermes 主机。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "你會先登入你的 Hermes 主機。"
+          }
+        }
+      }
+    },
     "legacy webui server" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Legacy-webui-Server" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "servidor webui heredado" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "ancien serveur webui" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "server webui legacy" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "starszy serwer webui" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "servidor webui legado" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "legacy webui-server" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "eski webui sunucusu" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "старый сервер webui" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "レガシー webui サーバ" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "旧版 webui 服务器" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "레거시 webui 서버" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "خادم webui قديم" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "שרת webui ישן" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "پرانا webui سرور" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "舊版 webui 伺服器" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "舊版 webui 伺服器" } } } },
     "Light" : {
       "localizations" : {

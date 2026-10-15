@@ -28,6 +28,15 @@ struct MoveToHermesOffer: Identifiable, Equatable {
     }
 }
 
+/// The one-time "Move <server> to Hermes" question for a webui server (#1267).
+struct MoveToHermesQuestion: Identifiable, Equatable {
+    let sourceID: String
+    /// The webui server has a Bots connection, so Move to Hermes goes straight to the scan
+    /// instead of the Hermes sign-in; the sheet's second line says which.
+    let hasBotsSignIn: Bool
+    var id: String { sourceID }
+}
+
 /// The guided Move to Hermes sheet's model (#1218). It reads what Review shows without changing
 /// either server: the host's own sign-in check (refusals R1 and R3), Profiles and a scan, then the
 /// webui's running chats (R4). Move hands the frozen Review to `MoveToHermesRunner.start`, which

@@ -73,7 +73,15 @@ final class AuthManager {
     @ObservationIgnored private(set) var removingServerIDs: Set<String> = []
     /// "Bring your chats" after signing in to a Hermes server (#1266), which the root presents;
     /// nil once it is answered, no webui server is left to move, or `dropStaleMoveOffer` ends it.
-    var moveOffer: MoveToHermesOffer?
+    /// Showing one takes this launch's move sheet from the one-time question.
+    var moveOffer: MoveToHermesOffer? {
+        didSet { if moveOffer != nil { askedAboutMoveThisLaunch = true } }
+    }
+    /// The one-time "Move <server> to Hermes" question (#1267), which the root presents; set by
+    /// `askAboutMoveIfDue`, nil once closed.
+    var moveQuestion: MoveToHermesQuestion?
+    /// One move sheet a launch: the question or the offer, whichever showed first.
+    @ObservationIgnored var askedAboutMoveThisLaunch = false
 
     // `keychain`, `serverRegistry` and `refreshServers` are internal for
     // `AuthManager+MoveToHermes`; nothing outside this type and that extension uses them.
