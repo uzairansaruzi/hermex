@@ -75,12 +75,25 @@ import Foundation
 /// Move to Hermes's scan listing (#1213) is read at the same pin: `limit` is at most 100, every
 /// page also back-fills every pinned row it missed, hidden rows are left out, and `total` counts
 /// the rows the scope matches, so paging ends at `total`, never at a short page.
+/// The Profile config write (#1278) is read at the same pin (`web_routers/config_env.py`
+/// `update_config`): `PUT /api/config` deep-merges the body's `config` over the file on disk, and
+/// the agent reads `platform_hints.<source>` when it is built (`agent/agent_init.py`).
 /// The native sign-in routes (#708) are read at the same pin (`dashboard_auth/routes.py`) and
 /// were exercised on a phone against a 0.21.5 host: `/auth/native/token` and
 /// `/auth/native/refresh` answer the tokens in the body and set no cookie, a bearer passes the
 /// gate on every `/api/*` route, an expired or unknown one is 401 `{error: "session_expired"}`,
 /// and the WebSocket upgrades still present a ticket, which the bearer can mint.
 enum HermesREST: Equatable, Sendable {
+    /// What the agent of a Hermex session is told about the screen it writes to (#1278): the
+    /// host appends it to the system prompt of every agent running as `HermesCall.source`.
+    /// It names only what the transcript renders (`TranscriptMediaReference`).
+    static let platformNote = """
+        You are chatting with the user through Hermex, a native iPhone app for Hermes. Markdown renders. \
+        To send the user a file from this machine, write MEDIA:/absolute/path/to/file in your reply: \
+        images show inline, audio plays in the chat, video opens from a tile, and any other file arrives \
+        as a file the user can save or share. Send the file rather than asking the user to open a path.
+        """
+
     /// The most rows `GET /api/sessions` lists in one page.
     static let sessionPageSize = 100
     /// The most display rows one transcript page (`sessionMessages` with an offset) carries.
@@ -254,6 +267,9 @@ enum HermesREST: Equatable, Sendable {
     case filesMkdir(path: String)
     /// A Profile's whole config, unredacted, credentials included: decode only what is needed.
     case config(profile: String)
+    /// Writes `platformNote` as the Profile's `platform_hints.hermex.append` (#1278). The host
+    /// deep-merges the body over the file, so nothing else in it changes; `{ok: true}`.
+    case setPlatformNote(profile: String)
     /// `{content, exists}`: the Profile's SOUL.md, empty when it has none.
     case profileSoul(name: String)
     /// Replaces the Profile's SOUL.md, atomically; `{ok: true}`.
@@ -564,6 +580,11 @@ enum HermesREST: Equatable, Sendable {
         case .config(let profile):
             guard !profile.isEmpty else { throw BotFailure.invalidAddress }
             return Self.get(try Self.url(base, "api/config", profile: profile))
+        case .setPlatformNote(let profile):
+            guard !profile.isEmpty else { throw BotFailure.invalidAddress }
+            let note: BotJSON = .object([HermesCall.source: .object(["append": .string(Self.platformNote)])])
+            return try Self.send("PUT", try Self.url(base, "api/config", profile: profile),
+                                 ["config": .object(["platform_hints": note])])
         case .profileSoul(let name):
             guard Self.isSegment(name) else { throw BotFailure.invalidAddress }
             return Self.get(base.appendingPathComponent("api/profiles/\(name)/soul"))

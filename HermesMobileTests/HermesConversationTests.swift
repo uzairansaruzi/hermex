@@ -67,7 +67,7 @@ import Observation
         XCTAssertEqual(conversation.target, .session(profile: profile, key: "fresh"))
         XCTAssertEqual(conversation.storedKey, "fresh")
         XCTAssertEqual(host.requests.first?["method"].text, "session.create")
-        XCTAssertEqual(host.requests.first?["params"], .object(["profile": .string(profile)]),
+        XCTAssertEqual(host.requests.first?["params"], .object(["profile": .string(profile), "source": .string("hermex")]),
                        "no Bot Chat title, and not hidden")
         XCTAssertEqual(host.requests.dropFirst().compactMap { $0["params"]["session_id"].text }, ["fresh", "runtime", "fresh"])
         XCTAssertEqual(owner.log, ["root fresh", "snapshot", "connected"])
@@ -130,6 +130,7 @@ import Observation
         XCTAssertEqual(wire.calls.map(\.0), ["session.list", "session.resume", "session.events.since", "session.resume"])
         XCTAssertEqual(wire.calls[1].1["session_id"], .string("tip"))
         XCTAssertEqual(wire.calls[1].1["close_on_disconnect"], .bool(false))
+        XCTAssertEqual(wire.platformNotes, ["\(profile) after 0 calls"], "The Profile's note is settled before the lookup (#1278)")
         conversation.suspend()
     }
 

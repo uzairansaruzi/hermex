@@ -280,6 +280,7 @@ enum BotProfileName {
     private func ensureChat(_ client: any BotTransport, owner: Int) async throws {
         if outcomes[.chat] == .done { return }
         if try await findChat(client, owner: owner) { outcomes[.chat] = .done; return }
+        await client.keepPlatformNote(profile: name)
         let created = try await client.call(.sessionCreate(profile: name), validateDispatch: validate(owner))
         try ensureOwner(owner, client)
         guard let runtime = created["session_id"].text, !runtime.isEmpty else { throw BotFailure.unsupported }

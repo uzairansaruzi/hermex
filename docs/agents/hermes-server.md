@@ -289,6 +289,21 @@ subprotocols in its `Sec-WebSocket-Protocol` header, which is where
 on commas (`hermes_cli/web_server_chat.py`). JSON-RPC uses text frames. There is no bootstrap-token,
 OAuth, webui fallback, server provisioning or competing-backend path.
 
+## The agent's surface note
+
+The host tells each agent what screen it writes to through a per-surface note in its system
+prompt, picked by the session's `source`. A session with none runs as `tui`, whose note says
+`MEDIA:` tags print as text and files must be delivered as paths. So every `session.create` and
+`session.resume` Hermex sends carries `source: "hermex"` (`HermesCall.source`), and a branch
+inherits its parent's. The host has no built-in note for that name, so Hermex keeps its own in
+each Profile's config as `platform_hints.hermex.append` (`HermesREST.platformNote`), which the
+host appends for that source (#1278). `HermesConnection.keepPlatformNote` reads the config once
+per Profile per sign-in, before the first attach and before a new bot's chat is made, and writes
+the note only when it is missing or different. `PUT /api/config` deep-merges, so nothing else in
+the file changes. The note is read when the host builds an agent, so a runtime the host built
+earlier keeps the old note until the host reaps it. Hermex owns `append`: a user's own text for
+Hermex sessions goes in `platform_hints.hermex.replace`, which the host puts before it.
+
 ## Handshake
 
 Every socket, reconnects included, runs the same handshake before any other RPC:

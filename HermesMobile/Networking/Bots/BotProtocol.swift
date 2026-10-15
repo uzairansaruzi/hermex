@@ -176,6 +176,9 @@ enum BotConnectionAdvice {
     /// One file the host serves by `path` under `context`'s Profile and session. `limit` caps a
     /// preview's bytes; nil reads the whole file, as a MEDIA file's export does (#1112).
     func artifactData(path: String, context: BotArtifactContext, limit: Int?) async throws -> Data
+    /// Makes sure the agents of `profile`'s sessions are told what Hermex shows
+    /// (`HermesConnection.keepPlatformNote`). Never throws: a chat opens without the note.
+    func keepPlatformNote(profile: String) async
     /// Removes a Profile on the host over the authenticated HTTP session. Only
     /// a 200 with `ok` counts as deleted; anything else leaves the bot in place.
     func deleteProfile(_ name: String) async throws
@@ -232,6 +235,8 @@ extension BotTransport {
     func artifactData(path: String, context: BotArtifactContext, limit: Int?) async throws -> Data {
         throw BotArtifactFailure.unavailable
     }
+
+    func keepPlatformNote(profile: String) async {}
 
     /// A preview's download: at most 25 MB.
     func artifactData(path: String, context: BotArtifactContext) async throws -> Data {

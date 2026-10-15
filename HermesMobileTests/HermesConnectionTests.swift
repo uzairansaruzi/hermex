@@ -607,6 +607,56 @@ import XCTest
         XCTAssertEqual(HermesHeaders(saved: saved).values, [cloudflare, access])
     }
 
+    /// A Profile's config gets Hermex's note under `platform_hints.hermex` (#1278): written
+    /// when it is missing or differs, through a PUT the host merges, and left alone when current.
+    /// Each Profile is read once per connection.
+    func testThePlatformNoteIsWrittenOnlyWhenMissingOrChanged() async throws {
+        let rows: [(hints: BotJSON, writes: Int)] = [
+            (.null, 1),
+            (.object(["hermex": .object(["append": .string("An older note.")])]), 1),
+            (.object(["hermex": .object(["append": .string(HermesREST.platformNote)])]), 0)
+        ]
+        for row in rows {
+            HermesHostFixture.reset()
+            let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
+                request.url?.path == "/api/config" && request.httpMethod == "GET"
+                    ? .json(200, .object(["model": .string("gpt-6"), "platform_hints": row.hints])) : nil
+            })
+
+            await http.keepPlatformNote(profile: "research")
+            await http.keepPlatformNote(profile: "research")
+
+            let config = HermesHostFixture.requests.filter { $0.url?.path == "/api/config" }
+            XCTAssertEqual(config.map { $0.httpMethod ?? "" }, ["GET"] + Array(repeating: "PUT", count: row.writes), "\(row.hints)")
+            for request in config {
+                XCTAssertEqual(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems,
+                               [URLQueryItem(name: "profile", value: "research")])
+            }
+            if let write = config.first(where: { $0.httpMethod == "PUT" }) {
+                XCTAssertEqual(HermesCronFixture.body(write), .object(["config": .object(["platform_hints": .object([
+                    "hermex": .object(["append": .string(HermesREST.platformNote)])
+                ])])]))
+            }
+        }
+    }
+
+    /// A config read that fails leaves the Profile unchecked, so the next chat tries again.
+    func testAFailedPlatformNoteReadIsTriedAgain() async throws {
+        var refusals = 1
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/config", request.httpMethod == "GET" else { return nil }
+            if refusals > 0 { refusals -= 1; return .json(503, .object([:])) }
+            return .json(200, .object([:]))
+        })
+
+        await http.keepPlatformNote(profile: "research")
+        await http.keepPlatformNote(profile: "research")
+        await http.keepPlatformNote(profile: "research")
+
+        XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path == "/api/config" }.map { $0.httpMethod ?? "" },
+                       ["GET", "GET", "PUT"])
+    }
+
     private func oauthRecord(refreshToken: String) -> BotConnection {
         var saved = BotConnection(id: record.id, name: "Host", address: record.address, username: "u1", password: "")
         saved.oauth = HermesOAuth(provider: "nous", userID: "u1", refreshToken: refreshToken)

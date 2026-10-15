@@ -14,6 +14,12 @@ enum HermesCall: Equatable, Sendable {
     static let botChatTitle = "Bot Chat"
     /// Room lists are read in the host's largest page.
     static let roomPageSize = 500
+    /// The surface every session Hermex creates or resumes runs as (#1278). The host picks the
+    /// agent's note about the screen it is talking to by this name, and without one it assumes
+    /// its terminal UI, whose note tells the agent it cannot send files. The host has no note
+    /// of its own for this name: `HermesREST.platformNote` is the one Hermex keeps in each
+    /// Profile's config.
+    static let source = "hermex"
 
     // Profiles
     case profilesList(includeSessions: Bool)
@@ -349,9 +355,9 @@ enum HermesCall: Equatable, Sendable {
             return ["profile": .string(profile), "title": .string(Self.botChatTitle), "include_hidden": .bool(true)]
         case .sessionCreate(let profile):
             return ["profile": .string(profile), "title": .string(Self.botChatTitle),
-                    "hidden": .bool(true), "follow_profile_config": .bool(true)]
+                    "hidden": .bool(true), "follow_profile_config": .bool(true), "source": .string(Self.source)]
         case .sessionNew(let profile, let cwd, let model):
-            var params: [String: BotJSON] = ["profile": .string(profile)]
+            var params: [String: BotJSON] = ["profile": .string(profile), "source": .string(Self.source)]
             if let cwd { params["cwd"] = .string(cwd) }
             if let model { params["model"] = .string(model.id); params["provider"] = .string(model.provider) }
             return params
@@ -384,7 +390,7 @@ enum HermesCall: Equatable, Sendable {
             return params
         case .sessionResume(let profile, let sessionID, let omitMessages):
             var params: [String: BotJSON] = ["profile": .string(profile), "session_id": .string(sessionID),
-                                             "close_on_disconnect": .bool(false)]
+                                             "close_on_disconnect": .bool(false), "source": .string(Self.source)]
             if omitMessages { params["omit_messages"] = .bool(true) }
             return params
         case .sessionEventsSince(let sessionID, let lastSeen):

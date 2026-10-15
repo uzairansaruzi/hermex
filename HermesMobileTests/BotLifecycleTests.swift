@@ -62,6 +62,7 @@ import XCTest
         await creator.create()
 
         XCTAssertEqual(wire.calls.map(\.0), ["profiles.create", "profiles.configure", "session.list", "session.create", "session.title"])
+        XCTAssertEqual(wire.platformNotes, ["home-hunter after session.list"], "The new bot's note is kept before its chat is made (#1278)")
         let create = wire.calls[0].1
         XCTAssertEqual(create["name"], .string("home-hunter"))
         XCTAssertEqual(create["description"], .string("Finds apartments"))
@@ -78,7 +79,8 @@ import XCTest
             "expression": .string("happy"), "custom": .bool(true), "imageKind": .string("shape")
         ])
         XCTAssertEqual(wire.calls[3].1, ["profile": .string("home-hunter"), "title": .string("Bot Chat"),
-                                         "hidden": .bool(true), "follow_profile_config": .bool(true)])
+                                         "hidden": .bool(true), "follow_profile_config": .bool(true),
+                                         "source": .string("hermex")])
         XCTAssertEqual(wire.calls[4].1, ["session_id": .string("runtime-1"), "title": .string("Bot Chat")])
         XCTAssertEqual(creator.phase, .created)
         XCTAssertEqual(created, ["home-hunter"])
@@ -449,6 +451,9 @@ import XCTest
     var sessionCreate: (([String: BotJSON]) throws -> BotJSON)?
     var title: (([String: BotJSON]) throws -> BotJSON)?
     var calls: [(String, [String: BotJSON])] = []
+    /// Each `keepPlatformNote`'s Profile, with the last call sent before it.
+    var platformNotes: [String] = []
+    func keepPlatformNote(profile: String) async { platformNotes.append("\(profile) after \(calls.last?.0 ?? "nothing")") }
     var onCall: ((String) -> Void)?
     var holdsCreate = false
     private var held: [CheckedContinuation<Void, Never>] = []

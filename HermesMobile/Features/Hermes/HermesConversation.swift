@@ -365,8 +365,12 @@ extension HermesConversationOwner {
         let attempt = generation
         connectionState = .recovering
         do {
+            // Settled before the session call, so the agent the host builds for it is told
+            // what Hermex shows (#1278). It runs alongside the socket opening.
+            async let noted: Void = wire.keepPlatformNote(profile: target.profile)
             try await wire.connect()
             try check(attempt)
+            await noted
             try await identify(attempt)
             // Identity only: the read after the replay is the one that carries live state.
             let first = try await resume(attempt: attempt)

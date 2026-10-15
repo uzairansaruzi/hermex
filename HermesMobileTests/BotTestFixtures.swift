@@ -238,6 +238,9 @@ actor BotMemoryDrafts: ChatDraftPersisting {
         guard let downloadArtifact else { throw BotArtifactFailure.unavailable }
         return try await downloadArtifact(path, context)
     }
+    /// Each `keepPlatformNote`'s Profile, with how many calls had gone out by then.
+    var platformNotes: [String] = []
+    func keepPlatformNote(profile: String) async { platformNotes.append("\(profile) after \(calls.count) calls") }
     var connectCount = 0
     var onConnect: (() -> Void)?
     func connect() async throws { connectCount += 1; onConnect?() }

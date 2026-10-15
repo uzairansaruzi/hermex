@@ -86,6 +86,10 @@ import Foundation
         } onCancel: { task.cancel() }
     }
 
+    func keepPlatformNote(profile: String) async {
+        await http.keepPlatformNote(profile: profile)
+    }
+
     func deleteProfile(_ name: String) async throws {
         guard gateway.isAttached(consumerID), BotProfileName.isValid(name) else { throw BotFailure.stale }
         let attempt = self.attempt

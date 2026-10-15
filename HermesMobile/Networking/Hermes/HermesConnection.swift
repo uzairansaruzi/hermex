@@ -51,6 +51,9 @@ import OSLog
     /// runtimes do; one the host has since reaped stays here and is never in
     /// `session.active_list` again.
     private(set) var attachedRuntimes: Set<String> = []
+    /// Profiles whose config `keepPlatformNote` found current or wrote on this connection, or
+    /// is checking now, so each is read once per sign-in.
+    private var notedProfiles: Set<String> = []
     /// The standard-deadline session. The gateway socket opens on it, with its cookies.
     let session: URLSession
     /// Shares `session`'s cookie jar; only its deadlines differ.
@@ -129,6 +132,22 @@ import OSLog
     /// The gateway's report that a `session.resume` reached `runtime`.
     func noteAttached(_ runtime: String) {
         attachedRuntimes.insert(runtime)
+    }
+
+    /// Keeps `HermesREST.platformNote` as `profile`'s `platform_hints.hermex.append` (#1278), the
+    /// note the host gives an agent built for a session that runs as `HermesCall.source`. Reads
+    /// the config once per Profile on this connection and writes only a missing or changed note;
+    /// a Profile already being checked returns at once. A failure only lets the next call try
+    /// again: a chat opens without the note rather than not at all.
+    func keepPlatformNote(profile: String) async {
+        guard !profile.isEmpty, notedProfiles.insert(profile).inserted else { return }
+        do {
+            let config = try JSONDecoder().decode(BotJSON.self, from: try await data(.config(profile: profile)))
+            guard config["platform_hints"][HermesCall.source]["append"].text != HermesREST.platformNote else { return }
+            _ = try await data(.setPlatformNote(profile: profile))
+        } catch {
+            notedProfiles.remove(profile)
+        }
     }
 
     /// The gateway's report that a `session.close` here ended `runtime`.
