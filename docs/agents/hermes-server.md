@@ -187,11 +187,13 @@ rotated one (`BotConnectionStore.saveRotatedRefreshToken`, only while the record
 that connection holding that token) before the access token is used, and sends the
 access token, held in memory only, as `Authorization: Bearer` on every signed-in request;
 the socket upgrades still present a ticket. Each launch refreshes once, and a signed-in
-401 refreshes again and resends, as a password connection signs in again. A new
-connection reads the refresh token from the Keychain, never from a copy of the record,
-and `adopt` ignores it. Retiring a connection never cancels its refresh in flight (the
-host may already have rotated the token), and the next connection on that server waits
-for it to save before reading the token. A save that fails is retried at the next
+401 refreshes again and resends, as a password connection signs in again. A connection
+reads the refresh token from the Keychain, never from a copy of the record, before its
+first refresh and before any later one after another connection saved a newer token, and
+`adopt` ignores it. Move to Hermes refreshes on a connection of its own beside the
+server's (#1265), and the two share the saved token this way. Retiring a connection never
+cancels its refresh in flight (the host may already have rotated the token), and the next
+connection on that server waits for it to save before reading the token. A save that fails is retried at the next
 rotation. A 401 from the refresh is `.signInExpired`, which signs the active
 Hermes server out to its sign-in form. No extension or App Intent signs in to Hermes, so
 the app is the token's only user.

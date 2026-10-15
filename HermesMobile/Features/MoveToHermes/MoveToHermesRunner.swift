@@ -279,15 +279,18 @@ struct MoveToHermesProgress {
 
 /// The Hermes host a Move writes to: a client on a connection of the move's own, never the
 /// shared one (`HermesConnections.shared` keeps one connection, and asking it for the
-/// destination would close the active server's).
+/// destination would close the active server's). `connections` makes it beside that one
+/// (`ownConnection`), so a browser sign-in's rotated refresh tokens are saved as the
+/// destination's own connection saves them (#1265).
 @MainActor struct MoveToHermesDestination {
     let transport: any BotTransport
     /// Signs in and reads the host's push pairing, which can create the host's keys.
     let readPairing: () async throws -> PushPairing
     let close: () -> Void
 
-    static func live(_ saved: BotConnection) -> MoveToHermesDestination {
-        let http = HermesConnection(connection: saved)
+    static func live(_ saved: BotConnection, connections: HermesConnections = .shared) -> MoveToHermesDestination {
+        let server = URL(string: MoveToHermesRunner.destinationID(for: saved)) ?? saved.address
+        let http = connections.ownConnection(for: saved, server: server)
         let client = BotClient(http: http)
         let dashboard = BotDashboardClient(http: http)
         return MoveToHermesDestination(transport: client, readPairing: {
@@ -295,7 +298,7 @@ struct MoveToHermesProgress {
             return try await dashboard.pairing()
         }, close: {
             client.close()
-            http.retire()
+            connections.retire(own: http, server: server)
         })
     }
 }
@@ -370,7 +373,7 @@ struct MoveToHermesProgress {
     /// What the runner reaches outside itself; tests replace every part.
     struct Environment {
         var root = MoveToHermesJournal.defaultRoot
-        var destination: @MainActor (BotConnection) -> MoveToHermesDestination = MoveToHermesDestination.live
+        var destination: @MainActor (BotConnection) -> MoveToHermesDestination = { MoveToHermesDestination.live($0) }
         /// The webui copy's URL session setup; tests add their protocol class.
         var webuiConfiguration: URLSessionConfiguration = .ephemeral
         var cookies: @MainActor (URL) -> [HTTPCookie] = { HTTPCookieStorage.shared.cookies(for: $0) ?? [] }

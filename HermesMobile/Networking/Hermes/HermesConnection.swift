@@ -78,11 +78,12 @@ import OSLog
     /// token is used, even when this connection was retired meanwhile: the host has already
     /// retired the sent one. `HermesConnections` saves it.
     var onRefreshTokenRotated: ((String) -> Void)?
-    /// Asked at this connection's first refresh for the refresh token to send instead of the
-    /// record's, until it answers. `HermesConnections` answers with the saved one, after waiting
+    /// Asked before each refresh for a refresh token saved since this connection last saw one,
+    /// such as the first one or one a Move to Hermes connection rotated (#1265), to send instead
+    /// of its own; nil keeps its own. `HermesConnections` answers from the Keychain, after waiting
     /// for a refresh a retired connection on the same server still has in flight; a Keychain
     /// read that fails throws, so the sign-in fails before any token is spent.
-    var initialRefreshToken: (() async throws -> String?)?
+    var savedRefreshToken: (() async throws -> String?)?
     /// The refresh in flight, which retiring this connection never cancels: once the host has
     /// the request it may already have rotated the token, and only its reply saves the new one.
     private(set) var refreshInFlight: Task<String, Error>?
@@ -243,10 +244,9 @@ import OSLog
     /// 401 means the host no longer accepts the refresh token (`.signInExpired`); any other
     /// refusal is `.rejected` and leaves the token for the next sign-in.
     private func refresh(on session: URLSession) async throws {
-        if let source = initialRefreshToken {
+        if let source = savedRefreshToken {
             let saved = try await source()
             try checkCurrent()
-            initialRefreshToken = nil
             if let saved { connection.oauth?.refreshToken = saved }
         }
         guard let account = connection.oauth else { throw BotFailure.unsupported }
@@ -504,8 +504,10 @@ import OSLog
 /// across those), retires the old connection first, so no cookie, sign-in, socket or late
 /// reply crosses servers, accounts, credentials or headers.
 /// Credentials and headers are compared on the live connection and never kept in a key.
-/// A browser sign-in's connection starts from the refresh token saved in the Keychain, not
-/// the one in `saved`, and saves each rotated one there (#708) (`keepRefreshTokens`).
+/// A browser sign-in's connection refreshes from the refresh token saved in the Keychain, not
+/// the one in `saved`, and saves each rotated one there (#708) (`keepRefreshTokens`). So does
+/// one made beside the current one (`ownConnection`), whose rotations the current one then
+/// refreshes from.
 @MainActor final class HermesConnections {
     static let shared = HermesConnections()
     /// Told which configured server's sign-in the host refused: `.rejected(401)` for a
@@ -517,9 +519,9 @@ import OSLog
     private let store: BotConnectionStore
     private var server: String?
     private weak var current: HermesConnection?
-    /// The refresh the last retired connection still had in flight, and its server, so the
-    /// next connection there reads the token it rotated to, not the one it spent.
-    private var retiredRefresh: (server: String, task: Task<String, Error>)?
+    /// The refresh each server's last retired connection still had in flight, so the next
+    /// connection there reads the token it rotated to, not the one it spent.
+    private var retiredRefreshes: [String: Task<String, Error>] = [:]
 
     /// `configuration` makes each new connection's URL session setup, with a cookie jar of
     /// its own; tests script the host with it. `keychain` holds the saved records whose
@@ -539,6 +541,22 @@ import OSLog
         current = fresh
         self.server = server.absoluteString
         return fresh
+    }
+
+    /// A connection to `saved` of the caller's own, beside `server`'s current one, which it
+    /// never replaces or retires: Move to Hermes's destination (#1265). A browser sign-in's
+    /// keeps refresh tokens as the current one does. `retire(own:server:)` ends it.
+    func ownConnection(for saved: BotConnection, server: URL) -> HermesConnection {
+        let own = HermesConnection(connection: saved, configuration: configuration())
+        if saved.oauth != nil { keepRefreshTokens(of: own, server: server) }
+        return own
+    }
+
+    /// Ends a connection `ownConnection` made, leaving any refresh it has in flight for the
+    /// next connection on `server` to wait for.
+    func retire(own: HermesConnection, server: URL) {
+        if let task = own.refreshInFlight { retiredRefreshes[server.absoluteString] = task }
+        own.retire()
     }
 
     /// Closes the current connection's gateway socket, silently, because the app went to
@@ -570,24 +588,25 @@ import OSLog
 
     private func retireCurrent() {
         guard let current else { return }
-        if let task = current.refreshInFlight, let server { retiredRefresh = (server, task) }
+        if let task = current.refreshInFlight, let server { retiredRefreshes[server] = task }
         current.retire()
     }
 
-    /// Starts `fresh`'s refreshes from the token saved for it, once any refresh a retired
-    /// connection on `server` still has in flight has saved its own, and saves each rotated
-    /// one. A save only replaces the token this connection last saw saved, so a record
-    /// removed or signed in again keeps what it has, and a failed save is retried at the
-    /// next rotation.
+    /// Starts each of `fresh`'s refreshes from the token saved for it when that changed since
+    /// it last looked, once any refresh a retired connection on `server` still has in flight
+    /// has saved its own, and saves each rotated one. A save only replaces the token this
+    /// connection last saw saved, so a record removed or signed in again keeps what it has,
+    /// and a failed save is retried at the next rotation, from the token in memory.
     private func keepRefreshTokens(of fresh: HermesConnection, server: URL) {
         let store = store, id = fresh.connection.id, serial = fresh.serial
-        let prior = retiredRefresh?.server == server.absoluteString ? retiredRefresh?.task : nil
+        let prior = retiredRefreshes[server.absoluteString]
         var saved: String?
-        fresh.initialRefreshToken = {
+        fresh.savedRefreshToken = {
             _ = try? await prior?.value
-            guard let record = try store.load(server: server), record.id == id else { return nil }
-            saved = record.oauth?.refreshToken
-            return saved
+            guard let record = try store.load(server: server), record.id == id,
+                  let token = record.oauth?.refreshToken, token != saved else { return nil }
+            saved = token
+            return token
         }
         fresh.onRefreshTokenRotated = { rotated in
             guard let previous = saved else { return }
