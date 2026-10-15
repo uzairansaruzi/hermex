@@ -277,7 +277,7 @@ import Observation
         XCTAssertEqual(engine.connectionState, .connected)
         XCTAssertEqual(host.requests.filter { $0["method"].text == "session.create" }.compactMap { $0["params"].fields }, [[
             "profile": .string("default"), "cwd": .string("/work/app"),
-            "model": .string("claude-opus"), "provider": .string("anthropic")
+            "model": .string("claude-opus"), "provider": .string("anthropic"), "source": .string("hermex")
         ]])
     }
 
