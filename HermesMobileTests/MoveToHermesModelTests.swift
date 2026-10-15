@@ -418,13 +418,35 @@ final class MoveToHermesModelTests: XCTestCase {
         let checked = expectation(description: "Checked for a covering sheet")
         checked.assertForOverFulfill = false
 
-        let asking = Task { await MoveToHermesQuestionTiming.ask(auth, settle: .zero) { checked.fulfill(); return [window] } }
+        let notices = MoveToHermesNotices()
+        notices.noteChatList(of: webui.absoluteString, onScreen: true)
+
+        let asking = Task {
+            await MoveToHermesQuestionTiming.ask(auth, notices: notices, settle: .zero) { checked.fulfill(); return [window] }
+        }
         await fulfillment(of: [checked])
         XCTAssertNil(auth.moveQuestion, "Never over another sheet")
         XCTAssertNil(auth.servers.first { $0.id == webui.absoluteString }?.moveToHermesPrompt, "Still unasked")
 
         cover.dismiss(animated: false)
         await asking.value
+        XCTAssertEqual(auth.moveQuestion?.sourceID, webui.absoluteString)
+    }
+
+    /// The question shows over its server's chat list only: not while a chat is pushed over it
+    /// (iPhone) or its sidebar is hidden (iPad), and once the list is back.
+    func testTheQuestionWaitsForItsChatListToBeOnScreen() async throws {
+        let notices = MoveToHermesNotices()
+        notices.noteChatList(of: webui.absoluteString, onScreen: true)
+        notices.noteChatList(of: webui.absoluteString, onScreen: false)
+        notices.noteChatList(of: "https://studio.example", onScreen: true)
+
+        await MoveToHermesQuestionTiming.ask(auth, notices: notices, settle: .zero) { [] }
+        XCTAssertNil(auth.moveQuestion, "Never over a chat")
+        XCTAssertNil(auth.servers.first { $0.id == webui.absoluteString }?.moveToHermesPrompt, "Still unasked")
+
+        notices.noteChatList(of: webui.absoluteString, onScreen: true)
+        await MoveToHermesQuestionTiming.ask(auth, notices: notices, settle: .zero) { [] }
         XCTAssertEqual(auth.moveQuestion?.sourceID, webui.absoluteString)
     }
 

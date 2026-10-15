@@ -608,6 +608,9 @@ struct SessionListView: View {
             }
             .padding(.horizontal, 24)
         }
+        // The Move question waits for this list: hidden under a pushed chat or a closed sidebar.
+        .onAppear { MoveToHermesNotices.shared.noteChatList(of: server.absoluteString, onScreen: true) }
+        .onDisappear { MoveToHermesNotices.shared.noteChatList(of: server.absoluteString, onScreen: false) }
     }
 
     @ViewBuilder

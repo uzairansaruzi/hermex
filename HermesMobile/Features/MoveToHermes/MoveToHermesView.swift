@@ -907,35 +907,41 @@ private struct MoveToHermesNoticesRefresh: ViewModifier {
             }
             .sheet(item: $auth.moveOffer) { MoveToHermesOfferSheet(auth: auth, offer: $0) }
             .sheet(item: $auth.moveQuestion) { MoveToHermesQuestionSheet(auth: auth, question: $0) }
-            .task(id: QuestionTrigger(state: auth.state, servers: auth.servers, offer: auth.moveOffer?.id, phase: scenePhase)) {
+            .task(id: QuestionTrigger(state: auth.state, servers: auth.servers, offer: auth.moveOffer?.id, phase: scenePhase,
+                                      showsList: MoveToHermesNotices.shared.showsChatList(of: auth.activeServer?.id))) {
                 guard scenePhase == .active else { return }
-                await MoveToHermesQuestionTiming.ask(auth)
+                await MoveToHermesQuestionTiming.ask(auth, notices: .shared)
             }
     }
 
     /// What can make the one-time question due: a launch, a sign-in or switch, a server added,
-    /// the offer closing, or a return to the foreground.
+    /// the offer closing, a return to the foreground, or the active server's chat list coming
+    /// back on screen.
     private struct QuestionTrigger: Equatable {
         let state: AuthManager.State
         let servers: [ServerAccount]
         let offer: String?
         let phase: ScenePhase
+        let showsList: Bool
     }
 }
 
-/// When the root asks the one-time question (#1267): once it is due and no window presents a
-/// sheet or alert. A covering presentation is waited out, not skipped: its dismissal checks again.
+/// When the root asks the one-time question (#1267): once it is due, the active server's chat
+/// list is on screen (`MoveToHermesNotices.showsChatList`), and no window presents a sheet or
+/// alert. A covering presentation is waited out, not skipped: its dismissal checks again. A
+/// hidden list ends the wait; the root asks again when it returns.
 @MainActor
 enum MoveToHermesQuestionTiming {
-    /// Asks `auth`'s question once it is due and nothing covers the app. Waits `settle` first and
-    /// after each covering presentation closes, so a launch's own sheets and links, or a sheet
-    /// closing, finish before it. Returns once asked, no longer due, or cancelled (another
-    /// trigger, the app leaving the foreground).
-    static func ask(_ auth: AuthManager, settle: Duration = .seconds(1),
+    /// Asks `auth`'s question once it is due over its chat list and nothing covers the app. Waits
+    /// `settle` first and after each covering presentation closes, so a launch's own sheets and
+    /// links, or a sheet closing, finish before it. Returns once asked, no longer due, off its
+    /// list, or cancelled (another trigger, the app leaving the foreground).
+    static func ask(_ auth: AuthManager, notices: MoveToHermesNotices, settle: Duration = .seconds(1),
                     windows: @MainActor () -> [UIWindow] = { appWindows }) async {
-        while auth.isMoveQuestionDue {
+        func isDue() -> Bool { auth.isMoveQuestionDue && notices.showsChatList(of: auth.activeServer?.id) }
+        while isDue() {
             try? await Task.sleep(for: settle)
-            guard !Task.isCancelled, auth.isMoveQuestionDue else { return }
+            guard !Task.isCancelled, isDue() else { return }
             guard let cover = windows().lazy.compactMap({ $0.rootViewController?.presentedViewController }).first else {
                 return auth.askAboutMoveIfDue()
             }

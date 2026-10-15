@@ -644,6 +644,21 @@ struct MoveToHermesNotice: Equatable {
     func clearClosed(source: String, destination: String) { closed.remove(Self.key(source, destination)) }
     func wasClosed(source: String, destination: String) -> Bool { closed.contains(Self.key(source, destination)) }
 
+    /// How many of each server's chat lists are on screen. A webui list reports its appearance
+    /// (`noteChatList`): on iPhone it disappears under a pushed chat, on iPad with its sidebar.
+    /// Counted, so a rebuild's new list appearing before the old one leaves doesn't hide it.
+    private var chatListsOnScreen: [String: Int] = [:]
+
+    func noteChatList(of serverID: String, onScreen: Bool) {
+        let count = (chatListsOnScreen[serverID] ?? 0) + (onScreen ? 1 : -1)
+        chatListsOnScreen[serverID] = count > 0 ? count : nil
+    }
+
+    /// Whether `serverID`'s chat list is on screen, which the one-time question waits for.
+    func showsChatList(of serverID: String?) -> Bool {
+        serverID.map { chatListsOnScreen[$0] != nil } ?? false
+    }
+
     /// The Settings card's notice for a webui server, or nil before any move.
     func card(forSource sourceID: String, in servers: [ServerAccount]) -> MoveToHermesNotice? {
         Self.notice(forSource: sourceID, servers: servers, moves: moves, running: running)
