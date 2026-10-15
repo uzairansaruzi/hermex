@@ -295,8 +295,7 @@ struct BotProfileDetails: Equatable, Sendable {
             var image: UIImage?
             if fresh.hasAvatar {
                 let reply = try await client.call(.profilesGetAsset(name: fresh.id), validateDispatch: validate(owner))
-                let photo = fresh.isPhoto
-                image = await Task.detached(priority: .utility) { BotAvatarStore.decode(reply, photo: photo) }.value
+                image = await Task.detached(priority: .utility) { BotAvatarStore.decode(reply) }.value
             }
             try ensureOwner(owner, client)
             avatarStore.setImage(image, connectionID: connection.id, profile: fresh.id, revision: fresh.lookRevision)
