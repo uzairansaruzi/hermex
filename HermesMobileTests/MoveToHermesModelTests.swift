@@ -319,6 +319,31 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNil(auth.moveOffer, "The webui server has a move record")
     }
 
+    /// Signing in again from the signed-in server's Settings › Hermes connection offers the
+    /// move too, though the server never left `.loggedIn`.
+    func testSigningInFromTheSignedInServersSettingsOffersTheMove() throws {
+        let one = URL(string: "https://one.example")!
+        let connection = BotConnection(id: UUID(), name: "", address: one, username: "me", password: "pw")
+        XCTAssertTrue(auth.addHermesServer(connection))
+        auth.moveOffer = nil
+
+        auth.hermesSignInSaved(server: one)
+        XCTAssertEqual(auth.state, .loggedIn(server: one))
+        XCTAssertEqual(auth.moveOffer?.destinationID, one.absoluteString)
+        XCTAssertEqual(auth.moveOffer?.sourceID, webui.absoluteString)
+        XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: one)?.id, connection.id)
+
+        auth.moveOffer = nil
+        auth.hermesSignInSaved(server: one, offersMove: false)
+        XCTAssertNil(auth.moveOffer, "A move's own sign-in goes on with that move")
+
+        let account = try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString })
+        try auth.commitMove(from: account, to: connection,
+                            profiles: [MovedWebuiProfile(source: "default", destination: .hermes(profile: "default"))])
+        auth.hermesSignInSaved(server: one)
+        XCTAssertNil(auth.moveOffer, "The webui server has a move record")
+    }
+
     /// Closing during the scan cancels it: nothing is committed and no Review appears.
     func testClosingBeforeMoveChangesNothing() async throws {
         MoveWebuiFixture.rows = [row("new", profile: "default")]

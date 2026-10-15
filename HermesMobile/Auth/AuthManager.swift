@@ -428,8 +428,10 @@ final class AuthManager {
 
     /// The Hermes connection form saved `server`'s sign-in. Records the release the host
     /// reported, and signs the server back in when it is the active Hermes server waiting
-    /// on its sign-in form, which offers to move a webui server there (`moveOffer`) unless
-    /// the sign-in continues a move (`offersMove: false`). A no-op for a webui server.
+    /// on its sign-in form. A sign-in to the active Hermes server, from that form or from its
+    /// Settings while already signed in, offers to move a webui server there (`moveOffer`)
+    /// unless the sign-in continues a move (`offersMove: false`). Token refreshes never call
+    /// this. A no-op for a webui server.
     func hermesSignInSaved(server: URL, offersMove: Bool = true) {
         guard var account = servers.first(where: { $0.id == server.absoluteString }), account.kind == .hermes,
               let saved = try? BotConnectionStore(keychain: keychain).load(server: server) else { return }
@@ -441,7 +443,9 @@ final class AuthManager {
         if state == .loggedOut(server: server) {
             lastErrorMessage = nil
             state = .loggedIn(server: server)
-            if offersMove { moveOffer = MoveToHermesOffer(destinationID: server.absoluteString, servers: servers) }
+        }
+        if offersMove, state == .loggedIn(server: server) {
+            moveOffer = MoveToHermesOffer(destinationID: server.absoluteString, servers: servers)
         }
     }
 
