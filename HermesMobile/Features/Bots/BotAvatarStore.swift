@@ -16,8 +16,8 @@ import UIKit
     nonisolated static let maxPayloadBytes = 3_000_000
 
     private struct Key: Hashable { let connectionID: UUID; let profile: String }
-    /// A nil image is a fetched asset that draws as the face instead, kept so an
-    /// unchanged revision does not fetch it again.
+    /// A nil image is Desktop's face copy, kept so an unchanged revision does not
+    /// fetch it again. Unreadable assets are not kept and retry on the next refresh.
     private struct Entry { let revision: Int?; let image: UIImage? }
     private var entries: [Key: Entry] = [:]
 
@@ -60,9 +60,10 @@ import UIKit
             guard let reply = try? await transport.call(.profilesGetAsset(name: profile.id), validateDispatch: validateDispatch),
                   !Task.isCancelled else { return }
             let photo = profile.isPhoto
-            let image = await Task.detached(priority: .utility) { Self.decode(reply, photo: photo) }.value
+            let asset = await Task.detached(priority: .utility) { Self.asset(reply, photo: photo) }.value
             guard !Task.isCancelled else { return }
-            entries[key] = Entry(revision: profile.lookRevision, image: image)
+            if let asset { entries[key] = Entry(revision: profile.lookRevision, image: asset.image) }
+            else { entries.removeValue(forKey: key) }
             onUpdate()
         }
     }
@@ -77,26 +78,34 @@ import UIKit
         return UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
     }
 
-    /// Decodes a `profiles.get_asset` reply into a bounded thumbnail. Anything other
-    /// than a found, base64 image data URL within the size cap decodes to nil, and a
-    /// nil avatar means the row draws its face. Unless the look says `photo`, a 160x160
-    /// PNG also decodes to nil: Desktop uploads a still copy of its own drawing at that
-    /// size for any bot without an asset, and draws the face over it the same way
-    /// (`isBackfilledFacePng`).
-    nonisolated static func decode(_ reply: BotJSON, photo: Bool) -> UIImage? {
+    /// A readable asset: a picture to show, or Desktop's still copy of a drawn face.
+    enum Asset {
+        case image(UIImage), faceCopy
+        var image: UIImage? { if case .image(let image) = self { image } else { nil } }
+    }
+
+    /// Decodes a `profiles.get_asset` reply into a bounded thumbnail; nil means the row draws its face.
+    nonisolated static func decode(_ reply: BotJSON, photo: Bool) -> UIImage? { asset(reply, photo: photo)?.image }
+
+    /// Reads a `profiles.get_asset` reply. Anything other than a found, base64 image
+    /// data URL within the size cap is nil, so a later fetch retries it. Unless the
+    /// look says `photo`, a 160x160 PNG is `faceCopy`: Desktop uploads a still copy of
+    /// its own drawing at that size for any bot without an asset, and draws the face
+    /// over it the same way (`isBackfilledFacePng`).
+    nonisolated static func asset(_ reply: BotJSON, photo: Bool) -> Asset? {
         guard reply["found"].flag == true, let text = reply["data"].text, text.utf8.count <= maxPayloadBytes,
               text.hasPrefix("data:image/"), let comma = text.firstIndex(of: ","),
               text[..<comma].hasSuffix(";base64"),
               let data = Data(base64Encoded: String(text[text.index(after: comma)...])),
               let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
-        if !photo, isDesktopFaceCopy(source) { return nil }
+        if !photo, isDesktopFaceCopy(source) { return .faceCopy }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
         ]
         guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-        return UIImage(cgImage: thumbnail)
+        return .image(UIImage(cgImage: thumbnail))
     }
 
     private nonisolated static func isDesktopFaceCopy(_ source: CGImageSource) -> Bool {

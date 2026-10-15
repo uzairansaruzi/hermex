@@ -116,7 +116,8 @@ import XCTest
     func testDesktopFaceCopyDrawsTheFaceUnlessTheLookSaysPhoto() async {
         let store = BotAvatarStore()
         let wire = BotAvatarFixtureWire()
-        wire.assets = ["drawn": found(png(side: 160)), "photo": found(png(side: 160)), "upload": found(png(side: 256))]
+        wire.assets = ["drawn": found(png(side: 160)), "photo": found(png(side: 160)), "upload": found(png(side: 256)),
+                       "broken": found("data:image/png;base64,AAAA")]
         let connection = UUID()
         func profile(_ name: String, kind: String) -> BotProfile {
             BotProfile(row(name, extra: [
@@ -124,11 +125,12 @@ import XCTest
                 "ui_meta": .object(["hermes-bots": .object(["imageKind": .string(kind), "shape": .string("cloud")])])
             ]))!
         }
-        let profiles = [profile("drawn", kind: "shape"), profile("photo", kind: "photo"), profile("upload", kind: "shape")]
+        let profiles = [profile("drawn", kind: "shape"), profile("photo", kind: "photo"), profile("upload", kind: "shape"),
+                        profile("broken", kind: "photo")]
         await store.refresh(profiles, connectionID: connection, using: wire) {}
         await store.refresh(profiles, connectionID: connection, using: wire) {}
         XCTAssertEqual(Set(store.images(connectionID: connection).keys), ["photo", "upload"])
-        XCTAssertEqual(wire.calls.map { $0.1["name"]?.text }, ["drawn", "photo", "upload"])
+        XCTAssertEqual(wire.calls.map { $0.1["name"]?.text }, ["drawn", "photo", "upload", "broken", "broken"])
     }
 
     func testDecodeBoundsSizeAndRejectsOversizedPayloads() {
