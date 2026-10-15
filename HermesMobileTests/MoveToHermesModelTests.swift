@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import HermesMobile
 
 /// The guided Move to Hermes sheet's model (#1218): Review reads and changes nothing, refusals
@@ -346,8 +347,9 @@ final class MoveToHermesModelTests: XCTestCase {
 
     // MARK: The one-time question and its banner (#1267)
 
-    /// Each webui server is asked once, one server a launch, the active one first. Its second
-    /// line follows whether it has a Bots connection, and the banner follows the question.
+    /// Each webui server is asked once, one server a launch, and only while it is the active
+    /// server. Its second line follows whether it has a Bots connection, and the banner follows
+    /// the question.
     func testEachWebuiServerIsAskedOnceAndOneALaunch() async throws {
         let studio = URL(string: "https://studio.example")!
         await auth.configure(serverURLString: studio.absoluteString, password: "")
@@ -355,8 +357,7 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertFalse(auth.showsMoveInvite(for: studio.absoluteString), "No banner before the question")
 
         auth.askAboutMoveIfDue()
-        XCTAssertEqual(auth.moveQuestion, MoveToHermesQuestion(sourceID: studio.absoluteString, hasBotsSignIn: false),
-                       "The active server first, though another comes first in the list")
+        XCTAssertEqual(auth.moveQuestion, MoveToHermesQuestion(sourceID: studio.absoluteString, hasBotsSignIn: false))
         XCTAssertTrue(auth.showsMoveInvite(for: studio.absoluteString))
         XCTAssertFalse(auth.showsMoveInvite(for: webui.absoluteString), "The banner is per server")
 
@@ -366,8 +367,13 @@ final class MoveToHermesModelTests: XCTestCase {
         auth.switchActiveServer(to: try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString }))
         auth.askAboutMoveIfDue()
         XCTAssertNil(auth.moveQuestion, "Switching servers isn't a launch")
+        auth.switchActiveServer(to: try XCTUnwrap(auth.servers.first { $0.id == studio.absoluteString }))
 
         relaunch()
+        auth.askAboutMoveIfDue()
+        XCTAssertNil(auth.moveQuestion, "The other webui server waits for a launch with it active")
+
+        auth.switchActiveServer(to: try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString }))
         auth.askAboutMoveIfDue()
         XCTAssertEqual(auth.moveQuestion, MoveToHermesQuestion(sourceID: webui.absoluteString, hasBotsSignIn: true))
         XCTAssertTrue(auth.showsMoveInvite(for: webui.absoluteString))
@@ -376,6 +382,50 @@ final class MoveToHermesModelTests: XCTestCase {
         relaunch()
         auth.askAboutMoveIfDue()
         XCTAssertNil(auth.moveQuestion, "Every webui server was asked")
+    }
+
+    /// The question belongs to its server's screens: it ends when another server becomes active
+    /// or its server's sign-in expires, and the server stays asked, with its banner.
+    func testTheQuestionEndsWhenItsServerIsNoLongerActive() async throws {
+        let studio = URL(string: "https://studio.example")!
+        await auth.configure(serverURLString: studio.absoluteString, password: "")
+        auth.switchActiveServer(to: try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString }))
+        auth.askAboutMoveIfDue()
+        XCTAssertEqual(auth.moveQuestion?.sourceID, webui.absoluteString)
+
+        auth.switchActiveServer(to: try XCTUnwrap(auth.servers.first { $0.id == studio.absoluteString }))
+        XCTAssertNil(auth.moveQuestion, "Not over another server")
+        XCTAssertTrue(auth.showsMoveInvite(for: webui.absoluteString))
+
+        relaunch()
+        auth.askAboutMoveIfDue()
+        XCTAssertEqual(auth.moveQuestion?.sourceID, studio.absoluteString)
+        auth.handleAPIError(APIError.unauthorized)
+        XCTAssertEqual(auth.state, .loggedOut(server: studio))
+        XCTAssertNil(auth.moveQuestion, "Not over its sign-in form")
+    }
+
+    /// Dismissing an unrelated sheet asks the question that waited behind it, with nothing else
+    /// changing; a question that is no longer due stops waiting.
+    func testTheQuestionWaitsForAnotherSheetToClose() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = UIViewController()
+        window.isHidden = false
+        defer { window.isHidden = true }
+        let cover = UIViewController()
+        window.rootViewController?.present(cover, animated: false)
+        let checked = expectation(description: "Checked for a covering sheet")
+        checked.assertForOverFulfill = false
+
+        let asking = Task { await MoveToHermesQuestionTiming.ask(auth, settle: .zero) { checked.fulfill(); return [window] } }
+        await fulfillment(of: [checked])
+        XCTAssertNil(auth.moveQuestion, "Never over another sheet")
+        XCTAssertNil(auth.servers.first { $0.id == webui.absoluteString }?.moveToHermesPrompt, "Still unasked")
+
+        cover.dismiss(animated: false)
+        await asking.value
+        XCTAssertEqual(auth.moveQuestion?.sourceID, webui.absoluteString)
     }
 
     /// ✕ hides one server's banner for good: across a server switch, an identity edit from an
@@ -422,7 +472,7 @@ final class MoveToHermesModelTests: XCTestCase {
     }
 
     /// The question never stacks on the sign-in offer, and an offer shown this launch takes the
-    /// launch's one move sheet. A signed-out server isn't asked over its sign-in.
+    /// launch's one move sheet. It never shows over a Hermes server or a sign-in form.
     func testTheQuestionWaitsForTheOfferAndASignIn() async throws {
         let one = URL(string: "https://one.example")!
         XCTAssertTrue(auth.addHermesServer(BotConnection(id: UUID(), name: "", address: one, username: "me", password: "pw")))
@@ -430,16 +480,23 @@ final class MoveToHermesModelTests: XCTestCase {
         auth.askAboutMoveIfDue()
         XCTAssertNil(auth.moveQuestion, "Never over the offer")
         auth.moveOffer = nil
+        auth.switchActiveServer(to: try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString }))
         auth.askAboutMoveIfDue()
         XCTAssertNil(auth.moveQuestion, "The offer was this launch's move sheet")
         XCTAssertNil(auth.servers.first { $0.id == webui.absoluteString }?.moveToHermesPrompt, "Still unasked")
 
-        await auth.signOut()
+        auth.switchActiveServer(to: try XCTUnwrap(auth.servers.first { $0.id == one.absoluteString }))
         relaunch()
-        XCTAssertEqual(auth.state, .loggedOut(server: one))
+        XCTAssertEqual(auth.state, .loggedIn(server: one))
+        auth.askAboutMoveIfDue()
+        XCTAssertNil(auth.moveQuestion, "Never over a Hermes server")
+
+        auth.switchActiveServer(to: try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString }))
+        auth.handleAPIError(APIError.unauthorized)
+        XCTAssertEqual(auth.state, .loggedOut(server: webui))
         auth.askAboutMoveIfDue()
         XCTAssertNil(auth.moveQuestion, "Not over a sign-in form")
-        auth.switchActiveServer(to: try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString }))
+        relaunch()
         auth.askAboutMoveIfDue()
         XCTAssertEqual(auth.moveQuestion?.sourceID, webui.absoluteString)
     }

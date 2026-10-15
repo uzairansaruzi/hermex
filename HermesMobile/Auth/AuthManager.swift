@@ -58,7 +58,7 @@ final class AuthManager {
         // The shared Bot connection signs in with the active server's saved credentials.
         didSet {
             if let old = oldValue.server, old != state.server { hermesConnections.retire(server: old) }
-            dropStaleMoveOffer()
+            dropStaleMoveSheets()
         }
     }
     private(set) var lastErrorMessage: String?
@@ -72,13 +72,13 @@ final class AuthManager {
     /// destination as gone from the start, before the removal's first await (#1216).
     @ObservationIgnored private(set) var removingServerIDs: Set<String> = []
     /// "Bring your chats" after signing in to a Hermes server (#1266), which the root presents;
-    /// nil once it is answered, no webui server is left to move, or `dropStaleMoveOffer` ends it.
+    /// nil once it is answered, no webui server is left to move, or `dropStaleMoveSheets` ends it.
     /// Showing one takes this launch's move sheet from the one-time question.
     var moveOffer: MoveToHermesOffer? {
         didSet { if moveOffer != nil { askedAboutMoveThisLaunch = true } }
     }
     /// The one-time "Move <server> to Hermes" question (#1267), which the root presents; set by
-    /// `askAboutMoveIfDue`, nil once closed.
+    /// `askAboutMoveIfDue`, nil once closed or `dropStaleMoveSheets` ends it.
     var moveQuestion: MoveToHermesQuestion?
     /// One move sheet a launch: the question or the offer, whichever showed first.
     @ObservationIgnored var askedAboutMoveThisLaunch = false
@@ -146,19 +146,24 @@ final class AuthManager {
     /// every registry mutation routed through this manager.
     func refreshServers() {
         servers = serverRegistry.servers
-        dropStaleMoveOffer()
+        dropStaleMoveSheets()
     }
 
-    /// Ends `moveOffer`, closing its sheet and any move it started (which pauses, as closing
-    /// does), once its destination isn't the signed-in active server, or either server is gone,
-    /// is being removed, or changed kind. Called after every state, registry and removal change.
-    private func dropStaleMoveOffer() {
-        guard let offer = moveOffer else { return }
-        guard case .loggedIn(let active) = state, active.absoluteString == offer.destinationID,
-              servers.first(where: { $0.id == offer.sourceID })?.kind == .webui,
-              servers.first(where: { $0.id == offer.destinationID })?.kind == .hermes,
-              removingServerIDs.isDisjoint(with: [offer.sourceID, offer.destinationID])
-        else { moveOffer = nil; return }
+    /// Ends `moveOffer` and `moveQuestion`, closing their sheets and any move they started (which
+    /// pauses, as closing does), once the server they show over isn't the signed-in active server
+    /// (the offer's destination, the question's webui server), or either server is gone, is being
+    /// removed, or changed kind. Called after every state, registry and removal change.
+    private func dropStaleMoveSheets() {
+        let active: String? = if case .loggedIn(let server) = state { server.absoluteString } else { nil }
+        func kindOf(_ id: String) -> ServerKind? { servers.first { $0.id == id }?.kind }
+        if let offer = moveOffer, active != offer.destinationID || kindOf(offer.sourceID) != .webui
+            || kindOf(offer.destinationID) != .hermes || !removingServerIDs.isDisjoint(with: [offer.sourceID, offer.destinationID]) {
+            moveOffer = nil
+        }
+        if let question = moveQuestion, active != question.sourceID || kindOf(question.sourceID) != .webui
+            || removingServerIDs.contains(question.sourceID) {
+            moveQuestion = nil
+        }
     }
 
     /// The headers currently in effect — used to prefill the editor on the connect
@@ -532,7 +537,7 @@ final class AuthManager {
         guard let serverURL = URL(string: account.urlString) else { return }
         removingServerIDs.insert(account.id)
         defer { removingServerIDs.remove(account.id) }
-        dropStaleMoveOffer()
+        dropStaleMoveSheets()
         // A move committed during the awaits below leaves an orphan journal, which `MoveToHermesPending.all` deletes.
         let movedSources = (servers.first { $0.id == account.id } ?? account).movedWebuiServers.map(\.sourceServerID)
         try? await BotHistoryCache.shared.removeServer(serverURL, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: serverURL))?.id)

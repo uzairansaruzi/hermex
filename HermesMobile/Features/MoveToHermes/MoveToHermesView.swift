@@ -909,11 +909,7 @@ private struct MoveToHermesNoticesRefresh: ViewModifier {
             .sheet(item: $auth.moveQuestion) { MoveToHermesQuestionSheet(auth: auth, question: $0) }
             .task(id: QuestionTrigger(state: auth.state, servers: auth.servers, offer: auth.moveOffer?.id, phase: scenePhase)) {
                 guard scenePhase == .active else { return }
-                // Lets a launch's own sheets and links, or a sheet closing, settle first: the
-                // question never stacks on another sheet or alert.
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled, !Self.isPresenting else { return }
-                auth.askAboutMoveIfDue()
+                await MoveToHermesQuestionTiming.ask(auth)
             }
     }
 
@@ -925,11 +921,70 @@ private struct MoveToHermesNoticesRefresh: ViewModifier {
         let offer: String?
         let phase: ScenePhase
     }
+}
 
-    /// Whether any of the app's windows is presenting a sheet or alert.
-    private static var isPresenting: Bool {
-        UIApplication.shared.connectedScenes.contains { scene in
-            (scene as? UIWindowScene)?.windows.contains { $0.rootViewController?.presentedViewController != nil } ?? false
+/// When the root asks the one-time question (#1267): once it is due and no window presents a
+/// sheet or alert. A covering presentation is waited out, not skipped: its dismissal checks again.
+@MainActor
+enum MoveToHermesQuestionTiming {
+    /// Asks `auth`'s question once it is due and nothing covers the app. Waits `settle` first and
+    /// after each covering presentation closes, so a launch's own sheets and links, or a sheet
+    /// closing, finish before it. Returns once asked, no longer due, or cancelled (another
+    /// trigger, the app leaving the foreground).
+    static func ask(_ auth: AuthManager, settle: Duration = .seconds(1),
+                    windows: @MainActor () -> [UIWindow] = { appWindows }) async {
+        while auth.isMoveQuestionDue {
+            try? await Task.sleep(for: settle)
+            guard !Task.isCancelled, auth.isMoveQuestionDue else { return }
+            guard let cover = windows().lazy.compactMap({ $0.rootViewController?.presentedViewController }).first else {
+                return auth.askAboutMoveIfDue()
+            }
+            await dismissal(of: cover)
+        }
+    }
+
+    private static var appWindows: [UIWindow] {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+    }
+
+    /// Returns when `controller`'s view leaves its window (it was dismissed) or the task is
+    /// cancelled. UIKit has no public dismissal callback a non-owner can observe, so a hidden
+    /// probe view in the presentation reports it.
+    private static func dismissal(of controller: UIViewController) async {
+        let probe = DismissalProbe()
+        controller.view.addSubview(probe)
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                probe.onDismissal = { continuation.resume() }
+                if Task.isCancelled || probe.window == nil { probe.dismissed() }
+            }
+        } onCancel: {
+            Task { @MainActor in probe.dismissed() }
+        }
+        probe.removeFromSuperview()
+    }
+
+    private final class DismissalProbe: UIView {
+        /// Called once, the first time the probe leaves a window.
+        var onDismissal: (() -> Void)?
+
+        init() {
+            super.init(frame: .zero)
+            isHidden = true
+            isUserInteractionEnabled = false
+            accessibilityElementsHidden = true
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func didMoveToWindow() {
+            if window == nil { dismissed() }
+        }
+
+        func dismissed() {
+            let onDismissal = onDismissal
+            self.onDismissal = nil
+            onDismissal?()
         }
     }
 }
