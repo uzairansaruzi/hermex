@@ -256,6 +256,69 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNil(auth.moveOffer, "Every webui server has a move record")
     }
 
+    /// The offer holds only while its destination is the signed-in active server and both
+    /// servers are still there: switching away, signing out, or removing either one ends it.
+    func testTheOfferEndsWhenItsServersChange() async throws {
+        let studio = URL(string: "https://studio.example")!
+        await auth.configure(serverURLString: studio.absoluteString, password: "")
+        func signIn(_ host: String) {
+            let connection = BotConnection(id: UUID(), name: "", address: URL(string: "https://\(host)")!, username: "me", password: "pw")
+            XCTAssertTrue(auth.addHermesServer(connection))
+        }
+        func account(_ id: String) throws -> ServerAccount { try XCTUnwrap(auth.servers.first { $0.id == id }) }
+
+        signIn("one.example")
+        XCTAssertEqual(auth.moveOffer?.destinationID, "https://one.example")
+        auth.switchActiveServer(to: try account(studio.absoluteString))
+        XCTAssertNil(auth.moveOffer, "Switching away from the destination, as a deep link does")
+
+        signIn("two.example")
+        await auth.signOut()
+        XCTAssertNil(auth.moveOffer, "Signing out of the destination")
+
+        signIn("three.example")
+        XCTAssertEqual(auth.moveOffer?.sourceID, webui.absoluteString)
+        await auth.removeServer(try account(webui.absoluteString))
+        XCTAssertNil(auth.moveOffer, "Removing the source")
+
+        signIn("four.example")
+        XCTAssertEqual(auth.moveOffer?.sourceID, studio.absoluteString)
+        await auth.removeServer(try account("https://four.example"))
+        XCTAssertNil(auth.moveOffer, "Removing the destination")
+    }
+
+    /// Signing in again to a Hermes server already in the list offers the move too, keeping
+    /// the server's saved connection; not from a move's own sign-in, or once the webui server
+    /// has moved.
+    func testSigningInAgainToAHermesServerOffersTheMove() async throws {
+        let one = URL(string: "https://one.example")!
+        let connection = BotConnection(id: UUID(), name: "", address: one, username: "me", password: "pw")
+        XCTAssertTrue(auth.addHermesServer(connection))
+        auth.moveOffer = nil
+        func signInAgain(offersMove: Bool = true) async throws {
+            await auth.signOut()
+            XCTAssertEqual(auth.state, .loggedOut(server: one))
+            try BotConnectionStore(keychain: keychain).save(connection, server: one)
+            auth.hermesSignInSaved(server: one, offersMove: offersMove)
+            XCTAssertEqual(auth.state, .loggedIn(server: one))
+        }
+
+        try await signInAgain()
+        XCTAssertEqual(auth.moveOffer?.destinationID, one.absoluteString)
+        XCTAssertEqual(auth.moveOffer?.sourceID, webui.absoluteString)
+        XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: one)?.id, connection.id)
+
+        auth.moveOffer = nil
+        try await signInAgain(offersMove: false)
+        XCTAssertNil(auth.moveOffer, "A move's own sign-in goes on with that move")
+
+        let account = try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString })
+        try auth.commitMove(from: account, to: connection,
+                            profiles: [MovedWebuiProfile(source: "default", destination: .hermes(profile: "default"))])
+        try await signInAgain()
+        XCTAssertNil(auth.moveOffer, "The webui server has a move record")
+    }
+
     /// Closing during the scan cancels it: nothing is committed and no Review appears.
     func testClosingBeforeMoveChangesNothing() async throws {
         MoveWebuiFixture.rows = [row("new", profile: "default")]

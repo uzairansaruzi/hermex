@@ -56,7 +56,10 @@ final class AuthManager {
 
     private(set) var state: State = .unconfigured {
         // The shared Bot connection signs in with the active server's saved credentials.
-        didSet { if let old = oldValue.server, old != state.server { hermesConnections.retire(server: old) } }
+        didSet {
+            if let old = oldValue.server, old != state.server { hermesConnections.retire(server: old) }
+            dropStaleMoveOffer()
+        }
     }
     private(set) var lastErrorMessage: String?
 
@@ -68,8 +71,8 @@ final class AuthManager {
     /// Servers `removeServer` is part way through removing. A Move to Hermes runner treats its
     /// destination as gone from the start, before the removal's first await (#1216).
     @ObservationIgnored private(set) var removingServerIDs: Set<String> = []
-    /// "Bring your chats" after adding a Hermes server (#1266), which the root presents; nil
-    /// once it is answered or no webui server is left to move.
+    /// "Bring your chats" after signing in to a Hermes server (#1266), which the root presents;
+    /// nil once it is answered, no webui server is left to move, or `dropStaleMoveOffer` ends it.
     var moveOffer: MoveToHermesOffer?
 
     // `keychain`, `serverRegistry` and `refreshServers` are internal for
@@ -135,6 +138,19 @@ final class AuthManager {
     /// every registry mutation routed through this manager.
     func refreshServers() {
         servers = serverRegistry.servers
+        dropStaleMoveOffer()
+    }
+
+    /// Ends `moveOffer`, closing its sheet and any move it started (which pauses, as closing
+    /// does), once its destination isn't the signed-in active server, or either server is gone,
+    /// is being removed, or changed kind. Called after every state, registry and removal change.
+    private func dropStaleMoveOffer() {
+        guard let offer = moveOffer else { return }
+        guard case .loggedIn(let active) = state, active.absoluteString == offer.destinationID,
+              servers.first(where: { $0.id == offer.sourceID })?.kind == .webui,
+              servers.first(where: { $0.id == offer.destinationID })?.kind == .hermes,
+              removingServerIDs.isDisjoint(with: [offer.sourceID, offer.destinationID])
+        else { moveOffer = nil; return }
     }
 
     /// The headers currently in effect — used to prefill the editor on the connect
@@ -412,8 +428,9 @@ final class AuthManager {
 
     /// The Hermes connection form saved `server`'s sign-in. Records the release the host
     /// reported, and signs the server back in when it is the active Hermes server waiting
-    /// on its sign-in form. A no-op for a webui server.
-    func hermesSignInSaved(server: URL) {
+    /// on its sign-in form, which offers to move a webui server there (`moveOffer`) unless
+    /// the sign-in continues a move (`offersMove: false`). A no-op for a webui server.
+    func hermesSignInSaved(server: URL, offersMove: Bool = true) {
         guard var account = servers.first(where: { $0.id == server.absoluteString }), account.kind == .hermes,
               let saved = try? BotConnectionStore(keychain: keychain).load(server: server) else { return }
         if account.serverVersion != saved.hermesVersion {
@@ -424,6 +441,7 @@ final class AuthManager {
         if state == .loggedOut(server: server) {
             lastErrorMessage = nil
             state = .loggedIn(server: server)
+            if offersMove { moveOffer = MoveToHermesOffer(destinationID: server.absoluteString, servers: servers) }
         }
     }
 
@@ -502,6 +520,7 @@ final class AuthManager {
         guard let serverURL = URL(string: account.urlString) else { return }
         removingServerIDs.insert(account.id)
         defer { removingServerIDs.remove(account.id) }
+        dropStaleMoveOffer()
         // A move committed during the awaits below leaves an orphan journal, which `MoveToHermesPending.all` deletes.
         let movedSources = (servers.first { $0.id == account.id } ?? account).movedWebuiServers.map(\.sourceServerID)
         try? await BotHistoryCache.shared.removeServer(serverURL, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: serverURL))?.id)

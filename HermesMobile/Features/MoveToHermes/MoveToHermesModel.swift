@@ -11,8 +11,9 @@ enum MoveToHermesEntry: Equatable {
     case offer(destinationID: String)
 }
 
-/// "Bring your chats" after a Hermes sign-in (#1266): the Hermes server just added, and the
-/// first webui server in the list that hasn't moved, so has no move record. One at a time.
+/// "Bring your chats" after a Hermes sign-in (#1266): the Hermes server just signed in to, and
+/// the first webui server in the list that hasn't moved, so has no move record. One at a time;
+/// `AuthManager` ends it when either server changes.
 struct MoveToHermesOffer: Identifiable, Equatable {
     let destinationID: String
     let sourceID: String

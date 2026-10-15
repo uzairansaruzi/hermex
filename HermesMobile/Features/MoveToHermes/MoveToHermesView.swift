@@ -384,7 +384,7 @@ struct MoveToHermesSheet: View {
             Section {
                 if signedOut, let destinationID = model.destinationID, let url = URL(string: destinationID) {
                     NavigationLink("Sign In…") {
-                        BotConnectionView(server: url) { auth.hermesSignInSaved(server: url) }
+                        BotConnectionView(server: url) { auth.hermesSignInSaved(server: url, offersMove: false) }
                     }
                 }
                 if model.source != nil {
@@ -863,7 +863,7 @@ private struct MoveToHermesNoticesRefresh: ViewModifier {
 }
 
 /// "Signed in to <host>" (#1266, 3A): offers to bring a webui server's chats to the Hermes
-/// server just added. Bring My Chats turns this sheet into the guided move, scanning that
+/// server just signed in to. Bring My Chats turns this sheet into the guided move, scanning that
 /// server; Not Now and closing leave everything as it is.
 private struct MoveToHermesOfferSheet: View {
     let auth: AuthManager
