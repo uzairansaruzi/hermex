@@ -192,8 +192,9 @@ reads the refresh token from the Keychain, never from a copy of the record, befo
 first refresh and before any later one after another connection saved a newer token, and
 `adopt` ignores it. Move to Hermes refreshes on a connection of its own beside the
 server's (#1265), and the two share the saved token this way. Retiring a connection never
-cancels its refresh in flight (the host may already have rotated the token), and the next
-connection on that server waits for it to save before reading the token. A save that fails is retried at the next
+cancels its refresh in flight (the host may already have rotated the token), and every
+other connection on that server, whenever it was made, waits for it to save before its next
+refresh reads the token. A save that fails is retried at the next
 rotation. A 401 from the refresh is `.signInExpired`, which signs the active
 Hermes server out to its sign-in form. No extension or App Intent signs in to Hermes, so
 the app is the token's only user.

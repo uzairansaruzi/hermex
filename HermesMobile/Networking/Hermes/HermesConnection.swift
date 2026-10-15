@@ -520,7 +520,7 @@ import OSLog
     private var server: String?
     private weak var current: HermesConnection?
     /// The refresh each server's last retired connection still had in flight, so the next
-    /// connection there reads the token it rotated to, not the one it spent.
+    /// refresh there, by any connection, reads the token it rotated to, not the one it spent.
     private var retiredRefreshes: [String: Task<String, Error>] = [:]
 
     /// `configuration` makes each new connection's URL session setup, with a cookie jar of
@@ -594,15 +594,16 @@ import OSLog
 
     /// Starts each of `fresh`'s refreshes from the token saved for it when that changed since
     /// it last looked, once any refresh a retired connection on `server` still has in flight
-    /// has saved its own, and saves each rotated one. A save only replaces the token this
-    /// connection last saw saved, so a record removed or signed in again keeps what it has,
-    /// and a failed save is retried at the next rotation, from the token in memory.
+    /// has saved its own, and saves each rotated one. That refresh is looked up at each refresh,
+    /// not when `fresh` is made, since a connection beside it can be retired later (#1265).
+    /// A save only replaces the token this connection last saw saved, so a record removed or
+    /// signed in again keeps what it has, and a failed save is retried at the next rotation,
+    /// from the token in memory.
     private func keepRefreshTokens(of fresh: HermesConnection, server: URL) {
         let store = store, id = fresh.connection.id, serial = fresh.serial
-        let prior = retiredRefreshes[server.absoluteString]
         var saved: String?
-        fresh.savedRefreshToken = {
-            _ = try? await prior?.value
+        fresh.savedRefreshToken = { [weak self] in
+            _ = try? await self?.retiredRefreshes[server.absoluteString]?.value
             guard let record = try store.load(server: server), record.id == id,
                   let token = record.oauth?.refreshToken, token != saved else { return nil }
             saved = token
