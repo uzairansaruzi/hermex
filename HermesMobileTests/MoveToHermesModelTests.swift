@@ -656,6 +656,44 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(MoveWebuiFixture.requests.compactMap { $0.url?.path }.filter { $0 != "/api/profiles" }, ["/api/sessions"])
     }
 
+    /// Move Next from a finished report acknowledges it without switching servers, then opens the
+    /// next webui server at the host step: even with its own saved sign-in, neither server is
+    /// read until the user picks a host.
+    func testMoveNextAcknowledgesTheReportAndWaitsForAHost() async throws {
+        MoveWebuiFixture.rows = [row("new", profile: "default")]
+        MoveWebuiFixture.exports = ["new": exportData("new")]
+        let model = makeModel()
+        model.open(.start)
+        await model.settled()
+        model.move()
+        await model.settled()
+        guard case .finished = model.screen else { return XCTFail("Expected the report, got \(model.screen)") }
+        let studio = URL(string: "https://studio.example")!
+        try auth.serverRegistry.commit { servers, _ in
+            servers.append(ServerAccount(id: studio.absoluteString, urlString: studio.absoluteString, displayName: "Studio",
+                                         initials: "ST", headerLogoColorHex: HeaderLogoColor.defaultHex, createdAt: .now, updatedAt: .now))
+        }
+        auth.refreshServers()
+        try BotConnectionStore(keychain: keychain).save(
+            BotConnection(id: UUID(), name: "Hermes Home", address: hermes, username: "admin", password: "secret", hermesVersion: "0.21.5"),
+            server: studio)
+        let connects = host.connects
+        let requests = MoveWebuiFixture.requests.count
+
+        let next = try XCTUnwrap(model.moveNext())
+        await next.settled()
+
+        XCTAssertEqual(next.sourceID, studio.absoluteString)
+        XCTAssertEqual(next.screen, .chooseHost)
+        XCTAssertEqual(next.savedHost?.address, hermes)
+        XCTAssertEqual(host.connects - connects, 0, "The host isn't signed in to before a pick")
+        XCTAssertEqual(MoveWebuiFixture.requests.dropFirst(requests).compactMap(\.url), [], "Neither webui is read before a pick")
+        XCTAssertEqual(auth.activeServerID, webui.absoluteString, "Move Next never switches servers")
+        await notices.refresh(auth)
+        XCTAssertNil(notices.banner(for: hermes.absoluteString, in: auth.servers), "The report was acknowledged")
+        XCTAssertEqual(notices.banner(for: webui.absoluteString, in: auth.servers)?.stage, .moved)
+    }
+
     /// Copy Missing Chats Again keeps the finished report until Move starts the next pass: a
     /// scan that can't read the webui leaves the report to reopen, and the next pass replaces it.
     func testCopyMissingChatsAgainKeepsTheReportUntilMove() async throws {

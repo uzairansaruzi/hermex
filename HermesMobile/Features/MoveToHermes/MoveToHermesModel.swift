@@ -446,12 +446,22 @@ struct MoveToHermesQuestion: Identifiable, Equatable {
         }
     }
 
-    /// Deletes the finished move's journal, so its report stops waiting. "Move <next> Next"
-    /// calls it without switching servers, then opens `nextSource`'s move.
+    /// Deletes the finished move's journal, so its report stops waiting.
     func acknowledge() {
         work?.cancel()
         runner?.acknowledge()
         refreshNotices()
+    }
+
+    /// "Move <next> Next": acknowledges the report without switching servers, then returns
+    /// `nextSource`'s model, which the sheet shows instead. It opens at the host step, so
+    /// nothing is checked until the user picks a host.
+    func moveNext() -> MoveToHermesModel? {
+        guard let next = nextSource else { return nil }
+        acknowledge()
+        let model = MoveToHermesModel(auth: auth, sourceID: next.id, environment: environment)
+        model.open(.next)
+        return model
     }
 
     /// Another configured webui server that hasn't moved, which the report offers to move next.

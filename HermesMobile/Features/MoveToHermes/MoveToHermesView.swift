@@ -108,13 +108,9 @@ struct MoveToHermesSheet: View {
         dismiss()
     }
 
-    /// "Move <next> Next" acknowledges the report, then shows the next webui server's move at
-    /// its host step; nothing is checked until the user picks a host.
+    /// "Move <next> Next" shows the next webui server's move in this sheet.
     private func moveNext() {
-        guard let next = model.nextSource else { return }
-        model.acknowledge()
-        model = MoveToHermesModel(auth: auth, sourceID: next.id)
-        model.open(.next)
+        if let next = model.moveNext() { model = next }
     }
 
     /// Remove's confirmation: switches to the destination as Done does, then removes the webui
