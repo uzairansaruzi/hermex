@@ -5,10 +5,14 @@ import SwiftData
 
 /// How the guided sheet opens (#1218): from a webui server's Move card, a banner's Resume or
 /// Details, a finished report, Copy Missing Chats Again, or the offer after a Hermes sign-in
-/// (`MoveToHermesOffer`), which names the server signed in to.
+/// (`MoveToHermesOffer`), which names the server signed in to, or another report's "Move
+/// <next> Next".
 enum MoveToHermesEntry: Equatable {
     case start, resume, details, copyMissingAgain
     case offer(destinationID: String)
+    /// Opens at the host step even with a saved Hermes sign-in, so nothing is checked until
+    /// the user picks a host (#1268).
+    case next
 }
 
 /// "Bring your chats" after a Hermes sign-in (#1266): the Hermes server just signed in to, and
@@ -140,6 +144,9 @@ struct MoveToHermesQuestion: Identifiable, Equatable {
     private(set) var runner: MoveToHermesRunner?
     /// The paused move's counts (finish-early A1), read after each pass.
     private(set) var snapshot: MoveToHermesRunner.Snapshot?
+    /// The webui server's saved Hermes sign-in, which Move Next's host step offers first instead
+    /// of scanning with it (`.next`).
+    private(set) var savedHost: BotConnection?
 
     @ObservationIgnored private let auth: AuthManager
     @ObservationIgnored private let environment: Environment
@@ -168,7 +175,7 @@ struct MoveToHermesQuestion: Identifiable, Equatable {
             if case .offer(let destinationID) = entry, let server = hostChoices.first(where: { $0.id == destinationID }) {
                 return choose(server)
             }
-            return resolveHost()
+            return resolveHost(scanning: entry != .next)
         }
         destinationID = held.destination.id
         destinationName = Self.name(held.destination)
@@ -192,20 +199,28 @@ struct MoveToHermesQuestion: Identifiable, Equatable {
         }
     }
 
-    /// The webui server's saved Hermes sign-in names the host; without one, D asks.
-    private func resolveHost() {
+    /// The webui server's saved Hermes sign-in names the host; without one, D asks. Move Next
+    /// (`scanning` false) shows D with the saved sign-in first instead.
+    private func resolveHost(scanning: Bool) {
         guard let sourceURL, let saved = try? BotConnectionStore(keychain: auth.keychain).load(server: sourceURL) else {
+            phase = .chooseHost
+            return
+        }
+        guard scanning else {
+            savedHost = saved
             phase = .chooseHost
             return
         }
         use(saved)
     }
 
-    /// Hermes servers D offers: signed in, so the commit can adopt them.
+    /// Hermes servers D offers: signed in, so the commit can adopt them. The saved sign-in's
+    /// host is offered once, as `savedHost`.
     var hostChoices: [ServerAccount] {
         let store = BotConnectionStore(keychain: auth.keychain)
+        let saved = savedHost.map(MoveToHermesRunner.destinationID)
         return auth.servers.filter { server in
-            server.kind == .hermes && URL(string: server.id).flatMap { try? store.load(server: $0) } != nil
+            server.kind == .hermes && server.id != saved && URL(string: server.id).flatMap { try? store.load(server: $0) } != nil
         }
     }
 
@@ -215,6 +230,11 @@ struct MoveToHermesQuestion: Identifiable, Equatable {
             return phase = .couldNotStart(.commit(.destinationSignedOut))
         }
         use(saved)
+    }
+
+    /// D's pick of the saved sign-in Move Next offers.
+    func useSaved() {
+        if let savedHost { use(savedHost) }
     }
 
     /// D's "Sign in to a Hermes host": the normal Hermes sign-in added the server at

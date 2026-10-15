@@ -183,6 +183,7 @@ final class MoveToHermesModelTests: XCTestCase {
         model.open(.start)
 
         XCTAssertEqual(model.screen, .chooseHost)
+        XCTAssertNil(model.savedHost)
         XCTAssertTrue(model.hostChoices.isEmpty)
         let signedIn = BotConnection(id: UUID(), name: "", address: hermes, username: "admin", password: "secret")
         XCTAssertTrue(auth.addHermesServer(signedIn, activating: false))
@@ -632,6 +633,29 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNil(model.nextSource, "Studio has moved too")
     }
 
+    /// Move Next opens at the host step even with a saved Hermes sign-in, which it offers first:
+    /// neither server is read until the user picks it.
+    func testMoveNextWaitsForAHostBeforeChecking() async throws {
+        MoveWebuiFixture.rows = [row("new", profile: "default")]
+        let model = makeModel()
+
+        model.open(.next)
+        await model.settled()
+
+        XCTAssertEqual(model.screen, .chooseHost)
+        XCTAssertEqual(model.savedHost?.address, hermes)
+        XCTAssertEqual(host.connects, 0, "The host isn't signed in to before a pick")
+        XCTAssertEqual(MoveWebuiFixture.requests.compactMap { $0.url?.path }, [], "The webui isn't read before a pick")
+
+        model.useSaved()
+        await model.settled()
+
+        XCTAssertEqual(model.screen, .review)
+        XCTAssertEqual(model.destinationName, "Hermes Home")
+        XCTAssertEqual(host.connects, 1)
+        XCTAssertEqual(MoveWebuiFixture.requests.compactMap { $0.url?.path }.filter { $0 != "/api/profiles" }, ["/api/sessions"])
+    }
+
     /// Copy Missing Chats Again keeps the finished report until Move starts the next pass: a
     /// scan that can't read the webui leaves the report to reopen, and the next pass replaces it.
     func testCopyMissingChatsAgainKeepsTheReportUntilMove() async throws {
@@ -915,8 +939,10 @@ final class MoveToHermesModelTests: XCTestCase {
     /// Runs as each import arrives, before it is answered.
     var onImport: (() -> Void)?
     private(set) var imports: [[String]] = []
+    private(set) var connects = 0
 
     func connect() async throws {
+        connects += 1
         if let connectFailure { throw connectFailure }
     }
 

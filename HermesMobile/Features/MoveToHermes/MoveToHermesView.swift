@@ -108,13 +108,13 @@ struct MoveToHermesSheet: View {
         dismiss()
     }
 
-    /// "Move <next> Next" acknowledges the report, then shows the next webui server's move from
-    /// its first step, as its Settings "Move to Hermes…" does.
+    /// "Move <next> Next" acknowledges the report, then shows the next webui server's move at
+    /// its host step; nothing is checked until the user picks a host.
     private func moveNext() {
         guard let next = model.nextSource else { return }
         model.acknowledge()
         model = MoveToHermesModel(auth: auth, sourceID: next.id)
-        model.open(.start)
+        model.open(.next)
     }
 
     /// Remove's confirmation: switches to the destination as Done does, then removes the webui
@@ -135,10 +135,17 @@ struct MoveToHermesSheet: View {
     private var hostChoice: some View {
         List {
             Section {
-                Text("\(source) has no saved Hermes sign-in. Pick the host that should take its chats.")
+                Text(model.savedHost == nil ? String(localized: "\(source) has no saved Hermes sign-in. Pick the host that should take its chats.")
+                                            : String(localized: "Pick the host that should take \(source)’s chats. The first is its saved Hermes sign-in."))
                     .foregroundStyle(.secondary)
             }
             Section {
+                if let saved = model.savedHost {
+                    Button { model.useSaved() } label: {
+                        MoveToHermesRow(title: saved.name.isEmpty ? Self.hostAndPort(saved.address.absoluteString) : saved.name,
+                                        detail: Self.hostAndPort(saved.address.absoluteString), chevron: true)
+                    }
+                }
                 ForEach(model.hostChoices) { server in
                     Button { model.choose(server) } label: {
                         MoveToHermesRow(title: MoveToHermesModel.name(server),
