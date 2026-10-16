@@ -896,7 +896,8 @@ final class HermesHostFixture: URLProtocol {
         case .fail(let error):
             client?.urlProtocol(self, didFailWithError: error)
         case .redirect(let target):
-            let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: "HTTP/1.1",
+            // A 307: the follow-up keeps the method, as a 307 or 308 does on the wire.
+            let response = HTTPURLResponse(url: url, statusCode: 307, httpVersion: "HTTP/1.1",
                                            headerFields: ["Location": target.absoluteString])!
             var followUp = URLRequest(url: target)
             followUp.httpMethod = request.httpMethod
