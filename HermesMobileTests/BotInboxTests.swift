@@ -1290,8 +1290,6 @@ import SwiftUI
     private var held: [CheckedContinuation<Void, Never>] = []
     /// `GET /api/sessions/search`'s matches per Profile, whatever the query.
     var searchResults: [String: [HermesSessionSearchResult]] = [:]
-    /// While true, a session search waits for `release()`.
-    var holdsSearch = false
     private(set) var searches: [(query: String, profile: String, limit: Int)] = []
 
     init(roster: [BotJSON]) { self.roster = roster }
@@ -1313,7 +1311,6 @@ import SwiftUI
 
     func searchSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
         searches.append((query, profile, limit))
-        if holdsSearch { await withCheckedContinuation { held.append($0) } }
         // The host answers at most `limit` matches.
         return Array((searchResults[profile] ?? []).prefix(limit))
     }
