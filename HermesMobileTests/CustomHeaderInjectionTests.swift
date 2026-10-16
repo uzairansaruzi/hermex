@@ -665,15 +665,17 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
 
     /// Drives the production guard's redirect decision directly: hands it a
     /// synthetic `newRequest` and returns the request the guard passes back to the
-    /// URL loading system (what it intends for the next hop). The guard invokes the
-    /// completion handler synchronously.
+    /// URL loading system (what it intends for the next hop), or nil when it refuses
+    /// the redirect. The guard invokes the completion handler synchronously.
     private func redirectOutcome(
         guardHeaders: [CustomHeader],
         destination: String,
-        requestHeaders: [String: String]
-    ) throws -> URLRequest {
+        requestHeaders: [String: String],
+        method: String = "GET"
+    ) throws -> URLRequest? {
         let stripper = CrossOriginHeaderStripper(baseURL: baseURL, customHeaderProvider: { guardHeaders })
         var newRequest = URLRequest(url: try XCTUnwrap(URL(string: destination)))
+        newRequest.httpMethod = method
         for (name, value) in requestHeaders {
             newRequest.setValue(value, forHTTPHeaderField: name)
         }
@@ -682,23 +684,47 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         )
         let dummy = URLSession(configuration: .ephemeral)
         let task = dummy.dataTask(with: try XCTUnwrap(URL(string: "https://example.test")))
-        var result: URLRequest?
+        var result: URLRequest??
         stripper.urlSession(dummy, task: task, willPerformHTTPRedirection: response, newRequest: newRequest) {
             result = $0
         }
         return try XCTUnwrap(result, "guard did not call the completion handler")
     }
 
+    // A 307 or 308 resends the body, so a POST is never followed off the origin.
+    func testRefusesCrossOriginRedirectOfARequestWithABody() throws {
+        let outgoing = try redirectOutcome(
+            guardHeaders: [],
+            destination: "https://third-party.example/leak",
+            requestHeaders: [:],
+            method: "POST"
+        )
+
+        XCTAssertNil(outgoing)
+    }
+
+    // A proxy's trailing-slash 307 on the same origin still reaches the server.
+    func testFollowsSameOriginRedirectOfARequestWithABody() throws {
+        let outgoing = try redirectOutcome(
+            guardHeaders: [],
+            destination: "https://example.test/api/auth/login/",
+            requestHeaders: [:],
+            method: "POST"
+        )
+
+        XCTAssertEqual(outgoing?.httpMethod, "POST")
+    }
+
     // AC1: same-origin → cross-origin carries none of the custom headers.
     func testStripsCustomHeadersOnCrossOriginRedirect() throws {
-        let outgoing = try redirectOutcome(
+        let outgoing = try XCTUnwrap(redirectOutcome(
             guardHeaders: [
                 CustomHeader(name: "Authorization", value: "Bearer secret"),
                 CustomHeader(name: "X-Api-Key", value: "k1")
             ],
             destination: "https://third-party.example/leak",
             requestHeaders: ["Authorization": "Bearer secret", "X-Api-Key": "k1", "Accept": "*/*"]
-        )
+        ))
 
         XCTAssertNil(outgoing.value(forHTTPHeaderField: "X-Api-Key"))
         XCTAssertNil(outgoing.value(forHTTPHeaderField: "Authorization"))
@@ -709,22 +735,22 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
 
     // AC2: same-origin → same-origin keeps the headers (e.g. a proxy path rewrite).
     func testKeepsCustomHeadersOnSameOriginRedirect() throws {
-        let outgoing = try redirectOutcome(
+        let outgoing = try XCTUnwrap(redirectOutcome(
             guardHeaders: [CustomHeader(name: "X-Api-Key", value: "k1")],
             destination: "https://example.test/api/media-final",
             requestHeaders: ["X-Api-Key": "k1"]
-        )
+        ))
 
         XCTAssertEqual(outgoing.value(forHTTPHeaderField: "X-Api-Key"), "k1")
     }
 
     // AC3: no custom headers configured → a cross-origin redirect is left unchanged.
     func testNoCustomHeadersLeavesCrossOriginRedirectUnchanged() throws {
-        let outgoing = try redirectOutcome(
+        let outgoing = try XCTUnwrap(redirectOutcome(
             guardHeaders: [],
             destination: "https://third-party.example/leak",
             requestHeaders: ["Accept": "*/*"]
-        )
+        ))
 
         XCTAssertEqual(outgoing.value(forHTTPHeaderField: "Accept"), "*/*")
         XCTAssertNil(outgoing.value(forHTTPHeaderField: "X-Api-Key"))

@@ -502,12 +502,14 @@ import OSLog
     /// Sends `request` and returns the final reply, whatever its status. A reply from another
     /// host means a redirect led to something in front of Hermes, such as an access proxy's
     /// sign-in page, and throws `.blocked`, like the status probe. Only the host is compared:
-    /// a same-host redirect from http to https is not a proxy.
+    /// a same-host redirect from http to https is not a proxy. A 3xx reply is a redirect the
+    /// guard refused, because it would have carried a body off the origin, and is `.blocked` too.
     private nonisolated static func exchange(_ request: URLRequest, on session: URLSession,
                                              redirectGuard: CrossOriginHeaderStripper) async throws -> (Data, HTTPURLResponse) {
         let (data, response) = try await session.data(for: request, delegate: redirectGuard)
         guard let response = response as? HTTPURLResponse else { throw BotFailure.transport }
         if let final = response.url?.host, final.lowercased() != request.url?.host?.lowercased() { throw BotFailure.blocked }
+        if (300..<400).contains(response.statusCode) { throw BotFailure.blocked }
         return (data, response)
     }
 

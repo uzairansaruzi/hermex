@@ -789,6 +789,20 @@ import XCTest
         XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: server)?.oauth?.refreshToken, "refresh-2")
     }
 
+    /// The fixture keeps the login's POST on the redirected request, as a 307 or 308 would,
+    /// so the guard must refuse it before the password reaches the other host.
+    func testALoginRedirectedToAnotherOriginNeverSendsThePassword() async throws {
+        let elsewhere = try XCTUnwrap(URL(string: "https://elsewhere.example/auth/password-login"))
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
+            request.url?.host == "hermes.example" && request.url?.path.hasSuffix("password-login") == true
+                ? .redirect(elsewhere) : nil
+        })
+        do { try await http.signIn(); XCTFail("Expected the refused redirect to be blocked") }
+        catch { XCTAssertEqual(error as? BotFailure, .blocked) }
+        XCTAssertNotNil(HermesHostFixture.requests.first { $0.url?.path.hasSuffix("password-login") == true })
+        XCTAssertFalse(HermesHostFixture.requests.contains { $0.url?.host == elsewhere.host })
+    }
+
     private func assertStale(_ label: String, _ body: () async throws -> Void) async {
         do { try await body(); XCTFail("\(label): expected stale") }
         catch { XCTAssertEqual(error as? BotFailure, .stale, label) }
@@ -885,8 +899,12 @@ final class HermesHostFixture: URLProtocol {
             let response = HTTPURLResponse(url: url, statusCode: 302, httpVersion: "HTTP/1.1",
                                            headerFields: ["Location": target.absoluteString])!
             var followUp = URLRequest(url: target)
+            followUp.httpMethod = request.httpMethod
             followUp.allHTTPHeaderFields = request.allHTTPHeaderFields
             client?.urlProtocol(self, wasRedirectedTo: followUp, redirectResponse: response)
+            // A refused redirect ends with the 3xx itself, as it does on the wire.
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocolDidFinishLoading(self)
         case .park: break
         }
     }
