@@ -22,6 +22,7 @@ struct SettingsNotificationsPage: View {
                     )
                 }
 
+                #if !targetEnvironment(macCatalyst)
                 Toggle(isOn: $showsLiveActivityResponseExcerpts) {
                     SettingsLabel(
                         title: String(localized: "Live Activity Excerpts"),
@@ -29,8 +30,11 @@ struct SettingsNotificationsPage: View {
                         note: String(localized: "Reply text on the Lock Screen and Dynamic Island.")
                     )
                 }
+                #endif
             } header: {
+                #if !targetEnvironment(macCatalyst)
                 Text("On this iPhone · All servers")
+                #endif
             } footer: {
                 if let notificationStatusText {
                     Text(notificationStatusText)
@@ -43,7 +47,22 @@ struct SettingsNotificationsPage: View {
     }
 
     private var notificationStatusText: String? {
+        #if targetEnvironment(macCatalyst)
+        switch notificationPermissionStatus {
+        case .authorized?, .provisional?, .ephemeral?:
+            return nil
+        case .notDetermined?:
+            return String(localized: "Permission not requested.")
+        case .denied?:
+            return String(localized: "Notifications are off for Hermex")
+        case nil:
+            return notificationStatusMessage
+        default:
+            return String(localized: "Notifications unavailable.")
+        }
+        #else
         notificationStatusMessage ?? notificationPermissionStatus.map(ResponseCompletionNotificationService.permissionLabel)
+        #endif
     }
 
     private var responseCompletionNotificationBinding: Binding<Bool> {

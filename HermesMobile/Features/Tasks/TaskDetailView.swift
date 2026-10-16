@@ -77,6 +77,7 @@ struct TaskDetailView: View {
                 }
             }
             .padding()
+            .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
         }
         .navigationTitle(viewModel.job.displayName)
         .navigationBarTitleDisplayMode(.inline)

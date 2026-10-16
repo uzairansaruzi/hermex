@@ -107,6 +107,14 @@ struct SessionListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var usesSidebar: Bool {
+        #if targetEnvironment(macCatalyst)
+        true
+        #else
+        horizontalSizeClass == .regular
+        #endif
+    }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @State private var viewModel: SessionListViewModel
@@ -540,7 +548,7 @@ struct SessionListView: View {
     /// to the list first, and the list opens Notifications once it is back on screen.
     /// Regular width pops the detail column on every root selection already.
     private func showNotificationSettings() {
-        guard horizontalSizeClass != .regular, navigationState.destination != nil else {
+        guard !usesSidebar, navigationState.destination != nil else {
             selectDestination(.notificationSettings)
             return
         }
@@ -562,7 +570,7 @@ struct SessionListView: View {
 
     @ViewBuilder
     private var navigationContainer: some View {
-        if horizontalSizeClass == .regular {
+        if usesSidebar {
             SessionSplitView(rootRevision: navigationState.rootRevision) {
                 sessionListSurface
                     .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 420)
@@ -691,7 +699,7 @@ struct SessionListView: View {
                     showsCronSessions: showsCronSessions,
                     showsMessageCount: showsSessionMessageCount,
                     showsWorkspace: showsSessionWorkspace,
-                    selectedSessionID: horizontalSizeClass == .regular
+                    selectedSessionID: usesSidebar
                         ? navigationState.selectedSessionID
                         : nil,
                     actions: sessionRowActions(toastHost: .scheduled),
@@ -767,7 +775,7 @@ struct SessionListView: View {
                     isSearchActive: isSearchingSessions,
                     showsMessageCount: showsSessionMessageCount,
                     showsWorkspace: showsSessionWorkspace,
-                    selectedSessionID: horizontalSizeClass == .regular
+                    selectedSessionID: usesSidebar
                         ? navigationState.selectedSessionID
                         : nil,
                     userIsExpanded: $scheduledSessionsAreExpanded,
@@ -785,7 +793,7 @@ struct SessionListView: View {
                 isSearchActive: isSearchingSessions,
                 showsMessageCount: showsSessionMessageCount,
                 showsWorkspace: showsSessionWorkspace,
-                selectedSessionID: horizontalSizeClass == .regular
+                selectedSessionID: usesSidebar
                     ? navigationState.selectedSessionID
                     : nil,
                 actions: sessionRowActions(),
@@ -851,6 +859,19 @@ struct SessionListView: View {
         HapticButton(feedbackStyle: .medium) {
             openNewChat()
         } label: {
+            #if targetEnvironment(macCatalyst)
+            Label("Chat", systemImage: "square.and.pencil")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(newSessionButtonForegroundColor)
+                .padding(.horizontal, 14)
+                .frame(height: 34)
+                .contentShape(Capsule())
+                .background {
+                    if let fill = newSessionButtonSolidThemeFill { Capsule().fill(fill) }
+                }
+                .sessionsChromeGlass(isInteractive: true, tint: newSessionButtonGlassTint,
+                                    fallbackMaterial: .regularMaterial, in: Capsule())
+            #else
             HStack(spacing: 10) {
                 Image(systemName: "square.and.pencil")
                     .font(.title3.weight(.semibold))
@@ -876,6 +897,7 @@ struct SessionListView: View {
                 fallbackMaterial: .regularMaterial,
                 in: Capsule()
             )
+            #endif
         }
         .buttonStyle(SessionListFloatingChatButtonStyle())
         .disabled(viewModel.isViewingCachedData || navigationState.isCreatingNewChat)
@@ -1075,7 +1097,7 @@ struct SessionListView: View {
             streamIDs: SessionListViewModel.activeStreamIDs(in: activeSessions),
             hasActiveRows: !activeSessions.isEmpty,
             isViewingCachedData: viewModel.isViewingCachedData,
-            isRegularWidth: horizontalSizeClass == .regular,
+            isRegularWidth: usesSidebar,
             destination: navigationState.destination
         )
     }
@@ -1192,7 +1214,7 @@ struct SessionListView: View {
     private func openSearchFromKeyboard() {
         searchFieldIsFocused = false
 
-        if horizontalSizeClass != .regular {
+        if !usesSidebar {
             navigationState.clearDestination()
         }
 
@@ -1324,7 +1346,7 @@ struct SessionListView: View {
                 archiveNumber,
                 swipedOn: toastHost,
                 destination: navigationState.destination,
-                isRegularWidth: horizontalSizeClass == .regular
+                isRegularWidth: usesSidebar
             )
             if shownOn != nil {
                 showArchiveUndoToast(for: session)

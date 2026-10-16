@@ -40,6 +40,7 @@ import SwiftUI
                 .padding(.horizontal, 16)
             }
             .padding(.bottom, 32)
+            .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
         }
         .background(Color(uiColor: .systemBackground))
         .navigationTitle("Expression")

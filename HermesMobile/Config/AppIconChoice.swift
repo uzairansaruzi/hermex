@@ -131,7 +131,11 @@ enum AppIconChoice: String, CaseIterable, Identifiable {
     #if canImport(UIKit)
     @MainActor
     static var current: AppIconChoice {
+        #if targetEnvironment(macCatalyst)
+        .system
+        #else
         resolved(from: UIApplication.shared.alternateIconName)
+        #endif
     }
     #endif
 }

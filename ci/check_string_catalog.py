@@ -27,12 +27,16 @@ TABLE = "Localizable"
 # and uses English literals (docs/agents/i18n.md), so its keys are not checked.
 TARGETS = ("HermesMobile", "HermesLiveActivityWidget", "HermesNotificationService")
 
+def targets_for(configuration):
+    # The Catalyst app excludes the iOS-only extensions from its build graph.
+    return ("HermesMobile",) if configuration.endswith("-maccatalyst") else TARGETS
+
 
 def extracted_keys(derived_data, configuration):
     """Map each extracted Localizable key to {(source path, line): {targets}}."""
     build = Path(derived_data) / "Build" / "Intermediates.noindex" / "HermesMobile.build" / configuration
     keys = {}
-    for target in TARGETS:
+    for target in targets_for(configuration):
         # One file per source per architecture; the set collapses the duplicates.
         files = sorted(build.glob(f"{target}.build/Objects-normal/*/*.stringsdata"))
         if not files:
@@ -76,7 +80,7 @@ def main():
     known = json.loads(args.catalog.read_text())["strings"]
     missing = sorted(key for key in keys if key not in known)
     if not missing:
-        print(f"Localizable.xcstrings covers all {len(keys)} extracted keys from {', '.join(TARGETS)}.")
+        print(f"Localizable.xcstrings covers all {len(keys)} extracted keys from {', '.join(targets_for(args.configuration))}.")
         return 0
 
     annotate = os.environ.get("GITHUB_ACTIONS") == "true"

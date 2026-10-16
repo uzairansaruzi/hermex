@@ -816,6 +816,12 @@ final class ComposerDropRouteTests: XCTestCase {
 }
 
 final class ComposerTextInputHeightTests: XCTestCase {
+    func testDesktopEditorStartsCompactGrowsAndScrollsAtItsCap() {
+        XCTAssertEqual(ComposerTextInputHeight.desktop(measured: 22), 36)
+        XCTAssertEqual(ComposerTextInputHeight.desktop(measured: 88), 88)
+        XCTAssertEqual(ComposerTextInputHeight.desktop(measured: 160), 128)
+    }
+
     func testRegularHeightGrowsWithTheTextFromTheMinimum() {
         XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 22, verticalSizeClass: .regular), 72)
         XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 120, verticalSizeClass: .regular), 120)

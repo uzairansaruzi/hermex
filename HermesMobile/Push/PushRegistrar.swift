@@ -60,8 +60,13 @@ enum PushRegistrarError: Error, Equatable {
     /// Nil only when the build has no shared Keychain access group to write to,
     /// which means push cannot work at all on this build.
     static let shared: PushRegistrar? = {
+        #if targetEnvironment(macCatalyst)
+        // Encrypted relay previews require the iOS Notification Service Extension.
+        return nil
+        #else
         guard let store = KeychainPushPairingStore() else { return nil }
         return PushRegistrar(store: store)
+        #endif
     }()
 
     private static let logger = Logger(subsystem: "com.uzairansar.hermesmobile", category: "push")

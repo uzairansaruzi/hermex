@@ -7,7 +7,9 @@ import UIKit
 final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
     private let scrollView = UIScrollView()
     private let canvas: ReviewDiffCanvasView
+    #if !targetEnvironment(macCatalyst)
     private let refreshControl = UIRefreshControl()
+    #endif
     private var pendingScroll: ReviewDiffScrollTarget.Anchor?
     private var pendingScrollAnimated = false
     private var reportedVisibleRowRange: ClosedRange<Int>?
@@ -75,8 +77,10 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
         scrollView.alwaysBounceHorizontal = false
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.backgroundColor = canvas.theme.background
+        #if !targetEnvironment(macCatalyst)
         refreshControl.addTarget(self, action: #selector(handlePullToRefresh), for: .valueChanged)
         scrollView.refreshControl = refreshControl
+        #endif
         addSubview(scrollView)
         scrollView.addSubview(canvas)
 
@@ -135,11 +139,13 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
     /// The host owns the spinner: it stays until the reload finishes, not until the
     /// gesture ends.
     func setRefreshing(_ refreshing: Bool) {
+        #if !targetEnvironment(macCatalyst)
         if refreshing {
             if !refreshControl.isRefreshing { refreshControl.beginRefreshing() }
         } else if refreshControl.isRefreshing {
             refreshControl.endRefreshing()
         }
+        #endif
     }
 
     @objc private func handlePullToRefresh() {

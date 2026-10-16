@@ -174,6 +174,7 @@ struct TasksView: View {
                         }
                     }
                 }
+                .macReadableForm(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
                 .refreshable {
                     await loadTasks()
                 }
@@ -201,6 +202,7 @@ struct TasksView: View {
         .pickerStyle(.segmented)
         .padding(.horizontal)
         .padding(.vertical, 8)
+        .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
         .background(.bar)
     }
 

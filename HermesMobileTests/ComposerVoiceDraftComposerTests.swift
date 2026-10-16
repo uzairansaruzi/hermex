@@ -4,6 +4,29 @@ import XCTest
 @testable import HermesMobile
 
 final class ComposerVoiceDraftComposerTests: XCTestCase {
+    func testMacSendCommandsLeaveIMECompositionUnsent() {
+        for isPlainReturn in [true, false] {
+            XCTAssertFalse(ComposerKeyboardSendPolicy.canSend(isEnabled: true, hasMarkedText: true,
+                isPlainReturn: isPlainReturn, allowsPlainReturn: true))
+        }
+    }
+
+    func testMacReturnDoesNotSendAnUnresolvedCompletionButCommandReturnCan() {
+        XCTAssertFalse(ComposerKeyboardSendPolicy.canSend(isEnabled: true, hasMarkedText: false,
+            isPlainReturn: true, allowsPlainReturn: false))
+        XCTAssertTrue(ComposerKeyboardSendPolicy.canSend(isEnabled: true, hasMarkedText: false,
+            isPlainReturn: false, allowsPlainReturn: false))
+    }
+
+    func testMacSendCommandsRespectTheCallersSendGate() {
+        for isPlainReturn in [true, false] {
+            XCTAssertFalse(ComposerKeyboardSendPolicy.canSend(isEnabled: false, hasMarkedText: false,
+                isPlainReturn: isPlainReturn, allowsPlainReturn: true))
+            XCTAssertTrue(ComposerKeyboardSendPolicy.canSend(isEnabled: true, hasMarkedText: false,
+                isPlainReturn: isPlainReturn, allowsPlainReturn: true))
+        }
+    }
+
     func testComposerSendKeyboardCommandIsDiscoverableCommandReturn() {
         XCTAssertEqual(ComposerKeyboardCommand.title, "Send Message")
         XCTAssertEqual(ComposerKeyboardCommand.input, "\r")

@@ -150,9 +150,12 @@ struct MessageComposerView: View {
     @ScaledMetric(relativeTo: .body) private var actionIconSize: CGFloat = 16
     @ScaledMetric(relativeTo: .body) private var plusIconSize: CGFloat = 20
 
-    /// t3code sizing: every circle in the composer is 44 pt, which is also the
-    /// minimum hit target, so no invisible hit padding is needed.
+    /// Mobile keeps its 44 pt touch target; desktop send/stop uses a 32 pt control.
+    #if targetEnvironment(macCatalyst)
+    private let circleSize: CGFloat = 32
+    #else
     private let circleSize = ChatComposerMetrics.actionSize
+    #endif
     private let pillInset = ChatComposerMetrics.pillInset
 
     /// The draft. Pass the owner's plain `$state`, not a get/set binding:
@@ -630,6 +633,17 @@ struct MessageComposerView: View {
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsSlashAutocomplete)
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsFileAutocomplete)
 
+                #if targetEnvironment(macCatalyst)
+                VStack(spacing: 4) {
+                    composerSurface
+                    toolbarRow
+                        .padding(.horizontal, 10)
+                        .padding(.bottom, 8)
+                }
+                .modifier(ChatComposerSurfaceStyle(isExpanded: true))
+                .padding(.horizontal)
+                .padding(.bottom, 16)
+                #else
                 composerSurface
                     .padding(.horizontal)
 
@@ -652,6 +666,7 @@ struct MessageComposerView: View {
                         )
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
+                #endif
             }
             // Focus flips arrive from UIKit outside any withAnimation, so the
             // morph and the row's insertion take their animation from here.
@@ -927,13 +942,19 @@ struct MessageComposerView: View {
             cancelVoiceNote()
             cancelScheduledSendChoices()
         }
+        #if !targetEnvironment(macCatalyst)
         .padding(.bottom, keyboardIsVisible ? 10 : 0)
+        #endif
     }
 
-    /// Pill while the editor is idle; card while it is focused or a composer
+    /// Desktop keeps the card visible. Mobile uses a pill while idle and a card
+    /// while it is focused or a composer
     /// sheet is up (so a picker never snaps it shut). `shouldRestoreFocus…`
     /// bridges the gap between a sheet dismissing and focus coming back.
     private var isExpanded: Bool {
+        #if targetEnvironment(macCatalyst)
+        true
+        #else
         isFocused
             || !quotes.isEmpty
             || shouldRestoreFocusAfterPresentation
@@ -942,6 +963,7 @@ struct MessageComposerView: View {
             || showsGitBranchPicker
             || showMediaPicker
             || showFileImporter
+        #endif
     }
 
     /// The glass surface: one text view in both states so focus and the draft
@@ -968,7 +990,7 @@ struct MessageComposerView: View {
                     isDisabled: isReadOnly,
                     isCollapsed: !isExpanded,
                     isKeyboardSendEnabled: !showsStopButton && !isActionButtonDisabled,
-                    verticalPadding: 12,
+                    verticalPadding: editorVerticalPadding,
                     chipSkills: skillSuggestions,
                     chipFilePaths: chipFilePaths,
                     chipBots: botMentions?.chipReferences(avatars: mentionAvatars) ?? [:],
@@ -985,7 +1007,8 @@ struct MessageComposerView: View {
                     },
                     onTapQuote: presentQuote,
                     onRemoveQuote: removeQuote,
-                    recallLastSentText: recallLastSentText
+                    recallLastSentText: recallLastSentText,
+                    isReturnSendEnabled: !showsSlashAutocomplete && !showsFileAutocomplete
                 )
 
                 if !isExpanded {
@@ -1004,7 +1027,17 @@ struct MessageComposerView: View {
         }
         .padding(.top, isExpanded ? 2 : 0)
         .padding(.bottom, isExpanded ? 4 : 0)
+        #if !targetEnvironment(macCatalyst)
         .modifier(ChatComposerSurfaceStyle(isExpanded: isExpanded))
+        #endif
+    }
+
+    private var editorVerticalPadding: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        10
+        #else
+        12
+        #endif
     }
 
     /// Card-state row under the surface: a scroller of secondary controls plus

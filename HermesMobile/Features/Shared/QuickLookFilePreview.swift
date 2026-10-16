@@ -95,9 +95,11 @@ extension FilePreviewContent {
         let file = try await QuickLookTemporaryFile.write(data: data, name: name)
         // A dismissed preview drops the file here, which deletes it.
         try Task.checkCancellation()
+        #if !targetEnvironment(macCatalyst)
         guard QLPreviewController.canPreview(file.url as NSURL) else {
             return (.unavailable(String(localized: "Preview is not available for this file type.")), data)
         }
+        #endif
         return (.quickLook(file), data)
     }
 }

@@ -154,6 +154,9 @@ struct HermesSessionListView: View {
             if !viewModel.isViewingCachedData && !viewModel.hermesShowsAllProfiles { archivedRow }
         }
         .listStyle(.plain)
+        #if targetEnvironment(macCatalyst)
+        .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
+        #endif
         .environment(\.defaultMinListRowHeight, 0)
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: projectsAreExpanded)
         .overlay(alignment: .bottom) {

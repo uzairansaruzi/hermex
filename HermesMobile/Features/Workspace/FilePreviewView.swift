@@ -73,6 +73,14 @@ struct FilePreviewView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                #if targetEnvironment(macCatalyst)
+                Button("Refresh", systemImage: "arrow.clockwise") {
+                    Task { await loadFile() }
+                }
+                .keyboardShortcut("r", modifiers: .command)
+                .disabled(viewModel.isLoading)
+                #endif
+
                 if case let .text(file) = viewModel.preview, !isMarkdownFile {
                     sourceActionsMenu(content: file.content ?? "")
                 }

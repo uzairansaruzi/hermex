@@ -2,6 +2,25 @@ import XCTest
 @testable import HermesMobile
 
 final class OnboardingFlowTests: XCTestCase {
+    func testMacSetupPromptsKeepSecurityAndReachabilityRequirements() {
+        for prompt in [OnboardingSetupPrompt.hermes, .webUI] {
+            let text = prompt.text(forMac: true)
+            XCTAssertFalse(text.contains("iPhone"))
+            XCTAssertTrue(text.contains("Mac"))
+            XCTAssertTrue(text.contains("127.0.0.1"))
+            XCTAssertTrue(text.contains("HTTPS"))
+            XCTAssertTrue(text.contains("Do not print"))
+        }
+        XCTAssertTrue(OnboardingSetupPrompt.hermes.text(forMac: true).contains("exact-mac-address"))
+        XCTAssertTrue(OnboardingSetupPrompt.hermes.text(forMac: true).contains("dashboard.basic_auth.secret"))
+        XCTAssertTrue(OnboardingSetupPrompt.webUI.text(forMac: true).contains("Never enable Funnel"))
+    }
+
+    func testMobileSetupPromptsArePreserved() {
+        XCTAssertEqual(OnboardingSetupPrompt.hermes.text(forMac: false), OnboardingFlowPolicy.hermesSetupPrompt)
+        XCTAssertEqual(OnboardingSetupPrompt.webUI.text(forMac: false), OnboardingFlowPolicy.webUISetupPrompt)
+    }
+
     func testPrimaryButtonTitlesFollowPagerFlow() {
         XCTAssertEqual(OnboardingFlowPolicy.primaryButtonTitle(for: 0), "Get Started")
         XCTAssertEqual(OnboardingFlowPolicy.primaryButtonTitle(for: 1), "Set Up")

@@ -125,6 +125,7 @@ struct MemoryView: View {
                     }
                 }
             }
+            .macReadableForm(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
             .refreshable {
                 await loadMemory()
             }

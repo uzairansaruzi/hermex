@@ -145,6 +145,9 @@ struct OnboardingConnectPage: View {
             .padding(.bottom, 24)
         }
         .scrollBounceBehavior(.basedOnSize)
+        #if targetEnvironment(macCatalyst)
+        .onAppear { if viewModel.connectionMode == .cloudflareTunnel { isShowingAdvanced = true } }
+        #endif
         .onChange(of: viewModel.connectionMode) { _, mode in
             // The Access rows Cloudflare Tunnel adds sit in Advanced, so they open with it.
             if mode == .cloudflareTunnel { isShowingAdvanced = true }
@@ -157,7 +160,11 @@ struct OnboardingConnectPage: View {
                 }
             }
         } message: {
+            #if targetEnvironment(macCatalyst)
+            Text("Its sign-in, cached chats and drafts are removed from this Mac. Conversations on the host stay.")
+            #else
             Text("Its sign-in, cached chats and drafts are removed from this iPhone. Conversations on the host stay.")
+            #endif
         }
     }
 

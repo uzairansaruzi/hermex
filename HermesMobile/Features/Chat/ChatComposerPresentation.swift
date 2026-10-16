@@ -12,11 +12,15 @@ struct ChatComposerSurfaceStyle: ViewModifier {
     let isExpanded: Bool
 
     private var shape: RoundedRectangle {
+        #if targetEnvironment(macCatalyst)
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        #else
         RoundedRectangle(
             cornerRadius: isExpanded ? ChatComposerMetrics.cardCornerRadius
                 : (ChatComposerMetrics.actionSize + ChatComposerMetrics.pillInset * 2) / 2,
             style: .continuous
         )
+        #endif
     }
 
     func body(content: Content) -> some View {
