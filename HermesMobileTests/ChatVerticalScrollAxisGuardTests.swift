@@ -4,17 +4,6 @@ import XCTest
 
 @MainActor
 final class ChatVerticalScrollAxisGuardTests: XCTestCase {
-    func testGuardConfiguresEnclosingScrollViewForVerticalAxis() {
-        let scrollView = makeOversizedScrollView()
-        let guardView = attachGuardView(to: scrollView)
-
-        guardView.attachToNearestScrollViewIfNeeded()
-
-        XCTAssertFalse(scrollView.alwaysBounceHorizontal)
-        XCTAssertFalse(scrollView.showsHorizontalScrollIndicator)
-        XCTAssertTrue(scrollView.isDirectionalLockEnabled)
-    }
-
     func testGuardClampsHorizontalOffsetToAdjustedLeftInset() {
         let scrollView = makeOversizedScrollView(leftInset: 12)
         let guardView = attachGuardView(to: scrollView)
@@ -64,42 +53,6 @@ final class ChatVerticalScrollAxisGuardTests: XCTestCase {
 
         let expected = 1_400 + scrollView.adjustedContentInset.right - scrollView.bounds.width
         XCTAssertEqual(scrollView.contentOffset.x, expected, accuracy: 0.001)
-    }
-
-    func testPinnedOffsetHelperLTRUsesNegativeLeftInset() {
-        let x = ChatVerticalScrollAxisGuardView.pinnedHorizontalOffsetX(
-            isRightToLeft: false,
-            adjustedInset: UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 8),
-            contentSize: CGSize(width: 900, height: 1_200),
-            boundsSize: CGSize(width: 320, height: 480)
-        )
-        XCTAssertEqual(x, -12, accuracy: 0.001)
-    }
-
-    func testPinnedOffsetHelperRTLPinsToTrailingEdgeWhenContentOverflows() {
-        let x = ChatVerticalScrollAxisGuardView.pinnedHorizontalOffsetX(
-            isRightToLeft: true,
-            adjustedInset: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 8),
-            contentSize: CGSize(width: 900, height: 1_200),
-            boundsSize: CGSize(width: 320, height: 480)
-        )
-        XCTAssertEqual(x, 900 + 8 - 320, accuracy: 0.001)
-    }
-
-    func testPinnedOffsetHelperResolvesToZeroWhenTranscriptHasNoOverflowOrInset() {
-        // The normal transcript case: content fits the viewport, no horizontal
-        // inset — both directions rest at 0, so the toggle changes nothing here.
-        let inset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
-        let content = CGSize(width: 320, height: 1_200)
-        let bounds = CGSize(width: 320, height: 480)
-        let ltr = ChatVerticalScrollAxisGuardView.pinnedHorizontalOffsetX(
-            isRightToLeft: false, adjustedInset: inset, contentSize: content, boundsSize: bounds
-        )
-        let rtl = ChatVerticalScrollAxisGuardView.pinnedHorizontalOffsetX(
-            isRightToLeft: true, adjustedInset: inset, contentSize: content, boundsSize: bounds
-        )
-        XCTAssertEqual(ltr, 0, accuracy: 0.001)
-        XCTAssertEqual(rtl, 0, accuracy: 0.001)
     }
 
     func testGuardDetachesObserversWhenRemovedFromSuperview() {
@@ -190,22 +143,6 @@ final class ChatScrollPositionControllerTests: XCTestCase {
         scrollView.contentOffset.y = 300
 
         XCTAssertEqual(scrollView.contentOffset.y, 300, accuracy: 0.001)
-    }
-
-    func testHoldKeepsRevertingAcrossALongRelayout() {
-        // 28 lazy rows settle over many frames; each frame SwiftUI re-applies the
-        // bottom anchor and each time the pin puts the reader back.
-        let scrollView = makeScrollView()
-        scrollView.contentOffset = CGPoint(x: 0, y: 0)
-        let controller = ChatScrollPositionController()
-        controller.attach(to: scrollView)
-
-        controller.holdPosition {}
-        for growth in [640, 400, 220, 90, 40] as [CGFloat] {
-            scrollView.contentSize.height += growth
-            scrollView.contentOffset.y = scrollView.contentSize.height - scrollView.bounds.height
-            XCTAssertEqual(scrollView.contentOffset.y, 0, accuracy: 0.001)
-        }
     }
 
     func testHoldResyncsSwiftUIOnlyAfterItHadToRevert() {

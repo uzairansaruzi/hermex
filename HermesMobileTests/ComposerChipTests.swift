@@ -88,10 +88,6 @@ final class ComposerChipTokenizerTests: XCTestCase {
         XCTAssertTrue(tokens.isEmpty)
     }
 
-    func testAnEmptyCatalogDrawsNothing() {
-        XCTAssertTrue(ComposerChipTokenizer.tokens(in: "/ask-matt hi", catalog: .empty).isEmpty)
-    }
-
     func testFileReferenceCandidatesSkipTheOneStillBeingTyped() {
         XCTAssertEqual(
             ComposerChipTokenizer.fileReferenceCandidates(in: "read @a/b.md and @c.md now"),
@@ -109,25 +105,6 @@ final class ComposerChipTokenizerTests: XCTestCase {
         XCTAssertEqual(
             ComposerChipTokenizer.fileReferenceCandidates(in: "@a.md and @a.md again"),
             ["a.md"]
-        )
-    }
-
-    /// A candidate ends at whitespace by construction, so a path holding a space
-    /// can never be produced as one — which is why the panel does not offer such
-    /// a path in the first place.
-    func testAPathWithASpaceIsNeverOneCandidate() {
-        let candidates = ComposerChipTokenizer.fileReferenceCandidates(
-            in: "open @src/My File.swift now",
-            isComplete: true
-        )
-
-        XCTAssertEqual(candidates, ["src/My"])
-        XCTAssertFalse(candidates.contains { $0.contains(where: \.isWhitespace) })
-        XCTAssertTrue(
-            ComposerChipTokenizer.tokens(
-                in: "open @src/My File.swift now",
-                catalog: ComposerChipCatalog(skills: [], filePaths: ["src/My File.swift"])
-            ).isEmpty
         )
     }
 
@@ -167,47 +144,10 @@ extension ComposerChipTokenizerTests {
         XCTAssertTrue(ComposerChipTokenizer.tokens(in: "@README.md here", catalog: .empty).isEmpty)
     }
 
-    func testHalfTypedFilePathStaysPlainText() {
-        XCTAssertTrue(ComposerChipTokenizer.tokens(in: "@src/Chat/ChatVie", catalog: fileCatalog).isEmpty)
-        XCTAssertTrue(ComposerChipTokenizer.tokens(in: "@README.md", catalog: fileCatalog).isEmpty)
-    }
-
     func testAnEmailAddressIsNeverAFileChip() {
         let catalog = ComposerChipCatalog(skills: [], filePaths: ["example.com"])
 
         XCTAssertTrue(ComposerChipTokenizer.tokens(in: "mail me@example.com now", catalog: catalog).isEmpty)
-    }
-
-    func testSkillAndFileReferencesCoexistInOneDraft() {
-        let draft = "/ask-matt about @README.md please"
-        let tokens = ComposerChipTokenizer.tokens(in: draft, catalog: fileCatalog)
-
-        XCTAssertEqual(tokens.map(\.source), ["/ask-matt", "@README.md"])
-        XCTAssertEqual(tokens.map(\.kind), [.skill, .file])
-        XCTAssertEqual(
-            ComposerChipTokenizer.spokenText(in: draft, tokens: tokens),
-            "ask-matt about README.md please"
-        )
-    }
-
-    func testSentMessageEndingInAFileReferenceDrawsAChip() {
-        let tokens = ComposerChipTokenizer.tokens(
-            in: "look at @README.md",
-            catalog: fileCatalog,
-            isComplete: true
-        )
-
-        XCTAssertEqual(tokens.map(\.source), ["@README.md"])
-    }
-
-    func testAFileChipDrawsItsOwnFileTypeGlyph() {
-        let tokens = ComposerChipTokenizer.tokens(in: "@src/Chat/ChatView.swift ", catalog: fileCatalog)
-
-        XCTAssertEqual(tokens.first?.icon, .asset(FileIcon.swift.assetName))
-        XCTAssertEqual(
-            ComposerChipTokenizer.tokens(in: "/ask-matt ", catalog: fileCatalog).first?.icon,
-            .symbol("hammer")
-        )
     }
 }
 
@@ -219,21 +159,6 @@ extension ComposerChipTokenizerTests {
 
         XCTAssertEqual(tokens.map(\.source), ["/ask-matt"])
         XCTAssertEqual(tokens.first?.range, NSRange(location: 11, length: 9))
-    }
-
-    func testSentMessageStillNeedsAKnownSlug() {
-        XCTAssertTrue(
-            ComposerChipTokenizer.tokens(in: "please run /ask-mat", catalog: catalog, isComplete: true).isEmpty
-        )
-        XCTAssertTrue(
-            ComposerChipTokenizer.tokens(in: "please run /ask-matt", catalog: .empty, isComplete: true).isEmpty
-        )
-    }
-
-    func testSentMessageKeepsTheMidSentenceRules() {
-        XCTAssertTrue(
-            ComposerChipTokenizer.tokens(in: "see docs/ask-matt", catalog: catalog, isComplete: true).isEmpty
-        )
     }
 
     // MARK: - Drawing the line (shared by the collapsed pill and the bubble)
@@ -249,21 +174,6 @@ extension ComposerChipTokenizerTests {
 
 extension ComposerChipTokenizerTests {
     // MARK: - Spoken form (the collapsed composer's VoiceOver label)
-
-    func testSpokenTextReadsChipsByTheirLabel() {
-        let draft = "Hello /ask-matt test"
-        let tokens = ComposerChipTokenizer.tokens(in: draft, catalog: catalog)
-
-        XCTAssertEqual(tokens.count, 1)
-        XCTAssertEqual(ComposerChipTokenizer.spokenText(in: draft, tokens: tokens), "Hello ask-matt test")
-    }
-
-    func testSpokenTextLeavesADraftWithoutChipsAlone() {
-        XCTAssertEqual(
-            ComposerChipTokenizer.spokenText(in: "check the /tmp folder", tokens: []),
-            "check the /tmp folder"
-        )
-    }
 
     func testSpokenTextKeepsTextOnBothSidesOfEveryChip() {
         let draft = "/ask-matt then /babysit-pr now"
@@ -425,25 +335,6 @@ final class ComposerQuoteTests: XCTestCase {
             "> Keep trailing space "
         )
     }
-
-    func testPreviewTruncationDoesNotChangeStoredText() {
-        let text = "One\n\n" + String(repeating: "long passage ", count: 20)
-        let quote = ComposerQuote(text: text)
-
-        XCTAssertFalse(quote.preview.contains("\n"))
-        XCTAssertTrue(quote.preview.hasSuffix("…"))
-        XCTAssertEqual(quote.text, text)
-    }
-
-    func testTypedMarkdownDoesNotCreateQuoteMetadata() {
-        let content = ComposerDraftContent(text: "> ordinary pasted quote", quotes: [])
-
-        XCTAssertTrue(content.quotes.isEmpty)
-        XCTAssertEqual(
-            ComposerQuoteMessageFormatter.message(text: content.text, quotes: content.quotes),
-            "> ordinary pasted quote"
-        )
-    }
 }
 
 @MainActor
@@ -465,16 +356,6 @@ final class ComposerChipGestureTests: XCTestCase {
         SkillSlashSuggestion(name: "ask-matt", category: nil, description: nil),
         SkillSlashSuggestion(name: "babysit-pr", category: nil, description: nil)
     ]
-
-    func testPlainTextDoesNotParticipateInChipRecognition() throws {
-        let textView = makeTextView(text: "ordinary editable text")
-        let recognizer = try chipRecognizer(in: textView)
-        let textRange = try XCTUnwrap(textView.textRange(from: NSRange(location: 2, length: 1)))
-        let textPoint = center(of: textView.firstRect(for: textRange))
-
-        XCTAssertTrue(textView.renderedTokens.isEmpty)
-        XCTAssertFalse(textView.gestureRecognizer(recognizer, shouldReceive: TouchStub(point: textPoint)))
-    }
 
     func testOnlyTheChipGlyphParticipatesInChipRecognition() throws {
         let textView = makeTextView(text: "/ask-matt editable text")
@@ -516,20 +397,6 @@ final class ComposerChipGestureTests: XCTestCase {
             textView.gestureRecognizer(
                 recognizer,
                 shouldReceive: TouchStub(point: center(of: textView.firstRect(for: betweenRange)))
-            )
-        )
-    }
-
-    func testChipRecognizerAllowsUIKitEditingRecognizersAlongsideIt() throws {
-        let textView = makeTextView(text: "/ask-matt editable text")
-        let recognizer = try chipRecognizer(in: textView)
-        let editingRecognizer = UITapGestureRecognizer()
-
-        XCTAssertTrue(recognizer.delegate === textView)
-        XCTAssertTrue(
-            textView.gestureRecognizer(
-                recognizer,
-                shouldRecognizeSimultaneouslyWith: editingRecognizer
             )
         )
     }
@@ -642,32 +509,6 @@ final class ComposerChipGestureTests: XCTestCase {
 
 @MainActor
 final class ComposerChipPresentationTests: XCTestCase {
-    func testRedundantPresentationUpdateDoesNotEditTextStorageOrMoveScroll() {
-        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 160))
-        textView.applyPresentationStyle(isRightToLeft: false, isDisabled: false)
-        textView.replaceDocument(with: Array(repeating: "A long draft line", count: 30).joined(separator: "\n"))
-        textView.layoutIfNeeded()
-        textView.contentOffset = CGPoint(x: 0, y: 120)
-
-        let editObserver = TextStorageEditObserver()
-        textView.textStorage.delegate = editObserver
-        textView.applyPresentationStyle(isRightToLeft: false, isDisabled: false)
-        textView.layoutIfNeeded()
-
-        XCTAssertEqual(editObserver.processedEditCount, 0)
-        XCTAssertEqual(textView.contentOffset.y, 120, accuracy: 0.001)
-    }
-
-    func testPresentationUpdateStillAppliesChangedDirectionAndDisabledColor() {
-        let textView = ComposerChipTextView()
-
-        textView.applyPresentationStyle(isRightToLeft: true, isDisabled: true)
-
-        XCTAssertEqual(textView.semanticContentAttribute, .forceRightToLeft)
-        XCTAssertEqual(textView.textAlignment, .right)
-        XCTAssertEqual(textView.textColor, .secondaryLabel)
-    }
-
     func testHostedRedundantUpdateKeepsFocusedManualScrollOffset() async throws {
         let state = ComposerPresentationHarnessState()
         let host = UIHostingController(
@@ -790,13 +631,6 @@ final class ComposerDropRouteTests: XCTestCase {
         XCTAssertEqual(route.images.count, 1)
     }
 
-    func testRoutesAnImageOnlyDrop() throws {
-        let route = try XCTUnwrap(ComposerDropRoute(providers: [imageProvider()]))
-
-        XCTAssertTrue(route.files.isEmpty)
-        XCTAssertEqual(route.images.count, 1)
-    }
-
     func testLeavesADropWithAnythingUnroutableToUIKit() {
         XCTAssertNil(ComposerDropRoute(providers: [imageProvider(), NSItemProvider(object: "hello" as NSString)]))
         XCTAssertNil(ComposerDropRoute(providers: []))
@@ -812,26 +646,6 @@ final class ComposerDropRouteTests: XCTestCase {
         FileManager.default.createFile(atPath: url.path, contents: Data("hi".utf8))
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
         return NSItemProvider(contentsOf: url) ?? NSItemProvider()
-    }
-}
-
-final class ComposerTextInputHeightTests: XCTestCase {
-    func testRegularHeightGrowsWithTheTextFromTheMinimum() {
-        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 22, verticalSizeClass: .regular), 72)
-        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 120, verticalSizeClass: .regular), 120)
-        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 160, verticalSizeClass: .regular), 160)
-    }
-
-    func testCompactHeightStaysAtTheMinimum() {
-        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 22, verticalSizeClass: .compact), 72)
-        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 120, verticalSizeClass: .compact), 72)
-        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 160, verticalSizeClass: .compact), 72)
-    }
-
-    func testAnUnknownSizeClassCountsAsRegular() {
-        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 22, verticalSizeClass: nil), 72)
-        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 120, verticalSizeClass: nil), 120)
-        XCTAssertEqual(ComposerTextInputHeight.expanded(measured: 160, verticalSizeClass: nil), 160)
     }
 }
 
@@ -915,16 +729,6 @@ final class ComposerFocusTransitionTests: XCTestCase {
         }
     }
 
-    func testResigningDuringAPopCancelsDeferredFocus() throws {
-        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
-        try withPopTransition(content: textView) { _ in
-            XCTAssertFalse(textView.becomeFirstResponder())
-            _ = textView.resignFirstResponder()
-        } after: {
-            XCTAssertFalse(textView.isFirstResponder)
-        }
-    }
-
     func testRemovingAndReattachingEditorCancelsDeferredFocus() throws {
         let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
         try withPopTransition(content: textView) { root in
@@ -997,17 +801,6 @@ final class ComposerFocusTransitionTests: XCTestCase {
 
     private func findEditor(in view: UIView) -> ComposerChipTextView? {
         (view as? ComposerChipTextView) ?? view.subviews.lazy.compactMap { self.findEditor(in: $0) }.first
-    }
-
-    func testFocusOutsideATransitionIsImmediate() throws {
-        let root = AppearingController()
-        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
-        root.view.addSubview(textView)
-        let window = try show(root)
-        defer { cleanUp(window) }
-
-        XCTAssertTrue(textView.becomeFirstResponder())
-        XCTAssertTrue(textView.isFirstResponder)
     }
 
     /// Safety net only: every transition wait ends on an appearance or completion

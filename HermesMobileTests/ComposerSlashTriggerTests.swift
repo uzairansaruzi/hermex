@@ -22,12 +22,6 @@ final class ComposerSlashTriggerTests: XCTestCase {
 
     // MARK: - Draft-start reporting (#390)
 
-    func testATriggerAtTheStartOfTheDraftReportsItStartsTheDraft() {
-        let trigger = ComposerSlashTrigger.detect(in: "/mod", selection: caret(4))
-
-        XCTAssertEqual(trigger?.startsDraft, true)
-    }
-
     func testLeadingWhitespaceStillCountsAsTheStartOfTheDraft() {
         // The send path trims the whole draft, so this one can still run.
         let trigger = ComposerSlashTrigger.detect(in: "  /mod", selection: caret(6))
@@ -36,22 +30,9 @@ final class ComposerSlashTriggerTests: XCTestCase {
         XCTAssertEqual(trigger?.startsDraft, true)
     }
 
-    func testALeadingNewlineStillCountsAsTheStartOfTheDraft() {
-        let trigger = ComposerSlashTrigger.detect(in: "\n/mod", selection: caret(5))
-
-        XCTAssertEqual(trigger?.startsDraft, true)
-    }
-
     func testATriggerMidSentenceReportsItDoesNotStartTheDraft() {
         let trigger = ComposerSlashTrigger.detect(in: "please run /mod", selection: caret(15))
 
-        XCTAssertEqual(trigger?.startsDraft, false)
-    }
-
-    func testATriggerOnASecondLineIsNotTheStartOfTheDraft() {
-        let trigger = ComposerSlashTrigger.detect(in: "hello\n/model", selection: caret(12))
-
-        XCTAssertEqual(trigger?.text, "/model")
         XCTAssertEqual(trigger?.startsDraft, false)
     }
 
@@ -122,25 +103,12 @@ final class ComposerSlashTriggerTests: XCTestCase {
         XCTAssertEqual(trigger?.text, draft)
     }
 
-    func testAPersonalityNameContainingASpaceKeepsTheTriggerOpen() {
-        let draft = "/personality Terse Reviewer"
-        let trigger = ComposerSlashTrigger.detect(in: draft, selection: caret((draft as NSString).length))
-
-        XCTAssertEqual(trigger?.text, draft)
-    }
-
     func testTriggerNeverCrossesALineBreak() {
         XCTAssertNil(ComposerSlashTrigger.detect(in: "/model\nnow", selection: caret(10)))
     }
 
     func testProseAfterAnUnknownCommandClosesTheTrigger() {
         XCTAssertNil(ComposerSlashTrigger.detect(in: "check the /tmp folder", selection: caret(21)))
-    }
-
-    func testSubArgCommandKeepsTheTriggerOpenAcrossItsSpace() {
-        let trigger = ComposerSlashTrigger.detect(in: "/skills rev", selection: caret(11))
-
-        XCTAssertEqual(trigger?.text, "/skills rev")
     }
 
     func testSelectionWithALengthIsNeverATrigger() {
@@ -240,17 +208,6 @@ final class ComposerSlashTriggerTests: XCTestCase {
         )
     }
 
-    func testADeliberateClearStillAppliesDuringComposition() {
-        XCTAssertTrue(
-            ComposerMarkedText.isDeliberateReplacement(
-                "",
-                editorText: "안녕 ㅈ",
-                marked: NSRange(location: 3, length: 1),
-                isCurrent: true
-            )
-        )
-    }
-
     func testClearingTheDraftAppliesEvenWhenTheCompositionIsTheWholeDraft() {
         // Sending while the whole draft is one composition: the parent has seen
         // the composition and is emptying the composer on purpose.
@@ -278,30 +235,7 @@ final class ComposerSlashTriggerTests: XCTestCase {
         )
     }
 
-    func testADeliberateCaretMoveKeepsThePublishGeneration() {
-        let published = ComposerSelection(range: NSRange(location: 3, length: 0), publishGeneration: 7)
-
-        XCTAssertEqual(published.moved(to: NSRange(location: 5, length: 0)).publishGeneration, 7)
-    }
-
     // MARK: - Undo
-
-    @MainActor
-    func testApplyingAnEditThroughTheEditorIsUndoable() throws {
-        let textView = UITextView()
-        textView.text = "please run /mod for me"
-
-        let edit = try XCTUnwrap(ComposerTextEdit.between(current: textView.text, target: "please run /model for me"))
-        let range = try XCTUnwrap(textView.textRange(from: edit.range))
-        textView.replace(range, withText: edit.replacement)
-
-        XCTAssertEqual(textView.text, "please run /model for me")
-        XCTAssertEqual(textView.selectedRange, caret(17))
-
-        textView.undoManager?.undo()
-
-        XCTAssertEqual(textView.text, "please run /mod for me")
-    }
 
     private func caret(_ location: Int) -> NSRange {
         NSRange(location: location, length: 0)

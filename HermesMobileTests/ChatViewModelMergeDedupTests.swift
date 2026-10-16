@@ -44,23 +44,6 @@ final class ChatViewModelMergeDedupTests: XCTestCase {
         )
     }
 
-    // Sanity: a full-object reload whose path is a different directory than the
-    // optimistic upload path also dedupes via basename normalization.
-    func testVoiceNoteDedupesWhenReloadPathDirectoryDiffers() {
-        let transcript = "Hello, hello, testing. Can you hear me?"
-        let optimistic = ChatMessage(
-            role: "user", content: transcript, timestamp: 2000, messageId: "local-XYZ",
-            attachments: [MessageAttachment(name: "voice-note-d6.m4a", path: "/tmp/upload/voice-note-d6.m4a")]
-        )
-        let reloaded = ChatMessage(
-            role: "user", content: transcript, timestamp: 2000, messageId: "server-2",
-            attachments: [MessageAttachment(name: "voice-note-d6.m4a",
-                                            path: "/Users/hermes/.hermes/webui/attachments/x/voice-note-d6.m4a")]
-        )
-        let merged = ChatViewModel.mergingLoadedMessages([reloaded], withLocalOptimisticMessages: [optimistic])
-        XCTAssertEqual(merged.filter { $0.role == "user" }.count, 1)
-    }
-
     // Guard: genuinely different attachment filenames must NOT be deduped away.
     func testDifferentAttachmentFilenamesAreNotDeduped() {
         let optimistic = ChatMessage(

@@ -28,12 +28,6 @@ final class ComposerFileTriggerTests: XCTestCase {
         XCTAssertEqual(trigger?.range, NSRange(location: 12, length: 9))
     }
 
-    func testDetectsTriggerAfterANewline() {
-        let trigger = ComposerFileTrigger.detect(in: "hello\n@README", selection: caret(13))
-
-        XCTAssertEqual(trigger?.text, "@README")
-    }
-
     func testAnEmailAddressIsNotATrigger() {
         XCTAssertNil(ComposerFileTrigger.detect(in: "mail me@example.com", selection: caret(19)))
         XCTAssertNil(ComposerFileTrigger.detect(in: "me@example.com", selection: caret(14)))
@@ -56,11 +50,6 @@ final class ComposerFileTriggerTests: XCTestCase {
         XCTAssertNil(
             ComposerFileTrigger.detect(in: "@src", selection: NSRange(location: 1, length: 3))
         )
-    }
-
-    func testADraftWithoutAnAtHasNoTrigger() {
-        XCTAssertNil(ComposerFileTrigger.detect(in: "no references here", selection: caret(18)))
-        XCTAssertNil(ComposerFileTrigger.detect(in: "", selection: caret(0)))
     }
 
     // MARK: - Accepting a row

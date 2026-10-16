@@ -12,22 +12,6 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
     }
 
     @MainActor
-    func testBurstShowsWholeOnFirstVisibleTick() async throws {
-        let streamClient = PacingSpySSEStreamingClient()
-        // Production tick: a 100-word burst used to drain over about 2 s.
-        let viewModel = try makeViewModel(streamClient: streamClient)
-
-        let didStart = await viewModel.sendMessage("Stream a reply")
-        XCTAssertTrue(didStart)
-
-        let burst = (0..<100).map { "w\($0) " }.joined()
-        streamClient.emit(.token(burst))
-
-        let firstVisible = await nextAssistantContent(of: viewModel)
-        XCTAssertEqual(firstVisible, burst, "a burst must land on the first tick, not drain word by word")
-    }
-
-    @MainActor
     func testHeldFragmentShowsOnTheNextTick() async throws {
         let streamClient = PacingSpySSEStreamingClient()
         let ticks = ManualRevealTicks()

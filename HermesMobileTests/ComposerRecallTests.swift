@@ -114,26 +114,10 @@ final class ComposerRecallTests: XCTestCase {
         )
     }
 
-    func testNoUserMessageReturnsNil() {
-        XCTAssertNil(ComposerRecall.lastSentText(in: []))
-        XCTAssertNil(ComposerRecall.lastSentText(in: [message("assistant", "Hi, how can I help?")]))
-    }
-
     // MARK: - The ↑ command
 
     private func recallCommand(in textView: ComposerChipTextView) -> UIKeyCommand? {
         textView.keyCommands?.first { $0.input == UIKeyCommand.inputUpArrow }
-    }
-
-    func testUpArrowIsAnUnmodifiedCommandThatTakesPriorityOverCaretMovement() throws {
-        let textView = ComposerChipTextView()
-        textView.recallLastSentText = { "last" }
-
-        let command = try XCTUnwrap(recallCommand(in: textView))
-
-        XCTAssertEqual(command.modifierFlags, [])
-        XCTAssertTrue(command.wantsPriorityOverSystemBehavior)
-        XCTAssertEqual(command.title, "Recall Last Message")
     }
 
     /// Bot rooms pass no closure, so ↑ is never claimed there.

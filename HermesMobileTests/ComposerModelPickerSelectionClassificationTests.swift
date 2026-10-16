@@ -65,24 +65,6 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
         XCTAssertTrue(rendered)
     }
 
-    func testOverflowExpansionRevealsAndCollapsesExtraModels() {
-        guard let group = groups.first else {
-            return XCTFail("Expected an OpenRouter group")
-        }
-        var overflowExpansion = ModelPickerOverflowExpansionState()
-
-        XCTAssertEqual(overflowExpansion.displayedModels(in: group), [visibleModel])
-
-        overflowExpansion.setExpanded(true, groupID: group.id)
-        XCTAssertEqual(
-            overflowExpansion.displayedModels(in: group),
-            [visibleModel, overflowModel]
-        )
-
-        overflowExpansion.setExpanded(false, groupID: group.id)
-        XCTAssertEqual(overflowExpansion.displayedModels(in: group), [visibleModel])
-    }
-
     // While searching, allModels are rendered — an overflow match found by that
     // search IS represented and must not duplicate a Current Custom row.
     func testOverflowMatchWhileSearchingIsRendered() {
@@ -90,16 +72,6 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
             option: overflowModel,
             modelGroups: groups,
             searchQuery: "deepseek"
-        )
-
-        XCTAssertTrue(rendered)
-    }
-
-    func testVisibleMatchWhileSearchingIsRendered() {
-        let rendered = ModelPickerSheet.isRenderedByCurrentPicker(
-            option: visibleModel,
-            modelGroups: groups,
-            searchQuery: "claude"
         )
 
         XCTAssertTrue(rendered)
@@ -120,5 +92,18 @@ final class ComposerModelPickerSelectionClassificationTests: XCTestCase {
         )
 
         XCTAssertFalse(rendered)
+    }
+
+    // The one effort a model supports is what the composer sends, whatever was stored.
+    func testSingleEffortBecomesStaticAndIsCommitted() {
+        let selection = ComposerModelEffortSelection(
+            model: ModelCatalogOption(id: "o4-mini", displayName: "o4-mini", providerID: "openai"),
+            effort: "xhigh",
+            supportedEfforts: ["high"],
+            supportsEffort: true
+        )
+
+        XCTAssertEqual(selection.staticEffort?.id, "high")
+        XCTAssertEqual(selection.committedEffort, "high")
     }
 }

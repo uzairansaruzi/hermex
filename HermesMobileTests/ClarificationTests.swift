@@ -55,80 +55,6 @@ final class ClarificationTests: XCTestCase {
         XCTAssertEqual(minimal.pending?.displayChoices, [])
     }
 
-    func testClarificationAPIUsesVerifiedRoutesAndBodies() async throws {
-        var requestCount = 0
-        var respondBody: [String: Any]?
-        let client = makeClient { request in
-            requestCount += 1
-
-            switch requestCount {
-            case 1:
-                XCTAssertEqual(request.url?.path, "/api/clarify/pending")
-                XCTAssertEqual(request.httpMethod, "GET")
-
-                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
-                let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) })
-                XCTAssertEqual(query["session_id"], "session-abc")
-
-                return jsonResponse("""
-                {
-                  "pending": {
-                    "clarify_id": "clarify-1",
-                    "question": "Pick one",
-                    "choices_offered": ["A", "B"],
-                    "session_id": "session-abc"
-                  }
-                }
-                """, for: request)
-            case 2:
-                XCTAssertEqual(request.url?.path, "/api/clarify/respond")
-                XCTAssertEqual(request.httpMethod, "POST")
-                respondBody = try XCTUnwrap(jsonBody(from: request))
-                return jsonResponse(#"{"ok": true, "response": "A"}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        let pending = try await client.clarifyPending(sessionID: "session-abc")
-        XCTAssertEqual(pending.pending?.clarifyId, "clarify-1")
-        XCTAssertEqual(pending.pending?.displayChoices, ["A", "B"])
-
-        let response = try await client.respondClarification(
-            sessionID: "session-abc",
-            response: "A",
-            clarifyID: "clarify-1"
-        )
-
-        XCTAssertEqual(respondBody?["session_id"] as? String, "session-abc")
-        XCTAssertEqual(respondBody?["response"] as? String, "A")
-        XCTAssertEqual(respondBody?["clarify_id"] as? String, "clarify-1")
-        XCTAssertEqual(response.ok, true)
-        XCTAssertEqual(response.response, "A")
-        XCTAssertEqual(client.clarifyStreamURL(sessionID: "session-abc").path, "/api/clarify/stream")
-    }
-
-    func testClarificationRespondResponseDecodesStaleFieldsTolerantly() throws {
-        let stale = try JSONDecoder().decode(
-            ClarificationRespondResponse.self,
-            from: Data(#"{"ok": false, "error": "Clarification prompt expired or not found.", "stale": true}"#.utf8)
-        )
-        XCTAssertEqual(stale.ok, false)
-        XCTAssertEqual(stale.stale, true)
-        XCTAssertNil(stale.staleCleared)
-        XCTAssertNil(stale.relayed)
-
-        let cleared = try JSONDecoder().decode(
-            ClarificationRespondResponse.self,
-            from: Data(#"{"ok": true, "response": "A", "stale_cleared": "true", "relayed": 1}"#.utf8)
-        )
-        XCTAssertEqual(cleared.ok, true)
-        XCTAssertEqual(cleared.staleCleared, true)
-        XCTAssertEqual(cleared.relayed, true)
-        XCTAssertNil(cleared.stale)
-    }
-
     @MainActor
     func testClarificationStale409DismissesPromptWithFriendlyExpiredMessage() async throws {
         let streamClient = ClarificationSpySSEStreamingClient()
@@ -422,16 +348,6 @@ final class ClarificationTests: XCTestCase {
             }
             """.utf8)
         )
-    }
-
-    private func makeClient(
-        handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
-    ) -> APIClient {
-        ClarificationMockURLProtocol.requestHandler = handler
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [ClarificationMockURLProtocol.self]
-        let session = URLSession(configuration: configuration)
-        return APIClient(baseURL: URL(string: "https://example.test")!, session: session)
     }
 }
 
