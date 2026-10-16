@@ -900,13 +900,15 @@ final class KanbanLiveUpdateTests: XCTestCase {
     }
 
     /// Waits, without polling, for `condition`: it is checked again whenever an observable
-    /// value it read changes.
+    /// value it read changes. The bound only ends a broken test: a Hermes socket's first ping
+    /// follows a sign-in and a ticket request over URLSession with no observable change between,
+    /// which a busy CI runner can stretch past a few seconds.
     private func until(_ description: String, file: StaticString = #filePath, line: UInt = #line,
                        _ condition: @escaping @MainActor () -> Bool) async {
         while !condition() {
             let changed = XCTestExpectation(description: description)
             withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 2) == .completed else {
+            guard await XCTWaiter().fulfillment(of: [changed], timeout: 10) == .completed else {
                 return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
             }
         }

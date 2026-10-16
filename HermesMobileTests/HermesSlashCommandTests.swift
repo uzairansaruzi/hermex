@@ -342,9 +342,11 @@ import Observation
         slash.completionDelay = .milliseconds(1)
         chat.host.always("complete.slash", .init(result: try Self.fixture("complete.slash /approvals ")))
 
-        async let older: Void = slash.complete("/approvals x")
-        async let newer: Void = slash.complete("/approvals ")
-        _ = await (older, newer)
+        // The newer call's task can't start until the older call, run inline on the main actor,
+        // has taken its revision and paused (#1263); the two replies then land in either order.
+        let newer = Task { await slash.complete("/approvals ") }
+        await slash.complete("/approvals x")
+        await newer.value
         XCTAssertEqual(chat.writes("complete.slash").count, 2)
         XCTAssertEqual(slash.completion?.text, "/approvals ", "the older reply is dropped, whichever lands last")
         XCTAssertEqual(slash.completion?.items.map(\.text), ["manual", "smart", "off"])
