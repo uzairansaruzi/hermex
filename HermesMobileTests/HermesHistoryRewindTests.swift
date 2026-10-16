@@ -464,8 +464,10 @@ import Observation
             if transcript.takeFailure() { return .json(502, .object(["detail": .string("Bad Gateway")])) }
             return .json(200, .object(["session_id": .string("tip"), "messages": .array(transcript.rows)]))
         }
+        // A failed attach tries again at once, not after the 1, 2, 4 s backoff a slow runner sat through.
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
-                                        target: .session(profile: "default", key: "tip"), wire: client)
+                                        target: .session(profile: "default", key: "tip"), wire: client,
+                                        reconnectDelay: { _ in })
         let model = ChatViewModel(
             session: SessionSummary(profile: "default"), server: URL(string: "https://hermes.example")!,
             streamingScrollCoalescingDelayNanoseconds: 0,
