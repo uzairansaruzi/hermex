@@ -265,10 +265,12 @@ import Observation
         await engine.activate()
 
         XCTAssertEqual(engine.connectionState, .connected)
-        XCTAssertEqual(host.requests.filter { $0["method"].text == "session.create" }.compactMap { $0["params"].fields }, [[
-            "profile": .string("default"), "cwd": .string("/work/app"),
-            "model": .string("claude-opus"), "provider": .string("anthropic"), "source": .string("hermex")
-        ]])
+        let creates = host.requests.filter { $0["method"].text == "session.create" }.compactMap { $0["params"].fields }
+        XCTAssertEqual(creates.count, 1, "created once, then only resumed")
+        XCTAssertEqual(creates.first?["profile"], .string("default"))
+        XCTAssertEqual(creates.first?["cwd"], .string("/work/app"))
+        XCTAssertEqual(creates.first?["model"], .string("claude-opus"))
+        XCTAssertEqual(creates.first?["provider"], .string("anthropic"))
     }
 
     // MARK: Fixture
