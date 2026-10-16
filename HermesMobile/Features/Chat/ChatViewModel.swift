@@ -560,6 +560,7 @@ final class ChatViewModel {
     private let sessionID: String?
     @ObservationIgnored private var chatSendGeneration = 0
     @ObservationIgnored private var compressionContinuation: SessionSummary?
+    @ObservationIgnored private var compressionContinuationID: String?
     private(set) var isCompressionRotated = false
     @ObservationIgnored private var compressionRejectionMessage: String?
     @ObservationIgnored private var didHandOffCompressionDraft = false
@@ -2870,6 +2871,12 @@ final class ChatViewModel {
 
         guard !isCompressionRotated else {
             sendErrorMessage = compressionRejectionMessage
+            // A failed continuation load would otherwise strand the draft here.
+            if compressionContinuation == nil, let id = compressionContinuationID, let sessionID {
+                await resolveCompressionContinuation(id: id, from: sessionID,
+                                                     profile: Self.compressionProfile(currentProfile),
+                                                     generation: chatSendGeneration)
+            }
             return false
         }
 
@@ -3433,22 +3440,9 @@ final class ChatViewModel {
                 // This POST was rejected. GET may resolve a newer tip, but never replay it.
                 lastError = error
                 sendErrorMessage = error.localizedDescription
-                do {
-                    let response = try await client.session(id: rotation.continuationSessionID,
-                                                            includeMessages: false, messageLimit: nil)
-                    guard generation == chatSendGeneration, !Task.isCancelled else { return false }
-                    if let detail = response.session,
-                       let id = detail.sessionId, id != sessionID,
-                       APIError.SessionRotation(continuationSessionID: id) != nil,
-                       Self.compressionProfile(detail.profile) == profile,
-                       Self.compressionProfile(currentProfile) == profile {
-                        compressionContinuation = SessionSummary(from: detail)
-                    }
-                } catch {
-                    guard generation == chatSendGeneration, !Task.isCancelled else { return false }
-                    lastError = error
-                    sendErrorMessage = error.localizedDescription
-                }
+                compressionContinuationID = rotation.continuationSessionID
+                await resolveCompressionContinuation(id: rotation.continuationSessionID, from: sessionID,
+                                                     profile: profile, generation: generation)
                 return false
             }
             if let apiError = error as? APIError, apiError.serverCode != "session_rotated",
@@ -3472,6 +3466,29 @@ final class ChatViewModel {
             sendErrorMessage = error.localizedDescription
             sendErrorRuntimeStale = (error as? APIError)?.agentRuntimeStale
             return false
+        }
+    }
+
+    /// Loads the continuation a `session_rotated` 409 named, for
+    /// `compressionContinuationForNavigation`. The rejected send's catch calls it
+    /// first; a later Send on the sealed parent retries it after a failed load.
+    /// Neither path posts the message again.
+    private func resolveCompressionContinuation(id: String, from sessionID: String,
+                                                profile: String, generation: Int) async {
+        do {
+            let response = try await client.session(id: id, includeMessages: false, messageLimit: nil)
+            guard generation == chatSendGeneration, !Task.isCancelled else { return }
+            if let detail = response.session,
+               let id = detail.sessionId, id != sessionID,
+               APIError.SessionRotation(continuationSessionID: id) != nil,
+               Self.compressionProfile(detail.profile) == profile,
+               Self.compressionProfile(currentProfile) == profile {
+                compressionContinuation = SessionSummary(from: detail)
+            }
+        } catch {
+            guard generation == chatSendGeneration, !Task.isCancelled else { return }
+            lastError = error
+            sendErrorMessage = error.localizedDescription
         }
     }
 

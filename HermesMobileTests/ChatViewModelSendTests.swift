@@ -1282,6 +1282,40 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testSendAfterFailedContinuationLoadRetriesGETWithoutReplay() async throws {
+        let drafts = makeContinuationDraftStore()
+        let server = URL(string: "https://example.test")!
+        let source = ChatDraftKey.session(server: server, sessionID: "session-abc")
+        drafts.setDraft("Keep draft", for: source)
+        var paths: [String] = []
+        var continuationLoads = 0
+        let viewModel = try makeViewModel(draftStore: drafts) { request in
+            paths.append(request.url?.path ?? "")
+            if request.url?.path == "/api/chat/start" {
+                return apiTestJSONResponse(#"{"error":"Compressed","code":"session_rotated","continuation_session_id":"next"}"#, for: request, status: 409)
+            }
+            XCTAssertEqual(request.url?.path, "/api/session")
+            continuationLoads += 1
+            // The first load fails while the connection drops; the retry succeeds.
+            if continuationLoads == 1 { throw URLError(.networkConnectionLost) }
+            return apiTestJSONResponse(#"{"session":{"session_id":"next"}}"#, for: request)
+        }
+        let firstSend = await viewModel.sendMessage("Keep draft")
+        XCTAssertFalse(firstSend)
+        let stranded = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+        XCTAssertNil(stranded)
+
+        let retry = await viewModel.sendMessage("Keep draft")
+        XCTAssertFalse(retry)
+        let destination = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
+        XCTAssertEqual(destination?.sessionId, "next")
+        let moved = await drafts.draft(for: .session(server: server, sessionID: "next"))
+        XCTAssertEqual(moved?.text, "Keep draft")
+        XCTAssertEqual(paths, ["/api/chat/start", "/api/session", "/api/session"])
+        XCTAssertTrue(viewModel.messages.isEmpty)
+    }
+
+    @MainActor
     func testContinuationUsesAuthoritativeDefaultNotSelectedProfile() async throws {
         for targetProfile in ["default", "", "work"] {
             let drafts = makeContinuationDraftStore()
