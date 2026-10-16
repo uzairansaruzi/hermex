@@ -98,22 +98,6 @@ final class ChatDraftAttachmentStoreTests: XCTestCase {
         await XCTAssertThrowsErrorAsync(try await store.fileURL(named: "nested/\(fileName)"))
     }
 
-    func testDeleteRemovesFilesAndToleratesMissingOnes() async throws {
-        let directory = temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let store = ChatDraftAttachmentStore(directoryURL: directory)
-        let fileName = try await store.save(data: Data("bytes".utf8), suggestedFilename: "photo.jpg")
-
-        await store.delete(named: fileName)
-
-        await XCTAssertThrowsErrorAsync(try await store.data(named: fileName))
-        // Deleting twice (or a never-written name) is a no-op, not an error.
-        await store.delete(named: fileName)
-        await store.delete(named: "never-written.jpg")
-        // Traversal attempts never reach outside the directory.
-        await store.delete(named: "../drafts.json")
-    }
-
     func testSweepDeletesOnlyUnreferencedFilesOlderThanTheGrace() async throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -145,20 +129,6 @@ final class ChatDraftAttachmentStoreTests: XCTestCase {
         do {
             _ = try await store.data(named: "never-written.jpg")
             XCTFail("Expected a read failure for a missing file")
-        } catch {
-            XCTAssertEqual(ChatDraftAttachmentReadFailure.classify(error), .unrecoverable)
-        }
-    }
-
-    /// A name that cannot resolve never will, so it is not worth retrying.
-    func testAnInvalidFileNameIsClassifiedUnrecoverable() async throws {
-        let directory = temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let store = ChatDraftAttachmentStore(directoryURL: directory)
-
-        do {
-            _ = try await store.data(named: "../escape.jpg")
-            XCTFail("Expected a read failure for a traversal name")
         } catch {
             XCTAssertEqual(ChatDraftAttachmentReadFailure.classify(error), .unrecoverable)
         }

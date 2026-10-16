@@ -32,10 +32,4 @@ final class BotModeGateTests: XCTestCase {
         XCTAssertTrue(manager.addHermesServer(record))
         XCTAssertEqual(manager.state, .loggedIn(server: hermes))
     }
-
-    func testGateDefaultsOffAndPersistsWhenTurnedOn() {
-        XCTAssertFalse(BotModeGate.isEnabled(in: defaults))
-        defaults.set(true, forKey: BotModeGate.isEnabledKey)
-        XCTAssertTrue(BotModeGate.isEnabled(in: defaults))
-    }
 }

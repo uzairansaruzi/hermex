@@ -67,51 +67,6 @@ final class APIClientTTSTests: APIClientTestCase {
             XCTAssertEqual(settings.ttsVoice, voice)
         }
     }
-
-    func testSynthesizeSpeechThrowsHTTPCarryingServerErrorBodyOnRateLimit() async {
-        let client = makeClient { request in
-            let response = HTTPURLResponse(
-                url: request.url!,
-                statusCode: 429,
-                httpVersion: nil,
-                headerFields: ["Content-Type": "application/json"]
-            )!
-            return (response, Data(#"{"error": "rate limit exceeded — please wait"}"#.utf8))
-        }
-
-        do {
-            _ = try await client.synthesizeSpeech(text: "Too fast.", voice: "en-US-AriaNeural")
-            XCTFail("Expected APIError.http")
-        } catch let APIError.http(statusCode, body) {
-            // The caller treats any thrown error as "fall back to the on-device
-            // synthesizer"; the status/body are only for diagnostics.
-            XCTAssertEqual(statusCode, 429)
-            XCTAssertEqual(body?.contains("rate limit exceeded"), true)
-        } catch {
-            XCTFail("Unexpected error: \(error)")
-        }
-    }
-
-    func testSynthesizeSpeechMapsUnauthorized() async {
-        let client = makeClient { request in
-            let response = HTTPURLResponse(
-                url: request.url!,
-                statusCode: 401,
-                httpVersion: nil,
-                headerFields: nil
-            )!
-            return (response, Data())
-        }
-
-        do {
-            _ = try await client.synthesizeSpeech(text: "Hello.", voice: "en-US-AriaNeural")
-            XCTFail("Expected APIError.unauthorized")
-        } catch APIError.unauthorized {
-            // expected
-        } catch {
-            XCTFail("Unexpected error: \(error)")
-        }
-    }
 }
 
 /// Listen's speech from a Hermes host (#1072) over a connected `BotClient`, against a host

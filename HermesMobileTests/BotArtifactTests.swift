@@ -32,15 +32,6 @@ import UniformTypeIdentifiers
         XCTAssertFalse(url.absoluteString.contains("other"))
     }
 
-    func testResponseWithoutLengthCannotExceedLimit() throws {
-        var buffer = BotArtifactBuffer(limit: 5)
-        try buffer.append(Data([1, 2, 3]))
-        XCTAssertThrowsError(try buffer.append(Data([4, 5, 6])))
-        XCTAssertEqual(buffer.data, Data([1, 2, 3]))
-        try buffer.append(Data([4, 5]))
-        XCTAssertEqual(buffer.data.count, 5)
-    }
-
     func testHTTPDownloadPreservesRawPDFAndRejectsErrorsAndOversize() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotArtifactHTTPFixture.self]

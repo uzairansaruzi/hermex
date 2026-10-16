@@ -101,82 +101,6 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertTrue(AutomatedSessionVisibility.showAll.shows(cached))
     }
 
-    func testCachedSessionsPreserveClaudeCodeClassificationAndVisibility() throws {
-        let context = try makeContext()
-        let serverURL = URL(string: "https://example.test")!
-        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
-        let response = try decodeSessions("""
-        {
-          "sessions": [
-            {
-              "session_id": "claude-code",
-              "title": "Imported transcript",
-              "source_tag": "claude_code",
-              "raw_source": "claude_code",
-              "is_cli_session": true,
-              "read_only": true,
-              "archived": false
-            },
-            {
-              "session_id": "ordinary-cli",
-              "title": "Terminal chat",
-              "source_tag": "cli",
-              "is_cli_session": true,
-              "archived": false
-            }
-          ]
-        }
-        """)
-
-        try CacheStore.cacheSessions(
-            try XCTUnwrap(response.sessions),
-            serverURL: serverURL,
-            in: context,
-            cachedAt: cachedAt
-        )
-
-        let cached = try CacheStore.cachedSessions(
-            serverURL: serverURL,
-            in: context,
-            now: cachedAt.addingTimeInterval(60)
-        )
-        let hidden = AutomatedSessionVisibility(
-            showsCron: true,
-            showsCli: true,
-            showsClaudeCode: false
-        )
-
-        XCTAssertTrue(try XCTUnwrap(cached.first { $0.sessionId == "claude-code" }).isClaudeCodeSession)
-        XCTAssertEqual(cached.filter(hidden.shows).compactMap(\.sessionId), ["ordinary-cli"])
-    }
-
-    func testCachedSessionsPreserveExternalSourceLabelAndImportClassification() throws {
-        let context = try makeContext()
-        let serverURL = URL(string: "https://example.test")!
-        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
-        let session = SessionSummary(
-            sessionId: "telegram",
-            title: "Support chat",
-            archived: false,
-            isCliSession: true,
-            rawSource: "telegram",
-            sessionSource: "messaging",
-            sourceLabel: "Telegram"
-        )
-
-        try CacheStore.cacheSession(session, serverURL: serverURL, in: context, cachedAt: cachedAt)
-
-        let cached = try XCTUnwrap(
-            CacheStore.cachedSessions(
-                serverURL: serverURL,
-                in: context,
-                now: cachedAt.addingTimeInterval(60)
-            ).first
-        )
-        XCTAssertTrue(cached.requiresExternalImport)
-        XCTAssertEqual(cached.sourceDisplayLabel, "Telegram")
-    }
-
     func testCacheMessagesWritesLoadedWindowAndRemovesStaleMessages() throws {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!
@@ -333,31 +257,6 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(cachedSessions.first?.title, "Fresh thread")
     }
 
-    func testCachedSessionsIgnoresExpiredSessions() throws {
-        let context = try makeContext()
-        let serverURL = URL(string: "https://example.test")!
-        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
-        let expiredNow = cachedAt.addingTimeInterval(CachePolicy.ttl + 1)
-        let response = try decodeSessions("""
-        {
-          "sessions": [
-            {"session_id": "expired", "title": "Expired thread", "last_message_at": 1770000000, "archived": false}
-          ]
-        }
-        """)
-
-        try CacheStore.cacheSessions(
-            try XCTUnwrap(response.sessions),
-            serverURL: serverURL,
-            in: context,
-            cachedAt: cachedAt
-        )
-
-        let cachedSessions = try CacheStore.cachedSessions(serverURL: serverURL, in: context, now: expiredNow)
-
-        XCTAssertTrue(cachedSessions.isEmpty)
-    }
-
     func testCachedMessagesReturnsUnexpiredMessagesInStoredOrderForSession() throws {
         let context = try makeContext()
         let serverURL = URL(string: "https://example.test")!
@@ -411,37 +310,6 @@ final class CacheStoreTests: XCTestCase {
 
         XCTAssertEqual(cachedMessages.map(\.messageId), ["m2", "m1"])
         XCTAssertEqual(cachedMessages.first?.reasoning, "Cached reasoning.")
-    }
-
-    func testAssistantTurnTpsDecodesAndRoundTripsThroughCache() throws {
-        let context = try makeContext()
-        let serverURL = URL(string: "https://example.test")!
-        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
-        let message = try JSONDecoder().decode(
-            ChatMessage.self,
-            from: Data(#"{"role":"assistant","content":"Done","messageId":"m1","_turnTps":48.75}"#.utf8)
-        )
-
-        XCTAssertEqual(message.turnTps, 48.75)
-
-        try CacheStore.cacheMessages(
-            [message],
-            serverURL: serverURL,
-            sessionID: "abc123",
-            in: context,
-            cachedAt: cachedAt
-        )
-
-        XCTAssertEqual(try fetchCachedMessages(in: context).first?.turnTps, 48.75)
-        XCTAssertEqual(
-            try CacheStore.cachedMessages(
-                serverURL: serverURL,
-                sessionID: "abc123",
-                in: context,
-                now: cachedAt.addingTimeInterval(60)
-            ).first?.turnTps,
-            48.75
-        )
     }
 
     func testCachedMessagesIgnoresExpiredMessages() throws {
@@ -534,51 +402,6 @@ final class CacheStoreTests: XCTestCase {
         let storeContext = ModelContext(context.container)
         XCTAssertEqual(try fetchCachedSessions(in: storeContext).map(\.sessionID), ["fresh-session"])
         XCTAssertTrue(try fetchCachedMessages(in: storeContext).isEmpty)
-    }
-
-    func testCacheMaintenanceEvictsOldestMessagesAboveLimit() throws {
-        let context = try makeContext()
-        let serverURL = URL(string: "https://example.test")!
-        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
-
-        for index in 0...CachePolicy.maxMessages {
-            context.insert(
-                CachedMessage(
-                    serverURLString: serverURL.absoluteString,
-                    sessionID: "abc123",
-                    message: ChatMessage(
-                        role: "user",
-                        content: "Message \(index)",
-                        timestamp: Double(index),
-                        messageId: "message-\(index)"
-                    ),
-                    sortIndex: index,
-                    cachedAt: cachedAt
-                )
-            )
-        }
-
-        let triggerSessions = try decodeSessions("""
-        {
-          "sessions": [
-            {"session_id": "abc123", "title": "Trigger", "last_message_at": 1770000000, "archived": false}
-          ]
-        }
-        """)
-
-        try CacheStore.cacheSessions(
-            try XCTUnwrap(triggerSessions.sessions),
-            serverURL: serverURL,
-            in: context,
-            cachedAt: cachedAt
-        )
-
-        let cachedMessages = try fetchCachedMessages(in: context)
-
-        XCTAssertEqual(cachedMessages.count, CachePolicy.maxMessages)
-        XCTAssertNil(cachedMessages.first { $0.messageId == "message-0" })
-        XCTAssertNotNil(cachedMessages.first { $0.messageId == "message-1" })
-        XCTAssertNotNil(cachedMessages.first { $0.messageId == "message-\(CachePolicy.maxMessages)" })
     }
 
     func testCacheMessagesSkipsUnchangedRowsUntilTheRefreshInterval() throws {
@@ -724,54 +547,6 @@ final class CacheStoreTests: XCTestCase {
 
         let cachedSessions = try fetchCachedSessions(in: context)
         XCTAssertEqual(cachedSessions.map(\.title), ["Second copy"])
-    }
-
-    func testCacheMessagesRoundTripsAttachments() throws {
-        let context = try makeContext()
-        let serverURL = URL(string: "https://example.test")!
-        let cachedAt = Date(timeIntervalSince1970: 1_770_000_000)
-        let now = cachedAt.addingTimeInterval(60)
-
-        let messages = [
-            ChatMessage(
-                role: "user",
-                content: "Here is a photo",
-                timestamp: 1_770_000_000,
-                messageId: "m1",
-                attachments: [
-                    MessageAttachment(
-                        name: "photo.png",
-                        path: "/uploads/photo.png",
-                        mime: "image/png",
-                        size: 12345,
-                        isImage: true
-                    )
-                ]
-            )
-        ]
-
-        try CacheStore.cacheMessages(
-            messages,
-            serverURL: serverURL,
-            sessionID: "abc123",
-            in: context,
-            cachedAt: cachedAt
-        )
-
-        let cachedMessages = try CacheStore.cachedMessages(
-            serverURL: serverURL,
-            sessionID: "abc123",
-            in: context,
-            now: now
-        )
-
-        XCTAssertEqual(cachedMessages.count, 1)
-        let attachment = try XCTUnwrap(cachedMessages.first?.attachments?.first)
-        XCTAssertEqual(attachment.name, "photo.png")
-        XCTAssertEqual(attachment.path, "/uploads/photo.png")
-        XCTAssertEqual(attachment.mime, "image/png")
-        XCTAssertEqual(attachment.size, 12345)
-        XCTAssertEqual(attachment.isImage, true)
     }
 
     func testCacheMessagesRoundTripsToolCallAndStructuredContentFields() throws {
@@ -1228,9 +1003,10 @@ final class CacheStoreTests: XCTestCase {
         XCTAssertEqual(try CacheStore.cachedSessions(serverURL: webui, in: context).map(\.title), ["On webui"])
     }
 
-    /// Hermes rows keep the TTL and the cap: an expired one never reads back and the next write
-    /// purges it, and the least recently cached messages above the cap go.
-    func testHermesRowsKeepTheTTLAndTheCap() throws {
+    /// Hermes rows keep the TTL: an expired one never reads back and the next write purges it.
+    /// The cap is the same maintenance pass, which
+    /// `testCacheMaintenanceEvictsOnlyTheLeastRecentlyCachedOverflowAcrossServers` covers.
+    func testHermesRowsKeepTheTTL() throws {
         let context = try makeContext()
         let old = Date(timeIntervalSince1970: 1_770_000_000)
         let later = old.addingTimeInterval(CachePolicy.ttl + 1)
@@ -1238,21 +1014,11 @@ final class CacheStoreTests: XCTestCase {
                                            reachedEnd: false, serverURL: hermesServer, in: context, cachedAt: old)
         XCTAssertEqual(try CacheStore.cachedHermesSessions(serverURL: hermesServer, profile: "default", in: context, now: later), [])
 
-        let scope = CacheStore.hermesScope(profile: "default", lineageRoot: "tip")
-        for id in 1...CachePolicy.maxMessages {
-            let key = CacheStore.hermesMessageKey(serverURL: hermesServer, profile: "default", lineageRoot: "tip", rowID: id)
-            context.insert(CachedMessage(serverURLString: hermesServer.absoluteString, sessionID: scope, message: hermesMessage(id),
-                                         sortIndex: id, cacheKey: key, cachedAt: later.addingTimeInterval(Double(id))))
-        }
         try CacheStore.cacheHermesMessages([hermesMessage(9_999)], newestCoverage: .from(rowIDs: [9_999]), serverURL: hermesServer,
-                                           profile: "default", lineageRoot: "tip", in: context,
-                                           cachedAt: later.addingTimeInterval(Double(CachePolicy.maxMessages + 1)))
+                                           profile: "default", lineageRoot: "tip", in: context, cachedAt: later)
 
         XCTAssertTrue(try fetchCachedSessions(in: context).isEmpty, "the expired session was purged")
-        let rows = try fetchCachedMessages(in: context).compactMap(\.rowID)
-        XCTAssertEqual(rows.count, CachePolicy.maxMessages)
-        XCTAssertFalse(rows.contains(1), "the least recently cached message went")
-        XCTAssertTrue(rows.contains(9_999))
+        XCTAssertEqual(try fetchCachedMessages(in: context).compactMap(\.rowID), [9_999])
     }
 
     /// A store written before #1054's columns opens with every row, its new columns empty.

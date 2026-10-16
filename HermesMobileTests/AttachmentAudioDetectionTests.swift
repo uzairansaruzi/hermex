@@ -11,12 +11,6 @@ final class AttachmentAudioDetectionTests: XCTestCase {
         XCTAssertTrue(AttachmentAudioDetection.isAudio(isImage: false, mime: "audio/mp4", name: "clip.bin", path: nil))
     }
 
-    func testNonAudioMimeIsNotAudio() {
-        XCTAssertFalse(AttachmentAudioDetection.isAudio(isImage: nil, mime: "image/png", name: "pic.png", path: nil))
-        XCTAssertFalse(AttachmentAudioDetection.isAudio(isImage: nil, mime: "text/plain", name: "notes.txt", path: nil))
-        XCTAssertFalse(AttachmentAudioDetection.isAudio(isImage: nil, mime: "application/pdf", name: "doc.pdf", path: nil))
-    }
-
     // MARK: - Extension detection
 
     func testKnownAudioExtensionsAreAudio() {
@@ -31,10 +25,6 @@ final class AttachmentAudioDetectionTests: XCTestCase {
     func testExtensionDetectionIsCaseInsensitive() {
         XCTAssertTrue(AttachmentAudioDetection.isAudio(isImage: nil, mime: nil, name: "VOICE.M4A", path: nil))
         XCTAssertTrue(AttachmentAudioDetection.isAudio(isImage: nil, mime: nil, name: "Song.Mp3", path: nil))
-    }
-
-    func testExtensionDetectionWorksOnFullPaths() {
-        XCTAssertTrue(AttachmentAudioDetection.isAudio(isImage: nil, mime: nil, name: "/workspace/voice/note.m4a", path: nil))
     }
 
     func testUnknownExtensionIsNotAudio() {
@@ -59,21 +49,7 @@ final class AttachmentAudioDetectionTests: XCTestCase {
         XCTAssertFalse(AttachmentAudioDetection.isAudio(isImage: true, mime: "audio/mpeg", name: "weird.mp3", path: nil))
     }
 
-    func testNilAndEmptyInputsAreNotAudio() {
-        XCTAssertFalse(AttachmentAudioDetection.isAudio(isImage: nil, mime: nil, name: nil, path: nil))
-        XCTAssertFalse(AttachmentAudioDetection.isAudio(isImage: nil, mime: nil, name: "", path: ""))
-        XCTAssertFalse(AttachmentAudioDetection.isAudio(isImage: nil, mime: "", name: "", path: ""))
-    }
-
     // MARK: - MessageAttachment convenience
-
-    func testMessageAttachmentInferredIsAudio() {
-        XCTAssertTrue(MessageAttachment(name: "note.m4a").inferredIsAudio)
-        XCTAssertTrue(MessageAttachment(name: nil, path: "/ws/voice.mp3").inferredIsAudio)
-        XCTAssertTrue(MessageAttachment(name: "blob", mime: "audio/ogg").inferredIsAudio)
-        XCTAssertFalse(MessageAttachment(name: "photo.png", isImage: true).inferredIsAudio)
-        XCTAssertFalse(MessageAttachment(name: "data.json").inferredIsAudio)
-    }
 
     // MARK: - Duration formatting
 

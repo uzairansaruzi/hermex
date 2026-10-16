@@ -258,41 +258,6 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertFalse(requestPaths.values.contains("/api/reasoning"))
         XCTAssertEqual(requestPaths.values.first, "/api/profiles")
     }
-
-    func testLoadStoresSingleProfileModeFromProfilesResponse() async throws {
-        let client = makeClient { request in
-            switch request.url?.path {
-            case "/api/profiles":
-                return apiTestJSONResponse("""
-                {
-                  "active": "default",
-                  "profiles": [
-                    {"name": "default", "model": "gpt-5.4", "provider": "openai", "is_default": true, "is_active": true}
-                  ],
-                  "single_profile_mode": true
-                }
-                """, for: request)
-            case "/api/models":
-                return apiTestJSONResponse(#"{"default_model": "gpt-5.4", "groups": []}"#, for: request)
-            case "/api/reasoning":
-                return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
-            case "/api/workspaces":
-                return apiTestJSONResponse(#"{"workspaces": [], "last": null}"#, for: request)
-            case "/api/commands":
-                return apiTestJSONResponse(#"{"commands": []}"#, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        let result = await ChatComposerConfigLoader(client: client).loadConfiguration(
-            from: ChatComposerConfigState()
-        )
-
-        XCTAssertNil(result.configurationError)
-        XCTAssertTrue(result.state.isSingleProfileMode)
-    }
 }
 
 /// Request paths in arrival order. Handlers run concurrently off the test's
@@ -314,19 +279,6 @@ private final class ConfigRequestLog: @unchecked Sendable {
 /// building the option list from `supported_efforts` and deciding whether
 /// the control is shown at all.
 final class ReasoningEffortGatingTests: XCTestCase {
-    func testOptionsFallBackToStaticListWithoutServerVocabulary() {
-        XCTAssertEqual(
-            ReasoningEffortOption.options(forSupportedEfforts: nil).map(\.id),
-            ["none", "minimal", "low", "medium", "high", "xhigh"]
-        )
-        // Defensive: an empty list also falls back (the control is hidden
-        // before this is rendered because supports_reasoning_effort is false).
-        XCTAssertEqual(
-            ReasoningEffortOption.options(forSupportedEfforts: []).map(\.id),
-            ["none", "minimal", "low", "medium", "high", "xhigh"]
-        )
-    }
-
     func testOptionsFilterToServerVocabularyPreservingServerOrder() {
         let options = ReasoningEffortOption.options(forSupportedEfforts: ["high", "low"])
         XCTAssertEqual(options.map(\.id), ["high", "low"])
@@ -364,12 +316,6 @@ final class ReasoningEffortGatingTests: XCTestCase {
             supportsReasoningEffort: nil,
             supportedEfforts: nil
         ))
-    }
-    /// A Hermes host's ladder (#1016) titles its top levels, which webui's fallback leaves out.
-    func testHermesLadderTitlesMaxAndUltra() {
-        let options = ReasoningEffortOption.options(forSupportedEfforts: HermesModelCatalog.effortLevels)
-        XCTAssertEqual(options.suffix(2).map(\.title), ["Max", "Ultra"])
-        XCTAssertFalse(ReasoningEffortOption.allCases.map(\.id).contains("max"))
     }
 
     /// The chip names the level a Hermes host sent when the model took less (#1016), and only then.

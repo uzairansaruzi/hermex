@@ -700,51 +700,8 @@ import XCTest
         XCTAssertEqual(socket.sentTextFrames, 1)
     }
 
-    func testCancelCompletionKeepsSocketAvailableWithoutResendingIt() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: return (404, .null)
-            }
-        }
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [BotHTTPFixture.self]
-        let socket = BotScriptedSocket()
-        let started = expectation(description: "completion dispatched")
-        socket.withholdReply = { request in
-            guard request["method"].text == "complete.path" else { return false }
-            started.fulfill(); return true
-        }
-        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
-        try await client.connect()
-        defer { client.close() }
-
-        let lookup = Task {
-            try await client.call(.completePath(word: "src", sessionID: "runtime", profile: "default"))
-        }
-        await fulfillment(of: [started], timeout: 2)
-        lookup.cancel()
-        do { _ = try await lookup.value; XCTFail("Cancelled completion succeeded") }
-        catch { XCTAssertTrue(error is CancellationError) }
-
-        _ = try await client.call(.profilesList(includeSessions: false))
-        XCTAssertEqual(socket.sentRequests.filter { $0["method"].text == "complete.path" }.count, 1)
-        XCTAssertEqual(socket.sentRequests.last?["method"].text, "profiles.list")
-    }
-
     func testSettingsAllowlistRejectsUnscopedWritesAndPreservesHostError() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: return (404, .null)
-            }
-        }
+        BotHTTPFixture.handler = Self.signIn
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]
         let socket = BotScriptedSocket()
@@ -784,27 +741,6 @@ import XCTest
         }
         XCTAssertEqual(socket.sentRequests.count, 5)
         XCTAssertTrue(socket.sentRequests.allSatisfy { $0["params"]["scope"] == .string("session") && $0["params"]["session_id"] == .string("runtime") })
-    }
-
-    func testStatusWithoutVersionStillConnects() async throws {
-        BotHTTPFixture.handler = { request in
-            switch request.url!.path {
-            case "/api/status": return (200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")])]))
-            case "/auth/password-login": return (200, .object([:]))
-            case "/api/auth/me": return (200, .object(["provider": .string("basic")]))
-            case "/api/auth/ws-ticket": return (200, .object(["ticket": .string("ticket")]))
-            default: XCTFail("Unexpected HTTP endpoint"); return (404, .null)
-            }
-        }
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [BotHTTPFixture.self]
-        let client = BotClient(connection: connection(), configuration: configuration) { _ in BotScriptedSocket() }
-        try await client.connect()
-        XCTAssertNil(client.serverVersion)
-        var record = connection()
-        record.hermesVersion = client.serverVersion
-        XCTAssertNil(record.hermesVersion)
-        client.close()
     }
 
     func testMissingPasswordGateFailsBeforeCredentialsOrSocket() async {

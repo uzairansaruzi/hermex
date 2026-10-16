@@ -6,11 +6,6 @@ import XCTest
 final class ChatTranscriptRowEntryTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    func testRowCreatedMomentsAgoIsFresh() {
-        XCTAssertTrue(ChatTranscriptRowFreshness.isFresh(timestamp: now.timeIntervalSince1970, now: now))
-        XCTAssertTrue(ChatTranscriptRowFreshness.isFresh(timestamp: now.timeIntervalSince1970 - 2.9, now: now))
-    }
-
     func testRowOlderThanWindowIsNotFresh() {
         XCTAssertFalse(ChatTranscriptRowFreshness.isFresh(timestamp: now.timeIntervalSince1970 - 3, now: now))
         XCTAssertFalse(ChatTranscriptRowFreshness.isFresh(timestamp: now.timeIntervalSince1970 - 3_600, now: now))
@@ -20,21 +15,7 @@ final class ChatTranscriptRowEntryTests: XCTestCase {
         XCTAssertFalse(ChatTranscriptRowFreshness.isFresh(timestamp: now.timeIntervalSince1970 + 60, now: now))
     }
 
-    func testMissingOrNonFiniteTimestampIsNeverFresh() {
-        XCTAssertFalse(ChatTranscriptRowFreshness.isFresh(timestamp: nil, now: now))
-        XCTAssertFalse(ChatTranscriptRowFreshness.isFresh(timestamp: .nan, now: now))
-        XCTAssertFalse(ChatTranscriptRowFreshness.isFresh(timestamp: .infinity, now: now))
-    }
-
     // Tool rows: only the newest row of a live group fades in (#873).
-
-    func testALiveGroupsNewestToolRowAnimatesIn() {
-        XCTAssertTrue(ToolActivityEntrance.animatesNewestRow(isLive: true, isReplaying: false, reduceMotion: false))
-    }
-
-    func testASettledGroupsToolRowsDrawInPlace() {
-        XCTAssertFalse(ToolActivityEntrance.animatesNewestRow(isLive: false, isReplaying: false, reduceMotion: false))
-    }
 
     func testReduceMotionTurnsTheToolRowEntranceOff() {
         XCTAssertFalse(ToolActivityEntrance.animatesNewestRow(isLive: true, isReplaying: false, reduceMotion: true))

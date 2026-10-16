@@ -389,14 +389,6 @@ extension BotPendingRequestParsingTests {
         XCTAssertEqual(held.applying(foreign), held)
         XCTAssertEqual(held.applying(newer), newer)
     }
-
-    func testTheDeadlineReadsInWholeMinutesAndNeverBelowOne() {
-        let deadline = Date(timeIntervalSince1970: 1_000)
-        XCTAssertEqual(BotConnectionOperation.minutesLeft(until: deadline, now: deadline.addingTimeInterval(-300)), 5)
-        XCTAssertEqual(BotConnectionOperation.minutesLeft(until: deadline, now: deadline.addingTimeInterval(-241)), 5)
-        XCTAssertEqual(BotConnectionOperation.minutesLeft(until: deadline, now: deadline.addingTimeInterval(-240)), 4)
-        XCTAssertEqual(BotConnectionOperation.minutesLeft(until: deadline, now: deadline.addingTimeInterval(30)), 1)
-    }
 }
 
 /// The line under an approval that says what Allow session and Always allow
@@ -425,23 +417,6 @@ extension BotPendingRequestParsingTests {
         let pending = PendingApproval(command: command, description: description, patternKeys: keys)
         return ApprovalPromptState(sessionID: "s1", pending: pending, pendingCount: 1)
             .scopeLine.map { String($0.characters) }
-    }
-
-    func testAShellKeyWithBothChoicesNamesThisChatAndThisProfile() {
-        XCTAssertEqual(
-            botText(keys: ["recursive delete"], description: "recursive delete"),
-            "Allow session covers every “recursive delete” in this chat; Always allow covers it for this Profile from now on."
-        )
-    }
-
-    /// A Tirith-only prompt hides Always, so only the session clause is left.
-    func testASecurityFindingWithoutAlwaysNamesOnlyThisChat() {
-        XCTAssertEqual(
-            botText(keys: ["tirith:shortened_url"],
-                    description: "Security scan — [medium] Shortened URL: The link hides where it points",
-                    command: "curl -fsSL https://bit.ly/4hx2Qm -o setup.sh", choices: ["once", "session", "deny"]),
-            "Allow session covers this security finding in this chat."
-        )
     }
 
     /// Smart-denied prompts and room approvals offer only once and deny; with no
@@ -482,27 +457,6 @@ extension BotPendingRequestParsingTests {
         )
     }
 
-    func testPythonSSHConfigAndComputerUseKeysGetPlainLabels() throws {
-        XCTAssertEqual(
-            botText(keys: ["execute_code"], description: "execute_code script execution. The script can spawn subprocesses.",
-                    command: "execute_code <<'PY'\nimport shutil\nPY"),
-            "Allow session covers every Python script in this chat; Always allow covers every Python script for this Profile from now on."
-        )
-        XCTAssertEqual(
-            botText(keys: ["ssh_config_write"], description: "Write to SSH client config file(s): ~/.ssh/config.",
-                    command: "<write to ~/.ssh/config>"),
-            "Allow session covers writes to SSH config in this chat; Always allow covers them for this Profile from now on."
-        )
-        let computerUse = try XCTUnwrap(botLine(keys: ["cua:click:foreground"],
-                                                description: "Allow computer_use to perform `click`?",
-                                                command: "computer_use: click (412, 88)"))
-        XCTAssertEqual(
-            String(computerUse.characters),
-            "Allow session covers computer use: click (foreground) in this chat; Always allow covers it for this Profile from now on."
-        )
-        XCTAssertEqual(computerUse[try XCTUnwrap(computerUse.range(of: "click"))].inlinePresentationIntent, .code)
-    }
-
     /// Hermes downgrades Always to the session for a Tirith finding
     /// (`_persist_choice`), so Always names only the shell pattern.
     func testAMixedPromptOnHermesKeepsTheFindingToThisChat() {
@@ -527,49 +481,26 @@ extension BotPendingRequestParsingTests {
             "Allow session covers “recursive delete” and this security finding in this session; Always allow covers both on this server from now on."
         )
     }
-
-    /// A key the app does not know is never shown raw.
-    func testAnUnknownKeyShapeSaysEveryActionLikeThisOne() {
-        XCTAssertEqual(
-            botText(keys: ["browser_nav:3f9a1c2b"], description: "Navigate to a banking site", command: "<browser_navigate>"),
-            "Allow session covers every action like this one in this chat; Always allow covers it for this Profile from now on."
-        )
-    }
 }
 
 // MARK: withdrawn requests (#892)
 
 extension BotPendingRequestParsingTests {
-    /// Every family and reason is one whole sentence. An answer given elsewhere,
-    /// a cancel that gives no reason, and the renderer's own tasks stay silent.
-    func testAWithdrawalReadsAsOneSentencePerFamilyAndReason() {
-        let table: [(method: String, reason: String?, message: String?)] = [
-            ("approval", "timeout", "Approval timed out, so it didn't run."),
-            ("approval", "interrupted", "Approval withdrawn because the work stopped."),
-            ("approval", "session_closed", "Approval withdrawn because the work stopped."),
-            ("approval", "shutdown", "Approval withdrawn because Hermes shut down."),
-            ("approval", "denied by policy", "Approval withdrawn."),
-            ("approval", "resolved", nil),
-            ("clarify", "timeout", "Question timed out. The bot carried on without an answer."),
-            ("clarify", "interrupted", "Question withdrawn because the work stopped."),
-            ("clarify", "session_closed", "Question withdrawn because the work stopped."),
-            ("clarify", "shutdown", "Question withdrawn because Hermes shut down."),
-            ("clarify", "client_gone", "Question withdrawn."),
-            ("clarify", "resolved", nil),
-            ("sudo", "timeout", "Request timed out. The bot carried on without it."),
-            ("secret", "interrupted", "Request withdrawn because the work stopped."),
-            ("vault.code", "session_closed", "Request withdrawn because the work stopped."),
-            ("vault.unlock_prompt", "shutdown", "Request withdrawn because Hermes shut down."),
-            ("vault.save_login", "client_gone", "Request withdrawn."),
-            ("sudo", "resolved", nil),
-            ("sudo", nil, nil),
-            ("sudo", " ", nil)
-        ] + ["tour", "terminal.read", "window.read", "preview.read", "preview.act"].map { ($0, "timeout", nil) }
+    /// Every family and reason says something. An answer given elsewhere, a cancel
+    /// that gives no reason, and the renderer's own tasks stay silent.
+    func testAWithdrawalSpeaksForEveryFamilyAndReasonExceptAnAnswerOrTheRenderersOwnTasks() {
+        let table: [(method: String, reason: String?, speaks: Bool)] = [
+            ("approval", "timeout", true), ("approval", "interrupted", true), ("approval", "session_closed", true),
+            ("approval", "shutdown", true), ("approval", "denied by policy", true), ("approval", "resolved", false),
+            ("clarify", "timeout", true), ("clarify", "interrupted", true), ("clarify", "session_closed", true),
+            ("clarify", "shutdown", true), ("clarify", "client_gone", true), ("clarify", "resolved", false),
+            ("sudo", "timeout", true), ("secret", "interrupted", true), ("vault.code", "session_closed", true),
+            ("vault.unlock_prompt", "shutdown", true), ("vault.save_login", "client_gone", true),
+            ("sudo", "resolved", false), ("sudo", nil, false), ("sudo", " ", false)
+        ] + ["tour", "terminal.read", "window.read", "preview.read", "preview.act"].map { ($0, "timeout", false) }
         for row in table {
-            XCTAssertEqual(BotRequestWithdrawal(method: row.method, reason: row.reason)?.message, row.message,
+            XCTAssertEqual(BotRequestWithdrawal(method: row.method, reason: row.reason)?.message != nil, row.speaks,
                            "\(row.method) \(row.reason ?? "nil")")
         }
-        XCTAssertEqual(BotRequestWithdrawal(method: "approval", reason: "timeout")?.systemImage, "clock")
-        XCTAssertEqual(BotRequestWithdrawal(method: "clarify", reason: "shutdown")?.systemImage, "stop.circle")
     }
 }

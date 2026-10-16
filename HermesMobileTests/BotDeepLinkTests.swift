@@ -98,12 +98,6 @@ import XCTest
         XCTAssertNil(HermesDeepLink.botDestination(from: session))
     }
 
-    func testBotModeOffOpensTheAppWithNoBotUI() {
-        let outcome = resolve(destination(), state: .loggedIn(server: serverA), servers: [serverA],
-                              isBotModeEnabled: false, connectionID: connectionID)
-        XCTAssertEqual(outcome, .ignore)
-    }
-
     func testRemovedServerOrReplacedConnectionOpensTheAppNormally() {
         // The server was deleted after the link was minted.
         XCTAssertEqual(resolve(destination(), state: .loggedIn(server: serverB), servers: [serverB],

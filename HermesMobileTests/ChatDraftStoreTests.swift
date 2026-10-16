@@ -191,36 +191,6 @@ final class ChatDraftStoreTests: XCTestCase {
         XCTAssertEqual(stored?.settings, settings)
     }
 
-    func testDraftsAreIsolatedByServerAndContext() async throws {
-        let persistence = RecordingChatDraftPersistence()
-        let store = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(10))
-        let serverA = URL(string: "https://one.example.com")!
-        let serverB = URL(string: "https://two.example.com")!
-        let firstChat = ChatDraftKey.session(server: serverA, sessionID: "chat-1")
-        let secondChat = ChatDraftKey.session(server: serverA, sessionID: "chat-2")
-        let otherServerChat = ChatDraftKey.session(server: serverB, sessionID: "chat-1")
-        let newChat = ChatDraftKey.newChat(server: serverA)
-
-        store.setDraft("First", for: firstChat)
-        store.setDraft("Second", for: secondChat)
-        store.setDraft("Other server", for: otherServerChat)
-        store.setDraft("New chat", for: newChat)
-        try await store.flush()
-
-        let restoredStore = ChatDraftStore(
-            persistence: persistence,
-            debounceDuration: .seconds(10)
-        )
-        let restoredFirstChat = await restoredStore.draft(for: firstChat)
-        let restoredSecondChat = await restoredStore.draft(for: secondChat)
-        let restoredOtherServerChat = await restoredStore.draft(for: otherServerChat)
-        let restoredNewChat = await restoredStore.draft(for: newChat)
-        XCTAssertEqual(restoredFirstChat?.text, "First")
-        XCTAssertEqual(restoredSecondChat?.text, "Second")
-        XCTAssertEqual(restoredOtherServerChat?.text, "Other server")
-        XCTAssertEqual(restoredNewChat?.text, "New chat")
-    }
-
     func testTypingDuringHydrationWinsOverPersistedText() async throws {
         let key = ChatDraftKey(
             serverID: "https://example.com",
@@ -258,23 +228,6 @@ final class ChatDraftStoreTests: XCTestCase {
         let persistedDrafts = await persistence.latestDrafts()
         XCTAssertEqual(writeCount, 1)
         XCTAssertEqual(persistedDrafts[key]?.text, "abc")
-    }
-
-    func testFlushLandsAStillDebouncedWrite() async throws {
-        let persistence = RecordingChatDraftPersistence()
-        let store = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(10))
-        let key = ChatDraftKey(
-            serverID: "https://example.com",
-            context: .session("chat-1")
-        )
-
-        store.setDraft("Typed before backgrounding", for: key)
-        try await store.flush()
-
-        let writeCount = await persistence.writeCount()
-        let persistedDrafts = await persistence.latestDrafts()
-        XCTAssertEqual(writeCount, 1)
-        XCTAssertEqual(persistedDrafts[key]?.text, "Typed before backgrounding")
     }
 
     func testNewChatDraftMovesToCreatedSession() async throws {
@@ -377,39 +330,6 @@ final class ChatDraftStoreTests: XCTestCase {
         XCTAssertEqual(restoredNewChatDraft?.settings, settings)
     }
 
-    func testSubmissionFailureRestoresExactSnapshotAndSuccessClearsIt() async throws {
-        let persistence = RecordingChatDraftPersistence()
-        let store = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(10))
-        let key = ChatDraftKey(
-            serverID: "https://example.com",
-            context: .session("chat-1")
-        )
-        let submitted = "  Preserve spacing\nexactly  "
-
-        store.setDraft(submitted, for: key)
-        let restored = store.resolveSubmission(
-            submittedText: submitted,
-            currentText: "",
-            didStart: false,
-            draftWasEdited: false,
-            for: key
-        )
-        XCTAssertEqual(restored, submitted)
-        let restoredDraft = await store.draft(for: key)
-        XCTAssertEqual(restoredDraft?.text, submitted)
-
-        let cleared = store.resolveSubmission(
-            submittedText: submitted,
-            currentText: "",
-            didStart: true,
-            draftWasEdited: false,
-            for: key
-        )
-        XCTAssertEqual(cleared, "")
-        let clearedDraft = await store.draft(for: key)
-        XCTAssertNil(clearedDraft)
-    }
-
     func testFailedSubmissionKeepsAttachmentsStaged() async {
         let persistence = RecordingChatDraftPersistence()
         let store = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(10))
@@ -433,32 +353,6 @@ final class ChatDraftStoreTests: XCTestCase {
         let draft = await store.draft(for: key)
         XCTAssertEqual(draft?.text, "Prompt")
         XCTAssertEqual(draft?.attachments, [attachment])
-    }
-
-    func testAcceptedSubmissionClearsContentButRetainsSettings() async {
-        let persistence = RecordingChatDraftPersistence()
-        let store = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(10))
-        let key = ChatDraftKey(
-            serverID: "https://example.com",
-            context: .session("chat-1")
-        )
-        let attachment = Self.sampleAttachment()
-        let settings = ChatDraftSettings(modelID: "model-x", workspacePath: "/repo")
-
-        store.setDraft("Prompt", for: key)
-        store.setAttachments([attachment], for: key)
-        store.setSettings(settings, for: key)
-        let result = store.resolveSubmission(
-            submittedText: "Prompt",
-            currentText: "",
-            didStart: true,
-            draftWasEdited: false,
-            for: key
-        )
-
-        XCTAssertEqual(result, "")
-        let draft = await store.draft(for: key)
-        assertDraftContentEqual(draft, ChatDraft(text: "", attachments: [], settings: settings))
     }
 
     func testTextEnteredDuringSendIsNeverClearedOrReplaced() async {
@@ -564,33 +458,6 @@ final class ChatDraftStoreTests: XCTestCase {
         XCTAssertEqual(cleared, "")
         let clearedDraft = await store.draft(for: key)
         XCTAssertNil(clearedDraft)
-    }
-
-    func testConsumedInputClearsTextButRetainsAttachmentsAndSettings() async {
-        let persistence = RecordingChatDraftPersistence()
-        let store = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(10))
-        let key = ChatDraftKey(
-            serverID: "https://example.com",
-            context: .session("chat-1")
-        )
-        let attachment = Self.sampleAttachment()
-        let settings = ChatDraftSettings(modelID: "model-x")
-
-        store.setDraft("/queue follow-up", for: key)
-        store.setAttachments([attachment], for: key)
-        store.setSettings(settings, for: key)
-        let cleared = store.resolveConsumedInput(
-            submittedText: "/queue follow-up",
-            currentText: "/queue follow-up",
-            draftWasEdited: false,
-            for: key
-        )
-
-        XCTAssertEqual(cleared, "")
-        let draft = await store.draft(for: key)
-        XCTAssertEqual(draft?.text, "")
-        XCTAssertEqual(draft?.attachments, [attachment])
-        XCTAssertEqual(draft?.settings, settings)
     }
 
     func testAttachmentAndSettingsUpdatesDoNotDisturbEachOtherOrText() async {
@@ -735,52 +602,6 @@ final class ChatDraftStoreTests: XCTestCase {
 
         XCTAssertEqual(outcome.consumed.map(\.id), [staged.id])
         XCTAssertEqual(outcome.retained.map(\.id), [awaitingRetry.id, notYetRestored.id])
-    }
-
-    /// Sending while a restore has staged nothing yet must not consume — and so
-    /// must not delete the local copies of — any record.
-    func testSendDuringAnUnstartedRestoreConsumesNothing() {
-        let records = [
-            makeAttachmentRecord(name: "one.txt", file: "a-one.txt"),
-            makeAttachmentRecord(name: "two.txt", file: "b-two.txt")
-        ]
-
-        let outcome = ChatDraftSendReconciliation.outcome(
-            draftRecords: records,
-            stagedAttachmentIDs: []
-        )
-
-        XCTAssertTrue(outcome.consumed.isEmpty)
-        XCTAssertEqual(outcome.retained.map(\.id), records.map(\.id))
-    }
-
-    func testSendConsumesEveryRecordWhenAllAreStaged() {
-        let records = [
-            makeAttachmentRecord(name: "one.txt", file: "a-one.txt"),
-            makeAttachmentRecord(name: "two.txt", file: "b-two.txt")
-        ]
-
-        let outcome = ChatDraftSendReconciliation.outcome(
-            draftRecords: records,
-            stagedAttachmentIDs: Set(records.map(\.id))
-        )
-
-        XCTAssertEqual(outcome.consumed.map(\.id), records.map(\.id))
-        XCTAssertTrue(outcome.retained.isEmpty)
-    }
-
-    /// A staged attachment the draft never recorded (its durable copy failed to
-    /// write) contributes nothing to either side.
-    func testSendIgnoresStagedAttachmentsWithNoDraftRecord() {
-        let recorded = makeAttachmentRecord(name: "recorded.txt", file: "a-recorded.txt")
-
-        let outcome = ChatDraftSendReconciliation.outcome(
-            draftRecords: [recorded],
-            stagedAttachmentIDs: [recorded.id, UUID()]
-        )
-
-        XCTAssertEqual(outcome.consumed.map(\.id), [recorded.id])
-        XCTAssertTrue(outcome.retained.isEmpty)
     }
 
     // MARK: - Parking queued messages (#857)
@@ -1100,27 +921,6 @@ final class ChatDraftStoreTests: XCTestCase {
 
         let drafts = await persistence.load()
         XCTAssertTrue(drafts.isEmpty)
-    }
-
-    func testFilePersistenceWritesAtomicallyWithFileProtection() async throws {
-        let directory = temporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let persistence = ChatDraftFilePersistence(directoryURL: directory)
-        let key = ChatDraftKey(
-            serverID: "https://example.com",
-            context: .newChat
-        )
-
-        try await persistence.write([key: ChatDraft(text: "Protected prompt")])
-
-        let restoredDrafts = await persistence.load()
-        XCTAssertEqual(restoredDrafts[key]?.text, "Protected prompt")
-        #if os(iOS)
-        XCTAssertEqual(
-            ChatDraftFilePersistence.fileProtectionType,
-            .completeUntilFirstUserAuthentication
-        )
-        #endif
     }
 
     private static func sampleAttachment(

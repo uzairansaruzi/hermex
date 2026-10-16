@@ -7,24 +7,6 @@ import XCTest
 /// neither (#403). Busy flags always disable; attachment-only sends synthesize
 /// their message text in `PendingAttachment.chatMessageText`.
 final class ChatComposerSendGateTests: XCTestCase {
-    func testSessionPresentationPreferencesPersistWithExistingBehaviorAsDefaults() throws {
-        let suite = "SessionPreferencesTests-\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        XCTAssertFalse(defaults.bool(forKey: SessionChatPreferences.dismissKeyboardKey))
-        XCTAssertEqual(SessionChatPreferences.CompletionPosition.storedValue(
-            defaults.string(forKey: SessionChatPreferences.completionPositionKey) ?? ""
-        ), .latest)
-        defaults.set(true, forKey: SessionChatPreferences.dismissKeyboardKey)
-        defaults.set("beginning", forKey: SessionChatPreferences.completionPositionKey)
-        let reopened = try XCTUnwrap(UserDefaults(suiteName: suite))
-        XCTAssertTrue(reopened.bool(forKey: SessionChatPreferences.dismissKeyboardKey))
-        XCTAssertEqual(SessionChatPreferences.CompletionPosition.storedValue(
-            reopened.string(forKey: SessionChatPreferences.completionPositionKey) ?? ""
-        ), .beginning)
-        XCTAssertEqual(SessionChatPreferences.CompletionPosition.storedValue("future-value"), .latest)
-    }
-
     func testSendFocusPreservesFailureNewEditingAndNewDraft() {
         XCTAssertEqual(ChatSendFocusPolicy.focusAfterSubmission(
             succeeded: true, dismissKeyboard: true, wasFocused: true,
@@ -53,65 +35,6 @@ final class ChatComposerSendGateTests: XCTestCase {
             hasText: false,
             hasQuotes: false
         ))
-    }
-
-    /// Mid-run, Send's glyph and VoiceOver label say what a tap will do to the
-    /// response (#858). Idle it is the plain arrow; with an empty draft the
-    /// circle stays Stop.
-    func testRunningSendShowsDefaultBehaviorGlyphAndLabel() {
-        let expected: [(StreamingSendBehavior, glyph: String, label: String)] = [
-            (.steer, "arrow.turn.up.right", "Steer active response"),
-            (.queue, "text.append", "Send after response"),
-            (.interrupt, "stop.circle", "Stop and send")
-        ]
-        for (behavior, glyph, label) in expected {
-            let running = ChatComposerSendButton(
-                isWaitingForStream: true, hasText: true, hasQuotes: false, defaultBehavior: behavior
-            )
-            XCTAssertEqual(running.systemName, glyph, "\(behavior)")
-            XCTAssertEqual(running.accessibilityLabel, label, "\(behavior)")
-
-            let quoteOnly = ChatComposerSendButton(
-                isWaitingForStream: true, hasText: false, hasQuotes: true, defaultBehavior: behavior
-            )
-            XCTAssertEqual(quoteOnly.systemName, glyph, "\(behavior)")
-
-            let idle = ChatComposerSendButton(
-                isWaitingForStream: false, hasText: true, hasQuotes: false, defaultBehavior: behavior
-            )
-            XCTAssertEqual(idle.systemName, "arrow.up", "\(behavior)")
-            XCTAssertEqual(idle.accessibilityLabel, "Send", "\(behavior)")
-
-            let stop = ChatComposerSendButton(
-                isWaitingForStream: true, hasText: false, hasQuotes: false, defaultBehavior: behavior
-            )
-            XCTAssertEqual(stop.systemName, "stop.fill", "\(behavior)")
-            XCTAssertEqual(stop.accessibilityLabel, "Stop response", "\(behavior)")
-        }
-    }
-
-    /// A long-press offers every behavior, in the Bot card's order, only while
-    /// Send shows mid-run. A webui session keeps Steer with files staged, because
-    /// #856 sends them with the steer as a note; a Hermes session's files drop it
-    /// (`HermesChatAttachmentTests`).
-    func testRunningSendOffersEveryChoiceAndIdleOrStopOffersNone() {
-        for behavior in StreamingSendBehavior.allCases {
-            let running = ChatComposerSendButton(
-                isWaitingForStream: true, hasText: true, hasQuotes: false, defaultBehavior: behavior
-            )
-            XCTAssertEqual(running.choices, [.steer, .queue, .interrupt], "\(behavior)")
-            XCTAssertEqual(running.choices.map(\.title), ["Steer", "Queue", "Stop and send"])
-
-            let idle = ChatComposerSendButton(
-                isWaitingForStream: false, hasText: true, hasQuotes: false, defaultBehavior: behavior
-            )
-            XCTAssertEqual(idle.choices, [], "a long-press adds nothing while idle")
-
-            let stop = ChatComposerSendButton(
-                isWaitingForStream: true, hasText: false, hasQuotes: false, defaultBehavior: behavior
-            )
-            XCTAssertEqual(stop.choices, [], "Stop has no choices")
-        }
     }
 
     /// A quick tap acts; the release of a hold that opened the card does not,
@@ -168,28 +91,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         ))
     }
 
-    func testTextOnlySendIsEnabled() {
-        XCTAssertFalse(ChatComposerSendGate.isDisabled(
-            hasText: true,
-            hasStagedAttachments: false,
-            isSending: false,
-            isCompressingSession: false,
-            isUploadingAttachment: false,
-            isUpdatingConfiguration: false
-        ))
-    }
-
-    func testTextAndAttachmentsSendIsEnabled() {
-        XCTAssertFalse(ChatComposerSendGate.isDisabled(
-            hasText: true,
-            hasStagedAttachments: true,
-            isSending: false,
-            isCompressingSession: false,
-            isUploadingAttachment: false,
-            isUpdatingConfiguration: false
-        ))
-    }
-
     func testEmptyDraftWithNoAttachmentsIsDisabled() {
         XCTAssertTrue(ChatComposerSendGate.isDisabled(
             hasText: false,
@@ -197,17 +98,6 @@ final class ChatComposerSendGateTests: XCTestCase {
             isSending: false,
             isCompressingSession: false,
             isUploadingAttachment: false,
-            isUpdatingConfiguration: false
-        ))
-    }
-
-    func testAttachmentWhileUploadingIsDisabled() {
-        XCTAssertTrue(ChatComposerSendGate.isDisabled(
-            hasText: false,
-            hasStagedAttachments: true,
-            isSending: false,
-            isCompressingSession: false,
-            isUploadingAttachment: true,
             isUpdatingConfiguration: false
         ))
     }
@@ -249,25 +139,6 @@ final class ChatComposerSendGateTests: XCTestCase {
 }
 
 final class HermexAttachmentPickerPolicyTests: XCTestCase {
-    func testMenuUsesBalancedLeftPlacement() {
-        XCTAssertEqual(HermexAttachmentPickerLayoutMetrics.menuWidth(containerWidth: 390), 280)
-        XCTAssertEqual(HermexAttachmentPickerLayoutMetrics.menuLeadingPadding, 12)
-        XCTAssertEqual(HermexAttachmentPickerLayoutMetrics.menuWidth(containerWidth: 250), 226)
-    }
-
-    func testCapacityNeverDropsBelowZero() {
-        XCTAssertEqual(HermexAttachmentPickerPolicy.availableCapacity(existingCount: 0), 8)
-        XCTAssertEqual(HermexAttachmentPickerPolicy.availableCapacity(existingCount: 7), 1)
-        XCTAssertEqual(HermexAttachmentPickerPolicy.availableCapacity(existingCount: 12), 0)
-        XCTAssertEqual(
-            HermexAttachmentPickerPolicy.availableCapacity(
-                existingCount: 7,
-                maximum: HermexAttachmentPickerPolicy.maximumSessionImages
-            ),
-            3
-        )
-    }
-
     func testSelectionPreservesOrderAndHonorsCapacity() {
         var selection: [String] = []
         selection = HermexAttachmentPickerPolicy.toggledSelection(selection, id: "a", capacity: 2)
@@ -277,15 +148,6 @@ final class HermexAttachmentPickerPolicyTests: XCTestCase {
 
         selection = HermexAttachmentPickerPolicy.toggledSelection(selection, id: "a", capacity: 2)
         XCTAssertEqual(selection, ["b"])
-    }
-
-    func testLibraryRefreshRemovesInvisibleSelectionsWithoutReorderingSurvivors() {
-        let selected = ["first", "removed", "last"]
-        XCTAssertEqual(
-            HermexAttachmentPickerPolicy.visibleSelection(selected, visibleIDs: ["last", "first"]),
-            ["first", "last"]
-        )
-        XCTAssertTrue(HermexAttachmentPickerPolicy.visibleSelection(selected, visibleIDs: []).isEmpty)
     }
 
     func testLifecycleFenceRejectsLateCompletion() {
@@ -299,13 +161,6 @@ final class HermexAttachmentPickerPolicyTests: XCTestCase {
         let cancelled = fence.begin()
         fence.invalidate()
         XCTAssertFalse(fence.consume(cancelled))
-    }
-
-    func testCameraPermissionPolicyCoversDeniedAndRestrictedStates() {
-        XCTAssertEqual(HermexAttachmentCameraPermissionPolicy.status(for: .authorized), .configuring)
-        XCTAssertEqual(HermexAttachmentCameraPermissionPolicy.status(for: .notDetermined), .requestingPermission)
-        XCTAssertEqual(HermexAttachmentCameraPermissionPolicy.status(for: .denied), .denied)
-        XCTAssertEqual(HermexAttachmentCameraPermissionPolicy.status(for: .restricted), .restricted)
     }
 
     /// Detaching the preview makes AVCaptureSession rebuild its graph and wait

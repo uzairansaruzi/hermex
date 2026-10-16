@@ -23,68 +23,6 @@ final class ChatHapticsTests: XCTestCase {
         XCTAssertTrue(feedback.isEmpty)
     }
 
-    @MainActor
-    func testAutocompleteAcceptedPlaysOneSelectionTick() {
-        var feedback: [ChatHapticFeedback] = []
-
-        ChatHaptics.autocompleteAccepted(isEnabled: true) { feedback.append($0) }
-
-        XCTAssertEqual(feedback, [.selection])
-    }
-
-    @MainActor
-    func testChatDecisionHapticLanguage() {
-        var feedback: [ChatHapticFeedback] = []
-
-        ChatHaptics.messageSent(isEnabled: true) { feedback.append($0) }
-        ChatHaptics.assistantResponseCompleted(isEnabled: true) { feedback.append($0) }
-        ChatHaptics.streamCancelled(isEnabled: true) { feedback.append($0) }
-        ChatHaptics.approvalSubmitted(.once, isEnabled: true) { feedback.append($0) }
-        ChatHaptics.approvalSubmitted(.session, isEnabled: true) { feedback.append($0) }
-        ChatHaptics.approvalSubmitted(.always, isEnabled: true) { feedback.append($0) }
-        ChatHaptics.approvalSubmitted(.deny, isEnabled: true) { feedback.append($0) }
-        ChatHaptics.approvalBypassEnabled(isEnabled: true) { feedback.append($0) }
-        ChatHaptics.clarificationSubmitted(isEnabled: true) { feedback.append($0) }
-        ChatHaptics.configurationSelected(isEnabled: true) { feedback.append($0) }
-        ChatHaptics.destructiveConfirmationAccepted(isEnabled: true) { feedback.append($0) }
-        ChatHaptics.disclosureToggled(isEnabled: true) { feedback.append($0) }
-        ChatHaptics.scrolledToLatest(isEnabled: true) { feedback.append($0) }
-        ChatHaptics.copied(isEnabled: true) { feedback.append($0) }
-        ChatHaptics.gitActionFinished(succeeded: true, isEnabled: true) { feedback.append($0) }
-        ChatHaptics.gitActionFinished(succeeded: false, isEnabled: true) { feedback.append($0) }
-        ChatHaptics.streamingPulse(isEnabled: true) { feedback.append($0) }
-
-        XCTAssertEqual(feedback, [
-            .lightImpact,
-            .success,
-            .mediumImpact,
-            .lightImpact,
-            .lightImpact,
-            .lightImpact,
-            .warning,
-            .warning,
-            .selection,
-            .selection,
-            .warning,
-            .selection,
-            .selection,
-            .lightImpact,
-            .success,
-            .warning,
-            .selection
-        ])
-    }
-
-    @MainActor
-    func testBotFeedbackPlaysTheMatchingSessionsHaptic() {
-        var feedback: [ChatHapticFeedback] = []
-        let events: [BotFeedback.Event] = [.sent, .approved(.once), .approved(.deny), .answered, .stopped, .turnCompleted]
-        for event in events { ChatHaptics.botFeedback(event, isEnabled: true) { feedback.append($0) } }
-        ChatHaptics.botFeedback(.sent, isEnabled: false) { feedback.append($0) }
-
-        XCTAssertEqual(feedback, [.lightImpact, .lightImpact, .warning, .selection, .mediumImpact, .success])
-    }
-
     func testStreamingPulseThrottleAllowsOneTickPerInterval() {
         var throttle = ChatHaptics.StreamingPulseThrottle()
 

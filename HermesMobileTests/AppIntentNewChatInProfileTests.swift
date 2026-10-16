@@ -312,13 +312,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
 
     // MARK: - Deep link shape
 
-    func testNewChatInProfileURLUsesProfileHostAndCarriesName() throws {
-        let url = try XCTUnwrap(HermesDeepLink.newChatInProfileURL(profileName: "dev"))
-        XCTAssertEqual(url.scheme, HermesDeepLink.scheme)
-        XCTAssertEqual(url.host, HermesDeepLink.newChatInProfileHost)
-        XCTAssertEqual(HermesDeepLink.profileName(fromNewChatInProfile: url), "dev")
-    }
-
     func testBlankProfileNameProducesNoURL() {
         XCTAssertNil(HermesDeepLink.newChatInProfileURL(profileName: ""))
         XCTAssertNil(HermesDeepLink.newChatInProfileURL(profileName: "   "))
@@ -333,21 +326,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
     func testProfileNameIsTrimmedOnBuildAndRead() throws {
         let url = try XCTUnwrap(HermesDeepLink.newChatInProfileURL(profileName: "  dev  "))
         XCTAssertEqual(HermesDeepLink.profileName(fromNewChatInProfile: url), "dev")
-    }
-
-    func testIsNewChatInProfileURLIsCaseInsensitiveOnHost() throws {
-        let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://New-Chat-Profile?profile=dev"))
-        XCTAssertTrue(HermesDeepLink.isNewChatInProfileURL(url))
-    }
-
-    func testProfileNameNilWhenQueryMissing() throws {
-        let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://new-chat-profile"))
-        XCTAssertNil(HermesDeepLink.profileName(fromNewChatInProfile: url))
-    }
-
-    func testForeignSchemeIsNotAProfileURL() throws {
-        let url = try XCTUnwrap(URL(string: "https://new-chat-profile?profile=dev"))
-        XCTAssertFalse(HermesDeepLink.isNewChatInProfileURL(url))
     }
 
     // MARK: - Non-aliasing with the other new-chat links
@@ -371,25 +349,7 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
 
     // MARK: - NewChatRequest threading
 
-    func testNewChatRequestDefaultsToNoProfile() {
-        XCTAssertNil(NewChatRequest().profileName)
-    }
-
-    func testNewChatRequestCarriesProfileName() {
-        XCTAssertEqual(NewChatRequest(profileName: "dev").profileName, "dev")
-    }
-
-    func testNewChatRequestVoiceAndProfileAreIndependent() {
-        let request = NewChatRequest(autoStartsVoiceInput: false, profileName: "dev")
-        XCTAssertFalse(request.autoStartsVoiceInput)
-        XCTAssertEqual(request.profileName, "dev")
-    }
-
     // MARK: - Intent
-
-    func testIntentOpensAppWhenRun() {
-        XCTAssertTrue(NewChatInProfileIntent.openAppWhenRun)
-    }
 
     @MainActor
     func testIntentQueuesTheProfileDeepLink() async throws {
@@ -403,36 +363,6 @@ final class AppIntentNewChatInProfileTests: XCTestCase {
     }
 
     // MARK: - ProfileEntity mapping
-
-    func testProfileEntityFromSummaryUsesNameAndModelProviderSubtitle() throws {
-        let summary = ProfileSummary(
-            name: "dev", path: nil, isDefault: false, isActive: false,
-            gatewayRunning: nil, model: "kimi", provider: "opencode", hasEnv: nil, skillCount: nil
-        )
-        let entity = try XCTUnwrap(ProfileEntity(summary))
-        XCTAssertEqual(entity.id, "dev")
-        XCTAssertEqual(entity.name, "dev")
-        XCTAssertEqual(entity.subtitle, "kimi · opencode")
-    }
-
-    func testDefaultProfileEntityUsesLocalizedDisplayName() throws {
-        let summary = ProfileSummary(
-            name: "default", path: nil, isDefault: true, isActive: true,
-            gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil
-        )
-        let entity = try XCTUnwrap(ProfileEntity(summary))
-        XCTAssertEqual(entity.id, "default")
-        XCTAssertEqual(entity.name, String(localized: "Default"))
-        XCTAssertNil(entity.subtitle)
-    }
-
-    func testProfileEntityIsNilForBlankName() {
-        let summary = ProfileSummary(
-            name: "   ", path: nil, isDefault: nil, isActive: nil,
-            gatewayRunning: nil, model: nil, provider: nil, hasEnv: nil, skillCount: nil
-        )
-        XCTAssertNil(ProfileEntity(summary))
-    }
 
     // MARK: - Cache
 

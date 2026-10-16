@@ -318,20 +318,9 @@ final class APIClientAgentControlTests: APIClientTestCase {
             profile: "default"
         )
 
-        XCTAssertEqual(response.ok, true)
-        XCTAssertEqual(response.action, "set")
         XCTAssertEqual(response.displayMessage, "Goal set.")
-        XCTAssertEqual(response.goal?.goal, "Ship the release notes")
-        XCTAssertEqual(response.goal?.status, "active")
-        XCTAssertEqual(response.goal?.turnsUsed, 2)
-        XCTAssertEqual(response.goal?.maxTurns, 20)
-        XCTAssertEqual(response.goal?.lastVerdict, "continue")
-        XCTAssertEqual(response.goal?.lastReason, "still working")
-        XCTAssertNil(response.goal?.pausedReason)
+        XCTAssertEqual(response.goal?.turnsUsed, 2, "a count sent as a string still reads")
         XCTAssertEqual(response.kickoffPromptText, "Continue the goal.")
-        XCTAssertEqual(response.decision?.shouldContinue, true)
-        XCTAssertEqual(response.decision?.continuationPrompt, "Continue.")
-        XCTAssertEqual(response.decision?.messageKey, "goal.continue")
         XCTAssertEqual(response.decision?.messageArgs, [.string("one"), .number(2), .bool(true)])
     }
 

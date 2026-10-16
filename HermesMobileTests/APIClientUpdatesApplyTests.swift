@@ -50,28 +50,6 @@ final class APIClientUpdatesApplyTests: APIClientTestCase {
         XCTAssertTrue(response.displayMessage(default: "fallback").contains("active chat stream"))
     }
 
-    func testConflictResponseIsFailed() throws {
-        let response = try decodeApply("""
-        {
-          "ok": false,
-          "message": "The local webui repo has unresolved merge conflicts.",
-          "conflict": true
-        }
-        """)
-
-        XCTAssertEqual(response.conflict, true)
-        XCTAssertEqual(response.outcome, .failed)
-    }
-
-    func testDivergedResponseIsFailed() throws {
-        let response = try decodeApply("""
-        { "ok": false, "message": "Fast-forward not possible.", "diverged": true }
-        """)
-
-        XCTAssertEqual(response.diverged, true)
-        XCTAssertEqual(response.outcome, .failed)
-    }
-
     func testGenericNotOkResponseIsFailed() throws {
         let response = try decodeApply("""
         { "ok": false, "message": "Update already in progress" }

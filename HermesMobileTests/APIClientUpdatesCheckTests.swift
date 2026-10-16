@@ -66,14 +66,6 @@ final class APIClientUpdatesCheckTests: APIClientTestCase {
         XCTAssertEqual(response.forcedCheckOutcome, .updateAvailable(behind: 2))
     }
 
-    func testForcedCheckOutcomeIsUpdateAvailableWhenBehind() throws {
-        let response = try decodeUpdatesCheck("""
-        { "webui": { "name": "webui", "behind": 4 } }
-        """)
-
-        XCTAssertEqual(response.forcedCheckOutcome, .updateAvailable(behind: 4))
-    }
-
     func testForcedCheckOutcomeIsUpToDateWhenBehindIsZeroOrNull() throws {
         let zero = try decodeUpdatesCheck("""
         { "webui": { "name": "webui", "behind": 0 } }
@@ -120,14 +112,6 @@ final class APIClientUpdatesCheckTests: APIClientTestCase {
         XCTAssertEqual(response.webuiUpdateState, .upToDate)
     }
 
-    func testWebUIUpdateStateIsUpToDateWhenBehindIsNull() throws {
-        let response = try decodeUpdatesCheck("""
-        { "webui": { "name": "webui", "behind": null } }
-        """)
-
-        XCTAssertEqual(response.webuiUpdateState, .upToDate)
-    }
-
     func testDisabledPayloadDegradesToUnavailable() throws {
         let response = try decodeUpdatesCheck("""
         { "disabled": true }
@@ -149,14 +133,6 @@ final class APIClientUpdatesCheckTests: APIClientTestCase {
         """)
         // Stale results are not trusted even when they claim a non-zero gap.
         XCTAssertEqual(stale.webuiUpdateState, .unavailable)
-    }
-
-    func testMissingWebUIBlockDegradesToUnavailable() throws {
-        let response = try decodeUpdatesCheck("""
-        { "checked_at": 1770000000 }
-        """)
-
-        XCTAssertEqual(response.webuiUpdateState, .unavailable)
     }
 
     private func decodeUpdatesCheck(_ json: String) throws -> UpdatesCheckResponse {

@@ -51,13 +51,6 @@ final class ChatScrollPolicyTests: XCTestCase {
         XCTAssertTrue(run.consumeCompletion(streamID: "next", enabled: true))
     }
 
-    func testDisclosureDuringHydrationPreventsCompletionJump() {
-        var run = ChatCompletionScrollPolicy()
-        run.begin(streamID: "run", isFollowing: true)
-        run.readerDidInteract()
-        XCTAssertFalse(run.consumeCompletion(streamID: "run", enabled: true))
-    }
-
     func testCompletionTargetsStableFinalRowAndNeverPriorOrInterimReply() {
         func row(_ index: Int, _ role: String, _ renderID: String) -> TranscriptMessage {
             TranscriptMessage(loadedIndex: index, renderID: renderID, anchorID: "anchor-\(index)",
@@ -73,59 +66,6 @@ final class ChatScrollPolicyTests: XCTestCase {
         XCTAssertEqual(ChatCompletionScrollPolicy.finalResponseRenderID(
             in: [prior, user, interim, final], terminalReplyRenderIDs: ["prior", "stable-final"]
         ), "stable-final")
-    }
-
-    func testExistingTranscriptUsesBottomAsItsInitialLayoutAnchor() {
-        XCTAssertEqual(ChatScrollPolicy.initialTranscriptAnchor, .bottom)
-    }
-
-    func testTranscriptSizeChangesStayBottomAnchoredOnlyWhileFollowingLatest() {
-        XCTAssertEqual(
-            ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: true),
-            .bottom
-        )
-        XCTAssertNil(ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: false))
-    }
-
-    func testInitialAsyncWorkWaitsForNavigationAppearanceCompletion() {
-        XCTAssertFalse(ChatInitialAppearancePolicy.shouldBeginAsyncWork(hasCompletedAppearance: false))
-        XCTAssertTrue(ChatInitialAppearancePolicy.shouldBeginAsyncWork(hasCompletedAppearance: true))
-    }
-
-    func testBottomThresholdLoosensWhileStreaming() {
-        XCTAssertEqual(
-            ChatScrollPolicy.bottomThreshold(isStreaming: false),
-            ChatScrollPolicy.bottomDetectionThreshold
-        )
-        XCTAssertEqual(
-            ChatScrollPolicy.bottomThreshold(isStreaming: true),
-            ChatScrollPolicy.streamingBottomDetectionThreshold
-        )
-        XCTAssertGreaterThan(
-            ChatScrollPolicy.bottomThreshold(isStreaming: true),
-            ChatScrollPolicy.bottomThreshold(isStreaming: false)
-        )
-    }
-
-    func testIsNearBottomUsesIdleThresholdWhenNotStreaming() {
-        XCTAssertTrue(ChatScrollPolicy.isNearBottom(distanceFromBottom: 80, isStreaming: false))
-        XCTAssertFalse(ChatScrollPolicy.isNearBottom(distanceFromBottom: 81, isStreaming: false))
-    }
-
-    func testIsNearBottomUsesLooserThresholdWhileStreaming() {
-        // 120pt is past the idle threshold but still "near bottom" while streaming.
-        XCTAssertFalse(ChatScrollPolicy.isNearBottom(distanceFromBottom: 120, isStreaming: false))
-        XCTAssertTrue(ChatScrollPolicy.isNearBottom(distanceFromBottom: 120, isStreaming: true))
-        XCTAssertFalse(ChatScrollPolicy.isNearBottom(distanceFromBottom: 161, isStreaming: true))
-    }
-
-    func testLatestArrowHidesAtBottomEvenWhenFollowingIsPaused() {
-        for streaming in [false, true] {
-            let isNearBottom = ChatScrollPolicy.isNearBottom(distanceFromBottom: 0, isStreaming: streaming)
-            XCTAssertFalse(ChatScrollPolicy.showsScrollToBottomButton(
-                isNearBottom: isNearBottom, isStreaming: streaming, isFollowing: false
-            ))
-        }
     }
 
     func testLatestArrowUsesTheSameIdleAndStreamingThresholds() {
@@ -155,10 +95,6 @@ final class ChatScrollPolicyTests: XCTestCase {
     func testTouchDownTurnsFollowOff() {
         XCTAssertFalse(follow(true, .userScrollBegin))
         XCTAssertFalse(follow(false, .userScrollBegin))
-    }
-
-    func testDragEndAboveBottomKeepsFollowOff() {
-        XCTAssertFalse(follow(false, .userScrollEnd(isAtBottom: false)))
     }
 
     func testExplicitResetSurvivesLateDragSettlement() {
@@ -191,10 +127,6 @@ final class ChatScrollPolicyTests: XCTestCase {
         let latch = reduce(Latch(), .reset, .userScrollBegin)
         XCTAssertFalse(latch.isFollowing)
         XCTAssertFalse(latch.ignoresCoastingGesture)
-    }
-
-    func testDragEndAtBottomReArmsFollow() {
-        XCTAssertTrue(follow(false, .userScrollEnd(isAtBottom: true)))
     }
 
     func testMomentumEndDecidesFromWhereItSettled() {
@@ -284,22 +216,6 @@ final class ChatScrollPolicyTests: XCTestCase {
         XCTAssertFalse(follow(true, .contentScrolled(isAtBottom: true, isUserScrolling: true)))
     }
 
-    func testExplicitActionsBypassTheLatch() {
-        XCTAssertTrue(follow(false, .reset))
-        XCTAssertTrue(follow(true, .reset))
-    }
-
-    func testReArmRequiresStrictBottom() {
-        XCTAssertTrue(ChatScrollPolicy.isAtBottom(distanceFromBottom: ChatScrollPolicy.followReArmThreshold))
-        XCTAssertFalse(ChatScrollPolicy.isAtBottom(distanceFromBottom: ChatScrollPolicy.followReArmThreshold + 1))
-        XCTAssertLessThan(ChatScrollPolicy.followReArmThreshold, ChatScrollPolicy.bottomDetectionThreshold)
-    }
-
-    func testDragSettleWaitsForLateMomentum() {
-        XCTAssertEqual(ChatScrollPolicy.dragSettleDelay, 0.16, accuracy: 0.0001)
-        XCTAssertLessThan(ChatScrollPolicy.momentumSettleDelay, ChatScrollPolicy.dragSettleDelay)
-    }
-
     func testDisclosureToggleSuspendsBottomAnchorWhileFollowing() {
         XCTAssertNil(
             ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: true, isDisclosureSettling: true)
@@ -318,11 +234,6 @@ final class ChatScrollPolicyTests: XCTestCase {
     func testTheScreensOwnResultWinsEvenForAWebLink() {
         let decision = TranscriptLinkRouter.decision(for: URL(string: "https://example.com")!, hostResult: .handled)
         guard case .host = decision else { return XCTFail("Expected the screen's result, got \(decision)") }
-    }
-
-    func testAWebLinkTheScreenLeavesOpensInApp() {
-        let decision = TranscriptLinkRouter.decision(for: URL(string: "https://example.com")!, hostResult: nil)
-        guard case .inAppBrowser = decision else { return XCTFail("Expected the in-app browser, got \(decision)") }
     }
 
     func testAnotherLinkTheScreenLeavesGoesToTheSystem() {

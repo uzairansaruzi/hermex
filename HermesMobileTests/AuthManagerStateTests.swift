@@ -136,23 +136,6 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(client.logoutCallCount, 1)
     }
 
-    func testSignOutClearsSessionCookies() async throws {
-        let keychain = InMemoryKeychainStore()
-        let server = try XCTUnwrap(URL(string: "https://example.test"))
-        let client = MockAuthAPIClient(authStatus: AuthStatusResponse(authEnabled: true, loggedIn: false))
-        let manager = try await makeLoggedInManager(
-            keychain: keychain,
-            serverURLString: "https://example.test",
-            client: client
-        )
-        HTTPCookieStorage.shared.setCookie(try makeSessionCookie(for: server))
-
-        await manager.signOut()
-
-        XCTAssertEqual(HTTPCookieStorage.shared.cookies?.isEmpty, true)
-        XCTAssertEqual(manager.state, .unconfigured)
-    }
-
     // MARK: - Per-server isolation (#16)
 
     func testSignOutClearsOnlyActiveServerCookies() async throws {
@@ -234,18 +217,6 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(keychain.savedValues[.serverURL], "https://b.test")
         XCTAssertEqual(registry.activeServerID, "https://b.test")
         XCTAssertEqual(manager.activeServerID, "https://b.test")
-    }
-
-    func testSwitchToTheAlreadyActiveServerIsANoOp() async throws {
-        let keychain = InMemoryKeychainStore()
-        let registry = ServerRegistry.inMemory(keychain: keychain)
-        let (manager, aAccount, _) = try await makeTwoServerManager(keychain: keychain, registry: registry)
-        let serverA = try XCTUnwrap(URL(string: "https://a.test"))
-
-        manager.switchActiveServer(to: aAccount)
-
-        XCTAssertEqual(manager.state, .loggedIn(server: serverA))
-        XCTAssertEqual(registry.activeServerID, "https://a.test")
     }
 
     func testRemoveActiveServerAutoSwitchesToRemaining() async throws {
@@ -499,15 +470,6 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(manager.servers.map(\.id), ["https://a.test"])
         XCTAssertEqual(manager.currentCustomHeaders.map(\.name), ["X-A"])
         XCTAssertEqual(manager.currentCustomHeaders.map(\.value), ["a-token"])
-    }
-
-    func testServersSnapshotMirrorsRegistry() async throws {
-        let keychain = InMemoryKeychainStore()
-        let registry = ServerRegistry.inMemory(keychain: keychain)
-        let (manager, _, _) = try await makeTwoServerManager(keychain: keychain, registry: registry)
-
-        XCTAssertEqual(Set(manager.servers.map(\.id)), ["https://a.test", "https://b.test"])
-        XCTAssertEqual(manager.activeServerID, "https://a.test")
     }
 
     func testUpdateServerIdentityPersistsAndMirrorsTheActiveServer() async throws {

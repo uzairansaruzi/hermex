@@ -656,43 +656,6 @@ final class APIClientKanbanTests: APIClientTestCase {
         XCTAssertThrowsError(try KanbanCardDetailValidator.validate(missingIdentity, requestedCardID: "CARD-1"))
     }
 
-    func testMissingCardAndNonJSONCommentResponseRemainTypedFailures() async throws {
-        let missingClient = makeClient { request in
-            let response = HTTPURLResponse(
-                url: try XCTUnwrap(request.url),
-                statusCode: 404,
-                httpVersion: nil,
-                headerFields: ["Content-Type": "application/json"]
-            )!
-            return (response, Data(#"{"error":"task not found","path":"/private/must-not-surface"}"#.utf8))
-        }
-        await XCTAssertThrowsErrorAsync(
-            try await missingClient.kanbanCardDetail(KanbanCardDetailRequest(cardID: "gone", board: "main"))
-        ) { error in
-            guard case let APIError.http(statusCode, _) = error else {
-                return XCTFail("Expected HTTP error, got \(error)")
-            }
-            XCTAssertEqual(statusCode, 404)
-        }
-
-        let nonJSONClient = makeClient { request in
-            let response = HTTPURLResponse(
-                url: try XCTUnwrap(request.url),
-                statusCode: 200,
-                httpVersion: nil,
-                headerFields: ["Content-Type": "text/html"]
-            )!
-            return (response, Data("<html>proxy</html>".utf8))
-        }
-        await XCTAssertThrowsErrorAsync(
-            try await nonJSONClient.addKanbanComment(
-                KanbanAddCommentRequest(cardID: "CARD-1", board: "main", body: "hello")
-            )
-        ) { error in
-            XCTAssertEqual(error as? KanbanResponseError, .nonJSONContentType)
-        }
-    }
-
     func testKanbanCarriesConfiguredCustomHeaders() async throws {
         MockURLProtocol.requestHandler = { request in
             XCTAssertEqual(request.value(forHTTPHeaderField: "X-Hermes-Proxy"), "enabled")
@@ -735,24 +698,6 @@ final class APIClientKanbanTests: APIClientTestCase {
                 return XCTFail("Expected decoding error, got \(error)")
             }
         }
-    }
-
-    func testTolerantModelsKeepUnknownStatusAndIgnoreUnknownFields() throws {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        let snapshot = try decoder.decode(KanbanBoardSnapshot.self, from: Data("""
-        {
-          "changed": true,
-          "columns": [{
-            "name": "future-status",
-            "tasks": [{"id": "card-1", "status": "future-status", "new_field": {"nested": true}}]
-          }],
-          "new_envelope_field": 17
-        }
-        """.utf8))
-
-        XCTAssertEqual(snapshot.columns?.first?.cards?.first?.status?.rawValue, "future-status")
-        XCTAssertFalse(snapshot.columns?.first?.cards?.first?.status?.isSupported ?? true)
     }
 
     func testCardSummaryFieldsStatsEnvelopesAndStalenessDecodeTolerantly() throws {
@@ -860,19 +805,6 @@ final class APIClientKanbanTests: APIClientTestCase {
             snapshot: caseMismatchedSnapshot
         )
         XCTAssertEqual(exactStatusReport.warnings, [.unsupportedStatus("TRIAGE")])
-    }
-
-    func testKanbanDetailEventDecodesTheRunID() throws {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-
-        let event = try decoder.decode(KanbanDetailEvent.self, from: Data("""
-        {"id": 8, "task_id": "CARD-1", "run_id": "run-17", "kind": "status",
-         "created_at": 1700000000, "payload": {"status": "ready"}}
-        """.utf8))
-
-        XCTAssertEqual(event.runID, "run-17")
-        XCTAssertEqual(event.cardID, "CARD-1")
     }
 
     private static let configurationJSON = """

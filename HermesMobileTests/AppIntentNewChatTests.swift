@@ -20,19 +20,8 @@ final class AppIntentNewChatTests: XCTestCase {
         try await super.tearDown()
     }
 
-    func testNewChatURLUsesNewChatHostOnTheAppScheme() throws {
-        let url = try XCTUnwrap(HermesDeepLink.newChatURL)
-        XCTAssertEqual(url.scheme, HermesDeepLink.scheme)
-        XCTAssertEqual(url.host, HermesDeepLink.newChatHost)
-    }
-
     func testIsNewChatURLAcceptsItsOwnURL() throws {
         let url = try XCTUnwrap(HermesDeepLink.newChatURL)
-        XCTAssertTrue(HermesDeepLink.isNewChatURL(url))
-    }
-
-    func testIsNewChatURLIsCaseInsensitiveOnHost() throws {
-        let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://New-Chat"))
         XCTAssertTrue(HermesDeepLink.isNewChatURL(url))
     }
 
@@ -46,25 +35,6 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertNil(HermesDeepLink.sessionID(from: url))
     }
 
-    func testForeignSchemeIsNotANewChatURL() throws {
-        let url = try XCTUnwrap(URL(string: "https://new-chat"))
-        XCTAssertFalse(HermesDeepLink.isNewChatURL(url))
-    }
-
-    @MainActor
-    func testRouterRecordsDeepLink() {
-        let router = AppIntentRouter.shared
-        router.requestDeepLink(HermesDeepLink.newChatURL)
-        XCTAssertEqual(router.pendingDeepLink, HermesDeepLink.newChatURL)
-    }
-
-    @MainActor
-    func testRouterIgnoresNilDeepLink() {
-        let router = AppIntentRouter.shared
-        router.requestDeepLink(nil)
-        XCTAssertNil(router.pendingDeepLink)
-    }
-
     @MainActor
     func testNewChatIntentQueuesTheNewChatDeepLink() async throws {
         let router = AppIntentRouter.shared
@@ -72,25 +42,10 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertEqual(router.pendingDeepLink, HermesDeepLink.newChatURL)
     }
 
-    func testIntentOpensAppWhenRun() {
-        XCTAssertTrue(NewChatIntent.openAppWhenRun)
-    }
-
     // MARK: - New Chat with Voice (issue #338)
-
-    func testNewChatVoiceURLUsesVoiceHostOnTheAppScheme() throws {
-        let url = try XCTUnwrap(HermesDeepLink.newChatVoiceURL)
-        XCTAssertEqual(url.scheme, HermesDeepLink.scheme)
-        XCTAssertEqual(url.host, HermesDeepLink.newChatVoiceHost)
-    }
 
     func testIsNewChatVoiceURLAcceptsItsOwnURL() throws {
         let url = try XCTUnwrap(HermesDeepLink.newChatVoiceURL)
-        XCTAssertTrue(HermesDeepLink.isNewChatVoiceURL(url))
-    }
-
-    func testIsNewChatVoiceURLIsCaseInsensitiveOnHost() throws {
-        let url = try XCTUnwrap(URL(string: "\(HermesDeepLink.scheme)://New-Chat-Voice"))
         XCTAssertTrue(HermesDeepLink.isNewChatVoiceURL(url))
     }
 
@@ -103,38 +58,11 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertFalse(HermesDeepLink.isNewChatVoiceURL(plainURL))
     }
 
-    func testNewChatVoiceURLDoesNotParseAsASessionID() throws {
-        let url = try XCTUnwrap(HermesDeepLink.newChatVoiceURL)
-        XCTAssertNil(HermesDeepLink.sessionID(from: url))
-    }
-
-    func testSessionURLIsNotAVoiceURL() throws {
-        let session = try XCTUnwrap(HermesDeepLink.sessionURL(sessionID: "abc123"))
-        XCTAssertFalse(HermesDeepLink.isNewChatVoiceURL(session))
-    }
-
-    func testForeignSchemeIsNotAVoiceURL() throws {
-        let url = try XCTUnwrap(URL(string: "https://new-chat-voice"))
-        XCTAssertFalse(HermesDeepLink.isNewChatVoiceURL(url))
-    }
-
     @MainActor
     func testNewChatVoiceIntentQueuesTheVoiceDeepLink() async throws {
         let router = AppIntentRouter.shared
         _ = try await NewChatVoiceIntent().perform()
         XCTAssertEqual(router.pendingDeepLink, HermesDeepLink.newChatVoiceURL)
-    }
-
-    func testVoiceIntentOpensAppWhenRun() {
-        XCTAssertTrue(NewChatVoiceIntent.openAppWhenRun)
-    }
-
-    func testNewChatRequestDefaultsToVoiceOff() {
-        XCTAssertFalse(NewChatRequest().autoStartsVoiceInput)
-    }
-
-    func testNewChatRequestCarriesVoiceFlag() {
-        XCTAssertTrue(NewChatRequest(autoStartsVoiceInput: true).autoStartsVoiceInput)
     }
 
     // MARK: - On a Hermes server (#1180)

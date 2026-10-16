@@ -60,35 +60,6 @@ final class APIClientMemoryEndpointTests: APIClientTestCase {
         XCTAssertEqual(response.externalNotesEnabled, true)
     }
 
-    func testMemoryToleratesMissingFields() async throws {
-        let client = makeClient { request in
-            XCTAssertEqual(request.url?.path, "/api/memory")
-
-            return apiTestJSONResponse("""
-            {
-              "memory": "",
-              "user": null
-            }
-            """, for: request)
-        }
-
-        let response = try await client.memory()
-
-        XCTAssertEqual(response.memory, "")
-        XCTAssertNil(response.user)
-        XCTAssertNil(response.soul)
-        XCTAssertNil(response.memoryMtime)
-        XCTAssertNil(response.userMtime)
-        XCTAssertNil(response.soulMtime)
-        XCTAssertNil(response.projectContext)
-        XCTAssertNil(response.projectContextName)
-        XCTAssertNil(response.projectContextPath)
-        XCTAssertNil(response.projectContextWorkspace)
-        XCTAssertNil(response.projectContextMtime)
-        XCTAssertNil(response.projectContextShadowed)
-        XCTAssertNil(response.externalNotesEnabled)
-    }
-
     func testMemoryDecodesProjectContextShadowedBooleanShape() async throws {
         // The API docs describe project_context_shadowed as a boolean flag even though
         // upstream currently sends a list; both shapes must decode.

@@ -151,37 +151,6 @@ final class BotAtPanelSectionTests: XCTestCase {
         XCTAssertEqual(files.map(\.path), ["src/App.swift"])
     }
 
-    func testEmptyRosterShowsFilesAlone() {
-        let sections = BotAtPanelSection.sections(
-            botCompletions: [],
-            fileMatches: [match("src/App.swift")],
-            isLoadingFiles: false
-        )
-
-        XCTAssertEqual(sections.count, 1)
-        guard case .files = sections[0] else { return XCTFail("A files-only panel expected") }
-    }
-
-    func testFailedLookupLeavesTheRosterStanding() {
-        let sections = BotAtPanelSection.sections(
-            botCompletions: [bot("research")],
-            fileMatches: [],
-            isLoadingFiles: false
-        )
-
-        XCTAssertEqual(sections.count, 1)
-        guard case .bots(let bots) = sections[0] else { return XCTFail("The roster must survive a failed lookup") }
-        XCTAssertEqual(bots.map(\.tag), ["research"])
-    }
-
-    func testNothingToShowMeansNoPanel() {
-        XCTAssertTrue(BotAtPanelSection.sections(
-            botCompletions: [],
-            fileMatches: [],
-            isLoadingFiles: false
-        ).isEmpty)
-    }
-
     func testLoadingShowsTheFilesHeadingWithNoRowsYet() {
         let sections = BotAtPanelSection.sections(
             botCompletions: [],

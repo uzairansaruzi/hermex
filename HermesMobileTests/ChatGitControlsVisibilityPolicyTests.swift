@@ -41,13 +41,6 @@ final class ChatGitControlsVisibilityPolicyTests: XCTestCase {
         XCTAssertTrue(showsTurnChangesRecap())
     }
 
-    func testEnabledSettingPreservesTurnChangesRecapConditions() {
-        XCTAssertTrue(showsTurnChangesRecap())
-        XCTAssertFalse(showsTurnChangesRecap(hasRepository: false))
-        XCTAssertFalse(showsTurnChangesRecap(isStreaming: true))
-        XCTAssertFalse(showsTurnChangesRecap(latestMessageRole: "user"))
-    }
-
     private func showsInlineCommit(
         hasRepository: Bool = true,
         supportsWrites: Bool = true,

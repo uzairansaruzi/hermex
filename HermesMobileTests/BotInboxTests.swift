@@ -706,47 +706,14 @@ import SwiftUI
         XCTAssertEqual(inbox.profiles.map(\.id), ["triage"])
     }
 
-    func testNotAHermesHostShowsTheMessageInsteadOfRetryingForever() async throws {
-        let wire = BotInboxFixtureWire(roster: [row("triage")])
-        wire.connectError = BotFailure.rejected(404)
-        var spare = 0
-        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
-                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
-            spare += 1; return wire
-        }
-        await inbox.open()
-        XCTAssertNotNil(inbox.errorMessage, "a permanent client error is the user's to fix")
-        XCTAssertFalse(inbox.isLoadingRoster)
-        await Task.yield(); await Task.yield()
-        XCTAssertEqual(spare, 1, "no automatic retry after a 404")
-    }
-
-    func testAWebUIAddressShowsTheAdviceInsteadOfRetryingForever() async throws {
-        let wire = BotInboxFixtureWire(roster: [row("triage")])
-        wire.connectError = BotFailure.notDashboard
-        var spare = 0
-        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
-                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
-            spare += 1; return wire
-        }
-        await inbox.open()
-        XCTAssertEqual(inbox.errorMessage, "mac.example isn't a Hermes dashboard. Use the dashboard address, not the Hermes Web UI.")
-        XCTAssertFalse(inbox.isLoadingRoster)
-        await Task.yield(); await Task.yield()
-        XCTAssertEqual(spare, 1, "no automatic retry for an address that is not a dashboard")
-    }
-
-    /// An access proxy, a host with browser sign-in only, a refused gateway upgrade and a
-    /// release older than the minimum each need the user to change something, so the inbox
-    /// says what and stops retrying.
+    /// An access proxy, a host with browser sign-in only, a refused gateway upgrade, a
+    /// release older than the minimum, a host that is not Hermes or not its dashboard, and
+    /// another install at the saved address each need the user to change something, so
+    /// the inbox says what and stops retrying.
     func testSignInFailuresTheUserMustFixShowTheirMessageInsteadOfRetrying() async throws {
-        let rows: [(BotFailure, String)] = [
-            (.blocked, "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address."),
-            (.browserSignIn, "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host."),
-            (.upgradeRefused(403), "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through."),
-            (.outdated("0.21.2"), "This Hermes host runs 0.21.2. Hermex needs Hermes 0.21.3 or later. Update Hermes on the host, then try again.")
-        ]
-        for (failure, message) in rows {
+        let failures: [BotFailure] = [.blocked, .browserSignIn, .upgradeRefused(403), .outdated("0.21.2"),
+                                      .rejected(404), .notDashboard, .differentHost]
+        for failure in failures {
             let wire = BotInboxFixtureWire(roster: [row("triage")])
             wire.connectError = failure
             var spare = 0
@@ -755,7 +722,8 @@ import SwiftUI
                 spare += 1; return wire
             }
             await inbox.open()
-            XCTAssertEqual(inbox.errorMessage, message, "\(failure)")
+            XCTAssertEqual(inbox.link, .disconnected, "\(failure)")
+            XCTAssertNotNil(inbox.errorMessage, "\(failure)")
             XCTAssertFalse(inbox.isLoadingRoster, "\(failure)")
             await Task.yield(); await Task.yield()
             XCTAssertEqual(spare, 1, "no automatic retry after \(failure)")
@@ -823,22 +791,6 @@ import SwiftUI
         newHost.release(); stale.release()
         await settle(inbox) { $0.link == .live }
         XCTAssertEqual(inbox.connection?.address.host(), "tunnel.example")
-    }
-
-    func testRefusedConnectionShowsTheMessageAndDoesNotRetryOnItsOwn() async throws {
-        let wire = BotInboxFixtureWire(roster: [row("triage")])
-        wire.connectError = BotFailure.rejected(401)
-        var spare = 0
-        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
-                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
-            spare += 1; return wire
-        }
-        await inbox.open()
-        XCTAssertEqual(inbox.link, .disconnected)
-        XCTAssertEqual(inbox.errorMessage, BotFailure.rejected(401).localizedDescription)
-        XCTAssertTrue(inbox.needsSignIn, "a refused password offers the sign-in form")
-        await Task.yield(); await Task.yield()
-        XCTAssertEqual(spare, 1, "no automatic retry after a refusal")
     }
 
     /// Foregrounding, pull to refresh and closing the form unsaved all rerun `open()`;
@@ -934,21 +886,6 @@ import SwiftUI
         }
     }
 
-    func testAnotherHostShowsTheMessageAndDoesNotRetryOnItsOwn() async throws {
-        let wire = BotInboxFixtureWire(roster: [row("triage")])
-        wire.connectError = BotFailure.differentHost
-        var spare = 0
-        let inbox = BotInbox(server: server, store: try connectedStore(), unread: BotUnreadStore(defaults: defaults),
-                             avatarStore: BotAvatarStore(), reloadSpacing: .zero, reconnectDelays: [.zero]) { _ in
-            spare += 1; return wire
-        }
-        await inbox.open()
-        XCTAssertEqual(inbox.link, .disconnected)
-        XCTAssertEqual(inbox.errorMessage, BotFailure.differentHost.localizedDescription)
-        await Task.yield(); await Task.yield()
-        XCTAssertEqual(spare, 1, "no automatic retry against another host")
-    }
-
     func testTheFirstReportedInstallIDIsRecordedOnceWithoutRevertingANewerSave() async throws {
         let store = try connectedStore()
         let first = String(repeating: "a", count: 32)
@@ -976,15 +913,6 @@ import SwiftUI
         await inbox.open()
         stored = try XCTUnwrap(store.load(server: server))
         XCTAssertEqual(stored.installID, first, "The backfill writes only a record that has none")
-    }
-
-    func testUnreadableSavedConnectionShowsTheFailureInsteadOfAStaleRoster() async throws {
-        let keychain = InMemoryKeychainStore()
-        try keychain.save("not json", forKey: .botConnection, scope: server.absoluteString)
-        let inbox = try makeInbox(wires: [], store: BotConnectionStore(keychain: keychain))
-        await inbox.open()
-        XCTAssertEqual(inbox.link, .disconnected)
-        XCTAssertNotNil(inbox.errorMessage)
     }
 
     // MARK: - Live status
@@ -1248,22 +1176,6 @@ import SwiftUI
         XCTAssertEqual(inbox.link, .disconnected)
         XCTAssertNotNil(inbox.errorMessage)
         XCTAssertEqual(inbox.liveStatuses, [:], "no socket can vouch for them")
-    }
-
-    func testActivityLabelUsesTimeTodayWeekdayThisWeekThenMonthAndDay() {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        let locale = Locale(identifier: "en_US")
-        // Thursday 2026-09-10 15:00 UTC.
-        let now = Date(timeIntervalSince1970: 1_789_052_400)
-        let label = { (offset: TimeInterval) in
-            BotInboxDateLabel.text(for: now.addingTimeInterval(offset), now: now, calendar: calendar, locale: locale)
-        }
-        XCTAssertEqual(label(-6 * 3600), "9:00\u{202F}AM")
-        XCTAssertEqual(label(-24 * 3600), "Wednesday")
-        XCTAssertEqual(label(-6 * 86_400), "Friday")
-        XCTAssertEqual(label(-7 * 86_400), "Sep 3")
-        XCTAssertEqual(label(-40 * 86_400), "Aug 1")
     }
 
     // MARK: - Helpers

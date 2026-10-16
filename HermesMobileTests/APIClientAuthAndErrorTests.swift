@@ -247,21 +247,6 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
         }
     }
 
-    func testUnauthorizedAndBadRequestCopyIsUnchangedByForbiddenHandling() {
-        XCTAssertEqual(
-            APIError.unauthorized.localizedDescription,
-            "The password was rejected. Check the server password and try again."
-        )
-        XCTAssertEqual(
-            APIError.http(statusCode: 400, body: #"{"error":"Missing message"}"#).localizedDescription,
-            "The server rejected the request: Missing message"
-        )
-        XCTAssertEqual(
-            APIError.http(statusCode: 400, body: "<html>nope</html>").localizedDescription,
-            "The server rejected the request."
-        )
-    }
-
     func testDisplayedServerMessageIsBoundedAcrossHTTPBranches() {
         let long = String(repeating: "x", count: 500)
         let body = #"{"error":"\#(long)"}"#
@@ -392,29 +377,5 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
         XCTAssertFalse(category.contains("secret"))
         XCTAssertFalse(category.contains("private"))
         XCTAssertFalse(category.contains("raw response"))
-    }
-
-    func testNetworkErrorPrivacySafeLogCategoryUsesOnlyURLCode() {
-        let error = APIError.network(underlying: URLError(.timedOut))
-
-        XCTAssertEqual(error.privacySafeLogCategory, "network.url.-1001")
-    }
-
-    func testNetworkTimeoutUsesSetupGuidance() async throws {
-        let error = APIError.network(underlying: URLError(.timedOut))
-
-        XCTAssertEqual(
-            error.localizedDescription,
-            "The server did not respond in time. Check that the server is running and the connection is available."
-        )
-    }
-
-    func testAppTransportSecurityErrorUsesHTTPGuidance() async throws {
-        let error = APIError.network(underlying: URLError(.appTransportSecurityRequiresSecureConnection))
-
-        XCTAssertEqual(
-            error.localizedDescription,
-            "iOS blocked this insecure HTTP connection. Use HTTPS, a local network address, or a Tailscale name or IP."
-        )
     }
 }

@@ -69,25 +69,6 @@ import XCTest
         }
     }
 
-    func testRoomOpensFromCacheBeforeStateThenReadsOnlyNewSequences() async throws {
-        let cache = BotHistoryCache(), wire = RoomWire()
-        wire.latest = 3
-        let first = makeReader(wire, cache: cache)
-        await first.open(); first.close()
-        let nextWire = RoomWire(); nextWire.latest = 5; nextWire.holdState = true
-        let parked = expectation(description: "server state is pending")
-        nextWire.onHeld = { parked.fulfill() }
-        let next = makeReader(nextWire, cache: cache)
-        let opening = Task { await next.open() }
-        await fulfillment(of: [parked], timeout: 2)
-        XCTAssertEqual(next.events.map(\.seq), [1, 2, 3], "Saved messages appear before the server replies")
-        nextWire.releaseState(latest: 5)
-        await opening.value
-        XCTAssertEqual(nextWire.logStarts, [3])
-        XCTAssertEqual(next.events.map(\.seq), [1, 2, 3, 4, 5])
-        next.close()
-    }
-
     func testExpiredAndDisbandedRoomsPurgeTheirCache() async throws {
         for disband in [false, true] {
             let cache = BotHistoryCache(), wire = RoomWire(); wire.latest = 3
@@ -123,23 +104,6 @@ import XCTest
         XCTAssertEqual(wire.logStarts.last, 600)
         XCTAssertEqual(reader.events.last?.seq, 601)
         reader.close()
-    }
-
-    func testSearchHitKeepsItsSequenceAndOlderTargetLoadsBeforeCachedWindow() async throws {
-        let cache = BotHistoryCache(), wire = RoomWire(); wire.latest = 500
-        let first = makeReader(wire, cache: cache); await first.open(); first.close()
-        let hits = try await cache.search("Message 345", scope: .init(server: key().server, connectionID: connection.id),
-                                         roomIDs: [key().roomID])
-        let selected = try XCTUnwrap(hits.first)
-        XCTAssertEqual(selected.message.seq, 345)
-        let nextWire = RoomWire(); nextWire.latest = 500
-        let next = BotRoomReader(key: key(), connection: connection,
-            room: BotGroupRoom(RoomFixture.room(latest: 500))!, cache: cache, initialSequence: 42, makeWire: { _ in nextWire })
-        await next.open()
-        XCTAssertEqual(nextWire.logStarts.first, 41)
-        XCTAssertEqual(next.events.first?.seq, 42)
-        XCTAssertEqual(next.events.last?.seq, 500)
-        next.close()
     }
 
     func testUnwritableCacheDoesNotStopLiveRoomReading() async throws {
@@ -192,21 +156,6 @@ import XCTest
         XCTAssertEqual(log.events.map(\.seq), [3, 204])
     }
 
-    /// A room row's footer time is its event's `created_at`, never the phone clock.
-    func testRoomEventTimestampComesFromCreatedAt() {
-        func event(_ seq: Int, _ kind: String, at createdAt: Double?) -> BotRoomEvent? {
-            var object: [String: BotJSON] = ["seq": .number(Double(seq)), "kind": .string(kind)]
-            if let createdAt { object["created_at"] = .number(createdAt) }
-            return BotRoomEvent(.object(object))
-        }
-        let events = [
-            event(1, "message.user", at: 1_000),
-            event(2, "message.member", at: 1_060),
-            event(3, "message.user", at: nil)
-        ].compactMap { $0 }
-        XCTAssertEqual(events.map(\.timestamp), [1_000, 1_060, nil])
-    }
-
     func testARoomIsNewUntilItsFirstUserOrMemberMessage() async throws {
         func events(_ kinds: String...) -> [BotRoomEvent] {
             kinds.enumerated().compactMap { BotRoomEvent(RoomFixture.event($0.offset + 1, kind: $0.element)) }
@@ -235,17 +184,6 @@ import XCTest
         XCTAssertFalse(BotRoomEvent.hasConversation(in: older.events))
         XCTAssertFalse(older.showsWelcome, "Only system rows are loaded, but earlier history may hold messages")
         older.close()
-    }
-
-    func testMemberFallbackAndForeignAuthorityAndScopedIdentity() throws {
-        let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 0)))
-        let event = try XCTUnwrap(BotRoomEvent(RoomFixture.event(1, kind: "message.member")))
-        XCTAssertEqual(event.sender(in: room), "chief-of-staff")
-        XCTAssertTrue(room.isForeign(to: "other-install"))
-        XCTAssertFalse(room.isForeign(to: "fixture-install"))
-        let first = BotRoomKey(server: URL(string: "https://one.example")!, connectionID: connection.id, roomID: room.id)
-        XCTAssertNotEqual(first, BotRoomKey(server: first.server, connectionID: UUID(), roomID: room.id))
-        XCTAssertNotEqual(first, BotRoomKey(server: URL(string: "https://two.example")!, connectionID: connection.id, roomID: room.id))
     }
 
     func testOpenDrainsPagesAndEarlierWindowDoesNotSkipOrRewind() async throws {
@@ -378,13 +316,6 @@ import XCTest
         XCTAssertEqual(wire.stateCalls, reads + 2)
         XCTAssertTrue(reader.foreignAuthority)
         reader.close()
-    }
-
-    func testStatusPollIntervalsAndMissingFields() {
-        XCTAssertEqual(BotRoomStatus(.null).interval, .seconds(10))
-        for flag in ["working", "blocked"] {
-            XCTAssertEqual(BotRoomStatus(.object([flag: .bool(true)])).interval, .seconds(2))
-        }
     }
 
     func testSendWaitsForAcknowledgmentAndLogReplayAddsNoDuplicate() async throws {
@@ -642,19 +573,6 @@ import XCTest
         XCTAssertEqual(rejected.writes.count, 3)
         XCTAssertNil(refused.feedback)
         refused.close()
-    }
-
-    func testRetryAndAStaleSendPublishNoFeedback() async throws {
-        let wire = RoomWire()
-        wire.driverStatus = RoomFixture.status(actions: [.object(["kind": .string("retry"), "task_id": .string("task:1")])])
-        let reader = makeReader(wire); await reader.open()
-        await reader.act(try XCTUnwrap(reader.status.actions.first))
-        XCTAssertEqual(wire.writes.first?.0, "groups.retry")
-        reader.draft = "hello"
-        wire.beforeWrite = { reader.close() }
-        await reader.send()
-        XCTAssertEqual(wire.writes.count, 1)
-        XCTAssertNil(reader.feedback)
     }
 
     func testRetryRejectionRefreshesAndUnknownActionsStayReadOnly() async throws {

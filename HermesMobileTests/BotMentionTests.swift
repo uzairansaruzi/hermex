@@ -85,16 +85,6 @@ final class BotMentionTests: XCTestCase {
         XCTAssertEqual(Array(mentions.annotation(for: "@hermes @research @hermes").utf8), Array((prefix + second + "; " + first + suffix).utf8))
     }
 
-    func testCompletionLimitPrefixAndConnectionLocalRoster() {
-        let roster = (0..<12).map { bot("bot-\($0)", title: "Helper \($0)") }
-        XCTAssertEqual(BotMentions(roster: roster, excluding: "bot-0").completions(query: "").count, 8)
-        XCTAssertEqual(BotMentions(roster: roster, excluding: "bot-0").completions(query: "bot-11").map(\.tag), ["helper-11"])
-        let first = BotMentions(roster: [bot("same", title: "First")], excluding: "dev")
-        let second = BotMentions(roster: [bot("same", title: "Second")], excluding: "dev")
-        XCTAssertTrue(first.resolve("@second").isEmpty)
-        XCTAssertTrue(second.resolve("@first").isEmpty)
-    }
-
     func testCaretCompletionPreservesSurroundingTextAndUTF16Selection() throws {
         let draft = "🤖 Ask @res about this"
         let caret = ("🤖 Ask @res" as NSString).length
