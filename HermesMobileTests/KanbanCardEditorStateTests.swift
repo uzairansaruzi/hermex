@@ -194,7 +194,7 @@ final class KanbanCardEditorStateTests: XCTestCase {
         XCTAssertNil(request?.status)
     }
 
-    func testAmbiguousEditReconcilesCanonicalResultAndPreservesCreateOnlyFields() async {
+    func testAmbiguousEditReconcilesToTheCanonicalResult() async {
         let lost = APIError.network(underlying: URLError(.cancelled))
         let client = CardEditorClient(
             editResults: [.failure(lost)],

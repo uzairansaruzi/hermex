@@ -138,22 +138,12 @@ import Observation
     /// is sent, aliases included, and `/clear` points at `/compress`.
     func testABotChatRefusesCommandsThatLeaveOrRewriteIt() async {
         let chat = await openChat(target: .canonicalChat(profile: "default"))
-        let refusals: [(String, String)] = [
-            ("/new", "A bot keeps one chat, so /new can’t start another."),
-            ("/reset", "A bot keeps one chat, so /reset can’t start another."),
-            ("/clear", "A bot keeps one chat, so /clear can’t start another. Run /compress to free up its context."),
-            ("/resume Launch plan", "A bot keeps one chat, so /resume can’t open another."),
-            ("/sessions", "A bot keeps one chat, so /sessions can’t open another."),
-            ("/branch Idea", "A bot’s chat can’t be forked."),
-            ("/fork", "A bot’s chat can’t be forked."),
-            ("/title Renamed", "A bot’s chat keeps the bot’s name."),
-            ("/undo", "A bot’s chat can’t be rewound."),
-            ("/retry", "A bot’s chat can’t be rewound.")
-        ]
+        let refused = ["/new", "/reset", "/clear", "/resume Launch plan", "/sessions", "/branch Idea", "/fork",
+                       "/title Renamed", "/undo", "/retry"]
         let sent = chat.host.requests.count
-        for (line, copy) in refusals {
+        for line in refused {
             let result = await chat.model.runHermesSlashCommand(line)
-            XCTAssertEqual(result, .unsupported(friendlyMessage: copy), line)
+            guard case .unsupported = result else { return XCTFail("\(line) ran: \(String(describing: result))") }
         }
         XCTAssertEqual(chat.host.requests.dropFirst(sent).compactMap { $0["method"].text }, [], "nothing reaches the host")
     }

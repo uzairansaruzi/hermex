@@ -674,7 +674,6 @@ extension MarkdownMathRendererTests {
         let after = await InlineMathImageCache.shared.renderCount
         XCTAssertEqual(after - before, 1, "Thirty appends should rasterize the unchanged expression exactly once")
         XCTAssertEqual(synchronousHits, 29, "Warm updates must avoid async loading and state publication")
-        print("MATH_OPERATION_COUNTS updates=30 expression_renders=\(after - before) synchronous_hits=\(synchronousHits) sealed_chunk_changes=0 settled_stream_cache_entries=0")
     }
 }
 

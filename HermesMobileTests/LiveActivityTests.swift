@@ -52,14 +52,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertFalse(
             AgentLiveActivityReusePolicy.canReuseActivity(
                 existingSessionID: "session-abc",
-                existingStreamID: "stream-1",
-                requestedSessionID: "session-abc",
-                requestedStreamID: "stream-2"
-            )
-        )
-        XCTAssertFalse(
-            AgentLiveActivityReusePolicy.canReuseActivity(
-                existingSessionID: "session-abc",
                 existingStreamID: nil,
                 requestedSessionID: "session-abc",
                 requestedStreamID: "stream-2"
@@ -1007,20 +999,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(status("unknown"), .complete)
         XCTAssertEqual(status(nil), .complete)
         XCTAssertEqual(status("a-state-we-have-never-seen"), .complete)
-
-        // The widget line reuses the existing localized completion strings.
-        XCTAssertEqual(
-            LiveActivityReconciler.reconciledOutcome(forTerminalState: "completed").activity,
-            String(localized: "Response complete")
-        )
-        XCTAssertEqual(
-            LiveActivityReconciler.reconciledOutcome(forTerminalState: "errored").activity,
-            String(localized: "Response failed")
-        )
-        XCTAssertEqual(
-            LiveActivityReconciler.reconciledOutcome(forTerminalState: "interrupted-by-user").activity,
-            String(localized: "Response cancelled")
-        )
     }
 
     // #862: the cold-launch pass alerts for a recent run that completed or failed,

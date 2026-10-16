@@ -327,7 +327,7 @@ extension ResponseSelectionTests {
         await render(window)
         await render(window)
 
-        XCTAssertEqual(footerTop - headerBottom, 300, accuracy: 0.5, "The response keeps its first, shorter height")
-        XCTAssertEqual(textTop, headerBottom, accuracy: 0.5, "The response spills up under the header")
+        XCTAssertEqual(footerTop - headerBottom, 300, accuracy: 0.5, "The rows around the response make room for its grown height")
+        XCTAssertEqual(textTop, headerBottom, accuracy: 0.5, "The response starts below the header")
     }
 }

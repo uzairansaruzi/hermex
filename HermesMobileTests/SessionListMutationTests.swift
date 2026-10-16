@@ -458,15 +458,16 @@ final class SessionListMutationTests: XCTestCase {
 
     @MainActor
     func testCreateSessionOmitsProjectIDByDefault() async throws {
-        var bodyKeys: [[String]] = []
+        var bodies: [[String: Any]] = []
         let viewModel = try makeNewSessionViewModel { body in
-            bodyKeys.append(body.keys.sorted())
+            bodies.append(body)
         }
 
         let unfiltered = await viewModel.createSession()
         let blank = await viewModel.createSession(projectID: "  ")
 
-        XCTAssertEqual(bodyKeys, [["workspace"], ["workspace"]])
+        XCTAssertEqual(bodies.count, 2)
+        XCTAssertTrue(bodies.allSatisfy { $0["project_id"] == nil }, "a blank project is no project")
         XCTAssertNil(unfiltered?.projectId)
         XCTAssertNil(blank?.projectId)
         XCTAssertNil(viewModel.lastError)

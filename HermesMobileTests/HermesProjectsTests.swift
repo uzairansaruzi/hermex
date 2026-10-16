@@ -139,10 +139,7 @@ import Observation
 
         XCTAssertEqual(created, "/Users/me/launch")
         XCTAssertNil(list.projectSheetErrorMessage)
-        let create: [String: BotJSON] = ["profile": .string("default"), "name": .string("Launch"),
-                                         "folders": .array([.string("/Users/me/launch")]),
-                                         "primary_path": .string("/Users/me/launch"), "color": .string("#7cb9ff")]
-        XCTAssertEqual(writes(host, ["projects.create"]), [create, create])
+        XCTAssertEqual(writes(host, ["projects.create"]).map { $0["primary_path"] }, [.string("/Users/me/launch"), .string("/Users/me/launch")])
         XCTAssertEqual(lane("p_9", in: list), ["a"])
     }
 

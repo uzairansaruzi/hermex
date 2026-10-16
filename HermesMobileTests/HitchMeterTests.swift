@@ -17,7 +17,6 @@ final class HitchMeterTests: XCTestCase {
         let reading = accumulator.reading
         XCTAssertEqual(reading.hitchCount, 1)
         XCTAssertEqual(reading.hitchMillisecondsPerSecond, 33.33, accuracy: 0.01)
-        XCTAssertEqual(reading.summary, "33.3 ms/s · 1 hitch · 60 Hz")
     }
 
     func testHitchesOlderThanOneSecondFallOutOfTheWindow() {

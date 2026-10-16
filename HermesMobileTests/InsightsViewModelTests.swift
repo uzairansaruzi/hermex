@@ -186,12 +186,14 @@ final class InsightsViewModelTests: XCTestCase {
         await viewModel.load()
         XCTAssertEqual(viewModel.totalTokens, 350)
         XCTAssertEqual(viewModel.periodTitle, "30 days")
+        XCTAssertFalse(viewModel.isRefreshing, "a first load is not a refresh")
 
         viewModel.selectedTimeframe = .last7Days
         let refreshTask = Task { await viewModel.load() }
         await client.waitForPendingRequest()
 
         XCTAssertTrue(viewModel.isLoading)
+        XCTAssertTrue(viewModel.isRefreshing)
         XCTAssertEqual(viewModel.totalTokens, 350)
         XCTAssertEqual(viewModel.periodTitle, "30 days")
 
@@ -207,6 +209,7 @@ final class InsightsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.totalTokens, 125)
         XCTAssertEqual(viewModel.periodTitle, "7 days")
         XCTAssertFalse(viewModel.isLoading)
+        XCTAssertFalse(viewModel.isRefreshing)
     }
 
     @MainActor

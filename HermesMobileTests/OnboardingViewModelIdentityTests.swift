@@ -15,16 +15,16 @@ import XCTest
 final class OnboardingViewModelIdentityTests: XCTestCase {
     // MARK: - Identity semantics
 
-    func testCanonicallyEquivalentURLsShareIdentity() throws {
+    func testCanonicallyEquivalentURLsShareIdentity() {
         let viewModel = OnboardingViewModel()
         viewModel.serverURLString = "https://example.com"
-        let before = try XCTUnwrap(identity(of: viewModel))
+        let before = viewModel.probeConnectionIdentityForTesting()
 
         viewModel.serverURLString = "https://example.com/"
-        XCTAssertEqual(try identity(of: viewModel), before, "trailing slash must not churn")
+        XCTAssertEqual(viewModel.probeConnectionIdentityForTesting(), before, "trailing slash must not churn")
 
         viewModel.serverURLString = "  https://EXAMPLE.com/path?query=1#frag  "
-        XCTAssertEqual(try identity(of: viewModel), before, "case/whitespace/path/query/fragment are normalized away")
+        XCTAssertEqual(viewModel.probeConnectionIdentityForTesting(), before, "case/whitespace/path/query/fragment are normalized away")
     }
 
     func testHeaderNameCaseAndOrderDoNotChangeIdentity() {
@@ -33,14 +33,14 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
             CustomHeader(name: "X-API-Key", value: "k1"),
             CustomHeader(name: "Authorization", value: "Bearer abc")
         ]
-        let before = currentIdentity(viewModel)
+        let before = viewModel.probeConnectionIdentityForTesting()
 
         viewModel.customHeaders = [
             CustomHeader(name: "authorization", value: "Bearer abc"),
             CustomHeader(name: "x-api-key", value: "k1")
         ]
 
-        XCTAssertEqual(currentIdentity(viewModel), before)
+        XCTAssertEqual(viewModel.probeConnectionIdentityForTesting(), before)
     }
 
     func testDuplicateNameReorderChangesEffectiveCredentialAndInvalidates() {
@@ -641,18 +641,6 @@ extension OnboardingViewModelIdentityTests {
     }
 
     // MARK: - Helpers
-
-    private func identity(of viewModel: OnboardingViewModel) throws -> String {
-        _ = viewModel // identity is derived from public inputs; recompute via invalidation side effect
-        return currentIdentity(viewModel)
-    }
-
-    /// Reads the identity by round-tripping through invalidation: mutating any
-    /// input recomputes it. Uses a sentinel edit that cannot collide with real
-    /// header content.
-    private func currentIdentity(_ viewModel: OnboardingViewModel) -> String {
-        viewModel.probeConnectionIdentityForTesting()
-    }
 
     private func makeProbedViewModel(headers: [CustomHeader]) -> OnboardingViewModel {
         let viewModel = OnboardingViewModel(

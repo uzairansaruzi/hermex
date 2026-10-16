@@ -77,11 +77,8 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertEqual(response.displayName(for: "@nous:qwen/qwen3-coder"), "Qwen3 Coder (via Nous)")
     }
 
-    /// The model picker reads `allModels` many times per body pass, so a
-    /// 400-model OpenRouter group has to merge and de-duplicate it once, at
-    /// init, instead of on every read (#692). A stored property is the only
-    /// kind `Mirror` lists.
-    func testAllModelsIsMergedOnceAndStored() {
+    /// A group's visible and extra models merge in order, each model once (#692).
+    func testAllModelsMergesBothHalvesWithoutDuplicates() {
         let visible = (1...15).map { ModelCatalogOption(id: "m\($0)", displayName: "M\($0)", providerID: "openrouter") }
         let extra = (15...400).map { ModelCatalogOption(id: "m\($0)", displayName: "M\($0)", providerID: "openrouter") }
         let group = ModelCatalogGroup(
@@ -92,14 +89,7 @@ final class ModelCatalogTests: XCTestCase {
             extraModels: extra
         )
 
-        let stored = Mirror(reflecting: group).children
-            .first { $0.label == "allModels" }?
-            .value as? [ModelCatalogOption]
-
-        XCTAssertEqual(stored?.count, 400, "m15 appears in both halves and is kept once")
-        XCTAssertEqual(stored?.first?.id, "m1")
-        XCTAssertEqual(stored?.last?.id, "m400")
-        XCTAssertEqual(stored, group.allModels)
+        XCTAssertEqual(group.allModels.map(\.id), (1...400).map { "m\($0)" }, "m15 appears in both halves and is kept once")
     }
 
     // MARK: - /api/models/live (issue #236)

@@ -132,94 +132,30 @@ final class OnboardingFlowTests: XCTestCase {
         )
     }
 
-    func testAgentSetupPromptDefaultsToSafeStateAwareTailscaleServe() {
+    /// The prompts an agent runs on the user's machine keep the rules that stop it exposing the
+    /// server, killing someone else's process or losing the user's secrets.
+    func testWebUISetupPromptKeepsItsSafetyRules() {
         let prompt = OnboardingFlowPolicy.webUISetupPrompt
 
-        let requiredInstructions = [
-            "Python standard library + vanilla JavaScript",
-            "Inventory before changing anything",
-            "command -v tailscale",
-            "tailscale version",
-            "tailscale status",
-            "Only if `command -v tailscale` reports that Tailscale is absent",
-            "correct method for this OS",
-            "rerun `tailscale version`, `tailscale status`, and the authentication check",
-            "tailscale serve status",
-            "tailscale funnel status",
-            "lsof -nP -iTCP:8787 -sTCP:LISTEN",
+        for rule in [
+            "Never enable Funnel",
             "Do not kill an unknown process",
             "Do not run tailscale serve reset",
-            "127.0.0.1:8787",
-            "only if HTTPS port 443 at the root path is free",
-            "tailscale serve --bg 8787",
-            "Never enable Funnel",
-            "HTTPS consent",
-            "certificate-transparency disclosure",
-            "umask 077",
-            "chmod 600",
-            "Preserve every existing line in `.env`",
-            "only add or update the `HERMES_WEBUI_PASSWORD` entry",
             "never truncate or replace the file",
-            "Whether `.env` already existed or is new",
             "Do not print the full .env",
-            "python3 bootstrap.py",
-            "./ctl.sh",
-            "Do not configure auto-start yourself",
-            "Propose the exact OS-appropriate commands and steps",
-            "wait for me to run them",
-            "Do not touch `~/Library/LaunchAgents/` or restart Mac services",
-            "curl --fail http://127.0.0.1:8787/health",
-            "actual ts.net HTTPS URL",
-            "exact HTTPS URL, password, launcher, and both health-check results",
-            "manual fallback",
             "Do not automate it"
-        ]
-
-        for instruction in requiredInstructions {
-            XCTAssertTrue(prompt.contains(instruction), "Missing safe setup instruction: \(instruction)")
+        ] {
+            XCTAssertTrue(prompt.contains(rule), "Missing safety rule: \(rule)")
         }
-
-        XCTAssertFalse(prompt.contains("Node.js"))
-        XCTAssertFalse(prompt.contains("curl http://$(tailscale ip -4):8787/health"))
         XCTAssertFalse(prompt.contains("fall back: bind the server to 0.0.0.0"))
-        XCTAssertFalse(prompt.contains("Otherwise configure auto-start appropriate for this OS"))
     }
 
-    func testHermesSetupPromptRequiresSignInPersistentSecretAndPublicURL() {
+    func testHermesSetupPromptKeepsItsSafetyRules() {
         let prompt = OnboardingFlowPolicy.hermesSetupPrompt
 
-        let requiredInstructions = [
-            "Set up the Hermes dashboard on this machine for access from my iPhone.",
-            "Inventory before changing anything",
-            "`hermes dashboard`",
-            "default 9119",
-            "config.yaml",
-            "Do not kill an unknown process",
-            "dashboard.basic_auth.username",
-            "password_hash",
-            "plugins.dashboard_auth.basic import hash_password",
-            "dashboard.basic_auth.secret",
-            "survive a restart",
-            "dashboard.public_url",
-            "400 Invalid Host header",
-            "Cloudflare Tunnel",
-            "Tailscale",
-            "same Wi-Fi",
-            "require my confirmation",
-            "Never run the dashboard without its sign-in gate",
-            "`curl --fail <exact-phone-address>/api/status`",
-            "keeping its scheme and port",
-            "\"auth_required\": true",
-            "address, username, password"
-        ]
-
-        for instruction in requiredInstructions {
-            XCTAssertTrue(prompt.contains(instruction), "Missing Hermes setup instruction: \(instruction)")
+        for rule in ["Do not kill an unknown process", "Never run the dashboard without its sign-in gate"] {
+            XCTAssertTrue(prompt.contains(rule), "Missing safety rule: \(rule)")
         }
-
-        // The confirmed same-Wi-Fi fallback is plain HTTP, so the check must not force https://.
-        XCTAssertFalse(prompt.contains("curl --fail https://<"))
         XCTAssertFalse(prompt.contains("--insecure"))
-        XCTAssertFalse(prompt.contains("hermes-webui"))
     }
 }

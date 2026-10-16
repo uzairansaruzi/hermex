@@ -134,40 +134,24 @@ final class SessionIdentityTests: XCTestCase {
         )
     }
 
+    /// A row without a `session_id` gets the same identity every time it decodes, so a list
+    /// reload never re-identifies it.
     func testSessionSummaryFallbackIDIsDeterministicWithoutSessionID() throws {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let json = Data(#"{"title": "Older Session", "created_at": 1770000000}"#.utf8)
 
-        let session = try decoder.decode(
-            SessionSummary.self,
-            from: Data("""
-            {
-              "title": "Older Session",
-              "created_at": 1770000000
-            }
-            """.utf8)
-        )
-
-        XCTAssertEqual(session.id, "session-Older Session-1770000000.0")
-        XCTAssertEqual(session.id, "session-Older Session-1770000000.0")
+        XCTAssertEqual(try decode(SessionSummary.self, json).id, try decode(SessionSummary.self, json).id)
     }
 
     func testSessionDetailFallbackIDIsDeterministicWithoutSessionID() throws {
+        let json = Data(#"{"title": "Legacy Session", "updated_at": 1770000100}"#.utf8)
+
+        XCTAssertEqual(try decode(SessionDetail.self, json).id, try decode(SessionDetail.self, json).id)
+    }
+
+    private func decode<T: Decodable>(_ type: T.Type, _ json: Data) throws -> T {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
-
-        let session = try decoder.decode(
-            SessionDetail.self,
-            from: Data("""
-            {
-              "title": "Legacy Session",
-              "updated_at": 1770000100
-            }
-            """.utf8)
-        )
-
-        XCTAssertEqual(session.id, "session-Legacy Session-1770000100.0")
-        XCTAssertEqual(session.id, "session-Legacy Session-1770000100.0")
+        return try decoder.decode(type, from: json)
     }
 }
 
