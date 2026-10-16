@@ -476,6 +476,9 @@ import Observation
                           botChatRoot: String? = nil, roster: BotJSON? = nil, subagents: [BotJSON]? = nil,
                           pictures: Bool = false, manager: AgentLiveActivityManager? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
+        // Every test here shares one connection, and the shared avatar store keeps a fetched
+        // picture under it, so a picture an earlier test or run fetched would be drawn at once.
+        BotAvatarStore.shared.removeAll(connectionID: Self.connection.id)
         let host = BotSocketHost()
         host.always("session.resume", .init(result: snapshot ?? resume(running: false)))
         host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 0)))
