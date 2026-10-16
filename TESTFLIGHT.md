@@ -16,14 +16,93 @@ Changing the audience never needs a new upload; changing the code does.
 | Stage | Audience | How the build gets there |
 |---|---|---|
 | Feature work | Owner | **Hermex Branch** app, from the feature branch ([branch upload](DEVELOPMENT.md#branch-testflight-upload-cli--the-push-to-branch-testflight-command)) |
-| RC | Owner | [Upload a release candidate](#upload-a-release-candidate) from `master`; the owner's internal group distributes it automatically |
-| Private testing | External **Private testers** group | The same build, added by hand after it passes on the owner's phone |
+| RC | Owner | [Upload a release candidate](#upload-a-release-candidate) from `master`; the internal **Owner Testing** group distributes it automatically |
+| External testing | **Beta Testers**, **Hermex Members**, **Hermex Supporters** | The same build, added to all three external groups and approved by Beta App Review |
 | App Store | Customers | The same build, submitted to App Review and released manually |
 
 Internal groups are for App Store Connect team members (the owner). Testers
-outside the team belong in the external Private testers group, which does not
-distribute automatically. Hermex Branch builds are internal-only and never
-reach external testers.
+outside the team belong in the three external groups, which do not distribute
+automatically. Hermex Branch builds are internal-only and never reach external
+testers.
+
+## Release runbook
+
+One release from start to close-out. Agents run it as
+`/hermex-release <version>`, then `/hermex-release <version> done` after
+the owner releases. The owner's go on the release pack (step 2) approves steps
+3–7: merging the changelog PR, approving the `external-testflight` upload gate,
+and preparing App Store Connect. Every **Submit** and **Release** click in
+App Store Connect stays with the owner.
+
+1. **Release issue.** One per version, titled `Release <version>`, opening
+   with the plain header (`docs/agents/issue-tracker.md` § Issue Body). It
+   holds the release pack, the RC commit and build, what was submitted, and
+   the day-2 and day-7 checks. If the milestone has an epic, the epic
+   links to the release issue. Reuse the issue if it already exists.
+2. **Release pack**, posted on the release issue, then stop for the owner's go:
+   - The version, the RC commit (`origin/master`), and what merged since the
+     last tag (`git log v<previous>..origin/master`).
+   - Milestone leftovers and open `release-blocker` issues, each with a
+     recommendation. Only the owner moves issues between milestones.
+   - The draft changelog entry (step 3).
+   - The [release gates](#release-gates) that can be checked now, including
+     the hermex-push plugin version.
+   - Outward copy this release makes stale: the App Store description, review
+     notes, and beta description, and hermexapp-site pages (including
+     `/setup`, the App Store support URL).
+   - Screenshots and the release video: needed or not, with one reason for
+     each. App Store Connect takes new screenshots only with a version
+     submission, so a refresh lands before step 6.
+   - Phased release: on or off, with a recommendation.
+3. **Changelog PR**, titled `chore(release): Hermex <version> changelog`,
+   writes the `## [<version>.0] - Unreleased` entry:
+   - When the release has a headline change, open with a short paragraph
+     about it.
+   - Use Added / Changed / Fixed / Security, user-visible changes only. Leave
+     out CI, tests, docs, and refactors that change nothing for users.
+   - Fold fixes to features that are new in this release into those features'
+     bullets.
+   - Write what the user can do now, in plain words. Use reference-style links
+     (`[#1020]`), defined under the entry: the issue for an epic, otherwise the PR.
+   Merge it once CI and the review bots are green.
+4. **Upload the RC** from the merged commit:
+   - Run [Local validation](#local-validation).
+   - [Upload a release candidate](#upload-a-release-candidate), approving the
+     `external-testflight` gate.
+   - Record the commit and build on the release issue.
+5. **GitHub draft release:** `gh release create v<version>.0 --draft
+   --target <rc-sha> --title "Hermex <version>"`, with notes from the
+   changelog entry. Publishing it creates the public tag, so publishing waits
+   for step 9.
+6. **App Store Connect**, in the owner's signed-in browser, after the build
+   finishes processing:
+   - **App Store version:** create the version and attach the build. Write
+     What's New from the changelog in short user words. Rewrite the stale
+     description and review notes (check them against the app's current
+     onboarding strings). Select manual release, set phased release as the
+     owner chose, and add new screenshots if step 2 called for them.
+   - **TestFlight:** fill the beta description and What to Test, then select
+     the three external groups. Adding external groups and submitting for Beta
+     App Review is a single click, so leave that dialog open on **Submit**.
+   - **Verify:** reload both pages and confirm every field saved.
+   - **Outside the app:** open a hermexapp-site PR for any stale page (`main`
+     deploys production; never push it). Draft the X post with the
+     `x-writing-guide` skill at hermex-studio `src/releases/<version>/post.md`.
+7. **Owner pass.** Post numbered steps for the owner's iPhone pass on this
+   build ([Test the release candidate](#test-the-release-candidate)), focused
+   on what changed. The owner tests, then submits for Beta App Review and App
+   Review.
+8. **The owner releases** from App Store Connect after approval.
+9. **Close-out**, run right after the release:
+   - Publish the draft release, or create it at the RC commit if there is
+     none. This creates the `v<version>.0` tag.
+   - In one PR, date the changelog entry and bump every `MARKETING_VERSION`
+     to the next open milestone. If there is none, stop and ask. Merge the
+     PR once it is green.
+   - Close the milestone and post the release record on the release issue.
+     Leave the issue open with two checkboxes: the day-2 and day-7 crash and
+     feedback checks. It closes when both are ticked.
+   - Give the owner the changelog link to post as a reply to the X post.
 
 ## Release gates
 
@@ -85,11 +164,9 @@ The full XCTest suite already ran in PR CI before the merge; do not repeat it
 locally. The unsigned Release command is compile-only; use a signed Debug build
 for simulator installation, as described in `AGENTS.md`.
 
-Run authenticated smoke against an owner-authorized server. Use a disposable
-session for mutations and clean up only that session and its branches. Cover
-sign-in, a WebUI-created session, send/stop, stream completion, background recovery,
-image/file uploads, workspace previews, and Tasks/Skills/Memory/Usage panels.
-Record and resolve failures before proceeding.
+Live behavior is proven by the owner's pass on the uploaded RC
+([Test the release candidate](#test-the-release-candidate)), not by a separate
+smoke run.
 
 ## Upload a release candidate
 
@@ -99,6 +176,11 @@ Record and resolve failures before proceeding.
 2. Leave `build_number` blank to select the next App Store Connect build number
    for the current marketing version. A manual override must exceed existing builds.
 3. Wait for processing and confirm compliance information and symbols are resolved.
+
+If the upload fails because the Apple certificate limit is reached, stop. The
+owner revokes old Apple Development certificates on developer.apple.com, then
+rerun the workflow. Each CI run creates a new certificate until
+[#4](https://github.com/uzairansaruzi/hermex/issues/4) is fixed.
 
 The workflow uses [external-capable export options](ci/ReleaseCandidateExportOptions.plist),
 so the tested build can later go to external testers and App Review. It invites
@@ -159,8 +241,9 @@ fallback, and describe the behavior accurately in review notes.
 
 ## External testing and App Store release
 
-With owner authorization, add the tested RC to the Private testers group, fill
-What to Test for this release, and submit for Beta App Review. Capture any
+With owner authorization, add the tested RC to the Beta Testers, Hermex
+Members, and Hermex Supporters groups, fill What to Test for this release,
+and submit for Beta App Review. Capture any
 rejection in a GitHub issue and validate the corrected build before resubmitting.
 
 Invite new testers only after the release gates pass. Provide server
@@ -168,7 +251,8 @@ requirements, known limitations, install instructions, and a feedback contact. A
 Make server exposure and local cache behavior clear before testers connect sensitive
 workspaces.
 
-Review feedback and crashes daily during the first week. Resolve
+Check crashes and feedback on day 2 and day 7 after release, and tick each
+check on the release issue. Resolve
 `release-blocker` issues immediately, and never widen access while one is
 open; pause expansion if one appears. Track actionable reports in GitHub Issues and rerun validation for each RC.
 Upstream compatibility is recorded in `UPSTREAM_TESTED_SHA`; server availability
