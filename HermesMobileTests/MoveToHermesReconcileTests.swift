@@ -14,7 +14,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
     // MARK: Planning
 
     func testPlanRecordsSnapshotValuesAndFillsOnlyEmptyFields() async {
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|copied"] = ["id": .string("copied"), "title": .null, "pinned": .number(0), "cwd": .string("")]
         wire.rows["dev|present"] = ["id": .string("present"), "title": .string("Kept"), "pinned": .number(0),
                                     "archived": .number(0), "cwd": .string("/srv/own")]
@@ -34,7 +34,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
     }
 
     func testPlanGivesHiddenAndParentedRowsNoVerifiedDraftKey() async {
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|hidden"] = ["id": .string("hidden"), "hidden": .number(1)]
         wire.rows["dev|child"] = ["id": .string("child"), "parent_session_id": .string("root")]
         wire.rows["dev|prefix"] = ["id": .string("prefix-longer")]
@@ -80,7 +80,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
     // MARK: Applying
 
     func testApplyRecordsEachWriteBeforeSendingIt() async {
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|a"] = ["id": .string("a"), "pinned": .bool(false)]
         let operations = await plannedOperations(target("a", title: "Notes", pinned: true, workspace: "/srv/a"), on: wire)
         var log: [String] = []
@@ -95,7 +95,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
     }
 
     func testApplySkipsFieldsChangedInHermesSincePlanning() async {
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|a"] = ["id": .string("a")]
         let operations = await plannedOperations(target("a", title: "Notes", pinned: true, workspace: "/srv/a"), on: wire)
         // Between planning and dispatch, the user names it, pins it and moves it.
@@ -112,7 +112,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
     }
 
     func testApplyLeavesARowHiddenSincePlanningUntouched() async {
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|a"] = ["id": .string("a")]
         let operations = await plannedOperations(target("a", title: "Notes", pinned: true), on: wire)
         wire.rows["dev|a"]?["hidden"] = .number(1)
@@ -124,7 +124,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
     }
 
     func testFailedRecordStopsAllSending() async {
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|a"] = ["id": .string("a")]
         wire.rows["dev|b"] = ["id": .string("b")]
         var operations = await plannedOperations(target("a", title: "A", workspace: "/a"), on: wire)
@@ -137,7 +137,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
     }
 
     func testTitleCollisionRetriesOnceWithACappedSuffixThenReports() async {
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|0123456789ab"] = ["id": .string("0123456789ab")]
         let long = String(repeating: "t", count: 100)
         let operations = await plannedOperations(target("0123456789ab", title: long), on: wire)
@@ -159,7 +159,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
     }
 
     func testMissingFolderIsReported() async {
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|a"] = ["id": .string("a")]
         wire.missingFolders = ["/gone"]
         let operations = await plannedOperations(target("a", workspace: "/gone"), on: wire)
@@ -171,7 +171,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
     }
 
     func testLostReplyIsAppliedOnlyWhenHermesHoldsTheValueAndIsNeverResent() async {
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|landed"] = ["id": .string("landed")]
         wire.rows["dev|lost"] = ["id": .string("lost")]
         var operations = await plannedOperations(target("landed", pinned: true), on: wire)
@@ -186,7 +186,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
     }
 
     func testUnreadableRowSendsNothing() async {
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|a"] = ["id": .string("a")]
         let operations = await plannedOperations(target("a", title: "A"), on: wire)
         wire.failingReads = ["a"]
@@ -204,7 +204,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
     /// The success/acknowledgement gap: each write landed, the journal never heard, and the user
     /// then undid it in Hermes. Resuming must report it, not send it again.
     func testResumeAfterRemoteSuccessAndExternalEditsReportsUncertainWithoutWriting() async {
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|a"] = ["id": .string("a")]
         let operations = await plannedOperations(target("a", title: "Notes", pinned: true, workspace: "/srv/a"), on: wire)
         _ = await Reconcile.apply(operations, on: wire) { _ in }
@@ -221,7 +221,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
     }
 
     func testSettleFindsLandedWritesAndLeavesUnreadableOnesForLater() async {
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|a"] = ["id": .string("a"), "pinned": .number(1), "cwd": .string("/srv/a/")]
         let landed = [Reconcile.Operation(id: "a", profile: "dev", change: .pinned(from: false, to: true)),
                       Reconcile.Operation(id: "a", profile: "dev", change: .folder(from: nil, to: "/srv/a"))]
@@ -246,7 +246,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
             source("a"): ChatDraft(text: "unsent", quotes: [quote], settings: ChatDraftSettings(modelID: "webui-model")),
         ])
         let store = ChatDraftStore(persistence: persistence)
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|a"] = ["id": .string("a")]
 
         let outcomes = await Reconcile.moveDrafts([plan("a", draftSession: "a")], webui: webui, hermes: hermes,
@@ -263,7 +263,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
     func testUnverifiedDraftKeyLeavesTheDraftOnTheWebui() async {
         let persistence = ReconcileDrafts(values: [source("child"): ChatDraft(text: "unsent")])
         let store = ChatDraftStore(persistence: persistence)
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
 
         let outcomes = await Reconcile.moveDrafts([plan("child", draftSession: nil), plan("empty", draftSession: nil)],
                                                   webui: webui, hermes: hermes, connectionID: connection, store: store, on: wire)
@@ -280,7 +280,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
         let ids = ["gone", "hidden", "child", "unreadable"]
         let persistence = ReconcileDrafts(values: Dictionary(uniqueKeysWithValues: ids.map { (source($0), ChatDraft(text: $0)) }))
         let store = ChatDraftStore(persistence: persistence)
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|hidden"] = ["id": .string("hidden"), "hidden": .bool(true)]
         wire.rows["dev|child"] = ["id": .string("child"), "parent_session_id": .string("root")]
         wire.failingReads = ["unreadable"]
@@ -297,7 +297,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
         let persistence = ReconcileDrafts(values: [source("a"): ChatDraft(text: "unsent")])
         await persistence.failWrites(1)
         let store = ChatDraftStore(persistence: persistence)
-        let wire = ReconcileWire()
+        let wire = MoveHermesHost()
         wire.rows["dev|a"] = ["id": .string("a")]
 
         let outcomes = await Reconcile.moveDrafts([plan("a", draftSession: "a")], webui: webui, hermes: hermes,
@@ -341,7 +341,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
                          profile: "dev", copied: copied)
     }
 
-    private func plannedOperations(_ target: Reconcile.Target, on wire: ReconcileWire) async -> [Reconcile.Operation] {
+    private func plannedOperations(_ target: Reconcile.Target, on wire: MoveHermesHost) async -> [Reconcile.Operation] {
         guard case .plan(let plan)? = await Reconcile.plan([target], on: wire)[target.chat.id] else {
             XCTFail("no plan for \(target.chat.id)")
             return []
@@ -367,71 +367,6 @@ private extension MoveToHermesReconcile.Change {
         case .pinned: return "pinned"
         case .folder: return "folder"
         }
-    }
-}
-
-/// A scripted Hermes host: rows by `profile|id`, the PATCH and workspace-move writes, and the
-/// failures a test asks for.
-@MainActor private final class ReconcileWire: BotTransport {
-    var replayEpoch: String? = "epoch"
-    var onEvent: ((BotJSON) -> Void)?
-    var onDisconnect: ((Error) -> Void)?
-    var rows: [String: [String: BotJSON]] = [:]
-    /// Ids whose reads fail.
-    var failingReads: Set<String> = []
-    var titlesInUse: Set<String> = []
-    var missingFolders: Set<String> = []
-    /// Ids whose next write loses its reply: true when the write still landed.
-    var lostReplies: [String: Bool] = [:]
-    var writes: [(id: String, field: String)] = []
-    var onWrite: ((String) -> Void)?
-
-    func connect() async throws {}
-    func close() {}
-
-    func sessionRow(key: String, profile: String) async throws -> BotJSON? {
-        if failingReads.contains(key) { throw BotFailure.transport }
-        return rows["\(profile)|\(key)"].map(BotJSON.object)
-    }
-
-    func updateSession(_ change: HermesSessionChange, key: String, profile: String) async throws -> String? {
-        switch change {
-        case .title(let title):
-            try write(key, profile: profile, field: "title", value: .string(title)) {
-                if self.titlesInUse.contains(title) {
-                    throw HermesSessionRefusal(message: "Title '\(title)' is already in use by session other")
-                }
-            }
-            return title
-        case .pinned(let pinned):
-            try write(key, profile: profile, field: "pinned", value: .bool(pinned))
-        case .archived, .unread:
-            XCTFail("reconcile never writes \(change)")
-        }
-        return nil
-    }
-
-    func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
-        guard case .sessionWorkspaceMove(let profile, let key, let cwd) = call else {
-            XCTFail("unexpected call \(call.method)")
-            throw BotFailure.unsupported
-        }
-        try write(key, profile: profile, field: "folder", value: .string(cwd)) {
-            if self.missingFolders.contains(cwd) { throw BotSettingFailure.rejected(4017, "working directory does not exist: \(cwd)") }
-        }
-        return .object(["cwd": .string(cwd)])
-    }
-
-    private func write(_ key: String, profile: String, field: String, value: BotJSON, check: () throws -> Void = {}) throws {
-        writes.append((key, field))
-        onWrite?(field)
-        try check()
-        let column = field == "folder" ? "cwd" : field
-        if let lands = lostReplies.removeValue(forKey: key) {
-            if lands { rows["\(profile)|\(key)"]?[column] = value }
-            throw BotFailure.transport
-        }
-        rows["\(profile)|\(key)"]?[column] = value
     }
 }
 

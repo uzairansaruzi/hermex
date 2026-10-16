@@ -315,7 +315,7 @@ final class MoveToHermesCommitTests: XCTestCase {
 }
 
 /// An in-memory Keychain whose writes to `failingKeys` throw, as a full or locked Keychain would.
-private final class FailingKeychain: KeychainStoring {
+final class FailingKeychain: KeychainStoring {
     struct WriteFailed: Error {}
     var failingKeys: Set<KeychainStore.Key> = []
     private let base = InMemoryKeychainStore()

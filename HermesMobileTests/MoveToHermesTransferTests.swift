@@ -385,14 +385,6 @@ final class MoveToHermesTransferTests: XCTestCase {
               let profile = query(request, "profile") else { return nil }
         return (String(path.dropFirst("/api/sessions/".count)), profile)
     }
-
-    private static func cookies(_ request: URLRequest) -> [String: String] {
-        let header = request.value(forHTTPHeaderField: "Cookie") ?? ""
-        return header.split(separator: ";").reduce(into: [:]) { cookies, pair in
-            let parts = pair.trimmingCharacters(in: .whitespaces).split(separator: "=", maxSplits: 1).map(String.init)
-            if parts.count == 2 { cookies[parts[0]] = parts[1] }
-        }
-    }
 }
 
 /// The scripted Hermes host's state and answers, read under `HermesHostFixture`'s lock.

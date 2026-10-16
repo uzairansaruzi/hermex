@@ -10,9 +10,9 @@ final class MoveToHermesRunnerTests: XCTestCase {
     private let hermes = URL(string: "https://hermes.example")!
     private let connectionID = UUID()
     private var root: URL!
-    private var keychain: RunnerKeychain!
+    private var keychain: FailingKeychain!
     private var auth: AuthManager!
-    private var host: RunnerHermes!
+    private var host: MoveHermesHost!
     private var drafts: RunnerDrafts!
     private var registrar: RunnerRegistrar!
     /// Writes the next run's journal refuses, as a full disk or a crash at that point would.
@@ -22,7 +22,7 @@ final class MoveToHermesRunnerTests: XCTestCase {
 
     override func setUp() async throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("move-\(UUID().uuidString)", isDirectory: true)
-        keychain = RunnerKeychain()
+        keychain = FailingKeychain()
         let preferences = UserDefaults.ephemeral()
         try keychain.save(webui.absoluteString, forKey: .serverURL)
         auth = AuthManager(
@@ -34,7 +34,7 @@ final class MoveToHermesRunnerTests: XCTestCase {
             preferences: preferences,
             forgetPush: { [unowned self] _ in await self.duringRemoval?() }
         )
-        host = RunnerHermes()
+        host = MoveHermesHost()
         drafts = RunnerDrafts()
         registrar = RunnerRegistrar()
         failingWrite = nil
@@ -242,7 +242,7 @@ final class MoveToHermesRunnerTests: XCTestCase {
 
         // An intent cut off mid-write was never acted on, so the write still goes out once.
         try FileManager.default.removeItem(at: root)
-        host = RunnerHermes()
+        host = MoveHermesHost()
         failingWrite = { if case .event(.changing) = $0 { true } else { false } }
         await makeRunner().start(review([entry("b", title: "Notes")]))
         let count = journalEvents().count
@@ -632,35 +632,77 @@ final class MoveToHermesRunnerTests: XCTestCase {
     }
 }
 
-/// A scripted Hermes host: rows by `profile|id`, imports, title and pin writes and folder moves.
-@MainActor private final class RunnerHermes: BotTransport {
+/// The scripted Hermes host the Move to Hermes tests share: Profiles, scan listings, rows by
+/// `profile|id`, imports, the title, pin and folder writes, and the failures a test asks for.
+@MainActor final class MoveHermesHost: BotTransport {
     var replayEpoch: String? = "epoch"
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
+    var profiles = ["default", "research"]
+    /// The Profile `profiles.list` marks `is_default`.
+    var defaultProfile: String?
+    var connectFailure: BotFailure?
+    /// Ids each Profile's scan listing shows; a listed id without a row reads as a bare row.
+    var listed: [String: [String]] = [:]
     var rows: [String: [String: BotJSON]] = [:]
+    /// Ids whose reads fail.
     var failingReads: Set<String> = []
     var titlesInUse: Set<String> = []
-    /// Runs inside each row read, before it answers.
-    var onRead: (@MainActor (String) async -> Void)?
+    var missingFolders: Set<String> = []
+    /// Ids whose next write loses its reply: true when the write still landed.
+    var lostReplies: [String: Bool] = [:]
     /// The next import lands but its reply is lost.
     var loseNextImportReply = false
+    /// Runs inside each row read, before it answers.
+    var onRead: (@MainActor (String) async -> Void)?
+    /// Runs as each import arrives, before it is answered.
+    var onImport: (() -> Void)?
+    /// Runs as each write arrives, with its field, before it is answered.
+    var onWrite: ((String) -> Void)?
     private(set) var imports: [(profile: String, ids: [String])] = []
-    private(set) var writes: [(id: String, field: String)] = []
+    var writes: [(id: String, field: String)] = []
+    private(set) var connects = 0
     /// Every read and write the host answered.
     private(set) var calls = 0
 
-    func connect() async throws {}
+    func connect() async throws {
+        connects += 1
+        if let connectFailure { throw connectFailure }
+    }
+
     func close() {}
+
+    func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+        calls += 1
+        switch call {
+        case .profilesList:
+            return .object(["profiles": .array(profiles.map { .object(["name": .string($0), "is_default": .bool($0 == defaultProfile)]) })])
+        case .sessionWorkspaceMove(let profile, let key, let cwd):
+            try write(key, profile: profile, field: "folder", value: .string(cwd)) {
+                if self.missingFolders.contains(cwd) { throw BotSettingFailure.rejected(4017, "working directory does not exist: \(cwd)") }
+            }
+            return .object(["cwd": .string(cwd)])
+        default:
+            throw BotFailure.unsupported
+        }
+    }
+
+    func sessionScanPage(profile: String, offset: Int) async throws -> HermesScanPage {
+        let ids = listed[profile] ?? []
+        return HermesScanPage(ids: Array(ids.dropFirst(offset)), total: ids.count)
+    }
 
     func sessionRow(key: String, profile: String) async throws -> BotJSON? {
         calls += 1
         await onRead?(key)
         if failingReads.contains(key) { throw BotFailure.transport }
+        if listed[profile]?.contains(key) == true, rows["\(profile)|\(key)"] == nil { return .object(["id": .string(key)]) }
         return rows["\(profile)|\(key)"].map(BotJSON.object)
     }
 
     func importSessions(body: Data) async throws -> BotJSON {
         calls += 1
+        onImport?()
         let request = try JSONDecoder().decode(BotJSON.self, from: body)
         let profile = request["profile"].text ?? ""
         let ids = request["sessions"].list?.compactMap { $0["id"].text } ?? []
@@ -679,25 +721,30 @@ final class MoveToHermesRunnerTests: XCTestCase {
         calls += 1
         switch change {
         case .title(let title):
-            writes.append((key, "title"))
-            if titlesInUse.contains(title) { throw HermesSessionRefusal(message: "Title '\(title)' is already in use") }
-            rows["\(profile)|\(key)"]?["title"] = .string(title)
+            try write(key, profile: profile, field: "title", value: .string(title)) {
+                if self.titlesInUse.contains(title) {
+                    throw HermesSessionRefusal(message: "Title '\(title)' is already in use by session other")
+                }
+            }
             return title
         case .pinned(let pinned):
-            writes.append((key, "pinned"))
-            rows["\(profile)|\(key)"]?["pinned"] = .bool(pinned)
+            try write(key, profile: profile, field: "pinned", value: .bool(pinned))
         case .archived, .unread:
             XCTFail("a move never writes \(change)")
         }
         return nil
     }
 
-    func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
-        calls += 1
-        guard case .sessionWorkspaceMove(let profile, let key, let cwd) = call else { throw BotFailure.unsupported }
-        writes.append((key, "folder"))
-        rows["\(profile)|\(key)"]?["cwd"] = .string(cwd)
-        return .object(["cwd": .string(cwd)])
+    private func write(_ key: String, profile: String, field: String, value: BotJSON, check: () throws -> Void = {}) throws {
+        writes.append((key, field))
+        onWrite?(field)
+        try check()
+        let column = field == "folder" ? "cwd" : field
+        if let lands = lostReplies.removeValue(forKey: key) {
+            if lands { rows["\(profile)|\(key)"]?[column] = value }
+            throw BotFailure.transport
+        }
+        rows["\(profile)|\(key)"]?[column] = value
     }
 }
 
@@ -732,24 +779,4 @@ private actor RunnerDrafts: ChatDraftPersisting {
     func seed(_ drafts: [ChatDraftKey: ChatDraft]) { values = drafts }
     func load() -> [ChatDraftKey: ChatDraft] { values }
     func write(_ drafts: [ChatDraftKey: ChatDraft]) throws { values = drafts }
-}
-
-/// An in-memory Keychain whose writes to `failingKeys` throw.
-private final class RunnerKeychain: KeychainStoring {
-    struct WriteFailed: Error {}
-    var failingKeys: Set<KeychainStore.Key> = []
-    private let base = InMemoryKeychainStore()
-
-    func save(_ value: String, forKey key: KeychainStore.Key) throws {
-        if failingKeys.contains(key) { throw WriteFailed() }
-        try base.save(value, forKey: key)
-    }
-    func load(_ key: KeychainStore.Key) throws -> String? { try base.load(key) }
-    func delete(_ key: KeychainStore.Key) throws { try base.delete(key) }
-    func save(_ value: String, forKey key: KeychainStore.Key, scope: String) throws {
-        if failingKeys.contains(key) { throw WriteFailed() }
-        try base.save(value, forKey: key, scope: scope)
-    }
-    func load(_ key: KeychainStore.Key, scope: String) throws -> String? { try base.load(key, scope: scope) }
-    func delete(_ key: KeychainStore.Key, scope: String) throws { try base.delete(key, scope: scope) }
 }

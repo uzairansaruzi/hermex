@@ -14,7 +14,7 @@ final class MoveToHermesModelTests: XCTestCase {
     private var root: URL!
     private var keychain: InMemoryKeychainStore!
     private var auth: AuthManager!
-    private var host: ModelHermes!
+    private var host: MoveHermesHost!
     private var drafts: ChatDraftStore!
     private var draftFile: ModelDrafts!
     private var pairingReads = 0
@@ -35,7 +35,7 @@ final class MoveToHermesModelTests: XCTestCase {
             preferences: preferences,
             forgetPush: { _ in }
         )
-        host = ModelHermes()
+        host = MoveHermesHost()
         draftFile = ModelDrafts()
         drafts = ChatDraftStore(persistence: draftFile)
         pairingReads = 0
@@ -737,7 +737,7 @@ final class MoveToHermesModelTests: XCTestCase {
         reopened.move()
         await reopened.settled()
         XCTAssertEqual(reopened.screen, .refused(.running(1)))
-        XCTAssertTrue(host.imports.allSatisfy { !$0.contains("later") }, "Nothing was sent")
+        XCTAssertTrue(host.imports.allSatisfy { !$0.ids.contains("later") }, "Nothing was sent")
         let again = makeModel()
         again.open(.details)
         await again.settled()
@@ -954,75 +954,6 @@ final class MoveToHermesModelTests: XCTestCase {
                                         initials: "HH", headerLogoColorHex: HeaderLogoColor.defaultHex, createdAt: .now, updatedAt: .now,
                                         kind: .hermes, movedWebuiServers: [record])
         return (source, [source, destination])
-    }
-}
-
-/// A Hermes host for the scan and the move: Profiles, listings, exact reads, imports and writes.
-@MainActor private final class ModelHermes: BotTransport {
-    var replayEpoch: String? = "epoch"
-    var onEvent: ((BotJSON) -> Void)?
-    var onDisconnect: ((Error) -> Void)?
-    var profiles = ["default", "research"]
-    /// The Profile `profiles.list` marks `is_default`.
-    var defaultProfile: String?
-    var connectFailure: BotFailure?
-    /// Ids each Profile's listing shows.
-    var listed: [String: [String]] = [:]
-    var failingReads: Set<String> = []
-    var rows: [String: [String: BotJSON]] = [:]
-    /// Runs as each import arrives, before it is answered.
-    var onImport: (() -> Void)?
-    private(set) var imports: [[String]] = []
-    private(set) var connects = 0
-
-    func connect() async throws {
-        connects += 1
-        if let connectFailure { throw connectFailure }
-    }
-
-    func close() {}
-
-    func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
-        switch call {
-        case .profilesList:
-            return .object(["profiles": .array(profiles.map { .object(["name": .string($0), "is_default": .bool($0 == defaultProfile)]) })])
-        case .sessionWorkspaceMove(let profile, let key, let cwd):
-            rows["\(profile)|\(key)"]?["cwd"] = .string(cwd)
-            return .object(["cwd": .string(cwd)])
-        default: throw BotFailure.unsupported
-        }
-    }
-
-    func sessionScanPage(profile: String, offset: Int) async throws -> HermesScanPage {
-        let ids = listed[profile] ?? []
-        return HermesScanPage(ids: Array(ids.dropFirst(offset)), total: ids.count)
-    }
-
-    func sessionRow(key: String, profile: String) async throws -> BotJSON? {
-        if failingReads.contains(key) { throw BotFailure.transport }
-        if listed[profile]?.contains(key) == true, rows["\(profile)|\(key)"] == nil { return .object(["id": .string(key)]) }
-        return rows["\(profile)|\(key)"].map(BotJSON.object)
-    }
-
-    func importSessions(body: Data) async throws -> BotJSON {
-        onImport?()
-        let request = try JSONDecoder().decode(BotJSON.self, from: body)
-        let profile = request["profile"].text ?? ""
-        let ids = request["sessions"].list?.compactMap { $0["id"].text } ?? []
-        imports.append(ids)
-        let skipped = ids.filter { rows["\(profile)|\($0)"] != nil }
-        let imported = ids.filter { !skipped.contains($0) }
-        for id in imported { rows["\(profile)|\(id)"] = ["id": .string(id), "pinned": .bool(false)] }
-        return .object(["imported_ids": .array(imported.map(BotJSON.string)), "skipped_ids": .array(skipped.map(BotJSON.string))])
-    }
-
-    func updateSession(_ change: HermesSessionChange, key: String, profile: String) async throws -> String? {
-        if case .title(let title) = change {
-            rows["\(profile)|\(key)"]?["title"] = .string(title)
-            return title
-        }
-        if case .pinned(let pinned) = change { rows["\(profile)|\(key)"]?["pinned"] = .bool(pinned) }
-        return nil
     }
 }
 
