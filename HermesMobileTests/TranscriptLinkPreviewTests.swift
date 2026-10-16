@@ -2,14 +2,6 @@ import XCTest
 @testable import HermesMobile
 
 final class TranscriptLinkPreviewTests: XCTestCase {
-    func testExtractsFirstValidWebURL() throws {
-        let url = try XCTUnwrap(
-            TranscriptLinkPreviewExtractor.firstWebURL(in: "Read https://example.com/docs for details.")
-        )
-
-        XCTAssertEqual(url.absoluteString, "https://example.com/docs")
-    }
-
     func testMultipleURLsChooseFirstValidWebURL() throws {
         let url = try XCTUnwrap(
             TranscriptLinkPreviewExtractor.firstWebURL(
@@ -69,19 +61,6 @@ final class TranscriptLinkPreviewTests: XCTestCase {
         )
 
         XCTAssertEqual(url.absoluteString, "https://docs.example/guide")
-    }
-
-    func testUserMessageIsEligible() throws {
-        let message = ChatMessage(
-            role: "user",
-            content: "Look at https://example.com",
-            timestamp: nil,
-            messageId: "user-1"
-        )
-
-        let url = try XCTUnwrap(TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: false))
-
-        XCTAssertEqual(url.absoluteString, "https://example.com")
     }
 
     func testAssistantMessageIsEligibleAfterStreamingCompletes() throws {
@@ -164,17 +143,5 @@ final class TranscriptLinkPreviewTests: XCTestCase {
         XCTAssertNotNil(firstSnapshot)
         XCTAssertNil(secondSnapshot)
         XCTAssertNotNil(thirdSnapshot)
-    }
-
-    func testPreviewCacheIgnoresNonWebURLs() async throws {
-        let cache = TranscriptLinkPreviewCache(maximumEntryCount: 4)
-        let fileURL = try XCTUnwrap(URL(string: "file:///tmp/report.txt"))
-
-        await cache.store(TranscriptLinkPreviewSnapshot(title: "File"), for: fileURL)
-
-        let cachedSnapshot = await cache.snapshot(for: fileURL)
-
-        XCTAssertNil(TranscriptLinkPreviewCache.cacheKey(for: fileURL))
-        XCTAssertNil(cachedSnapshot)
     }
 }

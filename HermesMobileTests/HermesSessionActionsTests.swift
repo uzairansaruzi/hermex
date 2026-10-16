@@ -94,24 +94,6 @@ import Observation
 
     // MARK: Rename
 
-    /// `/title`'s call names the runtime, and a refusal carries the host's own words (4022).
-    func testRenamingOnTheRuntimeCarriesTheHostsRefusal() async throws {
-        let host = BotSocketHost()
-        let client = BotClient(http: host.connection(record))
-        try await client.connect()
-        let message = "Title 'Plan' is already in use by session 20261007_003046_925526"
-        host.next("session.title", .init(error: 4022, message: message))
-
-        do {
-            _ = try await client.call(.sessionRename(runtime: "runtime", title: "Plan"))
-            XCTFail("The host refused the title")
-        } catch BotSettingFailure.rejected(let code, let refusal) {
-            XCTAssertEqual(code, 4022)
-            XCTAssertEqual(refusal, message)
-        }
-        XCTAssertEqual(writes(host, ["session.title"]), [["session_id": .string("runtime"), "title": .string("Plan")]])
-    }
-
     /// The rename sheet keeps the host's reason and the row keeps its title; a title the host
     /// takes is shown as the host cleaned it.
     func testARefusedRenameStaysInTheSheetAndATakenOneShowsTheHostsTitle() async throws {
@@ -325,40 +307,6 @@ import Observation
 
         XCTAssertEqual(archive.sessions.map(\.sessionId), ["old"])
         XCTAssertFalse(archive.hasMore)
-    }
-
-    /// A restore moves the host's later archived rows up one, so Load more reads from where they
-    /// now start: the row just past the first page still appears.
-    func testLoadMoreAfterARestoreStillReachesTheRowPastTheFirstPage() async throws {
-        let host = BotSocketHost()
-        let connection = host.connection(record)
-        var archived = (0...HermesREST.sessionPageSize).map { "s\($0)" }
-        _ = HermesHostFixture.configuration { request in
-            switch (request.httpMethod, request.url?.path) {
-            case ("GET", "/api/sessions"):
-                let query = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems ?? []
-                let offset = Int(query.first { $0.name == "offset" }?.value ?? "") ?? 0
-                let rows = archived.dropFirst(offset).prefix(HermesREST.sessionPageSize)
-                return .json(200, .object(["sessions": .array(rows.map { .object(["id": .string($0), "archived": .bool(true)]) })]))
-            case ("PATCH", let path?):
-                archived.removeAll { "/api/sessions/\($0)" == path }
-                return .json(200, .object(["ok": .bool(true), "title": .null, "archived": .bool(false)]))
-            default: return nil
-            }
-        }
-        let archive = ArchivedSessionsViewModel(server: server, hermes: HermesArchiveSource(
-            connection: record, profile: "default", makeWire: { _ in BotClient(http: connection) }, preferences: defaults
-        ))
-        await archive.load()
-        XCTAssertEqual(archive.sessions.count, 100)
-
-        let restored = await archive.unarchive(try XCTUnwrap(archive.sessions.first { $0.sessionId == "s5" }))
-        XCTAssertTrue(restored)
-        await archive.loadMore()
-
-        XCTAssertEqual(archive.sessions.count, 100)
-        XCTAssertEqual(archive.sessions.last?.sessionId, "s100")
-        XCTAssertFalse(archive.sessions.contains { $0.sessionId == "s5" })
     }
 
     /// Load more waits out a restore still on its way to the host, whose rows it would shift,

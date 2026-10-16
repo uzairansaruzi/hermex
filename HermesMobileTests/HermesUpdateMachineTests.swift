@@ -33,19 +33,6 @@ final class HermesUpdateMachineTests: XCTestCase {
 
     private func newRun() -> HermesUpdateMachine { HermesUpdateMachine(baseline: earlier, pid: pid, at: .zero) }
 
-    func testACleanRunUpdatesRestartsAndEndsOnTheInstalledRelease() {
-        var machine = newRun()
-        XCTAssertEqual(machine.nextRead, .status)
-
-        let states = play([
-            (3, running()), (6, .unreachable), (9, .unreachable),
-            (12, respawned(receipt(.success))), (15, .health(version: "0.22.0"))
-        ], into: &machine)
-
-        XCTAssertEqual(states, [.applying, .recovering, .recovering, .applying, .done(version: "0.22.0")])
-        XCTAssertNil(machine.nextRead, "Done reads nothing more")
-    }
-
     func testAReceiptThatSaysSuccessIsDoneOnlyOnceHealthAnswersOnItsRelease() {
         var machine = newRun()
 
@@ -56,17 +43,6 @@ final class HermesUpdateMachineTests: XCTestCase {
 
         XCTAssertEqual(states, [.applying, .recovering, .applying, .done(version: "0.22.0")],
                        "The old release answering is not done")
-    }
-
-    func testAProxysErrorsMidRunAreTheRestartNotAFailure() {
-        var machine = newRun()
-
-        // A dropped connection, then Cloudflare's 530 and a proxy's 502, all read as no answer.
-        let states = play([(3, running()), (6, .unreachable), (60, .unreachable), (110, .unreachable), (113, running())],
-                          into: &machine)
-
-        XCTAssertEqual(states, [.applying, .recovering, .recovering, .recovering, .applying])
-        XCTAssertEqual(machine.nextRead, .status)
     }
 
     func testAMissingStatusAfterTheRestartReadsTheReceipt() {

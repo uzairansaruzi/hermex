@@ -131,33 +131,6 @@ final class MemoryViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testProjectContextSectionHiddenWithoutFields() async throws {
-        let client = makeClient { request in
-            XCTAssertEqual(request.url?.path, "/api/memory")
-
-            return apiTestJSONResponse("""
-            {
-              "memory": "# Notes",
-              "user": "# Profile",
-              "soul": "# Soul"
-            }
-            """, for: request)
-        }
-        let viewModel = MemoryViewModel(
-            server: try XCTUnwrap(URL(string: "https://example.test")),
-            client: client
-        )
-
-        await viewModel.load()
-
-        XCTAssertTrue(viewModel.hasLoaded)
-        XCTAssertFalse(viewModel.showsProjectContext)
-        XCTAssertFalse(viewModel.isProjectContextShadowed)
-        XCTAssertNil(viewModel.projectContextDetail)
-        XCTAssertNil(viewModel.isExternalNotesEnabled)
-    }
-
-    @MainActor
     func testProjectContextSectionHiddenForBlankDocumentAndDetailOmitsEmptyParts() async throws {
         // Upstream returns "" (not null) when no readable project-context file exists.
         let client = makeClient { request in

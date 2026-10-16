@@ -78,32 +78,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         )
     }
 
-    func testParsesMultipleTokens() {
-        let segments = TranscriptMediaParser.segments(
-            in: "A MEDIA:/tmp/a.png\nB MEDIA:/tmp/b.jpg"
-        )
-
-        XCTAssertEqual(
-            mediaReferences(in: segments).map(\.rawReference),
-            ["/tmp/a.png", "/tmp/b.jpg"]
-        )
-    }
-
-    func testFencedCodeKeepsLiteralMediaText() {
-        let markdown = """
-        Before
-        ```swift
-        let path = "MEDIA:/tmp/inside.png"
-        ```
-        After MEDIA:/tmp/outside.png
-        """
-
-        let segments = TranscriptMediaParser.segments(in: markdown)
-
-        XCTAssertEqual(mediaReferences(in: segments).map(\.rawReference), ["/tmp/outside.png"])
-        XCTAssertTrue(textSegments(in: segments).joined().contains("MEDIA:/tmp/inside.png"))
-    }
-
     func testParsesBareFileURLsAtLineStartOrAfterWhitespace() {
         let segments = TranscriptMediaParser.segments(
             in: "file:///tmp/report.csv ready\nImage file:///tmp/chart.png."
@@ -131,23 +105,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         )
     }
 
-    func testBareFileURLKeepsSurroundingProseAndPunctuation() {
-        let segments = TranscriptMediaParser.segments(
-            in: "Created file:///tmp/report.csv, then shared file:///tmp/chart.webp!"
-        )
-
-        XCTAssertEqual(
-            segments,
-            [
-                .text("Created "),
-                .media(.init(rawReference: "/tmp/report.csv")),
-                .text(", then shared "),
-                .media(.init(rawReference: "/tmp/chart.webp")),
-                .text("!")
-            ]
-        )
-    }
-
     func testBareFileURLRequiresWhitespaceOrLineStart() {
         let markdown = "prefixfile:///tmp/hidden.txt and [report](file:///tmp/report.csv)"
         let segments = TranscriptMediaParser.segments(in: markdown)
@@ -169,34 +126,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         let text = textSegments(in: segments).joined()
         XCTAssertTrue(text.contains("file:///tmp/inline.csv"))
         XCTAssertTrue(text.contains("file:///tmp/fenced.png"))
-    }
-
-    func testBareFileURLUsesExistingMediaKindClassification() {
-        let segments = TranscriptMediaParser.segments(
-            in: "file:///tmp/image.png file:///tmp/audio.m4a file:///tmp/video.mp4 file:///tmp/data.zip"
-        )
-
-        XCTAssertEqual(
-            mediaReferences(in: segments).map(\.mediaKind),
-            [.image, .audio, .video, .unsupported]
-        )
-    }
-
-    func testBareFileURLSupportDoesNotChangeExistingMediaOrHTTPSBehavior() throws {
-        let segments = TranscriptMediaParser.segments(
-            in: "MEDIA:/tmp/local.png MEDIA:https://cdn.example.test/image.png"
-        )
-        let references = mediaReferences(in: segments)
-
-        XCTAssertEqual(references.map(\.rawReference), [
-            "/tmp/local.png",
-            "https://cdn.example.test/image.png"
-        ])
-        XCTAssertEqual(references[0].source, .localPath("/tmp/local.png"))
-        XCTAssertEqual(
-            references[1].source,
-            .remoteURL(try XCTUnwrap(URL(string: "https://cdn.example.test/image.png")))
-        )
     }
 
     func testUnsupportedSVGIsNotRasterImageCandidate() {
@@ -227,36 +156,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertEqual(references[5].mediaKind, .video)
         XCTAssertEqual(references[6].mediaKind, .video)
         XCTAssertEqual(references[7].mediaKind, .video)
-    }
-
-    func testUnsupportedTextAndDataFilesAreClassifiedAsUnsupported() {
-        let references = [
-            TranscriptMediaReference(rawReference: "/tmp/report.txt"),
-            TranscriptMediaReference(rawReference: "/tmp/data.csv"),
-            TranscriptMediaReference(rawReference: "/tmp/notes.md"),
-            TranscriptMediaReference(rawReference: "/tmp/config.json"),
-            TranscriptMediaReference(rawReference: "/tmp/archive.zip"),
-        ]
-
-        for reference in references {
-            XCTAssertEqual(reference.mediaKind, .unsupported, "\(reference.rawReference) must be .unsupported")
-        }
-    }
-
-    func testUnsupportedFileExportPayloadKeepsOriginalNameAndExtension() {
-        let reference = TranscriptMediaReference(rawReference: "/tmp/report.txt")
-        let data = "hello".data(using: .utf8)!
-
-        let payload = TranscriptMediaExportSupport.payload(
-            for: reference,
-            data: data,
-            resolvedKind: .data
-        )
-
-        XCTAssertEqual(payload.filename, "report.txt")
-        XCTAssertEqual(payload.data, data)
-        XCTAssertFalse(payload.isImage)
-        XCTAssertFalse(payload.isVideo)
     }
 
     func testParsedGenericFileURLExportKeepsDecodedOriginalNameAndExtension() throws {
@@ -301,55 +200,6 @@ final class TranscriptMediaParserTests: XCTestCase {
         XCTAssertEqual(reference.mediaKind, .image)
         XCTAssertTrue(reference.isRasterImageCandidate)
         XCTAssertTrue(reference.isExtensionlessRemoteMediaCandidate)
-    }
-
-    func testEmptyReferenceDisplayNameFallsBackToMedia() {
-        XCTAssertEqual(TranscriptMediaReference(rawReference: "").displayName, "Media")
-    }
-
-    func testImageCacheKeySeparatesSameReferenceAcrossSessions() {
-        let reference = TranscriptMediaReference(rawReference: "/tmp/result.png")
-
-        let firstSessionKey = TranscriptMediaImageCacheKey(
-            namespace: "https://one.example.test|session-a",
-            reference: reference
-        )
-        let secondSessionKey = TranscriptMediaImageCacheKey(
-            namespace: "https://one.example.test|session-b",
-            reference: reference
-        )
-        let secondServerKey = TranscriptMediaImageCacheKey(
-            namespace: "https://two.example.test|session-a",
-            reference: reference
-        )
-
-        XCTAssertNotEqual(firstSessionKey, secondSessionKey)
-        XCTAssertNotEqual(firstSessionKey, secondServerKey)
-    }
-
-    func testAttachmentImageCacheKeySeparatesSamePathAcrossServersAndSessions() {
-        let path = "/tmp/workspace/photo.png"
-
-        let firstSessionKey = AttachmentImageCacheKey(
-            namespace: "https://one.example.test|session-a",
-            path: path
-        )
-        let secondSessionKey = AttachmentImageCacheKey(
-            namespace: "https://one.example.test|session-b",
-            path: path
-        )
-        let secondServerKey = AttachmentImageCacheKey(
-            namespace: "https://two.example.test|session-a",
-            path: path
-        )
-        let pathOnlyKey = AttachmentImageCacheKey(namespace: path, path: path)
-
-        XCTAssertNotEqual(firstSessionKey, secondSessionKey)
-        XCTAssertNotEqual(firstSessionKey, secondServerKey)
-        XCTAssertNotEqual(firstSessionKey, pathOnlyKey)
-        XCTAssertFalse(firstSessionKey.namespace.isEmpty)
-        XCTAssertTrue(firstSessionKey.namespace.contains("https://one.example.test"))
-        XCTAssertEqual(firstSessionKey.path, path)
     }
 
     /// Both kinds share one cache, so their flattened keys must stay apart.

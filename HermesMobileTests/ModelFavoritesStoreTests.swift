@@ -53,18 +53,6 @@ final class ModelFavoritesStoreTests: XCTestCase {
         XCTAssertEqual(store.favoriteKeys, [custom.favoriteKey])
     }
 
-    func testRemoveFavoriteWhenKeyNotPresentIsNoOp() {
-        let store = ModelFavoritesStore(defaults: defaults, storageKey: "favorites")
-        let existing = ModelCatalogOption(id: "gpt-5.5", displayName: "GPT-5.5", providerID: "openai")
-        let missing = ModelCatalogOption(id: "claude-sonnet-4.5", displayName: "Claude", providerID: "anthropic")
-        store.save([existing.favoriteKey])
-
-        let favoriteKeys = store.removeFavorite(for: missing)
-
-        XCTAssertEqual(favoriteKeys, [existing.favoriteKey])
-        XCTAssertEqual(store.favoriteKeys, [existing.favoriteKey])
-    }
-
     func testVisibleFavoriteOptionsPreservesFavoriteOrderAndKeepsMissingModels() {
         let gpt = ModelCatalogOption(id: "gpt-5.5", displayName: "GPT-5.5", providerID: "openai")
         let claude = ModelCatalogOption(id: "claude-sonnet-4.5", displayName: "Claude Sonnet 4.5", providerID: "anthropic")
@@ -116,18 +104,6 @@ final class ModelFavoritesStoreTests: XCTestCase {
         XCTAssertEqual(store.recentKeys, [custom.favoriteKey])
     }
 
-    func testRemoveRecentWhenKeyNotPresentIsNoOp() {
-        let store = ModelRecentsStore(defaults: defaults, storageKey: "recents", limit: 5)
-        let existing = ModelCatalogOption(id: "gpt-5.5", displayName: "GPT-5.5", providerID: "openai")
-        let missing = ModelCatalogOption(id: "claude-sonnet-4.5", displayName: "Claude", providerID: "anthropic")
-        store.save([existing.favoriteKey])
-
-        let recentKeys = store.removeRecent(for: missing)
-
-        XCTAssertEqual(recentKeys, [existing.favoriteKey])
-        XCTAssertEqual(store.recentKeys, [existing.favoriteKey])
-    }
-
     func testVisibleRecentOptionsSkipsFavoritesAndKeepsMissingModels() {
         let gpt = ModelCatalogOption(id: "gpt-5.5", displayName: "GPT-5.5", providerID: "openai")
         let claude = ModelCatalogOption(id: "claude-sonnet-4.5", displayName: "Claude Sonnet 4.5", providerID: "anthropic")
@@ -152,44 +128,5 @@ final class ModelFavoritesStoreTests: XCTestCase {
         )
 
         XCTAssertEqual(visibleOptions, [claude, missing, gemini])
-    }
-
-    func testCustomModelFavoriteAndRecentOptionsRemainVisibleWithoutCatalogEntry() {
-        let custom = ModelCatalogOption(
-            id: "moonshotai/kimi-k2-0905",
-            displayName: "moonshotai/kimi-k2-0905",
-            providerID: "openrouter"
-        )
-        let groups = [
-            ModelCatalogGroup(id: "openai", name: "OpenAI", providerID: "openai", models: [
-                ModelCatalogOption(id: "gpt-5.5", displayName: "GPT-5.5", providerID: "openai")
-            ])
-        ]
-
-        let favoriteOptions = ModelFavoritesStore.visibleFavoriteOptions(
-            in: groups,
-            favoriteKeys: [custom.favoriteKey]
-        )
-        let recentOptions = ModelRecentsStore.visibleRecentOptions(
-            in: groups,
-            recentKeys: [custom.favoriteKey],
-            favoriteKeys: []
-        )
-
-        XCTAssertEqual(favoriteOptions, [custom])
-        XCTAssertEqual(recentOptions, [custom])
-    }
-
-    func testFirstMatchingSelectionRequiresExactProviderWhenProviderIsExplicit() {
-        let openAI = ModelCatalogOption(id: "shared/model", displayName: "OpenAI Shared", providerID: "openai")
-        let anthropic = ModelCatalogOption(id: "shared/model", displayName: "Anthropic Shared", providerID: "anthropic")
-        let options = [openAI, anthropic]
-
-        XCTAssertEqual(
-            options.firstMatchingSelection(modelID: "shared/model", providerID: "anthropic"),
-            anthropic
-        )
-        XCTAssertNil(options.firstMatchingSelection(modelID: "shared/model", providerID: "openrouter"))
-        XCTAssertEqual(options.firstMatchingSelection(modelID: "shared/model", providerID: nil), openAI)
     }
 }

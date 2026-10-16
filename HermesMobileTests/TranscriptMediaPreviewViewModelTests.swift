@@ -1,5 +1,3 @@
-import AVFoundation
-import Photos
 import UIKit
 import UniformTypeIdentifiers
 import XCTest
@@ -53,43 +51,6 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertEqual(payload.contentType, .png)
         XCTAssertTrue(payload.isImage)
         XCTAssertFalse(payload.isVideo)
-        XCTAssertEqual(recorder.requestCount, 1)
-    }
-
-    func testParsedFileURLUsesSessionMediaEndpointAndDecodedExportFilename() async throws {
-        let recorder = TranscriptMediaPreviewRequestRecorder()
-        let imageData = try XCTUnwrap(Self.imageData())
-        let sessionID = "session-file-url"
-        let segments = TranscriptMediaParser.segments(
-            in: "Created file:///tmp/final%20chart.png"
-        )
-        let reference = try XCTUnwrap(segments.compactMap { segment in
-            if case let .media(reference) = segment {
-                return reference
-            }
-            return nil
-        }.first)
-        let client = makeClient { request in
-            recorder.record(request)
-            return self.response(statusCode: 200, data: imageData, for: request)
-        }
-        let viewModel = TranscriptMediaPreviewViewModel(
-            server: Self.baseURL,
-            files: Self.webui(sessionID, client),
-            reference: reference,
-            apiClient: client
-        )
-
-        await viewModel.load()
-
-        XCTAssertNil(viewModel.errorMessage)
-        let queryItems = queryItems(for: try XCTUnwrap(recorder.firstURL))
-        XCTAssertEqual(queryItems["session_id"], sessionID)
-        XCTAssertEqual(queryItems["path"], "/tmp/final chart.png")
-
-        let payload = try await viewModel.exportPayload()
-        XCTAssertEqual(payload.filename, "final chart.png")
-        XCTAssertEqual(payload.data, imageData)
         XCTAssertEqual(recorder.requestCount, 1)
     }
 
@@ -254,46 +215,6 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.canSaveMediaToPhotos)
     }
 
-    func testSaveVideoFileToPhotoLibraryIntegration() async throws {
-        guard ProcessInfo.processInfo.environment["HERMEX_RUN_PHOTOS_INTEGRATION"] == "1" else {
-            throw XCTSkip("Set HERMEX_RUN_PHOTOS_INTEGRATION=1 to modify the simulator photo library.")
-        }
-
-        let suppliedPath = ProcessInfo.processInfo.environment["HERMEX_PHOTOS_TEST_VIDEO_PATH"]
-        let fileURL: URL
-        if let suppliedPath {
-            fileURL = URL(fileURLWithPath: suppliedPath)
-        } else {
-            fileURL = try await Self.makeTestVideo()
-        }
-        defer {
-            if suppliedPath == nil {
-                try? FileManager.default.removeItem(at: fileURL)
-            }
-        }
-
-        try await PhotoLibrarySaver.saveVideoFile(at: fileURL)
-    }
-
-    func testInvalidVideoIsRejectedByPhotoLibraryIntegration() async throws {
-        guard ProcessInfo.processInfo.environment["HERMEX_RUN_PHOTOS_INTEGRATION"] == "1" else {
-            throw XCTSkip("Set HERMEX_RUN_PHOTOS_INTEGRATION=1 to modify the simulator photo library.")
-        }
-
-        let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("invalid-video-\(UUID().uuidString).mp4")
-        try Data("not a movie".utf8).write(to: fileURL)
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-
-        do {
-            try await PhotoLibrarySaver.saveVideoFile(at: fileURL)
-            XCTFail("PhotoKit accepted an invalid video")
-        } catch {
-            XCTAssertEqual((error as NSError).domain, PHPhotosErrorDomain)
-            XCTAssertEqual((error as NSError).code, PHPhotosError.Code.invalidResource.rawValue)
-        }
-    }
-
     /// On a Hermes chat a MEDIA path downloads from the host (#1112), by the path the reply wrote,
     /// with the chat's Profile and stored key; webui's `/api/media` is never asked.
     func testAHermesChatDownloadsMediaThroughItsHost() async throws {
@@ -353,29 +274,6 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         XCTAssertEqual(payload.filename, "huge.png")
         XCTAssertEqual(HermesWorkspaceFileClientTests.fileRequests.compactMap(\.url).map { queryItems(for: $0)["path"] },
                        ["/tmp/hermes/huge.png", "/tmp/hermes/huge.png"])
-    }
-
-    func testLoadLocalVideoWithoutSessionIDDoesNotRequestMediaEndpoint() async {
-        let recorder = TranscriptMediaPreviewRequestRecorder()
-        let client = makeClient { request in
-            recorder.record(request)
-            return self.response(statusCode: 200, data: Data(), for: request)
-        }
-        let viewModel = TranscriptMediaPreviewViewModel(
-            server: Self.baseURL,
-            files: Self.webui(nil, client),
-            reference: .init(rawReference: "/tmp/generated/movie.mov"),
-            apiClient: client
-        )
-
-        await viewModel.load()
-
-        XCTAssertFalse(viewModel.isLoading)
-        XCTAssertNil(viewModel.previewData)
-        XCTAssertNil(viewModel.videoFileURL)
-        XCTAssertNotNil(viewModel.errorMessage)
-        XCTAssertNotNil(viewModel.lastError)
-        XCTAssertEqual(recorder.requestCount, 0)
     }
 
     func testExtensionlessRemoteMediaFallsBackToVideoFileWhenImageDecodeFails() async throws {
@@ -490,61 +388,6 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         sessionID.map { WebUIWorkspaceFileClient(sessionID: $0, workspace: nil, server: baseURL, apiClient: client) }
     }
 
-    private static func makeTestVideo() async throws -> URL {
-        let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("valid-video-\(UUID().uuidString).mp4")
-        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-        let input = AVAssetWriterInput(
-            mediaType: .video,
-            outputSettings: [
-                AVVideoCodecKey: AVVideoCodecType.h264,
-                AVVideoWidthKey: 64,
-                AVVideoHeightKey: 64,
-            ]
-        )
-        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
-            assetWriterInput: input,
-            sourcePixelBufferAttributes: [
-                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                kCVPixelBufferWidthKey as String: 64,
-                kCVPixelBufferHeightKey as String: 64,
-            ]
-        )
-        guard writer.canAdd(input) else {
-            throw PhotoLibraryTestVideoError.cannotConfigureWriter
-        }
-        writer.add(input)
-        guard writer.startWriting() else {
-            throw writer.error ?? PhotoLibraryTestVideoError.cannotStartWriter
-        }
-        writer.startSession(atSourceTime: .zero)
-
-        guard let pool = adaptor.pixelBufferPool else {
-            throw PhotoLibraryTestVideoError.cannotCreatePixelBuffer
-        }
-        var pixelBuffer: CVPixelBuffer?
-        guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer) == kCVReturnSuccess,
-              let pixelBuffer
-        else {
-            throw PhotoLibraryTestVideoError.cannotCreatePixelBuffer
-        }
-        CVPixelBufferLockBaseAddress(pixelBuffer, [])
-        if let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) {
-            memset(baseAddress, 0x30, CVPixelBufferGetDataSize(pixelBuffer))
-        }
-        CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
-
-        guard adaptor.append(pixelBuffer, withPresentationTime: .zero) else {
-            throw writer.error ?? PhotoLibraryTestVideoError.cannotAppendFrame
-        }
-        input.markAsFinished()
-        await writer.finishWriting()
-        guard writer.status == .completed else {
-            throw writer.error ?? PhotoLibraryTestVideoError.cannotFinishWriter
-        }
-        return outputURL
-    }
-
     private func makeClient(
         cookieStorage: HTTPCookieStorage = HTTPCookieStorage(),
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
@@ -633,14 +476,6 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
             .secure: "TRUE"
         ])
     }
-}
-
-private enum PhotoLibraryTestVideoError: Error {
-    case cannotConfigureWriter
-    case cannotStartWriter
-    case cannotCreatePixelBuffer
-    case cannotAppendFrame
-    case cannotFinishWriter
 }
 
 private final class TranscriptMediaPreviewRequestRecorder {

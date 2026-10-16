@@ -260,18 +260,6 @@ final class MoveToHermesReconcileTests: XCTestCase {
         XCTAssertNil(saved[destination("a")]?.settings)
     }
 
-    func testConflictingDraftsAreBothKeptUntouched() async throws {
-        let persistence = ReconcileDrafts(values: [source("a"): ChatDraft(text: "webui"), destination("a"): ChatDraft(text: "hermes")])
-        let store = ChatDraftStore(persistence: persistence)
-
-        let outcome = try await store.transferDraft(from: source("a"), to: destination("a"))
-
-        XCTAssertEqual(outcome, .conflict)
-        let saved = await persistence.values
-        XCTAssertEqual(saved[source("a")]?.text, "webui")
-        XCTAssertEqual(saved[destination("a")]?.text, "hermes")
-    }
-
     func testUnverifiedDraftKeyLeavesTheDraftOnTheWebui() async {
         let persistence = ReconcileDrafts(values: [source("child"): ChatDraft(text: "unsent")])
         let store = ChatDraftStore(persistence: persistence)

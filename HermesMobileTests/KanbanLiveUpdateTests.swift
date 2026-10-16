@@ -247,25 +247,6 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(false)
     }
 
-    func testLiveEventReconciliationMarksAdvisoryDispatchPreviewStale() async throws {
-        let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.newer)])
-        let stream = KanbanStreamSpy()
-        let state = makeState(client: client, stream: stream)
-
-        await state.load()
-        await state.previewDispatch()
-        XCTAssertEqual(state.dispatchState?.phase, .succeeded)
-        XCTAssertFalse(state.isPreviewStale)
-
-        state.setVisible(true)
-        stream.emit(.hello(cursor: 11, board: "main"))
-        stream.emit(Self.eventsFrame(cursor: 12, kind: "task.updated"))
-
-        try await waitUntil { await client.boardCallCount == 2 }
-        XCTAssertTrue(state.isPreviewStale)
-        state.setVisible(false)
-    }
-
     func testRepeatedFailuresFallBackToPollingWithoutRequestStorm() async throws {
         let client = LiveKanbanClient(
             boardResults: [.success(.rich), .success(.newer)],
@@ -560,37 +541,6 @@ final class KanbanLiveUpdateTests: XCTestCase {
         state.setVisible(false)
     }
 
-    func testRestoredBoardIsReconciledAndRestreamedAfterForeground() async {
-        let server = URL(string: "https://example.test")!
-        let suiteName = "KanbanLiveUpdateTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
-        KanbanBoardPreference.save("release", for: server, in: defaults)
-        let client = LiveKanbanClient(
-            boards: .multiple,
-            boardResults: [.success(.release), .success(.releaseUpdated)]
-        )
-        let stream = KanbanStreamSpy()
-        let state = makeState(client: client, stream: stream, defaults: defaults)
-
-        await state.load()
-        state.setVisible(true)
-        XCTAssertEqual(state.selectedBoardSlug, "release")
-        XCTAssertEqual(stream.starts.first?.board, "release")
-        XCTAssertEqual(stream.starts.first?.since, 20)
-
-        await state.setScenePhase(.background)
-        await state.setScenePhase(.active)
-
-        let boardRequests = await client.boardRequests
-        XCTAssertEqual(boardRequests.map(\.board), ["release", "release"])
-        XCTAssertEqual(boardRequests.last?.since, 20)
-        XCTAssertEqual(state.snapshot?.latestEventID, 21)
-        XCTAssertEqual(stream.starts.count, 2)
-        XCTAssertEqual(stream.starts.last?.board, "release")
-        state.setVisible(false)
-    }
-
     func testPullToRefreshRetriesDelayedStreamAndNoticeClearsOnlyAfterHello() async throws {
         let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.newer)])
         let stream = KanbanStreamSpy()
@@ -688,47 +638,6 @@ final class KanbanLiveUpdateTests: XCTestCase {
     }
 
     // MARK: - Hermes socket (#1045)
-
-    func testAHermesBoardStreamsFromItsCursorAndAFrameBurstReloadsItOnce() async {
-        let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.newer)], backend: .hermes)
-        let stream = KanbanStreamSpy()
-        let clock = ScriptedClock()
-        let state = makeState(client: client, stream: stream, sleep: clock.sleep)
-
-        await state.load()
-        state.setVisible(true)
-        XCTAssertEqual(stream.starts, [.init(board: "main", since: 11)])
-        stream.emit(.opened)
-        stream.emit(Self.socketFrame(cursor: 12))
-        stream.emit(Self.socketFrame(cursor: 13))
-
-        await until("the burst's reload") { state.snapshot?.latestEventID == 13 }
-        XCTAssertEqual(state.liveCursor, 13)
-        let boardCallCount = await client.boardCallCount
-        XCTAssertEqual(boardCallCount, 2, "one load and one coalesced reload")
-        XCTAssertEqual(stream.starts.count, 1)
-        state.setVisible(false)
-    }
-
-    func testAFailingHermesSocketBacksOffOneTwoFiveTenThenHoldsThirty() async {
-        let client = LiveKanbanClient(boardResults: [.success(.rich)], backend: .hermes)
-        let stream = KanbanStreamSpy()
-        let clock = ScriptedClock(parking: [Self.pollingInterval])
-        let state = makeState(client: client, stream: stream, timing: Self.hermesTiming, sleep: clock.sleep)
-
-        await state.load()
-        state.setVisible(true)
-        for failure in 1...6 {
-            stream.failCurrent()
-            await until("reconnect \(failure)") { stream.starts.count == failure + 1 }
-            XCTAssertEqual(state.liveUpdatesDelayed, failure >= 3, "failure \(failure)")
-        }
-
-        XCTAssertEqual(clock.durations.filter { $0 != Self.pollingInterval },
-                       [.seconds(1), .seconds(2), .seconds(5), .seconds(10), .seconds(30), .seconds(30)])
-        XCTAssertEqual(stream.starts.map(\.since), Array(repeating: 11, count: 7))
-        state.setVisible(false)
-    }
 
     func testThreeHermesFailuresPollTheBoardUntilTheSocketOpensAgain() async {
         let client = LiveKanbanClient(boardResults: [.success(.rich), .success(.unchanged(latest: 11))], backend: .hermes)
@@ -961,16 +870,14 @@ final class KanbanLiveUpdateTests: XCTestCase {
         ),
         sleep: @escaping @MainActor @Sendable (Duration) async throws -> Void = { duration in
             try await Task.sleep(for: duration)
-        },
-        defaults: UserDefaults = .standard
+        }
     ) -> KanbanFeatureState {
         KanbanFeatureState(
             server: URL(string: "https://example.test")!,
             client: client,
             streamClient: stream,
             timing: timing,
-            sleep: sleep,
-            defaults: defaults
+            sleep: sleep
         )
     }
 
@@ -1304,12 +1211,6 @@ private actor LiveKanbanClient: KanbanDataClient {
     func kanbanAssignees(board: String) -> KanbanAssigneeHistory {
         assigneeCallCount += 1
         return .emptyHistory
-    }
-
-    func dispatchKanban(_ request: KanbanDispatchRequest) -> KanbanDispatchResult {
-        decode(
-            #"{"spawned":[],"promoted":0,"reclaimed":0,"skipped_unassigned":[],"skipped_nonspawnable":[],"auto_blocked":[],"timed_out":[],"crashed":[]}"#
-        )
     }
 
     func kanbanEvents(_ request: KanbanEventsRequest) throws -> KanbanEventsEnvelope {

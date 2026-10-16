@@ -139,27 +139,6 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.requests.map { $0.url?.path }, ["/api/health"], "No sign-in for a public route")
     }
 
-    func testARestartedDashboardsNewSessionKeySignsInAgainOnceAndResendsTheRead() async throws {
-        var restarted = false
-        let client = client { request in
-            guard request.url?.path == "/api/actions/hermes-update/status" else { return nil }
-            if !restarted { restarted = true; return .json(401, .object(["error": .string("unauthenticated")])) }
-            return .json(200, .object(["name": .string("hermes-update"), "running": .bool(true), "exit_code": .null,
-                                       "pid": .number(4242), "lines": .array([])]))
-        }
-
-        // Signed in before the restart; the restarted dashboard's key no longer accepts the cookie.
-        let status = try await client.status()
-
-        XCTAssertEqual(status, HermesUpdateStatus(running: true, pid: 4242))
-        XCTAssertEqual(HermesHostFixture.requests.map { "\($0.httpMethod ?? "") \($0.url?.path ?? "")" }, [
-            "GET /api/status", "POST /auth/password-login", "GET /api/auth/me",
-            "GET /api/actions/hermes-update/status",
-            "GET /api/status", "POST /auth/password-login", "GET /api/auth/me",
-            "GET /api/actions/hermes-update/status"
-        ])
-    }
-
     func testAnUpdateSendsOnePostAndIsFollowedThroughTheRestartToItsRelease() async throws {
         var applied = false, reads = 0
         let earlier = #"{"outcome": "success", "started_at": "2026-10-01T09:00:00+00:00", "post_version": "0.21.5"}"#

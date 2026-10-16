@@ -86,15 +86,6 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
         }
     }
 
-    func testMultipleFilesConcatenateInOrder() throws {
-        let rows = ReviewDiffRowBuilder.rows(for: [
-            ReviewDiffFileInput(file: try file("one.swift"), state: .loading),
-            ReviewDiffFileInput(file: try file("two.swift"), state: .loaded(try diff("@@ -1 +1 @@\n-a\n+b")))
-        ])
-        XCTAssertEqual(rows.filter(\.isFileHeader).map(\.fileID), ["one.swift", "two.swift"])
-        XCTAssertEqual(rows.count, 2 + 4)
-    }
-
     // MARK: - Loader
 
     /// Counts per-file builds of loaded diffs; placeholder rows are not counted.

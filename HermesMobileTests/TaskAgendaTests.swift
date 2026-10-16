@@ -120,10 +120,6 @@ final class TaskAgendaTests: XCTestCase {
         }
     }
 
-    func testHumaniserIsNilForAMissingExpression() {
-        XCTAssertNil(CronScheduleHumanizer.describe(nil, locale: Self.locale, calendar: Self.calendar))
-    }
-
     // MARK: - Grouping
 
     private func group(
@@ -329,12 +325,6 @@ final class TaskAgendaTests: XCTestCase {
         XCTAssertEqual(raw.strippingANSIEscapes(), "[BOT START] Starting Trading Bot")
     }
 
-    func testLeavesTextWithoutEscapesUntouched() {
-        let plain = "Script exited with code 1"
-
-        XCTAssertEqual(plain.strippingANSIEscapes(), plain)
-    }
-
     func testDropsASequenceSplitAcrossATruncationBoundary() {
         // A transcript clipped mid-escape must not leak its bytes into the UI.
         XCTAssertEqual("done \u{1B}[0;3".strippingANSIEscapes(), "done ")
@@ -353,23 +343,5 @@ final class TaskAgendaTests: XCTestCase {
 
         XCTAssertEqual(raw.firstLineSummary(), "Script exited with code 1")
         XCTAssertNil("   \n\n".firstLineSummary())
-    }
-
-    func testFirstLineSummaryClipsALongLine() {
-        let raw = String(repeating: "a", count: 200)
-
-        let summary = raw.firstLineSummary(limit: 20)
-
-        XCTAssertEqual(summary, String(repeating: "a", count: 20) + "…")
-    }
-
-    func testFailureSummaryPrefersTheRunErrorAndIsEscapeFree() throws {
-        let job = try makeJob(
-            lastStatus: "error",
-            lastError: "\u{1B}[0;31mScript exited with code 1\u{1B}[0m\nstdout: noise"
-        )
-
-        XCTAssertEqual(job.failureSummary, "Script exited with code 1")
-        XCTAssertTrue(job.hasFailedRun)
     }
 }

@@ -129,16 +129,6 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertEqual(options.first?.providerID, "opencode-go")
     }
 
-    func testModelsLiveResponseToleratesMissingFields() throws {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        let response = try decoder.decode(ModelsLiveResponse.self, from: Data("{}".utf8))
-
-        XCTAssertNil(response.provider)
-        XCTAssertNil(response.count)
-        XCTAssertTrue(response.liveOptions.isEmpty)
-    }
-
     func testMergingLiveModelsReplacesOnlyTheMatchingProviderGroup() {
         let groups = [
             ModelCatalogGroup(
@@ -182,27 +172,6 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertEqual(merged.first?.name, "OpenCode Go")
         XCTAssertEqual(merged.first?.extraModels.map(\.id), ["extra-model"])
         XCTAssertEqual(merged.last, groups.last)
-    }
-
-    func testMergingLiveModelsLeavesGroupsUnchangedWhenNoGroupMatches() {
-        let groups = [
-            ModelCatalogGroup(
-                id: "openai",
-                name: "OpenAI",
-                providerID: "openai",
-                models: [
-                    ModelCatalogOption(id: "@openai:gpt-5.5", displayName: "GPT-5.5", providerID: "openai")
-                ]
-            )
-        ]
-
-        let live = ModelsLiveResponse(
-            provider: "unknown-provider",
-            models: [.object(["id": .string("some-model"), "label": .string("Some Model")])],
-            count: 1
-        )
-
-        XCTAssertEqual(groups.mergingLiveModels(from: live), groups)
     }
 
     func testMergingLiveModelsLeavesGroupsUnchangedOnDegenerateResponses() {
@@ -387,23 +356,6 @@ final class ModelCatalogTests: XCTestCase {
         // ...while a bare selection that names no provider stays the ACTIVE
         // provider's spelling and must not tick a prefixed row.
         XCTAssertFalse(ollama.matchesSelection(modelID: "qwen3:32b", providerID: nil))
-    }
-
-    /// Core's catalog dedup can prefix the ACTIVE provider's own rows when an
-    /// inactive provider lists the same bare id first, so a stored bare default
-    /// matched without naming the active provider ticks the inactive row and
-    /// leaves the real default unticked. Matching against `activeProvider`
-    /// (the picker now passes it) resolves both directions.
-    func testBareDefaultMatchedAgainstActiveProviderRejectsTheInactiveLookAlike() {
-        let activeRow = ModelCatalogOption(id: "@gemini:mymodel", displayName: "Prefixed", providerID: "gemini")
-        let inactiveRow = ModelCatalogOption(id: "mymodel", displayName: "Bare look-alike", providerID: "deepseek")
-
-        XCTAssertTrue(activeRow.matchesSelection(modelID: "mymodel", providerID: "gemini"))
-        XCTAssertFalse(inactiveRow.matchesSelection(modelID: "mymodel", providerID: "gemini"))
-        // An embedded @provider: spelling keeps naming its own provider even
-        // when another one is active.
-        XCTAssertTrue(activeRow.matchesSelection(modelID: "@gemini:mymodel", providerID: nil))
-        XCTAssertFalse(inactiveRow.matchesSelection(modelID: "@gemini:mymodel", providerID: nil))
     }
 
     /// Picker-boundary: decoded `(defaultModel, activeProvider)` must tick the

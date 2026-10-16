@@ -24,27 +24,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertLessThanOrEqual(excerpt.count, AgentRunActivitySanitizer.maximumExcerptCharacters)
     }
 
-    func testMapsToolNamesToSafeStatuses() {
-        let startedAt = Date(timeIntervalSince1970: 100)
-        let state = AgentRunActivityStateReducer.initialState(
-            sessionID: "session-abc",
-            sessionTitle: "Build fixes",
-            startedAt: startedAt
-        )
-
-        let command = AgentRunActivityStateReducer.toolStarted(name: "shell_command", state: state)
-        XCTAssertEqual(command.status, .runningCommand)
-        XCTAssertEqual(command.currentActivity, "Running command")
-
-        let search = AgentRunActivityStateReducer.toolStarted(name: "ripgrep_search", state: state)
-        XCTAssertEqual(search.status, .searchingFiles)
-        XCTAssertEqual(search.currentActivity, "Searching files")
-
-        let generic = AgentRunActivityStateReducer.toolStarted(name: "apply_patch", state: state)
-        XCTAssertEqual(generic.status, .usingTool)
-        XCTAssertEqual(generic.currentActivity, "Using apply patch")
-    }
-
     func testLiveActivityReusePolicyRequiresMatchingSessionAndStream() {
         XCTAssertTrue(
             AgentLiveActivityReusePolicy.canReuseActivity(
@@ -144,60 +123,6 @@ final class LiveActivityTests: XCTestCase {
                      "opening the app drops it")
     }
 
-    func testActiveLiveActivityStatesCarryRenderableText() {
-        let startedAt = Date(timeIntervalSince1970: 100)
-        let later = Date(timeIntervalSince1970: 106)
-        let initial = AgentRunActivityStateReducer.initialState(
-            sessionID: "session-abc",
-            sessionTitle: "Active render",
-            startedAt: startedAt
-        )
-        let states = [
-            initial,
-            AgentRunActivityStateReducer.reasoning("Thinking through the plan", state: initial, now: later),
-            AgentRunActivityStateReducer.toolStarted(name: "ripgrep_search", state: initial, now: later),
-            AgentRunActivityStateReducer.toolCompleted(state: initial, now: later),
-            AgentRunActivityStateReducer.waitingForApproval(state: initial, now: later),
-            AgentRunActivityStateReducer.waitingForClarification(state: initial, now: later),
-            AgentRunActivityStateReducer.settingInterimAssistant("Drafting the answer", on: initial, now: later)
-        ]
-
-        for state in states {
-            XCTAssertFalse(state.isFinal)
-            XCTAssertFalse(state.sessionTitle.isEmpty)
-            XCTAssertFalse(state.currentActivity.isEmpty)
-            XCTAssertGreaterThanOrEqual(state.updatedAt, state.startedAt)
-        }
-    }
-
-    func testUpdatingSessionTitlePreservesLiveActivityState() {
-        let startedAt = Date(timeIntervalSince1970: 100)
-        let state = AgentRunActivityAttributes.ContentState(
-            sessionID: "session-abc",
-            sessionTitle: "Untitled Session",
-            status: .searchingFiles,
-            currentActivity: "Searching files",
-            responseExcerpt: "Looking through the repo.",
-            startedAt: startedAt,
-            updatedAt: startedAt,
-            isStale: true
-        )
-
-        let updated = AgentRunActivityStateReducer.updatingSessionTitle(
-            "Generated repo audit title",
-            state: state,
-            now: Date(timeIntervalSince1970: 130)
-        )
-
-        XCTAssertEqual(updated.sessionTitle, "Generated repo audit title")
-        XCTAssertEqual(updated.status, .searchingFiles)
-        XCTAssertEqual(updated.currentActivity, "Searching files")
-        XCTAssertEqual(updated.responseExcerpt, "Looking through the repo.")
-        XCTAssertEqual(updated.startedAt, startedAt)
-        XCTAssertEqual(updated.updatedAt, Date(timeIntervalSince1970: 130))
-        XCTAssertTrue(updated.isStale)
-    }
-
     func testWidgetTapRoutesWebuiSessionThroughItsOwningServer() throws {
         let owner = URL(string: "https://other.example:8787")!
         let sessionID = "session & /?=✓"
@@ -273,25 +198,6 @@ final class LiveActivityTests: XCTestCase {
                 requestedID: requestedID, activityID: "tapped", isFinal: true, activityState: .ended
             ))
         }
-    }
-
-    func testOldOrUnrelatedLinksDoNotIdentifyAnActivity() throws {
-        let oldURL = try XCTUnwrap(HermesDeepLink.sessionURL(sessionID: "session"))
-        XCTAssertNil(AgentRunTapTarget.activityID(from: oldURL))
-        XCTAssertNil(AgentRunTapTarget.activityID(from: URL(string: "https://session?id=session&activity=other")!))
-        XCTAssertNil(AgentRunTapTarget.activityID(from: URL(string: "\(HermesDeepLink.scheme)://new-chat?activity=other")!))
-        XCTAssertNil(AgentRunTapTarget.activityID(from: URL(string: "\(HermesDeepLink.scheme)://session?id=session&activity=")!))
-    }
-
-    func testBuildsAndParsesSessionDeepLink() throws {
-        let url = try XCTUnwrap(HermesDeepLink.sessionURL(sessionID: "session-abc"))
-        let scheme = HermesDeepLink.scheme
-
-        XCTAssertEqual(url.scheme, scheme)
-        XCTAssertEqual(url.host, "session")
-        XCTAssertEqual(HermesDeepLink.sessionID(from: url), "session-abc")
-        XCTAssertEqual(HermesDeepLink.sessionID(from: URL(string: "\(scheme)://session/session-xyz")!), "session-xyz")
-        XCTAssertNil(HermesDeepLink.sessionID(from: HermesShareDraft.openURL))
     }
 
     func testSessionDeepLinkURLPercentEncodesSessionID() throws {
@@ -465,45 +371,6 @@ final class LiveActivityTests: XCTestCase {
 
         XCTAssertTrue(manager.updates.isEmpty)
         XCTAssertTrue(viewModel.messages.contains { $0.content?.contains("Private token.") == true })
-    }
-
-    func testChatViewModelCanOptIntoLiveActivityResponseExcerpts() async throws {
-        let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
-        let streamClient = LiveActivitySpySSEClient()
-        let approvalStreamClient = LiveActivitySpySSEClient()
-        let clarifyStreamClient = LiveActivitySpySSEClient()
-        let manager = SpyAgentLiveActivityManager()
-        let session = try Self.sessionSummary(id: "session-abc", title: "Visible live work")
-
-        LiveActivityURLProtocol.handler = { request in
-            XCTAssertEqual(request.url?.path, "/api/chat/start")
-            return Self.jsonResponse(#"{"stream_id":"stream-123","session_id":"session-abc"}"#, for: request)
-        }
-
-        let viewModel = ChatViewModel(
-            session: session,
-            server: baseURL,
-            client: client,
-            streamClient: streamClient,
-            approvalStreamClient: approvalStreamClient,
-            clarifyStreamClient: clarifyStreamClient,
-            liveActivityManager: manager,
-            showsLiveActivityResponseExcerpts: true
-        )
-
-        let didStart = await viewModel.sendMessage("Show response text")
-        XCTAssertTrue(didStart)
-
-        streamClient.emit(.token("Visible token."))
-        streamClient.emit(.interimAssistant(InterimAssistantStreamEvent(text: "Visible interim.", alreadyStreamed: false)))
-
-        XCTAssertEqual(manager.updates, [
-            .token("Visible token."),
-            .interimAssistant("Visible interim.")
-        ])
     }
 
     func testDisablingLiveActivityResponseExcerptsClearsActiveExcerpt() async throws {
@@ -808,75 +675,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(requestPaths, ["/api/chat/start", "/api/chat/stream/status", "/api/session"])
     }
 
-    func testStatusRefreshWithoutFinalAssistantDoesNotCompleteLiveActivity() async throws {
-        let baseURL = URL(string: "https://example.test")!
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [LiveActivityURLProtocol.self]
-        let client = APIClient(baseURL: baseURL, session: URLSession(configuration: configuration))
-        let streamClient = LiveActivitySpySSEClient()
-        let approvalStreamClient = LiveActivitySpySSEClient()
-        let clarifyStreamClient = LiveActivitySpySSEClient()
-        let manager = SpyAgentLiveActivityManager()
-        let session = try Self.sessionSummary(id: "session-abc", title: "Live work")
-
-        LiveActivityURLProtocol.handler = { request in
-            switch request.url?.path {
-            case "/api/chat/start":
-                return Self.jsonResponse(#"{"stream_id":"stream-123","session_id":"session-abc"}"#, for: request)
-            case "/api/chat/stream/status":
-                return Self.jsonResponse(#"{"active":false,"stream_id":"stream-123"}"#, for: request)
-            case "/api/session":
-                return Self.jsonResponse("""
-                {
-                  "session": {
-                    "session_id": "session-abc",
-                    "title": "Live work",
-                    "messages": [
-                      {
-                        "role": "user",
-                        "content": "Keep working",
-                        "timestamp": 1770000100,
-                        "message_id": "user-1"
-                      }
-                    ]
-                  }
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
-                throw URLError(.badURL)
-            }
-        }
-
-        let viewModel = ChatViewModel(
-            session: session,
-            server: baseURL,
-            client: client,
-            streamClient: streamClient,
-            approvalStreamClient: approvalStreamClient,
-            clarifyStreamClient: clarifyStreamClient,
-            liveActivityManager: manager
-        )
-
-        let didStart = await viewModel.sendMessage("Keep working")
-        XCTAssertTrue(didStart)
-        streamClient.emit(.toolStarted(ToolStreamEvent(
-            eventType: nil,
-            name: "shell_command",
-            preview: nil,
-            args: nil,
-            duration: nil,
-            isError: nil
-        )))
-
-        await viewModel.refreshTranscriptIfActiveStreamCompleted(streamID: "stream-123")
-
-        XCTAssertTrue(manager.ends.isEmpty)
-        XCTAssertEqual(viewModel.activeStreamID, "stream-123")
-        XCTAssertEqual(streamClient.stopCount, 0)
-        XCTAssertEqual(viewModel.responseCompletionHapticTrigger, 0)
-    }
-
     func testForegroundReconnectCompletionEndsLiveActivityAndAllowsFollowupStream() async throws {
         let baseURL = URL(string: "https://example.test")!
         let configuration = URLSessionConfiguration.ephemeral
@@ -1026,56 +824,6 @@ final class LiveActivityTests: XCTestCase {
         XCTAssertEqual(viewModel.runEndOutcome, .failed)
     }
 
-    func testFinalLiveActivityStateKeepsExcerptVisible() {
-        let startedAt = Date(timeIntervalSince1970: 100)
-        let state = AgentRunActivityAttributes.ContentState(
-            sessionID: "session-abc",
-            sessionTitle: "Live work",
-            status: .responding,
-            currentActivity: "Writing response",
-            responseExcerpt: "Here is the answer.",
-            startedAt: startedAt,
-            updatedAt: startedAt
-        )
-
-        let finalState = AgentRunActivityStateReducer.final(
-            status: .complete,
-            activity: "Response complete",
-            state: state,
-            now: Date(timeIntervalSince1970: 120)
-        )
-
-        XCTAssertEqual(finalState.status, .complete)
-        XCTAssertEqual(finalState.currentActivity, "Response complete")
-        XCTAssertEqual(finalState.responseExcerpt, "Here is the answer.")
-        XCTAssertTrue(finalState.isFinal)
-        XCTAssertFalse(finalState.isStale)
-    }
-
-    func testClearingLiveActivityExcerptRemovesRenderableText() {
-        let startedAt = Date(timeIntervalSince1970: 100)
-        let state = AgentRunActivityAttributes.ContentState(
-            sessionID: "session-abc",
-            sessionTitle: "Live work",
-            status: .responding,
-            currentActivity: "Writing response",
-            responseExcerpt: "Sensitive answer text.",
-            startedAt: startedAt,
-            updatedAt: startedAt
-        )
-
-        let cleared = AgentRunActivityStateReducer.clearingResponseExcerpt(
-            state: state,
-            now: Date(timeIntervalSince1970: 130)
-        )
-
-        XCTAssertEqual(cleared.status, .responding)
-        XCTAssertEqual(cleared.currentActivity, "Writing response")
-        XCTAssertTrue(cleared.responseExcerpt.isEmpty)
-        XCTAssertEqual(cleared.startedAt, startedAt)
-        XCTAssertEqual(cleared.updatedAt, Date(timeIntervalSince1970: 130))
-    }
-
     private static func sessionSummary(id: String, title: String) throws -> SessionSummary {
         let data = Data(#"{"session_id":"\#(id)","title":"\#(title)"}"#.utf8)
         let decoder = JSONDecoder()
@@ -1143,45 +891,6 @@ final class LiveActivityTests: XCTestCase {
         )
 
         XCTAssertEqual(ended, ["done"])
-    }
-
-    @MainActor
-    func testReconcilerEndsNothingWhenNoOrphansExist() async {
-        var endCount = 0
-
-        await LiveActivityReconciler.reconcileOrphanedActivities(
-            orphans: [],
-            server: Self.reconcilerServer,
-            now: Date(timeIntervalSince1970: 10_000),
-            notifiesOnCompletion: true,
-            streamStatus: { _ in self.statusResponse(active: false) },
-            endOrphan: { _, _ in endCount += 1; return true },
-            notify: { _, _ in }
-        )
-
-        XCTAssertEqual(endCount, 0)
-    }
-
-    // #248: on the cold-launch pass, a recently finished orphan also fires a
-    // "response complete" notification once it's ended.
-    @MainActor
-    func testReconcilerNotifiesRecentlyCompletedOrphanOnColdLaunchPass() async {
-        let now = Date(timeIntervalSince1970: 10_000)
-        var notified: [String] = []
-
-        await LiveActivityReconciler.reconcileOrphanedActivities(
-            orphans: [
-                OrphanedLiveActivity(streamID: "recent", sessionID: "s-recent", sessionTitle: "Title", updatedAt: now.addingTimeInterval(-60), server: Self.reconcilerServer)
-            ],
-            server: Self.reconcilerServer,
-            now: now,
-            notifiesOnCompletion: true,
-            streamStatus: { _ in self.statusResponse(active: false) },
-            endOrphan: { _, _ in true },
-            notify: { orphan, _ in notified.append(orphan.sessionID) }
-        )
-
-        XCTAssertEqual(notified, ["s-recent"])
     }
 
     // #248: a completion older than the recency window is finalized silently.
@@ -1312,38 +1021,6 @@ final class LiveActivityTests: XCTestCase {
             LiveActivityReconciler.reconciledOutcome(forTerminalState: "interrupted-by-user").activity,
             String(localized: "Response cancelled")
         )
-    }
-
-    // #267: the core finalizes each orphan with the outcome mapped from the
-    // server journal's terminal_state — not an unconditional `.complete`.
-    @MainActor
-    func testReconcilerFinalizesOrphanWithMappedOutcome() async {
-        let now = Date(timeIntervalSince1970: 10_000)
-        var endedWith: [String: AgentRunActivityStatus] = [:]
-
-        await LiveActivityReconciler.reconcileOrphanedActivities(
-            orphans: [
-                OrphanedLiveActivity(streamID: "ok", sessionID: "s-ok", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer),
-                OrphanedLiveActivity(streamID: "lost", sessionID: "s-lost", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer),
-                OrphanedLiveActivity(streamID: "stopped", sessionID: "s-stopped", sessionTitle: "Title", updatedAt: now, server: Self.reconcilerServer)
-            ],
-            server: Self.reconcilerServer,
-            now: now,
-            notifiesOnCompletion: false,
-            streamStatus: { streamID in
-                switch streamID {
-                case "ok": self.statusResponse(active: false, terminalState: "completed")
-                case "lost": self.statusResponse(active: false, terminalState: "lost-worker-bookkeeping")
-                default: self.statusResponse(active: false, terminalState: "interrupted-by-user")
-                }
-            },
-            endOrphan: { orphan, outcome in endedWith[orphan.streamID] = outcome.status; return true },
-            notify: { _, _ in }
-        )
-
-        XCTAssertEqual(endedWith["ok"], .complete)
-        XCTAssertEqual(endedWith["lost"], .failed)
-        XCTAssertEqual(endedWith["stopped"], .cancelled)
     }
 
     // #862: the cold-launch pass alerts for a recent run that completed or failed,

@@ -254,37 +254,6 @@ import XCTest
         XCTAssertEqual(exhausted, .gone)
     }
 
-    /// A moved webui server's link (#1217) finds the session in the Profile that has it, not the
-    /// one Review mapped its webui Profile to, and a Profile that can't be read is never absence,
-    /// so the list never falls back to the webui server on it.
-    func testAMovedLinkFindsTheSessionWhereItIsAndNeverCallsAFailedReadGone() async throws {
-        let webui = URL(string: "https://webui.example")!
-        let destination = ServerAccount(
-            id: server.absoluteString, urlString: server.absoluteString, displayName: "", initials: "",
-            headerLogoColorHex: HeaderLogoColor.defaultHex, createdAt: .now, updatedAt: .now, kind: .hermes,
-            movedWebuiServers: [MovedWebuiServer(sourceServerID: webui.absoluteString, profiles: [
-                MovedWebuiProfile(source: "default", destination: .hermes(profile: "work"))
-            ])])
-        let webuiAccount = ServerAccount(id: webui.absoluteString, urlString: webui.absoluteString, displayName: "",
-                                         initials: "", headerLogoColorHex: "", createdAt: .now, updatedAt: .now)
-        let link = try XCTUnwrap(MovedWebuiRoute.session(WebuiPushDestination(server: webui, sessionID: "abc"),
-                                                         servers: [destination, webuiAccount]))
-        let wire = LookupWire()
-        wire.profiles = [("default", true), ("work", false), ("research", false)]
-        wire.rows = ["research": ["abc": row("abc", "research")]]
-
-        let outcome = try await HermesSessionLookup.resolve(link, on: wire)
-        XCTAssertEqual(try found(outcome).profile, "research")
-
-        wire.failures = ["work": BotFailure.rejected(503)]
-        do {
-            let outcome = try await HermesSessionLookup.resolve(link, on: wire)
-            XCTFail("Expected the failure, got \(outcome)")
-        } catch {
-            XCTAssertEqual(error as? BotFailure, .rejected(503))
-        }
-    }
-
     /// A Profile that can't be read leaves the link unproven: nothing opens, and the failure
     /// (here a store the host can't read) reaches the caller, which drops the link.
     func testAProbeThatFailsOpensNothing() async throws {

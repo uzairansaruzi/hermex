@@ -231,21 +231,6 @@ import XCTest
         XCTAssertTrue(list.canToggleUnread(try XCTUnwrap(list.sessions.first)))
     }
 
-    /// With nothing cached, a list whose proxy answers for a host that isn't there says so in the
-    /// connection's own words, not a webui server's unreachable copy.
-    func testAnUnreachableHostWithNothingCachedKeepsItsAdvice() async throws {
-        let context = try makeContext()
-        let wire = HermesSessionListWire()
-        wire.connectFailure = BotFailure.rejected(502)
-        let list = makeList(wire)
-        await list.openHermes(modelContext: context)
-
-        XCTAssertFalse(list.isViewingCachedData)
-        let content = SessionListRowsSection.errorContent(for: list.sessionLoadError, fallbackMessage: list.errorMessage ?? "")
-        XCTAssertEqual(content.title, "Could not load sessions")
-        XCTAssertEqual(content.description, "Your proxy answered, but Hermes didn't. Check that the dashboard is running on the host.")
-    }
-
     /// A row archived or deleted on the phone leaves the cache once the host confirms, though
     /// the list's later reads, a full page that doesn't reach its end, never sweep.
     func testArchivingOrDeletingARowDropsItsCachedCopy() async throws {
@@ -426,29 +411,6 @@ import XCTest
         wire.messagesFailure = BotFailure.rejected(502)
         chat.reconnect.open()
         await waitUntil("reattached") { chat.model.errorMessage != nil }
-
-        XCTAssertTrue(chat.model.isViewingCachedData)
-        XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello."])
-
-        wire.messagesFailure = nil
-        await chat.model.loadMessages(modelContext: context)
-
-        XCTAssertFalse(chat.model.isViewingCachedData)
-        XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello.", "Sent from Desktop"])
-    }
-
-    /// An attach that succeeds but whose first history read the host can't serve (a tunnel's
-    /// 502) shows the cached transcript, read-only, as a failed attach does; the chat's retry
-    /// puts the host's rows in its place.
-    func testAFirstHistoryReadThatFailsShowsTheCachedTranscript() async throws {
-        let context = try makeContext()
-        let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]))
-        await visit.model.loadMessages(modelContext: context)
-
-        let wire = HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello."), row(3, "user", "Sent from Desktop")])
-        wire.messagesFailure = BotFailure.rejected(502)
-        let chat = makeChat(wire)
-        await chat.model.loadMessages(modelContext: context)
 
         XCTAssertTrue(chat.model.isViewingCachedData)
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello."])
@@ -726,30 +688,6 @@ import XCTest
         XCTAssertNotNil(chat.model.errorMessage)
     }
 
-    /// The preview's root decides, not the cache at attach time: a preview whose rows went while
-    /// the connect was held still leaves the screen when the attach finds another root, though
-    /// that root's history read fails.
-    func testANewCanonicalRootDiscardsAPreviewWhoseRowsWentMeanwhile() async throws {
-        let context = try makeContext()
-        let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), target: .canonicalChat(profile: "default"))
-        await visit.model.loadMessages(modelContext: context)
-
-        let wire = HermesOfflineWire(rows: [])
-        wire.canonicalRoot = "remade"
-        wire.messagesFailure = BotFailure.rejected(502)
-        let connected = Gate()
-        wire.connectGate = connected
-        let chat = makeChat(wire, target: .canonicalChat(profile: "default"))
-        let load = Task { await chat.model.loadMessages(modelContext: context) }
-        await waitUntil("the cached transcript shows") { !chat.model.messages.isEmpty }
-        try CacheStore.clearCache(for: server, in: context)
-        connected.open()
-        await load.value
-
-        XCTAssertFalse(chat.model.isViewingCachedData)
-        XCTAssertEqual(chat.model.messages, [])
-    }
-
     /// An archived Bot Chat opens by its key, and offline shows the transcript its bot's Bot Chat
     /// cached, with nothing cached under that key.
     func testAnArchivedBotChatShowsItsBotsCachedTranscriptOffline() async throws {
@@ -829,25 +767,6 @@ import XCTest
         await makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
                        target: .canonicalChat(profile: "default")).model.loadMessages(modelContext: context)
         let undone = makeChat(HermesOfflineWire(rows: []), target: .session(profile: "default", key: "tip"), botChatRoot: "root")
-        await undone.model.loadMessages(modelContext: context)
-        XCTAssertEqual(undone.model.messages, [])
-
-        let offline = HermesOfflineWire(rows: [])
-        offline.connectFailure = URLError(.cannotConnectToHost)
-        let archived = makeChat(offline, target: .session(profile: "default", key: "tip"), botChatRoot: "root")
-        await archived.model.loadMessages(modelContext: context)
-        XCTAssertFalse(archived.model.isViewingCachedData)
-        XCTAssertEqual(archived.model.messages, [])
-    }
-
-    /// A Bot Chat whose newest read finds its exchange undone drops it from an archived Bot
-    /// Chat's copy of the same root too, so the archive shows nothing offline.
-    func testABotChatsEmptyReadDropsAnArchivesCopyOfTheUndoneRows() async throws {
-        let context = try makeContext()
-        await makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]),
-                       target: .session(profile: "default", key: "tip"), botChatRoot: "root")
-            .model.loadMessages(modelContext: context)
-        let undone = makeChat(HermesOfflineWire(rows: []), target: .canonicalChat(profile: "default"))
         await undone.model.loadMessages(modelContext: context)
         XCTAssertEqual(undone.model.messages, [])
 

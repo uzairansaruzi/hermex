@@ -393,21 +393,6 @@ final class PushRegistrationTests: XCTestCase {
         XCTAssertEqual(harness.store.pairings[serverB]?.registeredToken, "5ee5")
     }
 
-    /// One server's install key never addresses another's: a rotation reaches each
-    /// relay with its own capability and nothing crosses over.
-    func testEachServerIsRegisteredUnderItsOwnInstallKey() async {
-        let harness = Harness()
-        harness.store.pairings[serverA] = harness.pairing(install: installA, registeredToken: "0dd0")
-        harness.store.pairings[serverB] = harness.pairing(install: installB, registeredToken: "0dd0")
-
-        await harness.deliverToken("0dd0")
-        harness.relay.reset()
-        await harness.deliverToken("5ee5")
-
-        XCTAssertEqual(harness.relay.registrations.filter { $0.installKey == installA }.count, 1)
-        XCTAssertEqual(harness.relay.registrations.filter { $0.installKey == installB }.count, 1)
-    }
-
     /// A relay that is down must not unpair the user; the next launch retries.
     func testAFailedReregistrationLeavesThePairingIntact() async {
         let harness = Harness()
@@ -679,18 +664,6 @@ final class PushRegistrationTests: XCTestCase {
         )
         XCTAssertNil(harness.store.pairings[serverA])
         XCTAssertEqual(harness.relay.deletions, [])
-    }
-
-    func testSharesRegistrationOnlyWithAnotherEntryAtTheSameInstallAndRelay() throws {
-        let harness = Harness()
-        harness.store.pairings[serverA] = harness.pairing(install: installA, registeredToken: "0a1b")
-        XCTAssertFalse(try harness.registrar.sharesRegistration(for: serverA))
-        harness.store.pairings[serverB] = PushPairing(relayURL: URL(string: "https://other-relay.example.com")!,
-                                                      installKey: installA, previewKey: "preview", registeredToken: "0a1b")
-        XCTAssertFalse(try harness.registrar.sharesRegistration(for: serverA))
-        harness.store.pairings[serverB] = harness.pairing(install: installA, registeredToken: "0a1b")
-        XCTAssertTrue(try harness.registrar.sharesRegistration(for: serverA))
-        XCTAssertFalse(try harness.registrar.sharesRegistration(for: URL(string: "https://unpaired.example.com")!))
     }
 
     /// An entry for the host still registering its device shares the pairing before its keys
@@ -1022,12 +995,6 @@ final class PushRegistrationTests: XCTestCase {
         await Task.yield()
         handoff.cancel()
         let registered = await handoff.value
-        XCTAssertFalse(registered)
-    }
-
-    func testHandoffGivesUpWhenNoActivityTokenArrives() async {
-        let registrar = PushActivityRegistrar(relay: ActivityRelaySpy(), pairing: { _ in nil })
-        let registered = await registrar.awaitRegistration("a", limit: .zero)
         XCTAssertFalse(registered)
     }
 

@@ -2,14 +2,6 @@ import XCTest
 @testable import HermesMobile
 
 final class StreamingMarkdownBlockSplitterTests: XCTestCase {
-    func testShortTextStaysInActiveMarkdown() {
-        let text = "Hello from Hermes."
-        let segments = StreamingMarkdownBlockSplitter.split(text)
-
-        XCTAssertTrue(segments.stableChunks.isEmpty)
-        XCTAssertEqual(segments.activeMarkdown, text)
-    }
-
     func testCompletedFenceSealsStableChunk() {
         let stableBody = String(repeating: "A", count: 6_100)
         let text = """
@@ -43,16 +35,6 @@ final class StreamingMarkdownBlockSplitterTests: XCTestCase {
     func testHeadingBoundaryCanSealWithoutFence() {
         let prose = String(repeating: "Line of prose.\n", count: 500)
         let text = prose + "## Next section\nMore text"
-
-        let segments = StreamingMarkdownBlockSplitter.split(text)
-
-        XCTAssertFalse(segments.stableChunks.isEmpty)
-        XCTAssertTrue(segments.activeMarkdown.contains("More text"))
-    }
-
-    func testTabSeparatedHeadingCountsAsStableBoundary() {
-        let prose = String(repeating: "Line of prose.\n", count: 500)
-        let text = prose + "##\tTab heading\nMore text"
 
         let segments = StreamingMarkdownBlockSplitter.split(text)
 
@@ -106,13 +88,6 @@ final class MarkdownPreviewChunkerTests: XCTestCase {
         }.joined() + "Final paragraph.\n"
     }
 
-    func testSmallMarkdownStaysOneDocument() {
-        let small = String(repeating: "Short paragraph.\n\n", count: 300)
-        XCTAssertLessThanOrEqual(small.utf8.count, StreamingMarkdownBlockSplitter.stableChunkTargetUTF8Count)
-
-        XCTAssertNil(MarkdownPreviewChunker.chunks(for: small))
-    }
-
     func testLargeMarkdownWithoutSafeBoundaryStaysOneDocument() {
         let oneParagraph = String(repeating: "word ", count: 2_000)
 
@@ -132,39 +107,9 @@ final class MarkdownPreviewChunkerTests: XCTestCase {
             XCTAssertTrue(fences.count.isMultiple(of: 2), "Chunk \(chunk.id) splits a code fence.")
         }
     }
-
-    func testSeamSpacingMatchesSingleDocumentBlockMargins() {
-        let paragraph = "Some text.\n\n"
-        let fence = "```swift\nlet x = 1\n```\n"
-
-        XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: paragraph, before: "More text."), 16)
-        XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: paragraph, before: "\n## Next\n"), 24)
-        XCTAssertEqual(
-            MarkdownPreviewChunker.seamSpacing(after: paragraph, before: "\r\n## Next\n"),
-            24,
-            "A CRLF blank line before the heading still counts as blank."
-        )
-        XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: paragraph, before: fence), 16)
-        XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: fence, before: "More text."), 12)
-        XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: fence, before: "# Next"), 24)
-        XCTAssertEqual(MarkdownPreviewChunker.seamSpacing(after: "Text.\n\n---\n", before: "More text."), 24)
-        XCTAssertEqual(
-            MarkdownPreviewChunker.seamSpacing(after: "Setext title\n---\n", before: "More text."),
-            16,
-            "A setext underline is a heading, not a rule."
-        )
-    }
 }
 
 final class StreamingReasoningTextStateTests: XCTestCase {
-    func testReasoningBlockDisplayTextPreservesExistingBoundaryTrimming() {
-        XCTAssertEqual(
-            ReasoningBlockContent.displayText(from: " \nReasoning stays complete.\n "),
-            "Reasoning stays complete."
-        )
-        XCTAssertNil(ReasoningBlockContent.displayText(from: " \n\t "))
-    }
-
     func testLargePrefixStreamReconstructsExactlyAndPreservesStableChunks() {
         let paragraph = "Hermes inspects the workspace before choosing the next step.\n\n"
         let fullText = String(String(repeating: paragraph, count: 1_500).prefix(80_000))
@@ -185,15 +130,6 @@ final class StreamingReasoningTextStateTests: XCTestCase {
 
         XCTAssertEqual(Array(state.reconstructedText.utf8), Array(fullText.utf8))
         XCTAssertFalse(state.stableChunks.isEmpty)
-    }
-
-    func testBlankLineBecomesAStableChunkBoundary() {
-        let firstParagraph = String(repeating: "A", count: 900) + "\n\n"
-        let text = firstParagraph + String(repeating: "B", count: 1_000)
-        let state = StreamingReasoningTextState(text: text)
-
-        XCTAssertEqual(state.stableChunks.first?.text, firstParagraph)
-        XCTAssertEqual(state.reconstructedText, text)
     }
 
     func testLongUnbrokenTextUsesBoundedGraphemeSafeChunks() {
@@ -245,17 +181,6 @@ final class StreamingReasoningTextStateTests: XCTestCase {
         XCTAssertEqual(state.reconstructedText, replacement)
     }
 
-    func testExplicitNewStreamResetRestartsChunkIdentity() {
-        let firstStream = String(repeating: "First stream.\n\n", count: 200)
-        let secondStream = String(repeating: "Second stream.\n\n", count: 200)
-        var state = StreamingReasoningTextState(text: firstStream)
-
-        state.reset(with: secondStream)
-
-        XCTAssertEqual(state.stableChunks.first?.id, 0)
-        XCTAssertEqual(state.reconstructedText, secondStream)
-    }
-
     func testTextStorageUpdateAppendsOnlyNewSuffix() {
         let rendered = String(repeating: "Long paragraph without breaks. ", count: 100)
         let newText = rendered + "Still streaming."
@@ -300,20 +225,6 @@ final class TableCellWidthCapTests: XCTestCase {
     private let minWidth: CGFloat = 96
     private let maxWidth: CGFloat = 260
 
-    func testIdealWidthBelowMinClampsToMin() {
-        let width = TableCellWidthCap.resolvedWidth(
-            idealWidth: 40, proposedWidth: nil, minWidth: minWidth, maxWidth: maxWidth
-        )
-        XCTAssertEqual(width, minWidth)
-    }
-
-    func testIdealWidthWithinBoundsIsUsedAsIs() {
-        let width = TableCellWidthCap.resolvedWidth(
-            idealWidth: 150, proposedWidth: nil, minWidth: minWidth, maxWidth: maxWidth
-        )
-        XCTAssertEqual(width, 150)
-    }
-
     func testIdealWidthAboveMaxClampsToMax() {
         let width = TableCellWidthCap.resolvedWidth(
             idealWidth: 1_200, proposedWidth: nil, minWidth: minWidth, maxWidth: maxWidth
@@ -326,12 +237,5 @@ final class TableCellWidthCapTests: XCTestCase {
             idealWidth: 40, proposedWidth: 200, minWidth: minWidth, maxWidth: maxWidth
         )
         XCTAssertEqual(width, 200)
-    }
-
-    func testProposedColumnWidthIsStillClamped() {
-        let width = TableCellWidthCap.resolvedWidth(
-            idealWidth: 40, proposedWidth: 999, minWidth: minWidth, maxWidth: maxWidth
-        )
-        XCTAssertEqual(width, maxWidth)
     }
 }

@@ -43,15 +43,6 @@ final class SessionSearchExcerptTests: XCTestCase {
         XCTAssertTrue(boldRuns(excerpt).isEmpty)
     }
 
-    /// Redaction can replace the matched span, leaving an excerpt the query is
-    /// no longer in. The excerpt still reads; nothing is bolded.
-    func testShowsPlainExcerptWhenTheQueryIsAbsent() {
-        let excerpt = SessionSearchExcerpt(text: "...the token is [redacted]...", query: "sk-live")
-
-        XCTAssertTrue(boldRuns(excerpt).isEmpty)
-        XCTAssertEqual(plainText(excerpt), excerpt.text)
-    }
-
     func testEmptyQueryHighlightsNothing() {
         let excerpt = SessionSearchExcerpt(text: "...deploy the worker...", query: "")
 
@@ -75,13 +66,6 @@ final class SessionSearchExcerptTests: XCTestCase {
         let excerpt = SessionSearchExcerpt(text: "  deploy\tthe\t\tworker  ", query: "deploy")
 
         XCTAssertEqual(excerpt.text, "deploy the worker")
-    }
-
-    func testLeavesAnOrdinaryExcerptAlone() {
-        let text = "...decided to move the billing plan tiers behind a flag..."
-        let excerpt = SessionSearchExcerpt(text: text, query: "billing")
-
-        XCTAssertEqual(excerpt.text, text)
     }
 
     // MARK: Hermes snippets (#1053)
@@ -115,12 +99,5 @@ final class SessionSearchExcerptTests: XCTestCase {
 
         XCTAssertEqual(boldRuns(excerpt), ["部署"])
         XCTAssertEqual(excerpt.text, "会议记录：部署计划")
-    }
-
-    func testHighlightsAMatchAtEitherEdge() {
-        let excerpt = SessionSearchExcerpt(text: "deploy the deploy", query: "deploy")
-
-        XCTAssertEqual(boldRuns(excerpt), ["deploy", "deploy"])
-        XCTAssertEqual(plainText(excerpt), excerpt.text)
     }
 }

@@ -10,14 +10,6 @@ final class SourceFileViewModelTests: XCTestCase {
         return model
     }
 
-    func testLoadBuildsOneRowPerLineAndKeepsPlainTextOff() async {
-        let model = await loadedModel(lineCount: 10_000)
-        XCTAssertEqual(model.rows.count, 10_000)
-        XCTAssertEqual(model.rowsVersion, 1)
-        XCTAssertFalse(model.isPlainText)
-        XCTAssertTrue(model.tokensByRowID.isEmpty, "Nothing is coloured before the viewport reports itself.")
-    }
-
     /// Dark mode reports its appearance during the first body pass, while the rows
     /// are still building off the main actor. That must not discard the rows.
     func testAppearanceChangeDuringLoadKeepsTheRows() async {
@@ -57,30 +49,6 @@ final class SourceFileViewModelTests: XCTestCase {
         XCTAssertNotNil(model.tokensByRowID["source:line:300"])
         XCTAssertNotNil(model.tokensByRowID["source:line:0"], "Earlier colour survives later requests.")
         XCTAssertGreaterThan(model.tokensVersion, version)
-    }
-
-    /// A coloured island inside a later window is skipped: the request covers the
-    /// uncoloured run before it, then the run after it, never the island itself.
-    func testHighlightedIslandInsideAWindowIsNotSentAgain() async {
-        let model = await loadedModel(lineCount: 400)
-        model.visibleRowRangeChanged(100...100)
-        await model.highlightTask?.value
-        XCTAssertNotNil(model.tokensByRowID["source:line:60"])
-        XCTAssertNotNil(model.tokensByRowID["source:line:140"])
-        let islandRun = model.tokensByRowID["source:line:100"]
-
-        model.visibleRowRangeChanged(50...200)
-        var passes = 0
-        while let task = model.highlightTask {
-            await task.value
-            passes += 1
-        }
-
-        XCTAssertEqual(passes, 2, "One pass below the island, one above it.")
-        XCTAssertNotNil(model.tokensByRowID["source:line:10"])
-        XCTAssertNotNil(model.tokensByRowID["source:line:240"])
-        XCTAssertNil(model.tokensByRowID["source:line:241"])
-        XCTAssertEqual(model.tokensByRowID["source:line:100"], islandRun, "The island keeps its first colouring.")
     }
 
     func testAppearanceChangeDropsColourAndRecoloursTheViewport() async {

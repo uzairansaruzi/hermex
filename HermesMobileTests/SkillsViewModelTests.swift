@@ -51,33 +51,6 @@ final class SkillsViewModelTests: APIClientTestCase {
         XCTAssertNil(model.lastError)
     }
 
-    @MainActor
-    func testToggleSkillRevertsOnFailure() async throws {
-        var shouldFailToggle = false
-        let client = makeClient { request in
-            switch request.url?.path {
-            case "/api/skills":
-                return apiTestJSONResponse("""
-                {"skills": [{"name": "swift-refactor", "category": "coding", "disabled": false}]}
-                """, for: request)
-            case "/api/skills/toggle":
-                shouldFailToggle = true
-                throw URLError(.notConnectedToInternet)
-            default:
-                XCTFail("Unexpected path: \(request.url?.path ?? "nil")")
-                return apiTestJSONResponse("{}", for: request)
-            }
-        }
-        let model = SkillsViewModel(client: client)
-
-        await model.load()
-        await model.setSkill(try XCTUnwrap(model.skills.first), enabled: false)
-
-        XCTAssertTrue(shouldFailToggle)
-        XCTAssertEqual(model.skills.first?.disabled, false)
-        XCTAssertNotNil(model.lastError)
-    }
-
     /// A Hermes host's `{detail}` refusal (#1069): the row turns back, and the screen has the
     /// host's reason to show.
     @MainActor

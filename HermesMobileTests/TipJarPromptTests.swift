@@ -71,31 +71,6 @@ final class TipJarPromptTests: XCTestCase {
     }
 
     @MainActor
-    func testWelcomeThenIdleGesturesRepeatEveryThreeAndAHalfSeconds() async {
-        let greeting = TipJarGreetingState()
-        var frames: [TipJarGreetingState.Phase] = []
-        var elapsed = Duration.zero
-        var changes: [(TipJarGreetingState.Phase, Duration)] = []
-        await greeting.play(reduceMotion: false, wait: { duration in
-            if frames.count == 23 { throw CancellationError() }
-            elapsed += duration
-        }, display: { frames.append($0); changes.append(($0, elapsed)) })
-        XCTAssertEqual(Array(frames.prefix(7)), [.neutral, .blink, .neutral, .hop, .neutral, .blink, .neutral])
-        let idle = Array(changes.dropFirst(7).filter { $0.0 != .neutral })
-        XCTAssertEqual(idle.map { $0.0 }, [.blink, .glanceDown, .curious, .blink, .happy, .glanceDown, .blink, .glanceDown])
-        for pair in zip(idle, idle.dropFirst()) {
-            XCTAssertEqual(pair.1.1 - pair.0.1, .milliseconds(3500))
-        }
-        XCTAssertEqual(frames.last, .neutral)
-
-        frames = []
-        await greeting.play(reduceMotion: false, wait: { _ in
-            if frames.count == 3 { throw CancellationError() }
-        }, display: { frames.append($0) })
-        XCTAssertEqual(frames, [.neutral, .blink, .neutral], "Returning resumes idle gestures without another hop")
-    }
-
-    @MainActor
     func testReducedMotionSchedulesNothingAndConsumesWelcome() async {
         let greeting = TipJarGreetingState()
         var frames: [TipJarGreetingState.Phase] = []

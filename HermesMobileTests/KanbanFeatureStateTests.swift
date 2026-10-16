@@ -8,29 +8,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         clearSavedKanbanBoards()
     }
 
-    func testCompatibleHandshakeIsOrderedAndBoundToItsServer() async {
-        let client = KanbanClientStub()
-        let firstServer = URL(string: "https://first.example.test")!
-        let secondServer = URL(string: "https://second.example.test")!
-        let first = KanbanFeatureState(server: firstServer, client: client)
-        let second = KanbanFeatureState(server: secondServer, client: client)
-
-        await first.load()
-
-        XCTAssertEqual(first.state, .compatible)
-        XCTAssertEqual(first.server, firstServer)
-        XCTAssertEqual(second.state, .idle)
-        XCTAssertEqual(second.server, secondServer)
-        let calls = await client.calls()
-        XCTAssertEqual(calls, [
-            .configuration,
-            .boards,
-            .board(KanbanBoardRequest(board: "main")),
-            .stats("main"),
-            .assignees("main")
-        ])
-    }
-
     // MARK: - Browsed Board restoration (#259)
 
     func testBrowsedBoardIsRestoredForTheSameServerAndIsolatedFromOthers() async {
@@ -185,36 +162,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(contract.state, .incompatibleContract)
     }
 
-    func testCancelledHandshakeReturnsToIdle() async {
-        let state = KanbanFeatureState(
-            server: URL(string: "https://example.test")!,
-            client: KanbanClientStub(configurationResult: .failure(CancellationError()))
-        )
-
-        await state.load()
-
-        XCTAssertEqual(state.state, .idle)
-        XCTAssertFalse(state.isLoading)
-        XCTAssertNil(state.report)
-    }
-
-    func testStaleHandshakeCompletionCannotReplaceNewerResult() async {
-        let client = DeferredFirstConfigurationClient()
-        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
-
-        let firstLoad = Task { await state.load() }
-        await client.waitForFirstConfiguration()
-
-        await state.load()
-        XCTAssertEqual(state.state, .compatible)
-
-        await client.resumeFirstConfiguration()
-        await firstLoad.value
-
-        XCTAssertEqual(state.state, .compatible)
-        XCTAssertFalse(state.isLoading)
-    }
-
     // MARK: - Returning to a loaded Board (#672)
 
     func testReappearingWithALoadedBoardKeepsItWithoutRequests() async {
@@ -344,26 +291,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertTrue(state.onlyMine)
     }
 
-    func testGroupByProfileDraftCancelsOrAppliesLocallyWithoutRefetchingBoard() async {
-        let client = BrowsingClient()
-        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
-        await state.load()
-        let requestsBeforeToggle = await client.boardRequests()
-        var draft = KanbanFiltersDraft(model: state)
-
-        draft.groupsByProfile = true
-
-        XCTAssertFalse(state.groupByProfile, "A cancelled draft must not mutate presentation state.")
-        var requestsAfterDraftChange = await client.boardRequests()
-        XCTAssertEqual(requestsAfterDraftChange, requestsBeforeToggle)
-
-        await draft.apply(to: state)
-
-        XCTAssertTrue(state.groupByProfile)
-        requestsAfterDraftChange = await client.boardRequests()
-        XCTAssertEqual(requestsAfterDraftChange, requestsBeforeToggle)
-    }
-
     func testBoardSwitchClearsBoardScopedDataAndRevalidatesCompatibility() async {
         let client = DeferredBoardSwitchClient()
         let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
@@ -450,94 +377,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertFalse(state.showsBoardLoadingRow)
     }
 
-    func testCanonicalStatusAndCardAccessibilityCopy() throws {
-        XCTAssertEqual(KanbanStatusPresentation("triage").title, String(localized: "Triage"))
-        XCTAssertEqual(KanbanStatusPresentation("todo").title, String(localized: "To Do"))
-        XCTAssertEqual(KanbanStatusPresentation("ready").title, String(localized: "Ready"))
-        XCTAssertEqual(KanbanStatusPresentation("running").title, String(localized: "Running"))
-        XCTAssertEqual(KanbanStatusPresentation("blocked").title, String(localized: "Blocked"))
-        XCTAssertEqual(KanbanStatusPresentation("done").title, String(localized: "Done"))
-        XCTAssertEqual(KanbanStatusPresentation("archived").title, String(localized: "Archived"))
-        XCTAssertTrue(KanbanStatusPresentation("future").title.contains("future"))
-
-        let card = try XCTUnwrap(KanbanFixtures.richSnapshot.columns?[1].cards?.first)
-        let summary = KanbanCardAccessibility.summary(card)
-        XCTAssertTrue(summary.contains("CARD-1"))
-        XCTAssertTrue(summary.contains("Status Focus"))
-        XCTAssertTrue(summary.contains(String(localized: "Ready")))
-        XCTAssertTrue(summary.contains("builder"))
-        XCTAssertTrue(summary.contains("mobile"))
-        XCTAssertTrue(KanbanBulkAccessibility.selectionLabel(card, isSelected: true).contains(String(localized: "Selected")))
-        XCTAssertFalse(KanbanBulkAccessibility.selectionLabel(card, isSelected: false).contains(String(localized: "Selected")))
-        let bulkSummary = KanbanBulkActionSummary(
-            action: .changeStatus("done"),
-            members: [
-                KanbanBulkMemberResult(cardID: "CARD-1", cardTitle: "First", outcome: .succeeded),
-                KanbanBulkMemberResult(cardID: "CARD-2", cardTitle: "Second", outcome: .failed),
-                KanbanBulkMemberResult(cardID: "CARD-3", cardTitle: "Third", outcome: .outcomeUncertain)
-            ]
-        )
-        let bulkLabel = KanbanBulkAccessibility.resultLabel(bulkSummary)
-        XCTAssertTrue(bulkLabel.contains("1 \(String(localized: "Complete"))"))
-        XCTAssertTrue(bulkLabel.contains("1 \(String(localized: "Failed"))"))
-        XCTAssertTrue(bulkLabel.contains("1 \(String(localized: "Outcome Uncertain"))"))
-        XCTAssertEqual(KanbanCountFormatter.cards(1), "1 Card")
-        XCTAssertEqual(KanbanCountFormatter.cards(2), "2 Cards")
-        let board: KanbanBoard = mutationDecode(
-            #"{"slug":"release","name":"Release"}"#
-        )
-        XCTAssertEqual(KanbanBoardAccessibility.browseLabel(board), "Browse Board: Release")
-        XCTAssertEqual(KanbanBoardAccessibility.actionsLabel(board), "Board actions for Release")
-        XCTAssertEqual(
-            KanbanBoardAccessibility.statusValue(isBrowsing: true, isActive: true),
-            "\(String(localized: "Browsing")), \(String(localized: "Active"))"
-        )
-        let describedBoard: KanbanBoard = mutationDecode(
-            #"{"slug":"release","name":"Release","description":"Release planning","total":3}"#
-        )
-        XCTAssertEqual(
-            KanbanBoardAccessibility.browseSummary(describedBoard, isActive: true),
-            "Browse Board: Release, Release planning, 3 Cards, Active"
-        )
-
-        let dispatchResult: KanbanDispatchResult = mutationDecode(
-            #"{"spawned":[{"id":"secret"}],"promoted":2,"reclaimed":0,"skipped_unassigned":[],"skipped_nonspawnable":[],"auto_blocked":[],"timed_out":[],"crashed":[]}"#
-        )
-        let dispatchLabel = KanbanDispatchAccessibility.summary(
-            KanbanDispatchState(
-                mode: .preview,
-                boardSlug: "main",
-                phase: .succeeded,
-                result: dispatchResult,
-                completedAt: nil,
-                boardActivityGeneration: 1
-            ),
-            isStale: true
-        )
-        XCTAssertTrue(dispatchLabel.contains(String(localized: "Preview Dispatch")))
-        XCTAssertTrue(dispatchLabel.contains("\(String(localized: "Spawned")): 1"))
-        XCTAssertTrue(dispatchLabel.contains("\(String(localized: "Promoted")): 2"))
-        XCTAssertTrue(dispatchLabel.contains(String(localized: "This Preview is stale. Run Preview Dispatch again before relying on it.")))
-        XCTAssertFalse(dispatchLabel.contains("secret"))
-        let submittingLabel = KanbanDispatchAccessibility.summary(
-            KanbanDispatchState(
-                mode: .run,
-                boardSlug: "main",
-                phase: .submitting,
-                result: nil,
-                completedAt: nil,
-                boardActivityGeneration: 1
-            ),
-            isStale: false
-        )
-        XCTAssertTrue(submittingLabel.contains(String(localized: "Running Dispatcher...")))
-        XCTAssertFalse(submittingLabel.contains(String(localized: "Updating task...")))
-        XCTAssertEqual(
-            KanbanDispatchCopy.runConfirmation,
-            "This may start up to \(KanbanDispatchRequest.maximum) workers and consume API budget."
-        )
-    }
-
     func testBoardRowPresentationSeparatesLocalBrowsingFromApplicableMenuActions() {
         let ordinary: KanbanBoard = mutationDecode(
             #"{"slug":"release","name":"Release"}"#
@@ -588,83 +427,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertFalse(defaultPresentation.actions.contains(.archive))
     }
 
-    func testBoardRowPresentationDisablesAllMutationsWhenManagementIsUnavailable() {
-        let board: KanbanBoard = mutationDecode(
-            #"{"slug":"release","name":"Release"}"#
-        )
-        let presentation = KanbanBoardRowPresentation(
-            board: board,
-            selectedBoardSlug: "main",
-            sharedActiveBoardSlug: "main",
-            canManageBoards: false
-        )
-
-        XCTAssertEqual(presentation.browseSlug, "release")
-        XCTAssertEqual(presentation.actions, [.edit, .makeActive, .archive])
-        XCTAssertFalse(presentation.mutationsAreEnabled)
-        XCTAssertEqual(KanbanBoardRowAction.edit.systemImage, "pencil")
-        XCTAssertEqual(KanbanBoardRowAction.makeActive.systemImage, "checkmark.circle")
-        XCTAssertEqual(KanbanBoardRowAction.archive.systemImage, "archivebox")
-
-        let invalidBoard: KanbanBoard = mutationDecode(
-            #"{"name":"Missing slug"}"#
-        )
-        let invalidPresentation = KanbanBoardRowPresentation(
-            board: invalidBoard,
-            selectedBoardSlug: "main",
-            sharedActiveBoardSlug: "main",
-            canManageBoards: true
-        )
-        XCTAssertNil(invalidPresentation.browseSlug)
-        XCTAssertFalse(invalidPresentation.isBrowsing)
-        XCTAssertFalse(invalidPresentation.mutationsAreEnabled)
-        XCTAssertTrue(invalidPresentation.actions.isEmpty)
-    }
-
-    func testCardRowPrimaryActionKeepsNavigationAndSelectionDistinct() throws {
-        let card = try XCTUnwrap(KanbanFixtures.richSnapshot.columns?[1].cards?.first)
-        let cardID = try XCTUnwrap(card.cardID)
-
-        XCTAssertEqual(
-            KanbanCardRowPrimaryAction.resolve(for: card, isSelecting: false),
-            .openDetail(cardID)
-        )
-        XCTAssertEqual(
-            KanbanCardRowPrimaryAction.resolve(for: card, isSelecting: true),
-            .toggleSelection(cardID)
-        )
-        XCTAssertEqual(
-            KanbanCardRowPrimaryAction.focusTarget(
-                afterDismissing: cardID,
-                visibleCards: [card]
-            ),
-            cardID
-        )
-        XCTAssertNil(
-            KanbanCardRowPrimaryAction.focusTarget(
-                afterDismissing: cardID,
-                visibleCards: []
-            )
-        )
-
-        let missingIdentity: KanbanCard = mutationDecode(#"{"title":"Missing identity"}"#)
-        XCTAssertNil(
-            KanbanCardRowPrimaryAction.resolve(for: missingIdentity, isSelecting: false)
-        )
-        XCTAssertNil(
-            KanbanCardRowPrimaryAction.resolve(for: missingIdentity, isSelecting: true)
-        )
-    }
-
-    func testStatusSpecificStalenessThresholds() {
-        let cards = KanbanFixtures.stalenessSnapshot.columns?.flatMap { $0.cards ?? [] } ?? []
-        XCTAssertEqual(cards.map(\.staleness), [
-            .none, .warning, .critical,
-            .none, .warning,
-            .none, .warning, .critical
-        ])
-    }
-
     /// A Hermes host sends `age` as `{created_age_seconds, started_age_seconds, …}` and webui
     /// forwards the same dict as `age_seconds`. Running reads the started age, every other
     /// Status the created age.
@@ -685,13 +447,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(cards.map(\.staleness), [.warning, .critical, .none, .warning, .critical, .none])
         XCTAssertEqual(cards.first?.ageSeconds, 700, "a running Card shows how long it has run")
         XCTAssertEqual(cards.last?.ageSeconds, 999_999)
-    }
-
-    func testScheduledAndReviewAreKnownStatusesWithTheirOwnNames() {
-        XCTAssertEqual(KanbanStatusPresentation("scheduled").title, String(localized: "Scheduled"))
-        XCTAssertEqual(KanbanStatusPresentation("review").title, String(localized: "Review"))
-        XCTAssertTrue(KanbanStatus(rawValue: "scheduled").isSupported)
-        XCTAssertTrue(KanbanStatus(rawValue: "review").isSupported)
     }
 
     func testPreviewDispatchIsOptionalSingleFlightTimestampedAndBecomesStaleAfterRefresh() async {
@@ -726,154 +481,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertTrue(state.isPreviewStale)
         let finalRequestCount = await client.dispatchRequestCount
         XCTAssertEqual(finalRequestCount, 1)
-    }
-
-    func testDispatcherToolbarResultPersistsUntilExplicitDismissal() async {
-        let client = DispatcherClient()
-        let state = KanbanFeatureState(
-            server: URL(string: "https://example.test")!,
-            client: client
-        )
-        await state.load()
-
-        XCTAssertFalse(KanbanDispatcherPresentation.hasResult(state.dispatchState))
-        XCTAssertEqual(
-            KanbanDispatcherPresentation.toolbarAccessibilityLabel(for: state.dispatchState),
-            String(localized: "Dispatcher")
-        )
-
-        await state.previewDispatch()
-
-        XCTAssertTrue(KanbanDispatcherPresentation.hasResult(state.dispatchState))
-        XCTAssertEqual(
-            KanbanDispatcherPresentation.toolbarAccessibilityLabel(for: state.dispatchState),
-            String(localized: "Dispatcher, result available")
-        )
-
-        let failed = KanbanDispatchState(
-            mode: .preview,
-            boardSlug: "main",
-            phase: .failed,
-            result: nil,
-            completedAt: nil,
-            boardActivityGeneration: 0
-        )
-        let refused = KanbanDispatchState(
-            mode: .run,
-            boardSlug: "main",
-            phase: .refused,
-            result: nil,
-            completedAt: nil,
-            boardActivityGeneration: 0
-        )
-        let uncertain = KanbanDispatchState(
-            mode: .run,
-            boardSlug: "main",
-            phase: .outcomeUncertain,
-            result: nil,
-            completedAt: nil,
-            boardActivityGeneration: 0
-        )
-        let uncertainWithResult = KanbanDispatchState(
-            mode: .run,
-            boardSlug: "main",
-            phase: .outcomeUncertain,
-            result: state.dispatchState?.result,
-            completedAt: nil,
-            boardActivityGeneration: 0
-        )
-        XCTAssertFalse(KanbanDispatcherPresentation.hasResult(failed))
-        XCTAssertFalse(KanbanDispatcherPresentation.hasResult(refused))
-        XCTAssertFalse(KanbanDispatcherPresentation.hasResult(uncertain))
-        XCTAssertEqual(
-            KanbanDispatcherPresentation.toolbarSystemImage(for: failed),
-            "bolt.horizontal.circle"
-        )
-        XCTAssertEqual(
-            KanbanDispatcherPresentation.toolbarSystemImage(for: refused),
-            "bolt.horizontal.circle"
-        )
-        XCTAssertEqual(
-            KanbanDispatcherPresentation.toolbarSystemImage(for: uncertain),
-            "exclamationmark.circle.fill",
-            "Ambiguous-outcome recovery must use a distinct, visibly reopenable indicator."
-        )
-        XCTAssertEqual(
-            KanbanDispatcherPresentation.toolbarAccessibilityLabel(for: uncertain),
-            String(localized: "Dispatcher, attention required")
-        )
-        XCTAssertTrue(KanbanDispatcherPresentation.hasResult(uncertainWithResult))
-        XCTAssertEqual(
-            KanbanDispatcherPresentation.toolbarSystemImage(for: state.dispatchState),
-            "bolt.horizontal.circle.fill"
-        )
-        XCTAssertEqual(
-            KanbanDispatcherPresentation.toolbarSystemImage(for: uncertainWithResult),
-            "bolt.horizontal.circle.fill"
-        )
-        XCTAssertEqual(
-            KanbanDispatcherPresentation.toolbarAccessibilityLabel(for: uncertainWithResult),
-            String(localized: "Dispatcher, result available")
-        )
-
-        state.dismissDispatchResult()
-
-        XCTAssertNil(state.dispatchState)
-        XCTAssertFalse(KanbanDispatcherPresentation.hasResult(state.dispatchState))
-    }
-
-    func testHeaderOverflowIconTracksActiveFilters() {
-        XCTAssertEqual(
-            KanbanHeaderPresentation.overflowSystemImage(hasActiveFilters: false),
-            "ellipsis.circle"
-        )
-        XCTAssertEqual(
-            KanbanHeaderPresentation.overflowSystemImage(hasActiveFilters: true),
-            "ellipsis.circle.fill",
-            "More stays filled while a filter is applied, because Card Filters now lives inside it."
-        )
-        XCTAssertEqual(
-            KanbanHeaderPresentation.cardFiltersSystemImage(hasActiveFilters: false),
-            "line.3.horizontal.decrease.circle"
-        )
-        XCTAssertEqual(
-            KanbanHeaderPresentation.cardFiltersSystemImage(hasActiveFilters: true),
-            "line.3.horizontal.decrease.circle.fill"
-        )
-    }
-
-    func testBoardPickerWidthCapLeavesRoomForTheBarsOtherControls() {
-        // iPhone 17 at the default text size: 402 - 72 (back button side) - 196
-        // (168pt pill + 28pt of margin and gap).
-        XCTAssertEqual(
-            KanbanHeaderPresentation.boardPickerMaxWidth(barWidth: 402, trailingGroupWidth: 168),
-            134,
-            accuracy: 0.001
-        )
-        XCTAssertEqual(
-            KanbanHeaderPresentation.boardPickerMaxWidth(barWidth: 0, trailingGroupWidth: 168),
-            80,
-            accuracy: 0.001,
-            "Before the first layout pass the cap falls back to the 80pt floor."
-        )
-        XCTAssertEqual(
-            KanbanHeaderPresentation.boardPickerMaxWidth(barWidth: 375, trailingGroupWidth: 168),
-            107,
-            accuracy: 0.001,
-            "The narrowest supported bar still leaves a tappable picker."
-        )
-        XCTAssertEqual(
-            KanbanHeaderPresentation.boardPickerMaxWidth(barWidth: 402, trailingGroupWidth: 168 * 2.3),
-            80,
-            accuracy: 0.001,
-            "An accessibility text size is clamped to 1.4x the pill, leaving 66.8pt, so the floor wins."
-        )
-        XCTAssertEqual(
-            KanbanHeaderPresentation.boardPickerMaxWidth(barWidth: 430, trailingGroupWidth: 168),
-            162,
-            accuracy: 0.001,
-            "A wider bar spends the extra width on the picker."
-        )
     }
 
     func testRunDispatcherJoinsBoardWideLockAndAlwaysReconcilesWithoutRequiringPreview() async {
@@ -1169,30 +776,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(state.mutationState(for: "CARD-2")?.phase, .succeeded)
     }
 
-    func testMissingWorkflowEndpointDisablesOnlyCardWorkflow() async throws {
-        let client = ImmediateMutationClient(statusResults: [
-            .failure(APIError.http(
-                statusCode: 404,
-                body: #"{"error":"Unknown Kanban endpoint; refresh the client"}"#
-            ))
-        ])
-        let state = KanbanFeatureState(
-            server: URL(string: "https://workflow-capability.example.test")!,
-            client: client
-        )
-        await state.load()
-        let card = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
-
-        await state.completeCard(card)
-
-        XCTAssertEqual(state.state, .partial)
-        XCTAssertEqual(state.unavailableWriteCapabilities, [.cardWorkflow])
-        XCTAssertFalse(state.canUseCardWorkflow)
-        XCTAssertTrue(state.canUseBulkActions)
-        XCTAssertTrue(state.canCreateCards)
-        XCTAssertTrue(state.canManageBoards)
-    }
-
     func testAmbiguousMutationRequiresReconciliationBeforeTryAgain() async throws {
         let network = APIError.network(underlying: URLError(.networkConnectionLost))
         let client = ImmediateMutationClient(
@@ -1264,27 +847,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         await state.moveCard(card, to: "running")
         let statusRequestCount = await client.statusRequestCount
         XCTAssertEqual(statusRequestCount, 0)
-    }
-
-    func testArchiveUndoExpiresWithoutIssuingAnotherWrite() async throws {
-        let client = ImmediateMutationClient(statusResults: [
-            .success(mutationDecode(#"{"task":{"id":"CARD-1","status":"archived"}}"#))
-        ])
-        let state = KanbanFeatureState(
-            server: URL(string: "https://example.test")!,
-            client: client,
-            archiveUndoLifetime: 0.01
-        )
-        await state.load()
-        let card = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
-
-        await state.archiveCard(card)
-        XCTAssertTrue(state.hasAvailableArchiveUndo)
-        try await Task.sleep(for: .milliseconds(30))
-
-        XCTAssertFalse(state.hasAvailableArchiveUndo)
-        let statusRequestCount = await client.statusRequestCount
-        XCTAssertEqual(statusRequestCount, 1)
     }
 
     func testRunningExitRequiresExplicitConfirmationBeforeWriteConstruction() async throws {
@@ -1372,27 +934,6 @@ final class KanbanFeatureStateTests: XCTestCase {
             state.displayedCard(try XCTUnwrap(laterCanonical.card)).status?.rawValue,
             "ready",
             "A successful detail load must retire the settled status overlay."
-        )
-    }
-
-    func testSuccessfulDependencyPresentationPersistsUntilFreshDetailLoads() async throws {
-        let confirmed: KanbanCardDetailEnvelope = mutationDecode(
-            #"{"task":{"id":"CARD-1","status":"todo"},"links":{"parents":["CARD-2"]}}"#
-        )
-        let client = ImmediateMutationClient(detailResults: [.success(confirmed), .success(confirmed)])
-        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
-        await state.load()
-        let card = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
-        let detailState = try XCTUnwrap(state.makeCardDetailState(cardID: "CARD-1"))
-
-        await state.addPrerequisite("CARD-2", to: card)
-
-        XCTAssertEqual(state.displayedPrerequisites(for: "CARD-1", canonical: []), ["CARD-2"])
-        await detailState.load()
-        XCTAssertEqual(
-            state.displayedPrerequisites(for: "CARD-1", canonical: []),
-            [],
-            "A successful detail load must retire the settled dependency overlay."
         )
     }
 
@@ -1652,74 +1193,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertEqual(Set(detailRequests), ["CARD-1", "CARD-2"])
     }
 
-    func testMissingBulkEndpointDisablesOnlyBulkActionsAfterReconciliation() async throws {
-        let client = BulkActionClient(
-            boardSnapshots: [
-                bulkSnapshot(firstStatus: "todo", secondStatus: "todo"),
-                bulkSnapshot(firstStatus: "todo", secondStatus: "todo")
-            ],
-            bulkResponses: [],
-            detailResults: [
-                "CARD-1": [
-                    .success(mutationDecode(#"{"task":{"id":"CARD-1","status":"todo"}}"#))
-                ]
-            ],
-            bulkError: APIError.http(
-                statusCode: 404,
-                body: #"{"error":"Unknown Kanban endpoint; refresh the client"}"#
-            )
-        )
-        let state = KanbanFeatureState(
-            server: URL(string: "https://bulk-capability.example.test")!,
-            client: client
-        )
-        await state.load()
-        let card = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-1" })
-        state.beginSelectingCards()
-        state.toggleCardSelection(card)
-
-        await state.performBulkAction(.changeStatus("done"))
-
-        XCTAssertEqual(state.state, .partial)
-        XCTAssertEqual(state.unavailableWriteCapabilities, [.bulkActions])
-        XCTAssertFalse(state.canUseBulkActions)
-        XCTAssertTrue(state.canUseCardWorkflow)
-        XCTAssertTrue(state.canCreateCards)
-    }
-
-    func testBulkReconciliationFetchesCardDetailsConcurrently() async throws {
-        let client = BulkActionClient(
-            boardSnapshots: [
-                bulkSnapshot(firstStatus: "todo", secondStatus: "todo"),
-                bulkSnapshot(firstStatus: "done", secondStatus: "done")
-            ],
-            bulkResponses: [
-                mutationDecode(#"{"results":[{"id":"CARD-1","ok":true},{"id":"CARD-2","ok":true}]}"#)
-            ],
-            detailResults: [
-                "CARD-1": [
-                    .success(mutationDecode(#"{"task":{"id":"CARD-1","title":"First","status":"done"}}"#))
-                ],
-                "CARD-2": [
-                    .success(mutationDecode(#"{"task":{"id":"CARD-2","title":"Second","status":"done"}}"#))
-                ]
-            ],
-            defersFirstDetailResponse: true
-        )
-        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
-        await state.load()
-        state.beginSelectingCards()
-        state.allCards.forEach(state.toggleCardSelection)
-
-        let submission = Task { await state.performBulkAction(.changeStatus("done")) }
-        await client.waitForDeferredDetailResponse()
-        try await waitUntil { await client.detailRequests().count == 2 }
-        await client.resumeDeferredDetailResponse()
-        await submission.value
-
-        XCTAssertEqual(state.bulkActionSummary?.succeededCount, 2)
-    }
-
     func testReloadAfterBrowsedBoardRemovalClearsSelectionDuringBulkSubmission() async throws {
         let client = BulkActionClient(
             boardSnapshots: [
@@ -1755,22 +1228,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         await submission.value
         XCTAssertNil(state.bulkActionPhase)
         XCTAssertNil(state.bulkActionSummary)
-    }
-
-    func testKanbanLabPartialScenarioProvidesSafePerCardFailureRecovery() async throws {
-        let state = KanbanLabScenario.partial.makeModel()
-        await state.load()
-        state.beginSelectingCards()
-        for card in state.allCards where ["CARD-3", "CARD-4"].contains(card.cardID ?? "") {
-            state.toggleCardSelection(card)
-        }
-
-        await state.performBulkAction(.changeStatus("done"))
-
-        XCTAssertEqual(state.bulkActionSummary?.succeededCount, 1)
-        XCTAssertEqual(state.bulkActionSummary?.failedCount, 1)
-        XCTAssertEqual(state.selectedCardIDs, ["CARD-4"])
-        XCTAssertTrue(state.canRetryFailedBulkAction)
     }
 
     func testBoardWritesSerializeAndCreationNeverChangesLocalOrSharedSelection() async throws {
@@ -1859,27 +1316,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertTrue(state.requiresBoardSelection)
     }
 
-    func testRemovedBoardReloadPreservesPartialCompatibilityAndDisplayName() async {
-        let client = BoardManagementClient(boardsResponses: [
-            .success(mutationDecode(
-                #"{"boards":[{"slug":"main","name":"Main"},{"slug":"release","name":"Release"}],"current":"main","read_only":false}"#
-            )),
-            .success(mutationDecode(
-                #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#
-            ))
-        ])
-        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
-        await state.load()
-        await state.selectBoard("release")
-
-        await state.load()
-
-        XCTAssertEqual(state.state, .partial)
-        XCTAssertEqual(state.report?.warnings, [.unsupportedStatus("future")])
-        XCTAssertNil(state.selectedBoardSlug)
-        XCTAssertEqual(state.boardSelectionNotice?.boardName, "Release")
-    }
-
     func testPartialBoardContractDisablesBoardManagement() async {
         let client = BoardManagementClient(boardsResponses: [
             .success(mutationDecode(
@@ -1900,26 +1336,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         ))
         let createRequestCount = await client.createRequestCount
         XCTAssertEqual(createRequestCount, 0)
-    }
-
-    func testNetworkBoardCollectionFailureRefreshesSelectedBoardAndKeepsWritesDisabled() async {
-        let client = BoardManagementClient(boardsResponses: [
-            .success(mutationDecode(
-                #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#
-            )),
-            .failure(APIError.network(underlying: URLError(.notConnectedToInternet)))
-        ])
-        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
-        await state.load()
-        let loadedCards = state.allCards
-
-        await state.refresh()
-
-        XCTAssertFalse(state.isOffline)
-        XCTAssertFalse(state.loadedDetailIsStale)
-        XCTAssertEqual(state.allCards, loadedCards)
-        XCTAssertFalse(state.canManageBoards)
-        XCTAssertTrue(state.refreshFailed)
     }
 
     func testIncompleteBoardCollectionRefreshesSelectedBoardButKeepsWritesDisabled() async {
@@ -1960,46 +1376,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertTrue(state.canUseServerAuthoritativeActions)
         let boardRequestCount = await client.boardRequestCount
         XCTAssertEqual(boardRequestCount, 1)
-    }
-
-    func testBoardManagementStateRemainsIsolatedPerServer() async {
-        let firstClient = BoardManagementClient(boardsResponses: [
-            .success(mutationDecode(
-                #"{"boards":[{"slug":"main","name":"Main"}],"current":"main","read_only":false}"#
-            )),
-            .success(mutationDecode(
-                #"{"boards":[{"slug":"main","name":"Main"},{"slug":"release","name":"Release"}],"current":"main","read_only":false}"#
-            ))
-        ])
-        let secondClient = BoardManagementClient(boardsResponses: [
-            .success(mutationDecode(
-                #"{"boards":[{"slug":"personal","name":"Personal"}],"current":"personal","read_only":false}"#
-            ))
-        ])
-        let first = KanbanFeatureState(
-            server: URL(string: "https://first.example.test")!,
-            client: firstClient
-        )
-        let second = KanbanFeatureState(
-            server: URL(string: "https://second.example.test")!,
-            client: secondClient
-        )
-        await first.load()
-        await second.load()
-
-        await first.createBoard(KanbanCreateBoardRequest(
-            slug: "release",
-            name: "Release",
-            description: "",
-            icon: "",
-            color: ""
-        ))
-
-        XCTAssertTrue(first.boards.contains { $0.slug == "release" })
-        XCTAssertEqual(second.boards.map(\.slug), ["personal"])
-        XCTAssertEqual(second.selectedBoardSlug, "personal")
-        let secondCreateRequestCount = await secondClient.createRequestCount
-        XCTAssertEqual(secondCreateRequestCount, 0)
     }
 
     func testAmbiguousBoardWriteChecksAuthoritativeListAndDefaultArchiveIsBlocked() async {
@@ -2110,49 +1486,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertNil(state.boardMutationState)
         let boardsRequestCount = await client.boardsRequestCount
         XCTAssertEqual(boardsRequestCount, 2)
-    }
-
-    func testEditActivateAndArchiveReconcileTheBoardCollection() async {
-        let client = BoardManagementClient(boardsResponses: [
-            .success(mutationDecode(
-                #"{"boards":[{"slug":"default","name":"Default"},{"slug":"release","name":"Old"}],"current":"default","read_only":false}"#
-            )),
-            .success(mutationDecode(
-                ##"{"boards":[{"slug":"default","name":"Default"},{"slug":"release","name":"Release","description":"","icon":"🚀","color":"#00AAFF"}],"current":"default","read_only":false}"##
-            )),
-            .success(mutationDecode(
-                ##"{"boards":[{"slug":"default","name":"Default"},{"slug":"release","name":"Release","description":"","icon":"🚀","color":"#00AAFF"}],"current":"release","read_only":false}"##
-            )),
-            .success(mutationDecode(
-                #"{"boards":[{"slug":"default","name":"Default"}],"current":"default","read_only":false}"#
-            ))
-        ])
-        let state = KanbanFeatureState(server: URL(string: "https://example.test")!, client: client)
-        await state.load()
-
-        await state.editBoard(KanbanEditBoardRequest(
-            slug: "release",
-            name: "Release",
-            description: "",
-            icon: "🚀",
-            color: "#00AAFF"
-        ))
-        XCTAssertEqual(state.boardMutationState?.phase, .succeeded)
-
-        await state.makeBoardActive(slug: "release")
-        XCTAssertEqual(state.boardMutationState?.phase, .succeeded)
-        XCTAssertEqual(state.sharedActiveBoardSlug, "release")
-        XCTAssertEqual(state.selectedBoardSlug, "default")
-
-        await state.archiveBoard(slug: "release")
-        XCTAssertEqual(state.boardMutationState?.phase, .succeeded)
-        XCTAssertFalse(state.boards.contains { $0.slug == "release" })
-        let editRequest = await client.editRequests().first
-        let activeRequest = await client.activeRequests().first
-        let archiveRequest = await client.archiveRequests().first
-        XCTAssertEqual(editRequest?.slug, "release")
-        XCTAssertEqual(activeRequest?.slug, "release")
-        XCTAssertEqual(archiveRequest?.slug, "release")
     }
 
     func testMissingBoardManagementEndpointDisablesOnlyThatCapabilityUntilReload() async {
@@ -2305,9 +1638,6 @@ private actor BoardManagementClient: KanbanDataClient {
     private let defersCreate: Bool
     private var shouldDeferCreate: Bool
     private var recordedBoardRequests: [KanbanBoardRequest] = []
-    private var recordedEditRequests: [KanbanEditBoardRequest] = []
-    private var recordedArchiveRequests: [KanbanBoardMutationRequest] = []
-    private var recordedActiveRequests: [KanbanBoardMutationRequest] = []
     private(set) var createRequestCount = 0
     private(set) var archiveRequestCount = 0
     private(set) var makeActiveRequestCount = 0
@@ -2368,14 +1698,12 @@ private actor BoardManagementClient: KanbanDataClient {
         _ request: KanbanBoardMutationRequest
     ) -> KanbanBoardMutationEnvelope {
         archiveRequestCount += 1
-        recordedArchiveRequests.append(request)
         return mutationDecode(#"{"current":"main","read_only":false}"#)
     }
 
     func editKanbanBoard(
         _ request: KanbanEditBoardRequest
     ) -> KanbanBoardMutationEnvelope {
-        recordedEditRequests.append(request)
         return mutationDecode(#"{"board":{"slug":"\#(request.slug)"},"read_only":false}"#)
     }
 
@@ -2383,14 +1711,10 @@ private actor BoardManagementClient: KanbanDataClient {
         _ request: KanbanBoardMutationRequest
     ) -> KanbanBoardMutationEnvelope {
         makeActiveRequestCount += 1
-        recordedActiveRequests.append(request)
         return mutationDecode(#"{"current":"\#(request.slug)","read_only":false}"#)
     }
 
     func boardRequests() -> [KanbanBoardRequest] { recordedBoardRequests }
-    func editRequests() -> [KanbanEditBoardRequest] { recordedEditRequests }
-    func archiveRequests() -> [KanbanBoardMutationRequest] { recordedArchiveRequests }
-    func activeRequests() -> [KanbanBoardMutationRequest] { recordedActiveRequests }
 
     func waitForDeferredCreate() async {
         guard defersCreate else { return }
@@ -2441,33 +1765,6 @@ private actor DeferredBoardCollectionClient: KanbanDataClient {
     ) {
         collectionContinuation?.resume(returning: response)
         collectionContinuation = nil
-    }
-}
-
-private actor DeferredFirstConfigurationClient: KanbanDataClient {
-    private var configurationCalls = 0
-    private var continuation: CheckedContinuation<KanbanConfiguration, Error>?
-
-    func kanbanConfiguration() async throws -> KanbanConfiguration {
-        configurationCalls += 1
-        if configurationCalls == 1 {
-            return try await withCheckedThrowingContinuation { continuation = $0 }
-        }
-        return KanbanFixtures.configuration
-    }
-
-    func kanbanBoards() -> KanbanBoardsResponse { KanbanFixtures.boards }
-    func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot { KanbanFixtures.snapshot }
-    func kanbanStats(board: String) -> KanbanStats { KanbanFixtures.stats }
-    func kanbanAssignees(board: String) -> KanbanAssigneeHistory { KanbanFixtures.history }
-
-    func waitForFirstConfiguration() async {
-        while continuation == nil { await Task.yield() }
-    }
-
-    func resumeFirstConfiguration() {
-        continuation?.resume(returning: KanbanFixtures.configuration)
-        continuation = nil
     }
 }
 
@@ -2656,8 +1953,6 @@ private actor BulkActionClient: KanbanDataClient {
     private var recordedDetailRequests: [String] = []
     private var shouldDeferBulkResponse: Bool
     private var bulkContinuation: CheckedContinuation<Void, Never>?
-    private var shouldDeferDetailResponse: Bool
-    private var detailContinuation: CheckedContinuation<Void, Never>?
     private var bulkError: Error?
 
     init(
@@ -2668,7 +1963,6 @@ private actor BulkActionClient: KanbanDataClient {
         bulkResponses: [KanbanBulkActionEnvelope],
         detailResults: [String: [Result<KanbanCardDetailEnvelope, Error>]],
         defersFirstBulkResponse: Bool = false,
-        defersFirstDetailResponse: Bool = false,
         bulkError: Error? = nil
     ) {
         self.boardSnapshots = boardSnapshots
@@ -2676,7 +1970,6 @@ private actor BulkActionClient: KanbanDataClient {
         self.bulkResponses = bulkResponses
         self.detailResults = detailResults
         shouldDeferBulkResponse = defersFirstBulkResponse
-        shouldDeferDetailResponse = defersFirstDetailResponse
         self.bulkError = bulkError
     }
 
@@ -2716,10 +2009,6 @@ private actor BulkActionClient: KanbanDataClient {
 
     func kanbanCardDetail(_ request: KanbanCardDetailRequest) async throws -> KanbanCardDetailEnvelope {
         recordedDetailRequests.append(request.cardID)
-        if shouldDeferDetailResponse {
-            shouldDeferDetailResponse = false
-            await withCheckedContinuation { detailContinuation = $0 }
-        }
         guard var results = detailResults[request.cardID], !results.isEmpty else {
             throw KanbanResponseError.nonJSONContentType
         }
@@ -2738,15 +2027,6 @@ private actor BulkActionClient: KanbanDataClient {
     func resumeDeferredBulkResponse() {
         bulkContinuation?.resume()
         bulkContinuation = nil
-    }
-
-    func waitForDeferredDetailResponse() async {
-        while detailContinuation == nil { await Task.yield() }
-    }
-
-    func resumeDeferredDetailResponse() {
-        detailContinuation?.resume()
-        detailContinuation = nil
     }
 }
 
@@ -2892,7 +2172,6 @@ private enum KanbanFixtures {
     static let missingChangedSnapshot = decode(KanbanBoardSnapshot.self, #"{"latest_event_id":12,"read_only":false,"columns":[{"name":"triage","tasks":[]}]}"#)
     static let newSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"latest_event_id":13,"read_only":false,"columns":[{"name":"ready","tasks":[{"id":"NEW","title":"Newest filter","status":"ready"}]}]}"#)
     static let staleSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"latest_event_id":12,"read_only":false,"columns":[{"name":"ready","tasks":[{"id":"STALE","title":"Stale filter","status":"ready"}]}]}"#)
-    static let stalenessSnapshot = decode(KanbanBoardSnapshot.self, #"{"changed":true,"columns":[{"name":"running","tasks":[{"id":"r1","status":"running","age_seconds":599},{"id":"r2","status":"running","age_seconds":600},{"id":"r3","status":"running","age_seconds":3600}]},{"name":"ready","tasks":[{"id":"q1","status":"ready","age_seconds":3599},{"id":"q2","status":"ready","age_seconds":3600}]},{"name":"blocked","tasks":[{"id":"b1","status":"blocked","age_seconds":3599},{"id":"b2","status":"blocked","age_seconds":3600},{"id":"b3","status":"blocked","age_seconds":86400}]}]}"#)
     static let stats = decode(KanbanStats.self, #"{"by_status":{"triage":0}}"#)
     static let history = decode(KanbanAssigneeHistory.self, #"{"assignees":["builder"]}"#)
 

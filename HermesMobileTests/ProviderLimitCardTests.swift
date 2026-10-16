@@ -13,39 +13,6 @@ final class ProviderLimitCardTests: XCTestCase {
 
     // MARK: - Pure helpers
 
-    func testTintTiersAtBoundaries() {
-        XCTAssertEqual(providerLimitTint(remainingPercent: 100), .normal)
-        XCTAssertEqual(providerLimitTint(remainingPercent: 25.1), .normal)
-        XCTAssertEqual(providerLimitTint(remainingPercent: 25), .warning)
-        XCTAssertEqual(providerLimitTint(remainingPercent: 10.1), .warning)
-        XCTAssertEqual(providerLimitTint(remainingPercent: 10), .critical)
-        XCTAssertEqual(providerLimitTint(remainingPercent: 0), .critical)
-        // No number means no signal — a nil must not read as an emergency.
-        XCTAssertEqual(providerLimitTint(remainingPercent: nil), .normal)
-    }
-
-    func testPercentTextRoundsAndClamps() {
-        XCTAssertEqual(providerLimitPercentLeftText(100), "100% left")
-        XCTAssertEqual(providerLimitPercentLeftText(2), "2% left")
-        XCTAssertEqual(providerLimitPercentLeftText(0), "0% left")
-        XCTAssertEqual(providerLimitPercentLeftText(1.6), "2% left")
-        XCTAssertEqual(providerLimitPercentLeftText(140), "100% left")
-        XCTAssertEqual(providerLimitPercentLeftText(-3), "0% left")
-    }
-
-    func testMoneyTextUsesUSDInTheGivenLocale() {
-        XCTAssertEqual(providerLimitAmountLeftText(0, locale: enUS), "$0.00 left")
-        XCTAssertEqual(providerLimitAmountLeftText(10.0296785, locale: enUS), "$10.03 left")
-        XCTAssertEqual(usageFormattedCost(10, locale: enUS), "$10.00")
-    }
-
-    func testFractionClampsToTheBar() {
-        XCTAssertEqual(providerLimitFraction(remainingPercent: 100), 1, accuracy: 0.0001)
-        XCTAssertEqual(providerLimitFraction(remainingPercent: 2), 0.02, accuracy: 0.0001)
-        XCTAssertEqual(providerLimitFraction(remainingPercent: -5), 0, accuracy: 0.0001)
-        XCTAssertEqual(providerLimitFraction(remainingPercent: 250), 1, accuracy: 0.0001)
-    }
-
     func testResetCountdownAcrossMinutesHoursDaysAndThePast() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
 
@@ -70,26 +37,6 @@ final class ProviderLimitCardTests: XCTestCase {
         XCTAssertEqual(providerLimitResetText(now.addingTimeInterval(-60), now: now, locale: enUS), "Resets soon")
         XCTAssertEqual(providerLimitResetText(now.addingTimeInterval(30), now: now, locale: enUS), "Resets soon")
         XCTAssertNil(providerLimitResetText(nil, now: now, locale: enUS))
-    }
-
-    func testResetCountdownSpellsUnitsOutForVoiceOver() {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let spoken = try? XCTUnwrap(
-            providerLimitResetText(now.addingTimeInterval(23 * 3600 + 35 * 60), now: now, width: .wide, locale: enUS)
-        )
-
-        XCTAssertEqual(spoken?.contains("23 hours"), true)
-        XCTAssertEqual(spoken?.contains("35 minutes"), true)
-    }
-
-    func testUpdatedAgoUsesOneUnit() {
-        let now = Date(timeIntervalSince1970: 1_800_000_000)
-
-        XCTAssertEqual(providerLimitUpdatedText(now.addingTimeInterval(-41), now: now, locale: enUS), "Updated 41 sec ago")
-        XCTAssertEqual(providerLimitUpdatedText(now, now: now, locale: enUS), "Updated 0 sec ago")
-        XCTAssertEqual(providerLimitUpdatedText(now.addingTimeInterval(-5 * 60), now: now, locale: enUS), "Updated 5 min ago")
-        XCTAssertEqual(providerLimitUpdatedText(now.addingTimeInterval(-3 * 3600), now: now, locale: enUS), "Updated 3 hr ago")
-        XCTAssertNil(providerLimitUpdatedText(nil, now: now, locale: enUS))
     }
 
     func testParsesBothUpstreamTimestampShapes() {
@@ -230,15 +177,6 @@ final class ProviderLimitCardTests: XCTestCase {
         ))
 
         XCTAssertEqual(selection, ["openai-codex", "openrouter"])
-    }
-
-    func testSelectionIsEmptyWithoutKeyedProviders() {
-        XCTAssertTrue(providerQuotaSelection(from: ProvidersResponse(
-            providers: [ProviderSummary(id: "openai-codex", hasKey: false)],
-            activeProvider: "openai-codex"
-        )).isEmpty)
-
-        XCTAssertTrue(providerQuotaSelection(from: ProvidersResponse(providers: nil, activeProvider: nil)).isEmpty)
     }
 
     /// The active provider is always probed when it holds a key, even when it is

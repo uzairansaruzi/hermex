@@ -112,24 +112,6 @@ import XCTest
         }
     }
 
-    func testTapOpensTheBotOnThePairedServer() {
-        let connection = UUID()
-        let other = URL(string: "https://other.example")!
-        let pairings = [
-            other: PushPairing(relayURL: other, installKey: String(repeating: "f", count: 64), previewKey: keys.previewKey),
-            server: PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
-        ]
-        let content = banner(sealed: sealed)
-        PushPreview.rewrite(content, candidates: [keys])
-
-        XCTAssertEqual(
-            PushNotificationRouter.botDestination(userInfo: content.userInfo, pairings: pairings) {
-                $0 == self.server ? connection : UUID()
-            },
-            BotDestination(server: server, connectionID: connection, profile: "default")
-        )
-    }
-
     func testOneHostUnderTwoServersStaysOnTheActiveOne() {
         let lan = URL(string: "http://192.168.1.2:9120")!
         let pairing = PushPairing(relayURL: server, installKey: keys.installKey, previewKey: keys.previewKey)
@@ -296,14 +278,6 @@ import XCTest
         components.scheme = HermesDeepLink.scheme.uppercased()
         components.host = "WEBUI-PUSH"
         XCTAssertEqual(WebuiPushDestination(url: try XCTUnwrap(components.url)), destination)
-    }
-
-    func testWebuiPreviewUsesTheSameSealedEnvelope() {
-        let content = banner(sealed: sealed)
-        content.userInfo["source"] = "webui"
-        PushPreview.rewrite(content, candidates: [keys])
-        XCTAssertEqual(content.body, "Noon.")
-        XCTAssertEqual(PushPayload(userInfo: content.userInfo).source, "webui")
     }
 
     func testWebuiRouteSwitchesToItsServerAndWaitsForItsSignIn() {

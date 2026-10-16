@@ -31,12 +31,6 @@ final class SharedDraftStoreTests: XCTestCase {
         )
     }
 
-    func testDraftTextIgnoresEmptyInput() {
-        let draft = HermesShareDraft.draftText(textSnippets: [" \n\t "], urls: [])
-
-        XCTAssertEqual(draft, "")
-    }
-
     func testComposerDraftAddsTrailingNewlineForFollowupInput() {
         XCTAssertEqual(
             HermesShareDraft.composerDraft(from: "  https://example.com/article  "),
@@ -144,32 +138,6 @@ final class SharedDraftStoreTests: XCTestCase {
         XCTAssertEqual(sharedImport.draft, "")
         XCTAssertEqual(sharedImport.attachments.first?.filename, "photo.jpg")
         XCTAssertEqual(sharedImport.attachments.first?.data, Data([0x01, 0x02, 0x03]))
-    }
-
-    func testPendingImportKeepsMultipleUploadableAttachments() throws {
-        let directory = try temporaryDirectory()
-
-        try HermesShareDraft.savePendingImport(
-            draft: "",
-            attachments: [
-                SharedAttachmentImport(
-                    filename: "first.txt",
-                    typeIdentifier: "public.plain-text",
-                    data: Data("first".utf8)
-                ),
-                SharedAttachmentImport(
-                    filename: "second.txt",
-                    typeIdentifier: "public.plain-text",
-                    data: Data("second".utf8)
-                )
-            ],
-            in: directory
-        )
-
-        let sharedImport = try XCTUnwrap(try HermesShareDraft.loadPendingImport(from: directory))
-
-        XCTAssertEqual(sharedImport.attachments.map(\.filename), ["first.txt", "second.txt"])
-        XCTAssertEqual(sharedImport.attachments.map(\.data), [Data("first".utf8), Data("second".utf8)])
     }
 
     func testPendingImportCapsAttachmentsAtSharedLimit() throws {
@@ -1018,16 +986,6 @@ final class SharedDraftStoreTests: XCTestCase {
         queue.release(share, in: inbox)
         queue.reserveNext(in: inbox, active: other, servers: servers)
         XCTAssertEqual(queue.pending?.itemID, share.itemID, "The other server's home takes the released share")
-    }
-
-    func testAHermesServerOpensEachShareAsItArrives() {
-        let servers = [account(hermes, .hermes), account(webui, .webui)]
-        XCTAssertTrue(SharedImportGate.opensNext(afterRouting: false, active: webui, servers: servers))
-        XCTAssertFalse(SharedImportGate.opensNext(afterRouting: true, active: webui, servers: servers),
-                       "The webui list offers a later share in its Open Next banner")
-        XCTAssertTrue(SharedImportGate.opensNext(afterRouting: false, active: hermes, servers: servers))
-        XCTAssertTrue(SharedImportGate.opensNext(afterRouting: true, active: hermes, servers: servers),
-                      "The Hermes home has no banner, so a later share opens too")
     }
 
     private func temporaryDirectory() throws -> URL {

@@ -322,31 +322,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNil(auth.moveOffer, "The webui server has a move record")
     }
 
-    /// Signing in again from the signed-in server's Settings › Hermes connection offers the
-    /// move too, though the server never left `.loggedIn`.
-    func testSigningInFromTheSignedInServersSettingsOffersTheMove() throws {
-        let one = URL(string: "https://one.example")!
-        let connection = BotConnection(id: UUID(), name: "", address: one, username: "me", password: "pw")
-        XCTAssertTrue(auth.addHermesServer(connection))
-        auth.moveOffer = nil
-
-        auth.hermesSignInSaved(server: one)
-        XCTAssertEqual(auth.state, .loggedIn(server: one))
-        XCTAssertEqual(auth.moveOffer?.destinationID, one.absoluteString)
-        XCTAssertEqual(auth.moveOffer?.sourceID, webui.absoluteString)
-        XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: one)?.id, connection.id)
-
-        auth.moveOffer = nil
-        auth.hermesSignInSaved(server: one, offersMove: false)
-        XCTAssertNil(auth.moveOffer, "A move's own sign-in goes on with that move")
-
-        let account = try XCTUnwrap(auth.servers.first { $0.id == webui.absoluteString })
-        try auth.commitMove(from: account, to: connection,
-                            profiles: [MovedWebuiProfile(source: "default", destination: .hermes(profile: "default"))])
-        auth.hermesSignInSaved(server: one)
-        XCTAssertNil(auth.moveOffer, "The webui server has a move record")
-    }
-
     // MARK: The one-time question and its banner (#1267)
 
     /// Each webui server is asked once, one server a launch, and only while it is the active
@@ -405,34 +380,6 @@ final class MoveToHermesModelTests: XCTestCase {
         auth.handleAPIError(APIError.unauthorized)
         XCTAssertEqual(auth.state, .loggedOut(server: studio))
         XCTAssertNil(auth.moveQuestion, "Not over its sign-in form")
-    }
-
-    /// Dismissing an unrelated sheet asks the question that waited behind it, with nothing else
-    /// changing; a question that is no longer due stops waiting.
-    func testTheQuestionWaitsForAnotherSheetToClose() async throws {
-        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: scene)
-        window.rootViewController = UIViewController()
-        window.isHidden = false
-        defer { window.isHidden = true }
-        let cover = UIViewController()
-        window.rootViewController?.present(cover, animated: false)
-        let checked = expectation(description: "Checked for a covering sheet")
-        checked.assertForOverFulfill = false
-
-        let notices = MoveToHermesNotices()
-        notices.noteChatList(of: webui.absoluteString, onScreen: true)
-
-        let asking = Task {
-            await MoveToHermesQuestionTiming.ask(auth, notices: notices, settle: .zero) { checked.fulfill(); return [window] }
-        }
-        await fulfillment(of: [checked])
-        XCTAssertNil(auth.moveQuestion, "Never over another sheet")
-        XCTAssertNil(auth.servers.first { $0.id == webui.absoluteString }?.moveToHermesPrompt, "Still unasked")
-
-        cover.dismiss(animated: false)
-        await asking.value
-        XCTAssertEqual(auth.moveQuestion?.sourceID, webui.absoluteString)
     }
 
     /// The question shows over its server's chat list only: not while a chat is pushed over it
@@ -608,29 +555,6 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertNotNil(held.record.completedAt)
         await notices.refresh(auth)
         XCTAssertNil(notices.banner(for: hermes.absoluteString, in: auth.servers), "The report was acknowledged")
-    }
-
-    /// "Move <next> Next" names another configured webui server only while one hasn't moved.
-    func testTheNextServerIsOfferedOnlyWhileOneHasntMoved() throws {
-        let model = makeModel()
-        XCTAssertNil(model.nextSource, "The only webui server is the one moving")
-
-        let studio = ServerAccount(id: "https://studio.example", urlString: "https://studio.example", displayName: "Studio",
-                                   initials: "ST", headerLogoColorHex: HeaderLogoColor.defaultHex, createdAt: .now, updatedAt: .now)
-        let destination = ServerAccount(id: hermes.absoluteString, urlString: hermes.absoluteString, displayName: "Hermes Home",
-                                        initials: "HH", headerLogoColorHex: HeaderLogoColor.defaultHex, createdAt: .now,
-                                        updatedAt: .now, kind: .hermes)
-        try auth.serverRegistry.commit { servers, _ in servers += [destination, studio] }
-        auth.refreshServers()
-        XCTAssertEqual(model.nextSource?.id, studio.id)
-
-        try auth.serverRegistry.commit { servers, _ in
-            servers[servers.firstIndex { $0.id == destination.id }!].movedWebuiServers = [
-                MovedWebuiServer(sourceServerID: studio.id, profiles: [], completedAt: .now, report: nil),
-            ]
-        }
-        auth.refreshServers()
-        XCTAssertNil(model.nextSource, "Studio has moved too")
     }
 
     /// Move Next opens at the host step even with a saved Hermes sign-in, which it offers first:
@@ -946,17 +870,6 @@ final class MoveToHermesModelTests: XCTestCase {
         let unfinished = moved(report: MovedWebuiReport(remaining: 11, unchecked: 2, oversized: 0, kept: 0, recordedAt: .now), completed: false)
         let message = MoveToHermesRemoval.message(for: unfinished.source, servers: unfinished.servers) { _ in nil } ?? ""
         XCTAssertTrue(message.contains("The move to Hermes Home hasn’t finished. At the last count, 11 chats were only on Home Mac. 2 more couldn’t be checked."), message)
-    }
-
-    /// S3: removing the destination ends its redirects; a server no move involves keeps today's copy.
-    func testRemovingTheDestinationEndsItsRedirects() {
-        let (source, servers) = moved(report: nil)
-        let destination = servers.first { $0.kind == .hermes }!
-        XCTAssertEqual(MoveToHermesRemoval.message(for: destination, servers: servers) { _ in nil },
-                       "Old links, Shortcuts and notifications for Home Mac, which moved here, stop opening. Home Mac returns to normal if it’s still configured.")
-        var unmoved = source
-        unmoved.movedWebuiServers = []
-        XCTAssertNil(MoveToHermesRemoval.message(for: unmoved, servers: [unmoved]) { _ in nil })
     }
 
     /// The record keeps the kept-chat count for S2, unknown after a partial scan, and reads

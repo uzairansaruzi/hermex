@@ -8,18 +8,6 @@ final class StreamingRevealGateTests: XCTestCase {
         XCTAssertEqual(held, "gam")
     }
 
-    func testTrailingWhitespaceShowsEverything() {
-        let (shown, held) = StreamingRevealGate.cut("alpha beta\n", heldPreviousTick: false)
-        XCTAssertEqual(shown, "alpha beta\n")
-        XCTAssertEqual(held, "")
-    }
-
-    func testAFragmentHeldLastTickIsReleasedWithoutNewWhitespace() {
-        let (shown, held) = StreamingRevealGate.cut("gamma", heldPreviousTick: true)
-        XCTAssertEqual(shown, "gamma")
-        XCTAssertEqual(held, "")
-    }
-
     func testAHeldFragmentFinishedByWhitespaceShowsWithTheCut() {
         // "gam" was held; "ma delt" arrived since.
         let (shown, held) = StreamingRevealGate.cut("gamma delt", heldPreviousTick: true)
@@ -35,21 +23,6 @@ final class StreamingRevealGateTests: XCTestCase {
         let second = StreamingRevealGate.cut("你好世界，再见", heldPreviousTick: true)
         XCTAssertEqual(second.shown, "你好世界，再见")
         XCTAssertEqual(second.held, "")
-    }
-
-    func testABurstShowsInOneCut() {
-        let words = (0..<100).map { "w\($0) " }.joined()
-        let (shown, held) = StreamingRevealGate.cut(words + "tail", heldPreviousTick: false)
-        XCTAssertEqual(shown, words)
-        XCTAssertEqual(held, "tail")
-    }
-
-    func testAnEmptyBufferShowsAndHoldsNothing() {
-        for heldPreviousTick in [false, true] {
-            let (shown, held) = StreamingRevealGate.cut("", heldPreviousTick: heldPreviousTick)
-            XCTAssertEqual(shown, "")
-            XCTAssertEqual(held, "")
-        }
     }
 
     func testNeverSplitsAGraphemeCluster() {

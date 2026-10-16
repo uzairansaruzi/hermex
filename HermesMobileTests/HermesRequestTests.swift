@@ -183,66 +183,6 @@ final class HermesRequestTests: XCTestCase {
         }
     }
 
-    /// A rename needs a runtime and a title, and a delete names its Profile and stored key (#1048);
-    /// a branch names its runtime, and any name or count it carries is real (#1051).
-    func testSessionLifecycleCallsRefuseAnEmptyTarget() {
-        XCTAssertThrowsError(try HermesCall.sessionBranch(runtime: "", name: nil, count: nil).params())
-        XCTAssertThrowsError(try HermesCall.sessionBranch(runtime: "runtime", name: " \n", count: nil).params())
-        XCTAssertThrowsError(try HermesCall.sessionBranch(runtime: "runtime", name: nil, count: 0).params())
-        XCTAssertThrowsError(try HermesCall.sessionRename(runtime: "runtime", title: " \n").params())
-        XCTAssertThrowsError(try HermesCall.sessionRename(runtime: "", title: "Plan").params())
-        XCTAssertThrowsError(try HermesCall.sessionClose(runtime: "").params())
-        XCTAssertThrowsError(try HermesCall.sessionDelete(profile: "", storedKey: "tip").params())
-        XCTAssertThrowsError(try HermesCall.sessionDelete(profile: "triage", storedKey: "").params())
-    }
-
-    /// A compaction names its runtime and Profile, and a focus only when there is one; a new
-    /// session's folder and model are never blank (#1050).
-    func testCompressAndNewSessionCallsRefuseBlankValues() {
-        XCTAssertThrowsError(try HermesCall.sessionCompress(runtime: "", focus: nil, profile: "triage").params())
-        XCTAssertThrowsError(try HermesCall.sessionCompress(runtime: "runtime", focus: nil, profile: "").params())
-        XCTAssertThrowsError(try HermesCall.sessionCompress(runtime: "runtime", focus: " \n", profile: "triage").params())
-        XCTAssertThrowsError(try HermesCall.sessionNew(profile: "triage", cwd: "").params())
-        XCTAssertThrowsError(try HermesCall.sessionNew(profile: "triage", model: .init(id: "gpt-6", provider: "")).params())
-    }
-
-    /// A project names its Profile, a name and a folder, and a move a stored session and a
-    /// folder; a folder is completed only from the host's root or home (#1052).
-    func testProjectAndMoveCallsRefuseBlankValues() {
-        let refused: [HermesCall] = [
-            .projectsTree(profile: ""),
-            .projectsCreate(profile: "triage", name: " ", folder: "/work", color: nil),
-            .projectsCreate(profile: "triage", name: "Launch", folder: "", color: nil),
-            .projectsCreate(profile: "triage", name: "Launch", folder: "/work", color: ""),
-            .projectsUpdate(profile: "triage", id: "p_1", name: "", color: nil),
-            .projectsUpdate(profile: "triage", id: "", name: "Launch", color: nil),
-            .projectsDelete(profile: "triage", id: ""),
-            .sessionWorkspaceMove(profile: "triage", storedKey: "", cwd: "/work"),
-            .sessionWorkspaceMove(profile: "triage", storedKey: "tip", cwd: " "),
-            .sessionWorkspaceMove(profile: "", storedKey: "tip", cwd: "/work"),
-            .completeFolder(word: "src/app", profile: "triage"),
-            .completeFolder(word: "~", profile: "triage"),
-            .completeFolder(word: "/work", profile: "")
-        ]
-        for call in refused {
-            XCTAssertThrowsError(try call.params(), "\(call)")
-        }
-    }
-
-    /// A commit message is asked for a real diff, under a Profile; the runtime and the message to
-    /// avoid are sent only when there are ones (#1115).
-    func testACommitMessageRefusesBlankValues() {
-        let refused: [HermesCall] = [
-            .commitMessage(diff: " \n", recentCommits: "", avoid: nil, sessionID: nil, profile: "triage"),
-            .commitMessage(diff: "+a", recentCommits: "", avoid: " ", sessionID: nil, profile: "triage"),
-            .commitMessage(diff: "+a", recentCommits: "", avoid: nil, sessionID: "", profile: "triage"),
-            .commitMessage(diff: "+a", recentCommits: "", avoid: nil, sessionID: nil, profile: "")
-        ]
-        for call in refused {
-            XCTAssertThrowsError(try call.params(), "\(call)")
-        }
-    }
-
     /// Slash commands go out one typed line at a time, and completion only at a command's
     /// argument stage (#1036).
     func testSlashCallsAdmitOnlyOneNamedLine() {

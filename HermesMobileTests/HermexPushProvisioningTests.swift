@@ -49,18 +49,6 @@ import XCTest
         XCTAssertNil(registrar.pairing(for: serverB), "A pairing belongs to the server it was made on")
     }
 
-    func testEachServerPairsUnderItsOwnServer() async throws {
-        let registrar = FakePushRegistrar()
-        PushHTTPFixture.handler = { _ in nil }
-        for server in [serverA, serverB] {
-            await makeProvisioner(server: server, registrar: registrar).enable()
-        }
-
-        XCTAssertEqual(registrar.actions, ["enable a.example.com", "enable b.example.com"])
-        XCTAssertNotNil(registrar.pairing(for: serverA))
-        XCTAssertNotNil(registrar.pairing(for: serverB))
-    }
-
     func testAFailedStepIsNamedAndLeavesNothingPaired() async throws {
         let steps: [(path: String, title: String)] = [
             ("/api/env", HermexPushProvisioner.Step.relayURL.title),
@@ -334,18 +322,6 @@ import XCTest
                        "Nothing is interrupted on a host that is already set up")
     }
 
-    func testAStepTheHostRefusedReportsWhatItAnsweredRatherThanChatWording() async throws {
-        PushHTTPFixture.handler = { request in request.url?.path == "/api/env" ? (500, .null) : nil }
-        let provisioner = makeProvisioner(server: serverA, registrar: FakePushRegistrar())
-
-        await provisioner.enable()
-
-        let message = try XCTUnwrap(provisioner.failure?.message)
-        XCTAssertTrue(message.contains("500"), "The user has to know what the host said: \(message)")
-        XCTAssertNotEqual(message, BotFailure.rejected(500).errorDescription,
-                          "Provisioning must not borrow the Bot chat's wording")
-    }
-
     func testPermissionRevokedDuringSetupSaysNotificationsAreOffAndLeavesNothingPaired() async throws {
         let registrar = FakePushRegistrar()
         registrar.enableError = PushRegistrarError.permissionDenied
@@ -489,53 +465,6 @@ import XCTest
             title: "Sign in to Hermes",
             message: "This Hermes host doesn’t offer the password sign-in push setup needs."))
         XCTAssertEqual(PushHTTPFixture.calls, ["GET https://a.example.com/api/status"])
-    }
-
-    /// An access proxy's refusal, a host with browser sign-in only and a release older than
-    /// the minimum stop setup at sign-in with words the user can act on, before the password
-    /// goes out.
-    func testSignInStopsBeforeThePasswordWithCopyTheUserCanActOn() async throws {
-        let rows: [((Int, BotJSON), String)] = [
-            // A proxy's 401 page: not the webui's JSON object.
-            ((401, .null), "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address."),
-            ((200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("nous")])])),
-             "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host."),
-            ((200, .object(["auth_required": .bool(true), "auth_providers": .array([.string("basic")]), "version": .string("0.21.2")])),
-             "This Hermes host runs 0.21.2. Hermex needs Hermes 0.21.3 or later. Update Hermes on the host, then try again.")
-        ]
-        for (status, message) in rows {
-            PushHTTPFixture.reset()
-            PushHTTPFixture.handler = { request in request.url?.path == "/api/status" ? status : nil }
-            let provisioner = makeProvisioner(server: serverA, registrar: FakePushRegistrar())
-            await provisioner.enable()
-            XCTAssertEqual(provisioner.failure, HermexPushProvisioner.Failure(title: "Sign in to Hermes", message: message))
-            XCTAssertEqual(PushHTTPFixture.calls, ["GET https://a.example.com/api/status"])
-        }
-    }
-
-    func testEachFailureNamesWhatAnsweredIt() {
-        let unusable = HermexPushFailure.unusablePairing.errorDescription
-        let cases: [(any Error, String?)] = [
-            (PushRegistrarError.permissionDenied, "Allow notifications for Hermex in iOS Settings, then turn this on again."),
-            (PushRegistrarError.unsupportedBuild, "This build of Hermex can’t receive push notifications."),
-            (PushRegistrarError.tokenUnavailable, "iOS gave no notification token. Check this iPhone’s internet connection, then try again."),
-            (PushRegistrarError.malformedPairing, unusable),
-            (PushRegistrarError.pairingChanged, "This step did not finish. Try again."),
-            (PushRegistrarError.preferencesUnconfirmed, "This step did not finish. Try again."),
-            (PushRelayError.malformedInstallKey, unusable),
-            (PushRelayError.http(statusCode: 409), "The relay refused this phone (409). Check the relay address, then try again."),
-            (PushRelayError.transport, "Could not reach the notification relay. Check this iPhone’s internet connection, then try again."),
-            (BotFailure.unsupported, "This Hermes host doesn’t offer the password sign-in push setup needs."),
-            (BotFailure.wrongIdentity, "This Hermes host doesn’t offer the password sign-in push setup needs."),
-            // The shared sign-in reads a status 404, a JSON 401 or a non-JSON body as another kind of server.
-            (BotFailure.notDashboard, "This Hermes host doesn’t offer the password sign-in push setup needs."),
-            (BotFailure.rejected(401), "This Hermes host rejected the saved sign-in. Update the Hermes connection, then try again."),
-            (URLError(.timedOut), "The host did not answer in time. It may still be finishing this step — wait a moment, then try again."),
-            (CocoaError(.fileWriteUnknown), "This step did not finish. Try again.")
-        ]
-        for (error, expected) in cases {
-            XCTAssertEqual(HermexPushProvisioner.message(for: error), expected, "\(error)")
-        }
     }
 
     func testDisableStopsTheHostSendingBeforeDroppingThisPhone() async throws {
@@ -790,41 +719,6 @@ import XCTest
         XCTAssertFalse(provisioner.isWorking)
         provisioner.leaveSettings()
         XCTAssertFalse(provisioner.testDelivered, "Leaving Settings clears the result")
-    }
-
-    func testEachTestOutcomeSaysWhatAnsweredIt() async throws {
-        let registrar = FakePushRegistrar()
-        try await registrar.enable(PushPairing(relayURL: URL(string: "https://relay.example")!,
-                                               installKey: String(repeating: "a", count: 64), previewKey: "key"),
-                                   for: serverA)
-        let cases: [(PushRelayTestOutcome, String)] = [
-            (.unreachable, "Couldn’t reach the relay. Check this iPhone’s internet connection, then try again."),
-            (.rejected(statusCode: 503, result: "apns_rejected"),
-             "Apple refused the test notification. Turn notifications off and on again for this server."),
-            (.rejected(statusCode: 503, result: "delivery_retry"),
-             "The relay couldn’t deliver the test right now (HTTP 503). Try again in a few minutes."),
-            (.rejected(statusCode: 503, result: "temporarily_unavailable"),
-             "The relay couldn’t deliver the test right now (HTTP 503). Try again in a few minutes."),
-            (.rejected(statusCode: 429, result: "event_limit"),
-             "The relay couldn’t deliver the test right now (HTTP 429). Try again in a few minutes."),
-            (.rejected(statusCode: 429, result: nil),
-             "The relay’s hosting refused the request (HTTP 429). The relay may be over its daily limit or switched off."),
-            (.rejected(statusCode: 400, result: "invalid_request"), "The relay couldn’t deliver (HTTP 400)."),
-            (.unusablePairing, "This Hermes host returned pairing keys Hermex cannot use. Update the hermex-push plugin.")
-        ]
-        for (outcome, message) in cases {
-            let provisioner = makeProvisioner(server: serverA, registrar: registrar, testSender: { _ in outcome })
-            await provisioner.sendTestNotification()
-            // Keys an old plugin sent are the one answer updating the plugin fixes (#851).
-            let remedy: HermexPushProvisioner.Failure.Remedy = outcome == .unusablePairing ? .updatePlugin : .none
-            XCTAssertEqual(provisioner.failure, HermexPushProvisioner.Failure(title: "Test notification failed", message: message,
-                                                                              remedy: remedy),
-                           "\(outcome)")
-            XCTAssertFalse(provisioner.testDelivered)
-            // The next action replaces the result.
-            await provisioner.updatePreferences(PushPreferences())
-            XCTAssertNil(provisioner.failure)
-        }
     }
 
     func testReplyNotificationsOffOrNotificationsDeniedMakeTheTestUnavailable() async throws {

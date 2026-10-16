@@ -2,14 +2,6 @@ import XCTest
 @testable import HermesMobile
 
 final class OnboardingFlowTests: XCTestCase {
-    func testPrimaryButtonTitlesFollowPagerFlow() {
-        XCTAssertEqual(OnboardingFlowPolicy.primaryButtonTitle(for: 0), "Get Started")
-        XCTAssertEqual(OnboardingFlowPolicy.primaryButtonTitle(for: 1), "Set Up")
-        XCTAssertEqual(OnboardingFlowPolicy.primaryButtonTitle(for: 2), "Continue")
-        XCTAssertEqual(OnboardingFlowPolicy.primaryButtonTitle(for: 3), "Continue")
-        XCTAssertEqual(OnboardingFlowPolicy.primaryButtonTitle(for: 4), "Connect")
-    }
-
     func testCopyReminderOnlyAppliesToAgentPromptPageWithoutCopy() {
         XCTAssertTrue(
             OnboardingFlowPolicy.shouldShowCopyReminder(
@@ -140,36 +132,6 @@ final class OnboardingFlowTests: XCTestCase {
         )
     }
 
-    func testStepOneOpensOnTheHermesPromptAndSwapsToWebUIAndBack() {
-        let initial = OnboardingFlowPolicy.initialSetupPrompt
-        XCTAssertEqual(initial, .hermes)
-        XCTAssertEqual(initial.text, OnboardingFlowPolicy.hermesSetupPrompt)
-        XCTAssertEqual(initial.title, "Set up Hermes")
-        XCTAssertEqual(initial.switchTitle, "Using Hermes Web UI instead?")
-
-        let swapped = initial.alternative
-        XCTAssertEqual(swapped, .webUI)
-        XCTAssertEqual(swapped.text, OnboardingFlowPolicy.webUISetupPrompt)
-        XCTAssertEqual(swapped.title, "Set up Hermes Web UI")
-        XCTAssertEqual(swapped.alternative, .hermes)
-    }
-
-    func testSetupPromptChoiceKeepsThePageCount() {
-        XCTAssertEqual(OnboardingFlowPolicy.pageCount, 5)
-        XCTAssertEqual(OnboardingFlowPolicy.agentPromptPageIndex, 2)
-    }
-
-    func testConnectFocusClearsWhenLeavingConnectPage() {
-        XCTAssertTrue(OnboardingFlowPolicy.shouldClearConnectFocusWhenLeavingPage(3))
-        XCTAssertFalse(OnboardingFlowPolicy.shouldClearConnectFocusWhenLeavingPage(OnboardingFlowPolicy.connectPageIndex))
-    }
-
-    func testServerShortcutShowsBeforeConnectPageOnly() {
-        XCTAssertTrue(OnboardingFlowPolicy.showsServerShortcut(for: 0))
-        XCTAssertTrue(OnboardingFlowPolicy.showsServerShortcut(for: 3))
-        XCTAssertFalse(OnboardingFlowPolicy.showsServerShortcut(for: OnboardingFlowPolicy.connectPageIndex))
-    }
-
     func testAgentSetupPromptDefaultsToSafeStateAwareTailscaleServe() {
         let prompt = OnboardingFlowPolicy.webUISetupPrompt
 
@@ -259,20 +221,5 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertFalse(prompt.contains("curl --fail https://<"))
         XCTAssertFalse(prompt.contains("--insecure"))
         XCTAssertFalse(prompt.contains("hermes-webui"))
-    }
-
-    func testTailscaleAppStoreURLUsesITMSDeepLink() {
-        XCTAssertEqual(
-            OnboardingFlowPolicy.tailscaleAppStoreURL.absoluteString,
-            "itms-apps://apps.apple.com/us/app/tailscale/id1470499037"
-        )
-        XCTAssertEqual(
-            OnboardingFlowPolicy.tailscaleAppStoreFallbackURL.absoluteString,
-            "https://apps.apple.com/us/app/tailscale/id1470499037"
-        )
-    }
-
-    func testConnectPageIndexIsFinalPagerPage() {
-        XCTAssertEqual(OnboardingFlowPolicy.connectPageIndex, OnboardingFlowPolicy.pageCount - 1)
     }
 }

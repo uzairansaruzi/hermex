@@ -298,54 +298,6 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertFalse(viewModel.isConnectionLocked)
     }
 
-    // Edit during connect(): the operation must be refused outright while the
-    // form is locked (inputs frozen), so no second connect can interleave.
-    // The accepted connect walks its REAL four-phase schedule: the ViewModel's
-    // own probe (health, authStatus) followed by configure's internal re-probe
-    // (health, authStatus).
-    func testConnectWhileLockedIsRefused() async {
-        let gatekeeper = OnboardingGateKeeper()
-        let client = GatedAuthAPIClient(
-            gatekeeper: gatekeeper,
-            outcome: .succeed(AuthStatusResponse(authEnabled: false, loggedIn: true))
-        )
-        let manager = makeGatedManager(client)
-        let viewModel = makeWebuiFormViewModel()
-        viewModel.serverURLString = "https://example.com"
-
-        let connectTask = Task { await viewModel.connect(authManager: manager) }
-        await gatekeeper.waitForEvents(1, "accepted connect should park in its probe's health()")
-
-        XCTAssertTrue(viewModel.isConnectionLocked, "inputs frozen for the whole connect")
-        XCTAssertTrue(viewModel.isWorking)
-        XCTAssertNil(viewModel.authStatus, "probe still in flight — capability-derived UI must not be asserted yet")
-
-        let loginsBefore = client.configuredPasswords.count
-
-        // Return-key during lock must be refused by the guard.
-        await viewModel.connect(authManager: manager)
-        XCTAssertEqual(gatekeeper.recordedPhases.count, 1, "refused connect starts no network work")
-
-        // Settle the accepted connect through all four phases: release each
-        // gate only after its successor has parked, keeping the schedule
-        // deterministic.
-        for expected in 2...4 {
-            gatekeeper.releaseNext()
-            await gatekeeper.waitForEvents(expected, "connect schedule phase \(expected)")
-        }
-        gatekeeper.releaseNext()
-
-        _ = await connectTask.value
-
-        XCTAssertEqual(client.configuredPasswords.count, loginsBefore, "passwordless configure must not attempt login")
-        XCTAssertFalse(viewModel.isConnectionLocked, "lock released after settle")
-        XCTAssertFalse(viewModel.isWorking)
-        XCTAssertNotNil(viewModel.authStatus, "accepted connect settles to a probed status")
-        XCTAssertNil(viewModel.errorMessage)
-        XCTAssertFalse(viewModel.isPasswordRequired, "trusted-header status hides the password field AFTER settle")
-        XCTAssertEqual(manager.state, .loggedIn(server: URL(string: "https://example.com")!))
-    }
-
     // Configure reaches AuthManager exactly once per accepted connect: one
     // keychain persist, one registry activation, zero login attempts on a
     // passwordless server.

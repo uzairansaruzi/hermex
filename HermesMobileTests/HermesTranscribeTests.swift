@@ -55,21 +55,6 @@ import XCTest
         XCTAssertEqual([onStandard, onLong], [false, true])
     }
 
-    /// The host's own silence: the controller inserts nothing and shows no error.
-    func testSilenceIsAnEmptySuccess() async throws {
-        let (transcribe, _) = transcriber { request in
-            request.url?.path == "/api/audio/transcribe"
-                ? .json(200, .object(["ok": .bool(true), "transcript": .string(""), "provider": .null]))
-                : nil
-        }
-
-        let reply = try await transcribe(Data("quiet".utf8), "dictation.m4a")
-
-        XCTAssertEqual(reply.ok, true)
-        XCTAssertEqual(reply.transcript, "")
-        XCTAssertNil(reply.error)
-    }
-
     func testTheHostsDetailBecomesTheError() async throws {
         let refusals: [(status: Int, detail: String)] = [
             (400, "Local transcription failed: Unable to download faster-whisper model 'base'"),

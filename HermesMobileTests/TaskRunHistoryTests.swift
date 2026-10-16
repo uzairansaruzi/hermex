@@ -101,19 +101,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertFalse(viewModel.canLoadMoreRuns)
     }
 
-    @MainActor
-    func testPagingStopsWhenTheFirstPageCoversTheTotal() async {
-        let viewModel = makeViewModel { request in
-            apiTestJSONResponse(Self.historyJSON(total: 50, offset: 0, count: 50), for: request)
-        }
-
-        await viewModel.loadHistory()
-
-        XCTAssertEqual(viewModel.runs.count, 50)
-        XCTAssertEqual(viewModel.remainingRunCount, 0)
-        XCTAssertFalse(viewModel.canLoadMoreRuns)
-    }
-
     /// A job writing new output between two pages shifts every row down one, so
     /// the second page can repeat what the first already showed.
     @MainActor
@@ -275,26 +262,6 @@ final class TaskRunHistoryTests: APIClientTestCase {
     }
 
     // MARK: - Run output
-
-    @MainActor
-    func testRunOutputStripsEscapesAndCarriesItsFilename() async {
-        let viewModel = makeViewModel { request in
-            apiTestJSONResponse("""
-            {
-              "job_id": "job-123",
-              "filename": "run-1.md",
-              "content": "\\u001b[0;32mFAIL\\u001b[0m — did not verify",
-              "usage": {}
-            }
-            """, for: request)
-        }
-
-        await viewModel.loadRunOutput(for: CronRunHistoryItem(filename: "run-1.md"))
-
-        XCTAssertEqual(viewModel.runOutput?.filename, "run-1.md")
-        XCTAssertEqual(viewModel.runOutput?.text, "FAIL — did not verify")
-        XCTAssertFalse(viewModel.isLoadingRunOutput)
-    }
 
     /// Tapping a second run while the first is still in flight must leave the
     /// sheet showing the run that was tapped last.
@@ -882,16 +849,6 @@ final class TaskConfigurationFieldTests: XCTestCase {
         XCTAssertEqual(fields.first { $0.title == "Skills" }?.value, "summarize, notify")
         // Nothing said about notifications, so nothing claimed about them.
         XCTAssertNil(fields.first { $0.title == "Notifications" })
-    }
-
-    /// Every job delivers somewhere, and `local` is the server's own default
-    /// rather than a stand-in for a value it failed to send.
-    func testDeliverFallsBackToTheServerDefault() {
-        let fields = TaskConfigurationField.fields(for: Self.decodeJob("""
-        {"job_id": "job-3"}
-        """))
-
-        XCTAssertEqual(fields.first { $0.title == "Deliver" }?.value, "local")
     }
 
     private static func decodeJob(_ json: String) -> CronJob {

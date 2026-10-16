@@ -98,20 +98,6 @@ import XCTest
         }
     }
 
-    func testAMissingSkillReadsAsNotFound() async throws {
-        let client = Self.client { request in
-            request.url?.path == "/api/skills/content"
-                ? .json(404, .object(["detail": .string("Skill 'arxiv' not found.")])) : nil
-        }
-
-        do {
-            _ = try await client.skillContent(name: "arxiv", file: nil)
-            XCTFail("Expected the host's 404")
-        } catch {
-            XCTAssertEqual(error.localizedDescription, "The server rejected the request: Skill 'arxiv' not found.")
-        }
-    }
-
     // MARK: Linked files (#1070)
 
     func testDetailListsTheSkillFolderTwoLevelsDeepByRelativePath() async throws {

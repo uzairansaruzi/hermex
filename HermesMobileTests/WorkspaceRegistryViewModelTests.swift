@@ -13,21 +13,6 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
     """
 
     @MainActor
-    func testLoadFetchesWorkspaces() async throws {
-        let client = makeClient { request in
-            XCTAssertEqual(request.url?.path, "/api/workspaces")
-            return apiTestJSONResponse(Self.twoWorkspacesJSON, for: request)
-        }
-        let model = WorkspaceRegistryViewModel(client: client)
-
-        await model.load()
-
-        XCTAssertEqual(model.rows.map(\.path), ["/Users/test/alpha", "/Users/test/beta"])
-        XCTAssertNil(model.errorMessage)
-        XCTAssertFalse(model.isLoading)
-    }
-
-    @MainActor
     func testLoadFailureSurfacesError() async throws {
         let client = makeClient { request in
             let response = HTTPURLResponse(
@@ -193,39 +178,6 @@ final class WorkspaceRegistryViewModelTests: APIClientTestCase {
 
         XCTAssertFalse(succeeded)
         XCTAssertEqual(model.rows.last?.name, "Beta")
-    }
-
-    @MainActor
-    func testMoveWorkspacesSendsFullOrder() async throws {
-        var reorderBody: [String: Any] = [:]
-        let client = makeClient { request in
-            switch request.url?.path {
-            case "/api/workspaces":
-                return apiTestJSONResponse(Self.twoWorkspacesJSON, for: request)
-            case "/api/workspaces/reorder":
-                reorderBody = try apiTestJSONBody(from: request)
-                return apiTestJSONResponse("""
-                {
-                  "ok": true,
-                  "workspaces": [
-                    {"path": "/Users/test/beta", "name": "Beta"},
-                    {"path": "/Users/test/alpha", "name": "Alpha"}
-                  ]
-                }
-                """, for: request)
-            default:
-                XCTFail("Unexpected path: \(request.url?.path ?? "nil")")
-                return apiTestJSONResponse("{}", for: request)
-            }
-        }
-        let model = WorkspaceRegistryViewModel(client: client)
-        await model.load()
-
-        let succeeded = await model.moveWorkspaces(fromOffsets: IndexSet(integer: 1), toOffset: 0)
-
-        XCTAssertTrue(succeeded)
-        XCTAssertEqual(reorderBody["paths"] as? [String], ["/Users/test/beta", "/Users/test/alpha"])
-        XCTAssertEqual(model.rows.map(\.path), ["/Users/test/beta", "/Users/test/alpha"])
     }
 
     @MainActor

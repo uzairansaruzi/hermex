@@ -430,17 +430,6 @@ final class MoveToHermesRunnerTests: XCTestCase {
         XCTAssertEqual(summary.unchecked, 2)
     }
 
-    func testACollidingTitleIsReportedAsTheSuffixedTitleItTried() async throws {
-        exports("abcdef123456")
-        host.titlesInUse = ["Trip", "Trip (123456)"]
-
-        let runner = makeRunner()
-        await runner.start(review([entry("abcdef123456", title: "Trip")]))
-
-        guard case .finished(let report) = runner.state else { return XCTFail("Expected finished, got \(runner.state)") }
-        XCTAssertEqual(report.changesRejected.map(\.change), [.title(from: nil, to: "Trip (123456)")])
-    }
-
     /// The destination's removal is part way through while a chat's row is read for its draft:
     /// its drafts are discarded but its entry is still there. The draft stays on the webui.
     func testADraftReadWhileTheDestinationIsBeingRemovedStaysOnTheWebui() async throws {

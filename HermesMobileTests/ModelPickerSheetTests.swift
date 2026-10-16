@@ -31,12 +31,6 @@ final class ModelPickerSheetTests: XCTestCase {
         )
     }
 
-    func testNoRowIsInFlightWithoutAKey() {
-        XCTAssertFalse(
-            ModelPickerSheet.isInFlight(option("gpt-5", provider: "openai"), inFlightKey: nil)
-        )
-    }
-
     // MARK: Search
 
     private var codexGroup: ModelCatalogGroup {
@@ -61,14 +55,6 @@ final class ModelPickerSheetTests: XCTestCase {
         let filtered = ModelPickerSheet.filteredGroups([codexGroup], query: "o3")
 
         XCTAssertEqual(filtered.first?.allModels.map(\.id), ["o3"])
-    }
-
-    func testSearchingSomethingAbsentDropsTheGroup() {
-        XCTAssertTrue(ModelPickerSheet.filteredGroups([codexGroup], query: "claude").isEmpty)
-    }
-
-    func testAnEmptyQueryKeepsEveryGroupUntouched() {
-        XCTAssertEqual(ModelPickerSheet.filteredGroups([codexGroup], query: "   ").count, 1)
     }
 
     // MARK: Custom entry

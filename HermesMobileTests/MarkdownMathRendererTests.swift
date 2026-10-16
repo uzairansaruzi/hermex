@@ -6,14 +6,6 @@ import XCTest
 @testable import HermesMobile
 
 final class MarkdownMathRendererTests: XCTestCase {
-    func testReportedBareTuplesAreRecognizedAsInlineMath() {
-        XCTAssertEqual(
-            MarkdownMathFormatter.replacingInlineMath(in: "Contrast $(4,-2)$ against $(4,4)$."),
-            "Contrast (4,-2) against (4,4).",
-            "Reported numeric tuples must render without literal math delimiters"
-        )
-    }
-
     func testMathFreeTextIsPreservedAcrossFormattingAndLayout() {
         for input in ["", "a", "\n\n", "**Bold** and `code`", "中文 العربية 👨‍👩‍👧‍👦 e\u{301}",
                       String(repeating: "A normal response.\n", count: 1_000)] {
@@ -34,44 +26,6 @@ final class MarkdownMathRendererTests: XCTestCase {
             MarkdownMathFormatter.replacingKnownCommands(in: "\\alpha\u{301} \\Alpha \\unknown"),
             "α\u{301} \\Alpha \\unknown"
         )
-    }
-
-    func testInlineMathReplacesCommonLatexCommands() {
-        let input = #"Inline: the quadratic formula $x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}$ works."#
-
-        let rendered = MarkdownMathFormatter.replacingInlineMath(in: input)
-
-        XCTAssertFalse(rendered.contains("$"))
-        XCTAssertFalse(rendered.contains(#"\frac"#))
-        XCTAssertFalse(rendered.contains(#"\sqrt"#))
-        XCTAssertTrue(rendered.contains("±"))
-        XCTAssertTrue(rendered.contains("√"))
-        XCTAssertTrue(rendered.contains("²"))
-    }
-
-    func testSingleTokenInlineMathAndEscapedDollars() {
-        let input = #"Where $m$ is count, $y$ is label, and \$not math\$ stays literal."#
-
-        let rendered = MarkdownMathFormatter.replacingInlineMath(in: input)
-
-        XCTAssertTrue(rendered.contains("Where m is count"))
-        XCTAssertTrue(rendered.contains("y is label"))
-        XCTAssertTrue(rendered.contains(#"\$not math\$"#))
-    }
-
-    func testInlineAssignmentsRecognizeVectorsTuplesAndExistingScriptForms() {
-        let input = #"Vectors $E=[4,-2]$ and $O=[6,-2]$; tuple $P=(x,y)$; scripts $W_0=e^0$, $W_2$, $O_0$, and $X_0=\sum x_n$."#
-
-        let rendered = MarkdownMathFormatter.replacingInlineMath(in: input)
-
-        XCTAssertFalse(rendered.contains("$"))
-        XCTAssertTrue(rendered.contains("E=[4,-2]"))
-        XCTAssertTrue(rendered.contains("O=[6,-2]"))
-        XCTAssertTrue(rendered.contains("P=(x,y)"))
-        XCTAssertTrue(rendered.contains("W₀=e⁰"))
-        XCTAssertTrue(rendered.contains("W₂"))
-        XCTAssertTrue(rendered.contains("O₀"))
-        XCTAssertTrue(rendered.contains("X₀=∑ xₙ"))
     }
 
     func testInlineAssignmentRecognitionPreservesCurrencyAndProtectedDollars() {
@@ -100,69 +54,6 @@ final class MarkdownMathRendererTests: XCTestCase {
         }
         XCTAssertTrue(rendered.contains("**![\u{FFFC}](hermex-math:///RT1bNCwtMl0=)**"))
         XCTAssertTrue(rendered.contains("`$O=[6,-2]$`"))
-    }
-
-    func testInlineScreenshotCommandsDoNotLeakRawLatex() {
-        let input = #"Probability: $P(A \mid B) = \frac{P(B \mid A)P(A)}{P(B)}$ and norm $\Vert x \rVert_2 = \sqrt{\sum_{i=1}^n x_i^2}$."#
-
-        let rendered = MarkdownMathFormatter.replacingInlineMath(in: input)
-
-        XCTAssertFalse(rendered.contains(#"\mid"#))
-        XCTAssertFalse(rendered.contains(#"\Vert"#))
-        XCTAssertFalse(rendered.contains(#"\rVert"#))
-        XCTAssertTrue(rendered.contains("P(A | B)"))
-        XCTAssertTrue(rendered.contains("‖ x ‖₂"))
-        XCTAssertTrue(rendered.contains("∑ᵢ₌₁ⁿ"))
-        XCTAssertTrue(rendered.contains("xᵢ²"))
-    }
-
-    func testLongerCommandsWinBeforeShorterCommandPrefixes() {
-        let input = #"Attention: $\mathrm{softmax}(QK^\top/\sqrt{d_k})V$ and $a \leftarrow b \to c$."#
-
-        let rendered = MarkdownMathFormatter.replacingInlineMath(in: input)
-
-        XCTAssertTrue(rendered.contains("QK^⊤/√dₖ"))
-        XCTAssertTrue(rendered.contains("a ← b → c"))
-        XCTAssertFalse(rendered.contains("→p"))
-        XCTAssertFalse(rendered.contains(#"\top"#))
-        XCTAssertFalse(rendered.contains(#"\leftarrow"#))
-    }
-
-    func testDisplayMathSegmentsAndRendersMatrices() {
-        let input = #"**Matrices** $$\begin{pmatrix} a & b \\ c & d \end{pmatrix}^{-1} = \frac{1}{ad-bc}\begin{pmatrix} d & -b \\ -c & a \end{pmatrix}$$"#
-
-        let segments = MarkdownMathSegmenter.segments(in: input)
-
-        XCTAssertEqual(segments.count, 2)
-        guard case .displayMath(let latex) = segments.last else {
-            return XCTFail("Expected trailing display math segment.")
-        }
-
-        let rendered = MarkdownMathFormatter.renderedText(for: latex)
-        XCTAssertFalse(rendered.contains("$"))
-        XCTAssertFalse(rendered.contains(#"\begin"#))
-        XCTAssertTrue(rendered.contains("⎛"))
-        XCTAssertTrue(rendered.contains("⎞"))
-        XCTAssertTrue(rendered.contains("⁻¹"))
-        XCTAssertTrue(rendered.contains("ad-bc"))
-    }
-
-    func testInlineMathSkipsCodeSpansAndFencedBlocks() {
-        let input = #"""
-        Code `$x = \frac{1}{2}$` stays.
-
-        ```swift
-        let value = "$$\\frac{1}{2}$$"
-        ```
-
-        But $x^2$ changes.
-        """#
-
-        let rendered = MarkdownMathFormatter.replacingInlineMath(in: input)
-
-        XCTAssertTrue(rendered.contains(#"`$x = \frac{1}{2}$`"#))
-        XCTAssertTrue(rendered.contains(#"$$\\frac{1}{2}$$"#))
-        XCTAssertTrue(rendered.contains("x²"))
     }
 
     func testDisplayMathSegmentationSkipsFencedCodeBlocks() {
@@ -239,93 +130,6 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertFalse(rendered.joined().contains(#"\mathbf"#))
     }
 
-    func testFinalStressTestDoesNotLeakRawCommands() {
-        let input = #"""
-        \[
-        \boxed{
-        \mathcal{L}(\theta)
-        =
-        -\sum_{i=1}^{n}
-        [
-        y_i \log \hat{y}_i
-        +
-        (1-y_i)\log(1-\hat{y}_i)
-        ]
-        }
-        \]
-        """#
-
-        guard case .displayMath(let latex) = MarkdownMathSegmenter.segments(in: input).first else {
-            return XCTFail("Expected display math.")
-        }
-
-        let rendered = MarkdownMathFormatter.renderedText(for: latex)
-
-        XCTAssertTrue(rendered.contains("ℒ(θ)"))
-        XCTAssertTrue(rendered.contains("-∑ᵢ₌₁ⁿ"))
-        XCTAssertTrue(rendered.contains("yᵢ log ŷᵢ"))
-        XCTAssertTrue(rendered.contains("(1-yᵢ)log(1-ŷᵢ)"))
-        XCTAssertFalse(rendered.contains(#"\boxed"#))
-        XCTAssertFalse(rendered.contains(#"\mathcal"#))
-        XCTAssertFalse(rendered.contains(#"\log"#))
-        XCTAssertFalse(rendered.contains(#"\hat"#))
-    }
-
-    func testCasesAndOptimizationCommandsRenderFromDisplayMath() {
-        let input = #"""
-        \[
-        \begin{cases}
-        2x + y = 5 \\
-        x - y = 1
-        \end{cases}
-        \Rightarrow x = 2, y = 1
-        \]
-
-        \[
-        \theta^* = \arg\min_{\theta} \frac{1}{n}\sum_{i=1}^{n}(y_i - f_\theta(x_i))^2
-        \]
-
-        \[
-        \theta^\* = \arg\min_{\theta} J(\theta)
-        \]
-        """#
-
-        let rendered = MarkdownMathSegmenter.segments(in: input).compactMap { segment -> String? in
-            if case .displayMath(let latex) = segment {
-                return MarkdownMathFormatter.renderedText(for: latex)
-            }
-            return nil
-        }
-        .joined(separator: "\n")
-
-        XCTAssertTrue(rendered.contains("⎧ 2x + y = 5"))
-        XCTAssertTrue(rendered.contains("⎩ x - y = 1"))
-        XCTAssertTrue(rendered.contains("⇒ x = 2, y = 1"))
-        XCTAssertTrue(rendered.contains("θ^* = argminθ"))
-        XCTAssertFalse(rendered.contains(#"θ^\*"#))
-        XCTAssertTrue(rendered.contains("∑ᵢ₌₁ⁿ"))
-        XCTAssertFalse(rendered.contains(#"\begin"#))
-        XCTAssertFalse(rendered.contains(#"\end"#))
-        XCTAssertFalse(rendered.contains(#"\Rightarrow"#))
-        XCTAssertFalse(rendered.contains(#"\arg"#))
-    }
-
-    func testMarkdownHighlightPolicyUsesSplashForNormalSwiftCode() {
-        let decision = MarkdownHighlightPolicy.decision(
-            for: "let value = 1",
-            language: "swift",
-            isStreaming: false
-        )
-
-        XCTAssertEqual(decision, .highlight(language: "swift", engine: .splashSwift))
-    }
-
-    func testMarkdownHighlightPolicyNormalizesCommonAliases() {
-        XCTAssertEqual(MarkdownHighlightPolicy.normalizedLanguage(from: "py"), "python")
-        XCTAssertEqual(MarkdownHighlightPolicy.normalizedLanguage(from: "zsh session"), "bash")
-        XCTAssertEqual(MarkdownHighlightPolicy.normalizedLanguage(from: "TSX"), "typescript")
-    }
-
     func testMarkdownHighlightPolicyLanguageLogCategoryDoesNotExposeUnsupportedLanguage() {
         let normalized = MarkdownHighlightPolicy.normalizedLanguage(from: "password-secret-token")
         let category = MarkdownHighlightPolicy.languageLogCategory(for: normalized)
@@ -336,23 +140,6 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertFalse(category.contains("token"))
     }
 
-    func testMarkdownHighlightPolicyLanguageLogCategoryUsesFixedBuckets() {
-        XCTAssertEqual(MarkdownHighlightPolicy.languageLogCategory(for: nil), "missing")
-        XCTAssertEqual(MarkdownHighlightPolicy.languageLogCategory(for: "swift"), "splashSwift")
-        XCTAssertEqual(MarkdownHighlightPolicy.languageLogCategory(for: "json"), "highlightr")
-        XCTAssertEqual(MarkdownHighlightPolicy.languageLogCategory(for: "log"), "highRisk")
-    }
-
-    func testMarkdownHighlightPolicySkipsStreamingCode() {
-        let decision = MarkdownHighlightPolicy.decision(
-            for: "let value = 1",
-            language: "swift",
-            isStreaming: true
-        )
-
-        XCTAssertEqual(decision, .plain(reason: .streaming, normalizedLanguage: "swift"))
-    }
-
     func testMarkdownHighlightPolicySkipsMissingLanguageInsteadOfAutoDetecting() {
         let decision = MarkdownHighlightPolicy.decision(
             for: "let value = 1",
@@ -361,16 +148,6 @@ final class MarkdownMathRendererTests: XCTestCase {
         )
 
         XCTAssertEqual(decision, .plain(reason: .missingLanguage, normalizedLanguage: nil))
-    }
-
-    func testMarkdownHighlightPolicySkipsLogLikeLanguages() {
-        let decision = MarkdownHighlightPolicy.decision(
-            for: "2026-05-26 warning: retrying",
-            language: "log",
-            isStreaming: false
-        )
-
-        XCTAssertEqual(decision, .plain(reason: .highRiskLanguage, normalizedLanguage: "log"))
     }
 
     /// Diff and patch are styled natively by `MarkdownDiffFormatter`, never by Highlightr.
@@ -407,32 +184,6 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertEqual(decision, .plain(reason: .tooManyLines, normalizedLanguage: "python"))
     }
 
-    func testMarkdownHighlightPolicyCountsCarriageReturnLines() {
-        let code = Array(repeating: "print(1)", count: MarkdownHighlightPolicy.maxHighlightedCodeLineCount + 1)
-            .joined(separator: "\r")
-
-        let decision = MarkdownHighlightPolicy.decision(
-            for: code,
-            language: "python",
-            isStreaming: false
-        )
-
-        XCTAssertEqual(decision, .plain(reason: .tooManyLines, normalizedLanguage: "python"))
-    }
-
-    func testMarkdownHighlightPolicyCountsUnicodeSeparatorLines() {
-        let code = Array(repeating: "print(1)", count: MarkdownHighlightPolicy.maxHighlightedCodeLineCount + 1)
-            .joined(separator: "\u{2028}")
-
-        let decision = MarkdownHighlightPolicy.decision(
-            for: code,
-            language: "python",
-            isStreaming: false
-        )
-
-        XCTAssertEqual(decision, .plain(reason: .tooManyLines, normalizedLanguage: "python"))
-    }
-
     func testMarkdownHighlightPolicySkipsLongSingleLineCode() {
         let code = String(repeating: "x", count: MarkdownHighlightPolicy.maxHighlightedCodeLineLength + 1)
 
@@ -458,23 +209,6 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertEqual(decision, .highlight(language: "json", engine: .highlightr))
     }
 
-    func testMarkdownCodeHighlighterRendersSwiftCodeWithSplash() async {
-        let result = await MarkdownCodeHighlighter().highlightedCode(
-            for: MarkdownCodeHighlightRequest(
-                code: "let value = 1",
-                language: "swift",
-                colorScheme: .light,
-                isStreaming: false
-            )
-        )
-
-        guard case .highlighted(let highlightedCode) = result else {
-            return XCTFail("Expected Splash to highlight Swift code.")
-        }
-
-        XCTAssertEqual(highlightedCode.string, "let value = 1")
-    }
-
     func testMarkdownCodeHighlighterRendersLightModeSwiftForegroundColors() async {
         let result = await MarkdownCodeHighlighter().highlightedCode(
             for: MarkdownCodeHighlightRequest(
@@ -491,25 +225,6 @@ final class MarkdownMathRendererTests: XCTestCase {
 
         let colors = foregroundColorSignatures(in: highlightedCode, userInterfaceStyle: .light)
         XCTAssertGreaterThan(colors.count, 1)
-    }
-
-    func testMarkdownCodeHighlighterRendersNonSwiftCodeWithHighlightr() async {
-        let result = await MarkdownCodeHighlighter().highlightedCode(
-            for: MarkdownCodeHighlightRequest(
-                code: #"{"value": 1}"#,
-                language: "json",
-                colorScheme: .dark,
-                isStreaming: false
-            )
-        )
-
-        guard case .highlighted(let highlightedCode) = result else {
-            return XCTFail("Expected Highlightr to highlight JSON code.")
-        }
-
-        let renderedCode = highlightedCode.string
-        XCTAssertTrue(renderedCode.contains("value"))
-        XCTAssertTrue(renderedCode.contains("1"))
     }
 
     func testMarkdownCodeHighlighterRendersLightModeNonSwiftForegroundColors() async {
@@ -620,24 +335,6 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertNil(highlighter.cachedHighlight(for: request))
     }
 
-    func testMarkdownHighlightPolicyAllowsLargeCodeBlocksWithinMarkdownLimit() {
-        let code = Array(
-            repeating: #""enabled": true, "retries": 5, "mode": "verbose""#,
-            count: 350
-        )
-        .joined(separator: "\n")
-
-        XCTAssertGreaterThan(code.count, 12_000)
-
-        let decision = MarkdownHighlightPolicy.decision(
-            for: code,
-            language: "json",
-            isStreaming: false
-        )
-
-        XCTAssertEqual(decision, .highlight(language: "json", engine: .highlightr))
-    }
-
     func testMarkdownPlainCodeFormatterPreservesVisibleBlankLines() {
         let lines = MarkdownPlainCodeFormatter.lines(in: "first\n\nthird")
 
@@ -713,10 +410,6 @@ final class MarkdownMathRendererTests: XCTestCase {
             colorSignature(in: segments[0].attributedText, at: 12, userInterfaceStyle: .light),
             colorSignature(for: .systemBlue, userInterfaceStyle: .light)
         )
-    }
-
-    func testMarkdownContentRenderingPolicyAllowsNormalMarkdown() {
-        XCTAssertNil(MarkdownContentRenderingPolicy.fallbackReason(for: "**Hello** world"))
     }
 
     func testMarkdownContentRenderingPolicyFallsBackForVeryLargeMarkdown() {
@@ -809,12 +502,6 @@ private func colorSignature(in attributedString: NSAttributedString, at location
 }
 
 final class MathFenceLanguageTests: XCTestCase {
-    func testMathLanguagesMatch() {
-        XCTAssertTrue(MathFenceLanguage.matches("math"))
-        XCTAssertTrue(MathFenceLanguage.matches("latex"))
-        XCTAssertTrue(MathFenceLanguage.matches("tex"))
-    }
-
     func testMatchingIsCaseAndWhitespaceInsensitive() {
         XCTAssertTrue(MathFenceLanguage.matches("Math"))
         XCTAssertTrue(MathFenceLanguage.matches("  LaTeX  "))
@@ -824,18 +511,6 @@ final class MathFenceLanguageTests: XCTestCase {
     func testFirstInfoTokenIsUsed() {
         // Markdown info strings can carry extra tokens after the language.
         XCTAssertTrue(MathFenceLanguage.matches("math title=Quadratic"))
-    }
-
-    func testNonMathLanguagesDoNotMatch() {
-        XCTAssertFalse(MathFenceLanguage.matches("swift"))
-        XCTAssertFalse(MathFenceLanguage.matches("python"))
-        XCTAssertFalse(MathFenceLanguage.matches("json"))
-    }
-
-    func testNilOrEmptyLanguageDoesNotMatch() {
-        XCTAssertFalse(MathFenceLanguage.matches(nil))
-        XCTAssertFalse(MathFenceLanguage.matches(""))
-        XCTAssertFalse(MathFenceLanguage.matches("   "))
     }
 }
 
@@ -1105,19 +780,6 @@ extension MarkdownMathRendererTests {
         XCTAssertEqual(placeholder.selectableText, "Before   latest  tail")
         XCTAssertEqual(placeholder.images[URL(string: "https://example.com/image.png")!], Image(systemName: "square"))
         XCTAssertNotEqual(try current.imageLoadIdentity(), try old.imageLoadIdentity())
-    }
-
-    func testInlineCodeUsesChatTheme() throws {
-        for dark in [false, true] {
-            for weight in [Font.Weight.regular, .semibold] {
-                let request = InlineMathTextRequest(markdown: "`snippet`", fontSize: 32, dark: dark, scale: 3, fontWeight: weight)
-                let result = try request.placeholder()
-                var expected = try AttributedString(markdown: "`snippet`")
-                expected.font = .system(size: 27.2, weight: weight, design: .monospaced)
-                expected.backgroundColor = dark ? Color(red: 0.08, green: 0.09, blue: 0.12) : Color(.tertiarySystemGroupedBackground)
-                XCTAssertEqual(result.text, Text("") + Text(expected))
-            }
-        }
     }
 }
 

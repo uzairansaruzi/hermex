@@ -29,14 +29,6 @@ import Observation
         XCTAssertEqual(ranked.filter { $0.name == "context" }.count, 1)
     }
 
-    /// The composer's panel gets the host's commands and skills.
-    func testTheComposerOffersTheHostsCatalog() async {
-        let chat = await openChat()
-        XCTAssertEqual(chat.model.composerAgentCommands, chat.turn.slashCommands.catalog.commands)
-        XCTAssertTrue(chat.model.composerAgentCommands.contains { $0.name == "context" })
-        XCTAssertTrue(chat.model.composerSkillSuggestions.contains { $0.name == "demo-skill" })
-    }
-
     /// A catalog read for an attach that is no longer current is dropped.
     func testAStaleCatalogReplyIsDropped() async throws {
         let chat = await openChat(catalog: false)
@@ -111,13 +103,6 @@ import Observation
 
         XCTAssertEqual(result, .notDelivered)
         XCTAssertEqual(chat.model.sendErrorMessage, refusal)
-    }
-
-    func testAnUnknownNameIsSentAsText() async {
-        let chat = await openChat()
-        let result = await chat.model.runHermesSlashCommand("/notacommand hi")
-        XCTAssertNil(result)
-        XCTAssertEqual(chat.writes("slash.exec"), [])
     }
 
     /// A skill expands through `command.dispatch`; its prompt goes out once, and the

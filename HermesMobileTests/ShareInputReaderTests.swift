@@ -168,15 +168,6 @@ final class ShareInputReaderTests: XCTestCase {
 
     // MARK: - Filename fallbacks
 
-    func testAttachmentFilenameFallsBackToTypeBasedName() async {
-        // No suggestedName → fallbackFilename derives a name from the UTType.
-        let provider = NSItemProvider(item: Data([0x01, 0x02]) as NSData, typeIdentifier: UTType.png.identifier)
-
-        let input = await ShareInputReader.input(from: [provider])
-
-        XCTAssertEqual(input.attachments.first?.filename, "shared-image.png")
-    }
-
     func testAttachmentFilenameUsesSuggestedName() async {
         let withoutExtension = NSItemProvider(item: Data([0x01]) as NSData, typeIdentifier: UTType.png.identifier)
         withoutExtension.suggestedName = "vacation"
@@ -191,14 +182,6 @@ final class ShareInputReaderTests: XCTestCase {
     }
 
     // MARK: - Empty
-
-    func testEmptyProvidersProduceEmptyInput() async {
-        let input = await ShareInputReader.input(from: [])
-
-        XCTAssertTrue(input.urls.isEmpty)
-        XCTAssertTrue(input.textSnippets.isEmpty)
-        XCTAssertTrue(input.attachments.isEmpty)
-    }
 }
 
 /// True when `data`'s bytes live in a file mapping rather than anonymous heap

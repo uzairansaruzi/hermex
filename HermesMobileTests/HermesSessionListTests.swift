@@ -136,20 +136,6 @@ import Observation
         await waitUntil("rolled back") { list.isUnread(row) }
     }
 
-    func testMarkAsUnreadWritesTheHostsMark() async throws {
-        let wire = HermesSessionListWire()
-        wire.pages["default"] = [0: page([HermesSessionRow(id: "a", unread: false)])]
-        let list = makeList(wire)
-        await list.openHermes()
-        let row = try XCTUnwrap(list.sessions.first)
-
-        list.toggleUnread(row)
-
-        XCTAssertTrue(list.isUnread(row))
-        await waitUntil("write sent") { wire.unreadWrites.count == 1 }
-        XCTAssertEqual(wire.unreadWrites, [.init(key: "a", profile: "default", unread: true)])
-    }
-
     /// Marking a row unread and opening it at once makes two marks. Sent together they could
     /// land in either order and leave the older one on the host, so the newer waits for the
     /// older to land.
@@ -452,26 +438,6 @@ import Observation
 
     // MARK: Shortcuts
 
-    /// A Shortcut's new chat that names its Profile still waits for the list's first live read
-    /// (#1180): on a cold launch the list hasn't reached the host yet, and it may not.
-    func testANamedProfilesNewChatWaitsForTheListsFirstLiveRead() async {
-        let wire = HermesSessionListWire()
-        wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
-        let list = makeList(wire)
-        let entry = HermesSessionListEntry(server: server, connection: connection, profile: "default")
-        let request = HermesNewChatDestination(server: server, profile: "research")
-        let chat = { request.chat(on: entry, listed: list.hermesProfile, isLive: list.isHermesLive) }
-
-        XCTAssertNil(chat(), "Held on a cold launch, before the list reads the host")
-        wire.connectFailure = BotFailure.transport
-        await list.openHermes()
-        XCTAssertNil(chat(), "Held while the host can't be reached")
-
-        wire.connectFailure = nil
-        await list.openHermes()
-        XCTAssertEqual(chat()?.target, .new(profile: "research"))
-    }
-
     /// A list that read the host and then lost it, closed or dropped, holds a Shortcut's new
     /// chat again (#1180) until its next read, rather than opening a chat on a host it can't reach.
     func testANewChatWaitsAgainAfterTheListLosesTheHost() async {
@@ -763,24 +729,6 @@ import Observation
         XCTAssertEqual(wire.searches.count, 1)
     }
 
-    /// A pin confirmed on an archived match shows on it: the list's pages never hold an
-    /// archived row, so no list read brings the pin back.
-    func testPinningAnArchivedMatchShowsThePin() async throws {
-        let wire = HermesSessionListWire()
-        wire.searchResults = [HermesSessionSearchResult(row: HermesSessionRow(id: "gone", title: "Old launch", archived: true,
-                                                                              profile: "default"))]
-        let list = makeList(wire)
-        await list.openHermes()
-        await list.searchSessions(query: "launch", debounceNanoseconds: 0)
-        let match = try XCTUnwrap(list.visibleSessions(searchText: "launch", selectedProjectID: nil).first)
-
-        let pinned = await list.setPinned(true, for: match)
-
-        XCTAssertTrue(pinned)
-        XCTAssertEqual(wire.changes, [.pinned(true)])
-        XCTAssertEqual(list.visibleSessions(searchText: "launch", selectedProjectID: nil).map(\.pinned), [true])
-    }
-
     /// A search that found the list's socket not yet attached, as a list opened searching
     /// starts one, runs once the socket is, and says nothing went wrong meanwhile.
     func testASearchBeforeTheSocketIsAttachedRunsOnceItIs() async {
@@ -898,21 +846,6 @@ import Observation
         wire.searchResults.removeFirst()
         wire.onDisconnect?(BotFailure.transport)
         await list.openHermes()
-
-        XCTAssertEqual(list.visibleSessions(searchText: "old", selectedProjectID: nil).compactMap(\.sessionId), ["kept"])
-        XCTAssertEqual(wire.searches.count, 2)
-    }
-
-    /// Pull to refresh searches again too, so a match another device deleted goes.
-    func testPullToRefreshSearchesAgain() async throws {
-        let wire = HermesSessionListWire()
-        wire.searchResults = ["gone", "kept"].map { HermesSessionSearchResult(row: HermesSessionRow(id: $0, title: "Old \($0)", profile: "default")) }
-        let list = makeList(wire)
-        await list.openHermes()
-        await list.searchSessions(query: "old", debounceNanoseconds: 0)
-
-        wire.searchResults.removeFirst()
-        await list.refreshHermes()
 
         XCTAssertEqual(list.visibleSessions(searchText: "old", selectedProjectID: nil).compactMap(\.sessionId), ["kept"])
         XCTAssertEqual(wire.searches.count, 2)

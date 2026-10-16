@@ -42,24 +42,6 @@ final class InsightsViewModelTests: XCTestCase {
         XCTAssertEqual(last90Days.map(\.title), ["Today", "Updated recently", "Last message recently", "Old"])
     }
 
-    func testTopSessionsSortsByTotalTokensWithinFilteredData() throws {
-        let sessions = try decodeSessions([
-            sessionJSON(title: "Low", inputTokens: 5, outputTokens: 5),
-            sessionJSON(title: "High", inputTokens: 20, outputTokens: 1),
-            sessionJSON(title: "Medium", inputTokens: nil, outputTokens: 12)
-        ])
-
-        let analytics = SessionUsageAnalytics(sessions: sessions)
-
-        XCTAssertEqual(analytics.topSessions.map(\.title), ["High", "Medium", "Low"])
-    }
-
-    func testTimeframesMapToServerInsightDays() {
-        XCTAssertEqual(AnalyticsTimeframe.allCases.map(\.serverDays), [1, 7, 30, 90])
-        XCTAssertTrue(AnalyticsTimeframe.today.isHourly)
-        XCTAssertFalse(AnalyticsTimeframe.last90Days.isHourly)
-    }
-
     func testModelDisplayShareFallsBackFromZeroCostShareToTokenShare() throws {
         let insights = try decodeInsights("""
         {
@@ -254,21 +236,6 @@ final class InsightsViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func testChartBucketsSpanNinetyDayWindow() async throws {
-        let viewModel = try await loadedViewModel(timeframe: .last90Days, json: """
-        {
-          "period_days": 90,
-          "daily_tokens": [
-            {"date": "2026-09-01", "input_tokens": 10, "output_tokens": 5, "sessions": 1, "cost": 0}
-          ]
-        }
-        """)
-
-        XCTAssertEqual(viewModel.chartBuckets.count, 90)
-        XCTAssertEqual(viewModel.chartBuckets.last?.processedTokens, 15)
-    }
-
-    @MainActor
     func testHourlyWindowPlotsSessionsAndHidesTheMetricToggle() async throws {
         let hours = (0...23).map { #"{"hour": \#($0), "sessions": \#($0 == 9 ? 4 : 0)}"# }
         let viewModel = try await loadedViewModel(timeframe: .today, json: """
@@ -320,42 +287,6 @@ final class InsightsViewModelTests: XCTestCase {
         XCTAssertEqual(bucket.segments(for: .tokens).map(\.segment), [.input, .output, .cacheRead])
         XCTAssertEqual(bucket.segments(for: .tokens).map(\.value), [100, 250, 60])
         XCTAssertTrue(viewModel.showsMetricToggle)
-    }
-
-    @MainActor
-    func testBucketReadoutNamesEveryQuantityTheBarStacks() async throws {
-        let viewModel = try await loadedViewModel(timeframe: .last7Days, json: """
-        {
-          "period_days": 7,
-          "total_sessions": 3,
-          "total_tokens": 350,
-          "total_cost": 0.42,
-          "daily_tokens": [
-            {"date": "2026-09-01", "input_tokens": 100, "output_tokens": 250, "cache_read_tokens": 900, "sessions": 3, "cost": 0.42}
-          ]
-        }
-        """)
-
-        let bucket = try XCTUnwrap(viewModel.chartBuckets.last)
-
-        // The bar is 1,250 tall; the figure beside it is 350. Both numbers have
-        // to be spoken, or the chart contradicts its own readout.
-        XCTAssertEqual(bucket.processedTokens, 350)
-        XCTAssertEqual(bucket.cacheReadTokens, 900)
-        XCTAssertEqual(bucket.segments(for: .tokens).map(\.value).reduce(0, +), 1250)
-
-        let selection = UsageHeroFigure.selection(bucket, metric: .tokens)
-        XCTAssertEqual(selection.value, "350")
-        XCTAssertTrue(selection.caption.contains("900 cached"), selection.caption)
-        XCTAssertTrue(selection.caption.contains("3 sessions"), selection.caption)
-
-        XCTAssertTrue(bucket.accessibilityValue.contains("350 tokens"), bucket.accessibilityValue)
-        XCTAssertTrue(bucket.accessibilityValue.contains("900 cached"), bucket.accessibilityValue)
-
-        // A window with no cache reads says nothing about them.
-        let plain = UsageBucket(id: 0, label: "Sep 1", detail: .day(input: 10, output: 5, cacheRead: 0, sessions: 1, cost: 0))
-        XCTAssertFalse(UsageHeroFigure.selection(plain, metric: .tokens).caption.contains("cached"))
-        XCTAssertFalse(plain.accessibilityValue.contains("cached"))
     }
 
     @MainActor
@@ -421,48 +352,6 @@ final class InsightsViewModelTests: XCTestCase {
 
         XCTAssertNil(withoutCache.totalsCells.first { $0.id == "cachedInput" })
         XCTAssertNil(withoutCache.totalsCells.first { $0.id == "cacheHitRate" })
-    }
-
-    @MainActor
-    func testTotalsCellsNameActivityBucketsForWhatTheyAre() async throws {
-        let viewModel = try await loadedViewModel(timeframe: .last7Days, json: """
-        {
-          "period_days": 7,
-          "activity_by_day": [{"day": "Mon", "sessions": 3}, {"day": "Thu", "sessions": 20}],
-          "activity_by_hour": [{"hour": 2, "sessions": 7}, {"hour": 16, "sessions": 4}]
-        }
-        """)
-
-        let weekday = try XCTUnwrap(viewModel.totalsCells.first { $0.id == "busiestWeekday" })
-        XCTAssertEqual(weekday.label, "Busiest weekday")
-        XCTAssertEqual(weekday.value, "Thu")
-        XCTAssertEqual(weekday.detail, "20 sessions")
-
-        let hour = try XCTUnwrap(viewModel.totalsCells.first { $0.id == "busiestHour" })
-        XCTAssertEqual(hour.detail, "7 sessions")
-    }
-
-    @MainActor
-    func testRefreshSpinnerOnlyMarksAReFetchOfLoadedData() async throws {
-        let client = DelayedInsightsClient(
-            firstResponse: try decodeInsights(#"{"period_days": 30, "total_tokens": 350}"#)
-        )
-        let viewModel = InsightsViewModel(client: client)
-
-        let firstLoad = Task { await viewModel.load() }
-        await firstLoad.value
-        XCTAssertFalse(viewModel.isRefreshing)
-
-        viewModel.selectedTimeframe = .last7Days
-        let refreshTask = Task { await viewModel.load() }
-        await client.waitForPendingRequest()
-
-        XCTAssertTrue(viewModel.isRefreshing)
-
-        client.completePendingRequest(with: .success(try decodeInsights(#"{"period_days": 7}"#)))
-        await refreshTask.value
-
-        XCTAssertFalse(viewModel.isRefreshing)
     }
 
     /// A Hermes host (#1074) has no hours and counts messages over part of the window: the

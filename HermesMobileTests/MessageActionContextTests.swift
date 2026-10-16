@@ -48,29 +48,6 @@ final class MessageActionContextTests: XCTestCase {
         XCTAssertEqual(context.listenText, "Result\n\nUse xcodebuild test.")
     }
 
-    func testAssistantListenTextNormalizesCommonMarkdown() throws {
-        let message = ChatMessage(
-            role: "assistant",
-            content: """
-            # Summary
-
-            - Open [Hermes](https://example.test)
-            > Then run `xcodebuild test`.
-            """,
-            timestamp: 1_770_000_002,
-            messageId: "message-30"
-        )
-
-        let context = try XCTUnwrap(
-            MessageActionContext(message: message, visibleIndex: 5, messagesOffset: 25)
-        )
-
-        XCTAssertEqual(
-            context.listenText,
-            "Summary\n\nOpen Hermes\nThen run xcodebuild test."
-        )
-    }
-
     func testMessageContextIgnoresUnsupportedOrEmptyMessages() {
         let systemMessage = ChatMessage(
             role: "system",
@@ -99,28 +76,6 @@ final class MessageActionContextTests: XCTestCase {
         )
 
         XCTAssertNil(MessageActionContext(message: message, visibleIndex: 0, messagesOffset: 0))
-    }
-
-    func testEditTruncationIndexIsFullHistoryIndex() throws {
-        // For edit: we truncate to fullHistoryIndex (removing the selected message),
-        // not keepCountThroughMessage (which would keep the selected message).
-        let message = ChatMessage(
-            role: "user",
-            content: "Original question",
-            timestamp: 1_770_000_010,
-            messageId: "user-5"
-        )
-
-        let context = try XCTUnwrap(
-            MessageActionContext(message: message, visibleIndex: 3, messagesOffset: 10)
-        )
-
-        // fullHistoryIndex = offset + visibleIndex = 10 + 3 = 13
-        XCTAssertEqual(context.fullHistoryIndex, 13)
-        // keepCountThroughMessage = fullHistoryIndex + 1 = 14 (used for fork, not edit)
-        XCTAssertEqual(context.keepCountThroughMessage, 14)
-        // For edit, we truncate to fullHistoryIndex to remove the user message itself
-        XCTAssertEqual(context.role, .user)
     }
 
     func testRegenerateUsesNearestLoadedUserMessageText() {

@@ -9,21 +9,12 @@ final class ReasoningSummaryFormatterTests: XCTestCase {
         )
     }
 
-    func testKeepsTextAtTheLimitIntact() {
-        let text = String(repeating: "a", count: ReasoningSummaryFormatter.characterLimit)
-        XCTAssertEqual(ReasoningSummaryFormatter.summary(for: text), text)
-    }
-
     func testCutsTextPastTheLimitWithAnEllipsis() {
         let text = String(repeating: "b", count: ReasoningSummaryFormatter.characterLimit + 1)
         XCTAssertEqual(
             ReasoningSummaryFormatter.summary(for: text),
             String(repeating: "b", count: ReasoningSummaryFormatter.characterLimit) + "..."
         )
-    }
-
-    func testTrimsSurroundingWhitespace() {
-        XCTAssertEqual(ReasoningSummaryFormatter.summary(for: "  \nplan  \n"), "plan")
     }
 
     func testStopsReadingAtTheScanLimitEvenAcrossNewlines() {

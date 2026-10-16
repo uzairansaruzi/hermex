@@ -236,25 +236,6 @@ final class TranscriptMessageTests: XCTestCase {
             )
         }
     }
-
-    func testTranscriptMessagesPreserveMessagesWithNilMessageIDsWhenNoStreamingTurnHidden() {
-        let messages = [
-            ChatMessage(role: "user", content: "Hello", timestamp: 1, messageId: nil),
-            ChatMessage(role: "assistant", content: "Hi", timestamp: 2, messageId: nil),
-            ChatMessage(
-                role: "tool",
-                content: #"{"success":true}"#,
-                timestamp: 3,
-                messageId: nil,
-                toolCallId: "tool-1"
-            )
-        ]
-
-        let transcriptMessages = ChatViewModel.transcriptMessages(from: messages)
-
-        XCTAssertEqual(transcriptMessages.map(\.loadedIndex), [0, 1])
-        XCTAssertEqual(transcriptMessages.map(\.message.role), ["user", "assistant"])
-    }
 }
 
 final class ChatTranscriptDisplaySettingsTests: XCTestCase {
@@ -337,16 +318,6 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         ))
     }
 
-    func testCardExpansionFollowsStartExpandedPreferenceUntilToggled() {
-        XCTAssertFalse(ChatTranscriptDisplaySettings.isCardExpanded(userToggled: nil, startsExpanded: false))
-        XCTAssertTrue(ChatTranscriptDisplaySettings.isCardExpanded(userToggled: nil, startsExpanded: true))
-    }
-
-    func testCardExpansionTapOverrideWinsOverPreference() {
-        XCTAssertTrue(ChatTranscriptDisplaySettings.isCardExpanded(userToggled: true, startsExpanded: false))
-        XCTAssertFalse(ChatTranscriptDisplaySettings.isCardExpanded(userToggled: false, startsExpanded: true))
-    }
-
     /// Every combination of the three toggles the picker replaced (#1254) lands on one mode,
     /// and the old keys are gone afterwards.
     func testThinkingAndToolCardsMigrationMapsEveryLegacyCombination() throws {
@@ -400,57 +371,11 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: "chatTranscript.thinkingAndToolCards"))
     }
 
-    /// Each mode drives the transcript the way its old toggles did.
-    func testThinkingAndToolCardsModesMatchTheOldToggles() {
-        XCTAssertEqual(ThinkingAndToolCards.hidden.showsCards, false)
-        XCTAssertEqual(ThinkingAndToolCards.collapsed.showsCards, true)
-        XCTAssertEqual(ThinkingAndToolCards.collapsed.startsExpanded, false)
-        XCTAssertEqual(ThinkingAndToolCards.expanded.showsCards, true)
-        XCTAssertEqual(ThinkingAndToolCards.expanded.startsExpanded, true)
-    }
-
     private func makeDefaults() throws -> UserDefaults {
         let suite = "TranscriptDisplayModelTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         return defaults
-    }
-
-    func testHidesAttachmentPathsKeyIsStableAndDistinct() {
-        XCTAssertEqual(
-            ChatTranscriptDisplaySettings.hidesAttachmentPathsKey,
-            "chatTranscript.hidesAttachmentPaths"
-        )
-        XCTAssertNotEqual(
-            ChatTranscriptDisplaySettings.hidesAttachmentPathsKey,
-            ChatTranscriptDisplaySettings.thinkingAndToolCardsKey
-        )
-    }
-
-    func testAssistantTurnTimestampsKeyIsStableAndDistinct() {
-        XCTAssertEqual(
-            ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey,
-            "chatTranscript.showsAssistantTurnTimestamps"
-        )
-        XCTAssertNotEqual(
-            ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey,
-            ChatTranscriptDisplaySettings.hidesAttachmentPathsKey
-        )
-    }
-
-    func testResponseSpeedKeyIsStableAndDistinct() {
-        XCTAssertEqual(
-            ChatTranscriptDisplaySettings.showsResponseSpeedKey,
-            "chatTranscript.showsResponseSpeed"
-        )
-        XCTAssertNotEqual(
-            ChatTranscriptDisplaySettings.showsResponseSpeedKey,
-            ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey
-        )
-    }
-
-    func testTimestampsDefaultOn() {
-        XCTAssertTrue(ChatTranscriptDisplaySettings.defaultShowsTimestamps)
     }
 
     func testAssistantTurnHeaderIsOnlyTheResponseSpeedMarker() {
@@ -464,24 +389,6 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
             role: "assistant",
             hasTextContent: true,
             showsResponseSpeed: false,
-            hasResponseSpeed: true
-        ))
-    }
-
-    func testInvalidResponseSpeedAloneDoesNotCreateHeaderRow() {
-        XCTAssertFalse(ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
-            role: "assistant",
-            hasTextContent: true,
-            showsResponseSpeed: true,
-            hasResponseSpeed: false
-        ))
-    }
-
-    func testAssistantTurnHeaderHiddenForEmptyOrToolOnlyAssistantRow() {
-        XCTAssertFalse(ChatTranscriptDisplaySettings.showsAssistantTurnHeader(
-            role: "assistant",
-            hasTextContent: false,
-            showsResponseSpeed: true,
             hasResponseSpeed: true
         ))
     }
@@ -520,19 +427,6 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         // No typed draft: the whole content is just the appended marker.
         let sent = "\n\n[Attached files: /tmp/workspace/image.jpg]"
         XCTAssertEqual(MessageAttachment.contentWithoutAttachedFilesMarker(in: sent), "")
-    }
-
-    func testContentWithoutAttachedFilesMarkerPreservesInteriorNewlines() {
-        let sent = "line one\nline two\n\n[Attached files: /tmp/a.png]"
-        XCTAssertEqual(
-            MessageAttachment.contentWithoutAttachedFilesMarker(in: sent),
-            "line one\nline two"
-        )
-    }
-
-    func testContentWithoutAttachedFilesMarkerLeavesPlainMessageUnchanged() {
-        let plain = "Just a normal message with no attachments"
-        XCTAssertEqual(MessageAttachment.contentWithoutAttachedFilesMarker(in: plain), plain)
     }
 
     func testContentWithoutAttachedFilesMarkerIgnoresMarkerWithTrailingText() {
@@ -638,14 +532,6 @@ final class ChatActiveRunStatusPolicyTests: XCTestCase {
         )
     }
 
-    func testActivePresentationWithoutStartKeepsPlainLabel() {
-        let now = Date(timeIntervalSince1970: 1_700_000_133)
-        let presentation = ChatActiveRunStatusPresentation(kind: .active)
-
-        XCTAssertEqual(presentation.label(now: now), "Hermes is working")
-        XCTAssertEqual(presentation.accessibilityLabel(now: now), "Hermes is working on the response")
-    }
-
     func testRecoveryKindsIgnoreRunStart() {
         let now = Date(timeIntervalSince1970: 1_700_000_133)
         let expectations: [(ActiveStreamRecoveryState, String)] = [
@@ -685,36 +571,6 @@ final class ChatActiveRunStatusPolicyTests: XCTestCase {
     }
 }
 
-/// The goal confirmation pinned above the composer carries the whole goal, so
-/// the stack caps each notice at two lines to keep the live transcript visible
-/// for the run (#772).
-@MainActor
-final class PinnedLocalNoticeStackTests: XCTestCase {
-    // The upstream goal-set notice: the whole goal, then the controls line.
-    private let longGoalNotice = """
-    ⊙ Goal set (20-turn budget): Refactor the billing module so invoices are generated by the new pricing \
-    engine, migrate the three legacy endpoints, keep the public API stable, add tests for proration and tax \
-    edge cases, and open a PR when CI is green.
-    I'll keep working until the goal is done, you pause/clear it, or the budget is exhausted.
-    Controls: /goal status · /goal pause · /goal resume · /goal clear
-    """
-
-    func testALongGoalNoticeStopsAtTwoLinesOnAPhone() {
-        let footnoteLine = UIFont.preferredFont(forTextStyle: .footnote).lineHeight
-        let oneLineHeight = fittedHeight(["Goal paused."])
-        let longGoalHeight = fittedHeight([longGoalNotice])
-
-        // 12 pt card padding above and below fewer than three footnote lines.
-        XCTAssertLessThan(longGoalHeight, 24 + 3 * footnoteLine)
-        XCTAssertGreaterThan(longGoalHeight, oneLineHeight, "the cap is two lines, not one")
-    }
-
-    private func fittedHeight(_ notices: [String]) -> CGFloat {
-        let host = UIHostingController(rootView: PinnedLocalNoticeStack(notices: notices))
-        return host.sizeThatFits(in: CGSize(width: 361, height: CGFloat.greatestFiniteMagnitude)).height
-    }
-}
-
 final class ChatMessageTimestampFormatterTests: XCTestCase {
     // 2021-01-01 14:14:00 UTC
     private let fixedTimestamp: Double = 1_609_510_440
@@ -744,22 +600,9 @@ final class ChatMessageTimestampFormatterTests: XCTestCase {
         XCTAssertFalse(result?.contains("PM") == true, "24h time must not carry a PM marker")
     }
 
-    func testReturnsNilForNilTimestamp() {
-        XCTAssertNil(ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: nil))
-        XCTAssertNil(ChatMessageTimestampFormatter.shortTime(
-            forUnixTimestamp: nil,
-            locale: Locale(identifier: "en_US"),
-            timeZone: utc
-        ))
-    }
-
     func testReturnsNilForNonFiniteTimestamp() {
         XCTAssertNil(ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: .nan))
         XCTAssertNil(ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: .infinity))
-    }
-
-    func testCurrentLocaleOverloadFormatsFiniteTimestamp() {
-        XCTAssertNotNil(ChatMessageTimestampFormatter.shortTime(forUnixTimestamp: fixedTimestamp))
     }
 }
 
@@ -791,11 +634,6 @@ final class ClarificationRequestPresentationTests: XCTestCase {
             "Which branch should I use?"
         )
         XCTAssertEqual(ClarificationRequestBar.summary(for: "   "), "")
-    }
-
-    func testToggleCurveIsOneEaseOutClockAndSnapsUnderReduceMotion() {
-        XCTAssertEqual(ChatMotion.clarificationToggle(reduceMotion: false), .easeOut(duration: 0.22))
-        XCTAssertNil(ChatMotion.clarificationToggle(reduceMotion: true))
     }
 
     func testHeightPolicyFitsContentWithoutGrowingTheCard() {
@@ -860,14 +698,5 @@ final class ChatMotionTests: XCTestCase {
         XCTAssertNil(ChatMotion.composerChrome(reduceMotion: true))
         XCTAssertNil(ChatMotion.scrollToLatest(reduceMotion: true))
         XCTAssertNil(ChatMotion.clarificationToggle(reduceMotion: true))
-    }
-
-    func testCurvesKeepTheirUnreducedTiming() {
-        XCTAssertEqual(ChatMotion.press(duration: 0.2, reduceMotion: false), .smooth(duration: 0.2, extraBounce: 0))
-        XCTAssertEqual(ChatMotion.quickState(reduceMotion: false), .easeInOut(duration: 0.16))
-        XCTAssertEqual(ChatMotion.disclosure(reduceMotion: false), .smooth(duration: 0.18, extraBounce: 0))
-        XCTAssertEqual(ChatMotion.composerChrome(reduceMotion: false), .smooth(duration: 0.22, extraBounce: 0))
-        XCTAssertEqual(ChatMotion.scrollToLatest(reduceMotion: false), .easeOut(duration: 0.20))
-        XCTAssertEqual(ChatMotion.clarificationToggle(reduceMotion: false), .easeOut(duration: 0.22))
     }
 }

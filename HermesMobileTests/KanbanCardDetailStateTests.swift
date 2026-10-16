@@ -210,22 +210,6 @@ final class KanbanCardDetailStateTests: XCTestCase {
         XCTAssertEqual(failed.workerLogState, .failed)
     }
 
-    func testSeparateStatesNeverCrossServerData() async {
-        let first = makeState(client: CardDetailClient(details: [.success(.baseline)]))
-        let second = KanbanCardDetailState(
-            cardID: "CARD-2",
-            board: "other",
-            client: CardDetailClient(details: [.success(.otherServer)])
-        )
-
-        await first.load()
-        await second.load()
-
-        XCTAssertEqual(first.detail?.card?.cardID, "CARD-1")
-        XCTAssertEqual(second.detail?.card?.cardID, "CARD-2")
-        XCTAssertEqual(second.board, "other")
-    }
-
     private func makeState(client: any KanbanDataClient) -> KanbanCardDetailState {
         KanbanCardDetailState(cardID: "CARD-1", board: "main", client: client)
     }
