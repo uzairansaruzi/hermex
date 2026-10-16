@@ -96,9 +96,9 @@ before it finishes can still sign it out.
 # Focused tests; repeat --only for multiple classes or individual test methods.
 scripts/test-sim <simulator-udid> --only HermesMobileTests/BotLiveActivityTests
 
-# Stress a flaky test: up to 20 iterations in one build and launch, stopping at
+# Stress a flaky test: up to 10 iterations in one build and launch, stopping at
 # the first failure. Use this rather than calling the runner in a loop.
-scripts/test-sim <simulator-udid> --only HermesMobileTests/BotLiveActivityTests --repeat 20
+scripts/test-sim <simulator-udid> --only HermesMobileTests/BotLiveActivityTests --repeat 10
 
 # Full suite (also builds): use the same assigned UDID throughout the session.
 scripts/test-sim <simulator-udid>
