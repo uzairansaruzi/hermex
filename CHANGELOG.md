@@ -18,8 +18,9 @@ working and get fixes, and new features go to Hermes.
 - Chat in a Hermes session: stream replies; answer approvals, questions, sudo
   and secret prompts; attach images and documents, with thumbnails and previews
   of sent files and replies' images, audio and files; and use /goal, /btw,
-  background, and slash commands with autocomplete. ([#1020], [#1022], [#1023],
-  [#1024], [#1039], [#1055], [#1154])
+  background, and slash commands with autocomplete. The agent can send images
+  and files into Hermes chats and bot chats. ([#1020], [#1022], [#1023],
+  [#1024], [#1039], [#1055], [#1154], [#1279])
 - Pick the model, Profile, reasoning, personality and fast mode from the Hermes
   composer, and pause or resume a loop or heartbeat from the goal menu.
   ([#1034], [#1037], [#1150], [#1172])
@@ -29,7 +30,8 @@ working and get fixes, and new features go to Hermes.
   Projects show as folder lanes, and sessions stay readable offline. ([#1076],
   [#1094], [#1097], [#1098], [#1099], [#1100], [#1101], [#1105], [#1106])
 - A Hermes server's home switches between Bots and Sessions from a bottom bar,
-  with a Profile filter and a new-chat button. ([#1108])
+  with a Profile filter and a new-chat button that float over the list.
+  ([#1108], [#1251])
 - Every Hermes chat shows the plan and the turn's outcome, lets you follow and
   interrupt delegated work, and shows Hermes Desktop task and app-connection
   cards. ([#1157], [#1160], [#1162])
@@ -37,7 +39,7 @@ working and get fixes, and new features go to Hermes.
   with `@`, choose a working folder, and see Git status, stage, discard,
   commit, push and switch branches. With the hermex-push plugin, also Fetch,
   Pull and New branch. ([#1119], [#1120], [#1123], [#1130], [#1136], [#1137],
-  [#1233], [#1243])
+  [#1233], [#1243], [#1262])
 - Tasks on Hermes: create and manage them, Run Now with a running state the
   server confirms, and read run history and output. ([#1057], [#1061], [#1064])
 - Kanban on Hermes: boards and Cards with live updates, and changes to both.
@@ -54,11 +56,14 @@ working and get fixes, and new features go to Hermes.
   tap through and stay current, New Chat Shortcuts, and the share extension.
   ([#1026], [#1185], [#1188], [#1190], [#1192], [#1195], [#1209], [#1211],
   [#1240])
-- Move to Hermes: a webui server's Settings page guides you through moving its
-  chats, drafts and push pairing to a Hermes host. It scans before it changes
-  anything, can be paused and resumed safely, and old links and entry points
-  follow the moved chats. ([#1220], [#1221], [#1222], [#1223], [#1224],
-  [#1225], [#1231])
+- Move to Hermes: each webui server asks once whether to move its chats,
+  drafts and push pairing to a Hermes host, then keeps a banner on its chat
+  list. The move uses the normal Hermes sign-in, browser sign-in and custom
+  headers included. It scans before it changes anything, can be paused and
+  resumed safely, and old links and entry points follow the moved chats. When
+  it finishes, it offers to move the next webui server or remove the old one.
+  ([#1220], [#1221], [#1222], [#1223], [#1224], [#1225], [#1231], [#1269],
+  [#1270], [#1271], [#1273])
 - Onboarding offers a setup prompt for a Hermes dashboard. ([#1183])
 - Sign in to Hermes hosts that use browser sign-in (OIDC). Tested so far only
   through a password host's browser sign-in, not against a real OIDC provider.
@@ -68,6 +73,12 @@ working and get fixes, and new features go to Hermes.
   [#1164], [#1166])
 
 ### Changed
+- Settings opens on a short index: your servers, then Appearance, Composer,
+  Chat, Notifications and General. Each server's settings live on its own page,
+  and Chat's three thinking and tool card toggles are one Thinking & Tools
+  picker. ([#1255], [#1259])
+- Hermes Sessions and chats show what's cached right away while the host
+  connects, then update from the host. ([#1258])
 - Hermes is the default when adding a server, with no Bot Mode opt-in. Settings
   marks webui servers Legacy, and Bot Mode now only adds the Bots row on webui
   servers. ([#1239])
@@ -79,6 +90,8 @@ working and get fixes, and new features go to Hermes.
 - Bot Mode no longer has time separators, quick replies or reactions. ([#1159])
 
 ### Fixed
+- The chat's Files button is round again on iOS 26. ([#1251])
+- A bot keeps its own animated face after Hermes Desktop opens Bots. ([#1275])
 - Approval cards no longer stop arriving after the approval stream's connection
   drops. ([#1206])
 - A finished reply's header and footer no longer overlap its first and last
@@ -175,6 +188,17 @@ working and get fixes, and new features go to Hermes.
 [#1246]: https://github.com/uzairansaruzi/hermex/pull/1246
 [#1247]: https://github.com/uzairansaruzi/hermex/pull/1247
 [#1248]: https://github.com/uzairansaruzi/hermex/pull/1248
+[#1251]: https://github.com/uzairansaruzi/hermex/pull/1251
+[#1255]: https://github.com/uzairansaruzi/hermex/pull/1255
+[#1258]: https://github.com/uzairansaruzi/hermex/pull/1258
+[#1259]: https://github.com/uzairansaruzi/hermex/pull/1259
+[#1262]: https://github.com/uzairansaruzi/hermex/pull/1262
+[#1269]: https://github.com/uzairansaruzi/hermex/pull/1269
+[#1270]: https://github.com/uzairansaruzi/hermex/pull/1270
+[#1271]: https://github.com/uzairansaruzi/hermex/pull/1271
+[#1273]: https://github.com/uzairansaruzi/hermex/pull/1273
+[#1275]: https://github.com/uzairansaruzi/hermex/pull/1275
+[#1279]: https://github.com/uzairansaruzi/hermex/pull/1279
 
 ## [1.9.0] - 2026-10-04
 
