@@ -81,10 +81,12 @@ App Store Connect stays with the owner.
      description and review notes (check them against the app's current
      onboarding strings). Select manual release, set phased release as the
      owner chose, and add new screenshots if step 2 called for them.
-   - **TestFlight:** fill the beta description and What to Test, then select
-     the three external groups. Adding external groups and submitting for Beta
-     App Review is a single click, so leave that dialog open on **Submit**.
-   - **Verify:** reload both pages and confirm every field saved.
+   - **Verify:** reload the App Store version page and confirm every field
+     saved.
+   - **TestFlight:** fill the beta description and What to Test, then reload
+     and confirm both saved. Last, select the three external groups. Adding
+     external groups and submitting for Beta App Review is a single click, so
+     leave that dialog open on **Submit**, and don't reload the page after.
    - **Outside the app:** open a hermexapp-site PR for any stale page (`main`
      deploys production; never push it). Draft the X post with the
      `x-writing-guide` skill at hermex-studio `src/releases/<version>/post.md`.
