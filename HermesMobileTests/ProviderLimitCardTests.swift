@@ -461,6 +461,8 @@ private final class QuotaStubClient: InsightsDataClient {
     /// Keyed by 1-based probe number so a test can park two loads at once and
     /// release the stale one first.
     private var heldContinuations: [Int: CheckedContinuation<Void, Never>] = [:]
+    /// Tests in `waitForHeldQuota`, each with the parked-probe count it waits for.
+    private var parkWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
 
     init(
         providers: ProvidersResponse?,
@@ -494,6 +496,10 @@ private final class QuotaStubClient: InsightsDataClient {
         if holdsQuota {
             await withCheckedContinuation { continuation in
                 heldContinuations[call] = continuation
+                let parked = heldContinuations.count
+                let ready = parkWaiters.filter { $0.count <= parked }
+                parkWaiters.removeAll { $0.count <= parked }
+                ready.forEach { $0.continuation.resume() }
             }
         }
 
@@ -503,9 +509,8 @@ private final class QuotaStubClient: InsightsDataClient {
 
     /// Returns once `count` probes are parked at the same time.
     func waitForHeldQuota(count: Int = 1) async {
-        while heldContinuations.count < count {
-            await Task.yield()
-        }
+        guard heldContinuations.count < count else { return }
+        await withCheckedContinuation { parkWaiters.append((count, $0)) }
     }
 
     func releaseHeldQuota() {

@@ -962,6 +962,8 @@ final class SessionListMutationTests: XCTestCase {
     @MainActor
     func testConcurrentSessionMutationsAreIgnoredWhileSameSessionIsInFlight() async throws {
         let firstPinRequestStarted = expectation(description: "first pin request started")
+        // Holds the first pin's reply until the mutations behind it have returned.
+        let releaseFirstPin = DispatchSemaphore(value: 0)
         let requestCounts = LockedSessionMutationRequestCounts()
         let viewModel = try makeViewModel { request in
             switch request.url?.path {
@@ -976,7 +978,7 @@ final class SessionListMutationTests: XCTestCase {
 
                 if currentPinRequestCount == 1 {
                     firstPinRequestStarted.fulfill()
-                    Thread.sleep(forTimeInterval: 0.2)
+                    _ = releaseFirstPin.wait(timeout: .now() + 5)
                 }
 
                 return apiTestJSONResponse(#"{"ok": true}"#, for: request)
@@ -1008,6 +1010,7 @@ final class SessionListMutationTests: XCTestCase {
         let didSkipDuplicatePin = await duplicatePinMutation.value
         _ = await duplicateMutation.value
         await moveMutation.value
+        releaseFirstPin.signal()
         let didPin = await firstMutation.value
 
         let finalCounts = requestCounts.snapshot
@@ -2098,6 +2101,8 @@ final class SessionListMutationTests: XCTestCase {
     @MainActor
     func testRemoteSessionSearchIgnoresStaleResultsWhenQueryChanges() async throws {
         let oldSearchStarted = expectation(description: "old search started")
+        // Holds the old search's reply until the new search has applied.
+        let releaseOldSearch = DispatchSemaphore(value: 0)
         let viewModel = try makeViewModel { request in
             switch request.url?.path {
             case "/api/sessions":
@@ -2124,7 +2129,7 @@ final class SessionListMutationTests: XCTestCase {
 
                 if searchQuery == "old" {
                     oldSearchStarted.fulfill()
-                    Thread.sleep(forTimeInterval: 0.15)
+                    _ = releaseOldSearch.wait(timeout: .now() + 5)
                     return apiTestJSONResponse("""
                     {
                       "sessions": [
@@ -2163,6 +2168,7 @@ final class SessionListMutationTests: XCTestCase {
         await fulfillment(of: [oldSearchStarted], timeout: 1)
 
         await viewModel.searchSessions(query: "new", debounceNanoseconds: 0)
+        releaseOldSearch.signal()
         await oldTask.value
 
         XCTAssertEqual(viewModel.remoteContentSearchSessionIDs, ["new-content"])

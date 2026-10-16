@@ -92,31 +92,24 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertEqual(state.destination, .session(stored))
     }
 
+    @MainActor
     func testInitialRefreshStartsBeforeDelayedDeepLinkFinishes() async {
-        let recorder = SessionInitialLoadEventRecorder()
+        let deepLink = HeldInitialLoad()
+        let refreshStarted = expectation(description: "the refresh starts while the deep link is held")
 
-        await SessionListInitialLoad.run(
-            resolvePendingDeepLink: {
-                await recorder.record(.deepLinkStarted)
-                try? await Task.sleep(nanoseconds: 50_000_000)
-                await recorder.record(.deepLinkFinished)
-            },
-            loadSessions: {
-                await recorder.record(.refreshStarted)
-            },
-            restoreSelection: {},
-            loadProjects: {},
-            loadActiveProfile: {}
-        )
-
-        let events = await recorder.snapshot()
-        guard let refreshIndex = events.firstIndex(of: .refreshStarted),
-              let deepLinkFinishIndex = events.firstIndex(of: .deepLinkFinished)
-        else {
-            return XCTFail("Expected both refresh and deep-link completion events")
+        let initialLoad = Task { @MainActor in
+            await SessionListInitialLoad.run(
+                resolvePendingDeepLink: { await deepLink.wait() },
+                loadSessions: { refreshStarted.fulfill() },
+                restoreSelection: {},
+                loadProjects: {},
+                loadActiveProfile: {}
+            )
         }
 
-        XCTAssertLessThan(refreshIndex, deepLinkFinishIndex)
+        await fulfillment(of: [refreshStarted], timeout: 5)
+        deepLink.release()
+        await initialLoad.value
     }
 
     /// Over a tunnel each held request is a round trip, so restore must not
@@ -585,24 +578,6 @@ private final class HeldInitialLoad {
         isReleased = true
         continuation?.resume()
         continuation = nil
-    }
-}
-
-private actor SessionInitialLoadEventRecorder {
-    enum Event: Equatable {
-        case deepLinkStarted
-        case refreshStarted
-        case deepLinkFinished
-    }
-
-    private var events: [Event] = []
-
-    func record(_ event: Event) {
-        events.append(event)
-    }
-
-    func snapshot() -> [Event] {
-        events
     }
 }
 

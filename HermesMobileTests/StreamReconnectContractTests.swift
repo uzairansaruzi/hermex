@@ -1,4 +1,5 @@
 import XCTest
+import Observation
 @testable import HermesMobile
 
 /// Contract tests for the riskiest streaming paths: disconnect → reconnect
@@ -58,7 +59,7 @@ final class StreamReconnectContractTests: APIClientTestCase {
 
         // The transport error schedules an async reconnect; the status probe
         // reports the stream inactive with a replay journal available.
-        try await waitUntil { streamClient.startedURLs.count == 2 }
+        await waitUntil("the replay connection starts") { streamClient.startedURLs.count == 2 }
 
         let replayURL = try XCTUnwrap(streamClient.startedURLs.last)
         let query = queryDictionary(of: replayURL)
@@ -139,7 +140,7 @@ final class StreamReconnectContractTests: APIClientTestCase {
 
         // The async reconnect probe finds the stream gone, refreshes the
         // transcript, and completes the response from the server copy.
-        try await waitUntil { viewModel.activeStreamID == nil }
+        await waitUntil("the response completes") { viewModel.activeStreamID == nil }
 
         XCTAssertEqual(streamClient.startedURLs.count, 1)
         XCTAssertEqual(
@@ -376,7 +377,7 @@ final class StreamReconnectContractTests: APIClientTestCase {
         let didStart = await viewModel.sendMessage("Keep working")
         XCTAssertTrue(didStart)
         streamClient.playArmedConnectionScript()
-        try await waitUntil { viewModel.activeStreamID == nil }
+        await waitUntil("the response finalizes") { viewModel.activeStreamID == nil }
 
         XCTAssertEqual(streamClient.startedURLs.count, 1)
         XCTAssertFalse(viewModel.isActiveStreamConnectionSuspended)
@@ -452,18 +453,17 @@ final class StreamReconnectContractTests: APIClientTestCase {
         return Dictionary(uniqueKeysWithValues: queryItems.map { ($0.name, $0.value ?? "") })
     }
 
+    /// Waits on observation, never a clock, until `condition` holds: it is checked again
+    /// whenever an observable value it read changes.
     @MainActor
-    private func waitUntil(
-        timeout: TimeInterval = 2,
-        _ condition: @MainActor () -> Bool
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if condition() {
-                return
+    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
+                           _ condition: @escaping @MainActor () -> Bool) async {
+        while !condition() {
+            let changed = XCTestExpectation(description: description)
+            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
+            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
+                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
             }
-            try await Task.sleep(nanoseconds: 10_000_000)
         }
-        XCTFail("Timed out waiting for condition")
     }
 }
