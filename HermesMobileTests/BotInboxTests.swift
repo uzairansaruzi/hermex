@@ -1095,8 +1095,21 @@ import SwiftUI
         await inbox.open()
         defer { inbox.close() }
 
+        // Each read records what the inbox showed as it went out. The empty state
+        // between the failures lasts only until the next retry answers, so a test
+        // that waits to observe it can miss it (#1018).
+        var shownAtRead: [[String: BotLiveStatus]] = []
+        let retried = expectation(description: "the read after both failures went out")
+        wire.onCall = { method in
+            guard method == "session.active_list" else { return }
+            shownAtRead.append(inbox.liveStatuses)
+            if shownAtRead.count == 3 { retried.fulfill() }
+        }
         wire.failsActive = 2
-        await settle(inbox) { $0.liveStatuses.isEmpty }
+        await fulfillment(of: [retried], timeout: 5)
+        wire.onCall = nil
+        XCTAssertEqual(Array(shownAtRead.prefix(3)), [["triage": .working], [:], [:]],
+                       "a failed read shows no statuses and tries again")
         await settle(inbox) { $0.liveStatuses == ["triage": .working] }
         XCTAssertEqual(inbox.link, .live, "a failed status read never drops the socket")
         XCTAssertEqual(wire.listCalls, 1, "the retry is a status read, not a roster read")
