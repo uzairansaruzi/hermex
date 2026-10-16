@@ -3405,11 +3405,6 @@ final class ChatViewModel {
                 return false
             }
 
-            // A successful POST consumed the submission even if the view left.
-            // Do not attach its stream to a stale owner, but never restore it as
-            // rejected input (which could invite a duplicate explicit resend).
-            guard generation == chatSendGeneration, !Task.isCancelled else { return true }
-
             completeExplicitModelPickForChatStart(explicitModelPick)
             streamCoordinator.start(
                 streamID: streamID,
@@ -6240,8 +6235,6 @@ final class ChatViewModel {
     }
 
     func suspendStreamForNavigation() {
-        chatSendGeneration += 1
-        isStartingChat = false
         suspendActiveStreamConnection()
     }
 

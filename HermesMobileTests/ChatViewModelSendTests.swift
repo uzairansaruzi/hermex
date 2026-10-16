@@ -1341,7 +1341,7 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
-    func testAcceptedSendAfterNavigationIsNotReportedAsRejected() async throws {
+    func testAcceptedSendDuringNavigationStillAttachesItsStream() async throws {
         let requested = expectation(description: "POST reached server")
         let release = DispatchSemaphore(value: 0)
         let stream = SpySSEStreamingClient()
@@ -1357,15 +1357,14 @@ final class ChatViewModelSendTests: XCTestCase {
         release.signal()
         let didStart = await send.value
         XCTAssertTrue(didStart, "An accepted POST must not restore the input as rejected")
-        XCTAssertNil(viewModel.activeStreamID, "A stale owner must not attach the stream")
+        XCTAssertEqual(viewModel.activeStreamID, "accepted-stream", "Back must find the run it started")
         XCTAssertFalse(viewModel.isStartingChat)
         XCTAssertFalse(viewModel.isCompressionRotated)
     }
 
     @MainActor
-    func testLateRotationAfterNavigationCannotFetchOrNavigate() async throws {
-        for (delayedPath, cancel) in [("/api/chat/start", false), ("/api/session", false),
-                                       ("/api/chat/start", true), ("/api/session", true)] {
+    func testCancelledRotatedSendCannotFetchOrNavigate() async throws {
+        for delayedPath in ["/api/chat/start", "/api/session"] {
             let drafts = makeContinuationDraftStore()
             let requested = expectation(description: "Owned request reached server: \(delayedPath)")
             let release = DispatchSemaphore(value: 0)
@@ -1389,7 +1388,7 @@ final class ChatViewModelSendTests: XCTestCase {
             let context = try makeContext()
             let send = Task { await viewModel.sendMessage("Keep draft", modelContext: context) }
             await fulfillment(of: [requested], timeout: 2)
-            if cancel { send.cancel() } else { viewModel.suspendStreamForNavigation() }
+            send.cancel()
             release.signal()
             let didStart = await send.value
             XCTAssertFalse(didStart)
