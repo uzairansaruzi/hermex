@@ -4545,8 +4545,11 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testTransportErrorChecksStatusAndReattachesWhenStreamIsActive() async throws {
         let streamClient = SpySSEStreamingClient()
+        // A reconnect may check and reload more than once; each only has to happen.
         let statusChecked = expectation(description: "stream status checked")
+        statusChecked.assertForOverFulfill = false
         let reloaded = expectation(description: "messages reloaded")
+        reloaded.assertForOverFulfill = false
         let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
             "/api/chat/start": chatStarted(),
             "/api/chat/stream/status": { request in
@@ -6454,8 +6457,11 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testTransportErrorChecksStatusAndFinishesWhenStreamIsInactive() async throws {
         let streamClient = SpySSEStreamingClient()
+        // A reconnect may check and reload more than once; each only has to happen.
         let statusChecked = expectation(description: "stream status checked")
+        statusChecked.assertForOverFulfill = false
         let reloaded = expectation(description: "messages reloaded")
+        reloaded.assertForOverFulfill = false
         let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
             "/api/chat/start": chatStarted(),
             "/api/chat/stream/status": { request in
