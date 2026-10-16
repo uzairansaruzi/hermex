@@ -929,6 +929,9 @@ final class ChatStreamCoordinator {
     }
 
     private func handleTransportError(_ message: String) {
+        // webui closes the socket right after `cancel` or `error`, and the SSE
+        // library reports that close; a finished run has nothing left to fail.
+        guard !isTransportFinished else { return }
         setLiveTokensPerSecondIfChanged(nil)
         guard activeStreamID != nil, !hasCompletedCurrentResponse else {
             if !hasCompletedCurrentResponse {

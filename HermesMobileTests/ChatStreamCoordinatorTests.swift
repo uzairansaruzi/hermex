@@ -2300,6 +2300,27 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         XCTAssertEqual(delegate.finishCount, 1)
     }
 
+    /// webui closes the socket right after `cancel` or `error`, and the SSE
+    /// library reports that close as a transport error. It must not replace the
+    /// server's message or show an error for a cancel.
+    @MainActor
+    func testServerCloseAfterErrorOrCancelShowsNoTransportError() throws {
+        let streamClient = CoordinatorSpySSEStreamingClient()
+        let delegate = CoordinatorDelegateSpy()
+        let coordinator = makeCoordinator(streamClient: streamClient, delegate: delegate)
+
+        coordinator.start(streamID: "stream-error")
+        streamClient.emit(.error("server failed"))
+        streamClient.emit(.transportError("stream closed by server"))
+        XCTAssertEqual(delegate.errorMessages, ["server failed"])
+
+        coordinator.start(streamID: "stream-cancel")
+        streamClient.emit(.cancelled)
+        streamClient.emit(.transportError("stream closed by server"))
+        XCTAssertEqual(delegate.errorMessages, ["server failed"])
+        XCTAssertEqual(delegate.finishCount, 2)
+    }
+
     @MainActor
     func testNewRunResetsTeardownOwnerAndContentFence() throws {
         let streamClient = CoordinatorSpySSEStreamingClient()

@@ -146,6 +146,25 @@ final class SSEClientTests: XCTestCase {
         client.stop()
     }
 
+    /// A tunnel or server that closes a quiet stream cleanly must reach the
+    /// consumer too, so it can resume instead of waiting on a dead stream.
+    func testSSEClientReportsTransportErrorWhenServerClosesStream() async {
+        DelayedSSEURLProtocol.configure(chunks: [DelayedSSEChunk(text: ": heartbeat\n\n", delayNanoseconds: 0)])
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DelayedSSEURLProtocol.self]
+        let client = SSEClient(urlSessionConfiguration: configuration)
+        let transportError = expectation(description: "server close reported as transportError")
+
+        client.start(url: URL(string: "https://example.test/api/chat/stream?stream_id=stream-123")!) { event in
+            if case .transportError = event {
+                transportError.fulfill()
+            }
+        }
+
+        await fulfillment(of: [transportError], timeout: 5)
+        client.stop()
+    }
+
     func testDecodesToolStartedEventFromUpstreamPayload() {
         let event = SSEEventDecoder.decode(
             eventType: "tool",
@@ -723,8 +742,8 @@ private final class DelayedSSEURLProtocol: URLProtocol {
 
     /// `keepOpen` leaves the response open after the chunks instead of finishing
     /// it, so a test can end it with `failActiveConnection(with:)` at a moment it
-    /// controls. A finished response is a clean end-of-stream, which the SSE
-    /// library auto-reconnects; a failure is a dropped connection.
+    /// controls. A finished response is a clean server close, which the client
+    /// reports as a transport error; a failure is a dropped connection.
     static func configure(chunks: [DelayedSSEChunk], keepOpen: Bool = false) {
         lock.lock()
         self.chunks = chunks
