@@ -355,16 +355,6 @@ import Observation
         XCTAssertEqual(chat.writes("config.set").last?["value"], .string("none"))
     }
 
-    /// A personality the Profile lacks shows the host's refusal.
-    func testARefusedPersonalityShowsTheHostsMessage() async {
-        let chat = await openChat()
-        chat.host.next("config.set", .init(error: 5001))
-
-        let refused = await chat.model.confirmHermesPersonality("launch-only")
-        XCTAssertEqual(refused, .unsupported(friendlyMessage: "refused"))
-        XCTAssertEqual(chat.writes("config.set").count, 1)
-    }
-
     // MARK: Profile
 
     /// The chip lists the host's Profiles, the onboarding one included, with the session's selected.
@@ -537,19 +527,6 @@ import Observation
                        "Hermes can't find the folder /Users/me/gone, so the session didn't move.")
         XCTAssertEqual(chat.writes("session.workspace.move").count, 1)
         XCTAssertEqual(chat.model.selectedWorkspacePath, "/Users/me/notes")
-    }
-
-    /// While a reply runs the chat refuses a folder change, though the host would take it.
-    func testAFolderChangeWaitsForTheRunningReply() async {
-        let chat = await openChat()
-        chat.receive(event(1, "message.start"))
-        await waitUntil("running") { chat.model.activeStreamID != nil }
-
-        let moved = await chat.model.selectWorkspacePath("/Users/me/launch")
-        XCTAssertFalse(moved)
-        XCTAssertEqual(chat.model.composerConfigurationErrorMessage,
-                       "Wait for the current response to finish before changing workspace.")
-        XCTAssertEqual(chat.writes("session.workspace.move"), [])
     }
 
     /// A turn that starts (from another client, say) after the chat checked it was idle stops

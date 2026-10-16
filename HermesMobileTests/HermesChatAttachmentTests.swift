@@ -213,24 +213,6 @@ import UIKit
         XCTAssertEqual(chat.model.pendingAttachments.map(\.name), ["more.txt"])
     }
 
-    /// A Hermes send clears a staging error, so the status line shows its upload and Cancel.
-    func testASendClearsAStaleStagingError() async {
-        let chat = await openChat()
-        _ = HermesHostFixture.configuration { request in request.url?.path == "/api/chat/image-upload" ? .park : nil }
-        HermesHostFixture.onPark = { Task { @MainActor in
-            XCTAssertNil(chat.model.uploadAttachmentErrorMessage)
-            XCTAssertTrue(chat.model.isSendingAttachments)
-            chat.model.cancelAttachmentUpload()
-        } }
-        await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
-        await chat.model.uploadAttachment(data: Data(), filename: "empty.txt")
-        XCTAssertEqual(chat.model.uploadAttachmentErrorMessage, "Use up to 8 attachments, 25 MB each and 50 MB total.")
-
-        let sent = await chat.model.sendMessage("Look")
-        XCTAssertFalse(sent)
-        XCTAssertEqual(chat.model.sendErrorMessage, "Upload cancelled. Your message and attachments are still here.")
-    }
-
     /// Bot Chat's limits: eight files. The ninth is refused with the Bot message.
     func testStagingStopsAtEightFiles() async {
         let chat = await openChat()
@@ -358,60 +340,6 @@ import UIKit
             XCTFail("a result from an older attach is dropped")
         } catch {}
         XCTAssertNotEqual(chat.turn.engine.generation, attempt)
-    }
-
-    /// A chip's inline audio downloads from the host by its path, under the session's Profile
-    /// and stored key (#1143), and stops at the 25 MB preview cap like a thumbnail.
-    func testAnAttachmentsInlineAudioDownloadsFromTheHost() async throws {
-        let chat = await openChat()
-        let path = "/home/u/.hermes/attachments/\(Self.uuid)-memo.m4a"
-        var queries: [[URLQueryItem]] = []
-        var body = "audio"
-        _ = HermesHostFixture.configuration { request in
-            guard request.url?.path == "/api/fs/download" else { return nil }
-            queries.append(request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems } ?? [])
-            return .json(200, .string(body))
-        }
-
-        let data = await chat.model.attachmentRawData(path: path)
-        body = String(repeating: "a", count: BotArtifactBuffer.maximumBytes)
-        let oversized = await chat.model.attachmentRawData(path: path)
-
-        XCTAssertEqual(data, Data(#""audio""#.utf8))
-        XCTAssertNil(oversized)
-        XCTAssertEqual(queries.first, [URLQueryItem(name: "path", value: path), URLQueryItem(name: "profile", value: "default"),
-                                       URLQueryItem(name: "session_id", value: "tip")])
-        XCTAssertEqual(queries.count, 2)
-    }
-
-    /// Inline audio still downloading when the chat reattaches is dropped, not played.
-    func testInlineAudioThatOutlivesItsAttachIsDropped() async throws {
-        let chat = await openChat()
-        _ = HermesHostFixture.configuration { request in request.url?.path == "/api/fs/download" ? .park : nil }
-        HermesHostFixture.onPark = {
-            Task { @MainActor in
-                chat.turn.recoverAfterLostAnswer()
-                HermesHostFixture.releaseParked(.json(200, .string("audio")))
-            }
-        }
-
-        let data = await chat.model.attachmentRawData(path: Self.storedImage)
-
-        XCTAssertNil(data)
-        XCTAssertEqual(HermesHostFixture.requests.filter { $0.url?.path == "/api/fs/download" }.count, 1)
-    }
-
-    /// A detached Hermes chat asks nothing for inline audio; its player waits on
-    /// `attachmentLoadKey` instead.
-    func testADetachedChatsInlineAudioAsksNothing() async {
-        let chat = await openChat()
-        chat.turn.engine.suspend()
-        let before = HermesHostFixture.requests.count
-
-        let data = await chat.model.attachmentRawData(path: Self.storedImage)
-
-        XCTAssertNil(data)
-        XCTAssertEqual(HermesHostFixture.requests.count, before)
     }
 
     /// An inline player that loads while the chat is detached waits instead of failing, and

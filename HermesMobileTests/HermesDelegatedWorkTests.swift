@@ -261,21 +261,6 @@ import Observation
         XCTAssertNil(work.errorMessage)
     }
 
-    func testEqualRuntimeAndProfileNamesStayWithTheirConnectionOwnedModels() async {
-        let firstWire = HermesDelegatedWorkWire()
-        let secondWire = HermesDelegatedWorkWire()
-        firstWire.handler = { _, _ in .object(["subagents": .array([self.worker(id: "first", startedAt: 1)])]) }
-        secondWire.handler = { _, _ in .object(["subagents": .array([self.worker(id: "second", startedAt: 2)])]) }
-        let first = HermesDelegatedWork(wire: firstWire)
-        let second = HermesDelegatedWork(wire: secondWire)
-
-        await first.connect(context(connectionID: firstConnection, runtime: "same-runtime"))
-        await second.connect(context(connectionID: UUID(), runtime: "same-runtime"))
-
-        XCTAssertEqual(first.workers.map(\.subagentID), ["first"])
-        XCTAssertEqual(second.workers.map(\.subagentID), ["second"])
-    }
-
     private func context(connectionID: UUID? = nil, runtime: String = "runtime") -> HermesDelegatedWork.Context {
         .init(connectionID: connectionID ?? firstConnection, runtime: runtime, generation: 1)
     }

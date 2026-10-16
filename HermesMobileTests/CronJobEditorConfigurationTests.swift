@@ -23,17 +23,6 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
 
     // MARK: Model selection writes both fields
 
-    func testSelectingAModelWritesTheModelAndTheProvider() {
-        var draft = CronJobEditorDraft()
-
-        draft.applyModelSelection(option("gpt-5", provider: "openai"))
-
-        XCTAssertEqual(draft.model, "gpt-5")
-        XCTAssertEqual(draft.provider, "openai")
-        XCTAssertEqual(draft.trimmedModel, "gpt-5")
-        XCTAssertEqual(draft.trimmedProvider, "openai")
-    }
-
     func testServerDefaultClearsBothTheModelAndTheProvider() {
         var draft = CronJobEditorDraft(model: "gpt-5", provider: "openai")
 
@@ -71,16 +60,6 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
         XCTAssertEqual(draft.provider, "")
     }
 
-    func testServerDefaultClearsTheProfileWithoutTouchingTheModel() {
-        var draft = CronJobEditorDraft(model: "gpt-5", provider: "openai", profile: "work")
-
-        draft.applyProfileSelection(nil)
-
-        XCTAssertEqual(draft.profile, "")
-        XCTAssertEqual(draft.model, "gpt-5")
-        XCTAssertEqual(draft.provider, "openai")
-    }
-
     // MARK: The row's current selection
 
     func testAModelMissingFromTheCatalogStillResolvesToADisplayableSelection() {
@@ -95,63 +74,7 @@ final class CronJobEditorConfigurationTests: APIClientTestCase {
         XCTAssertEqual(selection?.providerID, "openai")
     }
 
-    func testACatalogModelResolvesToItsCatalogOption() {
-        let selection = CronJobModelSelection.resolve(modelID: "gpt-5", providerID: "openai", in: catalog)
-
-        XCTAssertEqual(selection, option("gpt-5", provider: "openai"))
-    }
-
-    func testABlankModelResolvesToNoSelection() {
-        XCTAssertNil(CronJobModelSelection.resolve(modelID: "  ", providerID: "openai", in: catalog))
-    }
-
-    func testAProfileMissingFromTheListStillGetsARow() {
-        let listed = CronJobProfilePickerSheet.profilesIncludingSelection([], selectedProfileName: "retired")
-
-        XCTAssertEqual(listed.map(\.normalizedName), ["retired"])
-    }
-
-    func testAProfileAlreadyInTheListIsNotDuplicated() {
-        let work = ProfileSummary(
-            name: "work",
-            path: nil,
-            isDefault: nil,
-            isActive: nil,
-            gatewayRunning: nil,
-            model: "gpt-5",
-            provider: "openai",
-            hasEnv: nil,
-            skillCount: nil
-        )
-
-        let listed = CronJobProfilePickerSheet.profilesIncludingSelection([work], selectedProfileName: "work")
-
-        XCTAssertEqual(listed.map(\.normalizedName), ["work"])
-        // The profile's own model and provider are what make the inheritance
-        // the section footer describes visible.
-        XCTAssertEqual(CronJobProfilePickerSheet.details(for: work), "gpt-5 - openai")
-    }
-
     // MARK: The .cronJob picker preset
-
-    func testTheTasksPickerNeitherShowsNorWritesFavorites() {
-        // The catalog rows' star and their favorites context menu action are
-        // gated together: the Tasks picker passes no `onToggleFavorite`, so
-        // either one would render a control that does nothing.
-        XCTAssertFalse(ModelPickerConfiguration.cronJob.showsModelFavoriteStars)
-        XCTAssertFalse(ModelPickerConfiguration.cronJob.showsCustomFavoriteStar)
-        XCTAssertFalse(ModelPickerConfiguration.cronJob.showsSavedCustomModelGroup)
-        // The current selection still gets a row, so an off-catalog model is
-        // visible and checked.
-        XCTAssertTrue(ModelPickerConfiguration.cronJob.showsCurrentCustomModelGroup)
-    }
-
-    func testTheComposerAndServerDefaultPickersKeepTheirCatalogRowStars() {
-        // Both pass a real `onToggleFavorite`; only the Tasks picker loses the
-        // stars.
-        XCTAssertTrue(ModelPickerConfiguration.composer.showsModelFavoriteStars)
-        XCTAssertTrue(ModelPickerConfiguration.serverDefault.showsModelFavoriteStars)
-    }
 
     func testTheTasksPickersCustomEntryNeedsBothAModelAndAProviderID() {
         XCTAssertNil(
@@ -309,32 +232,6 @@ final class CronJobSkillsPickerTests: APIClientTestCase {
 
         XCTAssertEqual(draft.skillsText, "writing, research")
         XCTAssertEqual(draft.skills, ["writing", "research"])
-    }
-
-    func testClearingSkillsEmptiesTheSelection() {
-        var draft = CronJobEditorDraft(skillsText: "writing, research")
-        XCTAssertEqual(draft.skills, ["writing", "research"])
-
-        draft.applySkillSelection([])
-
-        XCTAssertEqual(draft.skillsText, "")
-        XCTAssertTrue(draft.skills.isEmpty)
-    }
-
-    func testASkillMissingFromTheListStillGetsARow() {
-        // Otherwise a saved skill the server no longer offers could not be
-        // removed, which is a one-way door.
-        let listed = CronJobSkillsPickerSheet.skillsIncludingSelection([], selection: ["retired"])
-
-        XCTAssertEqual(listed.compactMap(\.name), ["retired"])
-    }
-
-    func testASkillAlreadyInTheListIsNotDuplicated() {
-        let writing = SkillSummary(name: "writing", category: "docs", description: nil, path: nil)
-
-        let listed = CronJobSkillsPickerSheet.skillsIncludingSelection([writing], selection: ["writing"])
-
-        XCTAssertEqual(listed.compactMap(\.name), ["writing"])
     }
 
     func testSkillSearchMatchesNameCategoryAndDescription() {

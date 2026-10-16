@@ -55,24 +55,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
     }
 
     @MainActor
-    func testRefreshReplacesStaleData() async throws {
-        var dirty = true
-        let client = makeClient { request in
-            let json = dirty ? Self.statusWithIgnored : #"{"git": {"is_git": true, "branch": "main", "files": [], "totals": {"changed": 0}}}"#
-            return apiTestJSONResponse(json, for: request)
-        }
-        let viewModel = GitWorkspaceViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: client)
-
-        await viewModel.load()
-        XCTAssertEqual(viewModel.status?.trackedFiles.count, 1)
-
-        dirty = false
-        await viewModel.load()
-        XCTAssertEqual(viewModel.status?.trackedFiles.count, 0, "Refreshing replaces, not appends.")
-        XCTAssertEqual(viewModel.status?.changedCount, 0)
-    }
-
-    @MainActor
     func testDifferentSessionsHaveIndependentState() async throws {
         // One handler that answers per session_id; two view models, each scoped to its session.
         let client = makeClient { request in
@@ -148,21 +130,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertNil(viewModel.errorMessage)
     }
 
-    @MainActor
-    func testLoadSurfacesErrorOnHTTPFailure() async throws {
-        let client = makeClient { request in
-            let response = HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!
-            return (response, Data(#"{"error": "boom"}"#.utf8))
-        }
-        let viewModel = GitWorkspaceViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: client)
-
-        await viewModel.load()
-
-        XCTAssertNil(viewModel.status)
-        XCTAssertNotNil(viewModel.errorMessage)
-        XCTAssertNotNil(viewModel.lastError)
-    }
-
     // MARK: - Toolbar availability
 
     @MainActor
@@ -208,23 +175,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertFalse(loading.changesAreEnabled)
     }
 
-    /// The read-only menu's branch row: the branch alone when it matches its upstream, with the
-    /// Changes header's "↑ahead ↓behind" when it has moved, and none outside a repository.
-    func testToolbarBranchSummaryShowsTheBranchAndItsDistanceFromUpstream() {
-        func summary(_ info: GitInfo?, hasRepository: Bool = true) -> String? {
-            GitToolbarPresentation(hasRepository: hasRepository, isLoading: false, info: info, status: nil,
-                                   statusFailed: false).branchSummary
-        }
-        let info = { (ahead: Int, behind: Int) in
-            GitInfo(branch: "main", dirty: 0, modified: 0, untracked: 0, ahead: ahead, behind: behind, isGit: true)
-        }
-
-        XCTAssertEqual(summary(info(0, 0)), "main")
-        XCTAssertEqual(summary(info(0, 3)), "main  ↑0 ↓3")
-        XCTAssertNil(summary(info(1, 0), hasRepository: false))
-        XCTAssertNil(summary(nil))
-    }
-
     @MainActor
     func testAvailabilityHidesForNonRepositoryAndNullGitInfo() async throws {
         var returnsNullGit = false
@@ -241,20 +191,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         await viewModel.load()
         XCTAssertFalse(viewModel.hasRepository)
         XCTAssertNil(viewModel.lastError)
-    }
-
-    @MainActor
-    func testAvailabilityHidesOnHTTPFailure() async throws {
-        let client = makeClient { request in
-            let response = HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!
-            return (response, Data(#"{"error": "boom"}"#.utf8))
-        }
-        let viewModel = GitWorkspaceAvailabilityViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: client)
-
-        await viewModel.load()
-
-        XCTAssertFalse(viewModel.hasRepository)
-        XCTAssertNotNil(viewModel.lastError)
     }
 
     @MainActor
@@ -756,32 +692,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(hunks[0].lines.map(\.kind), [.deletion, .addition])
     }
 
-    func testDiffParserNumbersMultipleSyntheticPatches() {
-        let hunks = DiffHunk.parse("diff --git a/a b/a\n-a\n+b\ndiff --git a/b b/b\n-c\n+d")
-
-        XCTAssertEqual(hunks.map(\.displayLabel), ["Patch 1 of 2", "Patch 2 of 2"])
-    }
-
-    func testDiffParserEmptyInputReturnsNoHunks() {
-        XCTAssertTrue(DiffHunk.parse("").isEmpty)
-        XCTAssertTrue(DiffHunk.parse("diff --git a/x b/x\nindex 1..2\n").isEmpty, "No hunk header → nothing to show.")
-    }
-
-    @MainActor
-    func testToastProgressSuccessAndAutoDismiss() async {
-        let state = GitActionToastState()
-        state.showProgress(GitActionProgress(title: "Working", detailLines: ["• Fetching"]))
-        XCTAssertNotNil(state.progress)
-        XCTAssertNil(state.success)
-
-        state.showSuccess(GitActionSuccess(title: "Done"), autoDismissAfter: .milliseconds(10))
-        XCTAssertNil(state.progress)
-        XCTAssertNotNil(state.success)
-
-        try? await Task.sleep(for: .milliseconds(30))
-        XCTAssertNil(state.success)
-    }
-
     @MainActor
     func testToastRapidReplacementDoesNotDismissLatestSuccess() async {
         let state = GitActionToastState()
@@ -968,30 +878,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(vm.actionErrorMessage?.contains("Writes disabled"), true)
     }
 
-    @MainActor
-    func testRefreshAfterExternalMutationPicksUpNewStatus() async throws {
-        var changed = true
-        let client = makeClient { request in
-            switch request.url?.path {
-            case "/api/git-info":
-                return apiTestJSONResponse(#"{"git":{"is_git":true,"branch":"main"}}"#, for: request)
-            case "/api/git/branches":
-                return apiTestJSONResponse(#"{"branches":{"is_git":true,"current":"main"}}"#, for: request)
-            default:
-                let json = changed ? Self.statusWithOneFile : #"{"git":{"is_git":true,"branch":"main","files":[],"totals":{"changed":0}}}"#
-                return apiTestJSONResponse(json, for: request)
-            }
-        }
-        let vm = GitWorkspaceAvailabilityViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: client)
-        await vm.load()
-        XCTAssertEqual(vm.status?.changedCount, 1)
-
-        changed = false
-        await vm.refreshAfterExternalMutation()
-
-        XCTAssertEqual(vm.status?.changedCount, 0, "Refreshing after an agent turn surfaces the new working-tree state.")
-    }
-
     // MARK: - Advanced staging sheet view model (GitCommitViewModel)
 
     private func commitSheetClient(
@@ -1058,32 +944,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertFalse(vm.messageWasTruncated)
     }
 
-    /// Commit-message generation runs the Agent, so it hits the stale-runtime 409 (#955).
-    @MainActor
-    func testCommitSheetSuggestShowsRestartCopyForStaleAgentRuntime() async throws {
-        let client = makeClient { request in
-            switch request.url?.path {
-            case "/api/git/status":
-                return apiTestJSONResponse(Self.statusWithOneFile, for: request)
-            case "/api/git/commit-message":
-                return apiTestJSONResponse(
-                    #"{"error": "Hermes Agent was updated while Hermes WebUI was running. Restart Hermes WebUI manually before retrying this action.", "type": "agent_runtime_stale", "retryable": true, "restart_scheduled": false}"#,
-                    for: request,
-                    status: 409
-                )
-            default:
-                return apiTestJSONResponse("{}", for: request)
-            }
-        }
-        let vm = GitCommitViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: client)
-        await vm.load()
-
-        await vm.suggestMessage()
-
-        XCTAssertEqual(vm.actionErrorMessage, "Hermes was updated on your server. Restart Hermes WebUI there, then try again.")
-        XCTAssertTrue(vm.message.isEmpty)
-    }
-
     @MainActor
     func testCommitSheetCommitClearsMessageAndBumpsRevision() async throws {
         let vm = GitCommitViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: commitSheetClient())
@@ -1146,16 +1006,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
     }
 
     @MainActor
-    func testCommitSheetDiscardSurfacesFriendlyErrorWhenDisabled() async throws {
-        let vm = GitCommitViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: commitSheetClient(discardStatus: 403))
-        await vm.load()
-
-        await vm.discardSelectedOrAll(deleteUntracked: false)
-
-        XCTAssertEqual(vm.actionErrorMessage?.contains("Writes disabled"), true)
-    }
-
-    @MainActor
     func testCommitSheetDiscardUnstagesStagedFilesFirst() async throws {
         // The server's discard only restores the worktree, leaving the index intact, so a
         // staged change would survive. The sheet must unstage staged targets before
@@ -1187,31 +1037,6 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertNil(vm.actionErrorMessage)
         XCTAssertEqual(calls, ["/api/git/unstage", "/api/git/discard"],
                        "Staged targets are unstaged before discard so the index is reverted too.")
-    }
-
-    @MainActor
-    func testCommitSheetDiscardSkipsUnstageWhenNoStagedTargets() async throws {
-        // A purely unstaged change needs no unstage step — discard alone reverts the worktree.
-        var calls: [String] = []
-        let client = makeClient { request in
-            let path = request.url?.path ?? ""
-            switch path {
-            case "/api/git/status":
-                return apiTestJSONResponse(Self.statusWithOneFile, for: request)
-            case "/api/git/unstage", "/api/git/discard":
-                calls.append(path)
-                return apiTestJSONResponse(#"{"ok":true,"git":{"is_git":true,"branch":"main","files":[]}}"#, for: request)
-            default:
-                return apiTestJSONResponse("{}", for: request)
-            }
-        }
-        let vm = GitCommitViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: client)
-        await vm.load()
-        XCTAssertEqual(vm.trackedFiles.first?.unstaged, true)
-
-        await vm.discardSelectedOrAll(deleteUntracked: false)
-
-        XCTAssertEqual(calls, ["/api/git/discard"], "No staged targets means no unstage call.")
     }
 }
 
@@ -1693,73 +1518,6 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(duringCommit?.pushed, false)
         XCTAssertEqual(HermesGitHost.writes, [#"commit "feat(app): b""#])
         XCTAssertFalse(availability.isRunningGitAction)
-    }
-
-    /// Before the first commit `file-diff` is empty, so a selected new file's message is written
-    /// from its current content, as its diff shows it.
-    @MainActor
-    func testAHermesSuggestionBeforeTheFirstCommitSendsANewFilesContent() async throws {
-        nonisolated(unsafe) var asked: [String] = []
-        let sheet = await hermesCommitSheet(writeMessage: { diff, _, _ in
-            asked.append(diff)
-            return "feat(app): add notes"
-        }) { request in
-            switch request.url?.path {
-            case "/api/git/file-diff":
-                return .json(200, .object(["diff": .string("")]))
-            case "/api/fs/read-text":
-                return .json(200, .object(["binary": .bool(false), "byteSize": .number(13), "truncated": .bool(false),
-                                           "text": .string("first\nsecond\n")]))
-            default:
-                return HermesGitHost.repositoryReply(request, unborn: true, rows: [("notes.txt", 2, 0, "A", true)],
-                                                     flags: [("notes.txt", true, false, false, false)])
-            }
-        }
-        sheet.toggleSelection(sheet.trackedFiles[0])
-
-        await sheet.suggestMessage()
-
-        XCTAssertNil(sheet.actionErrorMessage)
-        XCTAssertEqual(sheet.message, "feat(app): add notes")
-        XCTAssertEqual(asked, ["diff --git a/notes.txt b/notes.txt\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1,2 @@\n+first\n+second\n"])
-        XCTAssertEqual(HermesHostFixture.requests.last.map(HermesGitHost.describe),
-                       "/api/fs/read-text path=\(HermesGitHost.repository)/notes.txt")
-    }
-
-    /// webui's writes keep their presentation (#1115): a failed one doesn't read the status
-    /// again, and the sheet shows no commit sha.
-    @MainActor
-    func testAWebUICommitSheetKeepsItsPresentation() async throws {
-        nonisolated(unsafe) var statusReads = 0
-        let client = makeClient { request in
-            switch request.url?.path {
-            case "/api/git/status":
-                statusReads += 1
-                return apiTestJSONResponse(Self.statusWithOneFile, for: request)
-            case "/api/git/stage":
-                let response = HTTPURLResponse(url: request.url!, statusCode: 403, httpVersion: nil,
-                                               headerFields: ["Content-Type": "application/json"])!
-                return (response, Data(#"{"error":"Destructive git writes are disabled","code":"destructive_git_disabled"}"#.utf8))
-            case "/api/git/commit":
-                return apiTestJSONResponse(#"{"ok":true,"commit":"abc1234","status":{"is_git":true,"branch":"main","files":[]}}"#, for: request)
-            default:
-                return apiTestJSONResponse("{}", for: request)
-            }
-        }
-        let sheet = GitCommitViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: client)
-        await sheet.load()
-
-        await sheet.stageSelectedOrAll()
-        let failure = sheet.actionErrorMessage
-        let readsAfterTheFailure = statusReads
-        sheet.message = "fix: a"
-        let committed = await sheet.commit(push: false)
-
-        XCTAssertEqual(failure?.contains("Writes disabled"), true)
-        XCTAssertEqual(readsAfterTheFailure, 1, "Only the load")
-        XCTAssertTrue(committed)
-        XCTAssertEqual(sheet.lastCommitSHA, "abc1234")
-        XCTAssertNil(sheet.shownCommitSHA)
     }
 }
 

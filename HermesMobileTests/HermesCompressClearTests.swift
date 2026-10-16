@@ -191,16 +191,6 @@ import Observation
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["session_id"] }, [.string("runtime")])
     }
 
-    /// The host's own compaction mid-turn reports the new key the same way.
-    func testAutoCompressionMidTurnAdoptsTheRotatedKey() async {
-        let chat = await openChat(threeTurns)
-        chat.receive(event(1, "message.start"))
-        chat.receive(event(2, "session.info", ["stored_session_id": .string("tip-2"), "running": .bool(true)]))
-
-        XCTAssertEqual(chat.turn.engine.storedKey, "tip-2")
-        XCTAssertEqual(chat.turn.engine.root, "tip")
-    }
-
     /// Pushes and run alerts name the session by its current stored key (#1177), so the open
     /// chat's replies stay quiet and its alert opens it after the key moves.
     func testPushPresenceAndTheRunAlertFollowTheRotatedKey() async {

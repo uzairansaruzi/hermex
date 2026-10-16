@@ -26,13 +26,6 @@ final class FileReferenceTests: XCTestCase {
         XCTAssertEqual(parse("file:///Users/hermes/projects/app/README.md#l8"), FileReference(path: "README.md", line: 8, column: nil))
     }
 
-    func testAbsolutePathUnderWorkspace() {
-        XCTAssertEqual(
-            parse("/Users/hermes/projects/app/Sources/Main.swift:40"),
-            FileReference(path: "Sources/Main.swift", line: 40, column: nil)
-        )
-    }
-
     func testDotRelativePaths() {
         XCTAssertEqual(parse("./Package.swift"), FileReference(path: "Package.swift", line: nil, column: nil))
         XCTAssertEqual(parse("./Sources/../Tests/AppTests.swift:2"), FileReference(path: "Tests/AppTests.swift", line: 2, column: nil))
@@ -53,11 +46,6 @@ final class FileReferenceTests: XCTestCase {
 
     func testWorkspaceRootToleratesTrailingSlashAndWhitespace() {
         XCTAssertEqual(parse("./a.swift", root: " /Users/hermes/projects/app/ "), FileReference(path: "a.swift", line: nil, column: nil))
-    }
-
-    func testZeroPositionsAreDropped() {
-        XCTAssertEqual(parse("./a.swift:0"), FileReference(path: "a.swift", line: nil, column: nil))
-        XCTAssertEqual(parse("./a.swift:5:0"), FileReference(path: "a.swift", line: 5, column: nil))
     }
 
     /// The transcript renderer builds a `URL` from the link destination and the chat

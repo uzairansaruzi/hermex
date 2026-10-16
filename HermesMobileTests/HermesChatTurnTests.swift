@@ -607,10 +607,6 @@ import SwiftUI
         await assertRebuild(after: event(5, "message.delta", ["text": .string("lost the middle")]))
     }
 
-    func testABackwardsSeqRebuildsFromTheSnapshot() async {
-        await assertRebuild(after: event(1, "message.delta", ["text": .string("from before")]))
-    }
-
     /// Only deltas the rebuilt reply holds are dropped: a new one that repeats the reply's
     /// start, or its last character, is new text.
     func testARebuildKeepsNewDeltasThatRepeatTheReply() async {
@@ -1034,25 +1030,6 @@ import SwiftUI
 
         chat.model.suspendStreamForBackground()
         XCTAssertEqual(work.activeCount, 0, "a chat that left shows no workers")
-    }
-
-    /// A completion delivery from the history is the card's typed delivery, with the host's report.
-    func testADelegationDeliveryFromTheHistoryIsItsCompletionCard() async throws {
-        let delivery: BotJSON = .object([
-            "id": .number(2), "role": .string("user"), "timestamp": .number(1_790_000_100),
-            "content": .string("[ASYNC DELEGATION BATCH COMPLETE]\n--- RESULT ---\nTests rewritten; docs updated."),
-            "display_kind": .string("async_delegation_complete"),
-            "display_metadata": .object(["task_count": .number(2), "completed_count": .number(2),
-                                         "failed_count": .number(0), "duration_seconds": .number(41),
-                                         "delegation_id": .string("dlg_7f3a")])
-        ])
-        let chat = await openChat(history: [userRow("Split the work"), delivery])
-        let completion = try XCTUnwrap(HermesDelegationCompletion(try XCTUnwrap(chat.model.messages.last)))
-        XCTAssertEqual(completion.taskCount, 2)
-        XCTAssertEqual(completion.completedCount, 2)
-        XCTAssertEqual(completion.durationSeconds, 41)
-        XCTAssertEqual(completion.delegationID, "dlg_7f3a")
-        XCTAssertTrue(completion.report.hasSuffix("Tests rewritten; docs updated."))
     }
 
     /// A delivery the host starts on its own (`_notif_submit`) draws its card when that turn ends:

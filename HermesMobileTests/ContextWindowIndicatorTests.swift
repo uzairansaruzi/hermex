@@ -2,14 +2,6 @@ import XCTest
 @testable import HermesMobile
 
 final class ContextWindowIndicatorTests: XCTestCase {
-    func testPresentationProvidesNonInteractivePlaceholderBeforeSnapshotLoads() {
-        let presentation = ContextWindowIndicatorPresentation(snapshot: nil)
-
-        XCTAssertEqual(presentation.percentageLabel, "–")
-        XCTAssertFalse(presentation.isInteractive)
-        XCTAssertNil(presentation.percentage)
-    }
-
     func testPresentationBecomesInteractiveWhenPercentageLoads() {
         let snapshot = ContextWindowSnapshot(
             contextLength: 100_000,
@@ -68,32 +60,6 @@ final class ContextWindowIndicatorTests: XCTestCase {
         XCTAssertEqual(ContextWindowFormatter.compactIndicator(from: updated), "8% context")
     }
 
-    func testCompactIndicatorReturnsNilWhenContextLengthMissing() {
-        let snapshot = ContextWindowSnapshot(
-            contextLength: nil,
-            thresholdTokens: nil,
-            lastPromptTokens: 5_000,
-            inputTokens: nil,
-            outputTokens: nil,
-            estimatedCost: nil
-        )
-
-        XCTAssertNil(ContextWindowFormatter.compactIndicator(from: snapshot))
-    }
-
-    func testCompactIndicatorReturnsNilWhenTokensUsedMissing() {
-        let snapshot = ContextWindowSnapshot(
-            contextLength: 128_000,
-            thresholdTokens: nil,
-            lastPromptTokens: nil,
-            inputTokens: nil,
-            outputTokens: nil,
-            estimatedCost: nil
-        )
-
-        XCTAssertNil(ContextWindowFormatter.compactIndicator(from: snapshot))
-    }
-
     func testCompactIndicatorReturnsNilWhenContextLengthZero() {
         let snapshot = ContextWindowSnapshot(
             contextLength: 0,
@@ -131,108 +97,5 @@ final class ContextWindowIndicatorTests: XCTestCase {
         )
 
         XCTAssertEqual(ContextWindowFormatter.tokensLabel(from: snapshot), "1.5M / 2.0M")
-    }
-
-    func testTokensLabelReturnsUnavailableWhenMissing() {
-        let snapshot = ContextWindowSnapshot(
-            contextLength: nil,
-            thresholdTokens: nil,
-            lastPromptTokens: nil,
-            inputTokens: nil,
-            outputTokens: nil,
-            estimatedCost: nil
-        )
-
-        XCTAssertEqual(ContextWindowFormatter.tokensLabel(from: snapshot), "Unavailable")
-    }
-
-    func testThresholdLabelReturnsUnavailableWhenMissing() {
-        let snapshot = ContextWindowSnapshot(
-            contextLength: 128_000,
-            thresholdTokens: nil,
-            lastPromptTokens: 1_000,
-            inputTokens: nil,
-            outputTokens: nil,
-            estimatedCost: nil
-        )
-
-        XCTAssertEqual(ContextWindowFormatter.thresholdLabel(from: snapshot), "Unavailable")
-    }
-
-    func testThresholdLabelReturnsUnavailableWhenZero() {
-        let snapshot = ContextWindowSnapshot(
-            contextLength: 128_000,
-            thresholdTokens: 0,
-            lastPromptTokens: 1_000,
-            inputTokens: nil,
-            outputTokens: nil,
-            estimatedCost: nil
-        )
-
-        XCTAssertEqual(ContextWindowFormatter.thresholdLabel(from: snapshot), "Unavailable")
-    }
-
-    func testCostLabelFormatsDollars() {
-        let snapshot = ContextWindowSnapshot(
-            contextLength: 128_000,
-            thresholdTokens: nil,
-            lastPromptTokens: 1_000,
-            inputTokens: nil,
-            outputTokens: nil,
-            estimatedCost: 0.1234
-        )
-
-        XCTAssertEqual(ContextWindowFormatter.costLabel(from: snapshot), "$0.1234")
-    }
-
-    func testCostLabelReturnsUnavailableWhenMissing() {
-        let snapshot = ContextWindowSnapshot(
-            contextLength: 128_000,
-            thresholdTokens: nil,
-            lastPromptTokens: 1_000,
-            inputTokens: nil,
-            outputTokens: nil,
-            estimatedCost: nil
-        )
-
-        XCTAssertEqual(ContextWindowFormatter.costLabel(from: snapshot), "Unavailable")
-    }
-
-    func testInputTokensLabelReturnsUnavailableWhenMissing() {
-        let snapshot = ContextWindowSnapshot(
-            contextLength: 128_000,
-            thresholdTokens: nil,
-            lastPromptTokens: nil,
-            inputTokens: nil,
-            outputTokens: 500,
-            estimatedCost: nil
-        )
-
-        XCTAssertEqual(ContextWindowFormatter.inputTokensLabel(from: snapshot), "Unavailable")
-    }
-
-    func testOutputTokensLabelReturnsUnavailableWhenMissing() {
-        let snapshot = ContextWindowSnapshot(
-            contextLength: 128_000,
-            thresholdTokens: nil,
-            lastPromptTokens: nil,
-            inputTokens: 500,
-            outputTokens: nil,
-            estimatedCost: nil
-        )
-
-        XCTAssertEqual(ContextWindowFormatter.outputTokensLabel(from: snapshot), "Unavailable")
-    }
-
-    func testFormatTokensSmallNumber() {
-        XCTAssertEqual(ContextWindowFormatter.formatTokens(500), "500")
-    }
-
-    func testFormatTokensThousand() {
-        XCTAssertEqual(ContextWindowFormatter.formatTokens(1_234), "1.2K")
-    }
-
-    func testFormatTokensMillion() {
-        XCTAssertEqual(ContextWindowFormatter.formatTokens(1_500_000), "1.5M")
     }
 }

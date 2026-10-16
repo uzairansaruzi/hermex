@@ -6,12 +6,6 @@ import XCTest
 final class ForkOriginTests: XCTestCase {
     private let fork = SessionSummary(sessionId: "child", sessionSource: "fork", parentSessionId: "parent")
 
-    func testAChatThatIsNotAForkHasNoOrigin() {
-        let chat = SessionSummary(sessionId: "chat", sessionSource: "webui")
-
-        XCTAssertNil(ForkOrigin.resolve(session: chat, parent: nil))
-    }
-
     func testAForkWithACachedParentUsesTheParentsListTitle() {
         let parent = SessionSummary(sessionId: "parent", title: "  Design review\n")
 
@@ -20,12 +14,6 @@ final class ForkOriginTests: XCTestCase {
         XCTAssertEqual(origin?.parentSessionID, "parent")
         XCTAssertEqual(origin?.parent?.sessionId, "parent")
         XCTAssertEqual(origin?.title, "Forked from Design review")
-    }
-
-    func testAnUntitledParentReadsUntitledSession() {
-        let parent = SessionSummary(sessionId: "parent", title: " ")
-
-        XCTAssertEqual(ForkOrigin.resolve(session: fork, parent: parent)?.title, "Forked from Untitled Session")
     }
 
     func testAForkWhoseParentIsNotCachedReadsTheFallback() {

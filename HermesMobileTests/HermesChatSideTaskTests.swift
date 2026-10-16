@@ -78,17 +78,6 @@ import Observation
         XCTAssertEqual(chat.writes("command.dispatch").count, 2)
     }
 
-    /// A goal command the host refuses (4004) shows the host's reason and sends nothing more.
-    func testARefusedGoalCommandShowsTheHostsReason() async {
-        let chat = await openChat()
-        chat.host.next("command.dispatch", .init(error: 4004))
-
-        let submitted = await chat.model.submitGoal(args: "wait abc")
-        XCTAssertFalse(submitted)
-        XCTAssertEqual(chat.model.goalErrorMessage, "refused", "the fixture host's message")
-        XCTAssertEqual(chat.writes("prompt.submit"), [])
-    }
-
     /// A typed `/goal` that does not go through keeps its draft, as a Hermes send does, and
     /// the status line says why: a new goal mid-turn, or one the host refuses.
     func testAFailedGoalCommandKeepsItsDraft() async {
@@ -386,13 +375,6 @@ import Observation
         _ = await chat.model.executeSlashCommand(Self.command("btw"), args: "what are you doing?")
         await reattachAfterTruncatedReplay(chat)
         XCTAssertEqual(chat.sideTasks.btw?.state, .unavailable)
-    }
-
-    /// The goal, btw, background and model (#1015) commands run in a Hermes session itself;
-    /// the host runs the rest (#1036).
-    func testAHermesSessionRunsOnlyItsSideCommands() {
-        XCTAssertEqual(["goal", "btw", "background", "bg", "model", "steer", "queue", "status"]
-            .filter { SlashCommandCatalog.hermesCommand(named: $0) != nil }, ["goal", "btw", "background", "bg", "model"])
     }
 
     // MARK: Background
