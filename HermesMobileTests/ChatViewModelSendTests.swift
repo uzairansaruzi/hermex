@@ -1289,6 +1289,8 @@ final class ChatViewModelSendTests: XCTestCase {
         drafts.setDraft("Keep draft", for: source)
         var paths: [String] = []
         var continuationLoads = 0
+        var viewModelRef: ChatViewModel?
+        var sendHeldOffDuringRetry: Bool?
         let viewModel = try makeViewModel(draftStore: drafts) { request in
             paths.append(request.url?.path ?? "")
             if request.url?.path == "/api/chat/start" {
@@ -1298,8 +1300,11 @@ final class ChatViewModelSendTests: XCTestCase {
             continuationLoads += 1
             // The first load fails while the connection drops; the retry succeeds.
             if continuationLoads == 1 { throw URLError(.networkConnectionLost) }
+            // The handler runs off the main thread while the retry awaits this response.
+            sendHeldOffDuringRetry = DispatchQueue.main.sync { MainActor.assumeIsolated { viewModelRef?.isStartingChat } }
             return apiTestJSONResponse(#"{"session":{"session_id":"next"}}"#, for: request)
         }
+        viewModelRef = viewModel
         let firstSend = await viewModel.sendMessage("Keep draft")
         XCTAssertFalse(firstSend)
         let stranded = await viewModel.compressionContinuationForNavigation(from: source, isCurrent: { true })
@@ -1313,6 +1318,8 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(moved?.text, "Keep draft")
         XCTAssertEqual(paths, ["/api/chat/start", "/api/session", "/api/session"])
         XCTAssertTrue(viewModel.messages.isEmpty)
+        XCTAssertEqual(sendHeldOffDuringRetry, true, "Send must stay off while the retry loads")
+        XCTAssertFalse(viewModel.isStartingChat)
     }
 
     @MainActor

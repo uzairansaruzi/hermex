@@ -2873,6 +2873,10 @@ final class ChatViewModel {
             sendErrorMessage = compressionRejectionMessage
             // A failed continuation load would otherwise strand the draft here.
             if compressionContinuation == nil, let id = compressionContinuationID, let sessionID {
+                // Holds Send off during the retry, as `performChatSend` does for the first load,
+                // so a second Send can't race this one's composer restore and handoff.
+                isStartingChat = true
+                defer { isStartingChat = false }
                 await resolveCompressionContinuation(id: id, from: sessionID,
                                                      profile: Self.compressionProfile(currentProfile),
                                                      generation: chatSendGeneration)
