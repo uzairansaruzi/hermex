@@ -147,18 +147,26 @@ import XCTest
         XCTAssertEqual(hosts.count, BotRoomTranscriptWindow.pageSize, "Each built reply hosts one selection controller")
     }
 
-    /// A search hit opens on its sequence from the saved log, stays there through the
-    /// host's refresh, and does not follow a new message to the bottom.
+    func testRoomSearchHitScrollsToItsSequenceAndDoesNotFollowNewMessages() async throws {
+        try await assertRoomSearchTarget(warm: false)
+    }
+
     func testWarmRoomSearchShowsItsTargetBeforeRefreshing() async throws {
+        try await assertRoomSearchTarget(warm: true)
+    }
+
+    private func assertRoomSearchTarget(warm: Bool) async throws {
         let server = URL(string: "https://room.example")!
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server, username: "fixture", password: "fixture")
         let wire = RoomWire(); wire.latest = 80; wire.kind = "message.member"
         let room = try XCTUnwrap(BotGroupRoom(RoomFixture.room(latest: 80)))
         let cache = BotHistoryCache()
         let key = BotRoomKey(server: server, connectionID: connection.id, roomID: room.id)
-        var log = BotRoomLog()
-        log.apply(RoomFixture.page((1...80).map { RoomFixture.event($0, kind: "message.member") }, cursor: 80))
-        cache.recent.save(log, for: .init(key), owner: cache.recent.begin(.init(key)))
+        if warm {
+            var log = BotRoomLog()
+            log.apply(RoomFixture.page((1...80).map { RoomFixture.event($0, kind: "message.member") }, cursor: 80))
+            cache.recent.save(log, for: .init(key), owner: cache.recent.begin(.init(key)))
+        }
         let reader = BotRoomReader(key: key,
             connection: connection, room: room, cache: cache, initialSequence: 20, makeWire: { _ in wire })
         let window = try show(NavigationStack {
@@ -168,10 +176,12 @@ import XCTest
         await settle(window)
         // The newest reply is built in every check below, so its absence from
         // the viewport means the transcript sits on the hit, not that it is unbuilt.
-        let beforeNetwork = try replyLeaves(in: window)
-        XCTAssertTrue(beforeNetwork.visible.contains("Message 20"), "\(beforeNetwork)")
-        XCTAssertTrue(beforeNetwork.built.contains("Message 80"), "\(beforeNetwork)")
-        XCTAssertFalse(beforeNetwork.visible.contains("Message 80"), "\(beforeNetwork)")
+        if warm {
+            let beforeNetwork = try replyLeaves(in: window)
+            XCTAssertTrue(beforeNetwork.visible.contains("Message 20"), "\(beforeNetwork)")
+            XCTAssertTrue(beforeNetwork.built.contains("Message 80"), "\(beforeNetwork)")
+            XCTAssertFalse(beforeNetwork.visible.contains("Message 80"), "\(beforeNetwork)")
+        }
         await reader.open()
         await settle(window)
         let selected = try replyLeaves(in: window)

@@ -12,7 +12,8 @@ final class ChatMessageActionMenuTests: XCTestCase {
 
         let disabled = menu.uiMenu().children.compactMap { $0 as? UIAction }
             .filter { $0.attributes.contains(.disabled) }
-        XCTAssertEqual(disabled.count, 2, "The menu UIKit shows disables the same two actions")
+        XCTAssertEqual(disabled.map(\.title), menu.items.filter { !$0.isEnabled }.map(\.title),
+                       "The menu UIKit shows disables the same two actions")
     }
 
     func testCachedResponseRetainsListenButDisablesServerMutations() throws {
