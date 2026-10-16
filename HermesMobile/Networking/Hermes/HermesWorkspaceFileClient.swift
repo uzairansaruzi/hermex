@@ -33,10 +33,13 @@ struct HermesWorkspaceContext: Hashable, Sendable {
     nonisolated let scope: String
     nonisolated let opensTopLevelFolders = false
     private let http: HermesConnection
+    /// The most a preview download reads (`BotArtifactBuffer.maximumBytes`); tests pass a few bytes.
+    private let previewLimit: Int
 
-    init(context: HermesWorkspaceContext, http: HermesConnection) {
+    init(context: HermesWorkspaceContext, http: HermesConnection, previewLimit: Int = BotArtifactBuffer.maximumBytes) {
         self.context = context
         self.http = http
+        self.previewLimit = previewLimit
         scope = "\(context.server.absoluteString)|hermes|\(context.profile)|\(context.storedKey)|\(context.cwd)"
     }
 
@@ -88,7 +91,7 @@ struct HermesWorkspaceContext: Hashable, Sendable {
 
     /// At most 25 MB (`BotArtifactBuffer`), for Quick Look.
     func rawFilePreviewData(path: String) async throws -> Data {
-        try await download(try Self.hostPath(path, in: context.cwd), inSession: false)
+        try await download(try Self.hostPath(path, in: context.cwd), inSession: false, limit: previewLimit)
     }
 
     /// An image preview keeps the 25 MB cap of every Hermes preview download.
@@ -100,7 +103,7 @@ struct HermesWorkspaceContext: Hashable, Sendable {
     /// host resolves it against the session and decides what it serves. At most 25 MB, for the
     /// MEDIA viewer's preview.
     func mediaData(path: String) async throws -> Data {
-        try await download(path, inSession: true)
+        try await download(path, inSession: true, limit: previewLimit)
     }
 
     /// `mediaData` for Save and Share: the whole file, as `rawFileData` reads one.
@@ -121,8 +124,7 @@ struct HermesWorkspaceContext: Hashable, Sendable {
     }
 
     /// `inSession` sends the stored key, for a path the host must resolve against the session.
-    private func download(_ path: String, inSession: Bool, limit: Int? = BotArtifactBuffer.maximumBytes,
-                          allowsEmpty: Bool = false) async throws -> Data {
+    private func download(_ path: String, inSession: Bool, limit: Int?, allowsEmpty: Bool = false) async throws -> Data {
         let request = try HermesREST.downloadArtifact(path: path, profile: context.profile,
                                                       sessionID: inSession ? context.storedKey : nil)
             .request(base: http.connection.address)

@@ -243,18 +243,18 @@ import XCTest
         XCTAssertTrue(Self.fileRequests.first?.url?.query(percentEncoded: true)?.contains("a%2Bb.png") == true)
     }
 
-    /// Image and Quick Look previews stop at 25 MB; Save and Share download the whole file.
-    func testOnlyPreviewDownloadsStopAt25MB() async throws {
-        let large = String(repeating: "a", count: BotArtifactBuffer.maximumBytes)
-        let client = Self.client { request in
-            request.url?.path == "/api/fs/download" ? .json(200, .string(large)) : nil
+    /// Image and Quick Look previews stop at the preview cap (25 MB); Save and Share download
+    /// the whole file.
+    func testOnlyPreviewDownloadsStopAtTheCap() async throws {
+        let client = Self.client(previewLimit: 4) { request in
+            request.url?.path == "/api/fs/download" ? .body(200, Data(count: 5)) : nil
         }
 
         let export = try await client.rawFileData(path: "archive.zip")
-        XCTAssertEqual(export.count, BotArtifactBuffer.maximumBytes + 2)
+        XCTAssertEqual(export.count, 5)
         do {
             _ = try await client.imagePreviewData(path: "huge.png")
-            XCTFail("Expected an image preview past 25 MB to stop")
+            XCTFail("Expected an image preview past the cap to stop")
         } catch {
             XCTAssertEqual(error as? BotArtifactFailure, .tooLarge)
         }
@@ -294,10 +294,11 @@ import XCTest
         HermesWorkspaceContext(server: server, profile: profile, storedKey: storedKey, cwd: cwd, terminalBackend: terminalBackend)
     }
 
-    static func client(context: HermesWorkspaceContext = context(),
+    static func client(context: HermesWorkspaceContext = context(), previewLimit: Int = BotArtifactBuffer.maximumBytes,
                        _ script: @escaping (URLRequest) -> HermesHostFixture.Reply?) -> HermesWorkspaceFileClient {
         HermesWorkspaceFileClient(context: context,
-                                  http: HermesConnection(connection: record, configuration: HermesHostFixture.configuration(script)))
+                                  http: HermesConnection(connection: record, configuration: HermesHostFixture.configuration(script)),
+                                  previewLimit: previewLimit)
     }
 
     /// `GET /api/fs/list`'s reply for `directory`, each entry's `path` resolved the way the host

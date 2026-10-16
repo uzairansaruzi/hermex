@@ -248,12 +248,12 @@ final class TranscriptMediaPreviewViewModelTests: XCTestCase {
         viewModel.cleanupTemporaryFiles()
     }
 
-    /// A Hermes MEDIA file past the 25 MB preview cap shows no preview but keeps Save and Share,
+    /// A Hermes MEDIA file past the preview cap (25 MB) shows no preview but keeps Save and Share,
     /// which download the whole file by the same path.
     func testAHermesMediaFilePastThePreviewCapStillExportsWhole() async throws {
         defer { HermesHostFixture.reset() }
-        let size = BotArtifactBuffer.maximumBytes + 1
-        let files = HermesWorkspaceFileClientTests.client { request in
+        let size = 5
+        let files = HermesWorkspaceFileClientTests.client(previewLimit: size - 1) { request in
             request.url?.path == "/api/fs/download" ? .body(200, Data(repeating: 0x61, count: size)) : nil
         }
         let viewModel = TranscriptMediaPreviewViewModel(
