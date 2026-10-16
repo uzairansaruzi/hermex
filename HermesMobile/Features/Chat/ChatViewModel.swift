@@ -1796,8 +1796,7 @@ final class ChatViewModel {
     func transcriptMediaThumbnailData(for reference: TranscriptMediaReference) async -> Data? {
         guard let hermesTurn else { return await attachmentCoordinator.transcriptMediaThumbnailData(for: reference) }
         guard reference.isRasterImageCandidate,
-              let data = await hermesTranscriptMediaData(for: reference, from: hermesTurn,
-                                                         limit: BotArtifactBuffer.maximumBytes) else { return nil }
+              let data = await hermesTranscriptMediaData(for: reference, from: hermesTurn, whole: false) else { return nil }
         return await ImagePreviewDownsampler.previewDataAsync(
             from: data,
             maxPixelSize: ImagePreviewDownsampler.attachmentMaxPixelSize
@@ -1810,13 +1809,13 @@ final class ChatViewModel {
     /// Nil when it can't load.
     func transcriptMediaData(for reference: TranscriptMediaReference) async -> Data? {
         guard let hermesTurn else { return await attachmentCoordinator.transcriptMediaData(for: reference) }
-        return await hermesTranscriptMediaData(for: reference, from: hermesTurn, limit: nil)
+        return await hermesTranscriptMediaData(for: reference, from: hermesTurn, whole: true)
     }
 
     private func hermesTranscriptMediaData(for reference: TranscriptMediaReference, from turn: HermesChatTurnCoordinator,
-                                           limit: Int?) async -> Data? {
+                                           whole: Bool) async -> Data? {
         switch reference.source {
-        case let .localPath(path): return try? await turn.attachmentData(path: path, limit: limit)
+        case let .localPath(path): return try? await turn.attachmentData(path: path, whole: whole)
         case let .remoteURL(url): return try? await client.remoteTranscriptMediaData(from: url)
         }
     }

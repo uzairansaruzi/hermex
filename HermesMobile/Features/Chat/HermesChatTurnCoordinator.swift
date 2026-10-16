@@ -233,6 +233,8 @@ struct HermesChatTranscript: Equatable {
     /// (#1176): the segment it opened by. Nil when that is the draft key.
     @ObservationIgnored let segmentDraftKey: ChatDraftKey?
     private let isNetworkAvailable: @MainActor () -> Bool
+    /// The most a preview's download reads: a chip's thumbnail or inline audio, a MEDIA image.
+    @ObservationIgnored private let previewLimit: Int
     /// The shared Live Activity manager this chat's turns drive (#1014); nil drives none.
     @ObservationIgnored private let liveActivities: (any AgentLiveActivityManaging)?
     /// The running turn's activity: its session key (a bot's `key` in a Bot Chat), the turn, the
@@ -254,11 +256,14 @@ struct HermesChatTranscript: Equatable {
 
     /// A `.canonicalChat`, or a Bot Chat row opened by its key with its `botChatRoot`, is a Bot Chat.
     /// A session's draft goes under its `lineageRoot` when given (`HermesSessionChat.lineageRoot`).
+    /// `previewLimit` caps a preview's download; a test passes less than the 25 MB.
     init(engine: HermesConversation, botChatRoot: String? = nil, lineageRoot: String? = nil,
          liveActivities: (any AgentLiveActivityManaging)? = nil,
          writeBotAvatar: (@MainActor (BotProfile, BotDestination) -> String?)? = nil,
-         isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
+         isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied },
+         previewLimit: Int = BotArtifactBuffer.maximumBytes) {
         self.engine = engine
+        self.previewLimit = previewLimit
         let policy = HermesChatPolicy(target: engine.target, botChatRoot: botChatRoot)
         self.policy = policy
         self.liveActivities = liveActivities
@@ -525,14 +530,14 @@ struct HermesChatTranscript: Equatable {
     /// thumbnail and preview. Downloads through this attach
     /// (`HermesREST.downloadArtifact` with the session's Profile and stored key), so the
     /// host resolves a relative `@file:` path against the session. Throws `.stale` while
-    /// detached, and for a result that lands after a reattach or a cancel. `limit` caps a
-    /// preview at 25 MB; a MEDIA file's export passes nil for the whole file (#1112).
-    func attachmentData(path: String, limit: Int? = BotArtifactBuffer.maximumBytes) async throws -> Data {
+    /// detached, and for a result that lands after a reattach or a cancel. A preview stops at
+    /// `previewLimit`; a MEDIA file's export passes `whole` for the whole file (#1112).
+    func attachmentData(path: String, whole: Bool = false) async throws -> Data {
         guard engine.connectionState == .connected, let key = engine.storedKey else { throw BotFailure.stale }
         let attempt = engine.generation
         let context = BotArtifactContext(connectionID: engine.connection.id, profile: engine.target.profile,
                                          sessionID: key, generation: attempt)
-        let data = try await engine.wire.artifactData(path: path, context: context, limit: limit)
+        let data = try await engine.wire.artifactData(path: path, context: context, limit: whole ? nil : previewLimit)
         try engine.check(attempt)
         return data
     }
