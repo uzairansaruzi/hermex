@@ -1573,10 +1573,13 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         }
 
         coordinator.start(streamID: "stream-123")
+        let reconnected = expectation(description: "the stream reconnected")
+        streamClient.onStart = { _ in reconnected.fulfill() }
         streamClient.emit(.token("Partial answer."), lastEventID: "session-abc:4")
         streamClient.emit(.transportError("lost connection"), lastEventID: "session-abc:4")
 
-        try await waitUntil { streamClient.startedURLs.count == 2 }
+        await fulfillment(of: [reconnected], timeout: 2)
+        XCTAssertEqual(streamClient.startedURLs.count, 2)
 
         let replayURL = try XCTUnwrap(streamClient.startedURLs.last)
         let queryItems = URLComponents(url: replayURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
@@ -1599,10 +1602,13 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         }
 
         coordinator.start(streamID: "stream-123")
+        let reconnected = expectation(description: "the stream reconnected")
+        streamClient.onStart = { _ in reconnected.fulfill() }
         streamClient.emit(.token("Partial answer."), lastEventID: "stream-123:4")
         streamClient.emit(.transportError("lost connection"), lastEventID: "stream-123:4")
 
-        try await waitUntil { streamClient.startedURLs.count == 2 }
+        await fulfillment(of: [reconnected], timeout: 2)
+        XCTAssertEqual(streamClient.startedURLs.count, 2)
 
         let resumedURL = try XCTUnwrap(streamClient.startedURLs.last)
         let queryItems = URLComponents(url: resumedURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
@@ -2331,20 +2337,6 @@ final class ChatStreamCoordinatorTests: APIClientTestCase {
         coordinator.attach(delegate: delegate)
         return coordinator
     }
-
-    private func waitUntil(
-        timeout: TimeInterval = 2,
-        condition: @escaping @MainActor @Sendable () -> Bool
-    ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if await MainActor.run(body: condition) {
-                return
-            }
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
-        XCTFail("Timed out waiting for condition")
-    }
 }
 
 @MainActor
@@ -2559,11 +2551,14 @@ private final class CoordinatorSpySSEStreamingClient: SSEStreamingClient {
     private(set) var stopCount = 0
     private(set) var lastEventID: String?
     private var onEvent: (@MainActor (SSEEvent) -> Void)?
+    /// Called after each start, so a test can wait on a reconnect instead of polling.
+    var onStart: ((URL) -> Void)?
 
     func start(url: URL, onEvent: @escaping @MainActor (SSEEvent) -> Void) {
         startedURLs.append(url)
         lastEventID = nil
         self.onEvent = onEvent
+        onStart?(url)
     }
 
     func stop() {
