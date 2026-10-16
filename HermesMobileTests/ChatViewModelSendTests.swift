@@ -2059,10 +2059,12 @@ final class ChatViewModelSendTests: XCTestCase {
         let streamClient = SpySSEStreamingClient()
         let approvalStreamClient = SpySSEStreamingClient()
         let approvalPendingRequests = LockedCounter()
+        let pollHandled = expectation(description: "the failed poll was handled")
         let pollingIntervals = ChatPollingIntervals(
             approvalNanoseconds: 100_000_000,
             clarificationNanoseconds: 100_000_000,
-            backgroundNanoseconds: 100_000_000
+            backgroundNanoseconds: 100_000_000,
+            sleep: pollClock(slept: pollHandled)
         )
         let viewModel = try makeViewModel(
             streamClient: streamClient,
@@ -2081,9 +2083,8 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(didStart)
 
         approvalStreamClient.emit(.transportError("approval stream failed"))
-        try await waitUntil {
-            approvalPendingRequests.count > 0
-        }
+        await fulfillment(of: [pollHandled], timeout: 5)
+        XCTAssertEqual(approvalPendingRequests.count, 1)
 
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
         XCTAssertNil(viewModel.lastError)
@@ -2148,10 +2149,15 @@ final class ChatViewModelSendTests: XCTestCase {
         let approvalPendingRequests = LockedCounter()
         let clarificationPendingRequests = LockedCounter()
         let backgroundStatusRequests = LockedCounter()
+        let slept = expectation(description: "the approval, clarification and background polls are asleep")
+        slept.expectedFulfillmentCount = 3
+        let cancelled = expectation(description: "cleanup cancelled each sleeping poll")
+        cancelled.expectedFulfillmentCount = 3
         let pollingIntervals = ChatPollingIntervals(
             approvalNanoseconds: 100_000_000,
             clarificationNanoseconds: 100_000_000,
-            backgroundNanoseconds: 100_000_000
+            backgroundNanoseconds: 100_000_000,
+            sleep: pollClock(slept: slept, cancelled: cancelled)
         )
         let viewModel = try makeViewModel(
             streamClient: streamClient,
@@ -2187,22 +2193,14 @@ final class ChatViewModelSendTests: XCTestCase {
         )
         XCTAssertEqual(result, .executed(message: "Background task started. I'll add the result here when it completes."))
 
-        try await waitUntil {
-            approvalPendingRequests.count > 0 &&
-                clarificationPendingRequests.count > 0 &&
-                backgroundStatusRequests.count > 0
-        }
+        await fulfillment(of: [slept], timeout: 5)
 
         viewModel.cleanupPollingTasks()
-        let approvalCountAfterCleanup = approvalPendingRequests.count
-        let clarificationCountAfterCleanup = clarificationPendingRequests.count
-        let backgroundCountAfterCleanup = backgroundStatusRequests.count
+        await fulfillment(of: [cancelled], timeout: 5)
 
-        try await Task.sleep(nanoseconds: 350_000_000)
-
-        XCTAssertEqual(approvalPendingRequests.count, approvalCountAfterCleanup)
-        XCTAssertEqual(clarificationPendingRequests.count, clarificationCountAfterCleanup)
-        XCTAssertEqual(backgroundStatusRequests.count, backgroundCountAfterCleanup)
+        XCTAssertEqual(approvalPendingRequests.count, 1)
+        XCTAssertEqual(clarificationPendingRequests.count, 1)
+        XCTAssertEqual(backgroundStatusRequests.count, 1)
     }
 
     @MainActor
@@ -2531,7 +2529,8 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.filter { $0.role == "assistant" }.count, 1)
         XCTAssertEqual(viewModel.messages.last?.content, "From server.")
 
-        try await Task.sleep(nanoseconds: 50_000_000)
+        // The flush the coalescing timer would run finds nothing left to apply.
+        viewModel.flushPendingStreamingContent()
         XCTAssertEqual(viewModel.messages.filter { $0.role == "assistant" }.count, 1)
         XCTAssertEqual(viewModel.messages.last?.content, "From server.")
     }
@@ -2605,9 +2604,7 @@ final class ChatViewModelSendTests: XCTestCase {
         streamClient.emit(.token("Partial live answer."), lastEventID: "session-abc:4")
         streamClient.emit(.transportError("lost connection"), lastEventID: "session-abc:4")
 
-        try await waitUntil {
-            streamClient.startedURLs.count == 2
-        }
+        await waitUntil("the replay started") { streamClient.startedURLs.count == 2 }
 
         let replayURL = try XCTUnwrap(streamClient.startedURLs.last)
         let replayQueryItems = URLComponents(url: replayURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
@@ -4103,7 +4100,7 @@ final class ChatViewModelSendTests: XCTestCase {
         let sendTask = Task { @MainActor in
             await viewModel.sendMessage("In-flight question", modelContext: context)
         }
-        try await waitUntil { viewModel.messages.compactMap(\.content).contains("In-flight question") }
+        await waitUntil("the send showed") { viewModel.messages.compactMap(\.content).contains("In-flight question") }
         XCTAssertTrue(viewModel.messages.compactMap(\.content).contains("In-flight question"))
 
         // Now let the reload fail with a non-cacheable error: the cache-first revert
@@ -4548,12 +4545,12 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testTransportErrorChecksStatusAndReattachesWhenStreamIsActive() async throws {
         let streamClient = SpySSEStreamingClient()
-        var didRequestStatus = false
-        var didReloadMessages = false
+        let statusChecked = expectation(description: "stream status checked")
+        let reloaded = expectation(description: "messages reloaded")
         let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
             "/api/chat/start": chatStarted(),
             "/api/chat/stream/status": { request in
-                didRequestStatus = true
+                statusChecked.fulfill()
                 return apiTestJSONResponse("""
                 {
                   "active": true,
@@ -4562,7 +4559,7 @@ final class ChatViewModelSendTests: XCTestCase {
                 """, for: request)
             },
             "/api/session": { request in
-                didReloadMessages = true
+                reloaded.fulfill()
                 return apiTestJSONResponse("""
                 {
                   "session": {
@@ -4589,12 +4586,9 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(streamClient.startedURLs.count, 1)
 
         streamClient.emit(.transportError("The network connection was lost."))
-        try await waitUntil {
-            didRequestStatus && didReloadMessages && streamClient.startedURLs.count == 2
-        }
+        await fulfillment(of: [statusChecked, reloaded], timeout: 5)
+        await waitUntil("the stream reattached") { streamClient.startedURLs.count == 2 }
 
-        XCTAssertTrue(didRequestStatus)
-        XCTAssertTrue(didReloadMessages)
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
         XCTAssertNil(viewModel.sendErrorMessage)
         XCTAssertEqual(streamClient.stopCount, 1)
@@ -5683,7 +5677,7 @@ final class ChatViewModelSendTests: XCTestCase {
         let selectWorkspaceTask = Task { @MainActor in
             await viewModel.selectWorkspacePath(selectedWorkspace)
         }
-        try await waitUntil { viewModel.selectedWorkspacePath == selectedWorkspace }
+        await waitUntil("the picked workspace showed") { viewModel.selectedWorkspacePath == selectedWorkspace }
         releaseProfilesIfNeeded()
 
         let didSelectWorkspace = await selectWorkspaceTask.value
@@ -6307,7 +6301,6 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testCompletedResponseRefreshesGeneratedSessionTitle() async throws {
         let streamClient = SpySSEStreamingClient()
-        var didRefreshTitle = false
         let viewModel = try makeViewModel(
             streamClient: streamClient,
             sessionSummary: makeSession(title: "Untitled Session"),
@@ -6317,7 +6310,6 @@ final class ChatViewModelSendTests: XCTestCase {
                     let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
                     let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
                     XCTAssertEqual(query["messages"], "0")
-                    didRefreshTitle = true
                     return apiTestJSONResponse("""
                     {
                       "session": {
@@ -6336,11 +6328,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(didStart)
         streamClient.emit(.done(DoneStreamEvent()))
         streamClient.emit(.streamEnd)
-        try await waitUntil {
-            didRefreshTitle && viewModel.displayTitle == "Generated Meal Plan"
-        }
-
-        XCTAssertEqual(viewModel.displayTitle, "Generated Meal Plan")
+        await waitUntil("the generated title") { viewModel.displayTitle == "Generated Meal Plan" }
     }
 
     @MainActor
@@ -6466,12 +6454,12 @@ final class ChatViewModelSendTests: XCTestCase {
     @MainActor
     func testTransportErrorChecksStatusAndFinishesWhenStreamIsInactive() async throws {
         let streamClient = SpySSEStreamingClient()
-        var didRequestStatus = false
-        var didReloadMessages = false
+        let statusChecked = expectation(description: "stream status checked")
+        let reloaded = expectation(description: "messages reloaded")
         let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
             "/api/chat/start": chatStarted(),
             "/api/chat/stream/status": { request in
-                didRequestStatus = true
+                statusChecked.fulfill()
                 return apiTestJSONResponse("""
                 {
                   "active": false,
@@ -6480,7 +6468,7 @@ final class ChatViewModelSendTests: XCTestCase {
                 """, for: request)
             },
             "/api/session": { request in
-                didReloadMessages = true
+                reloaded.fulfill()
                 return apiTestJSONResponse("""
                 {
                   "session": {
@@ -6505,14 +6493,10 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.activeStreamID, "stream-123")
 
         streamClient.emit(.transportError("The network connection was lost."))
-        try await waitUntil {
-            didRequestStatus && didReloadMessages
+        await fulfillment(of: [statusChecked, reloaded], timeout: 5)
+        await waitUntil("the recovered transcript") {
+            viewModel.activeStreamID == nil && viewModel.messages.map(\.content) == ["Recovered transcript."]
         }
-
-        XCTAssertTrue(didRequestStatus)
-        XCTAssertTrue(didReloadMessages)
-        XCTAssertNil(viewModel.activeStreamID)
-        XCTAssertEqual(viewModel.messages.map(\.content), ["Recovered transcript."])
         XCTAssertNil(viewModel.sendErrorMessage)
         XCTAssertEqual(streamClient.stopCount, 2)
     }
@@ -8280,21 +8264,9 @@ final class ChatViewModelSendTests: XCTestCase {
         streamClient.emit(.streamEnd)
         XCTAssertNil(viewModel.activeStreamID)
 
-        // 4. Let the drain (and any retry loop) fully quiesce. MockURLProtocol resolves
-        //    synchronously, so once the attempt count is stable across several short polls no
-        //    further sends are in flight.
-        var lastSeen = startChatAttempts
-        var stablePolls = 0
-        for _ in 0..<80 {
-            try await Task.sleep(nanoseconds: 50_000_000)
-            if startChatAttempts == lastSeen {
-                stablePolls += 1
-                if stablePolls >= 3 { break }
-            } else {
-                stablePolls = 0
-                lastSeen = startChatAttempts
-            }
-        }
+        // 4. Wait for the drained send to fail. A retry loop re-drains in the same step, so by
+        //    then it would already have taken the message out of the queue again.
+        await waitUntil("the drained send failed") { viewModel.sendErrorMessage != nil }
 
         let drainedAttempts = startChatAttempts - attemptsBeforeDrain
 
@@ -8354,7 +8326,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(queued, .executed(message: nil))
 
         streamClient.emit(.streamEnd)
-        try await waitUntil { chatStartCount == 2 }
+        await waitUntil("the queued send started") { viewModel.activeStreamID == "stream-2" }
         let deletedNames = await attachmentStore.deletedNames()
 
         XCTAssertEqual(deletedNames, ["saved-1-notes.txt"])
@@ -8535,7 +8507,7 @@ final class ChatViewModelSendTests: XCTestCase {
         viewModel.appendPendingAttachments(parked.flatMap(\.attachments))
         releaseDrainedSend.signal()
 
-        try await waitUntil { viewModel.activeStreamID == "stream-2" }
+        await waitUntil("the drained send started") { viewModel.activeStreamID == "stream-2" }
         await drainMainActor()
         XCTAssertEqual(viewModel.pendingAttachments.map(\.path), ["/tmp/workspace/notes.txt"])
     }
@@ -9175,14 +9147,16 @@ final class ChatViewModelSendTests: XCTestCase {
         return viewModel
     }
 
+    /// Waits on observation, never a clock, until `condition` holds.
     @MainActor
-    private func waitUntil(_ condition: @MainActor () -> Bool) async throws {
-        for _ in 0..<40 {
-            if condition() {
-                return
+    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
+                           _ condition: @escaping @MainActor () -> Bool) async {
+        while !condition() {
+            let changed = XCTestExpectation(description: description)
+            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
+            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
+                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
             }
-
-            try await Task.sleep(nanoseconds: 50_000_000)
         }
     }
 
@@ -9417,6 +9391,18 @@ final class ChatViewModelSendTests: XCTestCase {
             visibleIndex: 0,
             messagesOffset: 0
         ))
+    }
+}
+
+/// A polling `sleep` whose waits are events: `slept` is fulfilled as each poll goes back to
+/// sleep, and `cancelled` as a sleeping poll is cancelled. A wait ends only when cancelled.
+private func pollClock(slept: XCTestExpectation,
+                       cancelled: XCTestExpectation? = nil) -> @Sendable (UInt64) async -> Void {
+    { _ in
+        slept.fulfill()
+        await withTaskCancellationHandler {
+            try? await Task.sleep(for: .seconds(3_600))
+        } onCancel: { cancelled?.fulfill() }
     }
 }
 
@@ -9692,13 +9678,13 @@ private final class SpyListenRemoteControlCenter: ListenRemoteControlControlling
     }
 }
 
-private final class SpySSEStreamingClient: SSEStreamingClient {
+@Observable private final class SpySSEStreamingClient: SSEStreamingClient {
     private(set) var startedURLs: [URL] = []
     private(set) var stopCount = 0
     private(set) var lastEventID: String?
-    private var onEvent: (@MainActor (SSEEvent) -> Void)?
-    var automaticallyFlushPendingStreamingContent = true
-    var flushPendingStreamingContent: (() -> Void)?
+    @ObservationIgnored private var onEvent: (@MainActor (SSEEvent) -> Void)?
+    @ObservationIgnored var automaticallyFlushPendingStreamingContent = true
+    @ObservationIgnored var flushPendingStreamingContent: (() -> Void)?
 
     func start(url: URL, onEvent: @escaping @MainActor (SSEEvent) -> Void) {
         startedURLs.append(url)
