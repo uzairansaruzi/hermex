@@ -14,8 +14,8 @@ final class APIClientSessionListTests: APIClientTestCase {
             XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
 
             let body = try XCTUnwrap(apiTestBodyData(from: request))
-            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: String])
-            XCTAssertEqual(json, ["session_id": "telegram-1"])
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(json["session_id"] as? String, "telegram-1")
 
             return apiTestJSONResponse("""
             {

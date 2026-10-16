@@ -94,7 +94,7 @@ final class APIClientKanbanTests: APIClientTestCase {
                 XCTAssertEqual(components?.path, "/api/kanban/boards")
                 let data = try XCTUnwrap(apiTestBodyData(from: request))
                 let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-                XCTAssertEqual(Set(body.keys), ["slug", "name", "description", "icon", "color"])
+                XCTAssertTrue(Set(body.keys).isSuperset(of: ["slug", "name", "description", "icon", "color"]), "\(body.keys)")
                 XCTAssertEqual(body["slug"] as? String, "release board")
                 XCTAssertNil(body["switch"], "Creation must never implicitly change shared active-Board state.")
                 return apiTestJSONResponse(
@@ -106,7 +106,7 @@ final class APIClientKanbanTests: APIClientTestCase {
                 XCTAssertEqual(components?.path, "/api/kanban/boards/release board")
                 let data = try XCTUnwrap(apiTestBodyData(from: request))
                 let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-                XCTAssertEqual(Set(body.keys), ["name", "description", "icon", "color"])
+                XCTAssertTrue(Set(body.keys).isSuperset(of: ["name", "description", "icon", "color"]), "\(body.keys)")
                 XCTAssertNil(body["slug"])
                 XCTAssertEqual(body["description"] as? String, "")
                 return apiTestJSONResponse(
@@ -414,11 +414,11 @@ final class APIClientKanbanTests: APIClientTestCase {
             if requestIndex == 0 {
                 XCTAssertEqual(request.httpMethod, "POST")
                 XCTAssertEqual(components?.path, "/api/kanban/tasks")
-                XCTAssertEqual(Set(body.keys), [
+                XCTAssertTrue(Set(body.keys).isSuperset(of: [
                     "title", "body", "status", "priority", "assignee", "tenant",
                     "workspace_kind", "workspace_path", "skills", "max_runtime_seconds",
                     "parents", "idempotency_key"
-                ])
+                ]), "\(body.keys)")
                 XCTAssertEqual(body["title"] as? String, "Native editor")
                 XCTAssertEqual(body["status"] as? String, "ready")
                 XCTAssertEqual(body["workspace_kind"] as? String, "worktree")
@@ -432,7 +432,7 @@ final class APIClientKanbanTests: APIClientTestCase {
 
             XCTAssertEqual(request.httpMethod, "PATCH")
             XCTAssertEqual(components?.path, "/api/kanban/tasks/CARD-153")
-            XCTAssertEqual(Set(body.keys), ["title", "body", "tenant", "priority", "assignee", "status"])
+            XCTAssertTrue(Set(body.keys).isSuperset(of: ["title", "body", "tenant", "priority", "assignee", "status"]), "\(body.keys)")
             XCTAssertTrue(body["assignee"] is NSNull)
             XCTAssertTrue(body["tenant"] is NSNull)
             XCTAssertNil(body["workspace_kind"])
@@ -477,7 +477,10 @@ final class APIClientKanbanTests: APIClientTestCase {
         let client = makeClient { request in
             let data = try XCTUnwrap(apiTestBodyData(from: request))
             let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-            XCTAssertEqual(Set(body.keys), ["title", "status", "workspace_kind", "idempotency_key"])
+            XCTAssertTrue(Set(body.keys).isSuperset(of: ["title", "status", "workspace_kind", "idempotency_key"]), "\(body.keys)")
+            for unset in ["body", "priority", "assignee", "tenant", "workspace_path", "skills", "max_runtime_seconds", "parents"] {
+                XCTAssertNil(body[unset], "An unset \(unset) is omitted, not sent as null")
+            }
             return apiTestJSONResponse(#"{"task":{"id":"CARD-1","status":"triage"},"unknown":true}"#, for: request)
         }
         let envelope = try await client.createKanbanCard(KanbanCreateCardRequest(

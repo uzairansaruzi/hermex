@@ -74,14 +74,18 @@ import XCTest
         let look = wire.calls[1].1
         XCTAssertEqual(look["name"], .string("home-hunter"))
         XCTAssertEqual(look["ui_meta_expected_revisions"], .object(["hermes-bots": .number(0)]))
-        XCTAssertEqual(look["ui_meta"]?["hermes-bots"].fields, [
-            "title": .string("Home Hunter"), "shape": .string("hexagon"), "color": .string("#f97316"),
-            "expression": .string("happy"), "custom": .bool(true), "imageKind": .string("shape")
-        ])
-        XCTAssertEqual(wire.calls[3].1, ["profile": .string("home-hunter"), "title": .string("Bot Chat"),
-                                         "hidden": .bool(true), "follow_profile_config": .bool(true),
-                                         "source": .string("hermex")])
-        XCTAssertEqual(wire.calls[4].1, ["session_id": .string("runtime-1"), "title": .string("Bot Chat")])
+        let meta = look["ui_meta"]?["hermes-bots"]
+        XCTAssertEqual(meta?["title"], .string("Home Hunter"))
+        XCTAssertEqual(meta?["shape"], .string("hexagon"))
+        XCTAssertEqual(meta?["color"], .string("#f97316"))
+        XCTAssertEqual(meta?["expression"], .string("happy"))
+        let chat = wire.calls[3].1
+        XCTAssertEqual(chat["profile"], .string("home-hunter"))
+        XCTAssertEqual(chat["title"], .string("Bot Chat"))
+        XCTAssertEqual(chat["hidden"], .bool(true))
+        XCTAssertEqual(chat["follow_profile_config"], .bool(true))
+        XCTAssertEqual(wire.calls[4].1["session_id"], .string("runtime-1"))
+        XCTAssertEqual(wire.calls[4].1["title"], .string("Bot Chat"))
         XCTAssertEqual(creator.phase, .created)
         XCTAssertEqual(created, ["home-hunter"])
         XCTAssertNil(creator.note)

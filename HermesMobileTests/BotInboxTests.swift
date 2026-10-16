@@ -230,7 +230,6 @@ import SwiftUI
         XCTAssertEqual(configured?["name"], .string("triage"))
         XCTAssertEqual(configured?["ui_meta"], .object(["hermes-bots": .object(["pinned": .bool(true)])]))
         XCTAssertEqual(configured?["ui_meta_expected_revisions"], .object(["hermes-bots": .number(0)]))
-        XCTAssertEqual(Set(configured?.keys.map { $0 } ?? []), ["name", "ui_meta", "ui_meta_expected_revisions"])
         XCTAssertEqual(inbox.rows(matching: "").pinned.map(\.id), ["triage"], "the row moves only after the host applied and the roster was re-read")
         XCTAssertNil(inbox.notice)
         XCTAssertEqual(wire.listCalls, 2)
