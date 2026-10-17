@@ -864,3 +864,37 @@ final class ComposerFocusTransitionTests: XCTestCase {
         window.rootViewController = nil
     }
 }
+
+@MainActor
+final class ComposerUndoTests: XCTestCase {
+    /// Dictation holds one undo group open across its insertions. A chip
+    /// redraw inside it must leave that group to its owner: closing a group
+    /// that is gone throws, and the run loop's close aborts the app (#1303).
+    func testRedrawingMidDictationLeavesItsUndoGroupOpen() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 120))
+        window.addSubview(textView)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        textView.chipFilePaths = ["README.md"]
+        XCTAssertTrue(textView.becomeFirstResponder())
+        let undoManager = try XCTUnwrap(textView.undoManager)
+
+        undoManager.beginUndoGrouping()
+        let dictationLevel = undoManager.groupingLevel
+        textView.insertText("check ")
+        textView.replaceDocument(with: "check @README.md ")
+
+        XCTAssertEqual(undoManager.groupingLevel, dictationLevel)
+        guard undoManager.groupingLevel == dictationLevel else { return }
+        let idle = XCTNSNotificationExpectation(name: .NSUndoManagerDidCloseUndoGroup, object: undoManager)
+        idle.handler = { _ in undoManager.groupingLevel == 0 }
+        undoManager.endUndoGrouping()
+        wait(for: [idle], timeout: 5)
+
+        let turned = expectation(description: "main queue turns after the last group closes")
+        DispatchQueue.main.async { turned.fulfill() }
+        wait(for: [turned], timeout: 5)
+        XCTAssertFalse(undoManager.canUndo, "Undo must not put back text the redrawn chips no longer describe")
+    }
+}
