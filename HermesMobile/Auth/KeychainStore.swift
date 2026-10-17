@@ -74,4 +74,32 @@ struct KeychainStore: KeychainStoring {
     static func scopedKey(_ key: Key, scope: String) -> String {
         "\(key.rawValue)::\(scope)"
     }
+
+
+    // MARK: - Diagnostic load
+
+    /// Outcome of a diagnostic Keychain read, distinguishing a missing entry from
+    /// a Keychain API failure. `restoreSavedServer` uses this to log the right
+    /// reason when the server URL cannot be restored.
+    enum LoadResult {
+        case value(String)
+        case missing
+        case error(Error)
+    }
+
+    /// Reads `key` with full error detail. The regular `load(_:)` swallows errors
+    /// (it returns `nil` for both "not found" and "Keychain locked"), which makes
+    /// the `.unconfigured` fallback indistinguishable from a transient Keychain
+    /// failure. This variant distinguishes the two so diagnostic logging can tell
+    /// the user — or a future crash report — exactly what happened.
+    func loadWithDiagnostics(_ key: Key) -> LoadResult {
+        do {
+            if let value = try keychain.get(key.rawValue) {
+                return .value(value)
+            }
+            return .missing
+        } catch {
+            return .error(error)
+        }
+    }
 }

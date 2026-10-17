@@ -1,5 +1,11 @@
 import Foundation
 import Observation
+import os
+
+private let authManagerLogger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "HermesMobile",
+    category: "AuthManager"
+)
 
 @MainActor
 @Observable
@@ -685,8 +691,13 @@ final class AuthManager {
         }
         // A webui 401 is never about a Hermes server's own sign-in: a late reply from a
         // webui screen a switch left behind must not sign the Hermes server out (#899).
-        if let server = state.server, kind(of: server) == .hermes { return }
+        if let server = state.server, kind(of: server) == .hermes {
+            authManagerLogger.debug("Ignoring webui 401 for active Hermes server \(server.absoluteString, privacy: .private)")
+            return
+        }
 
+
+        authManagerLogger.warning("Session expired (401 Unauthorized) — transitioning to loggedOut")
         lastErrorMessage = String(localized: "Your session expired. Sign in again.")
 
         switch state {
@@ -789,22 +800,50 @@ final class AuthManager {
     }
 
     private func restoreSavedServer() {
-        guard
-            let savedValue = try? keychain.load(.serverURL),
-            let savedURL = URL(string: savedValue)
-        else {
-            // No saved server: nothing is active, so no scoped headers apply.
-            state = .unconfigured
+        // Try the primary path: load the server URL from the Keychain.
+        let savedValue = try? keychain.load(.serverURL)
+
+        if let savedValue, let savedURL = URL(string: savedValue) {
+            authManagerLogger.notice("Restored server URL from Keychain")
+            serverRegistry.activate(url: savedURL)
+            refreshServers()
+            enterActiveServer(savedURL)
             return
         }
 
-        // One-time migration of the saved single server into the multi-server
-        // registry (#15). Idempotent: an already-registered server is just
-        // re-activated, and its per-server identity is only seeded on first
-        // insert, so #17 edits survive relaunch.
-        serverRegistry.activate(url: savedURL)
-        refreshServers()
-        enterActiveServer(savedURL)
+        // Primary path failed — try to recover from the multi-server registry,
+        // which is also Keychain-backed but is a separate entry: iOS may have
+        // purged one without the other, or a code path may have deleted the
+        // single-server key while the registry still has entries. This is the
+        // smallest change that keeps users from hitting the full onboarding
+        // screen when only the legacy `server_url` key is lost.
+        if let registryActive = serverRegistry.activeServer,
+           let recoveredURL = URL(string: registryActive.urlString) {
+            authManagerLogger.warning(
+                "Keychain server_url missing but ServerRegistry has an active server — recovering from registry (server: \(registryActive.id, privacy: .private))"
+            )
+            // Re-persist so the next cold launch finds it on the primary path.
+            try? keychain.save(recoveredURL.absoluteString, forKey: .serverURL)
+            refreshServers()
+            enterActiveServer(recoveredURL)
+            return
+        }
+
+        // Neither source has a server: check whether this is a Keychain read
+        // error (transient, worth logging) or a genuinely empty first launch.
+        do {
+            if let _ = try keychain.load(.serverURL) {
+                // Shouldn't reach here — the primary path above would have caught it.
+            } else {
+                authManagerLogger.notice("No saved server — first launch or fully signed out")
+            }
+        } catch {
+            authManagerLogger.error(
+                "Keychain read failed for server_url — treating as unconfigured (error: \(error.localizedDescription, privacy: .private))"
+            )
+        }
+
+        state = .unconfigured
     }
 
     /// Enters `server`, already active in the registry. A webui server's headers are

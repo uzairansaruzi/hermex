@@ -13,6 +13,7 @@
 		A4790000000000000000E004 /* PushRegistrar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F004 /* PushRegistrar.swift */; };
 		A4790000000000000000E005 /* PushAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F005 /* PushAppDelegate.swift */; };
 		A4790000000000000000E006 /* PushRegistrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F006 /* PushRegistrationTests.swift */; };
+		A4790000000000000000E007 /* RestoreServerFallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F007 /* RestoreServerFallbackTests.swift */; };
 		B48200000000000000000002 /* BotProfileAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000001 /* BotProfileAppearance.swift */; };
 		B48200000000000000000012 /* BotExpressionPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000011 /* BotExpressionPickerView.swift */; };
 		B48200000000000000000032 /* BotCreator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B48200000000000000000031 /* BotCreator.swift */; };
@@ -733,6 +734,7 @@
 		A4790000000000000000F004 /* PushRegistrar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrar.swift; sourceTree = "<group>"; };
 		A4790000000000000000F005 /* PushAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushAppDelegate.swift; sourceTree = "<group>"; };
 		A4790000000000000000F006 /* PushRegistrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationTests.swift; sourceTree = "<group>"; };
+		A4790000000000000000F007 /* RestoreServerFallbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestoreServerFallbackTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000B1 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		0258EA266C5141C2B253F58E /* AuthManager+MoveToHermes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AuthManager+MoveToHermes.swift"; sourceTree = "<group>"; };
 		C0DE88500000000000000002 /* AppLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLock.swift; sourceTree = "<group>"; };
@@ -1638,8 +1640,9 @@
 				1A2B3C4D5E6F700000000340 /* AppIntentNewChatTests.swift */,
 				1A2B3C4D5E6F700000000344 /* AppIntentNewChatInProfileTests.swift */,
 				A4790000000000000000F006 /* PushRegistrationTests.swift */,
-			);
-			path = HermesMobileTests;
+				A4790000000000000000F007 /* RestoreServerFallbackTests.swift */,
+				);
+				path = HermesMobileTests;
 			sourceTree = "<group>";
 		};
 		A4790000000000000000F000 /* Push */ = {
@@ -3092,6 +3095,7 @@
 				C0DE88500000000000000003 /* AppLockTests.swift in Sources */,
 				1A2B3C4D5E6F700000000341 /* AppIntentNewChatTests.swift in Sources */,
 				1A2B3C4D5E6F700000000345 /* AppIntentNewChatInProfileTests.swift in Sources */,
+				A4790000000000000000E007 /* RestoreServerFallbackTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
