@@ -594,6 +594,19 @@ import UIKit
         XCTAssertEqual(downloads.count, 2)
     }
 
+    /// A detached Hermes chat serves no MEDIA bytes and never falls back to webui's
+    /// loader with a host path.
+    func testDetachedHermesMediaDoesNotFallBackToWebui() async {
+        let chat = await openChat()
+        chat.model.suspendStreamForNavigation()
+        let before = HermesHostFixture.requests.count
+        let documentBytes = await chat.model.transcriptMediaData(for: .init(rawReference: "/host/report.pdf"))
+        let thumbnail = await chat.model.transcriptMediaThumbnailData(for: .init(rawReference: "/host/photo.jpg"))
+        XCTAssertNil(documentBytes)
+        XCTAssertNil(thumbnail)
+        XCTAssertEqual(HermesHostFixture.requests.count, before, "a detached Hermes chat sends no fallback request")
+    }
+
     // MARK: Fixture
 
     private static let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "http://hermes.local:9120")!,

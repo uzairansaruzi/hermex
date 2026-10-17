@@ -2,6 +2,22 @@ import XCTest
 @testable import HermesMobile
 
 final class TranscriptMediaParserTests: XCTestCase {
+    func testHermesDocumentsReuseNativeFormatsWithoutReclassifyingOtherMedia() {
+        let segments = TranscriptMediaParser.segments(
+            in: "MEDIA:/host/report.PDF MEDIA:https://cdn.example/report.docx?download=1 "
+                + "MEDIA:/host/slides.pptx MEDIA:/host/sheet.xlsx MEDIA:/host/notes.rtf "
+                + "MEDIA:/host/photo.png MEDIA:/host/song.mp3 MEDIA:/host/movie.mp4 "
+                + "MEDIA:/host/archive.zip MEDIA:https://cdn.example/no-extension?name=report.pdf"
+        )
+        let references = mediaReferences(in: segments)
+        XCTAssertEqual(references.count, 10)
+        XCTAssertEqual(references.map(\.isHermesDocumentCandidate),
+                       [true, true, true, true, true, false, false, false, false, false])
+        XCTAssertEqual(Array(references.suffix(5).map(\.mediaKind)), [.image, .audio, .video, .unsupported, .image])
+        XCTAssertEqual(TranscriptMediaParser.segments(in: "[Report](https://cdn.example/report.pdf)"),
+                       [.text("[Report](https://cdn.example/report.pdf)")], "ordinary external document links stay links")
+    }
+
     func testParsesLocalPathToken() {
         let segments = TranscriptMediaParser.segments(
             in: "Screenshot: MEDIA:/Users/hermes/.hermes/browser_screenshots/example.png loaded"

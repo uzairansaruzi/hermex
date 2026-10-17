@@ -258,6 +258,15 @@ import XCTest
         } catch {
             XCTAssertEqual(error as? BotArtifactFailure, .tooLarge)
         }
+        // A MEDIA document's preview stops at the same cap; its export reads the whole file.
+        let mediaExport = try await client.mediaExportData(path: "/tmp/huge.pdf")
+        XCTAssertEqual(mediaExport.count, 5)
+        do {
+            _ = try await client.mediaData(path: "/tmp/huge.pdf")
+            XCTFail("Expected a media preview past the cap to stop")
+        } catch {
+            XCTAssertEqual(error as? BotArtifactFailure, .tooLarge)
+        }
     }
 
     // MARK: Scope

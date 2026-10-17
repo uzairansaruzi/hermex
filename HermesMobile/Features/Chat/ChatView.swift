@@ -360,8 +360,8 @@ struct ChatView: View {
     @State private var transcriptMediaPreviewItem: TranscriptMediaPreviewItem?
     @State private var transcriptMediaImageItem: TranscriptMediaPreviewItem?
     @State private var attachmentImageItem: ChatAttachmentPreviewItem?
-    /// A Hermes session's sent file, previewed from its host (#1030).
-    @State private var hermesAttachmentItem: HermesAttachmentPreviewItem?
+    /// A Hermes sent file or MEDIA document in the shared native artifact preview.
+    @State private var hermesFilePreviewItem: HermesFilePreviewItem?
     /// A workspace file a chat link named; presented on the source viewer at its line.
     @State private var openedFileReference: FileReference?
     @State private var pendingProfileSelection: ProfileSummary?
@@ -753,12 +753,17 @@ struct ChatView: View {
         return nil
     }
 
-    /// An image is known to be an image before it is fetched, so it opens in the
-    /// full-bleed lightbox. Everything else keeps the preview sheet, which still has to
-    /// decide between audio, video, and an unsupported file once the bytes arrive.
+    /// Hermes documents share BotArtifactPreview. An image is known to be an image
+    /// before it is fetched, so it opens in the full-bleed lightbox. Everything else
+    /// keeps the preview sheet, which still has to decide between audio, video, and
+    /// an unsupported file once the bytes arrive.
     private func presentTranscriptMediaPreview(_ reference: TranscriptMediaReference) {
         presentPreviewRestoringComposerFocusIfNeeded {
             let item = TranscriptMediaPreviewItem(reference: reference)
+            if isHermesSession, reference.isHermesDocumentCandidate {
+                hermesFilePreviewItem = HermesFilePreviewItem(reference: reference)
+                return
+            }
             if reference.isRasterImageCandidate, !reference.isExtensionlessRemoteMediaCandidate {
                 transcriptMediaImageItem = item
             } else {
@@ -775,7 +780,10 @@ struct ChatView: View {
             return presentAttachmentPreview(ChatAttachmentPreviewItem(message: attachment, localData: localData))
         }
         presentPreviewRestoringComposerFocusIfNeeded {
-            hermesAttachmentItem = HermesAttachmentPreviewItem(path: path, name: attachment.name)
+            hermesFilePreviewItem = HermesFilePreviewItem(
+                reference: TranscriptMediaReference(rawReference: path), name: attachment.name,
+                isSentAttachment: true
+            )
         }
     }
 
@@ -805,6 +813,24 @@ struct ChatView: View {
             item: item,
             onAPIError: onAPIError
         )
+    }
+
+    /// The capped preview download behind `hermesFilePreviewItem`. A sent chip keeps
+    /// its host download (#1030). A MEDIA document's local path reads through the
+    /// chat's `WorkspaceFileClient` (`mediaData`, #1112); a remote document URL is a
+    /// public, credential-free fetch, never either server's auth. Exporting the whole
+    /// file, over the cap included, stays on the card's own download action.
+    private func hermesFilePreviewData(for item: HermesFilePreviewItem) async throws -> Data {
+        if item.isSentAttachment, case let .localPath(path) = item.reference.source {
+            return try await viewModel.hermesAttachmentData(path: path)
+        }
+        switch item.reference.source {
+        case let .localPath(path):
+            guard let files = transcriptMediaFiles else { throw TranscriptMediaPreviewError.missingSessionID }
+            return try await files.mediaData(path: path)
+        case let .remoteURL(url):
+            return try await PublicArtifactDownload.data(from: url)
+        }
     }
 
     /// A chat link that names a workspace file opens the source viewer at its line; every
@@ -1159,12 +1185,12 @@ struct ChatView: View {
                     restoreComposerFocusAfterPreviewIfNeeded()
                 }
             }
-            .sheet(item: $hermesAttachmentItem) { item in
-                BotArtifactPreview(reference: TranscriptMediaReference(rawReference: item.path), title: item.name) {
-                    try await viewModel.hermesAttachmentData(path: item.path)
+            .sheet(item: $hermesFilePreviewItem) { item in
+                BotArtifactPreview(reference: item.reference, title: item.name) {
+                    try await hermesFilePreviewData(for: item)
                 }
             }
-            .onChange(of: hermesAttachmentItem == nil) { _, isDismissed in
+            .onChange(of: hermesFilePreviewItem == nil) { _, isDismissed in
                 if isDismissed {
                     restoreComposerFocusAfterPreviewIfNeeded()
                 }
@@ -2092,6 +2118,7 @@ struct ChatView: View {
         .environment(\.composerChipCatalog, viewModel.composerChipCatalog)
         .transcriptLinks(perform: handleTranscriptLink)
         .environment(\.chatWorkspaceRoot, session.workspace)
+        .environment(\.previewsHermesDocuments, isHermesSession)
         .task(id: transcriptSkillReferenceCount) {
             await loadSkillSuggestionsForTranscriptChipsIfNeeded()
         }
@@ -4369,10 +4396,11 @@ private struct HermesPersonalityConfirmationModifier: ViewModifier {
     }
 }
 
-/// A Hermes session's sent file to preview: the host path its chip keeps, never shown,
-/// and the chip's name for the title.
-private struct HermesAttachmentPreviewItem: Identifiable {
+/// One Hermes native preview presentation, for a sent chip or a MEDIA document.
+/// A sent chip downloads as a sent file; a MEDIA document through the media loader.
+private struct HermesFilePreviewItem: Identifiable {
     let id = UUID()
-    let path: String
-    let name: String?
+    let reference: TranscriptMediaReference
+    var name: String? = nil
+    var isSentAttachment = false
 }
