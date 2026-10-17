@@ -856,6 +856,15 @@ final class HermesHostFixture: URLProtocol {
     static var requests: [URLRequest] { lock.withLock { log } }
     static func count(_ path: String) -> Int { requests.filter { $0.url?.path == path }.count }
 
+    /// An empty scheduled-sessions page for a `sources=cron` list read, for a fixture that
+    /// serves only ordinary sessions; nil for every other request.
+    static func emptyScheduledPage(_ request: URLRequest) -> Reply? {
+        guard request.url?.path == "/api/sessions", let url = request.url,
+              URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.contains(URLQueryItem(name: "sources", value: "cron")) == true
+        else { return nil }
+        return .json(200, .object(["sessions": .array([])]))
+    }
+
     /// Answers every parked request with `reply`, or with the host's ordinary reply when nil.
     static func releaseParked(_ reply: Reply? = nil) {
         let parked = lock.withLock { let parked = waiting; waiting = []; return parked }

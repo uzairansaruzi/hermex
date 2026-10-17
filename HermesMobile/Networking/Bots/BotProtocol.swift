@@ -195,6 +195,10 @@ enum BotConnectionAdvice {
     /// One page of `profile`'s sessions for the Sessions list, or with `archived` for the
     /// Archived screen (`HermesREST.sessionList`, #1046, #1048).
     func sessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage
+    /// One page of `profile`'s scheduled (cron) sessions, read and paged apart from the ordinary list.
+    func scheduledSessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage
+    /// `profile`'s scheduled (cron) sessions matching `query`.
+    func searchScheduledSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult]
     /// One page of every session `profile` lists, for Move to Hermes's scan
     /// (`HermesREST.sessionScan`, #1213).
     func sessionScanPage(profile: String, offset: Int) async throws -> HermesScanPage
@@ -265,6 +269,14 @@ extension BotTransport {
     }
 
     func sessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage {
+        throw BotFailure.unsupported
+    }
+
+    func scheduledSessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage {
+        throw BotFailure.unsupported
+    }
+
+    func searchScheduledSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
         throw BotFailure.unsupported
     }
 

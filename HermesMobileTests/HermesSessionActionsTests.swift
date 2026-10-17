@@ -182,6 +182,7 @@ import Observation
         let host = BotSocketHost()
         let connection = host.connection(record)
         _ = HermesHostFixture.configuration { request in
+            if let empty = HermesHostFixture.emptyScheduledPage(request) { return empty }
             switch request.httpMethod {
             case "PATCH": return .park
             case "GET" where request.url?.path == "/api/sessions":
@@ -224,6 +225,7 @@ import Observation
             .object(["id": .string("pin"), "title": .string("Pinned"), "pinned": .bool(true), "archived": .bool(false)])
         ])])
         _ = HermesHostFixture.configuration { request in
+            if let empty = HermesHostFixture.emptyScheduledPage(request) { return empty }
             switch (request.httpMethod, request.url?.path) {
             case ("GET", "/api/sessions"): return .json(200, page)
             case ("PATCH", "/api/sessions/bot"?):
@@ -266,6 +268,7 @@ import Observation
             .object(["id": .string("bot"), "title": .string("Bot Chat"), "archived": .bool(true), "hidden": .number(1)])
         ])])
         _ = HermesHostFixture.configuration { request in
+            if let empty = HermesHostFixture.emptyScheduledPage(request) { return empty }
             switch (request.httpMethod, request.url?.path) {
             case ("GET", "/api/sessions"): return .json(200, page)
             default: return nil
@@ -294,6 +297,7 @@ import Observation
             .object(["id": .string("room\($0)"), "title": .string("Group: room-\($0)"), "archived": .bool(true), "hidden": .number(1)])
         } + [.object(["id": .string("old"), "title": .string("Old plan"), "archived": .bool(true), "hidden": .number(0)])]
         _ = HermesHostFixture.configuration { request in
+            if let empty = HermesHostFixture.emptyScheduledPage(request) { return empty }
             guard request.httpMethod == "GET", request.url?.path == "/api/sessions" else { return nil }
             let query = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems ?? []
             let offset = Int(query.first { $0.name == "offset" }?.value ?? "") ?? 0
@@ -316,6 +320,7 @@ import Observation
         let connection = host.connection(record)
         var archived = (0...200).map { "s\($0)" }
         _ = HermesHostFixture.configuration { request in
+            if let empty = HermesHostFixture.emptyScheduledPage(request) { return empty }
             switch request.httpMethod {
             case "PATCH": return .park
             case "GET" where request.url?.path == "/api/sessions":
@@ -354,6 +359,7 @@ import Observation
         let connection = host.connection(record)
         let page = BotJSON.object(["sessions": .array(["a", "b", "c"].map { .object(["id": .string($0), "archived": .bool(true)]) })])
         _ = HermesHostFixture.configuration { request in
+            if let empty = HermesHostFixture.emptyScheduledPage(request) { return empty }
             switch request.httpMethod {
             case "PATCH": return .park
             case "GET" where request.url?.path == "/api/sessions": return .json(200, page)
@@ -386,6 +392,7 @@ import Observation
         let connection = host.connection(record)
         let archived = (0...250).map { "s\($0)" }
         _ = HermesHostFixture.configuration { request in
+            if let empty = HermesHostFixture.emptyScheduledPage(request) { return empty }
             switch request.httpMethod {
             case "PATCH": return .park
             case "GET" where request.url?.path == "/api/sessions":
@@ -476,6 +483,7 @@ import Observation
                            _ answer: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) {
         let page = BotJSON.object(["sessions": .array(rows.map(Self.json))])
         _ = HermesHostFixture.configuration { request in
+            if let empty = HermesHostFixture.emptyScheduledPage(request) { return empty }
             guard request.httpMethod == "GET", request.url?.path == "/api/sessions" else { return answer(request) }
             let gone = method.map { method in host.requests.contains { $0["method"].text == method } } ?? false
             return .json(200, gone ? .object(["sessions": .array([])]) : page)

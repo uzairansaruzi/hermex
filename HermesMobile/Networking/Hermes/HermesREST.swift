@@ -158,7 +158,7 @@ enum HermesREST: Equatable, Sendable {
     /// Each page also brings every pinned row it missed, archived ones included. `archived`
     /// reads the Archived screen's page instead (#1048): only archived rows, hidden Bot Chats
     /// included, plus the same pinned back-fill.
-    case sessionList(profile: String, offset: Int, archived: Bool = false)
+    case sessionList(profile: String, offset: Int, archived: Bool = false, scheduled: Bool = false)
     /// One page of every session `profile` lists for Move to Hermes's scan (#1213): archived,
     /// empty and machine-run rows included, newest-created first. A session made or deleted
     /// mid-scan shifts later pages, so a row can repeat or slip past; the scan reads any id it
@@ -177,7 +177,7 @@ enum HermesREST: Equatable, Sendable {
     /// `profile`'s sessions matching `query` (#1053): id matches, then message-content matches,
     /// at most `limit` (the host clamps it to 1…`sessionSearchMaximum`), archived and hidden ones
     /// included, without machine-run rows.
-    case sessionSearch(query: String, profile: String, limit: Int = sessionSearchLimit)
+    case sessionSearch(query: String, profile: String, limit: Int = sessionSearchLimit, scheduled: Bool = false)
     /// Every Profile's scheduled Tasks, paused and completed included: a bare array.
     case cronJobs
     /// Creates a Task in `profile`, or in the host's default Profile when nil.
@@ -427,7 +427,7 @@ enum HermesREST: Equatable, Sendable {
             }
             guard let url = parts.url else { throw BotFailure.invalidAddress }
             return Self.get(url)
-        case .sessionList(let profile, let offset, let archived):
+        case .sessionList(let profile, let offset, let archived, let scheduled):
             guard !profile.isEmpty, offset >= 0,
                   var parts = URLComponents(url: base.appendingPathComponent("api/sessions"), resolvingAgainstBaseURL: false)
             else { throw BotFailure.invalidAddress }
@@ -437,9 +437,10 @@ enum HermesREST: Equatable, Sendable {
                 URLQueryItem(name: "profile", value: profile), URLQueryItem(name: "order", value: "recent"),
                 URLQueryItem(name: "archived", value: archived ? "only" : "exclude"),
                 URLQueryItem(name: "limit", value: String(Self.sessionPageSize)), URLQueryItem(name: "offset", value: String(offset))
-            ] + (archived ? [] : [URLQueryItem(name: "min_messages", value: "1")]) + [
-                URLQueryItem(name: "exclude_sources", value: "cron,kanban,oneshot,subagent,tool")
-            ]
+            ] + (archived ? [] : [URLQueryItem(name: "min_messages", value: "1")]) + (scheduled ? [
+                URLQueryItem(name: "sources", value: "cron"),
+                URLQueryItem(name: "exclude_sources", value: "kanban,oneshot,subagent,tool")
+            ] : [URLQueryItem(name: "exclude_sources", value: archived ? "kanban,oneshot,subagent,tool" : "cron,kanban,oneshot,subagent,tool")])
             guard let url = parts.url else { throw BotFailure.invalidAddress }
             return Self.get(url)
         case .sessionScan(let profile, let offset):
@@ -468,16 +469,17 @@ enum HermesREST: Equatable, Sendable {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             return request
-        case .sessionSearch(let query, let profile, let limit):
+        case .sessionSearch(let query, let profile, let limit, let scheduled):
             guard !query.isEmpty, !profile.isEmpty,
                   var parts = URLComponents(url: base.appendingPathComponent("api/sessions/search"), resolvingAgainstBaseURL: false)
             else { throw BotFailure.invalidAddress }
             // The same sources the list leaves out, so a search never finds a row it never shows.
             parts.queryItems = [
                 URLQueryItem(name: "q", value: query), URLQueryItem(name: "profile", value: profile),
-                URLQueryItem(name: "limit", value: String(limit)),
-                URLQueryItem(name: "exclude_sources", value: "cron,kanban,oneshot,subagent,tool")
-            ]
+                URLQueryItem(name: "limit", value: String(limit))
+            ] + (scheduled ? [URLQueryItem(name: "sources", value: "cron"),
+                              URLQueryItem(name: "exclude_sources", value: "kanban,oneshot,subagent,tool")]
+                 : [URLQueryItem(name: "exclude_sources", value: "cron,kanban,oneshot,subagent,tool")])
             // The host reads a bare `+` as a space, so a typed one ("c++") is escaped.
             parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
             guard let url = parts.url else { throw BotFailure.invalidAddress }

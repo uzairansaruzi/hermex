@@ -22,6 +22,107 @@ import Observation
         super.tearDown()
     }
 
+    // MARK: Scheduled sessions
+
+    func testScheduledSectionLoadsGroupsCountsAndFollowsProfile() async throws {
+        let wire = HermesSessionListWire()
+        let rows = (0..<7).map { HermesSessionRow(id: "job-\($0)", title: "Job \($0)", lastActive: Double($0), profile: "default", source: "cron") }
+        wire.scheduledPages = ["default": [0: HermesSessionPage(rows: rows, total: 207)],
+                               "research": [0: HermesSessionPage(rows: [HermesSessionRow(id: "research-job", source: "cron")], total: 1)]]
+        wire.pages = ["default": [0: HermesSessionPage(rows: [HermesSessionRow(id: "ordinary")])]]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        await list.openHermes()
+        let groups = list.scheduledSessionGroups(searchText: "", selectedProjectID: nil)
+        XCTAssertEqual(groups.ordinary.map(\.sessionId), ["ordinary"])
+        XCTAssertEqual(groups.scheduledPreview.compactMap(\.sessionId), ["job-6", "job-5", "job-4", "job-3", "job-2"])
+        XCTAssertEqual(groups.totalScheduledCount, 207, "Badge includes unread pages")
+        XCTAssertTrue(groups.showsDisclosure(isSearchActive: false))
+        await list.selectHermesProfile("research")
+        XCTAssertEqual(list.scheduledSessionGroups(searchText: "", selectedProjectID: nil).scheduled.compactMap(\.sessionId), ["research-job"])
+        XCTAssertEqual(wire.scheduledReads.map(\.profile), ["default", "research"])
+        await list.selectHermesProfile("empty")
+        XCTAssertFalse(list.scheduledSessionGroups(searchText: "", selectedProjectID: nil).showsDisclosure(isSearchActive: false))
+    }
+
+    func testScheduledContentSearchIsSeparateFromOrdinaryMatches() async throws {
+        let wire = HermesSessionListWire()
+        wire.scheduledPages = ["default": [0: HermesSessionPage(rows: [HermesSessionRow(id: "loaded-job", title: "Other", source: "cron")], total: 1)]]
+        wire.searchResults = [HermesSessionSearchResult(row: HermesSessionRow(id: "ordinary", title: "Other"), snippet: ">>>needle<<<", role: "user")]
+        wire.scheduledResults = [HermesSessionSearchResult(row: HermesSessionRow(id: "past-page-job", title: "Other", source: "cron"), snippet: ">>>needle<<<", role: "user"),
+                                 HermesSessionSearchResult(row: HermesSessionRow(id: "archived-job", archived: true, source: "cron"))]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        await list.openHermes()
+        await list.searchSessions(query: "needle", debounceNanoseconds: 0)
+        let groups = list.scheduledSessionGroups(searchText: "needle", selectedProjectID: nil)
+        XCTAssertEqual(groups.ordinary.compactMap(\.sessionId), ["ordinary"])
+        XCTAssertEqual(groups.scheduled.compactMap(\.sessionId), ["past-page-job"])
+        XCTAssertEqual(wire.scheduledSearches.map(\.query), ["needle"])
+    }
+
+    func testScheduledPagesLoadIndependentlyAndKeepTotalCount() async throws {
+        let wire = HermesSessionListWire()
+        let first = (0..<100).map { HermesSessionRow(id: "job-\($0)", lastActive: Double(200 - $0), source: "cron") }
+        wire.scheduledPages = ["default": [0: HermesSessionPage(rows: first, total: 107),
+                                         100: HermesSessionPage(rows: [HermesSessionRow(id: "last-job", source: "cron")], total: 107)]]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        await list.openHermes()
+        XCTAssertTrue(list.hasMoreScheduledSessions)
+        XCTAssertFalse(list.hasMoreSessions)
+        await list.loadMoreHermesScheduledSessions()
+        XCTAssertEqual(wire.scheduledReads.map(\.offset), [0, 100])
+        XCTAssertFalse(list.hasMoreScheduledSessions)
+        XCTAssertEqual(list.scheduledSessionGroups(searchText: "", selectedProjectID: nil).totalScheduledCount, 107)
+        XCTAssertEqual(list.sessions.count, 101)
+    }
+
+    func testScheduledSearchRequestAndOrdinaryRequestsKeepSeparateSourceScopes() throws {
+        let calls: [HermesREST] = [.sessionList(profile: "default", offset: 0, scheduled: true),
+                                  .sessionList(profile: "default", offset: 100, scheduled: true),
+                                  .sessionSearch(query: "sapphire", profile: "research", limit: 100, scheduled: true),
+                                  .sessionList(profile: "default", offset: 0),
+                                  .sessionSearch(query: "sapphire", profile: "default", limit: 100)]
+        for (index, call) in calls.enumerated() {
+            let url = try XCTUnwrap(try call.request(base: server).url)
+            let query = Dictionary(uniqueKeysWithValues: URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!.map { ($0.name, $0.value!) })
+            XCTAssertEqual(query["sources"], index < 3 ? "cron" : nil)
+            XCTAssertEqual(query["exclude_sources"], index < 3 ? "kanban,oneshot,subagent,tool" : "cron,kanban,oneshot,subagent,tool")
+            if index == 2 { XCTAssertEqual(query["profile"], "research"); XCTAssertEqual(query["q"], "sapphire") }
+            if index == 1 { XCTAssertEqual(query["offset"], "100"); XCTAssertEqual(query["archived"], "exclude") }
+        }
+    }
+
+    func testScheduledSourceIsDecodedWithoutRelyingOnAnIDPrefix() throws {
+        let row = try JSONDecoder().decode(HermesSessionRow.self, from: Data(#"{"id":"20261014_job","source":"cron","profile":"research"}"#.utf8))
+        XCTAssertTrue(row.summary(in: "research").isCronSession)
+        let search = try JSONDecoder().decode(HermesSessionSearch.self, from: Data(#"{"results":[{"session_id":"20261014_job","source":"cron","profile":"research"}]}"#.utf8))
+        XCTAssertTrue(try XCTUnwrap(search.results.first).row.summary(in: "research").isCronSession)
+    }
+
+    /// A scheduled row's archive leaves the section and its count at once, and the ordinary
+    /// rows stay as they were.
+    func testArchivingAScheduledRowLeavesTheSectionAndItsCount() async throws {
+        let wire = HermesSessionListWire()
+        wire.scheduledPages = ["default": [0: HermesSessionPage(rows: [HermesSessionRow(id: "job-a", lastActive: 2, source: "cron"),
+                                                                       HermesSessionRow(id: "job-b", lastActive: 1, source: "cron")], total: 2)]]
+        wire.pages = ["default": [0: HermesSessionPage(rows: [HermesSessionRow(id: "ordinary")])]]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        await list.openHermes()
+        let job = try XCTUnwrap(list.sessions.first { $0.sessionId == "job-a" })
+
+        let archived = await list.archive(job)
+
+        XCTAssertTrue(archived)
+        XCTAssertEqual(wire.changes, [.archived(true)])
+        let groups = list.scheduledSessionGroups(searchText: "", selectedProjectID: nil)
+        XCTAssertEqual(groups.scheduled.compactMap(\.sessionId), ["job-b"])
+        XCTAssertEqual(groups.totalScheduledCount, 1)
+        XCTAssertEqual(groups.ordinary.compactMap(\.sessionId), ["ordinary"])
+    }
+
     // MARK: Paging
 
     func testPagesLoadInTurnAndAShortPageEndsTheList() async {
@@ -911,6 +1012,11 @@ import Observation
     var unreadFails = false
     /// Thrown by the next page read instead of its page.
     var pageFailure: BotFailure?
+    /// The scheduled (cron) pages and search matches, read apart from the ordinary ones.
+    var scheduledPages: [String: [Int: HermesSessionPage]] = [:]
+    var scheduledResults: [HermesSessionSearchResult] = []
+    private(set) var scheduledReads: [(profile: String, offset: Int)] = []
+    private(set) var scheduledSearches: [(query: String, profile: String)] = []
     /// What every search answers, whatever its query. A search before `connect()` finishes is
     /// refused as `BotClient`'s is, with `.stale`.
     var searchResults: [HermesSessionSearchResult] = []
@@ -967,6 +1073,16 @@ import Observation
         if let failure = pageFailure { pageFailure = nil; throw failure }
         if removed.contains(profile) { throw BotFailure.rejected(404) }
         return reply
+    }
+
+    func scheduledSessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage {
+        scheduledReads.append((profile, offset))
+        return scheduledPages[profile]?[offset] ?? HermesSessionPage(rows: [])
+    }
+
+    func searchScheduledSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
+        scheduledSearches.append((query, profile))
+        return scheduledResults
     }
 
     func updateSession(_ change: HermesSessionChange, key: String, profile: String) async throws -> String? {
