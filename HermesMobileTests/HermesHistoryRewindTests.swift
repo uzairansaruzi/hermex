@@ -108,6 +108,11 @@ import Observation
             XCTAssertEqual(regenerated, deep, "\(index)")
             XCTAssertEqual(chat.writes("prompt.submit").map { $0["confirm_deep_truncate"] },
                            deep ? [nil, .bool(true)] : [nil], "\(index)")
+            if !deep {
+                XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 3, 4, 5, 6], "nothing is cut")
+                XCTAssertNil(chat.model.activeStreamID, "no turn starts")
+                XCTAssertNotNil(chat.model.messageActionErrorMessage, "the chat says why")
+            }
         }
     }
 
