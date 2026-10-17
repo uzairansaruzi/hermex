@@ -256,6 +256,32 @@ import XCTest
         XCTAssertEqual(cached.compactMap(\.sessionId), others.map(\.id))
     }
 
+    /// Scheduled rows a "Load more" read are cached with the rest, so the list shows them
+    /// offline too.
+    func testScheduledRowsALoadMoreReadAreCached() async throws {
+        let context = try makeContext()
+        let first = (0..<100).map { HermesSessionRow(id: "job-\($0)", lastActive: Double(1_000 - $0), source: "cron") }
+        let online = HermesSessionListWire()
+        online.pages["default"] = [0: HermesSessionPage(rows: [HermesSessionRow(id: "ordinary", lastActive: 2_000)])]
+        online.scheduledPages = ["default": [0: HermesSessionPage(rows: first, total: 101),
+                                           100: HermesSessionPage(rows: [HermesSessionRow(id: "last-job", lastActive: 1, source: "cron")], total: 101)]]
+        let list = makeList(online)
+        await list.openHermes(modelContext: context)
+        await list.loadMoreHermesScheduledSessions()
+        XCTAssertTrue(list.sessions.contains { $0.sessionId == "last-job" })
+        list.closeHermes()
+
+        let cached = try CacheStore.cachedHermesSessions(serverURL: server, profile: "default", in: context)
+        XCTAssertTrue(cached.contains { $0.sessionId == "last-job" }, "the paged-in scheduled row is cached")
+        let offline = HermesSessionListWire()
+        offline.connectFailure = URLError(.cannotConnectToHost)
+        let shown = makeList(offline)
+        await shown.openHermes(modelContext: context)
+        XCTAssertTrue(shown.isViewingCachedData)
+        XCTAssertTrue(shown.sessions.contains { $0.sessionId == "last-job" })
+        XCTAssertEqual(shown.sessions.count, 102)
+    }
+
     // MARK: A session's chat
 
     /// A session opened while its host can't be reached shows the transcript a visit cached,

@@ -1894,6 +1894,9 @@ final class SessionListViewModel {
         }
     }
 
+    /// Reads the next page of scheduled sessions, as `loadMoreHermesSessions` does the ordinary
+    /// ones, and caches it with them. A list read that begins meanwhile reads that page itself
+    /// and lets go of the flag however it ends.
     func loadMoreHermesScheduledSessions() async {
         guard hasMoreScheduledSessions, !isLoadingMoreScheduledSessions, let wire = hermesWire else { return }
         let serial = hermesReadSerial
@@ -1908,6 +1911,7 @@ final class SessionListViewModel {
             }
             applyHermesScheduled(pages)
             showHermesPages(hermesPages, animation: nil)
+            cacheHermesRows(hermesPages)
         } catch {
             guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled else { return }
             showHermesFailure(error)
@@ -1940,6 +1944,7 @@ final class SessionListViewModel {
             if holdsPaging, serial == hermesReadSerial {
                 isLoading = false
                 if isLoadingMoreSessions { isLoadingMoreSessions = false }
+                if isLoadingMoreScheduledSessions { isLoadingMoreScheduledSessions = false }
             }
         }
         var pages = HermesProfilePages()
@@ -1962,13 +1967,13 @@ final class SessionListViewModel {
                 }
             }
             applyHermesScheduled(scheduled)
-            isLoadingMoreScheduledSessions = false
             applyHermes(pages, readSerial: serial)
             // The rows are in, and the lanes, read next, never hold them back. A "Load more"
             // that starts meanwhile owns the paging flag, so this read lets go of it once.
             holdsPaging = false
             isLoading = false
             if isLoadingMoreSessions { isLoadingMoreSessions = false }
+            if isLoadingMoreScheduledSessions { isLoadingMoreScheduledSessions = false }
             startHermesStatusRead(wire)
             if !hermesShowsAllProfiles { await readHermesProjects(wire, readSerial: serial) }
             await runAwaitedHermesSearch()

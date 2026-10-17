@@ -201,6 +201,7 @@ struct HermesSessionListView: View {
             ScheduledSessionsView(viewModel: viewModel, showsCronSessions: true,
                                   showsMessageCount: showsMessageCount, showsWorkspace: showsWorkspace,
                                   selectedSessionID: nil, actions: actions, actionToast: actionToast)
+                .onDisappear { covers.scheduledDisappeared(viewModel) }
         }
         .navigationDestination(isPresented: $covers.showingArchived) {
             if let profile {
@@ -317,7 +318,7 @@ struct HermesSessionListView: View {
             shareTransfer = nil
             queueFailedShareAgain()
             actionToast.dismiss()
-            if covers.chat == nil && !covers.showingScheduled { viewModel.closeHermes() } else { viewModel.pauseHermes() }
+            covers.listDisappeared(viewModel)
         }
         // A lane the host no longer lists (deleted here or on Desktop, or another Profile's) clears.
         .onChange(of: viewModel.projects) {
@@ -892,6 +893,21 @@ struct HermesSessionListCovers {
     /// A screen this list pushed covers it, so the socket stays closed until it returns.
     var isCoveredByScreen: Bool {
         showingScheduled || showingArchived || showingKanban || tasks != nil || skills != nil || memory != nil || insights != nil
+    }
+
+    /// The rows left the screen. A chat over them pauses the list's events and keeps its socket.
+    /// View all shows these same rows and opens the list as it appears, so the list stays live
+    /// whichever of the two SwiftUI runs first (on the simulator, View all's appearance).
+    /// Anything else closes the list.
+    @MainActor func listDisappeared(_ list: SessionListViewModel) {
+        if chat != nil { list.pauseHermes() } else if !showingScheduled { list.closeHermes() }
+    }
+
+    /// View all left the screen. A chat it opened, or anything else that covers it while it is
+    /// still pushed, pauses the list's events. Popped back to the list, which opens them as it
+    /// appears, they stay live, in either order.
+    @MainActor func scheduledDisappeared(_ list: SessionListViewModel) {
+        if chat != nil || showingScheduled { list.pauseHermes() }
     }
 
     /// Counts the links that brought the rows forward, so work started before one (an export)

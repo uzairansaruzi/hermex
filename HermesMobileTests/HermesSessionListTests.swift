@@ -78,6 +78,34 @@ import Observation
         XCTAssertEqual(list.sessions.count, 101)
     }
 
+    /// A list read that replaces a scheduled "Load more" and then fails lets go of that
+    /// "Load more", as it does the ordinary one, so the next one reads the page.
+    func testAFailedListReadDuringScheduledLoadMoreLeavesItUsable() async throws {
+        let wire = HermesSessionListWire()
+        let first = (0..<100).map { HermesSessionRow(id: "job-\($0)", lastActive: Double(200 - $0), source: "cron") }
+        wire.scheduledPages = ["default": [0: HermesSessionPage(rows: first, total: 101),
+                                         100: HermesSessionPage(rows: [HermesSessionRow(id: "last-job", source: "cron")], total: 101)]]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        await list.openHermes()
+
+        wire.holdsScheduledPages = true
+        let more = Task { await list.loadMoreHermesScheduledSessions() }
+        await waitUntil("scheduled page parked") { wire.scheduledReads.count == 2 }
+        wire.pageFailure = .rejected(500)
+        wire.emit("sessions.changed")
+        await waitUntil("list read failed") { list.errorMessage != nil }
+        wire.holdsScheduledPages = false
+        wire.release()
+        await more.value
+
+        XCTAssertFalse(list.isLoadingMoreScheduledSessions, "the failed read let go of the scheduled Load more")
+        await list.loadMoreHermesScheduledSessions()
+        XCTAssertEqual(wire.scheduledReads.map(\.offset), [0, 100, 100])
+        XCTAssertTrue(list.sessions.contains { $0.sessionId == "last-job" })
+        XCTAssertFalse(list.hasMoreScheduledSessions)
+    }
+
     func testScheduledSearchRequestAndOrdinaryRequestsKeepSeparateSourceScopes() throws {
         let calls: [HermesREST] = [.sessionList(profile: "default", offset: 0, scheduled: true),
                                   .sessionList(profile: "default", offset: 100, scheduled: true),
@@ -182,6 +210,42 @@ import Observation
         XCTAssertEqual(wire.pageReads.map(\.offset), [0, 100, 0, 100])
         XCTAssertEqual(list.sessions.count, 130)
         XCTAssertFalse(list.hasMoreSessions)
+    }
+
+    /// View all shows the list's own rows, and each screen opens the list as it appears, before
+    /// the one it replaces disappears (the order SwiftUI used on the simulator). So moving
+    /// between them keeps `sessions.changed` read on both; a chat opened from View all pauses it.
+    func testMovingBetweenTheListAndViewAllKeepsLiveUpdates() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        await list.openHermes()
+        var covers = HermesSessionListCovers()
+
+        // View all pushed: it opens the list, then the list's rows disappear.
+        covers.showingScheduled = true
+        await list.openHermes()
+        covers.listDisappeared(list)
+        var reads = wire.pageReads.count
+        wire.emit("sessions.changed")
+        await waitUntil("View all read the change") { wire.pageReads.count > reads }
+
+        // Back: the list opens as it appears, then View all disappears.
+        covers.showingScheduled = false
+        await list.openHermes()
+        covers.scheduledDisappeared(list)
+        reads = wire.pageReads.count
+        wire.emit("sessions.changed")
+        await waitUntil("the list read the change") { wire.pageReads.count > reads }
+
+        // A chat opened from View all pauses the list and keeps its socket.
+        covers.showingScheduled = true
+        await list.openHermes()
+        covers.listDisappeared(list)
+        covers.chat = HermesSessionChat(server: server, connection: connection, target: .session(profile: "default", key: "a"))
+        covers.scheduledDisappeared(list)
+        XCTAssertTrue(list.isHermesConnected)
     }
 
     // MARK: Rows
@@ -1015,6 +1079,8 @@ import Observation
     /// The scheduled (cron) pages and search matches, read apart from the ordinary ones.
     var scheduledPages: [String: [Int: HermesSessionPage]] = [:]
     var scheduledResults: [HermesSessionSearchResult] = []
+    /// While true, scheduled page reads wait for `release()`, as `holdsPages` does.
+    var holdsScheduledPages = false
     private(set) var scheduledReads: [(profile: String, offset: Int)] = []
     private(set) var scheduledSearches: [(query: String, profile: String)] = []
     /// What every search answers, whatever its query. A search before `connect()` finishes is
@@ -1077,7 +1143,9 @@ import Observation
 
     func scheduledSessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage {
         scheduledReads.append((profile, offset))
-        return scheduledPages[profile]?[offset] ?? HermesSessionPage(rows: [])
+        let reply = scheduledPages[profile]?[offset] ?? HermesSessionPage(rows: [])
+        if holdsScheduledPages { await withCheckedContinuation { held.append($0) } }
+        return reply
     }
 
     func searchScheduledSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
