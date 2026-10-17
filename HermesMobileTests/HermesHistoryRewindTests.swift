@@ -94,6 +94,23 @@ import Observation
         XCTAssertEqual(chat.model.messages.map(\.content), ["First", "First answer.", "Second"])
     }
 
+    /// A host that guards deep cuts (#1300) refuses one past later prompts until it is confirmed
+    /// (4033). A cut the chat asked to discard later messages for goes again, confirmed; regenerating
+    /// the last reply drops no other prompt, so a 4033 there is a chat out of date and is not resent.
+    func testADeepCutIsConfirmedOnlyWhenTheHostAsksAndTheChatAskedFirst() async throws {
+        for (index, deep) in [(3, true), (5, false)] {
+            let chat = await openChat(threeTurns)
+            chat.host.next("prompt.submit", .init(error: 4033, message: "truncation would archive later user turns"))
+            chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+
+            let regenerated = await chat.model.regenerateAssistantResponse(try context(chat, at: index))
+
+            XCTAssertEqual(regenerated, deep, "\(index)")
+            XCTAssertEqual(chat.writes("prompt.submit").map { $0["confirm_deep_truncate"] },
+                           deep ? [nil, .bool(true)] : [nil], "\(index)")
+        }
+    }
+
     /// A skill turn's row holds the expanded skill and shows the typed line; regenerating resends
     /// that line, which the host expands again.
     func testASkillTurnResendsItsInvocation() async throws {

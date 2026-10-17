@@ -536,9 +536,9 @@ import XCTest
     /// without its runtime (#1049).
     func testRewindAdmitsOnlyARowAndThePromptItResends() {
         let rejected: [HermesCall] = [
-            .promptRewind(sessionID: "", text: "hi", beforeRowID: 41),
-            .promptRewind(sessionID: "runtime", text: " \n", beforeRowID: 41),
-            .promptRewind(sessionID: "runtime", text: "hi", beforeRowID: 0),
+            .promptRewind(sessionID: "", text: "hi", beforeRowID: 41, deep: false),
+            .promptRewind(sessionID: "runtime", text: " \n", beforeRowID: 41, deep: false),
+            .promptRewind(sessionID: "runtime", text: "hi", beforeRowID: 0, deep: false),
             .sessionUndo(runtime: "")
         ]
         for call in rejected {

@@ -727,7 +727,10 @@ struct HermesChatTranscript: Equatable {
     /// turn starts as a send's does; its end re-reads the newest rows. Throws `NotSent` when it
     /// never went out, the host's refusal as `BotSettingFailure`, and any other failure when
     /// its reply was lost or unreadable, which only the next snapshot can settle.
-    func rewind(before rowID: Int, text: String) async throws {
+    /// `discardsLaterPrompts` says the user agreed to lose prompts after `rowID`: a host that
+    /// refuses such a cut until it is confirmed (4033, #1300) gets the cut again, confirmed. A
+    /// 4033 without that consent means the host holds prompts this chat doesn't show.
+    func rewind(before rowID: Int, text: String, discardsLaterPrompts: Bool) async throws {
         submitsInFlight += 1
         defer { submitsInFlight -= 1 }
         await activate()
@@ -737,7 +740,12 @@ struct HermesChatTranscript: Equatable {
         let startsBefore = turnsStarted
         isSubmittingSend = true
         defer { isSubmittingSend = false }
-        let reply = try await writeOnce(.promptRewind(sessionID: runtime, text: text, beforeRowID: rowID), runtime: runtime)
+        let reply: BotJSON
+        do {
+            reply = try await writeOnce(.promptRewind(sessionID: runtime, text: text, beforeRowID: rowID, deep: false), runtime: runtime)
+        } catch BotSettingFailure.rejected(4033, _) where discardsLaterPrompts {
+            reply = try await writeOnce(.promptRewind(sessionID: runtime, text: text, beforeRowID: rowID, deep: true), runtime: runtime)
+        }
         // A cut only ever starts a turn; any other reply is a shape this build can't read.
         guard reply["status"].text == "streaming" else { throw BotFailure.unsupported }
         history.cut(before: rowID)

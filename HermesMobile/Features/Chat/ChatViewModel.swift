@@ -6002,10 +6002,12 @@ final class ChatViewModel {
             retrying?.showsPrompt == true && messages[$0].rowID == nil ? $0 : nil
         }
         let cut = first.map { Set(messages[$0...].map(\.id)) } ?? []
+        // A later prompt means the chat already asked to discard later messages.
+        let discardsLaterPrompts = first.map { messages[$0...].dropFirst().contains(where: Self.opensHermesTurn) } ?? false
         isStartingChat = true
         defer { isStartingChat = false }
         do {
-            try await hermes.rewind(before: rowID, text: text)
+            try await hermes.rewind(before: rowID, text: text, discardsLaterPrompts: discardsLaterPrompts)
         } catch {
             if retrying != nil, case BotSettingFailure.rejected(4018, _) = error { hermes.retryWasRefused(at: rowID) }
             return hermesHistoryFailure(error, on: hermes, reconnect: reconnect)
@@ -6037,6 +6039,9 @@ final class ChatViewModel {
             return String(localized: "Wait for the current reply to finish.")
         case BotSettingFailure.rejected(4018, _):
             return String(localized: "This message can’t be changed any more.")
+        case BotSettingFailure.rejected(4033, _):
+            // The host's history has prompts after the cut that this chat doesn't show.
+            return String(localized: "This chat changed on the server. Reopen it and try again.")
         case BotSettingFailure.rejected(_, let message):
             return message
         default:
