@@ -78,8 +78,9 @@ enum MoveToHermesReconcile {
         /// The host refused it and wrote nothing, such as a title still in use after its one
         /// suffixed retry.
         case rejected(reason: String)
-        /// Nothing was sent: its row couldn't be read, the run was cancelled, or `willDispatch`
-        /// threw first. Safe to apply again.
+        /// Nothing was written: its row couldn't be read, the run was cancelled, `willDispatch`
+        /// threw first, or the host's write fence found the session moved on (#1300). Safe to
+        /// apply again.
         case notSent
         /// Sent, but the result never arrived and Hermes doesn't hold the value. Reported, never
         /// sent again.
@@ -188,7 +189,9 @@ enum MoveToHermesReconcile {
                     return await send(retry, retried: true)
                 }
                 return .rejected(reason: refusal.message)
-            } catch let refusal as HermesSessionFenceRefusal where refusal != .changed {
+            } catch HermesSessionFenceRefusal.changed {
+                return .notSent
+            } catch let refusal as HermesSessionFenceRefusal {
                 return .rejected(reason: refusal.localizedDescription)
             } catch BotFailure.rejected(404) {
                 return .missing
@@ -201,8 +204,7 @@ enum MoveToHermesReconcile {
             } catch BotSettingFailure.rejected(_, let message) {
                 return .rejected(reason: message)
             } catch {
-                // A timeout, a rate limit, a lost reply, or a write the fence found stale (#1300,
-                // nothing written): read once to see where the row is; the next run sends again.
+                // A timeout, a rate limit or a lost reply: read once to see whether it landed.
                 return await settle([operation], on: hermes)[operation] ?? .uncertain
             }
         }

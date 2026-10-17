@@ -185,8 +185,8 @@ final class MoveToHermesReconcileTests: XCTestCase {
         XCTAssertEqual(wire.writes.count, 2, "one send each; the unconfirmed one isn't sent again")
     }
 
-    /// A write the fence refused (#1300) is never resent: a busy session reports why, and a stale
-    /// revision, which wrote nothing, is left for the next run.
+    /// A write the fence refused (#1300) is never resent in the run: a busy session reports why,
+    /// and a stale revision, which wrote nothing, is left for the next run to apply.
     func testFenceRefusalIsNeverResent() async {
         let wire = MoveHermesHost()
         wire.rows["dev|busy"] = ["id": .string("busy")]
@@ -198,7 +198,7 @@ final class MoveToHermesReconcileTests: XCTestCase {
         let outcomes = await Reconcile.apply(operations, on: wire) { _ in }
 
         XCTAssertEqual(outcomes[operations[0]], .rejected(reason: HermesSessionFenceRefusal.busy.localizedDescription))
-        XCTAssertEqual(outcomes[operations[1]], .uncertain)
+        XCTAssertEqual(outcomes[operations[1]], .notSent)
         XCTAssertEqual(wire.writes.count, 2)
     }
 
