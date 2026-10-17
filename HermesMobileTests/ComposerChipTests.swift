@@ -887,9 +887,12 @@ final class ComposerUndoTests: XCTestCase {
 
         XCTAssertEqual(undoManager.groupingLevel, dictationLevel)
         guard undoManager.groupingLevel == dictationLevel else { return }
+        let idle = XCTNSNotificationExpectation(name: .NSUndoManagerDidCloseUndoGroup, object: undoManager)
+        idle.handler = { _ in undoManager.groupingLevel == 0 }
         undoManager.endUndoGrouping()
+        wait(for: [idle], timeout: 5)
 
-        let turned = expectation(description: "main queue turns after the group closes")
+        let turned = expectation(description: "main queue turns after the last group closes")
         DispatchQueue.main.async { turned.fulfill() }
         wait(for: [turned], timeout: 5)
         XCTAssertFalse(undoManager.canUndo, "Undo must not put back text the redrawn chips no longer describe")

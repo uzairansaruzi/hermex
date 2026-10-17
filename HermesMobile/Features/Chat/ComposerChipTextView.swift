@@ -116,6 +116,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     private(set) var renderedTokens: [ComposerChipToken] = []
     private(set) var renderedQuotes: [ComposerQuote] = []
     private var renderedStyle: ChipRenderStyle?
+    private var isUndoClearPending = false
     private lazy var chipTapRecognizer: UITapGestureRecognizer = {
         let recognizer = UITapGestureRecognizer(target: self, action: #selector(handleChipTap))
         recognizer.cancelsTouchesInView = false
@@ -411,7 +412,36 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         restoreTypingAttributes()
         // The document was replaced wholesale, so an undo recorded against the
         // old one would put back text the chips no longer describe.
-        undoManager?.removeAllActions()
+        discardUndoHistory()
+    }
+
+    /// Clears the undo stack once no undo group is open. Clearing also drops
+    /// open groups, and dictation keeps one open across its insertions: its
+    /// later close then has no match, and UIKit aborts the app (#1303).
+    private func discardUndoHistory() {
+        guard let undoManager else { return }
+        guard undoManager.groupingLevel > 0 else {
+            undoManager.removeAllActions()
+            return
+        }
+        guard !isUndoClearPending else { return }
+        isUndoClearPending = true
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(undoGroupDidClose),
+            name: .NSUndoManagerDidCloseUndoGroup,
+            object: undoManager
+        )
+    }
+
+    @objc private func undoGroupDidClose(_ notification: Notification) {
+        NotificationCenter.default.removeObserver(self, name: .NSUndoManagerDidCloseUndoGroup, object: nil)
+        // The group is still closing while this posts.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            isUndoClearPending = false
+            discardUndoHistory()
+        }
     }
 
     private func chipString(
