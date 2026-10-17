@@ -135,6 +135,9 @@ jobs:
               output.write(f"udid={udid}\n")
           PYTHON
 
+      - name: Install Metal toolchain
+        run: xcodebuild -downloadComponent MetalToolchain
+
       - name: Build for testing
         id: build
         env:

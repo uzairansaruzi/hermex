@@ -328,8 +328,12 @@ enum HermesREST: Equatable, Sendable {
     /// Public process liveness with the running release, read while the dashboard restarts.
     case health
 
+    case terminalStatus(sessionID: String, profile: String?)
+
     func request(base: URL) throws -> URLRequest {
         switch self {
+        case .terminalStatus(let sessionID, let profile):
+            return try TerminalWire.status(base: base, sessionID: sessionID, profile: profile)
         case .status: return Self.get(base.appendingPathComponent("api/status"))
         case .health: return Self.get(base.appendingPathComponent("api/health"))
         case .updateCheck(let force):

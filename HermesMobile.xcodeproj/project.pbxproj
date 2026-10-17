@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		8687996B225C4200BAD7DEB3 /* HermesTerminalClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6453476C23AF47C99EE68AAD /* HermesTerminalClient.swift */; };
+		517A8CB846FB47E7A4DF4FEC /* TerminalSessionController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 755ABE29FD6E4EFA9238691E /* TerminalSessionController.swift */; };
+		EDE2D28D732140D8BBE2ECFC /* TerminalScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5A680DECE524D8BB9742486 /* TerminalScreen.swift */; };
+		73B273E382FA4F64A1C98096 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 0C5C3EB6D5D94C628A4CC503 /* SwiftTerm */; };
+		BB5A1534784F445BB34C6A6C /* TerminalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B70BF180524600BE54EBA1 /* TerminalTests.swift */; };
 		A4790000000000000000E001 /* PushEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F001 /* PushEnvironment.swift */; };
 		A4790000000000000000E002 /* PushPairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F002 /* PushPairing.swift */; };
 		A4790000000000000000E003 /* PushRelayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F003 /* PushRelayClient.swift */; };
@@ -687,6 +692,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		6453476C23AF47C99EE68AAD /* HermesTerminalClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesTerminalClient.swift; sourceTree = "<group>"; };
+		755ABE29FD6E4EFA9238691E /* TerminalSessionController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalSessionController.swift; sourceTree = "<group>"; };
+		E5A680DECE524D8BB9742486 /* TerminalScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalScreen.swift; sourceTree = "<group>"; };
+		F4B70BF180524600BE54EBA1 /* TerminalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalTests.swift; sourceTree = "<group>"; };
 		B48200000000000000000001 /* BotProfileAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotProfileAppearance.swift; sourceTree = "<group>"; };
 		B48200000000000000000011 /* BotExpressionPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotExpressionPickerView.swift; sourceTree = "<group>"; };
 		B48200000000000000000031 /* BotCreator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotCreator.swift; sourceTree = "<group>"; };
@@ -1327,6 +1336,7 @@
 				1A2B3C4D5E6F700000000007 /* Highlightr in Frameworks */,
 				1A2B3C4D5E6F700000000008 /* KeychainAccess in Frameworks */,
 				5417A7400000000000000092 /* SwiftMath in Frameworks */,
+				73B273E382FA4F64A1C98096 /* SwiftTerm in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1362,6 +1372,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		C8A58D15FC2A48179417FB6D /* Terminal */ = {
+			isa = PBXGroup;
+			children = (
+				E5A680DECE524D8BB9742486 /* TerminalScreen.swift */,
+				755ABE29FD6E4EFA9238691E /* TerminalSessionController.swift */,
+			);
+			path = Terminal;
+			sourceTree = "<group>";
+		};
 		1A2B3C4D5E6F700000000030 = {
 			isa = PBXGroup;
 			children = (
@@ -1424,6 +1443,7 @@
 		1A2B3C4D5E6F700000000034 /* HermesMobileTests */ = {
 			isa = PBXGroup;
 			children = (
+				F4B70BF180524600BE54EBA1 /* TerminalTests.swift */,
 				B48200000000000000000007 /* BotProfileEditorTests.swift */,
 				B48200000000000000000035 /* BotLifecycleTests.swift */,
 				B48200000000000000000023 /* BotFaceMotionTests.swift */,
@@ -1671,6 +1691,7 @@
 		1A2B3C4D5E6F7000000000C1 /* Networking */ = {
 			isa = PBXGroup;
 			children = (
+				6453476C23AF47C99EE68AAD /* HermesTerminalClient.swift */,
 				5619C4EB852849D396C45F95 /* BotProtocol.swift */,
 				BF2EA5336E9B431489F91A63 /* BotClient.swift */,
 				02620AA1CBC865AE71DB7C5C /* BotDashboardClient.swift */,
@@ -1759,6 +1780,7 @@
 		1A2B3C4D5E6F7000000000C3 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				C8A58D15FC2A48179417FB6D /* Terminal */,
 				B48200000000000000000001 /* BotProfileAppearance.swift */,
 				B48200000000000000000011 /* BotExpressionPickerView.swift */,
 				B48200000000000000000031 /* BotCreator.swift */,
@@ -2286,6 +2308,7 @@
 				1A2B3C4D5E6F700000000097 /* Highlightr */,
 				1A2B3C4D5E6F700000000098 /* KeychainAccess */,
 				5417A7400000000000000091 /* SwiftMath */,
+				0C5C3EB6D5D94C628A4CC503 /* SwiftTerm */,
 			);
 			productName = HermesMobile;
 			productReference = 1A2B3C4D5E6F700000000010 /* HermesMobile.app */;
@@ -2423,6 +2446,7 @@
 				1A2B3C4D5E6F700000000093 /* XCRemoteSwiftPackageReference "Highlightr" */,
 				1A2B3C4D5E6F700000000099 /* XCRemoteSwiftPackageReference "KeychainAccess" */,
 				5417A7400000000000000090 /* XCRemoteSwiftPackageReference "SwiftMath" */,
+				749D5842FED8416BBEDDA0DC /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 			);
 			productRefGroup = 1A2B3C4D5E6F700000000032 /* Products */;
 			projectDirPath = "";
@@ -2482,6 +2506,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8687996B225C4200BAD7DEB3 /* HermesTerminalClient.swift in Sources */,
+				517A8CB846FB47E7A4DF4FEC /* TerminalSessionController.swift in Sources */,
+				EDE2D28D732140D8BBE2ECFC /* TerminalScreen.swift in Sources */,
 				A4790000000000000000E001 /* PushEnvironment.swift in Sources */,
 				A4790000000000000000E002 /* PushPairing.swift in Sources */,
 				559000000000000000000001 /* PushPreview.swift in Sources */,
@@ -2878,6 +2905,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BB5A1534784F445BB34C6A6C /* TerminalTests.swift in Sources */,
 				A4790000000000000000E006 /* PushRegistrationTests.swift in Sources */,
 				B48200000000000000000008 /* BotProfileEditorTests.swift in Sources */,
 				B48200000000000000000036 /* BotLifecycleTests.swift in Sources */,
@@ -3617,6 +3645,11 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		749D5842FED8416BBEDDA0DC /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
+			requirement = { kind = exactVersion; version = 1.18.0; };
+		};
 		1A2B3C4D5E6F700000000090 /* XCRemoteSwiftPackageReference "swift-eventsource" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/LaunchDarkly/swift-eventsource.git";
@@ -3668,6 +3701,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		0C5C3EB6D5D94C628A4CC503 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 749D5842FED8416BBEDDA0DC /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
 		1A2B3C4D5E6F700000000094 /* LDSwiftEventSource */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 1A2B3C4D5E6F700000000090 /* XCRemoteSwiftPackageReference "swift-eventsource" */;

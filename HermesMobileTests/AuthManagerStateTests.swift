@@ -686,6 +686,21 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(manager.lastErrorMessage, "Your Hermes sign-in expired. Sign in again.")
     }
 
+    func testHermesExpiryRetiresTheOpenTerminalConnection() async throws {
+        let keychain = InMemoryKeychainStore()
+        let connections = HermesConnections(keychain: keychain)
+        let manager = try await makeHermesManager(keychain: keychain, connections: connections)
+        let saved = try XCTUnwrap(BotConnectionStore(keychain: keychain).load(server: hermesServer))
+        let http = connections.connection(for: saved, server: hermesServer)
+        var retired = false
+        let token = http.observeRetirement { retired = true }
+        defer { if let token { http.removeRetirementObserver(token) } }
+        manager.hermesSignInRejected(server: hermesServer, failure: .signInExpired)
+        XCTAssertEqual(manager.state, .loggedOut(server: hermesServer))
+        XCTAssertTrue(http.isRetired)
+        XCTAssertTrue(retired)
+    }
+
     func testOtherSignInFailuresKeepAHermesServerSignedIn() async throws {
         defer { HermesHostFixture.reset() }
         var login: HermesHostFixture.Reply = .json(200, .object([:]))

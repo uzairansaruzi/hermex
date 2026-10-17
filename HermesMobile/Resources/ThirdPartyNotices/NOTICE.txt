@@ -11,6 +11,8 @@ with the iOS app.
   See Splash-LICENSE.txt.
 - Highlightr 2.3.0
   See Highlightr-LICENSE.txt.
+- SwiftTerm 1.18.0
+  See SwiftTerm-LICENSE.txt.
 - SwiftMath 1.7.3
   See SwiftMath-LICENSE.txt.
 - KeychainAccess 4.2.2

@@ -145,6 +145,9 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
+      - name: Install Metal toolchain
+        run: xcodebuild -downloadComponent MetalToolchain
+
       - name: Resolve Swift packages
         run: |
           set -euo pipefail

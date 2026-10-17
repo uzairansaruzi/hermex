@@ -501,6 +501,68 @@ import UIKit
                                URLQueryItem(name: "profile", value: "default")])
     }
 
+    /// The Terminal button's target is the chat's identity, not its socket: going to the
+    /// background drops the gateway socket, and the target (and the capability check keyed
+    /// on it) stays, so the button neither flickers nor waits on the network on return.
+    func testTheTerminalTargetKeepsItsIdentityInTheBackground() async throws {
+        let chat = await openChat()
+        let target = try XCTUnwrap(chat.model.hermesTerminalTarget)
+        chat.model.suspendStreamForBackground()
+        XCTAssertNotEqual(chat.turn.engine.connectionState, .connected)
+        XCTAssertEqual(chat.model.hermesTerminalTarget?.id, target.id)
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertEqual(chat.model.hermesTerminalTarget?.id, target.id)
+    }
+
+    /// A capability check that fails while the chat is down (a brief network drop) is read
+    /// again when the chat reconnects, without reopening it; a found route is kept across
+    /// background and reconnect, so the button neither flickers nor waits on the network.
+    func testAFailedTerminalCheckRunsAgainWhenTheChatReconnects() async throws {
+        let chat = await openChat()
+        let capabilities = "/api/plugins/hermex-push/capabilities"
+        var reachable = false
+        // The chat's own connection, scripted: the shared registry's copy isn't signed in here.
+        let http = HermesConnection(connection: Self.connection, configuration: HermesHostFixture.configuration { request in
+            switch request.url?.path {
+            case capabilities:
+                return reachable ? .json(200, .object(["routes": .array([.string("GET /terminal/shell/status")])]))
+                                 : .fail(URLError(.notConnectedToInternet))
+            case "/api/sessions/tip/messages": return .json(200, .object(["messages": .array([])]))
+            default: return nil
+            }
+        })
+        defer { http.retire() }
+        let availability = TerminalAvailability()
+        func check() async {
+            let chatTarget = chat.model.hermesTerminalTarget
+            await availability.refresh(chatTarget.map { TerminalTarget(http: http, sessionID: $0.sessionID, profile: $0.profile) })
+        }
+        chat.model.suspendStreamForBackground()
+        availability.connectionChanged(isConnected: chat.model.isHermesConnected)
+        let failedID = availability.checkID(for: chat.model.hermesTerminalTarget)
+        await check()
+        guard case .failed(let reason) = availability.state, reason != BotFailure.stale.localizedDescription
+        else { return XCTFail("the check must fail on the unreachable host: \(availability.state)") }
+
+        HermesHostFixture.script { reachable = true }
+        await chat.model.reconnectStreamIfNeeded()
+        XCTAssertTrue(chat.model.isHermesConnected)
+        availability.connectionChanged(isConnected: chat.model.isHermesConnected)
+        let retryID = availability.checkID(for: chat.model.hermesTerminalTarget)
+        XCTAssertNotEqual(retryID, failedID, "the reconnect must start the check again")
+        await check()
+        XCTAssertEqual(availability.state, .available)
+
+        chat.model.suspendStreamForBackground()
+        availability.connectionChanged(isConnected: chat.model.isHermesConnected)
+        await chat.model.reconnectStreamIfNeeded()
+        availability.connectionChanged(isConnected: chat.model.isHermesConnected)
+        XCTAssertEqual(availability.checkID(for: chat.model.hermesTerminalTarget), retryID,
+                       "a found route is not checked again on background or reconnect")
+        XCTAssertEqual(availability.state, .available)
+        XCTAssertEqual(HermesHostFixture.count(capabilities), 2)
+    }
+
     /// The chat owns its repository's Git writes (#1115): none goes out while a turn runs, and a
     /// client made for a folder the chat has since left writes nothing at all.
     func testGitWritesWaitForTheTurnAndStopAtAFolderMove() async throws {

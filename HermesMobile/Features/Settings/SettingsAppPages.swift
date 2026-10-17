@@ -34,6 +34,9 @@ struct SettingsAppearancePage: View {
 
 /// How the composer sends, dictates, and which buttons it shows.
 struct SettingsComposerPage: View {
+    var server: URL?
+    @AppStorage(SectionVisibilitySettings.chatTerminalKey) private var showsChatTerminalButton = true
+    @State private var terminalAvailability = TerminalAvailability()
     @AppStorage(StreamingSendBehavior.storageKey) private var streamingSendBehaviorRawValue = StreamingSendBehavior.steer.rawValue
     @AppStorage(SessionChatPreferences.dismissKeyboardKey) private var dismissKeyboardAfterSend = false
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
@@ -82,9 +85,24 @@ struct SettingsComposerPage: View {
                 Toggle(isOn: $showsChatGitControls) {
                     SettingsLabel(title: String(localized: "Git Actions"), systemImage: "arrow.triangle.branch")
                 }
+
+                if terminalAvailability.isAvailable {
+                    Toggle(isOn: $showsChatTerminalButton) {
+                        SettingsLabel(title: String(localized: "Terminal Button"), systemImage: "apple.terminal")
+                    }
+                    .accessibilityIdentifier("settings-terminal")
+                }
             }
         }
         .settingsPage(String(localized: "Composer"))
+        .task {
+            guard let server else { return }
+            let target = (try? BotConnectionStore().load(server: server)).map {
+                TerminalTarget(http: HermesConnections.shared.connection(for: $0, server: server),
+                               sessionID: "terminal-capability-check", profile: nil)
+            }
+            await terminalAvailability.refresh(target)
+        }
     }
 }
 
