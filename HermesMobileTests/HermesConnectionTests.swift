@@ -910,7 +910,8 @@ final class HermesHostFixture: URLProtocol {
         }
     }
 
-    /// A 0.21.5 host with the password gate, and a plain success for every other route.
+    /// A 0.21.5 host with the password gate, without the session write fence's snapshot route
+    /// (#1300), and a plain success for every other route.
     private static func ordinary(_ request: URLRequest) -> Reply {
         switch request.url?.path {
         case "/api/status":
@@ -918,6 +919,8 @@ final class HermesHostFixture: URLProtocol {
                                        "version": .string("0.21.5")]))
         case "/api/auth/me": return .json(200, .object(["provider": .string("basic")]))
         case "/api/auth/ws-ticket": return .json(200, .object(["ticket": .string("ticket")]))
+        case let path? where path.hasPrefix("/api/sessions/") && path.hasSuffix("/mutation-snapshot"):
+            return .json(404, .object(["detail": .string("No such API endpoint: \(path)")]))
         default: return .json(200, .object(["ok": .bool(true), "path": .string("/profile/images/a.png")]))
         }
     }

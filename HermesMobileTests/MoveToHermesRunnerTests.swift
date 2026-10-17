@@ -651,6 +651,8 @@ final class MoveToHermesRunnerTests: XCTestCase {
     var missingFolders: Set<String> = []
     /// Ids whose next write loses its reply: true when the write still landed.
     var lostReplies: [String: Bool] = [:]
+    /// Ids whose next write the host's write fence refuses (#1300); nothing is written.
+    var fenceRefusals: [String: HermesSessionFenceRefusal] = [:]
     /// The next import lands but its reply is lost.
     var loseNextImportReply = false
     /// Runs inside each row read, before it answers.
@@ -739,6 +741,7 @@ final class MoveToHermesRunnerTests: XCTestCase {
         writes.append((key, field))
         onWrite?(field)
         try check()
+        if let refusal = fenceRefusals.removeValue(forKey: key) { throw refusal }
         let column = field == "folder" ? "cwd" : field
         if let lands = lostReplies.removeValue(forKey: key) {
             if lands { rows["\(profile)|\(key)"]?[column] = value }

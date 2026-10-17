@@ -415,7 +415,8 @@ final class APIClientSessionMutationTests: APIClientTestCase {
     // MARK: Hermes (#1048)
 
     /// Each change PATCHes one field of that session, with its Profile in the body, as the
-    /// host's `SessionRename` takes it.
+    /// host's `SessionRename` takes it. A host from before the write fence (#1300) answers the
+    /// snapshot read 404, so its PATCH carries no write identity.
     @MainActor
     func testHermesSessionChangesPatchOneFieldWithTheProfileInTheBody() async throws {
         var patches: [(path: String, body: BotJSON)] = []
@@ -436,6 +437,85 @@ final class APIClientSessionMutationTests: APIClientTestCase {
             .object(["archived": .bool(false), "profile": .string("research")]),
             .object(["title": .string("Plan the launch"), "profile": .string("research")])
         ])
+    }
+
+    /// Behind the write fence (#1300) each PATCH carries its own request id and the revision the
+    /// snapshot read just before it, and never `expected_generation`.
+    @MainActor
+    func testHermesFencedSessionChangeCarriesTheSnapshotsRevision() async throws {
+        var revision = 12
+        var patches: [BotJSON] = []
+        let client = try await hermesClient { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/api/sessions/tip/mutation-snapshot"):
+                return .json(200, .object(["session_id": .string("tip"), "exists": .bool(true),
+                                           "runtime_revision": .number(Double(revision)), "runtime_generation": .number(3)]))
+            case ("PATCH", "/api/sessions/tip"):
+                patches.append(Self.hermesBody(request))
+                revision += 5
+                return .json(200, .object(["ok": .bool(true)]))
+            default: return nil
+            }
+        }
+
+        try await client.updateSession(.archived(true), key: "tip", profile: "research")
+        try await client.updateSession(.pinned(true), key: "tip", profile: "research")
+
+        XCTAssertEqual(patches.map { $0["expected_revision"] }, [.number(12), .number(17)])
+        let ids = patches.compactMap { $0["request_id"].text }
+        XCTAssertEqual(Set(ids).count, 2)
+        XCTAssertEqual(patches.map { $0["expected_generation"] }, [.null, .null])
+    }
+
+    /// Headless `hermes serve` from before the fence answers the snapshot read with its own
+    /// catch-all, so its PATCH also goes out bare.
+    @MainActor
+    func testHermesHeadlessServeHostTakesTheChangeBare() async throws {
+        var patch = BotJSON.null
+        let client = try await hermesClient { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/api/sessions/tip/mutation-snapshot"):
+                return .json(404, .object(["error": .string("Headless backend (hermes serve): web UI disabled")]))
+            case ("PATCH", "/api/sessions/tip"):
+                patch = Self.hermesBody(request)
+                return .json(200, .object(["ok": .bool(true)]))
+            default: return nil
+            }
+        }
+
+        try await client.updateSession(.pinned(true), key: "tip", profile: "default")
+
+        XCTAssertEqual(patch["pinned"], .bool(true))
+        XCTAssertEqual(patch["request_id"], .null)
+    }
+
+    /// A fence 409 is never resent: it comes back as the refusal its `detail` names.
+    @MainActor
+    func testHermesFenceRefusalIsNotResent() async throws {
+        let rows: [(detail: String, refusal: HermesSessionFenceRefusal)] = [
+            ("revision_conflict", .changed),
+            ("client_upgrade_required: this client predates the session write fence", .updateRequired)
+        ]
+        var detail = ""
+        let client = try await hermesClient { request in
+            switch (request.httpMethod, request.url?.path) {
+            case ("GET", "/api/sessions/tip/mutation-snapshot"):
+                return .json(200, .object(["exists": .bool(true), "runtime_revision": .number(4)]))
+            case ("PATCH", _): return .json(409, .object(["detail": .string(detail)]))
+            default: return nil
+            }
+        }
+        for row in rows {
+            detail = row.detail
+            let sent = HermesHostFixture.requests.filter { $0.httpMethod == "PATCH" }.count
+            do {
+                try await client.updateSession(.pinned(true), key: "tip", profile: "default")
+                XCTFail("The host refused the write: \(row.detail)")
+            } catch {
+                XCTAssertEqual(error as? HermesSessionFenceRefusal, row.refusal, row.detail)
+            }
+            XCTAssertEqual(HermesHostFixture.requests.filter { $0.httpMethod == "PATCH" }.count, sent + 1, row.detail)
+        }
     }
 
     /// A title the host refuses comes back in its own words; any other refusal stays a status.

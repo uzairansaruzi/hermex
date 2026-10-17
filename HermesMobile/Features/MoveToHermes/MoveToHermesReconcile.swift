@@ -188,6 +188,8 @@ enum MoveToHermesReconcile {
                     return await send(retry, retried: true)
                 }
                 return .rejected(reason: refusal.message)
+            } catch let refusal as HermesSessionFenceRefusal where refusal != .changed {
+                return .rejected(reason: refusal.localizedDescription)
             } catch BotFailure.rejected(404) {
                 return .missing
             } catch BotFailure.rejected(let status) where (400..<500).contains(status) && ![408, 429].contains(status) {
@@ -199,7 +201,8 @@ enum MoveToHermesReconcile {
             } catch BotSettingFailure.rejected(_, let message) {
                 return .rejected(reason: message)
             } catch {
-                // A timeout, a rate limit or a lost reply: read once to see whether it landed.
+                // A timeout, a rate limit, a lost reply, or a write the fence found stale (#1300,
+                // nothing written): read once to see where the row is; the next run sends again.
                 return await settle([operation], on: hermes)[operation] ?? .uncertain
             }
         }

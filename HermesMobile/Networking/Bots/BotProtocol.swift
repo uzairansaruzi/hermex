@@ -200,7 +200,8 @@ enum BotConnectionAdvice {
     func sessionScanPage(profile: String, offset: Int) async throws -> HermesScanPage
     /// Writes one change to a session (`HermesREST.updateSession`, #1046, #1048) and returns the
     /// title the host keeps. A change the host refuses with its reason, such as a title already
-    /// in use, throws `HermesSessionRefusal`.
+    /// in use, throws `HermesSessionRefusal`; one its write fence refuses (#1300), such as a
+    /// session that changed since the write read it, throws `HermesSessionFenceRefusal`.
     @discardableResult
     func updateSession(_ change: HermesSessionChange, key: String, profile: String) async throws -> String?
     /// The session's row and messages as the host exports them (`HermesREST.sessionExport`, #1048).

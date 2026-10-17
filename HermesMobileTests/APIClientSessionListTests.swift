@@ -147,15 +147,15 @@ final class APIClientSessionListTests: APIClientTestCase {
 
     /// A read mark goes to the session's own id under its Profile, and nothing else is sent.
     func testHermesReadMarkPatchesOnlyUnreadAndTheProfile() throws {
-        let request = try HermesREST.updateSession(key: "20261005_101500_a1b2c3", profile: "research", change: .unread(false))
-            .request(base: URL(string: "https://hermes.example")!)
+        let request = try HermesREST.updateSession(key: "20261005_101500_a1b2c3", profile: "research", change: .unread(false),
+                                                   identity: nil).request(base: URL(string: "https://hermes.example")!)
 
         XCTAssertEqual(request.httpMethod, "PATCH")
         XCTAssertEqual(request.url?.path, "/api/sessions/20261005_101500_a1b2c3")
         XCTAssertEqual(try JSONDecoder().decode(BotJSON.self, from: try XCTUnwrap(request.httpBody)),
                        .object(["unread": .bool(false), "profile": .string("research")]))
-        XCTAssertThrowsError(try HermesREST.updateSession(key: "../profiles", profile: "research", change: .unread(true))
-            .request(base: URL(string: "https://hermes.example")!), "an id never names another route")
+        XCTAssertThrowsError(try HermesREST.updateSession(key: "../profiles", profile: "research", change: .unread(true),
+                                                          identity: nil).request(base: URL(string: "https://hermes.example")!), "an id never names another route")
     }
 
     /// A page in the 0.21.5 shape: unknown and missing fields are fine, a row without an id is

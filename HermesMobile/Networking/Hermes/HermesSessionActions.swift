@@ -18,6 +18,36 @@ struct HermesSessionRefusal: LocalizedError, Equatable {
     var errorDescription: String? { message }
 }
 
+/// A session write the host's write fence refused with 409 (#1300). Nothing was written, and the
+/// write is never resent: its caller rolls back and reads the list again.
+enum HermesSessionFenceRefusal: LocalizedError, Equatable {
+    /// The session moved past the revision the write read, or its runtime changed under it.
+    case changed
+    /// A turn holds the session.
+    case busy
+    /// The host asks for a write identity this build doesn't send.
+    case updateRequired
+
+    /// The refusal a 409's `detail` names; nil for any other reason.
+    init?(detail: String?) {
+        switch detail {
+        case "revision_conflict"?, "stale_generation"?, "admission_conflict"?: self = .changed
+        case "session_busy"?: self = .busy
+        case "mutation_identity_required"?: self = .updateRequired
+        case let detail? where detail.hasPrefix("client_upgrade_required"): self = .updateRequired
+        default: return nil
+        }
+    }
+
+    var errorDescription: String? {
+        switch self {
+        case .changed: return String(localized: "This session changed on the server. Try again.")
+        case .busy: return String(localized: "This session is busy. Try again when it finishes.")
+        case .updateRequired: return String(localized: "Update Hermex to change sessions on this server.")
+        }
+    }
+}
+
 /// Duplicate on a Hermes row (#1051): an independent copy with every row the session's export
 /// holds, tool output, reasoning and timestamps included, which `session.branch_stored` would
 /// drop. The export (#1048) is imported under a new id with no parent, then titled.

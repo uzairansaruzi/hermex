@@ -249,6 +249,7 @@ final class HermesRequestTests: XCTestCase {
         let json = ["Content-Type": "application/json"]
         let imported = BotJSON.object(["sessions": .array([.object(["id": .string("20261008_002420_fb927d")])]),
                                        "profile": .string("triage")])
+        let requestID = try XCTUnwrap(UUID(uuidString: "6F0C1F4E-2B7A-4C59-9E1D-3A8B5C7D9E01"))
         let cases: [(HermesREST, String, String, BotJSON?, [String: String])] = [
             (.status, "GET", "https://hermes.example:9120/api/status", nil, [:]),
             (.login(username: "user", password: "pass"), "POST", "https://hermes.example:9120/auth/password-login",
@@ -280,8 +281,15 @@ final class HermesRequestTests: XCTestCase {
             (.sessionList(profile: "triage", offset: 100, archived: true), "GET",
              "https://hermes.example:9120/api/sessions?profile=triage&order=recent&archived=only&limit=100&offset=100&exclude_sources=cron,kanban,oneshot,subagent,tool",
              nil, [:]),
-            (.updateSession(key: "tip", profile: "triage", change: .title("Plan")), "PATCH",
+            (.updateSession(key: "tip", profile: "triage", change: .title("Plan"), identity: nil), "PATCH",
              "https://hermes.example:9120/api/sessions/tip", .object(["title": .string("Plan"), "profile": .string("triage")]), json),
+            (.updateSession(key: "tip", profile: "triage", change: .pinned(true),
+                            identity: HermesSessionWriteIdentity(requestID: requestID, expectedRevision: 7)), "PATCH",
+             "https://hermes.example:9120/api/sessions/tip",
+             .object(["pinned": .bool(true), "profile": .string("triage"), "request_id": .string(requestID.uuidString),
+                      "expected_revision": .number(7)]), json),
+            (.sessionMutationSnapshot(key: "tip", profile: "triage"), "GET",
+             "https://hermes.example:9120/api/sessions/tip/mutation-snapshot?profile=triage", nil, [:]),
             (.sessionExport(key: "tip", profile: "triage"), "GET",
              "https://hermes.example:9120/api/sessions/tip/export?profile=triage", nil, [:]),
             (.sessionRow(key: "tip", profile: "triage"), "GET", "https://hermes.example:9120/api/sessions/tip?profile=triage", nil, [:]),
