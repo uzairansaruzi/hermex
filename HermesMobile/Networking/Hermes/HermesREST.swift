@@ -181,8 +181,9 @@ enum HermesREST: Equatable, Sendable {
     case sessionRow(key: String, profile: String)
     /// Imports sessions as an export holds them (#1051), each under the id it carries. `body` is
     /// the JSON `{sessions, profile}`, encoded by the caller off the main actor: it carries every
-    /// message.
-    case importSessions(body: Data)
+    /// message. `identity` is spliced in after its `{` rather than encoded with it; its revision
+    /// is 0, the host's revision for an anchor (`sessions[0].id`) it doesn't have yet (#1300).
+    case importSessions(body: Data, identity: HermesSessionWriteIdentity)
     /// `profile`'s sessions matching `query` (#1053): id matches, then message-content matches,
     /// at most `limit` (the host clamps it to 1…`sessionSearchMaximum`), archived and hidden ones
     /// included, without machine-run rows.
@@ -475,9 +476,10 @@ enum HermesREST: Equatable, Sendable {
         case .sessionRow(let key, let profile):
             guard Self.isSegment(key), !profile.isEmpty else { throw BotFailure.invalidAddress }
             return Self.get(try Self.url(base, "api/sessions/\(key)", profile: profile))
-        case .importSessions(let body):
+        case .importSessions(let body, let identity):
+            guard body.first == UInt8(ascii: "{") else { throw BotFailure.unsupported }
             var request = Self.bare("POST", base.appendingPathComponent("api/sessions/import"))
-            request.httpBody = body
+            request.httpBody = Data("{".utf8) + identity.leadingMembers + body.dropFirst()
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             return request
         case .sessionSearch(let query, let profile, let limit):
@@ -815,6 +817,10 @@ struct HermesSessionWriteIdentity: Equatable, Sendable {
 
     fileprivate var fields: [String: BotJSON] {
         ["request_id": .string(requestID.uuidString), "expected_revision": .number(Double(expectedRevision))]
+    }
+
+    var leadingMembers: Data {
+        Data(#""request_id":"\#(requestID.uuidString)","expected_revision":\#(expectedRevision),"#.utf8)
     }
 }
 

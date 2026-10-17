@@ -211,7 +211,8 @@ enum BotConnectionAdvice {
     func sessionRow(key: String, profile: String) async throws -> BotJSON?
     /// Sends one session import, its JSON `body` already encoded (`HermesREST.importSessions`,
     /// #1051), and returns the host's result. A payload the host refuses throws its reason as
-    /// `HermesSessionRefusal`, with every session it named in `entries` (#1213).
+    /// `HermesSessionRefusal`, with every session it named in `entries` (#1213); one its write
+    /// fence refuses throws `HermesSessionFenceRefusal` (#1300).
     func importSessions(body: Data) async throws -> BotJSON
     /// `profile`'s sessions matching `query`, in the host's order, at most `limit`
     /// (`HermesREST.sessionSearch`, #1053).

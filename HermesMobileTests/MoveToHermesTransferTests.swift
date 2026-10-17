@@ -194,17 +194,20 @@ final class MoveToHermesTransferTests: XCTestCase {
         XCTAssertEqual(MoveWebuiFixture.requests.compactMap { Self.query($0, "session_id") }, ["b"])
     }
 
-    /// A rate-limited import wrote nothing but isn't refused for good: it is left for replay.
-    func testRateLimitedImportIsLeftForReplay() async throws {
+    /// A rate-limited import, or one the write fence refused (#1300), wrote nothing but isn't
+    /// refused for good: it is left for replay.
+    func testRateLimitedOrFencedImportIsLeftForReplay() async throws {
         host.held = ["default": []]
-        host.importReplies = [.json(429, .object(["detail": .string("Too Many Requests")]))]
+        host.importReplies = [.json(429, .object(["detail": .string("Too Many Requests")])),
+                              .json(409, .object(["detail": .string("revision_conflict")]))]
         MoveWebuiFixture.exports = ["a": exportData("a")]
         let hermes = try await hermesClient()
 
-        let outcomes = await copy([item("a")], hermes: hermes)
-
-        XCTAssertEqual(outcomes, ["a": .uncertain(profile: "default")])
-        XCTAssertEqual(host.imports.count, 1)
+        for status in [429, 409] {
+            let outcomes = await copy([item("a")], hermes: hermes)
+            XCTAssertEqual(outcomes, ["a": .uncertain(profile: "default")], "\(status)")
+        }
+        XCTAssertEqual(host.imports.count, 2)
     }
 
     /// The copy's client has a jar of its own, seeded with the source's sign-in, so a Profile

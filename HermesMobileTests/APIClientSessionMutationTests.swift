@@ -584,7 +584,10 @@ final class APIClientSessionMutationTests: APIClientTestCase {
 
         let result = try await client.importSessions(body: encoded)
         XCTAssertEqual(result["imported_ids"], .array([.string("x")]))
-        XCTAssertEqual(posted, body)
+        XCTAssertEqual(posted["sessions"], body["sessions"])
+        XCTAssertEqual(posted["profile"], body["profile"])
+        XCTAssertFalse((posted["request_id"].text ?? "").isEmpty, "The write fence's identity (#1300)")
+        XCTAssertEqual(posted["expected_revision"], .number(0))
         let request = try XCTUnwrap(HermesHostFixture.requests.first { $0.url?.path == "/api/sessions/import" })
         XCTAssertEqual(request.httpMethod, "POST")
 

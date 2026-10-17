@@ -26,9 +26,9 @@ struct WebuiSource {
 /// One run is one attempt. Every batch is rechecked by exact id in every Hermes Profile, then
 /// `willDispatch` records it, then it is sent once. A 400 or 413 means the host wrote nothing,
 /// so the run drops the refused chats or splits the batch and sends the rest; any other 4xx
-/// refuses the batch. A rate limit (429), a timeout or a lost reply leaves it `.uncertain`: the
-/// runner (#1216) owns replaying those, by running them again, since the host skips an id it
-/// already has.
+/// refuses the batch. A rate limit (429), a write fence 409, a timeout or a lost reply leaves it
+/// `.uncertain`: the runner (#1216) owns replaying those, by running them again, since the host
+/// skips an id it already has.
 enum WebuiSessionTransfer {
     /// The host's import limits at the pin (`hermes_state.py`, `web_routers/sessions.py`).
     static let sessionsPerImport = 500
@@ -214,10 +214,12 @@ enum WebuiSessionTransfer {
         return body
     }
 
-    /// Whether `batch` fits one import's session, message and request-size limits.
+    /// Whether `batch` fits one import's session, message and request-size limits, counting the
+    /// write identity `HermesREST.importSessions` adds to the body.
     nonisolated static func fits(_ batch: [Prepared], destination: String) -> Bool {
         guard batch.count <= sessionsPerImport, batch.reduce(0, { $0 + $1.messageCount }) <= messagesPerImport else { return false }
         let overhead = 32 + destination.utf8.count * 2 + max(0, batch.count - 1)
+            + HermesSessionWriteIdentity(expectedRevision: 0).leadingMembers.count
         return batch.reduce(overhead) { $0 + $1.encoded.count } <= bytesPerImport
     }
 
@@ -290,7 +292,8 @@ enum WebuiSessionTransfer {
 
         /// Sends one import of `batch`. A 400 or 413 wrote nothing, so the refused chats are
         /// dropped, or the batch halved, and the rest sent again. Any other 4xx refuses the batch;
-        /// a 408, a 429 or any other failure leaves it uncertain.
+        /// a 408, a 429, a write fence 409 (`HermesSessionFenceRefusal`, which the next run
+        /// relocates) or any other failure leaves it uncertain.
         private func send(_ batch: [Prepared], into destination: String) async {
             guard !batch.isEmpty else { return }
             guard canSend else { return settle(batch.map(\.id), .notSent) }

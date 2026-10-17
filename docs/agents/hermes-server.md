@@ -422,6 +422,23 @@ describe RPC, and `gateway.ready` lists no methods.
 | `GET /api/plugins/<name>/…` | 404 `{"detail": "Plugin not found"}` | The plugin is off or not installed (`HermexPushPlugin.missingRoute`, Kanban). |
 | `GET /api/plugins/<name>/…` | 404 `{"detail": "No such API endpoint: …"}` | The dashboard never mounted the plugin's routes: it is new on disk and the host needs a restart, or the host lacks it (`kanban.md`, Absent plugin). |
 | `GET /api/plugins/hermex-push/capabilities` | `{plugin_version, routes}` / any 404 | The companion routes the loaded plugin mounts / none, so the feature doesn't show (`bots.md` § Push provisioning). |
+| `GET /api/sessions/{id}/mutation-snapshot` | 200 / a catch-all 404 (`No such API endpoint`, or `serve`'s `Headless backend`) | The host fences session writes / it is older and takes them bare (§ Session write fence). |
+
+## Session write fence
+
+hermes-agent fences REST session writes (#1300): `PATCH /api/sessions/{id}` and
+`POST /api/sessions/import` must carry `request_id` and `expected_revision`, or the host answers
+409 `client_upgrade_required` (neither) or `mutation_identity_required` (one). `BotClient` sends a
+fresh UUID as `request_id` on every write. A PATCH's `expected_revision` is the session's
+`runtime_revision`, read from `mutation-snapshot` right before the write, because any activity on
+the session moves it and a cached list row's value goes stale. An import always sends 0, the
+revision of an anchor id the host doesn't have. Hermex never sends `expected_generation`. When the
+snapshot route answers a catch-all 404 (`hermes dashboard`'s "No such API endpoint" or `hermes serve`'s
+"Headless backend…"), the host predates the fence and the PATCH goes out bare;
+older hosts ignore the extra fields on an import. A 409 (`revision_conflict`, `stale_generation`,
+`admission_conflict`, `session_busy`, or an upgrade reason) is a `HermesSessionFenceRefusal` and is
+never resent: the row action rolls back and reloads, and Move to Hermes leaves the batch uncertain
+for its next run.
 
 ## Plugin routes need a host restart
 
