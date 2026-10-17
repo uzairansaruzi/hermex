@@ -278,7 +278,7 @@ final class HermesRequestTests: XCTestCase {
             (.sessionMessages(key: "bg_0a5110", profile: "triage"), "GET",
              "https://hermes.example:9120/api/sessions/bg_0a5110/messages?profile=triage", nil, [:]),
             (.sessionList(profile: "triage", offset: 100, archived: true), "GET",
-             "https://hermes.example:9120/api/sessions?profile=triage&order=recent&archived=only&limit=100&offset=100&exclude_sources=cron,kanban,oneshot,subagent,tool",
+             "https://hermes.example:9120/api/sessions?profile=triage&order=recent&archived=only&limit=100&offset=100&exclude_sources=kanban,oneshot,subagent,tool",
              nil, [:]),
             (.updateSession(key: "tip", profile: "triage", change: .title("Plan")), "PATCH",
              "https://hermes.example:9120/api/sessions/tip", .object(["title": .string("Plan"), "profile": .string("triage")]), json),

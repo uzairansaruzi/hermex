@@ -405,7 +405,8 @@ import Observation
         let page = BotJSON.object(["sessions": .array([.object(["id": .string("tip"), "title": .string("Plan"),
                                                                 "profile": .string("research")])])])
         _ = HermesHostFixture.configuration { request in
-            request.httpMethod == "GET" && request.url?.path == "/api/sessions" ? .json(200, page) : answer(request)
+            if let empty = HermesHostFixture.emptyScheduledPage(request) { return empty }
+            return request.httpMethod == "GET" && request.url?.path == "/api/sessions" ? .json(200, page) : answer(request)
         }
         let list = SessionListViewModel(server: server, unreadStore: SessionUnreadStore(defaults: defaults), hermes: HermesSessionListSource(
             connection: record, profile: "research", makeWire: { _ in BotClient(http: connection) }, preferences: defaults,

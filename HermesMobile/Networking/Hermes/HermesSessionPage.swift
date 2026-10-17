@@ -1,25 +1,29 @@
 import Foundation
 
-/// One `GET /api/sessions` page (`HermesREST.sessionList`, #1046). Its `total` is never read:
-/// it counts rows the list never shows and leaves out the pinned back-fill. A row that can't be
+/// One `GET /api/sessions` page (`HermesREST.sessionList`, #1046). Ordinary paging ignores
+/// `total`; the source-scoped cron list uses it only for its count badge. A row that can't be
 /// read is skipped, yet still counts in `count`, so it never ends paging early. A page without
 /// its `sessions` list is a failed read, not an empty Profile.
 struct HermesSessionPage: Decodable, Equatable {
     let rows: [HermesSessionRow]
     /// How many rows the host sent, readable or not.
     let count: Int
+    /// Source-scoped total, used only by the scheduled section badge, never to end paging.
+    let total: Int?
 
-    init(rows: [HermesSessionRow], count: Int? = nil) {
+    init(rows: [HermesSessionRow], count: Int? = nil, total: Int? = nil) {
         self.rows = rows
         self.count = count ?? rows.count
+        self.total = total
     }
 
-    enum CodingKeys: String, CodingKey { case sessions }
+    enum CodingKeys: String, CodingKey { case sessions, total }
 
     init(from decoder: Decoder) throws {
         let slots = try decoder.container(keyedBy: CodingKeys.self).decode([Slot].self, forKey: .sessions)
         rows = slots.compactMap(\.row)
         count = slots.count
+        total = try decoder.container(keyedBy: CodingKeys.self).decodeLossyIntIfPresent(forKey: .total)
     }
 
     private struct Slot: Decodable {
@@ -33,6 +37,7 @@ struct HermesSessionPage: Decodable, Equatable {
 /// compression chain carries, else its `id`; it is opened and changed by `id`, that chain's tip.
 struct HermesSessionRow: Decodable, Equatable {
     let id: String
+    let source: String?
     /// Changed in place by a rename this phone made (#1048), as are `pinned` and `archived`.
     var title: String?
     /// The first prompt, flattened onto one line and cut at 60 characters with `...`.
@@ -74,7 +79,7 @@ struct HermesSessionRow: Decodable, Equatable {
     var isRoomSession: Bool { hidden != false && title?.hasPrefix("Group: ") == true }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, preview, pinned, archived, unread, hidden, model, cwd, profile
+        case id, title, preview, pinned, archived, unread, hidden, model, cwd, profile, source
         case lastActive = "last_active", startedAt = "started_at", messageCount = "message_count"
         case parentSessionID = "parent_session_id", lineageRootID = "_lineage_root_id"
     }
@@ -82,11 +87,12 @@ struct HermesSessionRow: Decodable, Equatable {
     init(id: String, title: String? = nil, preview: String? = nil, lastActive: Double? = nil, startedAt: Double? = nil,
          pinned: Bool? = nil, archived: Bool? = nil, unread: Bool? = nil, hidden: Bool? = nil, model: String? = nil,
          cwd: String? = nil, messageCount: Int? = nil, profile: String? = nil, parentSessionID: String? = nil,
-         lineageRootID: String? = nil) {
+         lineageRootID: String? = nil, source: String? = nil) {
         self.id = id; self.title = title; self.preview = preview; self.lastActive = lastActive; self.startedAt = startedAt
         self.pinned = pinned; self.archived = archived; self.unread = unread; self.hidden = hidden; self.model = model
         self.cwd = cwd; self.messageCount = messageCount; self.profile = profile; self.parentSessionID = parentSessionID
         self.lineageRootID = lineageRootID
+        self.source = source
     }
 
     init(from decoder: Decoder) throws {
@@ -105,7 +111,7 @@ struct HermesSessionRow: Decodable, Equatable {
             model: row.decodeLossyStringIfPresent(forKey: .model), cwd: row.decodeLossyStringIfPresent(forKey: .cwd),
             messageCount: row.decodeLossyIntIfPresent(forKey: .messageCount), profile: row.decodeLossyStringIfPresent(forKey: .profile),
             parentSessionID: row.decodeLossyStringIfPresent(forKey: .parentSessionID),
-            lineageRootID: root?.isEmpty == false ? root : nil
+            lineageRootID: root?.isEmpty == false ? root : nil, source: row.decodeLossyStringIfPresent(forKey: .source)
         )
     }
 
@@ -119,7 +125,7 @@ struct HermesSessionRow: Decodable, Equatable {
         return SessionSummary(
             sessionId: id, title: isBotChat ? String(localized: "Bot Chat · \(profile)") : MessageAttachment.hermesTitle(title),
             workspace: cwd, model: model, messageCount: messageCount, createdAt: startedAt, lastMessageAt: lastActive,
-            pinned: pinned, archived: archived, projectId: project, profile: profile, parentSessionId: parentSessionID,
+            pinned: pinned, archived: archived, projectId: project, profile: profile, sessionSource: source, parentSessionId: parentSessionID,
             hermes: SessionSummary.Hermes(lineageRoot: identity, unread: unread == true,
                                           preview: MessageAttachment.hermesTitle(preview), isBotChat: isBotChat,
                                           botChatRoot: botChatRoot)
@@ -169,7 +175,7 @@ struct HermesSessionSearchResult: Decodable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case sessionID = "session_id", id, title, preview, archived, model, profile, snippet, role
+        case sessionID = "session_id", id, title, preview, archived, model, profile, snippet, role, source
         case lineageRoot = "lineage_root", lastActive = "last_active", sessionStarted = "session_started"
         case startedAt = "started_at", messageCount = "message_count", parentSessionID = "parent_session_id"
     }
@@ -191,7 +197,7 @@ struct HermesSessionSearchResult: Decodable, Equatable {
             // under that exact title, and the host refuses renaming it.
             hidden: title == HermesCall.botChatTitle ? true : nil,
             model: result.decodeLossyStringIfPresent(forKey: .model), messageCount: result.decodeLossyIntIfPresent(forKey: .messageCount),
-            profile: nonEmpty(.profile), parentSessionID: nonEmpty(.parentSessionID), lineageRootID: nonEmpty(.lineageRoot)
+            profile: nonEmpty(.profile), parentSessionID: nonEmpty(.parentSessionID), lineageRootID: nonEmpty(.lineageRoot), source: nonEmpty(.source)
         )
         // An id match has no `role`; its snippet repeats the preview or says "Session ID: …".
         role = nonEmpty(.role)
@@ -214,6 +220,8 @@ struct HermesSessionPages: Equatable {
     /// False once a page shows the list's end.
     private(set) var hasMore = true
     private var identities: Set<String> = []
+    private(set) var total: Int?
+    var totalCount: Int { total ?? rows.count }
 
     init(archived: Bool = false) {
         self.archived = archived
@@ -224,6 +232,7 @@ struct HermesSessionPages: Equatable {
     /// reads on, unless it brought no new row, which also ends a list whose pinned rows alone
     /// would fill every page.
     mutating func append(_ page: HermesSessionPage) {
+        total = page.total
         var added = 0
         for row in page.rows where (row.archived == true) == archived && identities.insert(row.identity).inserted {
             // Still new to the list, so a page of rooms alone does not end it.
@@ -256,6 +265,7 @@ struct HermesSessionPages: Equatable {
     mutating func remove(_ id: String) {
         guard let index = rows.firstIndex(where: { $0.id == id }) else { return }
         identities.remove(rows.remove(at: index).identity)
+        if let total { self.total = max(total - 1, 0) }
         nextOffset = max(nextOffset - 1, 0)
     }
 
@@ -265,6 +275,7 @@ struct HermesSessionPages: Equatable {
         if let current = rows.firstIndex(where: { $0.identity == row.identity }) { rows[current] = row; return }
         rows.insert(row, at: min(index, rows.count))
         identities.insert(row.identity)
+        if let total { self.total = total + 1 }
         nextOffset += 1
     }
 }
@@ -284,6 +295,7 @@ struct HermesProfilePages: Equatable {
 
     /// More of some Profile's sessions wait on the host.
     var hasMore: Bool { pages.values.contains(where: \.hasMore) }
+    var totalCount: Int { pages.values.reduce(0) { $0 + $1.totalCount } }
 
     /// The rows to show, each with the Profile whose list holds it, in each list's order.
     var rows: [(profile: String, row: HermesSessionRow)] {

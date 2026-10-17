@@ -38,6 +38,8 @@ struct HermesSessionListView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsMessageCount = true
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsWorkspace = true
+    @AppStorage(SessionSidebarDisclosureSettings.scheduledSessionsAreExpandedKey)
+    private var scheduledSessionsAreExpanded = SessionSidebarDisclosureSettings.defaultScheduledSessionsAreExpanded
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(SessionSidebarDisclosureSettings.projectsAreExpandedKey)
     private var projectsAreExpanded = SessionSidebarDisclosureSettings.defaultProjectsAreExpanded
@@ -113,7 +115,8 @@ struct HermesSessionListView: View {
     }
 
     var body: some View {
-        List {
+        let groups = viewModel.scheduledSessionGroups(searchText: searchText, selectedProjectID: selectedProjectID)
+        return List {
             if let home {
                 SessionsHeader(
                     logoColor: HeaderLogoColor.color(for: headerLogoColorHex), avatar: home.avatar,
@@ -136,17 +139,27 @@ struct HermesSessionListView: View {
                 projectPendingRename: $covers.renamingProject, openDestination: open, switchActiveProfile: { _ in },
                 presentProjectCreation: { covers.creatingProject = HermesProjectCreation(folder: "") }
             )
+            if groups.showsDisclosure(isSearchActive: isSearching) {
+                ScheduledSessionsDisclosure(
+                    viewModel: viewModel, searchText: searchText, sessions: groups.scheduled,
+                    totalCount: groups.totalScheduledCount, isSearchActive: isSearching,
+                    showsMessageCount: showsMessageCount, showsWorkspace: showsWorkspace, selectedSessionID: nil,
+                    userIsExpanded: $scheduledSessionsAreExpanded, actions: actions,
+                    viewAll: { covers.showingScheduled = true }
+                )
+            }
             SessionListRowsSection(
                 viewModel: viewModel,
                 searchText: searchText,
-                sessions: viewModel.visibleSessions(searchText: searchText, selectedProjectID: selectedProjectID),
+                sessions: groups.ordinary,
                 emptyTitle: emptyTitle,
                 emptyDescription: isSearching ? String(localized: "Try another search or project filter.") : nil,
                 isSearchActive: false,
                 showsMessageCount: showsMessageCount,
                 showsWorkspace: showsWorkspace,
                 selectedSessionID: nil,
-                actions: actions
+                actions: actions,
+                suppressEmptyState: !groups.scheduled.isEmpty
             )
             // A search reads the host's whole list, so it pages nothing in.
             if showsLoadMore && !isSearching { loadMoreRow }
@@ -156,6 +169,7 @@ struct HermesSessionListView: View {
         .listStyle(.plain)
         .environment(\.defaultMinListRowHeight, 0)
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: projectsAreExpanded)
+        .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: scheduledSessionsAreExpanded)
         .overlay(alignment: .bottom) {
             ActionToastView(state: actionToast)
                 .frame(maxWidth: 420)
@@ -164,7 +178,8 @@ struct HermesSessionListView: View {
         }
         .refreshable { await viewModel.refreshHermes(modelContext: modelContext) }
         // Debounced inside; a new query or Profile cancels the search in flight.
-        .task(id: SearchScope(profile: profile, showsAll: viewModel.hermesShowsAllProfiles, text: searchText)) {
+        .task(id: SearchScope(profile: profile, showsAll: viewModel.hermesShowsAllProfiles, text: searchText, showingScheduled: covers.showingScheduled)) {
+            guard !covers.showingScheduled else { return }
             await viewModel.searchSessions(query: searchText)
         }
         .modifier(chrome)
@@ -181,6 +196,12 @@ struct HermesSessionListView: View {
                 if !opened.query.isEmpty && home != nil { isSearchExpanded = true }
             })
             .id(chat.id)
+        }
+        .navigationDestination(isPresented: $covers.showingScheduled) {
+            ScheduledSessionsView(viewModel: viewModel, showsCronSessions: true,
+                                  showsMessageCount: showsMessageCount, showsWorkspace: showsWorkspace,
+                                  selectedSessionID: nil, actions: actions, actionToast: actionToast)
+                .onDisappear { covers.scheduledDisappeared(viewModel) }
         }
         .navigationDestination(isPresented: $covers.showingArchived) {
             if let profile {
@@ -297,7 +318,7 @@ struct HermesSessionListView: View {
             shareTransfer = nil
             queueFailedShareAgain()
             actionToast.dismiss()
-            if covers.chat == nil { viewModel.closeHermes() } else { viewModel.pauseHermes() }
+            covers.listDisappeared(viewModel)
         }
         // A lane the host no longer lists (deleted here or on Desktop, or another Profile's) clears.
         .onChange(of: viewModel.projects) {
@@ -806,6 +827,7 @@ private struct SearchScope: Hashable {
     let profile: String?
     let showsAll: Bool
     let text: String
+    let showingScheduled: Bool
 }
 
 /// The Sessions list's title and toolbar. As the Hermes home's Sessions side it takes the home's
@@ -853,6 +875,7 @@ struct HermesSessionListCovers {
     var deleting: SessionSummary?
     var exported: SessionExportShareItem?
     var showingArchived = false
+    var showingScheduled = false
     var creatingProject: HermesProjectCreation?
     var renamingProject: ProjectSummary?
     var deletingProject: ProjectSummary?
@@ -869,7 +892,22 @@ struct HermesSessionListCovers {
 
     /// A screen this list pushed covers it, so the socket stays closed until it returns.
     var isCoveredByScreen: Bool {
-        showingArchived || showingKanban || tasks != nil || skills != nil || memory != nil || insights != nil
+        showingScheduled || showingArchived || showingKanban || tasks != nil || skills != nil || memory != nil || insights != nil
+    }
+
+    /// The rows left the screen. A chat over them pauses the list's events and keeps its socket.
+    /// View all shows these same rows and opens the list as it appears, so the list stays live
+    /// whichever of the two SwiftUI runs first (on the simulator, View all's appearance).
+    /// Anything else closes the list.
+    @MainActor func listDisappeared(_ list: SessionListViewModel) {
+        if chat != nil { list.pauseHermes() } else if !showingScheduled { list.closeHermes() }
+    }
+
+    /// View all left the screen. A chat it opened, or anything else that covers it while it is
+    /// still pushed, pauses the list's events. Popped back to the list, which opens them as it
+    /// appears, they stay live, in either order.
+    @MainActor func scheduledDisappeared(_ list: SessionListViewModel) {
+        if chat != nil || showingScheduled { list.pauseHermes() }
     }
 
     /// Counts the links that brought the rows forward, so work started before one (an export)
