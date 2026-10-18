@@ -278,6 +278,10 @@ struct ChatView: View {
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsFilesButton = true
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
+    @AppStorage(SectionVisibilitySettings.chatTerminalKey) private var showsTerminalButton = true
+    @State private var selectedTerminal: TerminalTarget?
+    @State private var terminalTarget: TerminalTarget?
+    @State private var terminalAvailability = TerminalAvailability()
 
     let session: SessionSummary
     let server: URL
@@ -1070,6 +1074,11 @@ struct ChatView: View {
             .onChange(of: viewModel.streamingHapticPulseTrigger, handleStreamingHapticPulse)
     }
 
+    private var terminalCapabilityScope: String {
+        let chat = terminalAvailability.checkID(for: viewModel.hermesTerminalTarget)
+        return "\(server.absoluteString)|\(chat)|\(viewModel.isViewingCachedData)"
+    }
+
     /// Toolbar, navigation, and presentations over `chatLifecycle`.
     private var chatContent: some View {
         chatLifecycle
@@ -1108,6 +1117,15 @@ struct ChatView: View {
                             }
                         }
 
+                        if showsTerminalButton, terminalAvailability.isAvailable, let target = terminalTarget {
+                            ChatToolbarActionSlot {
+                                Button { selectedTerminal = target } label: { Label("Terminal", systemImage: "apple.terminal") }
+                                    .keyboardShortcut("t", modifiers: [.command, .shift])
+                                    .disabled(viewModel.isViewingCachedData)
+                                    .accessibilityLabel("Terminal")
+                            }
+                        }
+
                         if showsGitControls, gitAvailabilityViewModel.hasRepository {
                             ChatToolbarActionSlot {
                                 gitActionsMenu
@@ -1117,6 +1135,20 @@ struct ChatView: View {
                 }
 
                 delegatedWorkToolbarItem
+            }
+            .fullScreenCover(item: $selectedTerminal) { target in
+                TerminalScreen(workspace: viewModel.hermesWorkspace?.cwd ?? session.workspace, target: target, server: server)
+            }
+            .task(id: terminalCapabilityScope) {
+                terminalTarget = nil
+                guard !viewModel.isViewingCachedData else { return }
+                let target = viewModel.hermesTerminalTarget
+                await terminalAvailability.refresh(target)
+                guard !Task.isCancelled else { return }
+                terminalTarget = target
+            }
+            .onChange(of: viewModel.isHermesConnected) { _, isConnected in
+                terminalAvailability.connectionChanged(isConnected: isConnected)
             }
             .navigationDestination(item: $pushedSession) { session in
                 ChatView(session: session, server: server, onAPIError: onAPIError)

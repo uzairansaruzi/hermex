@@ -350,6 +350,7 @@ enum SectionVisibilitySettings {
     static let projectsKey = "sectionVisibility.projects"
     static let chatFilesKey = "sectionVisibility.chatFiles"
     static let chatGitKey = "sectionVisibility.chatGit"
+    static let chatTerminalKey = "sectionVisibility.chatTerminal"
 
     /// Every entry defaults to visible, so an install that predates these toggles
     /// looks exactly as it did before.

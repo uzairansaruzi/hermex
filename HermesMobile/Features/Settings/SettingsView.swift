@@ -63,7 +63,7 @@ struct SettingsView: View {
                 }
 
                 NavigationLink {
-                    SettingsComposerPage()
+                    SettingsComposerPage(server: authManager.servers.first { $0.id == authManager.activeServerID }?.kind == .hermes ? server : nil)
                 } label: {
                     SettingsLabel(title: String(localized: "Composer"), systemImage: "keyboard")
                 }

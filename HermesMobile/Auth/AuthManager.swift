@@ -55,9 +55,12 @@ final class AuthManager {
     }
 
     private(set) var state: State = .unconfigured {
-        // The shared Bot connection signs in with the active server's saved credentials.
+        // Close the shared connection when its sign-in ends or its server changes.
         didSet {
-            if let old = oldValue.server, old != state.server { hermesConnections.retire(server: old) }
+            if let old = oldValue.server,
+               old != state.server || (oldValue == .loggedIn(server: old) && state != .loggedIn(server: old)) {
+                hermesConnections.retire(server: old)
+            }
             dropStaleMoveSheets()
         }
     }

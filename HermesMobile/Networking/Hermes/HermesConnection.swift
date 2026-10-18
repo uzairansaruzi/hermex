@@ -73,6 +73,18 @@ import OSLog
     private var epoch = 0
     private var signInTask: Task<Void, Error>?
     private(set) var isRetired = false
+    /// Called once, synchronously, from retire(); Terminal uses it to close its screen.
+    private var retirementObservers: [UUID: @MainActor () -> Void] = [:]
+    var retirementObserverCount: Int { retirementObservers.count }
+
+    func observeRetirement(_ erase: @escaping @MainActor () -> Void) -> UUID? {
+        guard !isRetired else { erase(); return nil }
+        let token = UUID()
+        retirementObservers[token] = erase
+        return token
+    }
+
+    func removeRetirementObserver(_ token: UUID) { retirementObservers[token] = nil }
     /// Called with `.rejected(401)` when the login step answers 401, and with `.signInExpired`
     /// when the host refuses a browser sign-in's refresh token, before the failure reaches any
     /// consumer, including the re-sign-in a signed-in 401 starts. `HermesConnections` sets it
@@ -413,6 +425,14 @@ import OSLog
         }
     }
 
+    /// Each attach gets its own ticket and this connection's headers.
+    func terminalUpgrade(sessionID: String, profile: String?, rows: Int, cols: Int, restart: Bool) async throws -> URLRequest {
+        try await upgrade {
+            try TerminalWire.upgrade(base: connection.address, sessionID: sessionID, profile: profile,
+                                     rows: rows, cols: cols, restart: restart, ticket: $0)
+        }
+    }
+
     /// Mints one ticket and returns the upgrade `build` makes for it, with this connection's headers.
     private func upgrade(_ build: (String) throws -> URLRequest) async throws -> URLRequest {
         do {
@@ -453,6 +473,9 @@ import OSLog
     func retire() {
         HermesConnectionLog.logger.notice("c\(self.serial, privacy: .public): connection retired")
         isRetired = true
+        let observers = retirementObservers.values
+        retirementObservers = [:]
+        for erase in observers { erase() }
         isSignedIn = false
         accessToken = nil
         signInTask?.cancel()
