@@ -63,7 +63,7 @@ enum BotFailure: Error, Equatable, LocalizedError {
     /// so sign-in stopped before the password. Permanent.
     case outdated(String)
     /// A connection saved without credentials for a dashboard that had no sign-in (#1314)
-    /// met one that now asks for a password. The user has to sign in. Permanent.
+    /// met one that now requires a sign-in, by password or browser. The user has to sign in. Permanent.
     case passwordRequired
     var errorDescription: String? {
         switch self {
@@ -106,7 +106,7 @@ enum BotConnectionAdvice {
     /// (the inbox, the Sessions list). False for a refusal the user has to act on: sign-in,
     /// an unsupported host or address, an address that now reaches a different host or is not
     /// a dashboard, an access proxy's own sign-in, a host with browser sign-in only, an expired
-    /// browser sign-in, a host that now asks for a password, a refused gateway upgrade, a Hermes
+    /// browser sign-in, a host that now requires a sign-in, a refused gateway upgrade, a Hermes
     /// release older than the minimum, and any other permanent HTTP client error (a 404 is not a
     /// Hermes host). Server errors, rate limits and JSON-RPC faults other than "method missing"
     /// are the retry loop's problem.

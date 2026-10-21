@@ -58,12 +58,7 @@ import Observation
                 case .browser:
                     Text("This server signs in through your browser.").foregroundStyle(.secondary)
                 case .open:
-                    Label {
-                        Text(HermesSignInMethod.openWarning)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    }
-                    .accessibilityIdentifier("hermes-open-dashboard-warning")
+                    OpenDashboardWarning()
                 case .password:
                     TextField("Username", text: $setup.username).textContentType(.username)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -675,5 +670,17 @@ struct BotConnectionWelcomeView: View {
         } else {
             BotAnimatedFaceView(name: name, appearance: appearance, size: size, motion: .still)
         }
+    }
+}
+
+/// The warning shown wherever a Hermes dashboard with no password is signed in to or saved (#1314).
+struct OpenDashboardWarning: View {
+    var body: some View {
+        Label {
+            Text(HermesSignInMethod.openWarning)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        }
+        .accessibilityIdentifier("hermes-open-dashboard-warning")
     }
 }

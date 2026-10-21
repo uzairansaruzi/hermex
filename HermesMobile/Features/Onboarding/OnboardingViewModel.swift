@@ -537,8 +537,8 @@ final class OnboardingViewModel {
     }
 
     /// Signs the detected dashboard in once with the form's username, password and headers,
-    /// or with no credentials when it has no sign-in, on a connection of its own, then adds it as a Hermes server, switching to it unless a
-    /// move opened the form. A failure shows `BotConnectionAdvice`'s copy, and nothing is
+    /// or with no credentials when it has no sign-in, on a connection of its own, then adds it
+    /// as a Hermes server, switching to it unless a move opened the form. A failure shows `BotConnectionAdvice`'s copy, and nothing is
     /// retried (#884). A webui server saved at the address is replaced only when
     /// `replacingWebuiServer`, and only after the sign-in succeeded; otherwise it stops here
     /// with the Replace offer (#1027), which a move never makes: it could remove its own source.

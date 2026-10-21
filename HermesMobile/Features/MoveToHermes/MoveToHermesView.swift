@@ -237,12 +237,7 @@ struct MoveToHermesSheet: View {
                     .foregroundStyle(.secondary)
                     // The move copies these chats onto a host anyone who reaches it can use (#1314).
                     if review.connection.hasNoCredentials {
-                        Label {
-                            Text(HermesSignInMethod.openWarning)
-                        } icon: {
-                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                        }
-                        .accessibilityIdentifier("hermes-open-dashboard-warning")
+                        OpenDashboardWarning()
                     }
                     if let only = review.scan.onlyProfile {
                         VStack(alignment: .leading, spacing: 4) {

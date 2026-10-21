@@ -154,12 +154,7 @@ struct SettingsServerPage: View {
         } footer: {
             // Kept beside the sign-in, so a dashboard without one is never a one-time notice (#1314).
             if hermesConnection?.hasNoCredentials == true {
-                Label {
-                    Text(HermesSignInMethod.openWarning)
-                } icon: {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                }
-                .accessibilityIdentifier("hermes-open-dashboard-warning")
+                OpenDashboardWarning()
             }
         }
 
