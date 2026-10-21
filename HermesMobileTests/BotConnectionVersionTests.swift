@@ -250,7 +250,7 @@ final class BotConnectionVersionTests: XCTestCase {
         expired.oauth = HermesOAuth(provider: "nous", userID: "u1", refreshToken: "dead")
         try store.save(expired, server: hermes)
         var status = BotHostStatus(HermesBrowserSignInTests.browserStatus)
-        status.signsInWithBrowser = true
+        status.signInMethod = .browser
         let model = BotConnectionSetup(
             server: hermes, isServerSignIn: true, store: store, makeWire: { _ in XCTFail("No password wire"); return ConnectionSetupWire() },
             discard: { _ in XCTFail("The same account keeps its data") }, probe: { _, _ in .success(status) },
@@ -293,7 +293,7 @@ final class BotConnectionVersionTests: XCTestCase {
         XCTAssertFalse(model.signsInWithBrowser)
 
         var status = BotHostStatus(HermesBrowserSignInTests.browserStatus)
-        status.signsInWithBrowser = true
+        status.signInMethod = .browser
         reply = .success(status)
         await model.checkStatus()
         XCTAssertFalse(model.offersStatusRetry)

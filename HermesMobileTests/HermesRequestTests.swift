@@ -416,10 +416,10 @@ final class HermesRequestTests: XCTestCase {
         XCTAssertThrowsError(try HermesREST.profileSoul(name: "../config").request(base: base))
         XCTAssertThrowsError(try HermesREST.setProfileSoul(name: "", content: "x").request(base: base))
         XCTAssertThrowsError(try HermesREST.config(profile: "").request(base: base))
-        let upgrade = try HermesREST.gatewayUpgrade(base: base, ticket: "t1")
+        let upgrade = try HermesREST.gatewayUpgrade(base: base, pass: .ticket("t1"))
         XCTAssertEqual(upgrade.url?.absoluteString, "wss://hermes.example:9120/api/ws")
         XCTAssertEqual(upgrade.allHTTPHeaderFields ?? [:], ["Sec-WebSocket-Protocol": "hermes-gateway-v1, hermes-gateway-ticket.t1"])
-        XCTAssertEqual(try HermesREST.gatewayUpgrade(base: URL(string: "http://192.168.1.2:9120")!, ticket: "t1").url?.absoluteString,
+        XCTAssertEqual(try HermesREST.gatewayUpgrade(base: URL(string: "http://192.168.1.2:9120")!, pass: .ticket("t1")).url?.absoluteString,
                        "ws://192.168.1.2:9120/api/ws")
     }
 }

@@ -15,7 +15,10 @@ import OSLog
 /// follows. A browser sign-in's connection (`BotConnection.oauth`, #708) trades its refresh
 /// token for an access token instead, held in memory only and sent as `Authorization: Bearer`
 /// on every signed-in request; the host rotates the refresh token each time, and the new one
-/// is saved (`onRefreshTokenRotated`) before the access token is used.
+/// is saved (`onRefreshTokenRotated`) before the access token is used. A dashboard with no
+/// sign-in (`HermesSignInMethod.open`, #1314) is signed in to with the session token its page
+/// carries, read again at every sign-in, also held in memory only and sent as
+/// `X-Hermes-Session-Token`; a host restart replaces it, which the 401 below recovers from.
 /// Cancelling one waiting consumer never cancels it. A signed-in request the host answers
 /// with 401 signs in again once, sharing that sign-in with any other consumer's 401, and
 /// is resent: the auth gate refuses before any handler runs, so the resend cannot repeat
@@ -65,16 +68,25 @@ import OSLog
     /// The gateway while some screen's `BotClient` holds it; nil while none does.
     private(set) weak var liveGateway: HermesGateway?
     private var isSignedIn = false
-    /// A browser sign-in's access token from the last refresh; nil for a password connection
-    /// and until the first refresh. A 401 or a failed sign-in drops it, so the next sign-in
-    /// refreshes.
-    private var accessToken: String?
+    /// What every signed-in request carries besides the cookie jar.
+    private enum Credential {
+        /// A browser sign-in's access token from the last refresh, sent as `Authorization: Bearer`.
+        case accessToken(String)
+        /// An open dashboard's session token from its page (`HermesREST.pageToken(in:)`), sent as
+        /// `X-Hermes-Session-Token`, never `Authorization`, which a proxy's basic auth may hold.
+        case pageToken(String)
+    }
+    /// Nil for a password connection, and until a browser sign-in's first refresh or an open
+    /// dashboard's page read. A 401 or a failed sign-in drops it, so the next sign-in refreshes
+    /// or reads the page again.
+    private var credential: Credential?
     /// Counts sign-ins, so a 401 can tell whether another consumer has already recovered.
     private var epoch = 0
     private var signInTask: Task<Void, Error>?
     private(set) var isRetired = false
-    /// Called with `.rejected(401)` when the login step answers 401, and with `.signInExpired`
-    /// when the host refuses a browser sign-in's refresh token, before the failure reaches any
+    /// Called with `.rejected(401)` when the login step answers 401, with `.passwordRequired`
+    /// when a connection saved without credentials meets a host that now asks for them, and
+    /// with `.signInExpired` when the host refuses a browser sign-in's refresh token, before the failure reaches any
     /// consumer, including the re-sign-in a signed-in 401 starts. `HermesConnections` sets it
     /// so `AuthManager` can sign a Hermes server out (#899); nothing here remembers it.
     var onLoginRejected: ((BotFailure) -> Void)?
@@ -192,9 +204,21 @@ import OSLog
                 serverInstallID = BotConnection.installID(in: status)
                 if let version = serverVersion, !HermesCompatibility.isSupported(version) { throw BotFailure.outdated(version) }
                 try connection.requireSameInstall(serverInstallID)
-                guard status["auth_required"].flag == true else { throw BotFailure.unsupported }
-                if let account = connection.oauth {
-                    if accessToken == nil {
+                guard let method = HermesSignInMethod(status) else { throw BotFailure.unsupported }
+                if method == .open {
+                    step = "page"
+                    let page = try await Self.send(prepared(try HermesREST.dashboardPage.request(base: connection.address)),
+                                                   on: session, accepting: 200..<201, redirectGuard: redirectGuard)
+                    try checkCurrent()
+                    guard let token = HermesREST.pageToken(in: page) else { throw BotFailure.unsupported }
+                    credential = .pageToken(token)
+                    // Any gated read proves the token: at the 0.21.5 pin `/api/auth/me` refuses an
+                    // open dashboard's every request, since only its sign-in sets a session.
+                    step = "token"
+                    _ = try await decoded(.profilesActive, on: session)
+                    try checkCurrent()
+                } else if let account = connection.oauth {
+                    if credential == nil {
                         step = "refresh"
                         try await refresh(on: session)
                     }
@@ -208,6 +232,8 @@ import OSLog
                     // A browser-only host signs in from its form (`HermesBrowserSignIn`), never here.
                     guard status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.browserSignIn }
                     step = "login"
+                    // Saved for a dashboard that had no sign-in, which it now has.
+                    guard !connection.hasNoCredentials else { throw BotFailure.passwordRequired }
                     _ = try await decoded(.login(username: connection.username, password: connection.password), on: session)
                     try checkCurrent()
                     step = "identity"
@@ -222,14 +248,15 @@ import OSLog
                 let release = serverVersion ?? "unreported"
                 HermesConnectionLog.logger.notice("c\(self.serial, privacy: .public): signed in, release \(release, privacy: .public)")
             } catch {
-                // A failed sign-in keeps no access token, so the next one refreshes.
-                accessToken = nil
+                // A failed sign-in keeps no token, so the next one refreshes or reads the page.
+                credential = nil
                 // A retired connection has already logged that it was retired.
                 if !isRetired {
                     let reason = HermesConnectionLog.reason(error), failedStep = step
                     HermesConnectionLog.logger.error("c\(self.serial, privacy: .public): sign-in failed at \(failedStep, privacy: .public): \(reason, privacy: .public)")
                     switch (failedStep, error as? BotFailure) {
                     case ("login", .rejected(401)?): onLoginRejected?(.rejected(401))
+                    case ("login", .passwordRequired?): onLoginRejected?(.passwordRequired)
                     case ("refresh", .signInExpired?): onLoginRejected?(.signInExpired)
                     default: break
                     }
@@ -267,7 +294,7 @@ import OSLog
                                    hermesVersion: old.hermesVersion, installID: old.installID, headers: old.headers,
                                    oauth: HermesOAuth(provider: provider, userID: user, refreshToken: refresh))
         isSignedIn = false
-        accessToken = access
+        credential = .accessToken(access)
         try await signIn()
     }
 
@@ -306,7 +333,7 @@ import OSLog
         defer { refreshInFlight = nil }
         let access = try await rotation.value
         try checkCurrent()
-        accessToken = access
+        credential = .accessToken(access)
     }
 
     /// Reads the public `/api/status` once, with this connection's headers and no
@@ -391,7 +418,7 @@ import OSLog
         } catch BotFailure.rejected(401) {
             try checkCurrent()
             // The first reply to show the session expired drops it; later ones join the same sign-in.
-            if epoch == sentEpoch { isSignedIn = false; accessToken = nil }
+            if epoch == sentEpoch { isSignedIn = false; credential = nil }
             try await signIn(deadline: deadline)
             try validateDispatch?()
             let value = try await perform(bearing(request), session)
@@ -400,25 +427,34 @@ import OSLog
         }
     }
 
-    /// Mints one single-use ticket and returns the gateway upgrade that presents it.
+    /// Returns the gateway upgrade, presenting a single-use ticket minted for it or an open
+    /// dashboard's page token.
     func gatewayUpgrade() async throws -> URLRequest {
-        try await upgrade { try HermesREST.gatewayUpgrade(base: connection.address, ticket: $0) }
+        try await upgrade { try HermesREST.gatewayUpgrade(base: connection.address, pass: $0) }
     }
 
-    /// Mints one single-use ticket, never the gateway's, and returns `board`'s Kanban event
-    /// socket upgrade that presents it, with this connection's headers (#1045).
+    /// Returns `board`'s Kanban event socket upgrade, with this connection's headers (#1045),
+    /// presenting a single-use ticket, never the gateway's, or an open dashboard's page token.
     func kanbanEventsUpgrade(board: String, since: Int) async throws -> URLRequest {
         try await upgrade {
-            try HermesREST.kanbanEventsUpgrade(base: connection.address, board: board, since: since, ticket: $0)
+            try HermesREST.kanbanEventsUpgrade(base: connection.address, board: board, since: since, pass: $0)
         }
     }
 
-    /// Mints one ticket and returns the upgrade `build` makes for it, with this connection's headers.
-    private func upgrade(_ build: (String) throws -> URLRequest) async throws -> URLRequest {
+    /// Returns the upgrade `build` makes for a fresh pass, with this connection's headers. Either
+    /// pass is preceded by a signed-in read, so a 401 signs in again first: minting the ticket,
+    /// or for a page token a gated read, since a refused upgrade can't tell a token a host
+    /// restart replaced from any other refusal.
+    private func upgrade(_ build: (HermesREST.UpgradePass) throws -> URLRequest) async throws -> URLRequest {
         do {
+            try await signIn()
+            if case .pageToken = credential {
+                _ = try await data(.profilesActive)
+                if case .pageToken(let token)? = credential { return prepared(try build(.pageToken(token))) }
+            }
             let ticket = try JSONDecoder().decode(BotJSON.self, from: try await data(.ticket))
             guard let token = ticket["ticket"].text, !token.isEmpty else { throw BotFailure.unsupported }
-            return prepared(try build(token))
+            return prepared(try build(.ticket(token)))
         } catch {
             // A failed sign-in, including the one after the ticket's 401, leaves this
             // connection signed out and has already logged its own step.
@@ -454,13 +490,13 @@ import OSLog
         HermesConnectionLog.logger.notice("c\(self.serial, privacy: .public): connection retired")
         isRetired = true
         isSignedIn = false
-        accessToken = nil
+        credential = nil
         signInTask?.cancel()
         signInTask = nil
         liveGateway?.retire()
     }
 
-    /// The login and identity reads, which run before there is a session.
+    /// The login, identity and token reads, which run before there is a session.
     private func decoded(_ rest: HermesREST, on session: URLSession) async throws -> BotJSON {
         let data = try await Self.send(bearing(prepared(try rest.request(base: connection.address))), on: session,
                                        accepting: 200..<201, redirectGuard: redirectGuard)
@@ -517,12 +553,15 @@ import OSLog
         headers.applied(to: request, origin: connection.address)
     }
 
-    /// `request` with the browser sign-in's access token, when there is one. The socket
-    /// upgrades never carry it: they present a ticket the bearer minted.
+    /// `request` with the connection's credential, when there is one. The socket upgrades
+    /// never carry it as a header: they present a ticket it minted, or the page token in the URL.
     private func bearing(_ request: URLRequest) -> URLRequest {
-        guard let accessToken else { return request }
         var request = request
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        switch credential {
+        case .accessToken(let token)?: request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        case .pageToken(let token)?: request.setValue(token, forHTTPHeaderField: HermesHeaders.sessionTokenName)
+        case nil: break
+        }
         return request
     }
 
@@ -718,6 +757,8 @@ struct HermesHeaders: Sendable {
         "keep-alive", "proxy-connection", "proxy-authorization", "cookie",
         "origin", "x-forwarded-prefix", "x-hermes-session-token"
     ]
+    /// The header an open dashboard reads its page's session token from (#1314).
+    static let sessionTokenName = "X-Hermes-Session-Token"
 
     let values: [CustomHeader]
 
@@ -758,9 +799,10 @@ struct HermesHeaders: Sendable {
         return request
     }
 
-    /// The task delegate that drops these headers from a redirect that leaves `origin`.
+    /// The task delegate that drops these headers, and an open dashboard's session token, from
+    /// a redirect that leaves `origin`, such as an access proxy's bounce to its sign-in page.
     func redirectGuard(for origin: URL) -> CrossOriginHeaderStripper {
-        let admitted = values
+        let admitted = values + [CustomHeader(name: Self.sessionTokenName)]
         return CrossOriginHeaderStripper(baseURL: origin, customHeaderProvider: { admitted })
     }
 

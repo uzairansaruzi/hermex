@@ -803,6 +803,89 @@ import XCTest
         XCTAssertFalse(HermesHostFixture.requests.contains { $0.url?.host == elsewhere.host })
     }
 
+    /// An open dashboard (#1314) signs in with the token its page carries, sent on every
+    /// signed-in request as `X-Hermes-Session-Token`, never as a bearer or a password login.
+    func testAnOpenDashboardSignsInWithItsPageToken() async throws {
+        let http = HermesConnection(connection: openRecord, configuration: openHost { "token-1" })
+        _ = try await http.data(.pushPairing)
+
+        let pairing = try XCTUnwrap(HermesHostFixture.requests.first { $0.url?.path == "/api/plugins/hermex-push/pairing" })
+        XCTAssertEqual(pairing.value(forHTTPHeaderField: "X-Hermes-Session-Token"), "token-1")
+        XCTAssertNil(pairing.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertEqual(HermesHostFixture.count("/"), 1)
+        XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
+    }
+
+    /// A host restart replaces the token, so the 401 that follows reads the page again and the
+    /// refused request is resent with the new one.
+    func testAnOpenDashboardsReplacedTokenIsReadAgainAndTheRequestResent() async throws {
+        var token = "token-1"
+        let http = HermesConnection(connection: openRecord, configuration: openHost { token })
+        _ = try await http.data(.pushPairing)
+        HermesHostFixture.script { token = "token-2" }
+        _ = try await http.data(.pushPairing)
+
+        let sent = HermesHostFixture.requests.filter { $0.url?.path == "/api/plugins/hermex-push/pairing" }
+            .map { $0.value(forHTTPHeaderField: "X-Hermes-Session-Token") }
+        XCTAssertEqual(sent, ["token-1", "token-1", "token-2"])
+        XCTAssertEqual(HermesHostFixture.count("/"), 2)
+    }
+
+    /// The gateway upgrade presents the page token as `?token=` with no subprotocol, and no
+    /// ticket is minted; a token replaced since sign-in is read again before the upgrade.
+    func testAnOpenDashboardsGatewayUpgradePresentsItsCurrentPageToken() async throws {
+        var token = "token-1", upgrade: URLRequest?
+        let http = HermesConnection(connection: openRecord, configuration: openHost { token },
+                                    gateway: .init { request in upgrade = request; return BotScriptedSocket() })
+        let client = BotClient(http: http)
+        try await client.connect()
+        defer { client.close() }
+
+        let socket = try XCTUnwrap(upgrade)
+        XCTAssertEqual(socket.url?.absoluteString, "wss://hermes.example/api/ws?token=token-1")
+        XCTAssertNil(socket.value(forHTTPHeaderField: "Sec-WebSocket-Protocol"))
+        XCTAssertEqual(HermesHostFixture.count("/api/auth/ws-ticket"), 0)
+        HermesHostFixture.script { token = "token-2" }
+        let reconnect = try await http.gatewayUpgrade()
+        XCTAssertEqual(reconnect.url?.absoluteString, "wss://hermes.example/api/ws?token=token-2")
+    }
+
+    /// A connection saved for an open dashboard meets the same host with its sign-in on: it
+    /// asks for a password, reporting it as a refused sign-in so the server's form opens.
+    func testAConnectionSavedWithoutCredentialsAsksForAPasswordOnceTheHostDoes() async throws {
+        let server = URL(string: "https://hermes.example")!
+        let connections = HermesConnections(configuration: { HermesHostFixture.configuration { _ in nil } })
+        var rejected: [BotFailure] = []
+        connections.onSignInRejected = { _, failure in rejected.append(failure) }
+        do { try await connections.connection(for: openRecord, server: server).signIn(); XCTFail("The host asks for a password") }
+        catch { XCTAssertEqual(error as? BotFailure, .passwordRequired) }
+        XCTAssertEqual(rejected, [.passwordRequired])
+        XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
+    }
+
+    private var openRecord: BotConnection {
+        BotConnection(id: record.id, name: "Host", address: record.address, username: "", password: "")
+    }
+
+    /// An open 0.21.6 dashboard whose page carries `token()`, which every `/api/*` route but
+    /// the public status checks.
+    private func openHost(_ token: @escaping () -> String) -> URLSessionConfiguration {
+        HermesHostFixture.configuration { request in
+            switch request.url?.path {
+            case "/api/status":
+                return .json(200, .object(["auth_required": .bool(false), "auth_providers": .array([]),
+                                           "auth_flows": .array([]), "version": .string("0.21.6")]))
+            case "/":
+                let page = #"<script>window.__HERMES_SESSION_TOKEN__="\#(token())";window.__HERMES_AUTH_REQUIRED__=false;</script>"#
+                return .body(200, Data(page.utf8))
+            case let path? where path.hasPrefix("/api/"):
+                return request.value(forHTTPHeaderField: "X-Hermes-Session-Token") == token()
+                    ? nil : .json(401, .object(["detail": .string("Unauthorized")]))
+            default: return nil
+            }
+        }
+    }
+
     private func assertStale(_ label: String, _ body: () async throws -> Void) async {
         do { try await body(); XCTFail("\(label): expected stale") }
         catch { XCTAssertEqual(error as? BotFailure, .stale, label) }

@@ -651,10 +651,10 @@ import XCTest
         XCTAssertTrue(socket.sentRequests.allSatisfy { $0["params"]["scope"] == .string("session") && $0["params"]["session_id"] == .string("runtime") })
     }
 
-    func testMissingPasswordGateFailsBeforeCredentialsOrSocket() async {
+    func testAStatusWithoutTheSignInFlagFailsBeforeCredentialsOrSocket() async {
         BotHTTPFixture.handler = { request in
             XCTAssertEqual(request.url?.path, "/api/status")
-            return (200, .object(["auth_required": .bool(false)]))
+            return (200, .object(["version": .string("0.21.5")]))
         }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [BotHTTPFixture.self]

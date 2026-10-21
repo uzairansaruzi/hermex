@@ -408,7 +408,7 @@ extension BotHostStatus {
     /// sign-in; a webui server's Bots connection keeps the password form.
     var signsInWithBrowser: Bool {
         guard isServerSignIn else { return false }
-        if case .reachable(let status) = hostStatus { return status.signsInWithBrowser }
+        if case .reachable(let status) = hostStatus { return status.signInMethod == .browser }
         return saved?.oauth != nil
     }
 

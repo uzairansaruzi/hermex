@@ -457,11 +457,11 @@ import XCTest
 
         PushHTTPFixture.reset()
         PushHTTPFixture.handler = { request in
-            request.url?.path == "/api/status" ? (200, .object(["auth_required": .bool(false)])) : nil
+            request.url?.path == "/api/status" ? (200, .object(["version": .string("0.21.5")])) : nil
         }
-        let noPassword = makeProvisioner(server: serverA, registrar: FakePushRegistrar())
-        await noPassword.enable()
-        XCTAssertEqual(noPassword.failure, HermexPushProvisioner.Failure(
+        let unknown = makeProvisioner(server: serverA, registrar: FakePushRegistrar())
+        await unknown.enable()
+        XCTAssertEqual(unknown.failure, HermexPushProvisioner.Failure(
             title: "Sign in to Hermes",
             message: "This Hermes host doesn’t offer the password sign-in push setup needs."))
         XCTAssertEqual(PushHTTPFixture.calls, ["GET https://a.example.com/api/status"])

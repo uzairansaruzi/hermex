@@ -25,6 +25,10 @@ struct BotConnection: Codable, Equatable, Identifiable {
     /// Nil for a password connection, including records saved before it existed.
     var oauth: HermesOAuth?
 
+    /// Saved for a dashboard with no sign-in (`HermesSignInMethod.open`, #1314): no username
+    /// and no browser sign-in, so anyone who reaches `address` reaches the agent too.
+    var hasNoCredentials: Bool { username.isEmpty && oauth == nil }
+
     /// The `install_id` a `/api/status` reply reports, or nil when it is omitted. The host
     /// omits it, rather than sending null, whenever it cannot read or persist the id.
     static func installID(in status: BotJSON) -> String? {

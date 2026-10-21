@@ -109,6 +109,10 @@ enum HermesREST: Equatable, Sendable {
 
     /// Public, so it reads the host before any credential is sent.
     case status
+    /// The dashboard's own page, whose script carries the session token an open dashboard
+    /// (`HermesSignInMethod.open`, #1314) checks on every `/api/*` route (`pageToken(in:)`).
+    /// Public.
+    case dashboardPage
     case login(username: String, password: String)
     /// Trades a browser sign-in's refresh token for a new access token and a rotated refresh
     /// token (#708): `{access_token, refresh_token, token_type, expires_at, provider, user_id}`,
@@ -341,6 +345,7 @@ enum HermesREST: Equatable, Sendable {
     func request(base: URL) throws -> URLRequest {
         switch self {
         case .status: return Self.get(base.appendingPathComponent("api/status"))
+        case .dashboardPage: return Self.get(base.appendingPathComponent(""))
         case .health: return Self.get(base.appendingPathComponent("api/health"))
         case .updateCheck(let force):
             guard var parts = URLComponents(url: base.appendingPathComponent("api/hermes/update/check"),
@@ -689,32 +694,57 @@ enum HermesREST: Equatable, Sendable {
         return try send(method, url, body)
     }
 
-    /// The gateway socket's upgrade: the `ws`/`wss` URL matching the address's scheme,
-    /// offering `hermes-gateway-v1` and the single-use ticket as subprotocols. A request's
-    /// `Sec-WebSocket-Protocol` header is where `URLSessionWebSocketTask` takes them from.
-    static func gatewayUpgrade(base: URL, ticket: String) throws -> URLRequest {
+    /// What a socket upgrade presents to the host's check, which runs before the socket opens.
+    enum UpgradePass: Equatable, Sendable {
+        /// A single-use ticket minted at `ticket`, for a host with sign-in.
+        case ticket(String)
+        /// An open dashboard's session token (#1314), presented as `?token=`. The host reads
+        /// tickets only behind its sign-in, and accepts this one without a subprotocol.
+        case pageToken(String)
+    }
+
+    /// The gateway socket's upgrade: the `ws`/`wss` URL matching the address's scheme. A ticket
+    /// goes with `hermes-gateway-v1` as subprotocols, which `URLSessionWebSocketTask` takes from
+    /// the request's `Sec-WebSocket-Protocol` header; a page token goes as `?token=`, with none.
+    static func gatewayUpgrade(base: URL, pass: UpgradePass) throws -> URLRequest {
         guard var parts = URLComponents(url: base.appendingPathComponent("api/ws"), resolvingAgainstBaseURL: false)
         else { throw BotFailure.unsupported }
         parts.scheme = base.scheme == "https" ? "wss" : "ws"
+        if case .pageToken(let token) = pass { parts.queryItems = [URLQueryItem(name: "token", value: token)] }
         guard let url = parts.url else { throw BotFailure.invalidAddress }
         var request = URLRequest(url: url)
-        request.setValue("hermes-gateway-v1, hermes-gateway-ticket." + ticket, forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        if case .ticket(let ticket) = pass {
+            request.setValue("hermes-gateway-v1, hermes-gateway-ticket." + ticket, forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        }
         return request
     }
 
     /// A Board's Kanban event socket (#1045): `/api/plugins/kanban/events` on the `ws`/`wss`
-    /// URL matching the address's scheme, presenting the single-use ticket as `?ticket=`. It
-    /// offers no subprotocol, because the host accepts without echoing one. The host pins the
-    /// socket to `board` and sends only events after `since`.
-    static func kanbanEventsUpgrade(base: URL, board: String, since: Int, ticket: String) throws -> URLRequest {
+    /// URL matching the address's scheme, presenting a ticket as `?ticket=` or a page token as
+    /// `?token=`. It offers no subprotocol, because the host accepts without echoing one. The
+    /// host pins the socket to `board` and sends only events after `since`.
+    static func kanbanEventsUpgrade(base: URL, board: String, since: Int, pass: UpgradePass) throws -> URLRequest {
         guard var parts = URLComponents(url: base.appendingPathComponent("api/plugins/kanban/events"),
                                         resolvingAgainstBaseURL: false)
         else { throw BotFailure.invalidAddress }
         parts.scheme = base.scheme == "https" ? "wss" : "ws"
+        let credential = switch pass {
+        case .ticket(let ticket): URLQueryItem(name: "ticket", value: ticket)
+        case .pageToken(let token): URLQueryItem(name: "token", value: token)
+        }
         parts.queryItems = [URLQueryItem(name: "board", value: board), URLQueryItem(name: "since", value: String(max(0, since))),
-                            URLQueryItem(name: "ticket", value: ticket)]
+                            credential]
         guard let url = parts.url else { throw BotFailure.invalidAddress }
         return URLRequest(url: url)
+    }
+
+    /// The session token in `dashboardPage`'s body: upstream writes
+    /// `window.__HERMES_SESSION_TOKEN__="<token>";`, quoted by hand or by `json.dumps`. Nil for
+    /// a page without one, such as a dashboard behind its sign-in, which never injects it.
+    static func pageToken(in page: Data) -> String? {
+        guard let html = String(data: page, encoding: .utf8),
+              let match = html.firstMatch(of: /__HERMES_SESSION_TOKEN__\s*=\s*"([^"\\]+)"/) else { return nil }
+        return String(match.1)
     }
 
     private static func get(_ url: URL) -> URLRequest { bare("GET", url) }
