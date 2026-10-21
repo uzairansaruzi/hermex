@@ -42,7 +42,7 @@ struct MoveToHermesQuestion: Identifiable, Equatable {
 }
 
 /// The guided Move to Hermes sheet's model (#1218). It reads what Review shows without changing
-/// either server: the host's own sign-in check (refusals R1 and R3), Profiles and a scan, then the
+/// either server: the host's own sign-in check (refusal R3), Profiles and a scan, then the
 /// webui's running chats (R4). Move hands the frozen Review to `MoveToHermesRunner.start`, which
 /// owns everything after it; the sheet then shows the runner's state.
 ///
@@ -52,8 +52,6 @@ struct MoveToHermesQuestion: Identifiable, Equatable {
 /// remove the webui server or move the next one (#1268).
 @MainActor @Observable final class MoveToHermesModel {
     enum Refusal: Equatable {
-        /// R1: the host takes no password (`auth_required` false).
-        case noSignIn
         /// R3: the host runs this release, older than `HermesCompatibility.minimumVersion`.
         case outdated(String)
         /// R4: this many of the webui server's chats are streaming a reply.
@@ -283,7 +281,6 @@ struct MoveToHermesQuestion: Identifiable, Equatable {
         } catch {
             guard !Task.isCancelled else { return }
             switch error as? BotFailure {
-            case .unsupported?: phase = .refused(.noSignIn)
             case .outdated(let version)?: phase = .refused(.outdated(version))
             default: checking.hostError = BotConnectionAdvice.message(for: error, address: connection.address)
             }

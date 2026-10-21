@@ -14,7 +14,6 @@ struct MoveToHermesSheet: View {
     @State private var isSigningIn = false
     @State private var isConfirmingFinish = false
     @State private var isConfirmingRemove = false
-    @State private var copiedPrompt = false
     private let auth: AuthManager
     private let entry: MoveToHermesEntry
 
@@ -195,17 +194,6 @@ struct MoveToHermesSheet: View {
     @ViewBuilder
     private func refused(_ refusal: MoveToHermesModel.Refusal) -> some View {
         switch refusal {
-        case .noSignIn:
-            MoveToHermesNoticeScreen(
-                tint: .orange, title: String(localized: "This Hermes host has no sign-in"),
-                message: String(localized: "Hermex needs a password to reach Hermes from your phone. On the host, turn on basic auth with a persistent secret, then try again. \(source) keeps working as it is.")) {
-                Button(copiedPrompt ? String(localized: "Copied") : String(localized: "How to Turn On Sign-In")) {
-                    UIPasteboard.general.string = BotConnectionSetup.prompt
-                    copiedPrompt = true
-                }
-                .buttonStyle(.bordered)
-                Button("Try Again") { model.scan() }.buttonStyle(.borderedProminent)
-            }
         case .outdated(let version):
             MoveToHermesNoticeScreen(
                 tint: .orange, title: String(localized: "Update Hermes first"),

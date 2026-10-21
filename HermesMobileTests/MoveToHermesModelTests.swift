@@ -99,11 +99,11 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(model.counts, .init(present: 0, toCopy: 1, overLimit: 0, unchecked: 1, drafts: 0))
     }
 
-    /// R1 and R3 are the host's own sign-in refusals; any other failure shows its advice inline.
-    /// A browser sign-in is never refused (#1266): its failure is advice like any other.
+    /// R3 is the host's own sign-in refusal; any other failure shows its advice inline. Neither a
+    /// browser sign-in (#1266) nor a dashboard without one (#1314) is refused.
     func testRefusalsComeFromTheHostSignInCheck() async throws {
         let cases: [(BotFailure, MoveToHermesModel.Screen?)] = [
-            (.unsupported, .refused(.noSignIn)), (.browserSignIn, nil),
+            (.unsupported, nil), (.browserSignIn, nil),
             (.outdated("0.20.9"), .refused(.outdated("0.20.9"))), (.rejected(401), nil)
         ]
         for (failure, expected) in cases {
