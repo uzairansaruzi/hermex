@@ -870,13 +870,51 @@ import XCTest
         }
     }
 
+    /// A request sent with the token a host restart replaced is refused while the sign-in another
+    /// refusal started is still checking the new token. It joins that sign-in and is resent with
+    /// the new token, which its refusal must not drop.
+    func testALate401DuringTheNewTokensCheckKeepsTheNewToken() async throws {
+        var token = "token-1", restarted = false
+        let http = HermesConnection(connection: openRecord, configuration: openHost(parking: { request in
+            guard restarted else { return false }
+            return request.url?.path == "/api/profiles/active"
+                || request.url?.path == "/api/sessions" && request.value(forHTTPHeaderField: "X-Hermes-Session-Token") == "token-1"
+        }) { token })
+        try await http.signIn()
+        HermesHostFixture.script { token = "token-2"; restarted = true }
+
+        let lateSent = expectation(description: "the late request at the host")
+        HermesHostFixture.onPark = { lateSent.fulfill() }
+        let lateRefused = expectation(description: "the late request refused")
+        let late = Task {
+            try await http.authorized(URLRequest(url: URL(string: "https://hermes.example/api/sessions")!)) { request, session in
+                let (_, response) = try await session.data(for: request)
+                guard (response as? HTTPURLResponse)?.statusCode != 401 else { lateRefused.fulfill(); throw BotFailure.rejected(401) }
+            }
+        }
+        await fulfillment(of: [lateSent], timeout: 2)
+        let checking = expectation(description: "the new token's check at the host")
+        HermesHostFixture.onPark = { checking.fulfill() }
+        let first = Task { try await http.data(.pushPairing) }
+        await fulfillment(of: [checking], timeout: 2)
+        HermesHostFixture.releaseParked(.json(401, .object(["detail": .string("Unauthorized")])), path: "/api/sessions")
+        await fulfillment(of: [lateRefused], timeout: 2)
+        HermesHostFixture.releaseParked(path: "/api/profiles/active")
+        _ = try await (first.value, late.value)
+
+        let sent = HermesHostFixture.requests.filter { $0.url?.path == "/api/sessions" }
+            .map { $0.value(forHTTPHeaderField: "X-Hermes-Session-Token") }
+        XCTAssertEqual(sent, ["token-1", "token-2"])
+    }
+
     private var openRecord: BotConnection {
         BotConnection(id: record.id, name: "Host", address: record.address, username: "", password: "")
     }
 
     /// An open 0.21.6 dashboard whose page carries `token()`, which every `/api/*` route but
-    /// the public status checks.
-    private func openHost(_ token: @escaping () -> String) -> URLSessionConfiguration {
+    /// the public status checks. It parks the `/api/*` requests `parking` names.
+    private func openHost(parking: @escaping (URLRequest) -> Bool = { _ in false },
+                          _ token: @escaping () -> String) -> URLSessionConfiguration {
         HermesHostFixture.configuration { request in
             switch request.url?.path {
             case "/api/status":
@@ -885,6 +923,7 @@ import XCTest
             case "/":
                 let page = #"<script>window.__HERMES_SESSION_TOKEN__="\#(token())";window.__HERMES_AUTH_REQUIRED__=false;</script>"#
                 return .body(200, Data(page.utf8))
+            case _ where parking(request): return .park
             case let path? where path.hasPrefix("/api/"):
                 return request.value(forHTTPHeaderField: "X-Hermes-Session-Token") == token()
                     ? nil : .json(401, .object(["detail": .string("Unauthorized")]))
@@ -946,9 +985,14 @@ final class HermesHostFixture: URLProtocol {
     static var requests: [URLRequest] { lock.withLock { log } }
     static func count(_ path: String) -> Int { requests.filter { $0.url?.path == path }.count }
 
-    /// Answers every parked request with `reply`, or with the host's ordinary reply when nil.
-    static func releaseParked(_ reply: Reply? = nil) {
-        let parked = lock.withLock { let parked = waiting; waiting = []; return parked }
+    /// Answers every parked request, or only those on `path`, with `reply`, or with the host's
+    /// ordinary reply when nil.
+    static func releaseParked(_ reply: Reply? = nil, path: String? = nil) {
+        let parked = lock.withLock {
+            let parked = waiting.filter { path == nil || $0.request.url?.path == path }
+            waiting.removeAll { parked.contains($0) }
+            return parked
+        }
         for fixture in parked where !fixture.stopped { fixture.respond(reply ?? ordinary(fixture.request)) }
     }
 

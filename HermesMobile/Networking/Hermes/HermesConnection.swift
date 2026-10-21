@@ -418,8 +418,9 @@ import OSLog
             return value
         } catch BotFailure.rejected(401) {
             try checkCurrent()
-            // The first reply to show the session expired drops it; later ones join the same sign-in.
-            if epoch == sentEpoch { isSignedIn = false; credential = nil }
+            // The first reply to show the session expired drops it; later ones join the same sign-in,
+            // even while it is still checking a new credential this reply must not drop.
+            if epoch == sentEpoch, isSignedIn { isSignedIn = false; credential = nil }
             try await signIn(deadline: deadline)
             try validateDispatch?()
             let value = try await perform(bearing(request), session)
