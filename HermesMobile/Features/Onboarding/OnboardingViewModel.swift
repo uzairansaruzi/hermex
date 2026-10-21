@@ -104,9 +104,10 @@ final class OnboardingViewModel {
     /// The last Connect found a webui server saved at the dashboard's address, which
     /// `connect(authManager:replacingWebuiServer:)` can replace (#1027).
     private(set) var offersWebuiReplace = false
-    /// The detected dashboard signs in through the browser (#708), so it asks for no
-    /// username or password and Connect shows its sign-in page.
-    private(set) var signsInWithBrowser = false
+    /// How the detected dashboard signs in: a password, the browser (#708), whose page
+    /// Connect shows, or none (#1314), which Connect signs in to as it is. Only the first asks
+    /// for a username and password.
+    private(set) var signInMethod: HermesSignInMethod = .password
     /// `useMoveSourceHeaders` filled the move source's headers in, so the offer is gone.
     private(set) var usedMoveSourceHeaders = false
     var connectionMessage: String?
@@ -157,24 +158,25 @@ final class OnboardingViewModel {
         return authStatus?.passwordAuthEnabled != false
     }
 
-    /// A detected dashboard's sign-in: its username and password, or its browser sign-in.
+    /// A detected dashboard's sign-in: its username and password, its browser sign-in, or the
+    /// warning that it has none.
     var showsHermesSignIn: Bool { detectedKind == .hermes }
 
     /// The username field and the saved sign-ins to copy, for a dashboard with a password.
-    var showsHermesCredentials: Bool { showsHermesSignIn && !signsInWithBrowser }
+    var showsHermesCredentials: Bool { showsHermesSignIn && signInMethod == .password }
 
     /// The dashboard's password, or the webui's as today: onboarding shows it until a
     /// webui says it needs none, Add Server once a webui asks for one.
     var showsPasswordField: Bool {
-        if detectedKind == .hermes { return !signsInWithBrowser }
+        if detectedKind == .hermes { return signInMethod == .password }
         return entry == .onboarding ? isPasswordRequired : webuiNeedsPassword
     }
 
-    /// Off without an address, and for a detected dashboard until both its username and
-    /// password are filled in.
+    /// Off without an address, and for a detected dashboard with a password until both its
+    /// username and password are filled in.
     var canSubmit: Bool {
         guard !serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        guard detectedKind == .hermes, !signsInWithBrowser else { return true }
+        guard detectedKind == .hermes, signInMethod == .password else { return true }
         return !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
     }
 
@@ -190,7 +192,7 @@ final class OnboardingViewModel {
     /// signs in once, the new server gets its own record and UUID, and the webui server's
     /// connection stays as it is.
     func useSavedSignIn(_ signIn: AuthManager.SavedHermesSignIn) {
-        guard !isConnectionLocked, detectedKind == .hermes, !signsInWithBrowser else { return }
+        guard !isConnectionLocked, detectedKind == .hermes, signInMethod == .password else { return }
         let offers = savedSignIns
         // Another saved sign-in's copies go first, so none of them outlives its offer.
         dropReusedSignIn()
@@ -304,7 +306,7 @@ final class OnboardingViewModel {
         authStatus = nil
         offersWebuiReplace = false
         detectedKind = nil
-        signsInWithBrowser = false
+        signInMethod = .password
         savedSignIns = []
         probedConnectionIdentity = nil
     }
@@ -364,15 +366,15 @@ final class OnboardingViewModel {
     // MARK: - Server kind (#900)
 
     private enum Detection {
-        /// A dashboard, and whether it signs in through the browser.
-        case hermes(URL, signsInWithBrowser: Bool)
+        /// A dashboard, and how it signs in.
+        case hermes(URL, HermesSignInMethod)
         case notHermes
         /// A Host-header 400 or an access proxy's own sign-in, with its advice.
         case refused(String)
     }
 
     /// Reads the public `/api/status` at the typed address with the form's headers, on a
-    /// connection of its own. A JSON object carrying `auth_required` is a Hermes dashboard.
+    /// connection of its own. A JSON object carrying the `auth_required` flag is a Hermes dashboard.
     /// A Host-header 400, or something in front of the host that wants its own sign-in
     /// (`.blocked`), shows its advice as is. Anything else, including an address or headers
     /// only the webui path accepts, is left to the webui path (#900, Decision 1).
@@ -383,8 +385,8 @@ final class OnboardingViewModel {
                                   headers: headers.values.isEmpty ? nil : headers.values)
         do {
             let status = try await HermesConnection(connection: probe, configuration: hermesConfiguration()).status()
-            guard status.fields?["auth_required"] != nil else { return .notHermes }
-            return .hermes(address, signsInWithBrowser: HermesBrowserSignIn.isRequired(by: status))
+            guard let method = HermesSignInMethod(status) else { return .notHermes }
+            return .hermes(address, method)
         } catch let failure as BotFailure where failure == .blocked || failure == .rejected(400) {
             return .refused(BotConnectionAdvice.message(for: failure, address: address))
         } catch {
@@ -393,13 +395,13 @@ final class OnboardingViewModel {
     }
 
     /// Callers have just checked that the inputs are the ones probed.
-    private func foundHermes(at address: URL, signsInWithBrowser: Bool, authManager: AuthManager) {
+    private func foundHermes(at address: URL, signInMethod: HermesSignInMethod, authManager: AuthManager) {
         authStatus = nil
         detectedKind = .hermes
-        self.signsInWithBrowser = signsInWithBrowser
+        self.signInMethod = signInMethod
         probedConnectionIdentity = currentConnectionIdentity()
-        // A webui server's saved password is no use to a browser sign-in.
-        savedSignIns = signsInWithBrowser ? [] : authManager.savedHermesSignIns(at: address)
+        // A webui server's saved password is no use to a browser sign-in, or to no sign-in.
+        savedSignIns = signInMethod == .password ? authManager.savedHermesSignIns(at: address) : []
     }
 
     func testConnection(authManager: AuthManager) async {
@@ -420,8 +422,8 @@ final class OnboardingViewModel {
         let detection = await detectHermes()
         guard token == operationGeneration, identityAtStart == currentConnectionIdentity() else { return }
         switch detection {
-        case .hermes(let address, let browser):
-            foundHermes(at: address, signsInWithBrowser: browser, authManager: authManager)
+        case .hermes(let address, let method):
+            foundHermes(at: address, signInMethod: method, authManager: authManager)
             return
         case .refused(let advice):
             forgetProbe()
@@ -501,9 +503,9 @@ final class OnboardingViewModel {
             let detection = await detectHermes()
             guard token == operationGeneration, identityAtStart == currentConnectionIdentity() else { return nil }
             switch detection {
-            case .hermes(let address, let browser):
-                // Its username and password, or its browser sign-in, appear now; the next Connect signs in.
-                foundHermes(at: address, signsInWithBrowser: browser, authManager: authManager)
+            case .hermes(let address, let method):
+                // Its sign-in, or the warning that it has none, appears now; the next Connect signs in.
+                foundHermes(at: address, signInMethod: method, authManager: authManager)
                 return nil
             case .refused(let advice):
                 forgetProbe()
@@ -534,8 +536,8 @@ final class OnboardingViewModel {
         }
     }
 
-    /// Signs the detected dashboard in once with the form's username, password and headers
-    /// on a connection of its own, then adds it as a Hermes server, switching to it unless a
+    /// Signs the detected dashboard in once with the form's username, password and headers,
+    /// or with no credentials when it has no sign-in, on a connection of its own, then adds it as a Hermes server, switching to it unless a
     /// move opened the form. A failure shows `BotConnectionAdvice`'s copy, and nothing is
     /// retried (#884). A webui server saved at the address is replaced only when
     /// `replacingWebuiServer`, and only after the sign-in succeeded; otherwise it stops here
@@ -547,7 +549,7 @@ final class OnboardingViewModel {
         let headers: [CustomHeader]
         do {
             address = try BotConnection.address(serverURLString)
-            headers = try HermesHeaders(sentHeaders, signsInWithBrowser: signsInWithBrowser).values
+            headers = try HermesHeaders(sentHeaders, signsInWithBrowser: signInMethod == .browser).values
         } catch {
             errorMessage = error.localizedDescription
             return nil
@@ -560,14 +562,16 @@ final class OnboardingViewModel {
                 : String(localized: "This server is already configured.")
             return nil
         }
+        // Hidden fields send nothing, whatever was typed before the dashboard answered.
+        let isOpen = signInMethod == .open
         let candidate = BotConnection(
             id: UUID(), name: address.host ?? "Hermes", address: address,
-            username: username.trimmingCharacters(in: .whitespacesAndNewlines), password: password,
+            username: isOpen ? "" : username.trimmingCharacters(in: .whitespacesAndNewlines), password: isOpen ? "" : password,
             installID: reusedSignIn?.connection.installID, headers: headers.isEmpty ? nil : headers
         )
         let http = HermesConnection(connection: candidate, configuration: hermesConfiguration())
         do {
-            if signsInWithBrowser {
+            if signInMethod == .browser {
                 try await HermesBrowserSignIn.signIn(http, presenter: browser)
             } else {
                 try await http.signIn()

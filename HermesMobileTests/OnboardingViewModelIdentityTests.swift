@@ -453,7 +453,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
 
         await form.connect(authManager: manager)
         XCTAssertTrue(form.showsHermesSignIn)
-        XCTAssertTrue(form.signsInWithBrowser)
+        XCTAssertEqual(form.signInMethod, .browser)
         XCTAssertFalse(form.showsHermesCredentials)
         XCTAssertFalse(form.showsPasswordField)
         XCTAssertTrue(form.canSubmit, "No username or password to fill in")
@@ -467,6 +467,39 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         let saved = try XCTUnwrap(BotConnectionStore(keychain: keychain).load(server: server))
         XCTAssertEqual(saved.oauth, HermesOAuth(provider: "nous", userID: "u1", refreshToken: "refresh-1"))
         XCTAssertEqual(saved.hermesVersion, "0.21.5")
+    }
+
+    /// A dashboard with no sign-in (#1314) asks for no username or password, and Connect adds it
+    /// with none saved, whatever was typed before it answered.
+    func testAnOpenHostIsAddedWithoutCredentials() async throws {
+        let keychain = InMemoryKeychainStore()
+        let gatekeeper = OnboardingGateKeeper()
+        gatekeeper.drainEverything()
+        let manager = makeGatedManager(GatedAuthAPIClient(gatekeeper: gatekeeper, outcome: .succeed(
+            AuthStatusResponse(authEnabled: false))), keychain: keychain)
+        let form = makeHermesForm(entry: .addServer) { request in
+            switch request.url?.path {
+            case "/api/status": return .json(200, .object(["auth_required": .bool(false), "version": .string("0.21.6")]))
+            case "/": return .body(200, Data(#"<script>window.__HERMES_SESSION_TOKEN__="token-1";</script>"#.utf8))
+            default: return nil
+            }
+        }
+        form.serverURLString = "hermes.example"
+        form.username = "typed"
+
+        await form.connect(authManager: manager)
+        XCTAssertEqual(form.signInMethod, .open)
+        XCTAssertFalse(form.showsHermesCredentials)
+        XCTAssertFalse(form.showsPasswordField)
+        XCTAssertTrue(form.canSubmit, "No username or password to fill in")
+        let added = await form.connect(authManager: manager)
+
+        let server = URL(string: "https://hermes.example")!
+        XCTAssertEqual(added, server)
+        let saved = try XCTUnwrap(BotConnectionStore(keychain: keychain).load(server: server))
+        XCTAssertEqual([saved.username, saved.password], ["", ""])
+        XCTAssertNil(saved.oauth)
+        XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
     }
 
     /// Opened from Move to Hermes, a browser sign-in host is no longer refused (#1266): it signs
@@ -490,7 +523,7 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         })
         form.serverURLString = "hermes.example"
         await form.connect(authManager: manager)
-        XCTAssertTrue(form.signsInWithBrowser)
+        XCTAssertEqual(form.signInMethod, .browser)
 
         let presenter = HermesBrowserSignIn.Presenter { url in _ = try await HermesBrowserSignInTests.callback(url, code: "code-1") }
         let added = await form.connect(authManager: manager, browser: presenter)

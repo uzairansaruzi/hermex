@@ -171,9 +171,12 @@ struct OnboardingConnectPage: View {
                 tint: .white.opacity(0.7),
                 showsProgress: true
             )
+        } else if viewModel.showsHermesSignIn, viewModel.signInMethod == .open {
+            OnboardingStatusBanner(text: HermesSignInMethod.openWarning, systemImage: "exclamationmark.triangle.fill",
+                                   tint: .orange)
         } else if viewModel.showsHermesSignIn {
             OnboardingStatusBanner(
-                text: viewModel.signsInWithBrowser
+                text: viewModel.signInMethod == .browser
                     ? String(localized: "Hermes dashboard found. It signs in through your browser.")
                     : String(localized: "Hermes dashboard found. Sign in with your dashboard username and password."),
                 systemImage: "checkmark.circle.fill",

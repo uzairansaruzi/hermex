@@ -54,9 +54,17 @@ import Observation
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .accessibilityIdentifier("hermes-connection-address")
                 }
-                if setup.signsInWithBrowser {
+                switch setup.signInMethod {
+                case .browser:
                     Text("This server signs in through your browser.").foregroundStyle(.secondary)
-                } else {
+                case .open:
+                    Label {
+                        Text(HermesSignInMethod.openWarning)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    }
+                    .accessibilityIdentifier("hermes-open-dashboard-warning")
+                case .password:
                     TextField("Username", text: $setup.username).textContentType(.username)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                     SecureField("Password", text: $setup.password).textContentType(.password)
@@ -169,7 +177,7 @@ import Observation
 
     private var connectTitle: String {
         if setup.isConnecting { return String(localized: "Connecting…") }
-        return setup.signsInWithBrowser ? String(localized: "Sign In with Browser") : String(localized: "Connect")
+        return setup.signInMethod == .browser ? String(localized: "Sign In with Browser") : String(localized: "Connect")
     }
 
     private var browser: HermesBrowserSignIn.Presenter { HermesBrowserSignIn.Presenter(webAuthenticationSession) }
@@ -398,24 +406,25 @@ extension BotHostStatus {
 
     var canConnect: Bool {
         guard !isConnecting, headerRejection == nil else { return false }
-        if signsInWithBrowser { return true }
+        if signInMethod != .password { return true }
         return !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
     }
 
-    /// Whether this Hermes server signs in through the browser (#708): its host's status says
-    /// so, or, until the status answers, its saved sign-in did. Only a Hermes server's own
-    /// sign-in; a webui server's Bots connection keeps the password form.
-    var signsInWithBrowser: Bool {
-        guard isServerSignIn else { return false }
-        if case .reachable(let status) = hostStatus { return status.signInMethod == .browser }
-        return saved?.oauth != nil
+    /// How this Hermes server signs in: as its host's status says, or, until the status answers,
+    /// as its saved sign-in did, through the browser (#708) or without credentials (#1314). Only a
+    /// Hermes server's own sign-in; a webui server's Bots connection keeps the password form.
+    var signInMethod: HermesSignInMethod {
+        guard isServerSignIn else { return .password }
+        if case .reachable(let status) = hostStatus { return status.signInMethod }
+        if saved?.oauth != nil { return .browser }
+        return saved?.hasNoCredentials == true ? .open : .password
     }
 
     /// Why the edited headers can't be sent to Hermes (`HermesHeaders`), shown under the
     /// Connection Headers row; Connect stays off until it is fixed. Nil when they can.
     var headerRejection: String? {
-        do { _ = try HermesHeaders(headers.sanitizedForStorage(), signsInWithBrowser: signsInWithBrowser); return nil }
+        do { _ = try HermesHeaders(headers.sanitizedForStorage(), signsInWithBrowser: signInMethod == .browser); return nil }
         catch { return error.localizedDescription }
     }
 
@@ -448,8 +457,8 @@ extension BotHostStatus {
         notificationRelay = relay(server)
     }
 
-    /// A signed-out Hermes server's status read failed, so the form can't tell whether it signs
-    /// in through the browser: the sign-in section offers to read it again, such as after the
+    /// A signed-out Hermes server's status read failed, so the form can't tell how it signs in:
+    /// the sign-in section offers to read it again, such as after the
     /// network or the Connection Headers change.
     var offersStatusRetry: Bool {
         guard isServerSignIn, saved == nil, case .unreachable = hostStatus else { return false }
@@ -465,7 +474,7 @@ extension BotHostStatus {
     }
 
     /// Reads the saved host's public status once, with its saved headers, or a signed-out
-    /// Hermes server's with the form's, which says whether it signs in through the browser.
+    /// Hermes server's with the form's, which says how it signs in.
     /// Nothing retries; a newer check, `cancel()` or a changed saved address drops a late reply.
     func checkStatus() async {
         guard let checked = statusAddress else { hostStatus = nil; return }
@@ -486,10 +495,12 @@ extension BotHostStatus {
     /// otherwise the old connection's data is discarded. An unchanged address must still
     /// reach the saved install before the password is sent. `replacingHost` is the user's
     /// answer to `.differentHost`: it drops that expectation and always starts a new connection.
-    /// A server that signs in through the browser shows its host's page with `browser` instead.
+    /// A server that signs in through the browser shows its host's page with `browser` instead,
+    /// and one without sign-in saves no username or password.
     func connect(replacingHost: Bool = false, browser: HermesBrowserSignIn.Presenter = .unavailable) async -> Bool {
         guard !isConnecting, !Task.isCancelled else { return false }
-        if signsInWithBrowser { return await connectThroughBrowser(browser, replacingHost: replacingHost) }
+        if signInMethod == .browser { return await connectThroughBrowser(browser, replacingHost: replacingHost) }
+        let isOpen = signInMethod == .open
         let id = UUID(); attempt = id; isConnecting = true; errorMessage = nil; differentHostAddress = nil
         defer { if attempt == id { isConnecting = false; client = nil; attempt = nil } }
         var attempted: URL?
@@ -497,11 +508,12 @@ extension BotHostStatus {
             let admitted = try HermesHeaders(headers.sanitizedForStorage()).values
             let sent = admitted.isEmpty ? nil : admitted
             let url = isServerSignIn ? server : try BotConnection.address(address); attempted = url
-            let account = username.trimmingCharacters(in: .whitespacesAndNewlines)
+            let account = isOpen ? "" : username.trimmingCharacters(in: .whitespacesAndNewlines)
+            let secret = isOpen ? "" : password
             let label = name.isEmpty ? (url.host ?? "Hermes") : name
             let expected = replacingHost || saved?.address != url ? nil : saved?.installID
             let wire = makeWire(BotConnection(id: UUID(), name: label, address: url, username: account,
-                                              password: password, installID: expected, headers: sent))
+                                              password: secret, installID: expected, headers: sent))
             client = wire
             defer { wire.close() }
             try await wire.connect()
@@ -511,7 +523,7 @@ extension BotHostStatus {
             let sameAccount = saved?.address == url && saved?.username == account
             let kept = replacingHost ? nil : (sameInstall || sameAccount ? saved : nil)
             let candidate = BotConnection(id: kept?.id ?? UUID(), name: label, address: url, username: account,
-                password: password, hermesVersion: wire.serverVersion, installID: live ?? kept?.installID, headers: sent)
+                password: secret, hermesVersion: wire.serverVersion, installID: live ?? kept?.installID, headers: sent)
             let result = try await wire.call(.profilesList(includeSessions: true))
             guard attempt == id, !Task.isCancelled else { return false }
             guard result["profiles"].list != nil else { throw BotFailure.unsupported }

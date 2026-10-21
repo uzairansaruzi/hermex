@@ -225,9 +225,18 @@ struct AddServerView: View {
         if form.isWorking {
             SettingsFootnote(String(localized: "Checking server…"))
         } else if form.showsHermesSignIn, form.errorMessage == nil {
-            SettingsFootnote(form.signsInWithBrowser
-                ? String(localized: "Hermes dashboard found. It signs in through your browser.")
-                : String(localized: "Hermes dashboard found. Sign in with your dashboard username and password."))
+            switch form.signInMethod {
+            case .password:
+                SettingsFootnote(String(localized: "Hermes dashboard found. Sign in with your dashboard username and password."))
+            case .browser:
+                SettingsFootnote(String(localized: "Hermes dashboard found. It signs in through your browser."))
+            case .open:
+                Label(HermesSignInMethod.openWarning, systemImage: "exclamationmark.triangle.fill")
+                    .font(AppFont.footnote())
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("hermes-open-dashboard-warning")
+            }
         } else if form.showsPasswordField, form.detectedKind != .hermes, form.errorMessage == nil {
             SettingsFootnote(String(localized: "This server requires a password."))
         }

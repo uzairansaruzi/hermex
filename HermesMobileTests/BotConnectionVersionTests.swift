@@ -267,7 +267,7 @@ final class BotConnectionVersionTests: XCTestCase {
             } })
         model.load()
         await model.checkStatus()
-        XCTAssertTrue(model.signsInWithBrowser)
+        XCTAssertEqual(model.signInMethod, .browser)
         XCTAssertTrue(model.canConnect, "No username or password to fill in")
 
         let presenter = HermesBrowserSignIn.Presenter { url in _ = try await HermesBrowserSignInTests.callback(url, code: "code-1") }
@@ -290,14 +290,14 @@ final class BotConnectionVersionTests: XCTestCase {
         model.load()
         await model.checkStatus()
         XCTAssertTrue(model.offersStatusRetry)
-        XCTAssertFalse(model.signsInWithBrowser)
+        XCTAssertEqual(model.signInMethod, .password)
 
         var status = BotHostStatus(HermesBrowserSignInTests.browserStatus)
         status.signInMethod = .browser
         reply = .success(status)
         await model.checkStatus()
         XCTAssertFalse(model.offersStatusRetry)
-        XCTAssertTrue(model.signsInWithBrowser)
+        XCTAssertEqual(model.signInMethod, .browser)
     }
 
     func testFailedLoginAndSaveNeverReportSuccess() async throws {

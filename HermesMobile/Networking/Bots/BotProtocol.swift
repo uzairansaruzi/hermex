@@ -322,6 +322,11 @@ enum HermesSignInMethod: Equatable {
     /// the dashboard's page carries, and anyone who reaches the address can do the same.
     case open
 
+    /// Shown wherever such a dashboard is connected or saved, in place of its sign-in.
+    static var openWarning: String {
+        String(localized: "This dashboard has no password. Anyone who can reach this address can use your agent. To require one, set dashboard.public_url on the host and turn on its password.")
+    }
+
     /// Nil for a status without an `auth_required` flag, which is no dashboard Hermex knows.
     init?(_ status: BotJSON) {
         switch status["auth_required"].flag {
