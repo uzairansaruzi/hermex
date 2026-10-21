@@ -227,6 +227,15 @@ struct MoveToHermesSheet: View {
                     Text(review.version.map { String(localized: "Signed in to \(destination) as \(review.connection.username). Hermes \($0).") }
                          ?? String(localized: "Signed in to \(destination) as \(review.connection.username)."))
                         .foregroundStyle(.secondary)
+                    // The move copies these chats onto a host anyone who reaches it can use (#1314).
+                    if review.connection.hasNoCredentials {
+                        Label {
+                            Text(HermesSignInMethod.openWarning)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                        }
+                        .accessibilityIdentifier("hermes-open-dashboard-warning")
+                    }
                     if let only = review.scan.onlyProfile {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Only “\(only)” was checked.").fontWeight(.semibold)
