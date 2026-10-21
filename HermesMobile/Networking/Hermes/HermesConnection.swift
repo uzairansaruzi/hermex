@@ -84,8 +84,8 @@ import OSLog
     private var epoch = 0
     private var signInTask: Task<Void, Error>?
     private(set) var isRetired = false
-    /// Called with `.rejected(401)` when the login step answers 401, with `.signInRequired`
-    /// when a connection saved without credentials meets a host that now requires a sign-in, and
+    /// Called with `.rejected(401)` when the login step answers 401, with `.signInChanged`
+    /// when the saved sign-in no longer matches the host's (`BotConnection.hasNoCredentials`), and
     /// with `.signInExpired` when the host refuses a browser sign-in's refresh token, before the
     /// failure reaches any consumer, including the re-sign-in a signed-in 401 starts.
     /// `HermesConnections` sets it so `AuthManager` can sign a Hermes server out (#899); nothing
@@ -207,6 +207,7 @@ import OSLog
                 try connection.requireSameInstall(serverInstallID)
                 guard let method = HermesSignInMethod(status) else { throw BotFailure.unsupported }
                 if method == .open {
+                    guard connection.hasNoCredentials else { throw BotFailure.signInChanged }
                     step = "page"
                     let page = try await Self.send(prepared(try HermesREST.dashboardPage.request(base: connection.address)),
                                                    on: session, accepting: 200..<201, redirectGuard: redirectGuard)
@@ -231,7 +232,7 @@ import OSLog
                     }
                 } else {
                     step = "login"
-                    guard !connection.hasNoCredentials else { throw BotFailure.signInRequired }
+                    guard !connection.hasNoCredentials else { throw BotFailure.signInChanged }
                     // A browser-only host signs in from its form (`HermesBrowserSignIn`), never here.
                     guard status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.browserSignIn }
                     _ = try await decoded(.login(username: connection.username, password: connection.password), on: session)
@@ -255,7 +256,7 @@ import OSLog
                     HermesConnectionLog.logger.error("c\(self.serial, privacy: .public): sign-in failed at \(failedStep, privacy: .public): \(reason, privacy: .public)")
                     switch (failedStep, error as? BotFailure) {
                     case ("login", .rejected(401)?): onLoginRejected?(.rejected(401))
-                    case ("login", .signInRequired?): onLoginRejected?(.signInRequired)
+                    case (_, .signInChanged?): onLoginRejected?(.signInChanged)
                     case ("refresh", .signInExpired?): onLoginRejected?(.signInExpired)
                     default: break
                     }

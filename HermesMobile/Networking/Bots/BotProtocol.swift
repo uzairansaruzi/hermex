@@ -62,9 +62,10 @@ enum BotFailure: Error, Equatable, LocalizedError {
     /// `/api/status` reported this release, older than `HermesCompatibility.minimumVersion`,
     /// so sign-in stopped before the password. Permanent.
     case outdated(String)
-    /// A connection saved without credentials for a dashboard that had no sign-in (#1314)
-    /// met one that now requires a sign-in, by password or browser. The user has to sign in. Permanent.
-    case signInRequired
+    /// The saved sign-in no longer matches the host's (#1314): a connection saved without
+    /// credentials met a sign-in, by password or browser, or one saved with them met a dashboard
+    /// with none. The user has to sign in again, so the saved record says what the host asks. Permanent.
+    case signInChanged
     var errorDescription: String? {
         switch self {
         case .stale: return String(localized: "This action is no longer current. Refresh the conversation.")
@@ -87,7 +88,7 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .blocked: return String(localized: "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address.")
         case .browserSignIn: return String(localized: "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.")
         case .signInExpired: return String(localized: "Your Hermes sign-in expired. Sign in again.")
-        case .signInRequired: return String(localized: "This server now requires you to sign in.")
+        case .signInChanged: return String(localized: "This server’s sign-in changed. Sign in again to continue.")
         case .browserSignInFailed: return String(localized: "The browser sign-in didn't finish. Try again.")
         case .upgradeRefused: return String(localized: "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through.")
         case .outdated(let version):
@@ -113,7 +114,7 @@ enum BotConnectionAdvice {
     static func isRetryable(_ error: Error) -> Bool {
         switch error as? BotFailure {
         case .unsupported, .wrongIdentity, .differentHost, .invalidAddress, .notDashboard,
-             .blocked, .browserSignIn, .signInExpired, .signInRequired, .upgradeRefused, .outdated: return false
+             .blocked, .browserSignIn, .signInExpired, .signInChanged, .upgradeRefused, .outdated: return false
         case .rejected(-32601), .rejected(4090), .rejected(4130): return false
         case .rejected(408), .rejected(429): return true
         case .rejected(let code): return !(400..<500).contains(code)

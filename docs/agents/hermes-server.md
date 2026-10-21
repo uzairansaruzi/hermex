@@ -139,9 +139,10 @@ so both socket upgrades present the token as `?token=` with no subprotocol
 (`web_server_chat.py` `_ws_auth_reason`), each after a gated read. A host restart replaces
 the token: the 401 that follows reads the page again and resends once, as for any
 signed-in 401, and the read before an upgrade does the same, since a refused upgrade
-can't say why. A record saved without credentials meeting the host with its sign-in on
-fails at the login step with `.signInRequired`, which signs the active Hermes server
-out to its sign-in form, as a refused password does.
+can't say why. A record saved without credentials meeting the host with its sign-in on,
+or one saved with credentials meeting it without, fails with `.signInChanged`, which signs
+the active Hermes server out to its sign-in form, as a refused password does. The form saves
+what the host now asks for, so only a record without credentials shows the open warning.
 
 Debug and Hermex Branch builds have Settings → Testing → "Browser sign-in on password
 hosts" (`HermesBrowserSignIn.isForcedForTesting`): a host that also offers `basic` then

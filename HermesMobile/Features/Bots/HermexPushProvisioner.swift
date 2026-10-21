@@ -751,7 +751,7 @@ import UserNotifications
             return String(localized: "This Hermes host rejected the saved sign-in. Update the Hermes connection, then try again.")
         case BotFailure.differentHost:
             return BotFailure.differentHost.localizedDescription
-        case BotFailure.blocked, BotFailure.browserSignIn, BotFailure.signInExpired, BotFailure.signInRequired,
+        case BotFailure.blocked, BotFailure.browserSignIn, BotFailure.signInExpired, BotFailure.signInChanged,
              BotFailure.outdated:
             return error.localizedDescription
         case BotFailure.rejected(let status):

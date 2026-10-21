@@ -850,11 +850,15 @@ import XCTest
         XCTAssertEqual(reconnect.url?.absoluteString, "wss://hermes.example/api/ws?token=token-2")
     }
 
-    /// A connection saved for an open dashboard meets the same host with its sign-in on, by
-    /// password or browser only: it reports a refused sign-in so the server's form opens.
-    func testAConnectionSavedWithoutCredentialsAsksForASignInOnceTheHostDoes() async throws {
+    /// A saved sign-in that no longer matches its host reports a refused sign-in, so the server's
+    /// form opens and asks for whatever the host now wants: a record saved for an open dashboard
+    /// meeting its sign-in, by password or browser only, and a password record meeting an open
+    /// dashboard, whose warning only a record without credentials shows.
+    func testASavedSignInThatNoLongerMatchesTheHostAsksForANewSignIn() async throws {
         let server = URL(string: "https://hermes.example")!
-        for status in [nil, HermesBrowserSignInTests.browserStatus] {
+        let open: BotJSON = .object(["auth_required": .bool(false), "auth_providers": .array([]),
+                                     "auth_flows": .array([]), "version": .string("0.21.6")])
+        for (saved, status) in [(openRecord, nil), (openRecord, HermesBrowserSignInTests.browserStatus), (record, open)] {
             HermesHostFixture.reset()
             let connections = HermesConnections(configuration: {
                 HermesHostFixture.configuration { request in
@@ -863,9 +867,9 @@ import XCTest
             })
             var rejected: [BotFailure] = []
             connections.onSignInRejected = { _, failure in rejected.append(failure) }
-            do { try await connections.connection(for: openRecord, server: server).signIn(); XCTFail("The host asks for a sign-in") }
-            catch { XCTAssertEqual(error as? BotFailure, .signInRequired) }
-            XCTAssertEqual(rejected, [.signInRequired])
+            do { try await connections.connection(for: saved, server: server).signIn(); XCTFail("The sign-in no longer matches") }
+            catch { XCTAssertEqual(error as? BotFailure, .signInChanged) }
+            XCTAssertEqual(rejected, [.signInChanged])
             XCTAssertEqual(HermesHostFixture.requests.map(\.url?.path), ["/api/status"])
         }
     }
