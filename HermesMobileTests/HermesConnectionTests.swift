@@ -850,17 +850,24 @@ import XCTest
         XCTAssertEqual(reconnect.url?.absoluteString, "wss://hermes.example/api/ws?token=token-2")
     }
 
-    /// A connection saved for an open dashboard meets the same host with its sign-in on: it
-    /// asks for a password, reporting it as a refused sign-in so the server's form opens.
-    func testAConnectionSavedWithoutCredentialsAsksForAPasswordOnceTheHostDoes() async throws {
+    /// A connection saved for an open dashboard meets the same host with its sign-in on, by
+    /// password or browser only: it reports a refused sign-in so the server's form opens.
+    func testAConnectionSavedWithoutCredentialsAsksForASignInOnceTheHostDoes() async throws {
         let server = URL(string: "https://hermes.example")!
-        let connections = HermesConnections(configuration: { HermesHostFixture.configuration { _ in nil } })
-        var rejected: [BotFailure] = []
-        connections.onSignInRejected = { _, failure in rejected.append(failure) }
-        do { try await connections.connection(for: openRecord, server: server).signIn(); XCTFail("The host asks for a password") }
-        catch { XCTAssertEqual(error as? BotFailure, .passwordRequired) }
-        XCTAssertEqual(rejected, [.passwordRequired])
-        XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
+        for status in [nil, HermesBrowserSignInTests.browserStatus] {
+            HermesHostFixture.reset()
+            let connections = HermesConnections(configuration: {
+                HermesHostFixture.configuration { request in
+                    request.url?.path == "/api/status" ? status.map { .json(200, $0) } : nil
+                }
+            })
+            var rejected: [BotFailure] = []
+            connections.onSignInRejected = { _, failure in rejected.append(failure) }
+            do { try await connections.connection(for: openRecord, server: server).signIn(); XCTFail("The host asks for a sign-in") }
+            catch { XCTAssertEqual(error as? BotFailure, .passwordRequired) }
+            XCTAssertEqual(rejected, [.passwordRequired])
+            XCTAssertEqual(HermesHostFixture.requests.map(\.url?.path), ["/api/status"])
+        }
     }
 
     private var openRecord: BotConnection {

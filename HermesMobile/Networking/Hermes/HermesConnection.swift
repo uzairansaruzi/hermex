@@ -85,7 +85,7 @@ import OSLog
     private var signInTask: Task<Void, Error>?
     private(set) var isRetired = false
     /// Called with `.rejected(401)` when the login step answers 401, with `.passwordRequired`
-    /// when a connection saved without credentials meets a host that now asks for them, and
+    /// when a connection saved without credentials meets a host that now requires a sign-in, and
     /// with `.signInExpired` when the host refuses a browser sign-in's refresh token, before the failure reaches any
     /// consumer, including the re-sign-in a signed-in 401 starts. `HermesConnections` sets it
     /// so `AuthManager` can sign a Hermes server out (#899); nothing here remembers it.
@@ -229,11 +229,12 @@ import OSLog
                         throw BotFailure.wrongIdentity
                     }
                 } else {
+                    step = "login"
+                    // Saved for a dashboard that had no sign-in, which it now has, by password or browser:
+                    // the server's sign-in form asks for whichever its status names.
+                    guard !connection.hasNoCredentials else { throw BotFailure.passwordRequired }
                     // A browser-only host signs in from its form (`HermesBrowserSignIn`), never here.
                     guard status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.browserSignIn }
-                    step = "login"
-                    // Saved for a dashboard that had no sign-in, which it now has.
-                    guard !connection.hasNoCredentials else { throw BotFailure.passwordRequired }
                     _ = try await decoded(.login(username: connection.username, password: connection.password), on: session)
                     try checkCurrent()
                     step = "identity"

@@ -87,7 +87,7 @@ enum BotFailure: Error, Equatable, LocalizedError {
         case .blocked: return String(localized: "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address.")
         case .browserSignIn: return String(localized: "This Hermes host only offers sign-in with a browser, which Hermex doesn't support yet. To connect now, add a dashboard username and password on the host.")
         case .signInExpired: return String(localized: "Your Hermes sign-in expired. Sign in again.")
-        case .passwordRequired: return String(localized: "This server now asks for a username and password. Enter them to sign in.")
+        case .passwordRequired: return String(localized: "This server now requires you to sign in.")
         case .browserSignInFailed: return String(localized: "The browser sign-in didn't finish. Try again.")
         case .upgradeRefused: return String(localized: "Hermes accepted the sign-in, but the live connection was refused. If a proxy or tunnel sits in front of Hermes, turn on WebSocket support and let the Sec-WebSocket-Protocol header through.")
         case .outdated(let version):
