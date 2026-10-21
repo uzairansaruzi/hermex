@@ -84,11 +84,12 @@ import OSLog
     private var epoch = 0
     private var signInTask: Task<Void, Error>?
     private(set) var isRetired = false
-    /// Called with `.rejected(401)` when the login step answers 401, with `.passwordRequired`
+    /// Called with `.rejected(401)` when the login step answers 401, with `.signInRequired`
     /// when a connection saved without credentials meets a host that now requires a sign-in, and
-    /// with `.signInExpired` when the host refuses a browser sign-in's refresh token, before the failure reaches any
-    /// consumer, including the re-sign-in a signed-in 401 starts. `HermesConnections` sets it
-    /// so `AuthManager` can sign a Hermes server out (#899); nothing here remembers it.
+    /// with `.signInExpired` when the host refuses a browser sign-in's refresh token, before the
+    /// failure reaches any consumer, including the re-sign-in a signed-in 401 starts.
+    /// `HermesConnections` sets it so `AuthManager` can sign a Hermes server out (#899); nothing
+    /// here remembers it.
     var onLoginRejected: ((BotFailure) -> Void)?
     /// Called with the refresh token the host rotated the sent one into, before the new access
     /// token is used, even when this connection was retired meanwhile: the host has already
@@ -230,9 +231,7 @@ import OSLog
                     }
                 } else {
                     step = "login"
-                    // Saved for a dashboard that had no sign-in, which it now has, by password or browser:
-                    // the server's sign-in form asks for whichever its status names.
-                    guard !connection.hasNoCredentials else { throw BotFailure.passwordRequired }
+                    guard !connection.hasNoCredentials else { throw BotFailure.signInRequired }
                     // A browser-only host signs in from its form (`HermesBrowserSignIn`), never here.
                     guard status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.browserSignIn }
                     _ = try await decoded(.login(username: connection.username, password: connection.password), on: session)
@@ -249,7 +248,6 @@ import OSLog
                 let release = serverVersion ?? "unreported"
                 HermesConnectionLog.logger.notice("c\(self.serial, privacy: .public): signed in, release \(release, privacy: .public)")
             } catch {
-                // A failed sign-in keeps no token, so the next one refreshes or reads the page.
                 credential = nil
                 // A retired connection has already logged that it was retired.
                 if !isRetired {
@@ -257,7 +255,7 @@ import OSLog
                     HermesConnectionLog.logger.error("c\(self.serial, privacy: .public): sign-in failed at \(failedStep, privacy: .public): \(reason, privacy: .public)")
                     switch (failedStep, error as? BotFailure) {
                     case ("login", .rejected(401)?): onLoginRejected?(.rejected(401))
-                    case ("login", .passwordRequired?): onLoginRejected?(.passwordRequired)
+                    case ("login", .signInRequired?): onLoginRejected?(.signInRequired)
                     case ("refresh", .signInExpired?): onLoginRejected?(.signInExpired)
                     default: break
                     }
@@ -419,7 +417,7 @@ import OSLog
         } catch BotFailure.rejected(401) {
             try checkCurrent()
             // The first reply to show the session expired drops it; later ones join the same sign-in,
-            // even while it is still checking a new credential this reply must not drop.
+            // even one still checking a new credential, which a late reply must not drop.
             if epoch == sentEpoch, isSignedIn { isSignedIn = false; credential = nil }
             try await signIn(deadline: deadline)
             try validateDispatch?()

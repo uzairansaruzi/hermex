@@ -225,7 +225,6 @@ struct MoveToHermesSheet: View {
             List {
                 Section {
                     Group {
-                        // A dashboard with no password has no account to name.
                         if review.connection.hasNoCredentials {
                             Text(review.version.map { String(localized: "Signed in to \(destination). Hermes \($0).") }
                                  ?? String(localized: "Signed in to \(destination)."))
@@ -235,7 +234,6 @@ struct MoveToHermesSheet: View {
                         }
                     }
                     .foregroundStyle(.secondary)
-                    // The move copies these chats onto a host anyone who reaches it can use (#1314).
                     if review.connection.hasNoCredentials {
                         OpenDashboardWarning()
                     }

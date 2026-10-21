@@ -140,7 +140,7 @@ so both socket upgrades present the token as `?token=` with no subprotocol
 the token: the 401 that follows reads the page again and resends once, as for any
 signed-in 401, and the read before an upgrade does the same, since a refused upgrade
 can't say why. A record saved without credentials meeting the host with its sign-in on
-fails at the login step with `.passwordRequired`, which signs the active Hermes server
+fails at the login step with `.signInRequired`, which signs the active Hermes server
 out to its sign-in form, as a refused password does.
 
 Debug and Hermex Branch builds have Settings → Testing → "Browser sign-in on password

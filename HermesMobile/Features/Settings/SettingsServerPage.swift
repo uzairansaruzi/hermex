@@ -152,7 +152,6 @@ struct SettingsServerPage: View {
         } header: {
             Text("Server")
         } footer: {
-            // Kept beside the sign-in, so a dashboard without one is never a one-time notice (#1314).
             if hermesConnection?.hasNoCredentials == true {
                 OpenDashboardWarning()
             }

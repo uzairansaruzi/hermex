@@ -864,8 +864,8 @@ import XCTest
             var rejected: [BotFailure] = []
             connections.onSignInRejected = { _, failure in rejected.append(failure) }
             do { try await connections.connection(for: openRecord, server: server).signIn(); XCTFail("The host asks for a sign-in") }
-            catch { XCTAssertEqual(error as? BotFailure, .passwordRequired) }
-            XCTAssertEqual(rejected, [.passwordRequired])
+            catch { XCTAssertEqual(error as? BotFailure, .signInRequired) }
+            XCTAssertEqual(rejected, [.signInRequired])
             XCTAssertEqual(HermesHostFixture.requests.map(\.url?.path), ["/api/status"])
         }
     }

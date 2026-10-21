@@ -2987,7 +2987,7 @@ final class KanbanFeatureState {
         case .rejected, .invalidAddress:
             return .incompatibleContract
         case .stale, .unsupported, .missingChat, .wrongIdentity, .differentHost, .notDashboard, .blocked,
-             .browserSignIn, .signInExpired, .browserSignInFailed, .passwordRequired, .upgradeRefused, .outdated:
+             .browserSignIn, .signInExpired, .browserSignInFailed, .signInRequired, .upgradeRefused, .outdated:
             return .authenticationRequired
         }
     }

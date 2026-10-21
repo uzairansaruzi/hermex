@@ -366,7 +366,6 @@ final class OnboardingViewModel {
     // MARK: - Server kind (#900)
 
     private enum Detection {
-        /// A dashboard, and how it signs in.
         case hermes(URL, HermesSignInMethod)
         case notHermes
         /// A Host-header 400 or an access proxy's own sign-in, with its advice.
@@ -400,7 +399,6 @@ final class OnboardingViewModel {
         detectedKind = .hermes
         self.signInMethod = signInMethod
         probedConnectionIdentity = currentConnectionIdentity()
-        // A webui server's saved password is no use to a browser sign-in, or to no sign-in.
         savedSignIns = signInMethod == .password ? authManager.savedHermesSignIns(at: address) : []
     }
 
@@ -465,7 +463,7 @@ final class OnboardingViewModel {
     }
 
     /// Connect in onboarding, Add in Settings. The first one for an address finds out what
-    /// answers there; a dashboard then waits for its username and password. Returns the
+    /// answers there; a dashboard then waits for its sign-in, if it has one. Returns the
     /// server it added, or nil when nothing was added yet. Onboarding needs no result: the
     /// new server's sign-in replaces it. `replacingWebuiServer` is the confirmed Replace a
     /// saved webui server at a dashboard's address offers (`offersWebuiReplace`).
@@ -504,7 +502,6 @@ final class OnboardingViewModel {
             guard token == operationGeneration, identityAtStart == currentConnectionIdentity() else { return nil }
             switch detection {
             case .hermes(let address, let method):
-                // Its sign-in, or the warning that it has none, appears now; the next Connect signs in.
                 foundHermes(at: address, signInMethod: method, authManager: authManager)
                 return nil
             case .refused(let advice):
@@ -538,10 +535,11 @@ final class OnboardingViewModel {
 
     /// Signs the detected dashboard in once with the form's username, password and headers,
     /// or with no credentials when it has no sign-in, on a connection of its own, then adds it
-    /// as a Hermes server, switching to it unless a move opened the form. A failure shows `BotConnectionAdvice`'s copy, and nothing is
-    /// retried (#884). A webui server saved at the address is replaced only when
-    /// `replacingWebuiServer`, and only after the sign-in succeeded; otherwise it stops here
-    /// with the Replace offer (#1027), which a move never makes: it could remove its own source.
+    /// as a Hermes server, switching to it unless a move opened the form. A failure shows
+    /// `BotConnectionAdvice`'s copy, and nothing is retried (#884). A webui server saved at the
+    /// address is replaced only when `replacingWebuiServer`, and only after the sign-in
+    /// succeeded; otherwise it stops here with the Replace offer (#1027), which a move never
+    /// makes: it could remove its own source.
     private func addHermesServer(authManager: AuthManager, token: Int, replacingWebuiServer: Bool,
                                  browser: HermesBrowserSignIn.Presenter) async -> URL? {
         let identity = currentConnectionIdentity()
@@ -562,7 +560,6 @@ final class OnboardingViewModel {
                 : String(localized: "This server is already configured.")
             return nil
         }
-        // Hidden fields send nothing, whatever was typed before the dashboard answered.
         let isOpen = signInMethod == .open
         let candidate = BotConnection(
             id: UUID(), name: address.host ?? "Hermes", address: address,

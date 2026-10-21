@@ -453,8 +453,8 @@ extension BotHostStatus {
     }
 
     /// A signed-out Hermes server's status read failed, so the form can't tell how it signs in:
-    /// the sign-in section offers to read it again, such as after the
-    /// network or the Connection Headers change.
+    /// the sign-in section offers to read it again, such as after the network or the Connection
+    /// Headers change.
     var offersStatusRetry: Bool {
         guard isServerSignIn, saved == nil, case .unreachable = hostStatus else { return false }
         return true
