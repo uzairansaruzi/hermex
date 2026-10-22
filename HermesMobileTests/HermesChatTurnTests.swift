@@ -793,6 +793,22 @@ import SwiftUI
         XCTAssertEqual(chat.turn.activity.settledPlan?.followsLastPrompt, true)
     }
 
+    /// A turn this chat never saw start that ends is the newest turn (#1158): an earlier plan
+    /// with no saved row no longer settles under the last prompt, which may now be that turn's.
+    func testAnUnseenTurnEndsAnEarlierPlansClaimOnTheLastPrompt() async {
+        let chat = await openChat()
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("Plan it")
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "todo.updated", todos(revision: 1, ["completed"])))
+        chat.receive(event(3, "message.complete", ["status": .string("complete"), "text": .string("Done.")]))
+        chat.receive(event(4, "session.info", ["running": .bool(false)]))
+        XCTAssertEqual(chat.turn.activity.settledPlan?.followsLastPrompt, true)
+
+        chat.receive(event(5, "message.complete", ["status": .string("error"), "error": .string("HTTP 500")]))
+        XCTAssertNil(chat.turn.activity.settledPlan, "no saved row, and the last prompt may be the unseen turn's")
+    }
+
     /// An older revision never replaces a newer one, and an empty list at revision 1 or later is
     /// the host clearing the plan: it goes from the strip and the transcript, and an older
     /// revision does not bring it back.

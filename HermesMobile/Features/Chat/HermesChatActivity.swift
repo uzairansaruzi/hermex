@@ -254,8 +254,10 @@ struct HermesPlanState: Equatable {
 
     /// A turn this chat never saw start ended, such as another client's the host failed before
     /// it began (#1158). It is now the newest turn, and not one the chat showed the prompt of,
-    /// so the last outcome goes: its Retry would cut that turn too.
+    /// so the last outcome goes, as its Retry would cut that turn too, and an earlier plan
+    /// settles only at its own saved row.
     func unseenTurnDidComplete() {
+        turn += 1
         turnShowsPrompt = false
         turnPromptRowID = nil
         if failure != nil { failure = nil }
