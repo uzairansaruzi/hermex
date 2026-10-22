@@ -992,7 +992,7 @@ private struct MoveToHermesNoticesRefresh: ViewModifier {
 
 /// When the root asks the one-time question (#1267): once it is due, the active server's chat
 /// list is on screen (`MoveToHermesNotices.showsChatList`), and no window presents a sheet or
-/// alert. A covering presentation is waited out, not skipped: its dismissal checks again. A
+/// alert. The topmost covering presentation is waited out, not skipped: its dismissal checks again. A
 /// hidden list ends the wait; the root asks again when it returns.
 @MainActor
 enum MoveToHermesQuestionTiming {
@@ -1006,9 +1006,11 @@ enum MoveToHermesQuestionTiming {
         while isDue() {
             try? await Task.sleep(for: settle)
             guard !Task.isCancelled, isDue() else { return }
-            guard let cover = windows().lazy.compactMap({ $0.rootViewController?.presentedViewController }).first else {
+            guard var cover = windows().lazy.compactMap({ $0.rootViewController?.presentedViewController }).first else {
                 return auth.askAboutMoveIfDue()
             }
+            // The topmost layer: a full-screen cover takes the ones beneath it out of the window.
+            while let above = cover.presentedViewController { cover = above }
             await dismissal(of: cover)
         }
     }

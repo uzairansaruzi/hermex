@@ -399,6 +399,57 @@ final class MoveToHermesModelTests: XCTestCase {
         XCTAssertEqual(auth.moveQuestion?.sourceID, webui.absoluteString)
     }
 
+    /// A covering presentation parks the question until it closes, one layer at a time, even a
+    /// full-screen cover over a sheet, which takes the sheet out of the window (#1274).
+    func testTheQuestionWaitsOutAFullScreenCoverOverASheet() async throws {
+        let notices = MoveToHermesNotices()
+        notices.noteChatList(of: webui.absoluteString, onScreen: true)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let window = UIWindow(windowScene: scene)
+        let root = UIViewController()
+        window.rootViewController = root
+        window.isHidden = false
+        defer { window.isHidden = true }
+        let sheet = UIViewController()
+        let cover = UIViewController()
+        cover.modalPresentationStyle = .fullScreen
+        await present(sheet, over: root)
+        await present(cover, over: sheet)
+        XCTAssertNil(sheet.view.window, "The sheet is off-window beneath the cover")
+
+        var looks: [String] = []
+        let looked = (1...2).map { expectation(description: "look \($0)") }
+        let asking = Task {
+            await MoveToHermesQuestionTiming.ask(auth, notices: notices, settle: .zero) {
+                looks.append(cover.presentingViewController != nil ? "cover" : sheet.presentingViewController != nil ? "sheet" : "none")
+                if looks.count <= looked.count { looked[looks.count - 1].fulfill() }
+                return [window]
+            }
+        }
+        await fulfillment(of: [looked[0]])
+        await Task.yield()
+        XCTAssertNil(auth.moveQuestion, "Not over the cover")
+        await dismiss(cover)
+        await fulfillment(of: [looked[1]])
+        XCTAssertNil(auth.moveQuestion, "Not over the sheet")
+        await dismiss(sheet)
+        await asking.value
+        XCTAssertEqual(looks, ["cover", "sheet", "none"], "One look per layer, each waiting for its dismissal")
+        XCTAssertEqual(auth.moveQuestion?.sourceID, webui.absoluteString)
+    }
+
+    private func present(_ controller: UIViewController, over presenter: UIViewController) async {
+        await withCheckedContinuation { continuation in
+            presenter.present(controller, animated: false) { continuation.resume() }
+        }
+    }
+
+    private func dismiss(_ controller: UIViewController) async {
+        await withCheckedContinuation { continuation in
+            controller.dismiss(animated: false) { continuation.resume() }
+        }
+    }
+
     /// ✕ hides one server's banner for good: across a server switch, an identity edit from an
     /// older copy of the entry, and a relaunch. The other server keeps its banner.
     func testADismissedBannerStaysDismissedForItsServerOnly() async throws {
