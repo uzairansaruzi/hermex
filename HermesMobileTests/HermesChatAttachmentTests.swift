@@ -69,6 +69,50 @@ import UIKit
         XCTAssertEqual(chat.model.messages.last?.attachments?.map(\.name), ["Q3 report.pdf"])
     }
 
+    /// A Windows host (#1312) stores both files under drive-letter paths. The send goes
+    /// through, its rebuilt row shows the photo as a chip, ↑ recalls only the typed text,
+    /// and the chip downloads from the path as the host wrote it.
+    func testAWindowsHostTakesBothAttachmentsAndItsPhotoChipDownloads() async throws {
+        let chat = await openChat()
+        let image = #"C:\Users\u\AppData\Local\hermes\images\dashboard_20261004_031500_ab12cd34_photo.jpg"#
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/chat/image-upload"
+                ? .json(200, .object(["ok": .bool(true), "path": .string(image)])) : nil
+        }
+        chat.host.always("file.attach", .init(result: .object([
+            "attached": .bool(true), "path": .string(#"C:\Users\u\work\\#(Self.uuid)-notes.txt"#),
+            "ref_text": .string("@file:\(Self.uuid)-notes.txt")
+        ])))
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        await chat.model.uploadAttachment(data: photo, filename: "photo.jpg", previewData: photo)
+        await chat.model.uploadAttachment(data: Data("notes".utf8), filename: "notes.txt")
+
+        let sent = await chat.model.sendMessage("Compare these")
+        XCTAssertTrue(sent)
+        let prompt = try XCTUnwrap(chat.writes("prompt.submit").first?["text"]?.text)
+        XCTAssertEqual(prompt, "Compare these\n\n"
+            + "[The user attached an image: dashboard_20261004_031500_ab12cd34_photo.jpg]\n"
+            + "[Examine it with the vision_analyze tool using image_url: \(image)]\n\n"
+            + "@file:\(Self.uuid)-notes.txt")
+
+        let rebuilt = await openChat(history: [.object(["id": .number(1), "role": .string("user"),
+                                                        "content": .string(prompt), "timestamp": .number(1_790_000_000)])])
+        let row = try XCTUnwrap(rebuilt.model.messages.first)
+        XCTAssertEqual(row.content, "Compare these")
+        XCTAssertEqual(row.attachments?.map(\.name), ["photo.jpg", "notes.txt"])
+        XCTAssertEqual(rebuilt.model.lastSentText, "Compare these")
+        var download: String?
+        _ = HermesHostFixture.configuration { request in
+            guard request.url?.path == "/api/fs/download" else { return nil }
+            download = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems }?
+                .first { $0.name == "path" }?.value
+            return .json(200, .string("bytes"))
+        }
+        let data = await rebuilt.model.attachmentImageData(path: try XCTUnwrap(row.attachments?.first?.path))
+        XCTAssertNotNil(data)
+        XCTAssertEqual(download, image)
+    }
+
     /// One failed upload of two: nothing is submitted, and the text and both files stay.
     func testAFailedUploadSubmitsNothingAndKeepsTheDraft() async {
         let chat = await openChat()

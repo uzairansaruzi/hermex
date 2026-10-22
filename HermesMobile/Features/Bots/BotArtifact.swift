@@ -30,6 +30,8 @@ enum BotArtifactReference {
         guard !value.isEmpty, !value.contains("\0"), !value.hasPrefix("//") else {
             throw BotArtifactFailure.invalidReference
         }
+        // A Windows host's `C:\…` would otherwise parse as a URL with scheme `C`.
+        if BotAttachmentUpload.isHostAbsolute(value) { return value }
         if let url = URL(string: value), let scheme = url.scheme {
             if scheme.lowercased() == "file", url.host == nil || url.host == "" || url.host == "localhost" {
                 return url.path(percentEncoded: false)

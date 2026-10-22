@@ -92,15 +92,24 @@ enum BotAttachmentUpload {
                     dataURL: "data:" + mime + ";base64," + data.base64EncodedString())
     }
 
+    /// The absolute host path an upload reply names, POSIX or Windows (`isHostAbsolute`), on one line.
     static func verifiedPath(_ value: String?) throws -> String {
-        guard let value, value.hasPrefix("/"), !value.contains("\n"), !value.contains("\r"),
+        guard let value, isHostAbsolute(value), !value.contains("\n"), !value.contains("\r"),
               !value.contains("\0") else { throw BotFailure.unsupported }
         return value
     }
 
-    /// Matches Hermes's text-mode image routing: let the agent call its vision tool.
+    /// Whether `path` is absolute on the host: `/…`, or a drive letter on a Windows host
+    /// (`C:\…` or `C:/…`, #1312). Network-share paths are not accepted.
+    static func isHostAbsolute(_ path: String) -> Bool {
+        path.hasPrefix("/") || path.prefixMatch(of: /[A-Za-z]:[\\\/]/) != nil
+    }
+
+    /// Matches Hermes's text-mode image routing: let the agent call its vision tool. The
+    /// name is the host's own last path component, after `/` or a Windows host's `\`.
     static func imageReference(path: String) -> String {
-        "[The user attached an image: \(URL(fileURLWithPath: path).lastPathComponent)]\n"
+        let name = path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
+        return "[The user attached an image: \(name)]\n"
             + "[Examine it with the vision_analyze tool using image_url: \(path)]"
     }
 
@@ -111,7 +120,7 @@ enum BotAttachmentUpload {
     /// is what ↑ recalls; an attachment-only prompt comes back empty. A typed
     /// `@file:` line has no such prefix, so it stays.
     static func typedText(of prompt: String) -> String {
-        let image = /\[The user attached an image: [^\n]*\]\n\[Examine it with the vision_analyze tool using image_url: \/[^\n]*\]/
+        let image = /\[The user attached an image: [^\n]*\]\n\[Examine it with the vision_analyze tool using image_url: (?:\/|[A-Za-z]:[\\\/])[^\n]*\]/
         let file = /@file:[`"']?(?:[^\n]*\/)?[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}-[^\n\/]+/
         var blocks = prompt.components(separatedBy: "\n\n")
         while let last = blocks.last?.trimmingCharacters(in: .whitespacesAndNewlines),

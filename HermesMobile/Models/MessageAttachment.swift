@@ -175,10 +175,11 @@ extension MessageAttachment {
         guard content.contains("@file:") || content.contains("[The user attached an image: ")
                 || content.contains(" Context ---") || content.contains("--- Context Warnings ---")
         else { return (content, []) }
-        // Hermes's text-mode image line pair, whose first line names the stored file, and an
-        // `@file:` token as `file.attach` quotes it: backticks, double or single quotes, or bare.
+        // Hermes's text-mode image line pair, whose first line names the stored file and second
+        // its POSIX or Windows path (`BotAttachmentUpload.isHostAbsolute`), and an `@file:`
+        // token as `file.attach` quotes it: backticks, double or single quotes, or bare.
         let imageReference =
-            /\[The user attached an image: ([^\n]*)\]\n\[Examine it with the vision_analyze tool using image_url: (\/[^\n]*)\]/
+            /\[The user attached an image: ([^\n]*)\]\n\[Examine it with the vision_analyze tool using image_url: ((?:\/|[A-Za-z]:[\\\/])[^\n]*)\]/
         let fileReference = /@file:(?:`([^`\n]+)`|"([^"\n]+)"|'([^'\n]+)'|(\S+))/
         var text = content
         let footer = text.firstRange(of: /(?:^|\n)--- (?:Context Warnings|Attached Context) ---[ \t]*(?:\n|$)/)
