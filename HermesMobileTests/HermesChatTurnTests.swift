@@ -985,6 +985,35 @@ import SwiftUI
         XCTAssertEqual(activity.retryTarget, .init(rowID: 9, text: "Second", showsPrompt: false), "the named turn's prompt, at its own row")
     }
 
+    /// Another client's turn the host failed before it began completes with no `message.start`
+    /// (#1158). The earlier failure's Retry goes at once, since its cut would take that turn too,
+    /// and the failure read offers the newer turn's prompt at its own row instead.
+    func testAnUnseenFailedTurnReplacesTheEarlierRetry() async {
+        let chat = await openChat()
+        let activity = chat.turn.activity
+        serveHistory([userRow("First", id: 7)])
+        var first = Self.failedInflight
+        first["user"] = .string("First")
+        chat.host.next("session.resume", .init(result: resume(running: false, inflight: first)))
+        chat.receive(event(1, "message.start"))
+        chat.receive(event(2, "message.complete", Self.rateLimitedCompletion))
+        chat.receive(event(3, "session.info", ["running": .bool(false)]))
+        await waitUntil("the first failure read") { activity.retryTarget != nil }
+        XCTAssertEqual(activity.retryTarget?.rowID, 7)
+
+        serveHistory([userRow("First", id: 7), userRow("Second", id: 9, at: 1_790_000_100)])
+        var second = Self.failedInflight
+        second["user"] = .string("Second"); second["started_at"] = .number(1_790_000_100)
+        chat.host.next("session.resume", .init(result: resume(running: false, inflight: second)))
+        var unseen = Self.rateLimitedCompletion
+        unseen["persisted_turn"] = nil
+        chat.receive(event(4, "message.complete", unseen))
+        XCTAssertNil(activity.retryTarget, "the earlier prompt's cut would take the newer turn")
+
+        await waitUntil("the second failure read") { activity.retryTarget != nil }
+        XCTAssertEqual(activity.retryTarget, .init(rowID: 9, text: "Second", showsPrompt: false))
+    }
+
     /// The failure read takes the snapshot, then the newest rows. A turn another client submitted
     /// in between, which the host failed before it began, saved its prompt after the failed one's,
     /// so the rows can't say which prompt the snapshot's turn is: Retry is not offered, rather than

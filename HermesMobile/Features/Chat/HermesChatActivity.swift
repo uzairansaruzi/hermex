@@ -252,6 +252,17 @@ struct HermesPlanState: Equatable {
         notice = HermesTurnOutcome(complete: payload)
     }
 
+    /// A turn this chat never saw start ended, such as another client's the host failed before
+    /// it began (#1158). It is now the newest turn, and not one the chat showed the prompt of,
+    /// so the last outcome goes: its Retry would cut that turn too.
+    func unseenTurnDidComplete() {
+        turnShowsPrompt = false
+        turnPromptRowID = nil
+        if failure != nil { failure = nil }
+        if notice != nil { notice = nil }
+        failedPrompt = nil; failedPromptRowID = nil; failedTurnStartedAt = nil
+    }
+
     /// A `session.resume` snapshot: the retained failure and its raw prompt from `inflight`, and
     /// the plan from `todo_state`. `promptRowID` is the saved row of the prompt dated from the
     /// failed turn's `inflight.started_at`; without one, a row already known stays only for that
