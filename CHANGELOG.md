@@ -27,11 +27,14 @@ working and get fixes, and new features go to Hermes.
 - Hermes sessions: list, open and search them, and page long transcripts with
   tool output. Rename, pin, archive, delete, export, branch and duplicate a
   session; edit, regenerate, undo, retry, compress and clear inside one.
-  Projects show as folder lanes, and sessions stay readable offline. ([#1076],
-  [#1094], [#1097], [#1098], [#1099], [#1100], [#1101], [#1105], [#1106])
+  Projects show as folder lanes, scheduled sessions have their own section,
+  and sessions stay readable offline. Session edits and Move to Hermes work
+  with Hermes 0.22.3 and later. ([#1076], [#1094], [#1097], [#1098], [#1099],
+  [#1100], [#1101], [#1105], [#1106], [#1297], [#1301], [#1302])
 - A Hermes server's home switches between Bots and Sessions from a bottom bar,
-  with a Profile filter and a new-chat button that float over the list.
-  ([#1108], [#1251])
+  with a Profile filter and a new-chat button that float over the list. On
+  iPad, the home is a sidebar beside the open chat. ([#1108], [#1251],
+  [#1316])
 - Every Hermes chat shows the plan and the turn's outcome, lets you follow and
   interrupt delegated work, and shows Hermes Desktop task and app-connection
   cards. ([#1157], [#1160], [#1162])
@@ -68,6 +71,8 @@ working and get fixes, and new features go to Hermes.
 - Sign in to Hermes hosts that use browser sign-in (OIDC). Tested so far only
   through a password host's browser sign-in, not against a real OIDC provider.
   ([#1247], [#1248])
+- Sign in to a Hermes dashboard that needs no password, with a warning that
+  anyone who can reach its address can use the agent. ([#1315])
 - Bot Mode: a bot's chat opens in the regular chat from every entry point, with
   its avatar pill, rules and @mentions, and stays readable offline. ([#1151],
   [#1164], [#1166])
@@ -90,6 +95,9 @@ working and get fixes, and new features go to Hermes.
 - Bot Mode no longer has time separators, quick replies or reactions. ([#1159])
 
 ### Fixed
+- Dictating into the composer no longer crashes the app. ([#1304])
+- A compressed webui session that rejects a send opens its continuation, with
+  the unsent message in the composer. ([#1284])
 - The chat's Files button is round again on iOS 26. ([#1251])
 - A bot keeps its own animated face after Hermes Desktop opens Bots. ([#1275])
 - Approval cards no longer stop arriving after the approval stream's connection
@@ -105,6 +113,10 @@ working and get fixes, and new features go to Hermes.
 - An approval answer the host can't confirm keeps the card answerable with a
   warning, and an approval with malformed choices offers only Deny. ([#1103],
   [#1104])
+
+### Security
+- A redirect to another host can no longer carry a sign-in password there.
+  Hermex refuses to follow it. ([#1282])
 
 [#713]: https://github.com/uzairansaruzi/hermex/issues/713
 [#1020]: https://github.com/uzairansaruzi/hermex/pull/1020
@@ -199,6 +211,14 @@ working and get fixes, and new features go to Hermes.
 [#1273]: https://github.com/uzairansaruzi/hermex/pull/1273
 [#1275]: https://github.com/uzairansaruzi/hermex/pull/1275
 [#1279]: https://github.com/uzairansaruzi/hermex/pull/1279
+[#1282]: https://github.com/uzairansaruzi/hermex/pull/1282
+[#1284]: https://github.com/uzairansaruzi/hermex/pull/1284
+[#1297]: https://github.com/uzairansaruzi/hermex/pull/1297
+[#1301]: https://github.com/uzairansaruzi/hermex/pull/1301
+[#1302]: https://github.com/uzairansaruzi/hermex/pull/1302
+[#1304]: https://github.com/uzairansaruzi/hermex/pull/1304
+[#1315]: https://github.com/uzairansaruzi/hermex/pull/1315
+[#1316]: https://github.com/uzairansaruzi/hermex/pull/1316
 
 ## [1.9.0] - 2026-10-04
 
