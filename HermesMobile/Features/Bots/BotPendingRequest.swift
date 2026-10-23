@@ -95,6 +95,8 @@ struct BotApprovalRequest: Equatable {
     let command: String?
     /// Why the host flagged this action, from `description`.
     let consequence: String?
+    /// The host may include the tool's own folder, which takes precedence over session.info.
+    let workingDirectory: String?
     /// Server order, `once` first and `deny` last. Never empty.
     let choices: [Choice]
     /// What Allow session and Always allow would allowlist: `pattern_keys`, else
@@ -121,6 +123,7 @@ struct BotApprovalRequest: Equatable {
         requestID = id
         command = Self.trimmed(json["command"])
         consequence = Self.trimmed(json["description"])
+        workingDirectory = Self.trimmed(json["cwd"])
         let keys = (json["pattern_keys"].list ?? []).compactMap { Self.trimmed($0) }
         patternKeys = keys.isEmpty ? Self.trimmed(json["pattern_key"]).map { [$0] } ?? [] : keys
         toolName = Self.trimmed(json["tool_name"])

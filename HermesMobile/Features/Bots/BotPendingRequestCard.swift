@@ -38,6 +38,7 @@ struct BotPendingRequestCard: View {
     let onConnection: (BotConnectionOperation.Answer) -> Void
     /// Who the copy says is waiting.
     var subject: HermesRequestSubject = .bot
+    var summary: ApprovalSummaryPresentation? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -45,7 +46,7 @@ struct BotPendingRequestCard: View {
             case .approval(let approval):
                 BotApprovalRequestBody(
                     approval: approval, identity: identity, isEnabled: isEnabled,
-                    isAnswering: isAnswering, onApprove: onApprove
+                    isAnswering: isAnswering, onApprove: onApprove, summary: summary
                 )
             case .question(let question):
                 BotQuestionRequestBody(
@@ -114,6 +115,8 @@ private struct BotApprovalRequestBody: View {
     let isEnabled: Bool
     let isAnswering: Bool
     let onApprove: (BotApprovalRequest.Choice) -> Void
+    var summary: ApprovalSummaryPresentation? = nil
+    @AppStorage(ApprovalSummaries.enabledKey) private var explainsApprovals = true
 
     var body: some View {
         HermesRequestHeader(
@@ -135,6 +138,9 @@ private struct BotApprovalRequestBody: View {
                     .textSelection(.enabled)
             }
             .pendingRequestBlockSurface()
+        }
+        if explainsApprovals, let summary {
+            ApprovalSummaryLine(presentation: summary)
         }
         if let scope = approval.scopeLine {
             Text(scope)

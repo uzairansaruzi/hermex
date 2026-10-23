@@ -12,6 +12,8 @@
 		E1318000000000000000A005 /* APIKeysModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A006 /* APIKeysModel.swift */; };
 		E1318000000000000000A003 /* HermesEnvironmentClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A004 /* HermesEnvironmentClientTests.swift */; };
 		E1318000000000000000A001 /* HermesEnvironmentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A002 /* HermesEnvironmentClient.swift */; };
+		A1022B000000000000000001 /* ApprovalSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1022B000000000000000002 /* ApprovalSummary.swift */; };
+		A1022B000000000000000003 /* ApprovalSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1022B000000000000000004 /* ApprovalSummaryTests.swift */; };
 		A4790000000000000000E001 /* PushEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F001 /* PushEnvironment.swift */; };
 		A4790000000000000000E002 /* PushPairing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F002 /* PushPairing.swift */; };
 		A4790000000000000000E003 /* PushRelayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4790000000000000000F003 /* PushRelayClient.swift */; };
@@ -697,6 +699,8 @@
 		E1318000000000000000A006 /* APIKeysModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeysModel.swift; sourceTree = "<group>"; };
 		E1318000000000000000A004 /* HermesEnvironmentClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesEnvironmentClientTests.swift; sourceTree = "<group>"; };
 		E1318000000000000000A002 /* HermesEnvironmentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Hermes/HermesEnvironmentClient.swift"; sourceTree = "<group>"; };
+		A1022B000000000000000002 /* ApprovalSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalSummary.swift; sourceTree = "<group>"; };
+		A1022B000000000000000004 /* ApprovalSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovalSummaryTests.swift; sourceTree = "<group>"; };
 		B48200000000000000000001 /* BotProfileAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotProfileAppearance.swift; sourceTree = "<group>"; };
 		B48200000000000000000011 /* BotExpressionPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotExpressionPickerView.swift; sourceTree = "<group>"; };
 		B48200000000000000000031 /* BotCreator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bots/BotCreator.swift; sourceTree = "<group>"; };
@@ -1439,6 +1443,7 @@
 				B48200000000000000000023 /* BotFaceMotionTests.swift */,
 				26C849A9CE6B47E79695E069 /* BotChatPresentationTests.swift */,
 				B0B04ED8E6164A75B069773D /* BotClientTests.swift */,
+				A1022B000000000000000004 /* ApprovalSummaryTests.swift */,
 				C8230A000000000000000006 /* HermesRequestTests.swift */,
 				C8240A000000000000000004 /* HermesConnectionTests.swift */,
 				C87080000000000000000004 /* HermesBrowserSignInTests.swift */,
@@ -1943,6 +1948,7 @@
 				C27800000000000000000002 /* ChatGitControlsVisibilityPolicy.swift */,
 				C0DE22000000000000000002 /* ChatHaptics.swift */,
 				105050000000000000000002 /* ComposerModelPickerSectionExpansionState.swift */,
+				A1022B000000000000000002 /* ApprovalSummary.swift */,
 				A04200000000000000000004 /* ApprovalRequestOverlay.swift */,
 				C1A042000000000000000004 /* ClarificationRequestCard.swift */,
 				C1A0420000000000000000A4 /* PendingRequestSurfaces.swift */,
@@ -2837,6 +2843,7 @@
 				1A2B3C4D5E6F70000000150 /* UploadResponse.swift in Sources */,
 				1A2B3C4D5E6F70000000152 /* MessageAttachment.swift in Sources */,
 				A04200000000000000000001 /* Approval.swift in Sources */,
+				A1022B000000000000000001 /* ApprovalSummary.swift in Sources */,
 				A04200000000000000000003 /* ApprovalRequestOverlay.swift in Sources */,
 				C1A042000000000000000001 /* Clarification.swift in Sources */,
 				C1A042000000000000000003 /* ClarificationRequestCard.swift in Sources */,
@@ -2903,6 +2910,7 @@
 				B48200000000000000000024 /* BotFaceMotionTests.swift in Sources */,
 				A4C0A37288B742B9B284A67E /* BotChatPresentationTests.swift in Sources */,
 				D885F4C0DA3A438B8CE92635 /* BotClientTests.swift in Sources */,
+				A1022B000000000000000003 /* ApprovalSummaryTests.swift in Sources */,
 				C8230A000000000000000005 /* HermesRequestTests.swift in Sources */,
 				C8240A000000000000000003 /* HermesConnectionTests.swift in Sources */,
 				C87080000000000000000003 /* HermesBrowserSignInTests.swift in Sources */,

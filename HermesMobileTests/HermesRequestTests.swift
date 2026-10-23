@@ -4,6 +4,18 @@ import XCTest
 /// Every typed Hermes request keeps the exact wire shape the app sent before it
 /// was typed, including the fields it omits. Admission rules live in `BotClientTests`.
 final class HermesRequestTests: XCTestCase {
+    func testApprovalSummarySendsTheFlaggedCommandOutsideTheConversation() throws {
+        let input = "Why it was flagged: Deletes files\nCommand: rm ./draft.txt\nWorking directory: /work"
+        let call = HermesCall.approvalSummary(input: input, sessionID: "runtime", profile: "dev")
+        let params = try call.params()
+        XCTAssertEqual(call.method, "llm.oneshot")
+        XCTAssertEqual(params["input"]?.text, input)
+        XCTAssertEqual(params["session_id"]?.text, "runtime")
+        XCTAssertEqual(params["profile"]?.text, "dev")
+        XCTAssertFalse(params["instructions"]?.text?.isEmpty ?? true)
+        XCTAssertNil(params["template"], "A command is not a commit-message template")
+    }
+
     func testEveryCallSendsItsExactWireShape() throws {
         let members = [HermesCall.RoomMember(memberID: "default", profile: "default", handle: "hermes", displayName: "Hermes"),
                        HermesCall.RoomMember(memberID: "dev", profile: "dev", handle: "dev")]

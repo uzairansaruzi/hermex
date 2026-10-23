@@ -3,6 +3,117 @@ import XCTest
 @testable import HermesMobile
 
 @MainActor final class BotRoomTests: XCTestCase {
+    func testARoomApprovalSummaryUsesItsMembersProfileAndEndsWithThePendingTuple() async throws {
+        let wire = RoomWire()
+        wire.driverStatus = RoomFixture.status(actions: [RoomFixture.approval])
+        let reader = makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        let action = try XCTUnwrap(reader.status.actions.first)
+        let presentation = try XCTUnwrap(reader.summaryPresentation(for: action))
+        defer { presentation.summaries.retain([], in: presentation.key.scope) }
+        await presentation.summaries.show(presentation.key, load: presentation.load)
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .ready("Room command explanation"))
+        XCTAssertEqual(wire.writes.last { $0.0 == "llm.oneshot" }?.1["profile"]?.text, "chief-of-staff")
+        XCTAssertNil(wire.writes.last { $0.0 == "llm.oneshot" }?.1["session_id"], "rooms never guess a hidden member runtime")
+        reader.suspend()
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .ready("Room command explanation"))
+        await reader.open()
+        wire.driverStatus = RoomFixture.status(actions: [])
+        await reader.poll()
+        XCTAssertNil(presentation.summaries.states[presentation.key])
+    }
+
+    func testSendingKeepsAnotherApprovalSummaryLoadingUntilItsReply() async throws {
+        let wire = RoomWire()
+        wire.driverStatus = RoomFixture.status(actions: [RoomFixture.approval])
+        let reader = makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        let action = try XCTUnwrap(reader.status.actions.first)
+        let presentation = try XCTUnwrap(reader.summaryPresentation(for: action))
+        defer { presentation.summaries.retain([], in: presentation.key.scope) }
+        let loading = expectation(description: "summary reply held")
+        var reply: CheckedContinuation<Void, Never>?
+        wire.beforeSummaryReply = { await withCheckedContinuation { reply = $0; loading.fulfill() } }
+        let summary = Task { await presentation.summaries.show(presentation.key, load: presentation.load) }
+        await fulfillment(of: [loading], timeout: 3)
+        wire.holdWrite = true
+        let sending = expectation(description: "message reply held")
+        wire.onWriteHeld = { sending.fulfill() }
+        reader.draft = "continue discussion"
+        let send = Task { await reader.send() }
+        await fulfillment(of: [sending], timeout: 3)
+        XCTAssertTrue(reader.busy)
+        XCTAssertFalse(reader.mayAct(action), "temporary command lock still disables buttons")
+        XCTAssertEqual(reader.summaryPresentation(for: action)?.key, presentation.key,
+                       "sending must not remove another pending approval's summary")
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .loading)
+        reply?.resume(); await summary.value
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .ready("Room command explanation"))
+        XCTAssertEqual(reader.summaryPresentation(for: action)?.key, presentation.key)
+        wire.releaseWrite(); await send.value
+    }
+
+    func testAnsweringAnotherApprovalDoesNotInvalidateASummaryWaitingToDispatch() async throws {
+        let wire = RoomWire()
+        var other = try XCTUnwrap(RoomFixture.approval.fields)
+        other["request_id"] = .string("approval:2")
+        wire.driverStatus = RoomFixture.status(actions: [RoomFixture.approval, .object(other)])
+        let reader = makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        let action = reader.status.actions[0], answered = reader.status.actions[1]
+        let presentation = try XCTUnwrap(reader.summaryPresentation(for: action))
+        defer { presentation.summaries.retain([], in: presentation.key.scope) }
+        let queued = expectation(description: "summary awaiting dispatch")
+        var dispatch: CheckedContinuation<Void, Never>?
+        wire.beforeSummaryDispatch = { await withCheckedContinuation { dispatch = $0; queued.fulfill() } }
+        let summary = Task { await presentation.summaries.show(presentation.key, load: presentation.load) }
+        await fulfillment(of: [queued], timeout: 3)
+        wire.holdWrite = true
+        let answering = expectation(description: "other approval reply held")
+        wire.onWriteHeld = { answering.fulfill() }
+        let answer = Task { await reader.act(answered, choice: .once) }
+        await fulfillment(of: [answering], timeout: 3)
+        XCTAssertTrue(reader.busy)
+        XCTAssertEqual(reader.summaryPresentation(for: action)?.key, presentation.key)
+        XCTAssertNil(reader.summaryPresentation(for: answered), "only the answered tuple is inactive")
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .loading)
+        dispatch?.resume(); await summary.value
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .ready("Room command explanation"),
+                       "dispatch eligibility belongs to the approval, not the room command lock")
+        XCTAssertEqual(wire.writes.filter { $0.0 == "llm.oneshot" }.count, 1)
+        wire.releaseWrite(); await answer.value
+    }
+
+    func testAnsweringTheApprovalCancelsAndRemovesItsLoadingSummary() async throws {
+        let wire = RoomWire()
+        wire.driverStatus = RoomFixture.status(actions: [RoomFixture.approval])
+        let reader = makeReader(wire)
+        await reader.open()
+        defer { reader.close() }
+        let action = try XCTUnwrap(reader.status.actions.first)
+        let presentation = try XCTUnwrap(reader.summaryPresentation(for: action))
+        defer { presentation.summaries.retain([], in: presentation.key.scope) }
+        let loading = expectation(description: "summary reply held")
+        var reply: CheckedContinuation<Void, Never>?
+        wire.beforeSummaryReply = { await withCheckedContinuation { reply = $0; loading.fulfill() } }
+        let summary = Task { await presentation.summaries.show(presentation.key, load: presentation.load) }
+        await fulfillment(of: [loading], timeout: 3)
+        wire.holdWrite = true
+        let answering = expectation(description: "approval reply held")
+        wire.onWriteHeld = { answering.fulfill() }
+        let answer = Task { await reader.act(action, choice: .once) }
+        await fulfillment(of: [answering], timeout: 3)
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .unavailable)
+        XCTAssertNil(reader.summaryPresentation(for: action))
+        wire.releaseWrite(); await answer.value
+        XCTAssertNil(presentation.summaries.states[presentation.key])
+        reply?.resume(); await summary.value
+        XCTAssertNil(presentation.summaries.states[presentation.key], "a late model reply cannot restore an answered approval")
+    }
+
     func testRecentRoomKeepsSystemEventsBeforeNetworkAndFetchesOnlyNewRows() async throws {
         let cache = BotHistoryCache(), wire = RoomWire()
         wire.latest = 3; wire.kind = "room.renamed"
@@ -835,6 +946,8 @@ enum RoomFixture {
     var driverStatus = RoomFixture.status()
     var writes: [(String, [String: BotJSON])] = []
     var beforeWrite: (() async -> Void)?
+    var beforeSummaryDispatch: (() async -> Void)?
+    var beforeSummaryReply: (() async -> Void)?
     var writeFailure: Error?
     var loseWrite = false
     var holdWrite = false
@@ -896,8 +1009,13 @@ enum RoomFixture {
             }
             return result
         }
+        if method == "llm.oneshot" { await beforeSummaryDispatch?() }
         try validateDispatch?()
         switch method {
+        case "llm.oneshot":
+            writes.append((method, params))
+            await beforeSummaryReply?()
+            return .object(["text": .string("Room command explanation")])
         case "profiles.list": return .object(["profiles": .array([])])
         // The inbox reads live statuses after every roster read; no bot is busy here.
         case "session.active_list": return .object(["sessions": .array([])])

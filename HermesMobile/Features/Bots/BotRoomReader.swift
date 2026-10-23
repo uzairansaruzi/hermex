@@ -203,6 +203,7 @@ import Observation
     }
 
     func suspend() {
+        ApprovalSummaries.shared.leave(summaryScope)
         saveRecentTranscript()
         if busy && dispatched {
             if let sending { uncertainSends[sending.contextThreadID ?? ""] = sending }
@@ -242,8 +243,11 @@ import Observation
         allows("groups.send") && !busy && uncertainSend(in: threadID) != nil
     }
     private func allows(_ method: String) -> Bool { canParticipate && capabilities.methods.contains(method) }
-    func mayAct(_ action: BotRoomAction) -> Bool {
-        !busy && action.isAnswerable && !inactiveActions.contains(action.id) && status.actions.contains(action)
+    func mayAct(_ action: BotRoomAction) -> Bool { !busy && isPendingAndAnswerable(action) }
+
+    /// Pending ownership outlives the temporary command lock on the room's buttons.
+    private func isPendingAndAnswerable(_ action: BotRoomAction) -> Bool {
+        action.isAnswerable && !inactiveActions.contains(action.id) && status.actions.contains(action)
             && allows(action.isRetry ? "groups.retry" : "groups.approve")
     }
 
@@ -324,14 +328,39 @@ import Observation
         })
     }
 
+    private var summaryScope: ApprovalSummaries.Scope {
+        .init(server: key.server, connectionID: connection.id, conversation: .room(id: key.roomID, epoch: room.epoch))
+    }
+
+    func summaryPresentation(for action: BotRoomAction) -> ApprovalSummaryPresentation? {
+        guard isPendingAndAnswerable(action), let client = wire, let approval = action.approval,
+              let profile = room.members.first(where: { $0.id == action.id.member })?.profile, !profile.isEmpty,
+              let input = ApprovalSummaries.input(description: approval.consequence, command: approval.command,
+                                                  cwd: approval.workingDirectory) else { return nil }
+        let key = ApprovalSummaries.Key(scope: summaryScope, request: .room(action.id))
+        return ApprovalSummaryPresentation(key: key) { [weak self] in
+            guard let self else { throw BotFailure.stale }
+            let reply = try await client.call(.approvalSummary(input: input, sessionID: nil, profile: profile), validateDispatch: {
+                guard self.wire === client, self.summaryScope == key.scope, self.isPendingAndAnswerable(action) else { throw BotFailure.stale }
+            })
+            guard let text = reply["text"].text else { throw BotFailure.unsupported }
+            return text
+        }
+    }
+
     func act(_ action: BotRoomAction, choice: BotApprovalRequest.Choice? = nil) async {
         guard mayAct(action), let call = action.call(roomID: key.roomID, choice: choice) else { return }
+        let summaryKey = ApprovalSummaries.Key(scope: summaryScope, request: .room(action.id))
+        ApprovalSummaries.shared.cancel(summaryKey)
         await command(call, validate: {
             guard self.status.actions.contains(action), !self.inactiveActions.contains(action.id) else { throw BotFailure.stale }
             self.inactiveActions.insert(action.id)
         }, accept: { result in
             guard result[action.isRetry ? "retried" : "approved"].flag == true else { throw BotFailure.unsupported }
-            if !action.isRetry, let choice { self.feedback = BotFeedback(.approved(choice), after: self.feedback) }
+            if !action.isRetry, let choice {
+                ApprovalSummaries.shared.remove(summaryKey)
+                self.feedback = BotFeedback(.approved(choice), after: self.feedback)
+            }
         })
     }
 
@@ -389,8 +418,14 @@ import Observation
         guard let updated = BotGroupRoom(value["room"]), updated.id == key.roomID else { throw BotFailure.unsupported }
         guard revision == stateRevision else { return room.latestSeq }
         if updated.disbanded { throw BotRoomFailure(code: 4114, reason: nil) }
+        let previousSummaryScope = summaryScope
         if !renaming && room != updated { room = updated; onChanged(updated) }
+        if previousSummaryScope != summaryScope { ApprovalSummaries.shared.retain([], in: previousSummaryScope) }
         let nextStatus = BotRoomStatus(value["driver_status"])
+        let pendingSummaries = nextStatus.actions.filter { $0.approval != nil }.map {
+            ApprovalSummaries.Key(scope: summaryScope, request: .room($0.id))
+        }
+        ApprovalSummaries.shared.retain(Set(pendingSummaries), in: summaryScope)
         if status != nextStatus { status = nextStatus }
         if !busy && nextStatus.stopping == 0 { awaitingStop = false }
         let pendingIDs = Set(nextStatus.actions.map(\.id))

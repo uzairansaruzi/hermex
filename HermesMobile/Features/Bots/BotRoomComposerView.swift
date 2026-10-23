@@ -111,7 +111,8 @@ struct BotRoomActionCard: View {
                 isAnswering: reader.busy && reader.inactiveActions.contains(action.id), resolution: nil,
                 onApprove: { choice in Task { await reader.act(action, choice: choice) } },
                 onAnswer: { _ in }, onSkip: {}, onCredential: { _ in },
-                onStop: { Task { await reader.stop() } }, onConnection: { _ in })
+                onStop: { Task { await reader.stop() } }, onConnection: { _ in },
+                summary: reader.summaryPresentation(for: action))
         } else {
             VStack(alignment: .leading, spacing: 12) {
                 Text(identity).font(.caption).foregroundStyle(.secondary)

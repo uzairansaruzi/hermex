@@ -7,6 +7,38 @@ import SwiftUI
 /// engine's frames onto `ChatViewModel`, over #901's socket-level host and the frames
 /// recorded at the `HERMES_AGENT_TESTED_SHA` pin.
 @MainActor final class HermesChatTurnTests: XCTestCase {
+    func testAnApprovalSummaryUsesTheSameChatsRuntimeAndSurvivesReattach() async throws {
+        let chat = await openChat()
+        defer { chat.model.suspendStreamForBackground() }
+        let frame = BotJSON.object(["id": .string("summary-envelope"), "method": .string("approval"),
+            "params": .object(["session_id": .string("runtime"), "request_id": .string("summary-approval"),
+                               "description": .string("Deletes files"), "command": .string("rm ./draft.txt")])])
+        chat.receive(frame)
+        let requests = chat.turn.requests
+        guard case .approval(let approval)? = requests.onScreen else { return XCTFail("approval must be shown") }
+        let presentation = try XCTUnwrap(requests.summaryPresentation(for: approval, workingDirectory: "/workspace"))
+        defer { presentation.summaries.retain([], in: presentation.key.scope) }
+        chat.host.always("llm.oneshot", .init(result: .object(["text": .string("Removes the draft file.")])))
+        await presentation.summaries.show(presentation.key, load: presentation.load)
+        XCTAssertEqual(presentation.summaries.states[presentation.key], .ready("Removes the draft file."))
+        XCTAssertEqual(chat.writes("llm.oneshot").last?["session_id"]?.text, "runtime")
+        let input = try XCTUnwrap(chat.writes("llm.oneshot").last?["input"]?.text)
+        XCTAssertTrue(input.contains("Deletes files") && input.contains("rm ./draft.txt") && input.contains("/workspace"))
+
+        let snapshot = resume(running: false).replacing("open_requests", with: .array([frame]))
+        chat.model.suspendStreamForBackground()
+        chat.host.always("session.events.since", .init(result: BotFixtureWire.replay().replacing("open_requests", with: .array([frame]))))
+        chat.host.always("session.resume", .init(result: snapshot))
+        await chat.model.reconnectStreamIfNeeded()
+        let returned = try XCTUnwrap(requests.summaryPresentation(for: approval, workingDirectory: "/workspace"))
+        XCTAssertEqual(returned.key, presentation.key)
+        await returned.summaries.show(returned.key, load: returned.load)
+        XCTAssertEqual(chat.writes("llm.oneshot").count, 1)
+        XCTAssertEqual(returned.summaries.states[returned.key], .ready("Removes the draft file."))
+        chat.receive(event(1, "request.cancel", ["id": .string("summary-envelope"), "method": .string("approval")]))
+        XCTAssertNil(returned.summaries.states[returned.key], "only the host withdrawing it drops the result")
+    }
+
     // MARK: Reducer
 
     /// The recorded canned turn starts with no prompt from this phone, streams its text

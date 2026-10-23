@@ -1,6 +1,94 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "In plain words (AI summary)" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "بكلمات بسيطة (ملخص بالذكاء الاصطناعي)" } },
+        "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Einfach erklärt (KI-Zusammenfassung)" } },
+        "en" : { "stringUnit" : { "state" : "needs_review", "value" : "In plain words (AI summary)" } },
+        "es" : { "stringUnit" : { "state" : "needs_review", "value" : "En palabras sencillas (resumen de IA)" } },
+        "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "En termes simples (résumé par IA)" } },
+        "he" : { "stringUnit" : { "state" : "needs_review", "value" : "במילים פשוטות (סיכום AI)" } },
+        "it" : { "stringUnit" : { "state" : "needs_review", "value" : "In parole semplici (riepilogo IA)" } },
+        "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "わかりやすく説明（AIによる要約）" } },
+        "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "쉬운 설명 (AI 요약)" } },
+        "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "In gewone woorden (AI-samenvatting)" } },
+        "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Prostymi słowami (podsumowanie AI)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Em palavras simples (resumo por IA)" } },
+        "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Простыми словами (сводка ИИ)" } },
+        "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Basitçe (yapay zekâ özeti)" } },
+        "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "آسان الفاظ میں (AI کا خلاصہ)" } },
+        "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "淺白說明（AI 摘要）" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "通俗说明（AI 摘要）" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "淺白說明（AI 摘要）" } }
+      }
+    },
+    "Summarizing…" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "جارٍ التلخيص…" } },
+        "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Wird zusammengefasst…" } },
+        "en" : { "stringUnit" : { "state" : "needs_review", "value" : "Summarizing…" } },
+        "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Resumiendo…" } },
+        "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Résumé en cours…" } },
+        "he" : { "stringUnit" : { "state" : "needs_review", "value" : "מסכם…" } },
+        "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Riepilogo in corso…" } },
+        "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "要約中…" } },
+        "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "요약 중…" } },
+        "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Samenvatten…" } },
+        "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Podsumowywanie…" } },
+        "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Resumindo…" } },
+        "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Составление сводки…" } },
+        "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Özetleniyor…" } },
+        "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "خلاصہ تیار ہو رہا ہے…" } },
+        "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "正在整理摘要…" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "正在生成摘要…" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "正在產生摘要…" } }
+      }
+    },
+    "Explain approvals in plain words" : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "شرح طلبات الموافقة بكلمات بسيطة" } },
+        "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Freigaben einfach erklären" } },
+        "en" : { "stringUnit" : { "state" : "needs_review", "value" : "Explain approvals in plain words" } },
+        "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Explicar las aprobaciones con palabras sencillas" } },
+        "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Expliquer les approbations en termes simples" } },
+        "he" : { "stringUnit" : { "state" : "needs_review", "value" : "הסבר בקשות אישור במילים פשוטות" } },
+        "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Spiega le approvazioni in parole semplici" } },
+        "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "承認リクエストをわかりやすく説明" } },
+        "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "승인 요청을 쉬운 말로 설명" } },
+        "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Goedkeuringen in gewone woorden uitleggen" } },
+        "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Wyjaśniaj prośby o zgodę prostymi słowami" } },
+        "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Explicar aprovações em palavras simples" } },
+        "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Объяснять запросы на одобрение простыми словами" } },
+        "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Onay isteklerini basitçe açıkla" } },
+        "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "منظوری کی درخواستیں آسان الفاظ میں سمجھائیں" } },
+        "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "用淺白文字解釋審批請求" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "用通俗语言解释审批请求" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "用淺白文字解釋核准請求" } }
+      }
+    },
+    "Asks the server’s model for a short summary." : {
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "يطلب من نموذج الخادم ملخصًا قصيرًا." } },
+        "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Fragt das Modell des Servers nach einer kurzen Zusammenfassung." } },
+        "en" : { "stringUnit" : { "state" : "needs_review", "value" : "Asks the server’s model for a short summary." } },
+        "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Pide al modelo del servidor un breve resumen." } },
+        "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Demande un court résumé au modèle du serveur." } },
+        "he" : { "stringUnit" : { "state" : "needs_review", "value" : "מבקש מהמודל של השרת סיכום קצר." } },
+        "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Chiede al modello del server un breve riepilogo." } },
+        "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "サーバーのモデルに短い要約を依頼します。" } },
+        "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "서버의 모델에 짧은 요약을 요청합니다." } },
+        "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Vraagt het model van de server om een korte samenvatting." } },
+        "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Prosi model serwera o krótkie podsumowanie." } },
+        "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Pede um breve resumo ao modelo do servidor." } },
+        "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Запрашивает краткую сводку у модели сервера." } },
+        "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Sunucunun modelinden kısa bir özet ister." } },
+        "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "سرور کے ماڈل سے مختصر خلاصہ مانگتا ہے۔" } },
+        "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "請伺服器的模型提供簡短摘要。" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "请求服务器的模型提供简短摘要。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "請伺服器的模型提供簡短摘要。" } }
+      }
+    },
     "" : {
       "shouldTranslate" : false
     },

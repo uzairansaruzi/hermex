@@ -162,6 +162,8 @@ struct SettingsChatPage: View {
                     )
                 }
             }
+
+            ApprovalSummarySettingsSection()
         }
         .settingsPage(String(localized: "Chat"))
     }

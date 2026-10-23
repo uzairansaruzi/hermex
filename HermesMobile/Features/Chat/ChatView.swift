@@ -958,7 +958,8 @@ struct ChatView: View {
                         ChatHaptics.approvalBypassEnabled(isEnabled: isHapticsEnabled)
                     }
                 }
-            }
+            },
+            summary: requests.summaryPresentation(for: approval, workingDirectory: viewModel.hermesWorkspace?.cwd)
         )
         .zIndex(10)
     }

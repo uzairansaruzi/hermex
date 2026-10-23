@@ -157,6 +157,53 @@ import Observation
         return HermesAnswerAction(generation: engine.generation, runtime: runtime, requestID: id)
     }
 
+    private var summaryScope: ApprovalSummaries.Scope? {
+        guard let root = engine.root else { return nil }
+        return .init(server: engine.server, connectionID: engine.connection.id,
+                     conversation: .session(profile: engine.target.profile, key: root))
+    }
+
+    /// The existing chat transport only: a legacy/no-connection card gets no summary slot.
+    func summaryPresentation(for approval: BotApprovalRequest, workingDirectory: String?) -> ApprovalSummaryPresentation? {
+        guard engine.connectionState == .connected, answeringRequestID != approval.requestID,
+              let runtime = engine.runtime, let scope = summaryScope,
+              open.contains(where: { $0.pending == .approval(approval) }),
+              let input = ApprovalSummaries.input(description: approval.consequence, command: approval.command,
+                                                  cwd: approval.workingDirectory ?? workingDirectory) else { return nil }
+        let key = ApprovalSummaries.Key(scope: scope, request: .approval(approval.requestID))
+        let attempt = engine.generation
+        return ApprovalSummaryPresentation(key: key) { [weak self] in
+            guard let self else { throw BotFailure.stale }
+            let reply = try await self.engine.request(.approvalSummary(input: input, sessionID: runtime,
+                                                                       profile: self.engine.target.profile),
+                                                      attempt: attempt) {
+                guard self.open.contains(where: { $0.pending == .approval(approval) }),
+                      self.answeringRequestID != approval.requestID else { throw BotFailure.stale }
+            }
+            guard let text = reply["text"].text else { throw BotFailure.unsupported }
+            return text
+        }
+    }
+
+    private func cancelSummary(_ requestID: String) {
+        guard let scope = summaryScope else { return }
+        ApprovalSummaries.shared.cancel(.init(scope: scope, request: .approval(requestID)))
+    }
+
+    private func retireSummary(_ requestID: String) {
+        guard let scope = summaryScope else { return }
+        ApprovalSummaries.shared.remove(.init(scope: scope, request: .approval(requestID)))
+    }
+
+    private func retainPendingSummaries() {
+        guard let scope = summaryScope else { return }
+        let pending = open.compactMap { row -> ApprovalSummaries.Key? in
+            guard case .approval(let approval)? = row.pending else { return nil }
+            return .init(scope: scope, request: .approval(approval.requestID))
+        }
+        ApprovalSummaries.shared.retain(Set(pending), in: scope)
+    }
+
     // MARK: Answers
 
     /// Answers the approval on screen with one of the choices the host offered. True once the
@@ -165,6 +212,7 @@ import Observation
     func respond(_ action: HermesAnswerAction, choice: BotApprovalRequest.Choice) async -> Bool {
         guard case .approval(let approval)? = onScreen, approval.requestID == action.requestID,
               approval.choices.contains(choice), action == prepareAnswer() else { return false }
+        cancelSummary(action.requestID)
         return await deliver(.approval(choice), action) == .answered
     }
 
@@ -214,6 +262,7 @@ import Observation
     func skipApprovals(_ action: HermesAnswerAction) async -> Bool {
         guard case .approval(let approval)? = onScreen, approval.requestID == action.requestID,
               action == prepareAnswer() else { return false }
+        cancelSummary(action.requestID)
         guard await setApprovalBypass(true, for: action) else { return false }
         // The host lists `once` first in every choice set it computes; without it the card
         // waits for one of its own choices.
@@ -341,6 +390,7 @@ import Observation
                 return outcome
             }
             open.removeAll { $0.pending?.requestID == action.requestID }
+            retireSummary(action.requestID)
             return outcome
         } catch {
             guard action.generation == engine.generation, !Task.isCancelled else { return nil }
@@ -416,7 +466,12 @@ import Observation
     func receive(_ envelope: BotJSON) {
         guard let request = BotServerRequest(envelope), request.sessionID == engine.runtime else { return }
         revision += 1
-        if let index = open.firstIndex(where: { $0.id == request.id }) { open[index] = request } else { open.append(request) }
+        if let index = open.firstIndex(where: { $0.id == request.id }) {
+            if case .approval(let old)? = open[index].pending, old.requestID != request.pending?.requestID {
+                retireSummary(old.requestID)
+            }
+            open[index] = request
+        } else { open.append(request) }
         withdrawal = nil
     }
 
@@ -427,6 +482,9 @@ import Observation
         revision += 1
         let envelope = BotRequestWithdrawal.Envelope(id: id, method: method)
         let shown = envelope == envelopeOnScreen
+        for row in open where row.id == id && row.method == method {
+            if case .approval(let approval)? = row.pending { retireSummary(approval.requestID) }
+        }
         open.removeAll { $0.id == id && $0.method == method }
         if shown { withdrawal = onScreen == nil ? note(envelope, reason: payload["reason"].text) : nil }
     }
@@ -453,6 +511,7 @@ import Observation
     func withdrawAll() {
         revision += 1
         open = []
+        retainPendingSummaries()
         if let opID = connection?.opID { closeConnection(opID) }
         hasUnreadableConnection = false
     }
@@ -475,6 +534,7 @@ import Observation
     /// Leaving a live connection: remember the card on screen for the replay on return.
     /// Leaving again before that replay keeps the one already held.
     func willLeave() {
+        if let scope = summaryScope { ApprovalSummaries.shared.leave(scope) }
         guard engine.connectionState == .connected else { return }
         envelopeShownWhenLeft = envelopeOnScreen
     }
@@ -489,6 +549,7 @@ import Observation
     /// A new attach or leaving dropped the connection, and the requests with it. The
     /// connection card's verdict stays for the card the next attach restores.
     func reset() {
+        if let scope = summaryScope { ApprovalSummaries.shared.leave(scope) }
         open = []; answeringRequestID = nil; isChangingApprovalBypass = false
         errorMessage = nil; withdrawal = nil
         connection = nil; hasUnreadableConnection = false
@@ -597,5 +658,6 @@ import Observation
         var seen = Set<String>()
         open = (rows.list ?? []).compactMap(BotServerRequest.init)
             .filter { $0.sessionID == engine.runtime && seen.insert($0.id).inserted }
+        retainPendingSummaries()
     }
 }
