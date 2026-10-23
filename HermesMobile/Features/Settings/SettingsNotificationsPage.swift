@@ -6,6 +6,7 @@ import UserNotifications
 struct SettingsNotificationsPage: View {
     let server: URL
 
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @AppStorage(AgentRunLiveActivityPrivacy.showsResponseExcerptsKey) private var showsLiveActivityResponseExcerpts = false
     @State private var notificationPermissionStatus: UNAuthorizationStatus?
@@ -32,13 +33,21 @@ struct SettingsNotificationsPage: View {
             } header: {
                 Text("On this iPhone · All servers")
             } footer: {
-                if let notificationStatusText {
-                    Text(notificationStatusText)
+                VStack(alignment: .leading, spacing: 4) {
+                    if let notificationStatusText {
+                        Text(notificationStatusText)
+                    }
+                    // iOS never re-prompts after a denial, so the way back is iPhone Settings.
+                    if notificationPermissionStatus == .denied,
+                       let settingsURL = URL(string: UIApplication.openNotificationSettingsURLString) {
+                        Link("Open Settings", destination: settingsURL)
+                    }
                 }
             }
         }
-        .task {
-            await refreshNotificationPermissionStatus()
+        // Re-read on return from iPhone Settings so the footer and link drop a stale denial.
+        .task(id: scenePhase) {
+            if scenePhase == .active { await refreshNotificationPermissionStatus() }
         }
     }
 
