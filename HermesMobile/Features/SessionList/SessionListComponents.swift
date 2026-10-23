@@ -1036,8 +1036,9 @@ struct ScheduledSessionsDisclosure: View {
     }
 }
 
+/// View all of the scheduled sessions. On Hermes it shows the list's rows and leaves the
+/// list's socket to the list: a phone's push reopens it, a split's sidebar keeps it.
 struct ScheduledSessionsView: View {
-    @Environment(\.scenePhase) private var scenePhase
     let viewModel: SessionListViewModel
     let showsCronSessions: Bool
     let showsMessageCount: Bool
@@ -1091,16 +1092,8 @@ struct ScheduledSessionsView: View {
         .scrollContentBackground(.hidden)
         .navigationTitle("Scheduled sessions")
         .searchable(text: $searchText, prompt: "Search sessions")
-        .task {
-            if viewModel.isHermes { await viewModel.openHermes() }
-        }
         .task(id: searchText) {
             if viewModel.isHermes { await viewModel.searchSessions(query: searchText) }
-        }
-        .onChange(of: scenePhase) {
-            guard viewModel.isHermes else { return }
-            if scenePhase == .background { viewModel.closeHermes() }
-            else if scenePhase == .active { Task { await viewModel.openHermes() } }
         }
         .overlay(alignment: .bottom) {
             if let actionToast {

@@ -320,7 +320,7 @@ struct HermesSessionListView: View {
             switch scenePhase {
             case .background: viewModel.closeHermes()
             // Control Center and banners (`.inactive`) keep the socket; only a closed list reopens.
-            case .active where (usesSplit || (covers.chat == nil && !covers.isCoveredByScreen)) && !viewModel.isHermesConnected:
+            case .active where covers.reopensOnForeground(usesSplit: usesSplit) && !viewModel.isHermesConnected:
                 Task { await viewModel.openHermes(modelContext: modelContext) }
             default: break
             }
@@ -370,6 +370,7 @@ struct HermesSessionListView: View {
         }
         .navigationDestination(isPresented: $navigation.covers.showingScheduled) {
             scheduledSessions
+                .task { await viewModel.openHermes(modelContext: modelContext) }
                 .onDisappear { covers.scheduledDisappeared(viewModel) }
         }
         .navigationDestination(isPresented: $navigation.covers.showingArchived) {
@@ -1015,6 +1016,12 @@ struct HermesSessionListCovers {
     /// A screen this list pushed covers it, so the socket stays closed until it returns.
     var isCoveredByScreen: Bool {
         showingScheduled || showingArchived || showingKanban || tasks != nil || skills != nil || memory != nil || insights != nil
+    }
+
+    /// Whether coming back to the foreground reopens a closed list: its rows, or View all's, are on
+    /// screen. A split's sidebar always shows them; a phone's are hidden under a chat or another screen.
+    func reopensOnForeground(usesSplit: Bool) -> Bool {
+        usesSplit || (chat == nil && (showingScheduled || !isCoveredByScreen))
     }
 
     /// The rows left a phone's screen. A chat over them pauses the list's events and keeps its socket.
