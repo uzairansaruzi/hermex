@@ -1028,6 +1028,34 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(try BotConnectionStore(keychain: keychain).load(server: hermesServer)?.password, "secret")
     }
 
+    /// Onboarding shows for a webui server whose session was refused, and the user types the
+    /// address of a Hermes server saved beside it. Connect opens that server without a probe:
+    /// its home when its sign-in is saved, its own sign-in form when not (#1331).
+    func testOnboardingOpensASavedHermesServer() async throws {
+        defer { HermesHostFixture.reset() }
+        for isSignedIn in [true, false] {
+            HermesHostFixture.reset()
+            let keychain = InMemoryKeychainStore()
+            let manager = try await makeHermesManager(keychain: keychain)
+            let store = BotConnectionStore(keychain: keychain)
+            let saved = try XCTUnwrap(store.load(server: hermesServer))
+            if !isSignedIn { try store.remove(server: hermesServer) }
+            manager.switchActiveServer(to: try XCTUnwrap(manager.servers.first { $0.kind == .webui }))
+            manager.handleAPIError(APIError.unauthorized)
+            XCTAssertEqual(manager.state, .loggedOut(server: webuiServer))
+            let form = makeForm(entry: .onboarding)
+            form.serverURLString = "HERMES.example/"
+
+            await form.connect(authManager: manager)
+
+            XCTAssertNil(form.errorMessage, "signed in: \(isSignedIn)")
+            XCTAssertEqual(manager.state, isSignedIn ? .loggedIn(server: hermesServer) : .loggedOut(server: hermesServer))
+            XCTAssertEqual(manager.servers.map(\.kind), [.webui, .hermes])
+            XCTAssertEqual(try store.load(server: hermesServer), isSignedIn ? saved : nil)
+            XCTAssertTrue(HermesHostFixture.requests.isEmpty, "signed in: \(isSignedIn)")
+        }
+    }
+
     func testASavedPasswordLeavesTheFormWhenTheAddressChanges() async throws {
         defer { HermesHostFixture.reset() }
         // The second row changes only the scheme the dashboard is reached at: the webui path
