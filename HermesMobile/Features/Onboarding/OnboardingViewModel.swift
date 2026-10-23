@@ -465,8 +465,10 @@ final class OnboardingViewModel {
     /// Connect in onboarding, Add in Settings. The first one for an address finds out what
     /// answers there; a dashboard then waits for its sign-in, if it has one. Returns the
     /// server it added, or nil when nothing was added yet. Onboarding needs no result: the
-    /// new server's sign-in replaces it. `replacingWebuiServer` is the confirmed Replace a
-    /// saved webui server at a dashboard's address offers (`offersWebuiReplace`).
+    /// new server's sign-in replaces it. Onboarding has no server switcher, so in onboarding
+    /// a saved Hermes server's address switches to it, with no probe (#1331): its home opens,
+    /// or its own sign-in form when it has no saved sign-in. `replacingWebuiServer` is the
+    /// confirmed Replace a saved webui server at a dashboard's address offers (`offersWebuiReplace`).
     /// A dashboard that signs in through the browser shows its sign-in page with `browser`.
     @discardableResult
     func connect(authManager: AuthManager, replacingWebuiServer: Bool = false,
@@ -475,6 +477,12 @@ final class OnboardingViewModel {
         errorMessage = nil
         connectionMessage = nil
         offersWebuiReplace = false
+
+        if entry == .onboarding, let address = try? BotConnection.address(serverURLString),
+           let saved = authManager.servers.first(where: { $0.id == address.absoluteString && $0.kind == .hermes }) {
+            authManager.switchActiveServer(to: saved)
+            return nil
+        }
 
         if entry == .onboarding, detectedKind != .hermes,
            let validationMessage = Self.passwordValidationMessage(authStatus: authStatus, password: password) {
