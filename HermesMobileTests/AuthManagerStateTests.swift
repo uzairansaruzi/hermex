@@ -1029,11 +1029,11 @@ final class AuthManagerStateTests: XCTestCase {
     }
 
     /// Onboarding shows for a webui server whose session was refused, and the user types the
-    /// address of a Hermes server saved beside it. Connect opens that server without a probe:
-    /// its home when its sign-in is saved, its own sign-in form when not (#1331).
+    /// address of a Hermes server saved beside it. Connect or Test Connection opens that server
+    /// without a probe: its home when its sign-in is saved, its own sign-in form when not (#1331).
     func testOnboardingOpensASavedHermesServer() async throws {
         defer { HermesHostFixture.reset() }
-        for isSignedIn in [true, false] {
+        for (isSignedIn, tests) in [(true, false), (false, false), (true, true)] {
             HermesHostFixture.reset()
             let keychain = InMemoryKeychainStore()
             let manager = try await makeHermesManager(keychain: keychain)
@@ -1046,13 +1046,13 @@ final class AuthManagerStateTests: XCTestCase {
             let form = makeForm(entry: .onboarding)
             form.serverURLString = "HERMES.example/"
 
-            await form.connect(authManager: manager)
+            if tests { await form.testConnection(authManager: manager) } else { await form.connect(authManager: manager) }
 
-            XCTAssertNil(form.errorMessage, "signed in: \(isSignedIn)")
+            XCTAssertNil(form.errorMessage, "signed in: \(isSignedIn), test: \(tests)")
             XCTAssertEqual(manager.state, isSignedIn ? .loggedIn(server: hermesServer) : .loggedOut(server: hermesServer))
             XCTAssertEqual(manager.servers.map(\.kind), [.webui, .hermes])
             XCTAssertEqual(try store.load(server: hermesServer), isSignedIn ? saved : nil)
-            XCTAssertTrue(HermesHostFixture.requests.isEmpty, "signed in: \(isSignedIn)")
+            XCTAssertTrue(HermesHostFixture.requests.isEmpty, "signed in: \(isSignedIn), test: \(tests)")
         }
     }
 
