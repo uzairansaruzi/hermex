@@ -156,6 +156,13 @@ struct MarkdownMathFormatter {
                 return index
             }
 
+            // A live `$` that cannot close ends the candidate, as hermes-webui's `[^$]`
+            // span does; scanning past it would pair with a later `$` and swallow prose.
+            if delimiter == .dollar, characters[index] == "$", !protected[index],
+               !MarkdownMathProtection.isEscaped(characters, at: index) {
+                return nil
+            }
+
             index += 1
         }
         return nil

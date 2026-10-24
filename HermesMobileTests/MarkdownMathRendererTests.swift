@@ -52,6 +52,7 @@ final class MarkdownMathRendererTests: XCTestCase {
             "Then it's clean: **$250** — 5 visits deep, all after the fact. He's owed $250 whenever you pay next.",
             "That makes it $550 over May–Aug = 11 visits at $50 — weekly mows in peak season.",
             "It costs $5 today, and $10 tomorrow.",
+            "**$5** pay-in-arrears **$10**",
             "**5 visits since the last payment** (Aug 28, Sep 11, Sep 25) → **$250**."
         ]
 
@@ -60,10 +61,10 @@ final class MarkdownMathRendererTests: XCTestCase {
         }
     }
 
-    func testClosingDollarPrecededByWhitespaceIsNotMath() {
+    func testRejectedClosingDollarDoesNotPairWithALaterSpan() {
         XCTAssertEqual(
-            MarkdownMathFormatter.replacingInlineMath(in: "Loose math $x + y $ with a trailing space stays prose."),
-            "Loose math $x + y $ with a trailing space stays prose."
+            MarkdownMathFormatter.replacingInlineMath(in: "Loose $x^2 $ and then $y^2$ renders."),
+            "Loose $x^2 $ and then y² renders."
         )
     }
 
