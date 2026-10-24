@@ -851,3 +851,41 @@ private actor RetryingInlineImageProvider: InlineImageProvider {
         return Image(systemName: "square")
     }
 }
+
+/// Renders one overlong paragraph with only an iPhone's 1 MB main-thread stack
+/// left. The simulator has 8 MB, which hides #1333.
+@MainActor
+final class InlineElementStackDepthTests: XCTestCase {
+    func testInlineCodeHeavyParagraphRendersOnAPhoneStack() {
+        renderWithPhoneStack((0..<400).map { "`path/file\($0).swift`" }.joined(separator: " "))
+    }
+
+    func testBareURLParagraphRendersOnAPhoneStack() {
+        renderWithPhoneStack((0..<400).map { "https://example.com/p/\($0)" }.joined(separator: " "))
+    }
+
+    private func renderWithPhoneStack(_ markdown: String) {
+        let host = UIHostingController(rootView: ScrollView { MarkdownRenderer(content: markdown) })
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 900))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let thread = pthread_self()
+        let bottom = Int(bitPattern: pthread_get_stackaddr_np(thread)) - pthread_get_stacksize_np(thread)
+        withStack(left: 1_008 * 1024, above: bottom) {
+            window.layoutIfNeeded()
+            _ = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+        }
+    }
+}
+
+/// Recurses until about `limit` bytes of stack remain, then runs `body`.
+@inline(never)
+private func withStack(left limit: Int, above bottom: Int, _ body: () -> Void) {
+    var marker = 0
+    let sp = withUnsafeMutablePointer(to: &marker) { Int(bitPattern: $0) }
+    if sp - bottom > limit { withStack(left: limit, above: bottom, body) } else { body() }
+    withExtendedLifetime(marker) {}
+}

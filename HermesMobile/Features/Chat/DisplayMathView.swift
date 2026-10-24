@@ -285,7 +285,8 @@ struct MathMarkdownLabel<Label: View>: View {
     var body: some View {
         if containsMath {
             let markdown = content.renderMarkdown()
-            if markdown.contains(InlineMathSource.marker) {
+            if markdown.contains(InlineMathSource.marker)
+                || MarkdownContentRenderingPolicy.hasTooManyInlineElements(markdown) {
                 MathInlineText(markdown: markdown.trimmingCharacters(in: .newlines),
                                separator: separator, tableColumn: tableColumn,
                                fontScale: fontScale, weight: weight, tintImages: tintImages)
@@ -497,7 +498,9 @@ struct InlineMathTextRequest: Equatable {
     }
 
     private func compose(_ attributed: AttributedString, images: [URL: Image]) -> InlineMathTextResult {
+        // Prose runs share one `Text`: a `+` per run nests as deep as the paragraph is long.
         var text = Text("")
+        var prose = AttributedString()
         var selectable = ""
         var accessible = ""
         var retainedImages: [URL: Image] = [:]
@@ -515,6 +518,8 @@ struct InlineMathTextRequest: Equatable {
                     retainedImages[url] = images[url]
                     attachment = images[url].map { Text($0) } ?? Text(verbatim: alt)
                 }
+                if !prose.characters.isEmpty { text = text + Text(prose) }
+                prose = AttributedString()
                 text = text + attachment.customAttribute(ResponseSelectionImageAttribute())
                 accessible += alt
             } else {
@@ -523,12 +528,13 @@ struct InlineMathTextRequest: Equatable {
                     span.font = .system(size: fontSize * ChatMarkdownInlineStyle.codeFontScale, weight: fontWeight, design: .monospaced)
                     span.backgroundColor = ChatMarkdownInlineStyle.codeBackground(dark: dark)
                 }
-                text = text + Text(span)
+                prose.append(span)
                 let plain = String(span.characters)
                 selectable += plain
                 accessible += plain
             }
         }
+        if !prose.characters.isEmpty { text = text + Text(prose) }
         return InlineMathTextResult(text: text, selectableText: selectable, accessibilityText: accessible, images: retainedImages)
     }
 }
