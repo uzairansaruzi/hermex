@@ -21,9 +21,9 @@ class CheckStringCatalogTests(unittest.TestCase):
     def tearDown(self):
         self.directory.cleanup()
 
-    def stringsdata(self, target, keys, source=None, arch="arm64", table="Localizable"):
+    def stringsdata(self, target, keys, source=None, arch="arm64", table="Localizable", configuration="Debug-iphonesimulator"):
         folder = (self.root / "dd" / "Build" / "Intermediates.noindex" / "HermesMobile.build"
-                  / "Debug-iphonesimulator" / f"{target}.build" / "Objects-normal" / arch)
+                  / configuration / f"{target}.build" / "Objects-normal" / arch)
         folder.mkdir(parents=True, exist_ok=True)
         entries = [{"key": key, "location": {"startingLine": line}} for key, line in keys]
         path = folder / f"{(source or self.source).stem}.stringsdata"
@@ -36,11 +36,11 @@ class CheckStringCatalogTests(unittest.TestCase):
         for target in TARGETS:
             self.stringsdata(target, keys)
 
-    def run_check(self, catalog_keys):
+    def run_check(self, catalog_keys, configuration="Debug-iphonesimulator"):
         catalog = self.root / "Localizable.xcstrings"
         catalog.write_text(json.dumps({"strings": {key: {} for key in catalog_keys}}))
         return subprocess.run(
-            [sys.executable, str(SCRIPT), "--derived-data", str(self.root / "dd"), "--catalog", str(catalog)],
+            [sys.executable, str(SCRIPT), "--derived-data", str(self.root / "dd"), "--catalog", str(catalog), "--configuration", configuration],
             capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"},
         )
 
@@ -73,6 +73,20 @@ class CheckStringCatalogTests(unittest.TestCase):
         result = self.run_check(["Send"])
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("no .stringsdata files for HermesLiveActivityWidget", result.stderr)
+
+    def test_catalyst_checks_mac_copy_without_requiring_ios_extensions(self):
+        self.stringsdata("HermesMobile", [("Mac setup", 5)], configuration="Debug-maccatalyst")
+        result = self.run_check(["Mac setup"], configuration="Debug-maccatalyst")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("HermesLiveActivityWidget", result.stdout)
+        missing = self.run_check([], configuration="Debug-maccatalyst")
+        self.assertEqual(missing.returncode, 1)
+        self.assertIn('"Mac setup"', missing.stdout)
+
+    def test_catalyst_still_requires_app_output(self):
+        result = self.run_check([], configuration="Debug-maccatalyst")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no .stringsdata files for HermesMobile", result.stderr)
 
 
 if __name__ == "__main__":

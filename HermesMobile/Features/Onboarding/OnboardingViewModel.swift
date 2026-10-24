@@ -49,9 +49,17 @@ final class OnboardingViewModel {
         var help: String {
             switch self {
             case .sameWiFi:
+                #if targetEnvironment(macCatalyst)
+                return String(localized: "Enter the host’s local address and port. For a host on this Mac, use localhost.")
+                #else
                 return String(localized: "Enter the host’s local address and port. This iPhone must be on the same Wi-Fi as the host.")
+                #endif
             case .privateNetwork:
+                #if targetEnvironment(macCatalyst)
+                return String(localized: "Enter the host’s name or IP on Tailscale, NetBird or another private network. Keep that app connected on this Mac.")
+                #else
                 return String(localized: "Enter the host’s name or IP on Tailscale, NetBird or another private network. Keep that app connected on this iPhone.")
+                #endif
             case .cloudflareTunnel:
                 return String(localized: "Enter your tunnel’s HTTPS address. If Cloudflare Access protects it, add your service token below.")
             }

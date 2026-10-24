@@ -1,4 +1,6 @@
+#if !targetEnvironment(macCatalyst)
 import ActivityKit
+#endif
 import Foundation
 import Observation
 import SwiftData
@@ -113,6 +115,9 @@ struct MoveToHermesQuestion: Identifiable, Equatable {
     struct Environment {
         var runner = MoveToHermesRunner.Environment()
         /// Sessions of `server` whose Live Activity on this iPhone is still running.
+        #if targetEnvironment(macCatalyst)
+        var liveActivitySessions: @MainActor (URL) -> Set<String> = { _ in [] }
+        #else
         var liveActivitySessions: @MainActor (URL) -> Set<String> = { server in
             Set(Activity<AgentRunActivityAttributes>.activities.compactMap { activity in
                 let state = activity.content.state
@@ -121,6 +126,7 @@ struct MoveToHermesQuestion: Identifiable, Equatable {
                 return state.sessionID
             })
         }
+        #endif
         var notices: @MainActor () -> MoveToHermesNotices = { .shared }
     }
 

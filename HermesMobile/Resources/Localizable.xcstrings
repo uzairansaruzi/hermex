@@ -1,6 +1,343 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Its sign-in, cached chats and drafts are removed from this Mac. Conversations on the host stay." : {
+      "localizations" : {
+        "de" : {"stringUnit" : {"state" : "needs_review", "value" : "Seine Anmeldung, zwischengespeicherten Chats und Entwürfe werden von diesem Mac entfernt. Die Unterhaltungen auf dem Host bleiben erhalten."}},
+        "es" : {"stringUnit" : {"state" : "needs_review", "value" : "Su inicio de sesión, sus chats en caché y sus borradores se eliminan de este Mac. Las conversaciones en el host se conservan."}},
+        "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Sa connexion, ses discussions en cache et ses brouillons sont supprimés de ce Mac. Les conversations sur l’hôte sont conservées."}},
+        "it" : {"stringUnit" : {"state" : "needs_review", "value" : "Il suo accesso, le chat in cache e le bozze vengono rimossi da questo Mac. Le conversazioni sull’host restano."}},
+        "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Jego logowanie, czaty w pamięci podręcznej i wersje robocze zostaną usunięte z tego Mac’a. Rozmowy na hoście pozostaną."}},
+        "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "O login, as conversas em cache e os rascunhos dele são removidos deste Mac. As conversas no host permanecem."}},
+        "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "De aanmelding, gecachete chats en concepten worden van deze Mac verwijderd. Gesprekken op de host blijven bewaard."}},
+        "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "Oturum açma bilgileri, önbellekteki sohbetleri ve taslakları bu Mac’dan kaldırılır. Ana bilgisayardaki konuşmalar kalır."}},
+        "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Его данные для входа, кэшированные чаты и черновики удаляются с этого Mac. Беседы на хосте сохранятся."}},
+        "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "サインイン情報、キャッシュされたチャット、下書きがこのMacから削除されます。ホスト上の会話は残ります。"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "其登录信息、缓存的聊天和草稿将从此 Mac 中移除。主机上的对话会保留。"}},
+        "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "로그인 정보, 캐시된 채팅, 임시 저장본이 이 Mac에서 제거돼요. 호스트의 대화는 그대로 남아요."}},
+        "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "تُزال بيانات تسجيل الدخول والدردشات المخزنة مؤقتًا والمسودات الخاصة به من جهاز Mac هذا. تبقى المحادثات على المضيف."}},
+        "he" : {"stringUnit" : {"state" : "needs_review", "value" : "פרטי ההתחברות, הצ׳אטים השמורים במטמון והטיוטות שלו יוסרו מה-Mac הזה. השיחות במארח יישארו."}},
+        "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "اس کا سائن اِن، کیش شدہ چیٹس اور ڈرافٹس اس Mac سے ہٹا دیے جاتے ہیں۔ ہوسٹ پر گفتگو برقرار رہتی ہے۔"}},
+        "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "其登入資訊、快取的聊天和草稿會從此 Mac 移除。主機上的對話會保留。"}},
+        "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "其登入資料、快取的聊天和草稿會從此 Mac 移除。主機上的對話會保留。"}}
+      }
+    },
+    "Connecting to this host instead clears this connection’s drafts, cached chats and notification pairing on this Mac." : {
+      "localizations" : {
+        "de" : {"stringUnit" : {"state" : "needs_review", "value" : "Wenn du dich stattdessen mit diesem Host verbindest, werden die Entwürfe, zwischengespeicherten Chats und die Mitteilungskopplung dieser Verbindung auf diesem Mac gelöscht."}},
+        "es" : {"stringUnit" : {"state" : "needs_review", "value" : "Si te conectas a este host en su lugar, se borrarán en este Mac los borradores, los chats en caché y la vinculación de notificaciones de esta conexión."}},
+        "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Se connecter plutôt à cet hôte efface sur ce Mac les brouillons, les discussions en cache et l’association des notifications de cette connexion."}},
+        "it" : {"stringUnit" : {"state" : "needs_review", "value" : "Connettendoti invece a questo host, su questo Mac verranno cancellati le bozze, le chat in cache e l’abbinamento delle notifiche di questa connessione."}},
+        "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Połączenie zamiast tego z tym hostem usunie na tym Macu wersje robocze, zapisane w pamięci podręcznej czaty i parowanie powiadomień tego połączenia."}},
+        "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "Conectar a este host em vez disso apaga neste Mac os rascunhos, as conversas em cache e o pareamento de notificações desta conexão."}},
+        "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "Als je in plaats daarvan met deze host verbindt, worden de concepten, gecachte chats en meldingskoppeling van deze verbinding op deze Mac gewist."}},
+        "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "Bunun yerine bu sunucuya bağlanmak, bu bağlantının taslaklarını, önbelleğe alınmış sohbetlerini ve bildirim eşleştirmesini bu Mac’dan siler."}},
+        "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Подключение к этому хосту удалит на этом Mac черновики, кэшированные чаты и привязку уведомлений этого подключения."}},
+        "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "代わりにこのホストに接続すると、この Mac 上のこの接続の下書き、キャッシュされたチャット、通知のペアリングが消去されます。"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "改为连接到此主机会清除此 Mac 上此连接的草稿、缓存的聊天和通知配对。"}},
+        "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "대신 이 호스트에 연결하면 이 Mac에서 이 연결의 초안, 캐시된 채팅, 알림 페어링이 지워집니다."}},
+        "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "يؤدي الاتصال بهذا المضيف بدلًا من ذلك إلى مسح مسودات هذا الاتصال ومحادثاته المخزنة مؤقتًا واقتران الإشعارات على هذا الـ Mac."}},
+        "he" : {"stringUnit" : {"state" : "needs_review", "value" : "התחברות למארח הזה במקום תמחק ב‑Mac הזה את הטיוטות, הצ׳אטים השמורים במטמון ואת צימוד ההתראות של החיבור הזה."}},
+        "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "اس کے بجائے اس ہوسٹ سے کنیکٹ کرنے سے اس Mac پر اس کنکشن کے ڈرافٹس، کیش شدہ چیٹس اور اطلاعاتی پیئرنگ صاف ہو جائیں گی۔"}},
+        "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "改為連線到此主機會清除此 Mac 上此連線的草稿、快取的聊天和通知配對。"}},
+        "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "改為連線到此主機會清除此 Mac 上此連線的草稿、快取的聊天和通知配對。"}}
+      }
+    },
+    "Saved sign-in details, this connection’s drafts and its notification keys will be deleted. This Mac stops receiving this host’s notifications. Bots and their work remain on the host." : {
+      "localizations" : {
+        "de" : {"stringUnit" : {"state" : "needs_review", "value" : "Gespeicherte Anmeldedaten, die Entwürfe dieser Verbindung und ihre Mitteilungsschlüssel werden gelöscht. Dieses Mac erhält keine Mitteilungen dieses Hosts mehr. Bots und ihre Arbeit bleiben auf dem Host."}},
+        "es" : {"stringUnit" : {"state" : "needs_review", "value" : "Se eliminarán los datos de inicio de sesión guardados, los borradores de esta conexión y sus claves de notificación. Este Mac dejará de recibir las notificaciones de este host. Los Bots y su trabajo permanecen en el host."}},
+        "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Les identifiants enregistrés, les brouillons de cette connexion et ses clés de notification seront supprimés. Cet Mac cessera de recevoir les notifications de cet hôte. Les Bots et leur travail restent sur l’hôte."}},
+        "it" : {"stringUnit" : {"state" : "needs_review", "value" : "I dati di accesso salvati, le bozze di questa connessione e le sue chiavi di notifica verranno eliminati. Questo Mac smetterà di ricevere le notifiche di questo host. I Bot e il loro lavoro restano sull’host."}},
+        "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Zapisane dane logowania, wersje robocze tego połączenia i jego klucze powiadomień zostaną usunięte. Ten Mac przestanie odbierać powiadomienia z tego hosta. Boty i ich praca pozostają na hoście."}},
+        "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "Os dados de acesso salvos, os rascunhos desta conexão e suas chaves de notificação serão apagados. Este Mac deixará de receber as notificações deste host. Os Bots e o trabalho deles permanecem no host."}},
+        "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "Bewaarde inloggegevens, de concepten van deze verbinding en de meldingssleutels worden verwijderd. Deze Mac ontvangt geen meldingen meer van deze host. Bots en hun werk blijven op de host."}},
+        "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "Kayıtlı oturum bilgileri, bu bağlantının taslakları ve bildirim anahtarları silinecek. Bu Mac artık bu sunucunun bildirimlerini almayacak. Bot’lar ve işleri sunucuda kalır."}},
+        "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Сохранённые данные для входа, черновики этого подключения и его ключи уведомлений будут удалены. Этот Mac перестанет получать уведомления с этого хоста. Боты и их работа остаются на хосте."}},
+        "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "保存されたサインイン情報、この接続の下書き、通知キーが削除されます。この Mac はこのホストの通知を受け取らなくなります。Bots とその作業はホストに残ります。"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "已保存的登录信息、此连接的草稿及其通知密钥将被删除。此 Mac 将不再接收该主机的通知。Bots 及其工作仍保留在主机上。"}},
+        "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "저장된 로그인 정보, 이 연결의 초안, 알림 키가 삭제됩니다. 이 Mac은 이 호스트의 알림을 더 이상 받지 않습니다. Bots와 그 작업은 호스트에 남습니다."}},
+        "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "ستُحذف بيانات تسجيل الدخول المحفوظة ومسودات هذا الاتصال ومفاتيح الإشعارات الخاصة به. سيتوقف هذا الـ Mac عن تلقي إشعارات هذا المضيف. تبقى Bots وأعمالها على المضيف."}},
+        "he" : {"stringUnit" : {"state" : "needs_review", "value" : "פרטי הכניסה השמורים, הטיוטות של חיבור זה ומפתחות ההתראות שלו יימחקו. ה‑Mac הזה יפסיק לקבל התראות מהמארח הזה. ה‑Bots והעבודה שלהם נשארים במארח."}},
+        "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "محفوظ سائن اِن تفصیلات، اس کنکشن کے ڈرافٹس اور اس کی اطلاعاتی کیز حذف ہو جائیں گی۔ یہ Mac اس ہوسٹ کی اطلاعات وصول کرنا بند کر دے گا۔ Bots اور ان کا کام ہوسٹ پر برقرار رہتا ہے۔"}},
+        "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "已儲存的登入資訊、此連線的草稿及其通知密鑰將被刪除。此 Mac 將不再接收該主機的通知。Bots 及其工作仍保留在主機上。"}},
+        "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "已儲存的登入資訊、此連線的草稿及其通知密鑰將被刪除。此 Mac 將不再接收該主機的通知。Bots 及其工作仍保留在主機上。"}}
+      }
+    },
+    "Could not save sign-in details on this Mac." : {
+      "localizations" : {
+        "de" : {"stringUnit" : {"state" : "needs_review", "value" : "Anmeldedaten konnten auf diesem Mac nicht gespeichert werden."}},
+        "es" : {"stringUnit" : {"state" : "needs_review", "value" : "No se pudieron guardar los datos de inicio de sesión en este Mac."}},
+        "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Impossible d’enregistrer les identifiants sur ce Mac."}},
+        "it" : {"stringUnit" : {"state" : "needs_review", "value" : "Impossibile salvare i dati di accesso su questo Mac."}},
+        "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Nie można zapisać danych logowania na tym Macu."}},
+        "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "Não foi possível salvar os dados de acesso neste Mac."}},
+        "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "Kan inloggegevens niet op deze Mac bewaren."}},
+        "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "Oturum açma bilgileri bu Mac’a kaydedilemedi."}},
+        "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Не удалось сохранить данные для входа на этом Mac."}},
+        "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "この Mac にサインイン情報を保存できませんでした。"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "无法在此 Mac 上保存登录信息。"}},
+        "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "이 Mac에 로그인 정보를 저장할 수 없습니다."}},
+        "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "تعذّر حفظ بيانات تسجيل الدخول على هذا الـ Mac."}},
+        "he" : {"stringUnit" : {"state" : "needs_review", "value" : "לא ניתן לשמור את פרטי הכניסה ב‑Mac הזה."}},
+        "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "اس Mac پر سائن اِن معلومات محفوظ نہیں ہو سکیں۔"}},
+        "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "無法在此 Mac 上儲存登入資料。"}},
+        "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "無法在此 Mac 上儲存登入資料。"}}
+      }
+    },
+    "Run Hermex actions like New Chat from Siri, Spotlight, or Shortcuts." : {
+      "localizations" : {
+        "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "شغّل إجراءات Hermex مثل دردشة جديدة من Siri أو Spotlight أو الاختصارات."}},
+        "de" : {"stringUnit" : {"state" : "needs_review", "value" : "Führe Hermex-Aktionen wie Neuer Chat über Siri, Spotlight oder Kurzbefehle aus."}},
+        "es" : {"stringUnit" : {"state" : "needs_review", "value" : "Ejecuta acciones de Hermex como Nuevo chat desde Siri, Spotlight o Atajos."}},
+        "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Lancez des actions Hermex comme Nouvelle discussion depuis Siri, Spotlight ou Raccourcis."}},
+        "he" : {"stringUnit" : {"state" : "needs_review", "value" : "הפעל פעולות Hermex כמו צ׳אט חדש דרך Siri, Spotlight או קיצורים."}},
+        "it" : {"stringUnit" : {"state" : "needs_review", "value" : "Esegui azioni Hermex come Nuova chat da Siri, Spotlight o Comandi Rapidi."}},
+        "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "Siri、Spotlight、ショートカットから新規チャットなどのHermexアクションを実行できます。"}},
+        "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "Siri, Spotlight 또는 단축어에서 새 채팅 등의 Hermex 동작을 실행하세요."}},
+        "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "Voer Hermex-acties zoals Nieuwe chat uit via Siri, Spotlight of Opdrachten."}},
+        "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Uruchamiaj działania Hermex, takie jak Nowy czat, przez Siri, Spotlight lub Skróty."}},
+        "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "Execute ações do Hermex como Novo chat pelo Siri, Spotlight ou Atalhos."}},
+        "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Запускайте действия Hermex, например новый чат, через Siri, Spotlight или Команды."}},
+        "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "Yeni Sohbet gibi Hermex eylemlerini Siri, Spotlight veya Kestirmeler’den çalıştırın."}},
+        "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "Siri، Spotlight یا Shortcuts سے نئی چیٹ جیسی Hermex کارروائیاں چلائیں۔"}},
+        "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "透過 Siri、Spotlight 或「捷徑」執行新增聊天等 Hermex 動作。"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "通过 Siri、Spotlight 或「快捷指令」执行新建聊天等 Hermex 操作。"}},
+        "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "透過 Siri、Spotlight 或「捷徑」執行新增聊天等 Hermex 動作。"}}
+      }
+    },
+    "Control your Hermes agent from your Mac." : {
+      "localizations" : {
+        "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "تحكّم في عميل Hermes من جهاز Mac الخاص بك."}},
+        "de" : {"stringUnit" : {"state" : "needs_review", "value" : "Steuere deinen Hermes-Agenten von deinem Mac aus."}},
+        "es" : {"stringUnit" : {"state" : "needs_review", "value" : "Controla tu agente Hermes desde tu Mac."}},
+        "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Contrôlez votre agent Hermes depuis votre Mac."}},
+        "he" : {"stringUnit" : {"state" : "needs_review", "value" : "שלוט בסוכן Hermes שלך מה-Mac שלך."}},
+        "it" : {"stringUnit" : {"state" : "needs_review", "value" : "Controlla il tuo agente Hermes dal tuo Mac."}},
+        "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "MacからHermesエージェントを操作できます。"}},
+        "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "Mac에서 Hermes 에이전트를 제어하세요."}},
+        "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "Bedien uw Hermes-agent vanaf uw Mac."}},
+        "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Steruj agentem Hermes ze swojego Maca."}},
+        "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "Controle seu agente Hermes pelo seu Mac."}},
+        "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Управляйте агентом Hermes со своего Mac."}},
+        "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "Hermes ajanınızı Mac’inizden kontrol edin."}},
+        "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "اپنے Mac سے اپنے Hermes ایجنٹ کو کنٹرول کریں۔"}},
+        "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "在 Mac 上控制你的 Hermes 代理。"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "在 Mac 上控制你的 Hermes 智能体。"}},
+        "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "在 Mac 上控制你的 Hermes 代理人。"}}
+      }
+    },
+    "Send with Return or ⌘Return. Use Shift-Return for a new line." : {
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "أرسل باستخدام Return أو ⌘Return. استخدم Shift-Return لسطر جديد."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Sende mit Return oder ⌘Return. Verwende Shift-Return für eine neue Zeile."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Envía con Return o ⌘Return. Usa Shift-Return para una nueva línea."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Envoyez avec Return ou ⌘Return. Utilisez Shift-Return pour une nouvelle ligne."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "שלח עם Return או ⌘Return. השתמש ב-Shift-Return לשורה חדשה."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Invia con Return o ⌘Return. Usa Shift-Return per una nuova riga."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Returnまたは⌘Returnで送信。Shift-Returnで改行します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Return 또는 ⌘Return으로 전송합니다. Shift-Return으로 줄을 바꿉니다."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Verzend met Return of ⌘Return. Gebruik Shift-Return voor een nieuwe regel."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wyślij za pomocą Return lub ⌘Return. Shift-Return dodaje nowy wiersz."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Envie com Return ou ⌘Return. Use Shift-Return para uma nova linha."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Отправляйте с помощью Return или ⌘Return. Shift-Return добавляет новую строку."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Return veya ⌘Return ile gönderin. Yeni satır için Shift-Return kullanın."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Return یا ⌘Return سے بھیجیں۔ نئی سطر کے لیے Shift-Return استعمال کریں۔"
+          }
+        },
+        "zh-HK": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "按 Return 或 ⌘Return 傳送，按 Shift-Return 換行。"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "按 Return 或 ⌘Return 发送，按 Shift-Return 换行。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "按 Return 或 ⌘Return 傳送，按 Shift-Return 換行。"
+          }
+        }
+      }
+    },
+    "Enter the host’s local address and port. For a host on this Mac, use localhost." : {
+      "localizations" : {
+        "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "أدخل العنوان المحلي للمضيف ومنفذه. إذا كان المضيف على جهاز Mac هذا، فاستخدم localhost."}},
+        "de" : {"stringUnit" : {"state" : "needs_review", "value" : "Gib die lokale Adresse und den Port des Hosts ein. Läuft der Host auf diesem Mac, verwende localhost."}},
+        "es" : {"stringUnit" : {"state" : "needs_review", "value" : "Introduce la dirección local y el puerto del host. Si está en este Mac, usa localhost."}},
+        "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Saisissez l’adresse locale et le port de l’hôte. Pour un hôte sur ce Mac, utilisez localhost."}},
+        "he" : {"stringUnit" : {"state" : "needs_review", "value" : "הזן את הכתובת המקומית ואת הפורט של המארח. למארח ב-Mac הזה, השתמש ב-localhost."}},
+        "it" : {"stringUnit" : {"state" : "needs_review", "value" : "Inserisci l’indirizzo locale e la porta dell’host. Se si trova su questo Mac, usa localhost."}},
+        "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "ホストのローカルアドレスとポートを入力してください。このMac上のホストにはlocalhostを使います。"}},
+        "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "호스트의 로컬 주소와 포트를 입력하세요. 이 Mac의 호스트에는 localhost를 사용하세요."}},
+        "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "Voer het lokale adres en de poort van de host in. Gebruik localhost voor een host op deze Mac."}},
+        "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Wpisz lokalny adres i port hosta. Dla hosta na tym Macu użyj localhost."}},
+        "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "Digite o endereço local e a porta do host. Para um host neste Mac, use localhost."}},
+        "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Введите локальный адрес и порт хоста. Для хоста на этом Mac используйте localhost."}},
+        "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "Ana bilgisayarın yerel adresini ve bağlantı noktasını girin. Bu Mac’teki bir sunucu için localhost kullanın."}},
+        "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "ہوسٹ کا مقامی پتہ اور پورٹ درج کریں۔ اسی Mac پر موجود ہوسٹ کے لیے localhost استعمال کریں۔"}},
+        "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "輸入主機的區域網絡位址和連接埠。如果主機在這部 Mac 上，請使用 localhost。"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "输入主机的局域网地址和端口。如果主机在这台 Mac 上，请使用 localhost。"}},
+        "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "輸入主機的區域網路位址和連接埠。如果主機在這部 Mac 上，請使用 localhost。"}}
+      }
+    },
+    "Chat with your Hermes agent from Mac" : {
+      "localizations" : {
+        "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "تحدّث مع عميل Hermes من Mac"}},
+        "de" : {"stringUnit" : {"state" : "needs_review", "value" : "Chatte vom Mac aus mit deinem Hermes-Agenten"}},
+        "es" : {"stringUnit" : {"state" : "needs_review", "value" : "Chatea con tu agente Hermes desde Mac"}},
+        "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Discutez avec votre agent Hermes depuis Mac"}},
+        "he" : {"stringUnit" : {"state" : "needs_review", "value" : "שוחח עם סוכן Hermes שלך מה-Mac"}},
+        "it" : {"stringUnit" : {"state" : "needs_review", "value" : "Chatta con il tuo agente Hermes da Mac"}},
+        "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "MacからHermesエージェントとチャット"}},
+        "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "Mac에서 Hermes 에이전트와 채팅하세요"}},
+        "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "Chat met uw Hermes-agent vanaf de Mac"}},
+        "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Czatuj z agentem Hermes przez Mac'a"}},
+        "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "Converse com seu agente Hermes pelo Mac"}},
+        "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Общайтесь с агентом Hermes с Mac"}},
+        "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "Mac'unuzdan Hermes ajanınızla sohbet edin"}},
+        "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "اپنے Mac سے اپنے Hermes ایجنٹ کے ساتھ چیٹ کریں"}},
+        "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "在 Mac 上與你的 Hermes 代理聊天"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "在 Mac 上与你的 Hermes 智能体聊天"}},
+        "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "在 Mac 上與你的 Hermes 代理人聊天"}}
+      }
+    },
+    "Your Hermes agent, reachable from Mac over Tailscale." : {
+      "localizations" : {
+        "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "وكيل Hermes الخاص بك، يمكن الوصول إليه من Mac عبر Tailscale."}},
+        "de" : {"stringUnit" : {"state" : "needs_review", "value" : "Dein Hermes-Agent, erreichbar vom Mac über Tailscale."}},
+        "es" : {"stringUnit" : {"state" : "needs_review", "value" : "Tu agente Hermes, accesible desde Mac a través de Tailscale."}},
+        "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Votre agent Hermes, accessible depuis l'Mac via Tailscale."}},
+        "he" : {"stringUnit" : {"state" : "needs_review", "value" : "סוכן Hermes שלך, נגיש מ-Mac דרך Tailscale."}},
+        "it" : {"stringUnit" : {"state" : "needs_review", "value" : "Il tuo agente Hermes, raggiungibile dall'Mac tramite Tailscale."}},
+        "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "Tailscale経由でMacからアクセスできるHermesエージェント。"}},
+        "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "Tailscale을 통해 Mac에서 접근할 수 있는 Hermes 에이전트."}},
+        "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "Uw Hermes-agent, bereikbaar vanaf de Mac via Tailscale."}},
+        "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Twój agent Hermes, dostępny z Mac'a przez Tailscale."}},
+        "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "Seu agente Hermes, acessível pelo Mac via Tailscale."}},
+        "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Ваш агент Hermes, доступный с Mac через Tailscale."}},
+        "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "Hermes aracınız, Tailscale üzerinden Mac'dan erişilebilir."}},
+        "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "آپ کا Hermes ایجنٹ، Mac سے Tailscale کے ذریعے قابلِ رسائی۔"}},
+        "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "你的 Hermes 代理，可透過 Tailscale 從 Mac 存取。"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "你的 Hermes 代理，可通过 Tailscale 从 Mac 访问。"}},
+        "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "你的 Hermes 代理，可透過 Tailscale 從 Mac 存取。"}}
+      }
+    },
+    "Put your Mac on the same private network as your server, such as Tailscale or NetBird. Your agent will reply with the exact URL to use on the next screen." : {
+      "localizations" : {
+        "de" : {"stringUnit" : {"state" : "needs_review", "value" : "Bring dein Mac in dasselbe private Netzwerk wie deinen Server, etwa Tailscale oder NetBird. Dein Agent antwortet auf dem nächsten Bildschirm mit der genauen URL, die du verwenden sollst."}},
+        "es" : {"stringUnit" : {"state" : "needs_review", "value" : "Conecta tu Mac a la misma red privada que tu servidor, como Tailscale o NetBird. Tu agente responderá con la URL exacta a usar en la siguiente pantalla."}},
+        "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Connectez votre Mac au même réseau privé que votre serveur, comme Tailscale ou NetBird. Votre agent vous indiquera l’URL exacte à utiliser à l’écran suivant."}},
+        "it" : {"stringUnit" : {"state" : "needs_review", "value" : "Collega il tuo Mac alla stessa rete privata del server, come Tailscale o NetBird. Il tuo agente risponderà con l’URL esatto da usare nella schermata successiva."}},
+        "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Podłącz Mac’a do tej samej sieci prywatnej co serwer, np. Tailscale lub NetBird. Agent odpowie dokładnym adresem URL do użycia na następnym ekranie."}},
+        "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "Coloque seu Mac na mesma rede privada do seu servidor, como Tailscale ou NetBird. Seu agente responderá com a URL exata a ser usada na próxima tela."}},
+        "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "Zet je Mac op hetzelfde privénetwerk als je server, zoals Tailscale of NetBird. Je agent antwoordt met de exacte URL die je op het volgende scherm gebruikt."}},
+        "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "Mac’unuzu sunucunuzla aynı özel ağa, örneğin Tailscale veya NetBird’e bağlayın. Aracınız, bir sonraki ekranda kullanılacak tam URL’yi yanıtlayacaktır."}},
+        "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Подключите Mac к той же частной сети, что и сервер, например Tailscale или NetBird. Ваш агент ответит точным URL для использования на следующем экране."}},
+        "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "Mac をサーバと同じプライベートネットワーク（Tailscale や NetBird など）に接続してください。次の画面で、エージェントが使用する正確な URL を返信します。"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "让你的 Mac 加入与服务器相同的私有网络，例如 Tailscale 或 NetBird。下一屏中，代理将回复要使用的确切 URL。"}},
+        "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "Mac을 서버와 같은 사설 네트워크(예: Tailscale, NetBird)에 연결하세요. 에이전트가 다음 화면에서 사용할 정확한 URL로 응답해요."}},
+        "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "ضع الـ Mac على الشبكة الخاصة نفسها التي يستخدمها خادمك، مثل Tailscale أو NetBird. سيردّ وكيلك بعنوان URL الدقيق لاستخدامه في الشاشة التالية."}},
+        "he" : {"stringUnit" : {"state" : "needs_review", "value" : "חבר את ה-Mac לאותה רשת פרטית שבה נמצא השרת שלך, כמו Tailscale או NetBird. הסוכן שלך ישיב עם כתובת ה-URL המדויקת לשימוש במסך הבא."}},
+        "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "اپنے Mac کو اپنے سرور والے نجی نیٹ ورک پر لائیں، جیسے Tailscale یا NetBird۔ اگلی اسکرین پر آپ کا ایجنٹ استعمال کرنے کے لیے درست URL کے ساتھ جواب دے گا۔"}},
+        "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "讓你的 Mac 加入與伺服器相同的私人網路，例如 Tailscale 或 NetBird。下一個畫面中，代理會回覆要使用的確切 URL。"}},
+        "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "讓你的 Mac 加入與伺服器相同的私人網絡，例如 Tailscale 或 NetBird。在下一個畫面中，代理會回覆要使用的確切 URL。"}}
+      }
+    },
+    "Enter the host’s name or IP on Tailscale, NetBird or another private network. Keep that app connected on this Mac." : {
+      "localizations" : {
+        "de" : {"stringUnit" : {"state" : "needs_review", "value" : "Gib den Namen oder die IP des Hosts in Tailscale, NetBird oder einem anderen privaten Netzwerk ein. Halte diese App auf diesem Mac verbunden."}},
+        "es" : {"stringUnit" : {"state" : "needs_review", "value" : "Introduce el nombre o la IP del host en Tailscale, NetBird u otra red privada. Mantén esa app conectada en este Mac."}},
+        "fr" : {"stringUnit" : {"state" : "needs_review", "value" : "Saisissez le nom ou l’IP de l’hôte sur Tailscale, NetBird ou un autre réseau privé. Gardez cette app connectée sur ce Mac."}},
+        "it" : {"stringUnit" : {"state" : "needs_review", "value" : "Inserisci il nome o l’IP dell’host su Tailscale, NetBird o un’altra rete privata. Mantieni quell’app connessa su questo Mac."}},
+        "pl" : {"stringUnit" : {"state" : "needs_review", "value" : "Wpisz nazwę lub IP hosta w Tailscale, NetBird lub innej sieci prywatnej. Utrzymuj tę aplikację połączoną na tym Macu."}},
+        "pt-BR" : {"stringUnit" : {"state" : "needs_review", "value" : "Digite o nome ou o IP do host no Tailscale, NetBird ou outra rede privada. Mantenha esse app conectado neste Mac."}},
+        "nl" : {"stringUnit" : {"state" : "needs_review", "value" : "Voer de naam of het IP-adres van de host in op Tailscale, NetBird of een ander privénetwerk. Houd die app verbonden op deze Mac."}},
+        "tr" : {"stringUnit" : {"state" : "needs_review", "value" : "Ana bilgisayarın Tailscale, NetBird veya başka bir özel ağdaki adını ya da IP adresini girin. O uygulamayı bu Mac’da bağlı tutun."}},
+        "ru" : {"stringUnit" : {"state" : "needs_review", "value" : "Введите имя или IP-адрес хоста в Tailscale, NetBird или другой частной сети. Держите это приложение подключённым на этом Mac."}},
+        "ja" : {"stringUnit" : {"state" : "needs_review", "value" : "Tailscale、NetBird などのプライベートネットワーク上のホスト名または IP を入力してください。この Mac でそのアプリを接続したままにします。"}},
+        "zh-Hans" : {"stringUnit" : {"state" : "needs_review", "value" : "输入主机在 Tailscale、NetBird 或其他私有网络中的名称或 IP。请在此 Mac 上保持该 App 连接。"}},
+        "ko" : {"stringUnit" : {"state" : "needs_review", "value" : "Tailscale, NetBird 또는 다른 사설 네트워크에서 쓰는 호스트 이름이나 IP를 입력하세요. 이 Mac에서 해당 앱의 연결을 유지하세요."}},
+        "ar" : {"stringUnit" : {"state" : "needs_review", "value" : "أدخل اسم المضيف أو عنوان IP الخاص به على Tailscale أو NetBird أو شبكة خاصة أخرى. أبقِ ذلك التطبيق متصلًا على هذا الـ Mac."}},
+        "he" : {"stringUnit" : {"state" : "needs_review", "value" : "הזן את השם או ה-IP של המארח ב-Tailscale, ב-NetBird או ברשת פרטית אחרת. השאר את האפליקציה הזו מחוברת ב-Mac הזה."}},
+        "ur" : {"stringUnit" : {"state" : "needs_review", "value" : "Tailscale، NetBird یا کسی دوسرے نجی نیٹ ورک پر ہوسٹ کا نام یا IP درج کریں۔ اس Mac پر وہ ایپ منسلک رکھیں۔"}},
+        "zh-Hant" : {"stringUnit" : {"state" : "needs_review", "value" : "輸入主機在 Tailscale、NetBird 或其他私人網路上的名稱或 IP。請在這部 Mac 上保持該 App 連線。"}},
+        "zh-HK" : {"stringUnit" : {"state" : "needs_review", "value" : "輸入主機在 Tailscale、NetBird 或其他私人網絡上的名稱或 IP。請在這部 Mac 上保持該 App 連線。"}}
+      }
+    },
     "" : {
       "shouldTranslate" : false
     },

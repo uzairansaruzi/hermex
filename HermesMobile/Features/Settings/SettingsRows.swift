@@ -4,7 +4,8 @@ import UIKit
 extension View {
     /// A Settings page's list (#1252): inset grouped, titled inline under the index's large title.
     func settingsPage(_ title: String) -> some View {
-        listStyle(.insetGrouped)
+        macReadableForm(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
+            .listStyle(.insetGrouped)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
     }

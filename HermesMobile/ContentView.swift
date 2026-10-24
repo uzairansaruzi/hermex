@@ -587,6 +587,9 @@ struct HermesServerHome: View {
                                     }
                                 }
                         }
+                        #if targetEnvironment(macCatalyst)
+                        .adaptiveFormPresentation(preferredMacSize: CGSize(width: 680, height: 640))
+                        #endif
                     }
             } else {
                 NavigationStack {

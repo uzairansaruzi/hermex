@@ -42,6 +42,7 @@ struct BotRoomComposerView: View {
                         onPasteFileProviders: { _ in }, onPasteFileURLs: { _ in },
                         onPasteImageProviders: { _ in }, onPasteImages: { _ in },
                         onTapChip: { _ in }, onTapQuote: { _ in }, onRemoveQuote: { _ in },
+                        isReturnSendEnabled: BotMentionTrigger.detect(in: reader.draft(in: threadID), selection: selection.range) == nil,
                         placeholder: threadID == nil ? String(localized: "Message \(reader.room.name)") : String(localized: "Reply in thread"), acceptsAttachments: false
                     )
                     actionButton

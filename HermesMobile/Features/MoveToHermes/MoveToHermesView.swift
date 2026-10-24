@@ -30,6 +30,9 @@ struct MoveToHermesSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbar }
         }
+        #if targetEnvironment(macCatalyst)
+        .adaptiveFormPresentation(preferredMacSize: CGSize(width: 700, height: 640))
+        #endif
         .task { model.open(entry) }
         .onDisappear { model.close() }
         .sheet(isPresented: $isSigningIn) {
@@ -1080,6 +1083,9 @@ private struct MoveToHermesQuestionSheet: View {
             }
         }
         .presentationDetents(isMoving ? [.large] : [.medium, .large])
+        #if targetEnvironment(macCatalyst)
+        .adaptiveFormPresentation(preferredMacSize: isMoving ? CGSize(width: 700, height: 640) : CGSize(width: 520, height: 340))
+        #endif
     }
 
     private var ask: some View {
@@ -1151,6 +1157,9 @@ private struct MoveToHermesOfferSheet: View {
             }
         }
         .presentationDetents(isBringing ? [.large] : [.medium, .large])
+        #if targetEnvironment(macCatalyst)
+        .adaptiveFormPresentation(preferredMacSize: isBringing ? CGSize(width: 700, height: 640) : CGSize(width: 520, height: 280))
+        #endif
     }
 
     private func name(_ id: String) -> String {

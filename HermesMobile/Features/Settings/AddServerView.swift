@@ -79,6 +79,7 @@ struct AddServerView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 18)
                 .padding(.bottom, 36)
+                .macReadableContent()
             }
             .background(Color(.systemBackground))
             .navigationTitle(isMoveSignIn ? String(localized: "Sign In to Hermes") : String(localized: "Add Server"))
@@ -96,9 +97,13 @@ struct AddServerView: View {
         .confirmationDialog("Replace the webui server?", isPresented: $isConfirmingReplace, titleVisibility: .visible) {
             Button("Replace", role: .destructive) { submit(replacingWebuiServer: true) }
         } message: {
+            #if targetEnvironment(macCatalyst)
+            Text("Its sign-in, cached chats and drafts are removed from this Mac. Conversations on the host stay.")
+            #else
             Text("Its sign-in, cached chats and drafts are removed from this iPhone. Conversations on the host stay.")
+            #endif
         }
-        .adaptiveFormPresentation()
+        .adaptiveFormPresentation(preferredMacSize: CGSize(width: 640, height: 640))
         .onDisappear { operation?.cancel() }
     }
 

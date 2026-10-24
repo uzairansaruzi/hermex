@@ -61,7 +61,7 @@ struct CustomHeadersEditor: View {
         VStack(spacing: 8) {
             HStack(spacing: 8) {
                 field {
-                    TextField("Header name", text: header.name)
+                    headerNameField(header.name)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .foregroundStyle(style.primaryText)
@@ -80,11 +80,29 @@ struct CustomHeadersEditor: View {
             }
 
             field {
-                SecureField("Value", text: header.value)
+                headerValueField(header.value)
                     .foregroundStyle(style.primaryText)
                     .accessibilityLabel("Header value")
             }
         }
+    }
+
+    private func headerNameField(_ text: Binding<String>) -> TextField<Text> {
+        #if targetEnvironment(macCatalyst)
+        TextField("Header name", text: text,
+                  prompt: Text("Header name").foregroundStyle(style.secondaryText))
+        #else
+        TextField("Header name", text: text)
+        #endif
+    }
+
+    private func headerValueField(_ text: Binding<String>) -> SecureField<Text> {
+        #if targetEnvironment(macCatalyst)
+        SecureField("Value", text: text,
+                    prompt: Text("Value").foregroundStyle(style.secondaryText))
+        #else
+        SecureField("Value", text: text)
+        #endif
     }
 
     private func field<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {

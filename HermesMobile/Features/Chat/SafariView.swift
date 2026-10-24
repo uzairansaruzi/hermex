@@ -11,6 +11,9 @@ import UIKit
 enum SafariView {
     @MainActor
     static func present(_ url: URL) {
+        #if targetEnvironment(macCatalyst)
+        UIApplication.shared.open(url)
+        #else
         guard let presenter = topViewController() else {
             UIApplication.shared.open(url)
             return
@@ -18,6 +21,7 @@ enum SafariView {
         let controller = SFSafariViewController(url: url)
         controller.modalPresentationStyle = .formSheet
         presenter.present(controller, animated: true)
+        #endif
     }
 
     /// The front-most view controller in the app's key window, the one the tap

@@ -1,10 +1,14 @@
 import SwiftUI
 import UIKit
 
-/// Hermes home owns a split only at regular width; pushed lists keep their caller's stack.
+/// Hermes home uses a desktop split on Mac or a regular-width split on iPad; pushed lists keep their caller's stack.
 enum HermesHomeLayout {
     static func usesSplit(isHome: Bool, horizontalSizeClass: UserInterfaceSizeClass?) -> Bool {
+        #if targetEnvironment(macCatalyst)
+        isHome
+        #else
         isHome && horizontalSizeClass == .regular
+        #endif
     }
 }
 
@@ -16,12 +20,19 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
     let rootRevision: Int
     @ViewBuilder let sidebar: Sidebar
     @ViewBuilder let detail: Detail
+    #if targetEnvironment(macCatalyst)
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    #else
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    #endif
     @State private var detailColumn = DetailColumnNavigation()
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
+                #if targetEnvironment(macCatalyst)
+                .navigationSplitViewColumnWidth(min: 240, ideal: 300, max: 420)
+                #endif
         } detail: {
             NavigationStack {
                 detail
@@ -30,8 +41,15 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
             .id(rootRevision)
         }
         .navigationSplitViewStyle(.balanced)
+        #if targetEnvironment(macCatalyst)
+        .environment(\.horizontalSizeClass, .regular)
+        #endif
         .onChange(of: rootRevision) {
+            #if targetEnvironment(macCatalyst)
+            if columnVisibility != .detailOnly { columnVisibility = .all }
+            #else
             columnVisibility = columnVisibility.afterRootSelection
+            #endif
             detailColumn.popToRoot()
         }
     }
@@ -1091,7 +1109,12 @@ struct ScheduledSessionsView: View {
         .environment(\.defaultMinListRowHeight, 0)
         .scrollContentBackground(.hidden)
         .navigationTitle("Scheduled sessions")
+        #if targetEnvironment(macCatalyst)
+        .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
+        .macReadableSearchable(text: $searchText, prompt: Text("Search sessions"))
+        #else
         .searchable(text: $searchText, prompt: "Search sessions")
+        #endif
         .task(id: searchText) {
             if viewModel.isHermes { await viewModel.searchSessions(query: searchText) }
         }

@@ -4,7 +4,11 @@ import SwiftUI
 struct OnboardingView: View {
     /// Height of the fade the bottom bar paints over the pager. Pages that end in a control
     /// pad their scroll content past it so the control can scroll clear of the fade.
+    #if targetEnvironment(macCatalyst)
+    static let bottomFadeHeight: CGFloat = 0
+    #else
     static let bottomFadeHeight: CGFloat = 50
+    #endif
 
     @Bindable var authManager: AuthManager
     @State private var viewModel: OnboardingViewModel
@@ -14,12 +18,14 @@ struct OnboardingView: View {
     /// The prompts whose copy reminder Continue Anyway skipped.
     @State private var bypassedSetupPrompts: Set<OnboardingSetupPrompt> = []
     @State private var isShowingCopyReminder = false
+    private let isReturningSignIn: Bool
     @FocusState private var focusedField: OnboardingConnectField?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
 
     init(authManager: AuthManager, savedServer: URL? = nil) {
         self.authManager = authManager
+        isReturningSignIn = savedServer != nil
         // A known server means a re-login, not first-run setup: skip the
         // intro pager and land on the connect page with the server filled in.
         _viewModel = State(
@@ -37,7 +43,12 @@ struct OnboardingView: View {
     }
 
     private var isEditingConnectionField: Bool {
+        #if targetEnvironment(macCatalyst)
+        // A hardware keyboard doesn't need the phone's keyboard accessory bar.
+        false
+        #else
         currentPage == OnboardingFlowPolicy.connectPageIndex && focusedField != nil
+        #endif
     }
 
     private var hasServerURL: Bool {
@@ -48,6 +59,14 @@ struct OnboardingView: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
+            #if targetEnvironment(macCatalyst)
+            NavigationStack {
+                desktopContent
+                    .background(Color.black)
+                    .navigationTitle(Text(verbatim: "Hermex"))
+                    .toolbar(.hidden, for: .navigationBar)
+            }
+            #else
             VStack(spacing: 0) {
                 TabView(selection: $currentPage) {
                     OnboardingWelcomePage()
@@ -76,6 +95,7 @@ struct OnboardingView: View {
 
                 bottomBar
             }
+            #endif
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if isEditingConnectionField {
@@ -99,12 +119,56 @@ struct OnboardingView: View {
         }
     }
 
+    #if targetEnvironment(macCatalyst)
+    private var desktopContent: some View {
+        VStack(spacing: 0) {
+            HStack {
+                if currentPage > 0 && !isReturningSignIn {
+                    Button {
+                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { currentPage -= 1 }
+                    } label: {
+                        Label("Back", systemImage: "chevron.backward")
+                    }
+                    .buttonStyle(.plain)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .keyboardShortcut("[", modifiers: .command)
+                }
+                Spacer()
+            }
+            .frame(minHeight: 28)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 28)
+            .padding(.top, 20)
+            .padding(.bottom, 8)
+
+            desktopPage
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .id(currentPage)
+
+            bottomBar.fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: 640, maxHeight: currentPage == OnboardingFlowPolicy.connectPageIndex ? 600 : 720)
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder private var desktopPage: some View {
+        switch currentPage {
+        case 0: OnboardingWelcomePage()
+        case 1: OnboardingFeaturesPage()
+        case 2: OnboardingAgentPromptPage(shownPrompt: $shownSetupPrompt, copiedPrompts: $copiedSetupPrompts)
+        case 3: OnboardingTailscalePage()
+        default: OnboardingConnectPage(viewModel: viewModel, authManager: authManager, focusedField: $focusedField)
+        }
+    }
+    #endif
+
     private var bottomBar: some View {
         VStack(spacing: 16) {
-            OnboardingPageIndicator(
-                pageCount: OnboardingFlowPolicy.pageCount,
-                currentPage: currentPage
-            )
+            if !isReturningSignIn || !isDesktop {
+                OnboardingPageIndicator(pageCount: OnboardingFlowPolicy.pageCount, currentPage: currentPage)
+            }
 
             if currentPage == OnboardingFlowPolicy.connectPageIndex {
                 if !isEditingConnectionField {
@@ -125,6 +189,9 @@ struct OnboardingView: View {
                         )
                 }
                 .buttonStyle(.plain)
+                #if targetEnvironment(macCatalyst)
+                .keyboardShortcut(.defaultAction)
+                #endif
                 .accessibilityLabel(OnboardingFlowPolicy.primaryButtonTitle(for: currentPage))
 
                 if OnboardingFlowPolicy.showsServerShortcut(for: currentPage) {
@@ -141,6 +208,7 @@ struct OnboardingView: View {
         .padding(.horizontal, 24)
         .padding(.top, 12)
         .padding(.bottom, 12)
+        #if !targetEnvironment(macCatalyst)
         .background(
             LinearGradient(
                 colors: [.clear, .black.opacity(0.6), .black],
@@ -153,6 +221,15 @@ struct OnboardingView: View {
             .allowsHitTesting(false),
             alignment: .top
         )
+        #endif
+    }
+
+    private var isDesktop: Bool {
+        #if targetEnvironment(macCatalyst)
+        true
+        #else
+        false
+        #endif
     }
 
     private var keyboardActionBar: some View {
@@ -203,6 +280,9 @@ struct OnboardingView: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(OnboardingPrimaryButtonStyle())
+        #if targetEnvironment(macCatalyst)
+        .keyboardShortcut(.return, modifiers: .command)
+        #endif
         .disabled(viewModel.isWorking || !viewModel.canSubmit)
     }
 

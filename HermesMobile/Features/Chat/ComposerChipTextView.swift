@@ -64,6 +64,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     var acceptsAttachments = true
     var isKeyboardSendEnabled = false
+    var isReturnSendEnabled = true
     var onKeyboardSend: () -> Void = {}
     /// The chat's last sent message, which ↑ brings back into an empty editor
     /// on a hardware keyboard. Nil where there is no single author to recall
@@ -586,8 +587,25 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             input: ComposerKeyboardCommand.input,
             modifierFlags: ComposerKeyboardCommand.modifierFlags
         )
+        var sendCommands = [sendCommand]
+        #if targetEnvironment(macCatalyst)
+        let returnCommand = UIKeyCommand(
+            title: ComposerKeyboardCommand.title,
+            action: #selector(sendMessageFromReturnKey),
+            input: ComposerKeyboardCommand.input,
+            modifierFlags: []
+        )
+        returnCommand.wantsPriorityOverSystemBehavior = true
+        sendCommands.append(returnCommand)
+        let newlineCommand = UIKeyCommand(
+            input: ComposerKeyboardCommand.input, modifierFlags: .shift,
+            action: #selector(insertNewlineFromKeyboard)
+        )
+        newlineCommand.wantsPriorityOverSystemBehavior = true
+        sendCommands.append(newlineCommand)
+        #endif
         guard recallLastSentText != nil else {
-            return (super.keyCommands ?? []) + [sendCommand]
+            return (super.keyCommands ?? []) + sendCommands
         }
         let recallCommand = UIKeyCommand(
             title: ComposerRecall.commandTitle,
@@ -597,13 +615,32 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         )
         // Arrow keys go to text editing first otherwise.
         recallCommand.wantsPriorityOverSystemBehavior = true
-        return (super.keyCommands ?? []) + [sendCommand, recallCommand]
+        return (super.keyCommands ?? []) + sendCommands + [recallCommand]
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(sendMessageFromKeyboard) {
+            #if targetEnvironment(macCatalyst)
+            return ComposerKeyboardSendPolicy.canSend(
+                isEnabled: isKeyboardSendEnabled, hasMarkedText: markedTextRange != nil,
+                isPlainReturn: false, allowsPlainReturn: isReturnSendEnabled
+            )
+            #else
             return isKeyboardSendEnabled
+            #endif
         }
+
+        #if targetEnvironment(macCatalyst)
+        if action == #selector(insertNewlineFromKeyboard) {
+            return isEditable && markedTextRange == nil
+        }
+        if action == #selector(sendMessageFromReturnKey) {
+            return ComposerKeyboardSendPolicy.canSend(
+                isEnabled: isKeyboardSendEnabled, hasMarkedText: markedTextRange != nil,
+                isPlainReturn: true, allowsPlainReturn: isReturnSendEnabled
+            )
+        }
+        #endif
 
         if action == #selector(recallLastSentTextFromKeyboard) {
             return recallableText != nil
@@ -621,9 +658,25 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     }
 
     @objc private func sendMessageFromKeyboard() {
+        #if targetEnvironment(macCatalyst)
+        guard canPerformAction(#selector(sendMessageFromKeyboard), withSender: nil) else { return }
+        #else
         guard isKeyboardSendEnabled else { return }
+        #endif
         onKeyboardSend()
     }
+
+    #if targetEnvironment(macCatalyst)
+    @objc private func insertNewlineFromKeyboard() {
+        guard canPerformAction(#selector(insertNewlineFromKeyboard), withSender: nil) else { return }
+        insertText("\n")
+    }
+
+    @objc private func sendMessageFromReturnKey() {
+        guard canPerformAction(#selector(sendMessageFromReturnKey), withSender: nil) else { return }
+        onKeyboardSend()
+    }
+    #endif
 
     /// What ↑ would bring back. Only an empty editor takes it, so ↑ inside a
     /// draft, or with a quote staged, keeps moving the caret.

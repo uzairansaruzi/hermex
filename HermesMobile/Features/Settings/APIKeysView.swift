@@ -34,10 +34,16 @@ struct APIKeysView: View {
             switch sheet {
             case .add(let profile):
                 APIKeyPicker(keys: model.keys, profile: profile, model: model) { self.sheet = nil }
+                    #if targetEnvironment(macCatalyst)
+                    .adaptiveFormPresentation(preferredMacSize: CGSize(width: 640, height: 600))
+                    #endif
             case .edit(let key, let profile):
                 NavigationStack {
                     APIKeyForm(key: key, profile: profile, model: model, onCancel: { self.sheet = nil }) { self.sheet = nil }
                 }
+                #if targetEnvironment(macCatalyst)
+                .adaptiveFormPresentation(preferredMacSize: CGSize(width: 640, height: 600))
+                #endif
             }
         }
     }
@@ -67,6 +73,9 @@ struct APIKeysView: View {
             } description: {
                 Text("Loading keys…")
             }
+            #if targetEnvironment(macCatalyst)
+            .frame(maxWidth: .infinity)
+            #endif
             .listRowBackground(Color.clear)
         case .failed(let message):
             ContentUnavailableView {
@@ -76,6 +85,9 @@ struct APIKeysView: View {
             } actions: {
                 Button("Try Again") { Task { await model.load() } }
             }
+            #if targetEnvironment(macCatalyst)
+            .frame(maxWidth: .infinity)
+            #endif
             .listRowBackground(Color.clear)
         case .loaded:
             let sections = model.setSections
@@ -85,6 +97,9 @@ struct APIKeysView: View {
                 } actions: {
                     Button("Add Key") { sheet = .add(profile: profile) }
                 }
+                #if targetEnvironment(macCatalyst)
+                .frame(maxWidth: .infinity)
+                #endif
                 .listRowBackground(Color.clear)
             }
             ForEach(sections) { section in

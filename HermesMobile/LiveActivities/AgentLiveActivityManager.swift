@@ -1,4 +1,6 @@
+#if !targetEnvironment(macCatalyst)
 import ActivityKit
+#endif
 import Foundation
 import OSLog
 import UIKit
@@ -10,6 +12,7 @@ private let liveActivityReconcilerLogger = Logger(
 
 /// Taps dismiss only the exact finished card, including a relay-ended card whose
 /// last content still says running. No session-based fallback is safe here.
+#if !targetEnvironment(macCatalyst)
 enum AgentLiveActivityTapPolicy {
     static func shouldDismiss(requestedID: String?, activityID: String,
                               isFinal: Bool, activityState: ActivityState) -> Bool {
@@ -17,6 +20,8 @@ enum AgentLiveActivityTapPolicy {
         return isFinal || activityState == .ended
     }
 }
+
+#endif
 
 enum AgentLiveActivityEvent: Equatable {
     case sessionTitle(String)
@@ -178,6 +183,7 @@ extension AgentLiveActivityManaging {
     func endOrphanedActivity(streamID: String, status: AgentRunActivityStatus, activity: String) async -> Bool { false }
 }
 
+#if !targetEnvironment(macCatalyst)
 @MainActor
 final class AgentLiveActivityManager: AgentLiveActivityManaging {
     static let shared = AgentLiveActivityManager(pushKeys: LiveActivityPushKeys(defaults: .standard))
@@ -1156,6 +1162,27 @@ final class AgentLiveActivityManager: AgentLiveActivityManaging {
         reset()
     }
 }
+
+#else
+/// macOS has no Live Activities. Keep the same coordinator interface so streaming,
+/// reconnects and completion notifications continue through their existing paths.
+@MainActor
+final class AgentLiveActivityManager: AgentLiveActivityManaging {
+    static let shared = AgentLiveActivityManager()
+
+    struct HermesRunCheck {
+        let server: URL
+        let runningKeys: @MainActor () async -> Set<String>?
+    }
+
+    func start(sessionID: String, server: URL, sessionTitle: String, streamID: String?, startedAt: Date) {}
+    func update(_ event: AgentLiveActivityEvent) {}
+    func markStale() {}
+    func end(status: AgentRunActivityStatus, activity: String, errorSummary: String?) {}
+    func settleActivitiesFromPreviousLaunch(checking hermes: HermesRunCheck? = nil) async {}
+    func dismissFinishedActivity(from url: URL) async {}
+}
+#endif
 
 // MARK: - Orphaned Live Activity reconciliation (#246)
 

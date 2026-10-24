@@ -297,9 +297,13 @@ struct SettingsServerPage: View {
     }
 
     private var removeFootnote: String {
+        #if targetEnvironment(macCatalyst)
+        usualRemovalMessage
+        #else
         signsOut
             ? String(localized: "Signs out and removes this server from this iPhone.")
             : String(localized: "Removes this server from this iPhone.")
+        #endif
     }
 
     private var removeAlertMessage: String {

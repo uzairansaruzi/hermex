@@ -185,6 +185,9 @@ struct HermesSessionListView: View {
             if !viewModel.isViewingCachedData && !viewModel.hermesShowsAllProfiles { archivedRow }
         }
         .listStyle(.plain)
+        #if targetEnvironment(macCatalyst)
+        .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
+        #endif
         .environment(\.defaultMinListRowHeight, 0)
         .modifier(chrome)
     }
@@ -343,7 +346,9 @@ struct HermesSessionListView: View {
         if usesSplit {
             SessionSplitView(rootRevision: covers.detailIdentity.hashValue) {
                 sessionRows
+                    #if !targetEnvironment(macCatalyst)
                     .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 420)
+                    #endif
             } detail: {
                 regularWidthDetail
             }
@@ -426,6 +431,9 @@ struct HermesSessionListView: View {
         } else {
             ContentUnavailableView("Select a Chat", systemImage: "bubble.left.and.bubble.right",
                                    description: Text("Choose a session from the sidebar or start a new chat."))
+                #if targetEnvironment(macCatalyst)
+                .navigationTitle(home?.title ?? entry.server.host ?? entry.server.absoluteString)
+                #endif
         }
     }
 

@@ -3,13 +3,45 @@ import SwiftUI
 struct OnboardingFeaturesPage: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private let features: [(icon: String, color: Color, title: String, subtitle: String)] = [
-        ("bubble.left.and.bubble.right.fill", Color(red: 1.0, green: 0.74, blue: 0.10), String(localized: "Chat with your Hermes agent from iPhone"), String(localized: "Drive conversations from anywhere on your tailnet.")),
+    private var features: [(icon: String, color: Color, title: String, subtitle: String)] { [
+        ("bubble.left.and.bubble.right.fill", Color(red: 1.0, green: 0.74, blue: 0.10), chatTitle, String(localized: "Drive conversations from anywhere on your tailnet.")),
         ("list.bullet.rectangle.portrait.fill", .green, String(localized: "Manage sessions, tasks, and files remotely"), String(localized: "Browse workspaces and stay on top of agent work.")),
-        ("mic.fill", .purple, String(localized: "Voice input and mobile-friendly composer controls"), String(localized: "Compose naturally with touch-first controls.")),
+        ("mic.fill", .purple, voiceTitle, voiceSubtitle),
         ("checkmark.shield.fill", .cyan, String(localized: "Review approvals and clarifications inline"), String(localized: "Respond to agent prompts without switching apps.")),
         ("server.rack", .orange, String(localized: "Self-hosted: your machine, your tailnet"), String(localized: "Your Hermes host stays on hardware you control."))
-    ]
+    ] }
+
+    private var chatTitle: String {
+        #if targetEnvironment(macCatalyst)
+        String(localized: "Chat with your Hermes agent from Mac")
+        #else
+        String(localized: "Chat with your Hermes agent from iPhone")
+        #endif
+    }
+
+    private var reachabilitySubtitle: String {
+        #if targetEnvironment(macCatalyst)
+        String(localized: "Your Hermes agent, reachable from Mac over Tailscale.")
+        #else
+        String(localized: "Your Hermes agent, reachable from iPhone over Tailscale.")
+        #endif
+    }
+
+    private var voiceTitle: String {
+        #if targetEnvironment(macCatalyst)
+        String(localized: "Voice input")
+        #else
+        String(localized: "Voice input and mobile-friendly composer controls")
+        #endif
+    }
+
+    private var voiceSubtitle: String {
+        #if targetEnvironment(macCatalyst)
+        String(localized: "Send with Return or ⌘Return. Use Shift-Return for a new line.")
+        #else
+        String(localized: "Compose naturally with touch-first controls.")
+        #endif
+    }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -19,7 +51,7 @@ struct OnboardingFeaturesPage: View {
                         .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 26 : 28, weight: .bold))
                         .foregroundStyle(.white)
 
-                    Text("Your Hermes agent, reachable from iPhone over Tailscale.")
+                    Text(reachabilitySubtitle)
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.45))
                         .multilineTextAlignment(.center)

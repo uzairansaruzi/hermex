@@ -15,6 +15,10 @@ enum ComposerTextInputHeight {
     static func expanded(measured: CGFloat, verticalSizeClass: UserInterfaceSizeClass?) -> CGFloat {
         verticalSizeClass == .compact ? expandedMinimum : max(expandedMinimum, measured)
     }
+
+    static func desktop(measured: CGFloat) -> CGFloat {
+        min(128, max(36, measured))
+    }
 }
 
 struct ComposerTextInputView: View {
@@ -59,6 +63,8 @@ struct ComposerTextInputView: View {
     /// The chat's last sent message, for ↑ in an empty editor. Nil turns the
     /// shortcut off.
     var recallLastSentText: (() -> String?)? = nil
+    /// Autocomplete keeps Return for editing; Command-Return remains explicit send.
+    var isReturnSendEnabled = true
 
     var placeholder = String(localized: "Ask anything... /commands")
     /// Text-only clients reject file/image paste and drop before invoking callbacks.
@@ -73,6 +79,7 @@ struct ComposerTextInputView: View {
                 isFocused: $isFocused,
                 isDisabled: isDisabled,
                 isKeyboardSendEnabled: isKeyboardSendEnabled,
+                isReturnSendEnabled: isReturnSendEnabled,
                 chipSkills: chipSkills,
                 chipFilePaths: chipFilePaths,
                 chipBots: chipBots,
@@ -95,7 +102,7 @@ struct ComposerTextInputView: View {
             // in iPhone landscape, where the text scrolls inside it.
             .frame(height: isCollapsed
                 ? collapsedLineHeight
-                : ComposerTextInputHeight.expanded(measured: inputHeight, verticalSizeClass: verticalSizeClass))
+                : expandedEditorHeight)
             .padding(.vertical, isCollapsed ? 0 : verticalPadding)
             .padding(.horizontal, 16)
             .opacity(isCollapsed ? 0 : 1)
@@ -135,6 +142,14 @@ struct ComposerTextInputView: View {
             inputHeight = newHeight
             measuredHeight = newHeight
         }
+    }
+
+    private var expandedEditorHeight: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        ComposerTextInputHeight.desktop(measured: inputHeight)
+        #else
+        ComposerTextInputHeight.expanded(measured: inputHeight, verticalSizeClass: verticalSizeClass)
+        #endif
     }
 }
 
@@ -200,6 +215,7 @@ private struct ComposerTextView: UIViewRepresentable {
     @Binding var isFocused: Bool
     let isDisabled: Bool
     let isKeyboardSendEnabled: Bool
+    let isReturnSendEnabled: Bool
     let chipSkills: [SkillSlashSuggestion]
     let chipFilePaths: Set<String>
     let chipBots: [String: ComposerBotReference]
@@ -246,6 +262,7 @@ private struct ComposerTextView: UIViewRepresentable {
         // which would reach the server as an object-replacement character.
         textView.allowsEditingTextAttributes = false
         textView.isKeyboardSendEnabled = isKeyboardSendEnabled
+        textView.isReturnSendEnabled = isReturnSendEnabled
         textView.onKeyboardSend = onKeyboardSend
         textView.recallLastSentText = recallLastSentText
         textView.onPasteFileProviders = onPasteFileProviders
@@ -279,6 +296,7 @@ private struct ComposerTextView: UIViewRepresentable {
         context.coordinator.acceptsAttachments = acceptsAttachments
         context.coordinator.syncEditing(for: textView, isDisabled: isDisabled)
         textView.isKeyboardSendEnabled = isKeyboardSendEnabled
+        textView.isReturnSendEnabled = isReturnSendEnabled
         textView.onKeyboardSend = onKeyboardSend
         textView.recallLastSentText = recallLastSentText
         textView.onPasteFileProviders = onPasteFileProviders
