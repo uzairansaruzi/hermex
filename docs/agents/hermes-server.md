@@ -327,15 +327,20 @@ OAuth, webui fallback, server provisioning or competing-backend path.
 The host tells each agent what screen it writes to through a per-surface note in its system
 prompt, picked by the session's `source`. A session with none runs as `tui`, whose note says
 `MEDIA:` tags print as text and files must be delivered as paths. So every `session.create` and
-`session.resume` Hermex sends carries `source: "hermex"` (`HermesCall.source`), and a branch
+`session.resume` Hermex sends carries `source: "gui"` (`HermesCall.source`), and a branch
 inherits its parent's. The host has no built-in note for that name, so Hermex keeps its own in
-each Profile's config as `platform_hints.hermex.append` (`HermesREST.platformNote`), which the
-host appends for that source (#1278). `HermesConnection.keepPlatformNote` reads the config once
+each Profile's config as `platform_hints.gui.append` (`HermesREST.platformNote`), which the
+host appends for that source (#1278). Desktop chats run as `desktop`, so they never read it. The
+name must also be one a gateway beside the dashboard treats as local: it refuses an edit to a
+session it hasn't loaded otherwise, so sessions made by 2.0 builds that sent `hermex` answer 404
+`not_found` to pin, archive, unread and rename on that topology (#1335). Duplicate makes an
+editable copy of one. On the canonical protocol `gui` means Desktop; revisit the name if Hermex
+moves to it. `HermesConnection.keepPlatformNote` reads the config once
 per Profile per sign-in, before the first attach and before a new bot's chat is made, and writes
 the note only when it is missing or different. `PUT /api/config` deep-merges, so nothing else in
 the file changes. The note is read when the host builds an agent, so a runtime the host built
 earlier keeps the old note until the host reaps it. Hermex owns `append`: a user's own text for
-Hermex sessions goes in `platform_hints.hermex.replace`, which the host puts before it.
+Hermex sessions goes in `platform_hints.gui.replace`, which the host puts before it.
 
 ## Handshake
 

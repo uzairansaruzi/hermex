@@ -192,7 +192,8 @@ import Foundation
 
     /// Writes `change` and returns the title the host kept. Behind the write fence (#1300) it reads
     /// the session's revision first, since any activity moves it. A 400's reason is a
-    /// `HermesSessionRefusal`, a fence 409 a `HermesSessionFenceRefusal`; neither is resent.
+    /// `HermesSessionRefusal`, a fence 409 or an owner's 404 or 403 a `HermesSessionFenceRefusal`;
+    /// neither is resent.
     @discardableResult
     func updateSession(_ change: HermesSessionChange, key: String, profile: String) async throws -> String? {
         guard gateway.isAttached(consumerID) else { throw BotFailure.stale }
@@ -207,7 +208,7 @@ import Foundation
                !detail.isEmpty {
                 throw HermesSessionRefusal(message: detail)
             }
-            if reply.status == 409, let refusal = HermesSessionFenceRefusal(detail: body?["detail"].text) { throw refusal }
+            if let refusal = HermesSessionFenceRefusal(detail: body?["detail"].text) { throw refusal }
             throw BotFailure.rejected(reply.status)
         }
         return body?["title"].text

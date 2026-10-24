@@ -149,7 +149,7 @@ import OSLog
         attachedRuntimes.insert(runtime)
     }
 
-    /// Keeps `HermesREST.platformNote` as `profile`'s `platform_hints.hermex.append` (#1278), the
+    /// Keeps `HermesREST.platformNote` as `profile`'s `platform_hints.gui.append` (#1278), the
     /// note the host gives an agent built for a session that runs as `HermesCall.source`. Reads
     /// the config once per Profile on this connection and writes only a missing or changed note;
     /// a call while that check runs waits for it, so no chat's agent is built before the note is

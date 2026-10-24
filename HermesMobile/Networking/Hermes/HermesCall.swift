@@ -16,10 +16,14 @@ enum HermesCall: Equatable, Sendable {
     static let roomPageSize = 500
     /// The surface every session Hermex creates or resumes runs as (#1278). The host picks the
     /// agent's note about the screen it is talking to by this name, and without one it assumes
-    /// its terminal UI, whose note tells the agent it cannot send files. The host has no note
-    /// of its own for this name: `HermesREST.platformNote` is the one Hermex keeps in each
-    /// Profile's config.
-    static let source = "hermex"
+    /// its terminal UI, whose note tells the agent it cannot send files. `gui` for two reasons
+    /// (#1335): the host has no note of its own for it, so `HermesREST.platformNote`, which
+    /// Hermex keeps in each Profile's config, is the only one the agent gets; and a gateway
+    /// beside the dashboard takes an edit to a session it hasn't loaded only from a local
+    /// source, which `hermex` was not. Desktop chats run as `desktop`, so they never read this
+    /// note. That holds on the dashboard socket Hermex uses; on the canonical protocol `gui`
+    /// means Desktop.
+    static let source = "gui"
 
     // Profiles
     case profilesList(includeSessions: Bool)

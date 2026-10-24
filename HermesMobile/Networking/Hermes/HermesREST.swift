@@ -78,6 +78,10 @@ import Foundation
 /// The Profile config write (#1278) is read at the same pin (`web_routers/config_env.py`
 /// `update_config`): `PUT /api/config` deep-merges the body's `config` over the file on disk, and
 /// the agent reads `platform_hints.<source>` when it is built (`agent/agent_init.py`).
+/// The source is `gui` (#1335), read at hermes-agent v0.22.5: it has no built-in note, and a
+/// standalone dashboard forwards a session PATCH to a separate gateway, which refuses one on a
+/// session it hasn't loaded unless its stored source is local (`hermes_state_mutation_binding.py`
+/// `authorize_history`); `hermex` answered 404 `{detail: "not_found"}` on every edit.
 /// The native sign-in routes (#708) are read at the same pin (`dashboard_auth/routes.py`) and
 /// were exercised on a phone against a 0.21.5 host: `/auth/native/token` and
 /// `/auth/native/refresh` answer the tokens in the body and set no cookie, a bearer passes the
@@ -294,7 +298,7 @@ enum HermesREST: Equatable, Sendable {
     case filesMkdir(path: String)
     /// A Profile's whole config, unredacted, credentials included: decode only what is needed.
     case config(profile: String)
-    /// Writes `platformNote` as the Profile's `platform_hints.hermex.append` (#1278). The host
+    /// Writes `platformNote` as the Profile's `platform_hints.gui.append` (#1278). The host
     /// deep-merges the body over the file, so nothing else in it changes; `{ok: true}`.
     case setPlatformNote(profile: String)
     /// `{content, exists}`: the Profile's SOUL.md, empty when it has none.
