@@ -20,9 +20,10 @@ enum HermesCall: Equatable, Sendable {
     /// (#1335): the host has no note of its own for it, so `HermesREST.platformNote`, which
     /// Hermex keeps in each Profile's config, is the only one the agent gets; and a gateway
     /// beside the dashboard takes an edit to a session it hasn't loaded only from a local
-    /// source, which `hermex` was not. Desktop chats run as `desktop`, so they never read this
-    /// note. That holds on the dashboard socket Hermex uses; on the canonical protocol `gui`
-    /// means Desktop.
+    /// source, which `hermex` was not. Desktop's in-process chats run as `desktop` and never read
+    /// this note, but one a gateway runs in a managed worker (safe mode, or a custom provider)
+    /// does; no other name the gateway accepts lacks a note of its own. On the canonical
+    /// protocol `gui` means Desktop.
     static let source = "gui"
 
     // Profiles
