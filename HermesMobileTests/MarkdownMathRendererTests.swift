@@ -42,6 +42,39 @@ final class MarkdownMathRendererTests: XCTestCase {
         }
     }
 
+    func testCurrencyAmountsOnOneLineNeverPairIntoMath() {
+        // Regression: two bare amounts on one line paired into an inline-math span
+        // and TeX-rendered the prose between them (hyphenated words like
+        // "pay-in-arrears" qualify through the operator heuristic). hermes-webui's
+        // renderer rejects `$` followed by a digit as an opener; mirror that guard.
+        let inputs = [
+            "It was 4 visits, so $200. But the pattern all summer was pay-in-arrears (every visit lands a few days *after* a Friday mow), so $250 is the honest number.",
+            "Then it's clean: **$250** — 5 visits deep, all after the fact. He's owed $250 whenever you pay next.",
+            "That makes it $550 over May–Aug = 11 visits at $50 — weekly mows in peak season.",
+            "It costs $5 today, and $10 tomorrow.",
+            "**5 visits since the last payment** (Aug 28, Sep 11, Sep 25) → **$250**."
+        ]
+
+        for input in inputs {
+            XCTAssertEqual(MarkdownMathFormatter.replacingInlineMath(in: input), input)
+        }
+    }
+
+    func testClosingDollarPrecededByWhitespaceIsNotMath() {
+        XCTAssertEqual(
+            MarkdownMathFormatter.replacingInlineMath(in: "Loose math $x + y $ with a trailing space stays prose."),
+            "Loose math $x + y $ with a trailing space stays prose."
+        )
+    }
+
+    func testLetterLedInlineMathStillRendersAfterBoundaryGuards() {
+        let output = MarkdownMathFormatter.replacingInlineMath(in: #"The value $x^2 + y_1$ renders."#)
+        XCTAssertNotEqual(output, #"The value $x^2 + y_1$ renders."#)
+        XCTAssertFalse(output.contains("$"))
+        XCTAssertTrue(output.hasPrefix("The value "))
+        XCTAssertTrue(output.hasSuffix(" renders."))
+    }
+
     func testProductionLayoutsRecognizeAssignmentsForStreamingAndFinalizedMarkdown() {
         let input = #"Result: **$E=[4,-2]$** and `$O=[6,-2]$` stays code."#
 
