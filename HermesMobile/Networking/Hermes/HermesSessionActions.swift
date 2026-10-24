@@ -18,8 +18,9 @@ struct HermesSessionRefusal: LocalizedError, Equatable {
     var errorDescription: String? { message }
 }
 
-/// A session write the host's write fence refused with 409 (#1300). Nothing was written, and the
-/// write is never resent: its caller rolls back and reads the list again.
+/// A session write the host's write fence refused (#1300), with 409, or with 404 or 403 when the
+/// session's owner won't take it (#1335). Nothing was written, and the write is never resent: its
+/// caller rolls back and reads the list again.
 enum HermesSessionFenceRefusal: LocalizedError, Equatable {
     /// The session moved past the revision the write read, or its runtime changed under it.
     case changed
@@ -27,14 +28,18 @@ enum HermesSessionFenceRefusal: LocalizedError, Equatable {
     case busy
     /// The host asks for a write identity this build doesn't send.
     case updateRequired
+    /// The host won't let this client edit the session: a gateway beside the dashboard refuses a
+    /// session it hasn't loaded whose stored source isn't local, as 2.0 builds' `hermex` (#1335).
+    case refused
 
-    /// The refusal a 409's `detail` names; nil for any other reason.
+    /// The refusal a 409's, 404's or 403's `detail` names; nil for any other reason.
     init?(detail: String?) {
         switch detail {
         case "revision_conflict"?, "stale_generation"?, "admission_conflict"?: self = .changed
         case "session_busy"?: self = .busy
         case "mutation_identity_required"?: self = .updateRequired
         case let detail? where detail.hasPrefix("client_upgrade_required"): self = .updateRequired
+        case "not_found"?, "permission_denied"?: self = .refused
         default: return nil
         }
     }
@@ -44,6 +49,8 @@ enum HermesSessionFenceRefusal: LocalizedError, Equatable {
         case .changed: return String(localized: "This session changed on the server. Try again.")
         case .busy: return String(localized: "This session is busy. Try again when it finishes.")
         case .updateRequired: return String(localized: "Update Hermex to change sessions on this server.")
+        case .refused:
+            return String(localized: "The server refused to change this session. If an earlier Hermex 2.0 build created it, duplicate it and change the copy.")
         }
     }
 }

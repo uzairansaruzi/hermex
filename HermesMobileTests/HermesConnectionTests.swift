@@ -666,14 +666,15 @@ import XCTest
         XCTAssertEqual(HermesHeaders(saved: saved).values, [cloudflare, access])
     }
 
-    /// A Profile's config gets Hermex's note under `platform_hints.hermex` (#1278): written
+    /// A Profile's config gets Hermex's note under `platform_hints.gui` (#1278, #1335): written
     /// when it is missing or differs, through a PUT the host merges, and left alone when current.
-    /// Each Profile is read once per connection.
+    /// A note under 2.0 builds' `hermex` doesn't count. Each Profile is read once per connection.
     func testThePlatformNoteIsWrittenOnlyWhenMissingOrChanged() async throws {
         let rows: [(hints: BotJSON, writes: Int)] = [
             (.null, 1),
-            (.object(["hermex": .object(["append": .string("An older note.")])]), 1),
-            (.object(["hermex": .object(["append": .string(HermesREST.platformNote)])]), 0)
+            (.object(["gui": .object(["append": .string("An older note.")])]), 1),
+            (.object(["hermex": .object(["append": .string(HermesREST.platformNote)])]), 1),
+            (.object(["gui": .object(["append": .string(HermesREST.platformNote)])]), 0)
         ]
         for row in rows {
             HermesHostFixture.reset()
@@ -693,7 +694,7 @@ import XCTest
             }
             if let write = config.first(where: { $0.httpMethod == "PUT" }) {
                 XCTAssertEqual(HermesCronFixture.body(write), .object(["config": .object(["platform_hints": .object([
-                    "hermex": .object(["append": .string(HermesREST.platformNote)])
+                    "gui": .object(["append": .string(HermesREST.platformNote)])
                 ])])]))
             }
         }

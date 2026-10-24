@@ -67,7 +67,7 @@ import Observation
         XCTAssertEqual(conversation.target, .session(profile: profile, key: "fresh"))
         XCTAssertEqual(conversation.storedKey, "fresh")
         XCTAssertEqual(host.requests.first?["method"].text, "session.create")
-        XCTAssertEqual(host.requests.first?["params"], .object(["profile": .string(profile), "source": .string("hermex")]),
+        XCTAssertEqual(host.requests.first?["params"], .object(["profile": .string(profile), "source": .string("gui")]),
                        "no Bot Chat title, and not hidden")
         XCTAssertEqual(host.requests.dropFirst().compactMap { $0["params"]["session_id"].text }, ["fresh", "runtime", "fresh"])
         XCTAssertEqual(owner.log, ["root fresh", "snapshot", "connected"])

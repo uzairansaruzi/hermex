@@ -489,24 +489,28 @@ final class APIClientSessionMutationTests: APIClientTestCase {
         XCTAssertEqual(patch["request_id"], .null)
     }
 
-    /// A fence 409 is never resent: it comes back as the refusal its `detail` names.
+    /// A fence 409, or an owner's 404 or 403 (#1335), is never resent: it comes back as the refusal
+    /// its `detail` names.
     @MainActor
     func testHermesFenceRefusalIsNotResent() async throws {
-        let rows: [(detail: String, refusal: HermesSessionFenceRefusal)] = [
-            ("revision_conflict", .changed),
-            ("client_upgrade_required: this client predates the session write fence", .updateRequired)
+        let rows: [(status: Int, detail: String, refusal: HermesSessionFenceRefusal)] = [
+            (409, "revision_conflict", .changed),
+            (409, "client_upgrade_required: this client predates the session write fence", .updateRequired),
+            (404, "not_found", .refused),
+            (403, "permission_denied", .refused)
         ]
+        var status = 0
         var detail = ""
         let client = try await hermesClient { request in
             switch (request.httpMethod, request.url?.path) {
             case ("GET", "/api/sessions/tip/mutation-snapshot"):
                 return .json(200, .object(["exists": .bool(true), "runtime_revision": .number(4)]))
-            case ("PATCH", _): return .json(409, .object(["detail": .string(detail)]))
+            case ("PATCH", _): return .json(status, .object(["detail": .string(detail)]))
             default: return nil
             }
         }
         for row in rows {
-            detail = row.detail
+            (status, detail) = (row.status, row.detail)
             let sent = HermesHostFixture.requests.filter { $0.httpMethod == "PATCH" }.count
             do {
                 try await client.updateSession(.pinned(true), key: "tip", profile: "default")
