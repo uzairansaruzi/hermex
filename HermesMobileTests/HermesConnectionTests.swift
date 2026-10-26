@@ -817,6 +817,24 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
     }
 
+    /// A gateway's own listener (#1340) serves an open dashboard's page without its token. Its
+    /// bootstrap tells it apart from a page that isn't a dashboard's.
+    func testAnOpenGatewayListenerIsNamedAtSignIn() async {
+        for (page, failure) in [(#"<script>window.__HERMES_AUTH_REQUIRED__=false;</script>"#, BotFailure.gatewayListener),
+                                ("<html>Not Hermes</html>", .unsupported)] {
+            let configuration = HermesHostFixture.configuration { request in
+                switch request.url?.path {
+                case "/api/status": return .json(200, .object(["auth_required": .bool(false), "version": .string("0.22.5")]))
+                case "/": return .body(200, Data(page.utf8))
+                default: return nil
+                }
+            }
+            let http = HermesConnection(connection: openRecord, configuration: configuration)
+            do { try await http.signIn(); XCTFail("Expected \(failure)") }
+            catch { XCTAssertEqual(error as? BotFailure, failure) }
+        }
+    }
+
     /// A host restart replaces the token, so the 401 that follows reads the page again and the
     /// refused request is resent with the new one.
     func testAnOpenDashboardsReplacedTokenIsReadAgainAndTheRequestResent() async throws {

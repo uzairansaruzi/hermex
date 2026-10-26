@@ -283,6 +283,9 @@ import OSLog
         guard ready["method"].text == "event", ready["params"]["type"].text == "gateway.ready",
               let epoch = ready["params"]["payload"]["replay_epoch"].text, !epoch.isEmpty
         else { throw BotFailure.unsupported }
+        // A gateway's own listener (0.22.1+) owns its sessions under a protocol Hermex doesn't speak
+        // yet (#1341): signed in, every chat would fail.
+        if ready["params"]["payload"]["session_authority"].flag == true { throw BotFailure.gatewayListener }
         replayEpoch = epoch
         startReader(socket, generation: owner)
         // Without this the host treats the socket as a build that predates

@@ -212,7 +212,9 @@ import OSLog
                     let page = try await Self.send(prepared(try HermesREST.dashboardPage.request(base: connection.address)),
                                                    on: session, accepting: 200..<201, redirectGuard: redirectGuard)
                     try checkCurrent()
-                    guard let token = HermesREST.pageToken(in: page) else { throw BotFailure.unsupported }
+                    guard let token = HermesREST.pageToken(in: page) else {
+                        throw HermesREST.withholdsPageToken(page) ? BotFailure.gatewayListener : BotFailure.unsupported
+                    }
                     credential = .pageToken(token)
                     // Any gated read proves the token. At the 0.21.5 pin `/api/auth/me` answers 401
                     // in this mode, since only the password gate sets a session.

@@ -752,7 +752,7 @@ import UserNotifications
         case BotFailure.differentHost:
             return BotFailure.differentHost.localizedDescription
         case BotFailure.blocked, BotFailure.browserSignIn, BotFailure.signInExpired, BotFailure.signInChanged,
-             BotFailure.outdated:
+             BotFailure.outdated, BotFailure.gatewayListener:
             return error.localizedDescription
         case BotFailure.rejected(let status):
             return String(localized: "This Hermes host refused the step (HTTP \(status)). Check the host’s logs, then try again.")

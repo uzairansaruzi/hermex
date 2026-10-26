@@ -798,6 +798,21 @@ import XCTest
         client.close()
     }
 
+    /// A gateway's own listener (#1340) signs in, then fails every chat: its `gateway.ready`
+    /// stops the connect before the handshake sends anything.
+    func testAGatewayListenerFailsTheConnectBeforeTheHandshake() async {
+        BotHTTPFixture.handler = Self.signIn
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BotHTTPFixture.self]
+        let socket = BotScriptedSocket(ready: #"{"replay_epoch":"epoch","session_authority":true}"#)
+        let client = BotClient(connection: connection(), configuration: configuration) { _ in socket }
+        do { try await client.connect(); XCTFail("Expected a gateway listener") }
+        catch { XCTAssertEqual(error as? BotFailure, .gatewayListener) }
+        XCTAssertFalse(BotConnectionAdvice.isRetryable(BotFailure.gatewayListener))
+        XCTAssertEqual(socket.outbound, [])
+        client.close()
+    }
+
     /// A real handshake over loopback: URLSession keeps a refused upgrade's status on the
     /// task, and a socket that opened (101) and then dropped keeps its own error, so the
     /// inbox and chat still retry it quietly.
@@ -1007,9 +1022,11 @@ private final class BotHTTPFixture: URLProtocol {
 /// Lock ownership protects the queued scripted frames and exactly one waiting reader.
 final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     private let lock = NSLock()
-    private var frames: [URLSessionWebSocketTask.Message] = [
-        .string(#"{"method":"event","params":{"type":"gateway.ready","payload":{"replay_epoch":"epoch"}}}"#)
-    ]
+    private var frames: [URLSessionWebSocketTask.Message]
+    /// `ready` is the `gateway.ready` payload the socket opens with.
+    init(ready: String = #"{"replay_epoch":"epoch"}"#) {
+        frames = [.string(#"{"method":"event","params":{"type":"gateway.ready","payload":\#(ready)}}"#)]
+    }
     private var waiter: CheckedContinuation<URLSessionWebSocketTask.Message, Error>?
     private var closed = false
     var reply: ((BotJSON) -> BotJSON)?

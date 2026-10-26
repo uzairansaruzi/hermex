@@ -771,6 +771,14 @@ enum HermesREST: Equatable, Sendable {
         return String(match.1)
     }
 
+    /// Whether `page` is an open dashboard's page that withholds its session token, which only a
+    /// gateway's own listener does (`withhold_session_token`, 0.22.1+). Its bootstrap still says
+    /// `__HERMES_AUTH_REQUIRED__=false`; a page that isn't a dashboard's says nothing.
+    static func withholdsPageToken(_ page: Data) -> Bool {
+        guard pageToken(in: page) == nil, let html = String(data: page, encoding: .utf8) else { return false }
+        return html.contains(/__HERMES_AUTH_REQUIRED__\s*=\s*false/)
+    }
+
     private static func get(_ url: URL) -> URLRequest { bare("GET", url) }
 
     /// One of hermex-push's git writes at `repository`, with `fields` beside its `path`.
