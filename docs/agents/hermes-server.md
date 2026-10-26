@@ -134,9 +134,10 @@ browser sign-in (`BotConnection.hasNoCredentials`). Its sign-in reads the dashbo
 the password gate sets a session. The token is held in memory only and sent as
 `X-Hermes-Session-Token`, never `Authorization: Bearer`, which a proxy's basic auth may
 hold, and a cross-origin redirect drops it. A gateway's own listener (`hermes gateway
-run`, 0.22.1+) serves the same page without the token; its `__HERMES_AUTH_REQUIRED__=false`
-bootstrap tells it apart from a page that isn't a dashboard's (`.gatewayListener`). `POST /api/auth/ws-ticket` is refused here,
-so both socket upgrades present the token as `?token=` with no subprotocol
+run`, 0.22.1+) serves the same page without the token; its
+`__HERMES_AUTH_REQUIRED__=false` bootstrap tells it apart from a page that isn't a
+dashboard's (`.gatewayListener`). `POST /api/auth/ws-ticket` is refused here, so both
+socket upgrades present the token as `?token=` with no subprotocol
 (`HermesREST.UpgradePass`), which the host checks without one
 (`web_server_chat.py` `_ws_auth_reason`), each after a gated read. A host restart replaces
 the token: the 401 that follows reads the page again and resends once, as for any
