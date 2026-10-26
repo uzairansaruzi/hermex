@@ -133,7 +133,9 @@ browser sign-in (`BotConnection.hasNoCredentials`). Its sign-in reads the dashbo
 (`/api/profiles/active`): at the 0.21.5 pin `/api/auth/me` refuses this mode, since only
 the password gate sets a session. The token is held in memory only and sent as
 `X-Hermes-Session-Token`, never `Authorization: Bearer`, which a proxy's basic auth may
-hold, and a cross-origin redirect drops it. `POST /api/auth/ws-ticket` is refused here,
+hold, and a cross-origin redirect drops it. A gateway's own listener (`hermes gateway
+run`, 0.22.1+) serves the same page without the token; its `__HERMES_AUTH_REQUIRED__=false`
+bootstrap tells it apart from a page that isn't a dashboard's (`.gatewayListener`). `POST /api/auth/ws-ticket` is refused here,
 so both socket upgrades present the token as `?token=` with no subprotocol
 (`HermesREST.UpgradePass`), which the host checks without one
 (`web_server_chat.py` `_ws_auth_reason`), each after a gated read. A host restart replaces
@@ -169,8 +171,11 @@ A failed sign-in names what to check (`BotConnectionAdvice`): the unreachable ho
 a Host-header 400 (`dashboard.public_url`), a webui address, a proxy or Cloudflare
 status, an access proxy's own sign-in (`.blocked`: a redirect to another host or a
 non-JSON 401 on `/api/status`), a host with no sign-in Hermex can use (`.browserSignIn`),
-and a refused gateway upgrade (`.upgradeRefused`). The inbox and chat use the same
-copy for the messages they show, and none of these three retries on its own.
+a refused gateway upgrade (`.upgradeRefused`), and a gateway's own listener, whose
+`gateway.ready` sets `session_authority` (`.gatewayListener`; its protocol is #1341). The
+inbox and chat use the same copy for the messages they show, and none of these retries on
+its own. Adding a server signs in over HTTP only, so a listener with a password is saved
+and refused at its first gateway connect.
 A rejected password (`.rejected(401)`) offers "Update sign-in" in place of
 Reconnect in the inbox, a chat and a room: it opens the connection form with the
 password focused, from the inbox, because a chat's or room's client is bound to
