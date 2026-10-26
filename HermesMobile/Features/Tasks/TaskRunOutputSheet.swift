@@ -1,7 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// One run, read in full: webui's output file, or a Hermes run's final reply.
+/// One run, read in full: webui's output file, or a Hermes run's final reply. A Hermes
+/// script-only run shows the preview its row carries, and says when the host cut it short.
 ///
 /// The sheet renders `output` only when it belongs to the run on screen, so a
 /// slow request that lands after the user has moved to another run can never
@@ -20,11 +21,18 @@ struct TaskRunOutputSheet: View {
             Group {
                 if let text = matchingText, !text.isEmpty {
                     ScrollView {
-                        Text(text)
-                            .font(.system(.footnote, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(16)
+                        VStack(alignment: .leading, spacing: 12) {
+                            if run.isScriptOutputCut {
+                                Text("The server shows only the start of this run's output.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(text)
+                                .font(.system(.footnote, design: .monospaced))
+                                .textSelection(.enabled)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
                     }
                 } else if isLoading {
                     ProgressView("Loading output...")

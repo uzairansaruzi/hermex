@@ -491,6 +491,34 @@ final class TaskRunHistoryTests: APIClientTestCase {
         XCTAssertFalse(HermesHostFixture.requests.contains { $0.url?.path.hasPrefix("/api/fs") == true })
     }
 
+    /// A script-only run (#1342) has no session, so it opens to the preview its row carries and
+    /// sends nothing; a preview the host cut short says so, and a short one that ends in "…"
+    /// doesn't. One that left no output has none.
+    @MainActor
+    func testHermesScriptOnlyRunOpensToItsRowsPreviewWithoutARequest() async throws {
+        let cut = String(String(repeating: "Backup of /srv finished: 12 files, 0 errors. ", count: 4).prefix(179)) + "…"
+        let viewModel = try hermesViewModel { request in
+            request.url?.path == "/api/cron/jobs/a1/runs" ? .json(200, HermesRunFixture.runs([
+                HermesRunFixture.scriptRun("cron_output:a1:2026-10-06_09-00-00", preview: cut),
+                HermesRunFixture.scriptRun("cron_output:a1:2026-10-05_09-00-00", preview: "Waiting…"),
+                HermesRunFixture.scriptRun("cron_output:a1:exec:1", preview: nil)
+            ])) : nil
+        }
+        await viewModel.loadHistory()
+        let sent = HermesHostFixture.requests.count
+        let output = try XCTUnwrap(viewModel.runs.first), silent = try XCTUnwrap(viewModel.runs.last)
+
+        await viewModel.loadRunOutput(for: output)
+        XCTAssertEqual(viewModel.runOutput, CronRunOutput(filename: output.filename, text: cut))
+        XCTAssertTrue(output.isScriptOutputCut)
+        XCTAssertFalse(viewModel.runs[1].isScriptOutputCut)
+
+        await viewModel.loadRunOutput(for: silent)
+        XCTAssertEqual(viewModel.runOutput, CronRunOutput(filename: silent.filename, text: ""))
+        XCTAssertNil(viewModel.runOutputErrorMessage)
+        XCTAssertEqual(HermesHostFixture.requests.count, sent)
+    }
+
     /// A run that never gave a final reply has no output, and the sheet says so. A run the host
     /// no longer has (404) is unavailable, not empty.
     @MainActor
@@ -799,6 +827,18 @@ enum HermesRunFixture {
         ]
         fields.merge(overrides) { $1 }
         return .object(fields)
+    }
+
+    /// A script-only run's row (0.21.6+, #1342), which the host makes from the run's output file
+    /// or execution record: no session, no tokens, and `preview` the output's first 180 characters.
+    static func scriptRun(_ id: String, preview: String?, at time: Double = 1_791_291_600) -> BotJSON {
+        .object([
+            "id": .string(id), "title": .string(preview ?? "Script-only run"), "preview": preview.map(BotJSON.string) ?? .null,
+            "source": .string("cron_output"), "started_at": .number(time), "last_active": .number(time),
+            "ended_at": .number(time), "input_tokens": .number(0), "output_tokens": .number(0),
+            "message_count": .number(0), "tool_call_count": .number(0), "model": .null, "cwd": .null,
+            "archived": .bool(false), "is_active": .bool(false)
+        ])
     }
 
     static func runs(_ rows: [BotJSON]) -> BotJSON {

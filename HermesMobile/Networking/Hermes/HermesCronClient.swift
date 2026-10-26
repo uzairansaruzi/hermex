@@ -6,7 +6,8 @@ import Foundation
 /// Profile (`?profile=`), which the host treats as a hint and checks. A refusal the host
 /// explains reads as its `detail` (`accepted`). Every job also carries `hermes_home`, a host
 /// path, which is never decoded. A run is the session it ran in (#1042), and its output is that
-/// session's final reply: nothing is read from the host's disk.
+/// session's final reply; a script-only run has no session, and its output is the preview on
+/// its row (#1342). Nothing is read from the host's disk.
 @MainActor final class HermesCronClient: CronDataClient {
     nonisolated var cronFeatures: CronFeatures { .hermes }
     private let http: HermesConnection
@@ -126,12 +127,17 @@ import Foundation
 
     /// One run's output: its session's final reply (`HermesREST.sessionMessages`), the last
     /// assistant message that is not a tool call, as a side session's result is; nil when it gave
-    /// none. A run the host no longer has (404) is `HermesCronRunUnavailable`.
-    func cronRunDetail(jobID: String, profile: String?, filename runID: String) async throws -> CronRunDetailResponse {
-        let answer = try await reply(.sessionMessages(key: runID, profile: profile ?? ""))
+    /// none. A run the host no longer has (404) is `HermesCronRunUnavailable`. A script-only run's
+    /// row is its whole record, so its output is the row's preview and nothing is sent.
+    func cronRunDetail(jobID: String, profile: String?, run: CronRunHistoryItem) async throws -> CronRunDetailResponse {
+        if let output = run.scriptOutput {
+            return CronRunDetailResponse(jobId: jobID, filename: run.filename, content: output, snippet: nil)
+        }
+        let answer = try await reply(.sessionMessages(key: run.filename, profile: profile ?? ""))
         guard answer.status != 404 else { throw HermesCronRunUnavailable() }
         let messages = try Self.json(try Self.accepted(answer))["messages"].list ?? []
-        return CronRunDetailResponse(jobId: jobID, filename: runID, content: HermesChatSideTasks.result(messages), snippet: nil)
+        return CronRunDetailResponse(jobId: jobID, filename: run.filename, content: HermesChatSideTasks.result(messages),
+                                     snippet: nil)
     }
 
     // MARK: - Wire
@@ -206,7 +212,9 @@ struct HermesCronRunUnavailable: LocalizedError, Equatable {
 }
 
 /// `GET /api/cron/jobs/{id}/runs` as history rows (#1042). Each row is the run's whole session,
-/// `system_prompt` included, of which only the fields a row shows are decoded. A row without
+/// `system_prompt` included, of which only the fields a row shows are decoded. A script-only
+/// run (`source: cron_output`, since 0.21.6) is a row the host makes from its output file or
+/// execution record, with a `cron_output:` id no route opens (#1342). A row without
 /// an id can't be opened, so it is left out; a page without its `runs` list is a failed read,
 /// not a Task that never ran.
 private struct HermesCronRuns: Decodable {
@@ -221,12 +229,14 @@ private struct HermesCronRuns: Decodable {
 
     /// One row. A run lasted from `started_at` to `ended_at`, epoch seconds, and is `is_active`
     /// until it ends. Its cost is the provider's actual one when known, else the host's estimate;
-    /// its tokens are its input and output.
+    /// its tokens are its input and output. A session's `preview` is its prompt, so only a
+    /// script-only run's is read.
     private struct Run: Decodable {
         let item: CronRunHistoryItem?
 
         enum CodingKeys: String, CodingKey {
-            case id, startedAt, endedAt, isActive, model, inputTokens, outputTokens, estimatedCostUsd, actualCostUsd
+            case id, source, preview, startedAt, endedAt, isActive, model, inputTokens, outputTokens, estimatedCostUsd,
+                 actualCostUsd
         }
 
         init(from decoder: Decoder) throws {
@@ -254,6 +264,9 @@ private struct HermesCronRuns: Decodable {
             ))
             run.startedAt = started
             run.isRunning = row.decodeLossyBoolIfPresent(forKey: .isActive) ?? false
+            if row.decodeLossyStringIfPresent(forKey: .source) == "cron_output" {
+                run.scriptOutput = row.decodeLossyStringIfPresent(forKey: .preview) ?? ""
+            }
             item = run
         }
     }

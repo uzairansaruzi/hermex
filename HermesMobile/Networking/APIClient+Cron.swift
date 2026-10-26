@@ -28,8 +28,9 @@ protocol CronDataClient: Sendable {
     /// One page of the Task's runs, newest first. A server with a single page (a Hermes host's
     /// newest 100) answers it for any `limit`, with no `total`, so there is no next page.
     func cronHistory(jobID: String, profile: String?, offset: Int, limit: Int) async throws -> CronRunHistoryResponse
-    /// One run's full output; `filename` is the run's `CronRunHistoryItem.filename`.
-    func cronRunDetail(jobID: String, profile: String?, filename: String) async throws -> CronRunDetailResponse
+    /// One run's full output, read by its `filename`. A Hermes host's script-only run is its
+    /// row's `scriptOutput`, with no request.
+    func cronRunDetail(jobID: String, profile: String?, run: CronRunHistoryItem) async throws -> CronRunDetailResponse
     /// The Task editor's sources. `profile` scopes the models and skills where the server
     /// keeps them per Profile.
     func cronModelGroups(profile: String?) async throws -> [ModelCatalogGroup]
@@ -55,8 +56,8 @@ struct CronFeatures: Equatable, Sendable {
     /// Each run is the session it runs in, listed from the moment it starts, and the host keeps
     /// one outcome per Task, on the job its list reads (a Hermes host, #1042). So a run can still
     /// be running, the Task's last outcome and latest output are the newest finished run's, and
-    /// the detail reads the job again from the list. Without it, each run is an output file a
-    /// finished run wrote.
+    /// the detail reads the job again from the list. A script-only run has no session and is
+    /// only its row (#1342). Without it, each run is an output file a finished run wrote.
     let runsAreSessions: Bool
 
     static let webui = CronFeatures(isProfileScoped: false, hasToastNotifications: true, hasRecentRunsFeed: true,
@@ -125,8 +126,8 @@ extension APIClient: CronDataClient {
         try await cronHistory(jobID: jobID, offset: offset, limit: limit)
     }
 
-    func cronRunDetail(jobID: String, profile _: String?, filename: String) async throws -> CronRunDetailResponse {
-        try await cronRunDetail(jobID: jobID, filename: filename)
+    func cronRunDetail(jobID: String, profile _: String?, run: CronRunHistoryItem) async throws -> CronRunDetailResponse {
+        try await cronRunDetail(jobID: jobID, filename: run.filename)
     }
 
     func cronModelGroups(profile _: String?) async throws -> [ModelCatalogGroup] {

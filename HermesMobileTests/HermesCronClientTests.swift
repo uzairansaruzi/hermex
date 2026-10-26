@@ -818,7 +818,7 @@ extension CronManagementViewModelTests {
     func cronHistory(jobID _: String, profile _: String?, offset _: Int, limit _: Int) async throws -> CronRunHistoryResponse {
         throw BotFailure.unsupported
     }
-    func cronRunDetail(jobID _: String, profile _: String?, filename _: String) async throws -> CronRunDetailResponse {
+    func cronRunDetail(jobID _: String, profile _: String?, run _: CronRunHistoryItem) async throws -> CronRunDetailResponse {
         throw BotFailure.unsupported
     }
     func cronModelGroups(profile _: String?) async throws -> [ModelCatalogGroup] { throw BotFailure.unsupported }
