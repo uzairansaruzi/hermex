@@ -134,9 +134,9 @@ import Observation
         conversation.suspend()
     }
 
-    /// A compaction moves the tip and keeps the root; a replaced chat (another root under the
-    /// title) is refused before any resume, which could auto-continue it, and is not retried.
-    func testABotChatFollowsANewTipButRefusesAChangedRoot() async {
+    /// A compaction moves the tip and keeps the root. Another root under the title is the
+    /// host's new Bot Chat (#1339): the attach follows it, and tells the owner first.
+    func testABotChatFollowsANewTipAndARootTheHostReplaced() async {
         let wire = BotFixtureWire()
         let (conversation, owner) = attach(wire, .canonicalChat(profile: profile))
         await conversation.activate()
@@ -146,12 +146,11 @@ import Observation
         XCTAssertEqual(conversation.root, "root")
         XCTAssertEqual(conversation.storedKey, "compacted")
 
-        wire.root = "replacement"; wire.calls = []
+        wire.root = "replacement"; owner.log = []
         await conversation.activate()
-        XCTAssertEqual(wire.calls.map(\.0), ["session.list"])
-        XCTAssertEqual(conversation.connectionState, .disconnected)
-        XCTAssertEqual(owner.disconnects.last?.failure, .wrongIdentity)
-        XCTAssertFalse(conversation.isReconnecting)
+        XCTAssertEqual(conversation.connectionState, .connected)
+        XCTAssertEqual(conversation.root, "replacement")
+        XCTAssertEqual(owner.log, ["replaced", "root replacement", "snapshot", "connected"])
         conversation.suspend()
     }
 
@@ -406,6 +405,7 @@ import Observation
     var log: [String] = []
 
     func conversationDidReset() {}
+    func conversationDidFollowReplacedChat() { log.append("replaced") }
     func conversationDidIdentify(root: String) { log.append("root \(root)") }
     func conversationDidReplay(_ reply: BotJSON, frames: [BotJSON]) {
         log += frames.map { "replay \($0["seq"].integer ?? 0)" }

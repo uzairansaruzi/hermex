@@ -691,8 +691,11 @@ import XCTest
         XCTAssertEqual(chat.model.messages, [])
     }
 
-    /// An attach that finds another canonical root, a Bot Chat made again, discards the cached
-    /// copy it showed, though its history read then fails.
+    /// An attach that finds another canonical root, a Bot Chat the host replaced while the app was
+    /// away, discards the cached copy it showed, though its history read then fails. The notice
+    /// saying where the old chat went comes with the new chat's rows, and until it shows nothing
+    /// is sent there, from this chat or one reopened meanwhile, even one that attaches before it
+    /// shows its cached copy (#1339).
     func testANewCanonicalRootDiscardsTheCachedTranscript() async throws {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi")]), target: .canonicalChat(profile: "default"))
@@ -710,8 +713,28 @@ import XCTest
         await load.value
 
         XCTAssertFalse(chat.model.isViewingCachedData)
-        XCTAssertEqual(chat.model.messages, [])
+        XCTAssertEqual(chat.model.messages, [], "the failure and its retry show")
         XCTAssertNotNil(chat.model.errorMessage)
+        let held = await chat.model.sendMessage("Continue")
+        XCTAssertFalse(held)
+
+        let failing = HermesOfflineWire(rows: [])
+        failing.canonicalRoot = "remade"
+        failing.messagesFailure = BotFailure.rejected(502)
+        let reopened = makeChat(failing, target: .canonicalChat(profile: "default"))
+        await reopened.model.reconnectStreamIfNeeded(modelContext: context)
+        XCTAssertTrue(failing.methods.contains("session.list"), "attached before any load")
+        let heldAgain = await reopened.model.sendMessage("Continue")
+        XCTAssertFalse(heldAgain)
+        XCTAssertFalse(failing.methods.contains("prompt.submit"))
+
+        wire.messagesFailure = nil
+        await chat.model.loadMessages(modelContext: context)
+        XCTAssertEqual(chat.model.messages.map(\.role), ["local_notice"])
+        XCTAssertFalse(wire.methods.contains("prompt.submit"))
+        let sent = await chat.model.sendMessage("Continue")
+        XCTAssertTrue(sent)
+        XCTAssertEqual(wire.methods.filter { $0 == "prompt.submit" }.count, 1)
     }
 
     /// An archived Bot Chat opens by its key, and offline shows the transcript its bot's Bot Chat
@@ -923,7 +946,8 @@ import XCTest
 /// `connectFailure` stands for a host it can't reach, or one that refuses; `connectGate` holds
 /// the connect until opened; `replayFailure` stands for a socket lost once the host named the
 /// runtime, `messagesFailure` for a transcript read that fails. `onRead` reports each transcript
-/// read, which `messagesGate` holds until opened. `running` makes its snapshot report a turn.
+/// read, which `messagesGate` holds until opened. `running` makes its snapshot report a turn. It
+/// accepts every prompt.
 @MainActor private final class HermesOfflineWire: BotTransport {
     var replayEpoch: String? = "epoch"
     var onEvent: ((BotJSON) -> Void)?
@@ -961,6 +985,8 @@ import XCTest
         case "session.events.since":
             if let replayFailure { throw replayFailure }
             return BotFixtureWire.replay(latest: 0)
+        case "prompt.submit":
+            return .object(["status": .string("streaming")])
         default: throw BotFailure.unsupported
         }
     }

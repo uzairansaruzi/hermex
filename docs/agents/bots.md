@@ -26,7 +26,14 @@ host's verdict (answered, already resolved, or a batch still open). The owner ge
 replay reply and the snapshot whole and restores open requests from them, with its
 own guard against a newer request on screen (see the blocking requests below). Targets:
 - `.canonicalChat(profile)`: the Bot Chat, found by exact title on every attach. Only
-  this target runs the title lookup and rejects a changed root before resume.
+  this target runs the title lookup. A changed root is the host's new Bot Chat: since
+  hermes-agent 0.22.3 a bot delivery moves aside a Bot Chat it can't own (a messaging
+  channel's or an API conversation), retitled `Bot Chat (<platform> <id>)` and unhidden,
+  and makes a new one. The attach follows it: the old chat's turn ends as cancelled, its
+  `/btw` and background tasks go, and a notice after the new chat's rows says the earlier
+  conversation is in Sessions, as it does when the cached copy, shown or not, is of the old
+  root. Until that notice shows, a send, rewind, undo, compress or branch is not sent
+  (#1339).
 - `.session(profile, key)`: a stored session. It resumes its key with no lookup and
   takes the stored key the host resolved (a compression tip, or `stored_session_id`
   in the reduced reply of a session that has not started).
@@ -299,8 +306,7 @@ Activity (below), which takes the bot's name and avatar again when a roster read
 mid-turn, and draws its avatar again when the bot's picture arrives after the activity started. A row opened by its key keeps the session's `hermes:` activity, whose tap is the session link to
 that key (#1165, #1179): the Bot activity's tap looks the chat up by title, which leaves a
 deliberate archive out and finds a replacement instead, and the client cannot tell a deliberate
-archive from a recoverable one. A `linkedRoot` (a bot link's root) the bot has replaced calls
-`ChatView`'s `onChatReplaced` (#554); Update sign-in is `HermesUpdateSignInAction`. Rooms never
+archive from a recoverable one. Update sign-in is `HermesUpdateSignInAction`. Rooms never
 open here: a room's session (`HermesSessionRow.isRoomSession`, hidden and titled `Group: …`)
 is left out of search results and the Archived screen (#1127 decision 7, #1146).
 
@@ -308,8 +314,7 @@ Every bot route ends in the Bots inbox (#1146): its row and pinned tile, a bot s
 deep link, a push tap and a Live Activity tap set `BotInboxSelection`, a Sessions search hit
 and an Archived Bot Chat row go through the bot deep link first, and the selection's
 `chat(server:connection:)` opens `ChatView` on the bot's `.canonicalChat` with the link's
-root as `linkedRoot`. The inbox owns what follows: a replaced chat pops back with "That
-conversation is no longer available.", Update sign-in pops back to the inbox's sign-in form
+root as `linkedRoot`. The inbox owns what follows: Update sign-in pops back to the inbox's sign-in form
 (it installs its own `HermesUpdateSignInModifier`), and the device-local read mark (#506) is
 set on open and return. A bot link closes the Hermes home's Settings, so one opened from an
 Archived screen under Settings lands on the inbox. A deliberately archived Bot Chat is not the
@@ -1401,9 +1406,8 @@ the user on that inbox. Opening follows the ordinary canonical resume rules: a
 link never sends a prompt and never auto-continues on its own.
 
 `conversation` is the bot's durable canonical root when the sender knows it. It is
-seeded as `HermesConversation.root` (`linkedRoot`), so the changed-root rejection refuses to
-open a replacement conversation under the link's identity; the chat reports that
-back and the inbox says the conversation is no longer available.
+seeded as `HermesConversation.root` (`linkedRoot`), so a link to a chat the host has since
+replaced opens the current one with the same notice as a reattach (#1339).
 
 ## Opening a Hermes session from outside the app (#1176)
 

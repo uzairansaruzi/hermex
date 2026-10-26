@@ -219,6 +219,13 @@ enum HermesSideTaskFailure: Error, Equatable {
     /// Closes the panel. The host still answers; the answer is ignored.
     func closeBtw() { btw = nil }
 
+    /// The host replaced the Bot Chat (#1339): its question and background tasks stay with
+    /// it, so none of their answers or results reaches the new chat.
+    func forgetChat() {
+        btw = nil; backgroundTasks = []
+        unclaimed = [:]; needsResultRead = false
+    }
+
     // MARK: Background
 
     /// Starts a background task and adds its running card. Throws when it never went out,

@@ -263,6 +263,9 @@ final class ChatViewModel {
     /// because it can't be reached: still read-only, with Send held, but without the offline
     /// banner. Only while `isViewingCachedData`.
     private(set) var isCachedCopyProvisional = false
+    /// The host replaced the Bot Chat (#1339): the next transcript the host gives ends with
+    /// the notice that says so.
+    @ObservationIgnored private var needsReplacedChatNotice = false
     /// The chat shows its offline presentation: the banner and the composer's reconnect line.
     var showsOfflineCache: Bool { isViewingCachedData && !isCachedCopyProvisional }
     var activeStreamID: String? { turn.activeStreamID }
@@ -874,8 +877,6 @@ final class ChatViewModel {
     var hermesSettings: HermesChatSettings? { hermesTurn?.settings }
     /// A bot's Bot Chat's turns (#1145), for its pill, `@` roster and profile; nil otherwise.
     var hermesBotChat: HermesChatTurnCoordinator? { hermesTurn?.policy == .botChat ? hermesTurn : nil }
-    /// The bot's chat a deep link named was replaced by a newer one (#554).
-    var hermesChatWasReplaced: Bool { hermesTurn?.engine.linkedRootIsStale == true }
 
     /// The effort chip's level: a Hermes session's `session.info` effort (#1016), else webui's.
     var composerReasoningEffort: String? {
@@ -3140,9 +3141,13 @@ final class ChatViewModel {
             rollbackOptimisticMessage(id: promptID)
             if let notSent = error as? HermesChatTurnCoordinator.NotSent {
                 if marked { drafts.setBotSubmissionUncertain(false, for: hermes.currentDraftKey) }
-                sendErrorMessage = notSent.duringUpload
-                    ? Self.uploadFailureMessage(notSent.underlying)
-                    : String(localized: "Reconnect to the server to send a message.")
+                if notSent.duringUpload {
+                    sendErrorMessage = Self.uploadFailureMessage(notSent.underlying)
+                } else if notSent.followedReplacedChat {
+                    sendErrorMessage = Self.notSentToReplacedChat
+                } else {
+                    sendErrorMessage = String(localized: "Reconnect to the server to send a message.")
+                }
             } else if mode.definitelyRejected(error) {
                 drafts.setBotSubmissionUncertain(false, for: hermes.currentDraftKey)
                 sendErrorMessage = String(localized: "Hermes did not accept this message. Your draft is still here.")
@@ -4193,6 +4198,8 @@ final class ChatViewModel {
     /// message, except in a chat with nothing sent yet, where there is nothing to run it on.
     private func hermesSlashFailure(_ error: Error, name: String) -> SlashCommandExecutionResult {
         switch error {
+        case let notSent as HermesChatTurnCoordinator.NotSent where notSent.followedReplacedChat:
+            return notDelivered(Self.notSentToReplacedChat)
         case is HermesChatTurnCoordinator.NotSent:
             return notDelivered(String(localized: "Reconnect to the server to run /\(name)."))
         case BotSettingFailure.rejected(_, let message):
@@ -5550,6 +5557,8 @@ final class ChatViewModel {
     /// what to do when it did not go out or answer.
     private func hermesBranchFailure(_ error: Error) -> String {
         switch error {
+        case let notSent as HermesChatTurnCoordinator.NotSent where notSent.followedReplacedChat:
+            return Self.notSentToReplacedChat
         case is HermesChatTurnCoordinator.NotSent, BotSettingFailure.rejected(4001, _):
             return String(localized: "Reconnect to the server to fork a conversation.")
         case BotSettingFailure.rejected(4008, _):
@@ -6035,6 +6044,8 @@ final class ChatViewModel {
     /// sent again (#508).
     private func hermesHistoryFailure(_ error: Error, on hermes: HermesChatTurnCoordinator, reconnect: String) -> String {
         switch error {
+        case let notSent as HermesChatTurnCoordinator.NotSent where notSent.followedReplacedChat:
+            return Self.notSentToReplacedChat
         case is HermesChatTurnCoordinator.NotSent, BotSettingFailure.rejected(4001, _):
             return reconnect
         case BotSettingFailure.rejected(4009, _):
@@ -8007,6 +8018,14 @@ extension ChatViewModel: HermesChatTurnDelegate {
         reasoningAnchorMessageID = nil
         streamingAssistantMessageID = transcript.streamingReply?.messageId
         if let title = transcript.title { applyLiveActivitySessionTitle(title) }
+        if needsReplacedChatNotice, transcript.newestCoverage != nil {
+            needsReplacedChatNotice = false
+            appendLocalNoticeMessage(String(localized: "Hermes started a new Bot Chat. The earlier conversation is in Sessions under its new name."))
+            hermesTurn?.replacedChatNoticeDidShow()
+            if case .canonicalChat(let profile) = hermesTurn?.engine.target, let root = hermesCacheRoot {
+                removeCachedBotChats(exceptRoot: root, profile: profile)
+            }
+        }
         if !messages.isEmpty { transcriptRelayoutScrollToken += 1 }
         cacheHermesHistory(transcript)
     }
@@ -8040,22 +8059,55 @@ extension ChatViewModel: HermesChatTurnDelegate {
         showCachedHermesTranscript(after: error)
     }
 
+    /// The host replaced the Bot Chat on screen (#1339): the old chat's rows go, the chat's own
+    /// and a cached copy's included. The new chat's rows follow from this attach, and the notice
+    /// saying where the old ones went is added after them (`hermesReplaceTranscript`), where
+    /// the chat is scrolled to, once a history read succeeds: until then the empty chat shows
+    /// the failure and its retry.
+    func hermesBotChatWasReplaced() {
+        messages = []
+        hasOlderMessages = false
+        latestRunOutcome = nil
+        transcriptRevision &+= 1
+        isViewingCachedData = false
+        needsReplacedChatNotice = true
+    }
+
+    /// An action the host's new Bot Chat stopped before it went out (#1339).
+    private static var notSentToReplacedChat: String {
+        String(localized: "Not sent: Hermes started a new Bot Chat.")
+    }
+
     /// The attach found the chat's root, before its reads: the chat writes to the cache under
-    /// the epoch it takes now. A Bot Chat's canonical root settles its cache's. A cached copy
-    /// shown from another root, a Bot Chat since made again, leaves the screen, and every
-    /// other root's leaves the cache.
+    /// the epoch it takes now. A Bot Chat's canonical root settles its cache's. One cached under
+    /// another root, shown or not, is a Bot Chat the host replaced: its copy leaves the screen
+    /// for the replacement's notice, and every other root's leaves the cache once that notice
+    /// shows.
     func hermesDidIdentify(root: String) {
         guard let engine = hermesTurn?.engine else { return }
         // Taken even before the chat has its cache, so the writes after it still count.
         hermesCacheEpoch = CacheStore.hermesCacheEpoch(serverURL: engine.server)
         guard case .canonicalChat(let profile) = engine.target else { return }
-        if hermesCacheRoot != root, isViewingCachedData {
-            messages = []
-            transcriptRevision &+= 1
-            isViewingCachedData = false
+        // The chat cached is one the host has since replaced, as when it opens after the swap
+        // (#1339). A replacement the engine followed already says so.
+        let cachedRoot = hermesCacheRoot ?? hermesCache.flatMap {
+            try? CacheStore.cachedHermesBotChatRoot(serverURL: engine.server, connectionID: engine.connection.id,
+                                                    profile: profile, in: $0)
+        }
+        if let cachedRoot, cachedRoot != root, !needsReplacedChatNotice {
+            hermesTurn?.noteReplacedChat()
+            hermesBotChatWasReplaced()
         }
         hermesCacheRoot = root
-        guard let hermesCache else { return }
+        // A replaced chat's copy stays until its notice shows, so a chat reopened before then
+        // finds it and says so again.
+        guard !needsReplacedChatNotice else { return }
+        removeCachedBotChats(exceptRoot: root, profile: profile)
+    }
+
+    /// Drops this Bot Chat's cached copies under every root but `root`.
+    private func removeCachedBotChats(exceptRoot root: String, profile: String) {
+        guard let hermesCache, let engine = hermesTurn?.engine else { return }
         do {
             try CacheStore.removeHermesBotChats(exceptRoot: root, serverURL: engine.server, connectionID: engine.connection.id,
                                                 profile: profile, in: hermesCache)

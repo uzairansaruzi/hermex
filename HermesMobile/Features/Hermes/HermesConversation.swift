@@ -6,8 +6,8 @@ import OSLog
 /// which goes on every call.
 enum ConversationTarget: Hashable, Sendable {
     /// The Profile's one Bot Chat, looked up by its exact title on every attach. A root
-    /// that changed since the last attach is refused before resume. Bot Chats are created
-    /// only by `BotCreator`.
+    /// that changed since the last attach is the host's new Bot Chat, which the attach
+    /// follows (#1339). Bot Chats are created only by `BotCreator` or the host.
     case canonicalChat(profile: String)
     /// A stored session by its stored key. No title lookup.
     case session(profile: String, key: String)
@@ -62,6 +62,9 @@ enum HermesRequestAnswer: Equatable {
 @MainActor protocol HermesConversationOwner: AnyObject {
     /// A new attach or `suspend()` cleared the connection. Drop what belonged to it.
     func conversationDidReset()
+    /// The host replaced the Bot Chat this attach held (#1339): the attach follows the new one,
+    /// whose root `conversationDidIdentify` names next. Drop what belonged to the old chat.
+    func conversationDidFollowReplacedChat()
     /// The attach found the session's root: the Bot Chat's canonical root, or the session's key.
     /// After `session.create`, `target` is already `.session`, so its keys exist from here.
     /// The owner moves anything saved under the `.new` target's keys, such as the draft, once
@@ -98,6 +101,7 @@ enum HermesRequestAnswer: Equatable {
 }
 
 extension HermesConversationOwner {
+    func conversationDidFollowReplacedChat() {}
     func conversationDidIdentify(root: String) {}
     func conversationWillReplay(newRuntime: Bool) {}
     func conversationDidConnect(runtime: String, attempt: Int) async throws {}
@@ -140,11 +144,6 @@ extension HermesConversationOwner {
     private(set) var generation = 0
     /// The Bot Chat's canonical root, or the session's key.
     private(set) var root: String?
-    /// The root a Bot Chat deep link named. Seeded into `root`, so the changed-root
-    /// rejection refuses the bot's replacement chat under the link's identity (#554).
-    private let linkedRoot: String?
-    /// Set when that seeded root is not the bot's canonical chat any more.
-    private(set) var linkedRootIsStale = false
     /// The stored key `session.resume` attaches: the Bot Chat's compression tip, or the
     /// key the host resolved for a session, until a compaction moves it (`adoptStoredKey`).
     private(set) var storedKey: String?
@@ -173,13 +172,14 @@ extension HermesConversationOwner {
     private let reconnectDelay: (Duration) async throws -> Void
     private let now: () -> ContinuousClock.Instant
 
-    /// `linkedRoot` is a Bot Chat deep link's root; nil for every other open.
+    /// `linkedRoot` is a Bot Chat deep link's root, seeded into `root` so a link to a chat the
+    /// host has since replaced follows it as a reattach does (#1339); nil for every other open.
     init(server: URL, connection: BotConnection, target: ConversationTarget, linkedRoot: String? = nil,
          wire: any BotTransport,
          reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
          now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now }) {
         self.server = server; self.connection = connection; self.target = target
-        self.linkedRoot = linkedRoot; self.root = linkedRoot
+        self.root = linkedRoot
         self.wire = wire
         self.reconnectDelay = reconnectDelay; self.now = now
         wire.onEvent = { [weak self] event in self?.receive(event) }
@@ -403,9 +403,11 @@ extension HermesConversationOwner {
     }
 
     /// Settles which stored key to resume. A Bot Chat is looked up by its title on every
-    /// attach, and a changed root is refused before resume, which can auto-continue. A
-    /// session resumes its own key; the host follows it to a compression tip. A new
-    /// session is created here once, then is a session.
+    /// attach. A changed root is the host's doing: since hermes-agent 0.22.3 it moves aside a
+    /// Bot Chat it can't own, retitled and unhidden, and makes a new one under the title, so
+    /// the attach follows it and the owner says so (#1339). A session resumes its own key; the
+    /// host follows it to a compression tip. A new session is created here once, then is a
+    /// session.
     private func identify(_ attempt: Int) async throws {
         switch target {
         case .canonicalChat(let profile):
@@ -414,12 +416,7 @@ extension HermesConversationOwner {
             guard rows.count == 1 else { throw BotFailure.missingChat }
             guard let foundRoot = rows[0]["id"].text, !foundRoot.isEmpty,
                   let foundTip = rows[0]["resolved_id"].text, !foundTip.isEmpty else { throw BotFailure.unsupported }
-            if let root, root != foundRoot {
-                // The rejected root is the one a deep link named: report it so the
-                // inbox can say so, rather than sitting on an error the user cannot act on.
-                if root == linkedRoot { linkedRootIsStale = true }
-                throw BotFailure.wrongIdentity
-            }
+            if let root, root != foundRoot { owner?.conversationDidFollowReplacedChat() }
             root = foundRoot; storedKey = foundTip
             owner?.conversationDidIdentify(root: foundRoot)
         case .session(_, let key):

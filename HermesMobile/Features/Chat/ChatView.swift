@@ -304,9 +304,6 @@ struct ChatView: View {
     /// Puts a new Hermes chat in this one's place: a Profile picked before anything was
     /// sent (#1015). Nil pushes it on top instead.
     let onReplaceHermesSession: ((HermesSessionChat) -> Void)?
-    /// The bot's chat a deep link named was replaced by a newer one (#554): the caller takes the
-    /// user back and says so. Only a `.canonicalChat` opened with a `linkedRoot` calls it (#1145).
-    let onHermesChatReplaced: (() -> Void)?
     /// A Hermes session's dictation goes to its host for its Profile (#1071).
     private let hermesTranscriber: ComposerTranscriber?
     /// Matches a Hermes chat's `Session Open` signpost to the list push that began it.
@@ -455,7 +452,6 @@ struct ChatView: View {
         hermesSession: HermesSessionChat? = nil,
         onReplaceHermesSession: ((HermesSessionChat) -> Void)? = nil,
         onOpenHermesSessions: ((HermesSessionListEntry) -> Void)? = nil,
-        onHermesChatReplaced: (() -> Void)? = nil,
         onHermesDraftKeyChange: ((ChatDraftKey) -> Void)? = nil
     ) {
         self.session = session
@@ -472,7 +468,6 @@ struct ChatView: View {
         hermesSessionChatID = hermesSession?.id.uuidString
         hermesParentKey = hermesSession?.parentKey
         self.onReplaceHermesSession = onReplaceHermesSession
-        self.onHermesChatReplaced = onHermesChatReplaced
         hermesTranscriber = hermesSession.map { HermesTranscription.transcriber(for: $0) }
         self.onOpenHermesSessions = onOpenHermesSessions
         _draftMessage = State(initialValue: initialDraft)
@@ -500,12 +495,11 @@ struct ChatView: View {
 
     /// A Hermes session on its Profile (#1010). It has no webui session, so nothing here
     /// reaches the webui API; connection errors show in the chat itself. A bot's Bot Chat
-    /// (#1145) shows the bot's pill in place of the title, keeps Bot Chat's rules
-    /// (`HermesChatPolicy`) and calls `onChatReplaced` when its linked root was replaced. Update
-    /// sign-in goes through the environment's `HermesUpdateSignInAction`. New Chat with Voice's
-    /// chat (#1180) starts dictation.
+    /// (#1145) shows the bot's pill in place of the title and keeps Bot Chat's rules
+    /// (`HermesChatPolicy`). Update sign-in goes through the environment's
+    /// `HermesUpdateSignInAction`. New Chat with Voice's chat (#1180) starts dictation.
     init(hermesSession: HermesSessionChat, onReplace: ((HermesSessionChat) -> Void)? = nil,
-         onOpenSessions: ((HermesSessionListEntry) -> Void)? = nil, onChatReplaced: (() -> Void)? = nil,
+         onOpenSessions: ((HermesSessionListEntry) -> Void)? = nil,
          onDraftKeyChange: ((ChatDraftKey) -> Void)? = nil) {
         self.init(
             session: SessionSummary(profile: hermesSession.target.profile),
@@ -515,7 +509,6 @@ struct ChatView: View {
             hermesSession: hermesSession,
             onReplaceHermesSession: onReplace,
             onOpenHermesSessions: onOpenSessions,
-            onHermesChatReplaced: onChatReplaced,
             onHermesDraftKeyChange: onDraftKeyChange
         )
     }
@@ -1231,10 +1224,6 @@ struct ChatView: View {
             .fullScreenCover(isPresented: $showsBtwFullScreen) { btwFullScreen }
             .onChange(of: viewModel.hermesSideTasks?.btw == nil) { _, isClosed in
                 if isClosed { showsBtwFullScreen = false }
-            }
-            .onChange(of: viewModel.hermesChatWasReplaced) { _, isStale in
-                // The link named a chat this bot has replaced: the caller reports it (#554).
-                if isStale { onHermesChatReplaced?() }
             }
             .sheet(isPresented: $showsDelegatedWork) {
                 if let work = viewModel.hermesActivity?.delegatedWork {

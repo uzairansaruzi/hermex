@@ -395,14 +395,10 @@ import SwiftUI
     }
 
     /// The selected bot's canonical Bot Chat in the regular chat (#1146), where every bot route
-    /// lands. A chat the bot replaced since a link named it comes back here and says so, and a
-    /// refused password comes back here to the inbox's sign-in form.
+    /// lands. A refused password comes back here to the inbox's sign-in form.
     @ViewBuilder private func chat(_ profile: BotProfile, _ connection: BotConnection) -> some View {
         if let chat = inbox.selection.chat(server: server, connection: connection) {
-            ChatView(hermesSession: chat, onChatReplaced: {
-                inbox.selection.profile = nil
-                toast = String(localized: "That conversation is no longer available.")
-            })
+            ChatView(hermesSession: chat)
             .modifier(HermesUpdateSignInModifier { inbox.noteRejectedSignIn(connection); inbox.selection.profile = nil; updateSignIn() })
             // A composite rather than a concatenation: a Profile name and a
             // conversation root are both arbitrary server strings, so joining them

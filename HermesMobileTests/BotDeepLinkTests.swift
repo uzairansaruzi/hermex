@@ -180,8 +180,7 @@ import XCTest
 
     /// Every bot route ends at the inbox's selection (#1146): a row or tile, a link naming the
     /// root, and a push tap naming none each open the bot's canonical chat in the regular chat,
-    /// a link's root seeded so a replaced chat is refused. The same bot on another server keeps
-    /// its own draft.
+    /// a link's root seeded as the chat's. The same bot on another server keeps its own draft.
     func testEveryBotRouteOpensItsCanonicalChatInTheRegularChat() throws {
         let profile = BotProfile(.object(["name": .string("inbox-triage")]))!
         let connection = BotConnection(id: connectionID, name: "Fixture", address: serverA,
@@ -223,28 +222,18 @@ import XCTest
         XCTAssertFalse(BotDeepLinkRouter.inboxCanAnswer(link: .idle, hasConnection: false, hasSettled: false))
     }
 
-    func testDeepLinkedConversationTheBotHasReplacedIsReportedInsteadOfOpened() async {
-        let wire = BotFixtureWire()
-        wire.root = "root-now"
-        let model = conversation(named: "root-then", wire: wire)
-        await model.activate()
-
-        XCTAssertTrue(model.linkedRootIsStale)
-        XCTAssertNotEqual(model.connectionState, .connected)
-        // Rejected before `session.resume`, which can auto-continue the bot's work.
-        XCTAssertFalse(wire.calls.contains { $0.0 == "session.resume" })
-        model.suspend()
-    }
-
-    func testDeepLinkedConversationTheBotStillHasOpensNormally() async {
-        let wire = BotFixtureWire()
-        wire.root = "root-now"
-        let model = conversation(named: "root-now", wire: wire)
-        await model.activate()
-
-        XCTAssertFalse(model.linkedRootIsStale)
-        XCTAssertEqual(model.connectionState, .connected)
-        model.suspend()
+    /// A link names the bot's chat by its root: one the host has since replaced opens the
+    /// current chat, as a reattach does (#1339).
+    func testADeepLinkedConversationOpensTheBotsCurrentChat() async {
+        for linked in ["root-then", "root-now"] {
+            let wire = BotFixtureWire()
+            wire.root = "root-now"
+            let model = conversation(named: linked, wire: wire)
+            await model.activate()
+            XCTAssertEqual(model.connectionState, .connected, linked)
+            XCTAssertEqual(model.root, "root-now", linked)
+            model.suspend()
+        }
     }
 
     /// The engine a bot's deep link opens: the bot's chat, seeded with the link's root.

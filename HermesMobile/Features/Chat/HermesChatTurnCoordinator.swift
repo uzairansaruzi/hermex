@@ -23,6 +23,9 @@ import SwiftData
     /// An attach failed with `error`; the engine may be retrying. A host it can't reach shows
     /// the offline cache's copy (#1054).
     func hermesAttachDidFail(_ error: Error)
+    /// The host replaced the Bot Chat on screen with a new one (#1339), which this attach now
+    /// reads: the old chat's rows go, and the chat says where they went.
+    func hermesBotChatWasReplaced()
     /// The attach found the session's root: a Bot Chat's canonical root, or a session's key.
     func hermesDidIdentify(root: String)
     func hermesApplyUsage(_ usage: ContextWindowSnapshot)
@@ -64,8 +67,8 @@ struct HermesSessionChat: Hashable, Identifiable {
     /// deliberate archive out. Nil for any other row; a `.canonicalChat` target is a Bot Chat
     /// without it.
     var botChatRoot: String? = nil
-    /// The root a bot's deep link named for its `.canonicalChat`: once the bot has replaced that
-    /// chat, the chat says so (`ChatView`'s `onChatReplaced`, #554) instead of opening the new one.
+    /// The root a bot's deep link named for its `.canonicalChat`: once the host has replaced that
+    /// chat, the chat follows it to the current one and says so (#1339).
     var linkedRoot: String? = nil
     /// The row's identity across a legacy compression chain (`SessionSummary.Hermes.lineageRoot`),
     /// which this chat, opened by its key, caches and keeps its draft under, so a chat a session
@@ -226,6 +229,10 @@ struct HermesChatTranscript: Equatable {
     /// Sends between their call and the host's answer: a page must not replace the
     /// transcript under a prompt the chat already shows.
     @ObservationIgnored private var submitsInFlight = 0
+    /// Bot Chats the host replaced that this chat followed (#1339), and how many of them the
+    /// chat's notice has shown (`replacedChatNoticeDidShow`).
+    @ObservationIgnored private var followedReplacements = 0
+    @ObservationIgnored private var shownReplacements = 0
     @ObservationIgnored private var draftKey: ChatDraftKey
     /// The chain this session belongs to (`HermesSessionChat.lineageRoot`), which keys its draft.
     @ObservationIgnored private let lineageRoot: String?
@@ -369,6 +376,30 @@ struct HermesChatTranscript: Equatable {
         return task
     }
 
+    /// The chat found the Bot Chat it had cached, shown or not, replaced (#1339): the attach's
+    /// root is not the cached copy's, which the engine never held.
+    func noteReplacedChat() { followedReplacements += 1 }
+
+    /// The chat shows the notice for every replaced Bot Chat it followed: writes go out again.
+    func replacedChatNoticeDidShow() { shownReplacements = followedReplacements }
+
+    /// Attaches if the chat has not, and returns the runtime a deliberate write goes to. Throws
+    /// `NotSent` when it is not attached, or when the host replaced the Bot Chat and the user
+    /// acted before the chat showed the swap's notice, or during the attach this write waited on
+    /// (`followedReplacedChat`, #1339): they acted on the old chat, and see the swap before
+    /// anything goes to the new one.
+    private func attachForWrite() async throws -> String {
+        let followed = followedReplacements, seen = followed == shownReplacements
+        await activate()
+        guard engine.connectionState == .connected, let runtime = engine.runtime else {
+            throw NotSent(underlying: BotFailure.transport)
+        }
+        guard seen, followedReplacements == followed else {
+            throw NotSent(underlying: BotFailure.stale, followedReplacedChat: true)
+        }
+        return runtime
+    }
+
     private func cancelAttach() {
         attaching?.cancel(); attaching = nil
         attachGeneration += 1
@@ -379,6 +410,8 @@ struct HermesChatTranscript: Equatable {
     struct NotSent: Error {
         let underlying: Error
         var duringUpload = false
+        /// The attach before it followed a Bot Chat the host replaced (#1339).
+        var followedReplacedChat = false
     }
 
     /// A branch's row is no longer in the history, so it can't be counted to (#1051).
@@ -418,10 +451,7 @@ struct HermesChatTranscript: Equatable {
                 beforePrompt: () async throws -> Void = {}) async throws -> BotPromptOutcome {
         submitsInFlight += 1
         defer { submitsInFlight -= 1 }
-        await activate()
-        guard engine.connectionState == .connected, let runtime = engine.runtime else {
-            throw NotSent(underlying: BotFailure.transport)
-        }
+        let runtime = try await attachForWrite()
         // Only a fresh turn takes files (`docs/agents/bots.md`); the chat never offers more.
         guard attachments.isEmpty || mode.startsTurn else { throw NotSent(underlying: BotFailure.unsupported) }
         let attempt = engine.generation
@@ -733,10 +763,7 @@ struct HermesChatTranscript: Equatable {
     func rewind(before rowID: Int, text: String, discardsLaterPrompts: Bool) async throws {
         submitsInFlight += 1
         defer { submitsInFlight -= 1 }
-        await activate()
-        guard engine.connectionState == .connected, let runtime = engine.runtime else {
-            throw NotSent(underlying: BotFailure.transport)
-        }
+        let runtime = try await attachForWrite()
         let startsBefore = turnsStarted
         isSubmittingSend = true
         defer { isSubmittingSend = false }
@@ -762,10 +789,7 @@ struct HermesChatTranscript: Equatable {
     /// nothing, and nothing is read. Throws as `rewind` does, and throws the read's failure
     /// when the host removed the exchange but the chat still shows it.
     func undo() async throws {
-        await activate()
-        guard engine.connectionState == .connected, let runtime = engine.runtime else {
-            throw NotSent(underlying: BotFailure.transport)
-        }
+        let runtime = try await attachForWrite()
         let attempt = engine.generation
         let reply = try await writeOnce(.sessionUndo(runtime: runtime), runtime: runtime)
         guard reply["removed"].integer != 0 else { return }
@@ -796,10 +820,7 @@ struct HermesChatTranscript: Equatable {
     /// attach, now or once the chat is back, reads the history from the newest page and
     /// rebuilds, since the host may have compacted it.
     func compress(focus: String?) async throws -> Compression {
-        await activate()
-        guard engine.connectionState == .connected, let runtime = engine.runtime else {
-            throw NotSent(underlying: BotFailure.transport)
-        }
+        let runtime = try await attachForWrite()
         let attempt = engine.generation
         let reply: BotJSON
         do {
@@ -885,10 +906,7 @@ struct HermesChatTranscript: Equatable {
     /// out, `BranchRowGone` for a row the history no longer holds,
     /// `BranchContinuesEarlierSession`, and the host's refusal as `BotSettingFailure`.
     func branch(through rowID: Int?, name: String?) async throws -> String {
-        await activate()
-        guard engine.connectionState == .connected, let runtime = engine.runtime else {
-            throw NotSent(underlying: BotFailure.transport)
-        }
+        let runtime = try await attachForWrite()
         var count: Int?
         if let rowID {
             let own: BotJSON?
@@ -1721,6 +1739,18 @@ extension HermesChatTurnCoordinator: ChatTurnCoordinating {
 }
 
 extension HermesChatTurnCoordinator: HermesConversationOwner {
+    /// The old chat's turn, history, question and background tasks go, quietly: its turn ends
+    /// as cancelled, with no alert and nothing read for it. This attach reads the new chat's
+    /// history and snapshot and rebuilds.
+    func conversationDidFollowReplacedChat() {
+        followedReplacements += 1
+        savedTurn = nil; completedFailed = false; queuedPrompt = nil
+        finish(.cancelled)
+        sideTasks.forgetChat()
+        forgetHistoryUntilRebuild()
+        delegate?.hermesBotChatWasReplaced()
+    }
+
     func conversationDidIdentify(root: String) {
         delegate?.hermesDidIdentify(root: root)
     }
