@@ -449,6 +449,45 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testServerAudioThatWontPlayReleasesTheSessionBeforeOnDeviceSpeech() async throws {
+        let recorder = ListenCallRecorder()
+        let speech = SpyOnDeviceSpeech(recorder: recorder)
+        let audioSession = SpyListenAudioSession(recorder: recorder)
+        let serverPlayer = SpyListenAudioPlayer()
+        serverPlayer.playResult = false
+        serverPlayer.duration = 999
+        let onDevicePlayer = SpyListenAudioPlayer()
+        onDevicePlayer.duration = 42
+        weak var model: ChatViewModel?
+        var durationWhileRendering: TimeInterval?
+        let viewModel = try makeViewModel(
+            renderOnDeviceSpeech: { text in
+                durationWhileRendering = model?.listenPlaybackDuration
+                return try await speech.render(text)
+            },
+            listenAudioSession: audioSession,
+            listenAudioPlayerFactory: { $0 == SpyOnDeviceSpeech.audio ? onDevicePlayer : serverPlayer }
+        ) { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                           headerFields: ["Content-Type": "audio/mpeg"])!
+            return (response, Data([0xFF, 0xF3]))
+        }
+        model = viewModel
+
+        viewModel.toggleListening(to: try listenContext("Won't play.", id: "wont-play"))
+        await viewModel.listenPreparationTask?.value
+
+        // The failed server attempt hands the session back before the render runs, so other
+        // audio isn't held silent, and the loading bar never shows the failed audio's length.
+        let renderIndex = try XCTUnwrap(recorder.events.firstIndex(of: "render"))
+        XCTAssertEqual(Array(recorder.events[..<renderIndex].suffix(2)), ["activate", "deactivate"])
+        XCTAssertEqual(durationWhileRendering, 0)
+        XCTAssertEqual(onDevicePlayer.playCount, 1)
+        XCTAssertEqual(viewModel.listenPlaybackDuration, 42)
+        XCTAssertEqual(viewModel.listenPlaybackPhase, .playing)
+    }
+
+    @MainActor
     func testListenOverServerLimitSkipsServerTTSEntirely() async throws {
         let speechSynthesizer = SpyOnDeviceSpeech()
         let viewModel = try makeViewModel(

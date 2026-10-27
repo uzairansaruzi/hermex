@@ -7348,21 +7348,20 @@ final class ChatViewModel {
         }
         player.prepareToPlay()
         player.rate = Float(listenPlaybackSpeed.rawValue)
-        listenPlaybackElapsedTime = player.currentTime
-        listenPlaybackDuration = player.duration
-        listenPlaybackScrubTime = nil
-        configureListenRemoteControls()
 
         // Activate the session only once decodable audio is in hand, immediately
         // before playback, so the network wait or the on-device render never held it
         // (review on #35). Routes speech to the speaker, not the earpiece (#252). If
-        // `play()` still fails, the on-device attempt re-activates — `activate()` is
-        // idempotent, and `finishListening()` releases it either way.
+        // `play()` fails, release it again so other audio resumes while the on-device
+        // voice renders, and leave the loading bar untouched.
         listenAudioSession.activate()
         guard player.play() else {
+            listenAudioSession.deactivate()
             return false
         }
 
+        listenPlaybackScrubTime = nil
+        configureListenRemoteControls()
         listenAudioPlayer = player
         activeListenPlayerID = playerID
         listenPlaybackPhase = .playing
