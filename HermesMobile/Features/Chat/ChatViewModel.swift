@@ -610,7 +610,6 @@ final class ChatViewModel {
     private let attachmentCoordinator: ChatAttachmentCoordinator
     private let btwStreamClient: SSEStreamingClient
     private let liveActivityManager: any AgentLiveActivityManaging
-    private let speechSynthesizerFactory: () -> any ChatSpeechSynthesizing
     private let listenAudioSession: any ListenAudioSessionControlling
     private let listenRemoteControlCenter: any ListenRemoteControlControlling
     private let userDefaults: UserDefaults
@@ -625,24 +624,21 @@ final class ChatViewModel {
     // tokens and reasoning show at most once per tick. Injectable so tests drive
     // ticks deterministically.
     private let streamingRevealTick: @Sendable () async throws -> Void
-    private var speechSynthesizer: (any ChatSpeechSynthesizing)?
-    private var speechDelegate: SpeechSynthesizerDelegate?
-    // Identity of the utterance currently being spoken. A stale finish/cancel callback
-    // from a superseded utterance (e.g. switching messages mid-playback) is ignored so
-    // it can't clear the new listen state or deactivate the session. See #252.
-    private var activeListeningUtteranceID: ObjectIdentifier?
-    // Server-TTS playback seam (#15): the factory builds an audio player from the
-    // server's synthesized bytes; injectable so tests never construct a real
+    // Listen playback seam (#15): the factory builds an audio player from the server's
+    // or the on-device voice's bytes; injectable so tests never construct a real
     // `AVAudioPlayer` (which requires decodable audio data).
-    private let serverTTSAudioPlayerFactory: @MainActor (Data) throws -> any ListenAudioPlaying
+    private let listenAudioPlayerFactory: @MainActor (Data) throws -> any ListenAudioPlaying
+    // A reply spoken by the on-device voice, as playable audio (#1352). Injectable so tests
+    // never run the real synthesizer.
+    private let renderOnDeviceSpeech: @MainActor (String) async throws -> Data
     // A reply's server speech for Listen, or nil to speak it on device: webui's `/api/tts`
     // with the saved engine and voice, or a Hermes host's voice for the chat's Profile
     // (#1072). Any throw also falls back on device (#15). Injectable so tests stub the server.
     private let synthesizeListenAudio: @MainActor (String) async throws -> Data?
     private var listenAudioPlayer: (any ListenAudioPlaying)?
-    // Identity of the server-TTS player currently playing. Mirrors
-    // `activeListeningUtteranceID`: a stale finish callback from a superseded player
-    // must not clear the new listen state or deactivate the session.
+    // Identity of the Listen player currently playing. A stale finish callback from a
+    // superseded player (e.g. switching messages mid-playback) must not clear the new
+    // listen state or deactivate the session. See #252.
     private var activeListenPlayerID: ObjectIdentifier?
     // In-flight settings/audio fetch for the Listen action. Cancelled by
     // `stopListening()`; exposed (read-only) so tests can await the async
@@ -722,10 +718,10 @@ final class ChatViewModel {
         streamingRevealTick: @escaping @Sendable () async throws -> Void = {
             try await Task.sleep(nanoseconds: 50_000_000)
         },
-        speechSynthesizerFactory: @escaping () -> any ChatSpeechSynthesizing = { AVSpeechSynthesizer() },
+        renderOnDeviceSpeech: @escaping @MainActor (String) async throws -> Data = { try await OnDeviceSpeech.render($0) },
         listenAudioSession: (any ListenAudioSessionControlling)? = nil,
         listenRemoteControlCenter: (any ListenRemoteControlControlling)? = nil,
-        serverTTSAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil,
+        listenAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil,
         synthesizeListenAudio: (@MainActor (String) async throws -> Data?)? = nil,
         draftAttachmentStore: any ChatDraftAttachmentStoring = ChatDraftAttachmentStore.shared,
         draftStore: ChatDraftStore? = nil,
@@ -784,13 +780,13 @@ final class ChatViewModel {
         self.steeringConfirmationDismissDelay = steeringConfirmationDismissDelay
         self.streamingScrollCoalescingDelayNanoseconds = streamingScrollCoalescingDelayNanoseconds
         self.streamingRevealTick = streamingRevealTick
-        self.speechSynthesizerFactory = speechSynthesizerFactory
+        self.renderOnDeviceSpeech = renderOnDeviceSpeech
         self.listenAudioSession = listenAudioSession ?? ListenAudioSessionController()
         self.listenRemoteControlCenter = listenRemoteControlCenter ?? ListenRemoteControlController()
         self.userDefaults = userDefaults
         self.listenPlaybackSpeed = ListenPlaybackSpeed.stored(in: userDefaults)
-        self.serverTTSAudioPlayerFactory = serverTTSAudioPlayerFactory
-            ?? { try ServerTTSAudioPlayer(data: $0) }
+        self.listenAudioPlayerFactory = listenAudioPlayerFactory
+            ?? { try ListenAudioPlayer(data: $0) }
         self.synthesizeListenAudio = synthesizeListenAudio ?? backendSpeech
         displayTitle = Self.displayTitle(from: session.title)
         turn.attach(delegate: self)
@@ -6172,44 +6168,33 @@ final class ChatViewModel {
         // The audio session is NOT activated here: server speech can be slow or
         // unreachable, and activating the non-mixable playback session before the
         // fetch would silence other audio while Hermex has nothing to play (review
-        // on #35). Activation happens at the two playback-start points instead —
-        // `startServerAudioPlayback` and `speakWithOnDeviceSynthesizer`.
+        // on #35). Activation happens only once audio is in hand, in
+        // `startListenAudioPlayback`.
         listeningMessageID = context.messageID
         beginListenPlaybackPreparation(for: context)
 
-        guard ServerTTSPolicy.shouldUseServerTTS(for: listenText, onHermes: hermesTurn != nil) else {
-            // Over the server's ceiling: go straight to the on-device path (chunking
-            // is a non-goal of #15).
-            clearListenPlaybackState()
-            speakWithOnDeviceSynthesizer(listenText)
-            return
-        }
-
         // Prefer the server's speech; on any failure (offline, 4xx/5xx, rate
-        // limit, undecodable audio) fall back silently to the on-device
-        // synthesizer — no error alert (#15).
+        // limit, undecodable audio) fall back silently to the on-device voice —
+        // no error alert (#15). Over the server's ceiling, go straight to the
+        // on-device voice (chunking is a non-goal of #15). Both play through the
+        // same player, so the playback bar and Lock Screen controls cover either (#1352).
+        let usesServerSpeech = ServerTTSPolicy.shouldUseServerTTS(for: listenText, onHermes: hermesTurn != nil)
         let requestID = UUID()
         activeListenRequestID = requestID
-        listenPreparationTask = Task { [weak self, synthesizeListenAudio] in
-            guard !Task.isCancelled else {
-                // Stopped before the fetch began (e.g. a rapid second tap): skip
-                // the request entirely instead of issuing one whose response
-                // would be dropped anyway.
-                return
+        listenPreparationTask = Task { [weak self, synthesizeListenAudio, renderOnDeviceSpeech] in
+            // Stopped before the fetch began (e.g. a rapid second tap): skip the
+            // request entirely instead of issuing one whose response would be dropped.
+            // Stopped or superseded while either fetch was in flight: the user no longer
+            // wants this audio; never start playback from a stale response.
+            if usesServerSpeech, !Task.isCancelled, let audio = try? await synthesizeListenAudio(listenText) {
+                guard let self, !Task.isCancelled, self.activeListenRequestID == requestID else { return }
+                if self.startListenAudioPlayback(audio) { return }
             }
-            let audioData = try? await synthesizeListenAudio(listenText)
-
-            guard let self, !Task.isCancelled, self.activeListenRequestID == requestID else {
-                // Stopped or superseded while the fetch was in flight — the user no
-                // longer wants this audio; never start playback from a stale response.
-                return
-            }
-
-            if let audioData, self.startServerAudioPlayback(audioData, title: self.listenPlaybackTitle) {
-                return
-            }
-            self.clearListenPlaybackState()
-            self.speakWithOnDeviceSynthesizer(listenText)
+            guard !Task.isCancelled else { return }
+            let audio = try? await renderOnDeviceSpeech(listenText)
+            guard let self, !Task.isCancelled, self.activeListenRequestID == requestID else { return }
+            if let audio, self.startListenAudioPlayback(audio) { return }
+            self.finishListening()
         }
     }
 
@@ -6223,10 +6208,6 @@ final class ChatViewModel {
         // `AVAudioPlayer.stop()` does not fire the finish delegate, so no stale
         // callback follows; state is torn down synchronously in `finishListening()`.
         listenAudioPlayer?.stop()
-
-        if let speechSynthesizer, speechSynthesizer.isSpeaking || speechSynthesizer.isPaused {
-            speechSynthesizer.stopSpeaking(at: .immediate)
-        }
         finishListening()
     }
 
@@ -7324,7 +7305,6 @@ final class ChatViewModel {
     }
 
     private func finishListening() {
-        activeListeningUtteranceID = nil
         activeListenPlayerID = nil
         activeListenRequestID = nil
         listenAudioPlayer = nil
@@ -7354,26 +7334,11 @@ final class ChatViewModel {
         listenRemoteControlCenter.clear()
     }
 
-    /// Speaks `text` with the on-device `AVSpeechSynthesizer` — the pre-#15 Listen
-    /// path, kept as the offline/failure fallback for server TTS.
-    private func speakWithOnDeviceSynthesizer(_ text: String) {
-        // Route speech to the speaker (not the receiver/earpiece) immediately before
-        // speech starts — not when the Listen tap lands — so a slow `/api/tts` fetch
-        // never interrupts other audio while Hermex is silent (review on #35).
-        // Released again in `finishListening()` once playback ends. See #252.
-        listenAudioSession.activate()
-        let speechSynthesizer = speechSynthesizerForListening()
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-        activeListeningUtteranceID = ObjectIdentifier(utterance)
-        speechSynthesizer.speak(utterance)
-    }
-
-    /// Attempts to start playback of server-synthesized audio bytes. Returns
-    /// `false` when the bytes can't be decoded into a player or playback fails to
-    /// start, so the caller can fall back to the on-device synthesizer.
-    private func startServerAudioPlayback(_ audioData: Data, title: String) -> Bool {
-        guard let player = try? serverTTSAudioPlayerFactory(audioData) else {
+    /// Attempts to start playback of Listen audio, the server's or the on-device voice's.
+    /// Returns `false` when the bytes can't be decoded into a player or playback fails to
+    /// start, so the caller can fall back to the on-device voice.
+    private func startListenAudioPlayback(_ audioData: Data) -> Bool {
+        guard let player = try? listenAudioPlayerFactory(audioData) else {
             return false
         }
 
@@ -7383,16 +7348,16 @@ final class ChatViewModel {
         }
         player.prepareToPlay()
         player.rate = Float(listenPlaybackSpeed.rawValue)
-        listenPlaybackTitle = title
         listenPlaybackElapsedTime = player.currentTime
         listenPlaybackDuration = player.duration
         listenPlaybackScrubTime = nil
         configureListenRemoteControls()
 
         // Activate the session only once decodable audio is in hand, immediately
-        // before playback, so the network wait never held it (review on #35). If
-        // `play()` still fails, the on-device fallback re-activates for itself —
-        // `activate()` is idempotent, and `finishListening()` releases it either way.
+        // before playback, so the network wait or the on-device render never held it
+        // (review on #35). Routes speech to the speaker, not the earpiece (#252). If
+        // `play()` still fails, the on-device attempt re-activates — `activate()` is
+        // idempotent, and `finishListening()` releases it either way.
         listenAudioSession.activate()
         guard player.play() else {
             return false
@@ -7483,37 +7448,11 @@ final class ChatViewModel {
         ))
     }
 
-    /// Completion routed from the server-TTS audio player. Mirrors
-    /// `handleListenCompletion(for:)`: a stale callback from a superseded player
-    /// must not clear the new listen state or deactivate the session.
+    /// Completion routed from the Listen audio player. A stale callback from a superseded
+    /// player must not clear the new listen state or deactivate the session.
     private func handleListenPlayerCompletion(for playerID: ObjectIdentifier) {
         guard playerID == activeListenPlayerID else { return }
         finishListening()
-    }
-
-    /// Completion routed from the speech-synthesizer delegate. Switching messages mid-
-    /// playback cancels the previous utterance, whose `didCancel` arrives asynchronously
-    /// *after* the next utterance has started — ignore that stale callback so we don't
-    /// clear the new listen state or deactivate the session under live speech. See #252.
-    private func handleListenCompletion(for utteranceID: ObjectIdentifier) {
-        guard utteranceID == activeListeningUtteranceID else { return }
-        finishListening()
-    }
-
-    private func speechSynthesizerForListening() -> any ChatSpeechSynthesizing {
-        if let speechSynthesizer {
-            return speechSynthesizer
-        }
-
-        let speechSynthesizer = speechSynthesizerFactory()
-        if speechDelegate == nil {
-            speechDelegate = SpeechSynthesizerDelegate { [weak self] finishedUtteranceID in
-                self?.handleListenCompletion(for: finishedUtteranceID)
-            }
-        }
-        speechSynthesizer.delegate = speechDelegate
-        self.speechSynthesizer = speechSynthesizer
-        return speechSynthesizer
     }
 
     private func statusTokenLine() -> String {
@@ -8979,7 +8918,7 @@ enum ServerTTSPolicy {
     }
 }
 
-/// Playback seam for server-synthesized "Listen" audio. Injectable so tests can
+/// Playback seam for "Listen" audio, the server's or the on-device voice's. Injectable so tests can
 /// drive playback outcomes without constructing a real `AVAudioPlayer` (which
 /// requires decodable audio bytes).
 @MainActor
@@ -9000,9 +8939,9 @@ protocol ListenAudioPlaying: AnyObject {
 
 /// Production `ListenAudioPlaying`: wraps `AVAudioPlayer` and forwards its finish
 /// delegate onto the main actor. `init` throws when the bytes aren't decodable
-/// audio, which the caller treats as "fall back to the on-device synthesizer".
+/// audio, which the caller treats as "fall back to the on-device voice".
 @MainActor
-final class ServerTTSAudioPlayer: NSObject, ListenAudioPlaying {
+final class ListenAudioPlayer: NSObject, ListenAudioPlaying {
     private let player: AVAudioPlayer
     var onFinish: (@MainActor () -> Void)?
     var currentTime: TimeInterval {
@@ -9040,7 +8979,7 @@ final class ServerTTSAudioPlayer: NSObject, ListenAudioPlaying {
     }
 }
 
-extension ServerTTSAudioPlayer: AVAudioPlayerDelegate {
+extension ListenAudioPlayer: AVAudioPlayerDelegate {
     // `AVAudioPlayer` may call its delegate off the main thread; hop back before
     // touching main-actor listen state. Finished-with-error still ends playback,
     // so both flag values route to `onFinish`.
@@ -9061,18 +9000,106 @@ extension ServerTTSAudioPlayer: AVAudioPlayerDelegate {
     }
 }
 
-protocol ChatSpeechSynthesizing: AnyObject {
-    var delegate: (any AVSpeechSynthesizerDelegate)? { get set }
-    var isSpeaking: Bool { get }
-    var isPaused: Bool { get }
-
-    func speak(_ utterance: AVSpeechUtterance)
-
-    @discardableResult
-    func stopSpeaking(at boundary: AVSpeechBoundary) -> Bool
+/// Speaks a reply with the on-device voice into playable audio, 16-bit PCM in a CAF
+/// container, so on-device Listen plays through the same `ListenAudioPlayer`, playback
+/// bar, and Lock Screen controls as server speech (#1352). Cancelling the caller's task
+/// stops the render and throws `CancellationError`.
+enum OnDeviceSpeech {
+    static func render(_ text: String) async throws -> Data {
+        let render = OnDeviceSpeechRender(text: text)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { render.start(resuming: $0) }
+        } onCancel: {
+            render.cancel()
+        }
+    }
 }
 
-extension AVSpeechSynthesizer: ChatSpeechSynthesizing {}
+/// One `AVSpeechSynthesizer.write` run. The synthesizer delivers buffers on its own queue
+/// and ends with an empty one; the lock keeps that and cancellation resuming the
+/// continuation exactly once.
+private final class OnDeviceSpeechRender: @unchecked Sendable {
+    private let text: String
+    private let synthesizer = AVSpeechSynthesizer()
+    private let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("listen-\(UUID().uuidString).caf")
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Data, Error>?
+    private var isCancelled = false
+    private var file: AVAudioFile?
+
+    init(text: String) {
+        self.text = text
+    }
+
+    func start(resuming continuation: CheckedContinuation<Data, Error>) {
+        let cancelled = lock.withLock {
+            if !isCancelled { self.continuation = continuation }
+            return isCancelled
+        }
+        guard !cancelled else { return continuation.resume(throwing: CancellationError()) }
+        synthesizer.write(AVSpeechUtterance(string: text)) { [weak self] buffer in
+            self?.receive(buffer)
+        }
+    }
+
+    func cancel() {
+        let continuation = lock.withLock {
+            isCancelled = true
+            return takeContinuation()
+        }
+        guard let continuation else { return }
+        synthesizer.stopSpeaking(at: .immediate)
+        finish(continuation, with: .failure(CancellationError()))
+    }
+
+    private func receive(_ buffer: AVAudioBuffer) {
+        guard let buffer = buffer as? AVAudioPCMBuffer else { return }
+        let ending: (CheckedContinuation<Data, Error>, Result<Void, Error>)? = lock.withLock {
+            guard continuation != nil else { return nil }
+            let outcome: Result<Void, Error>
+            if buffer.frameLength == 0 {
+                // The last buffer. No file means the voice spoke nothing.
+                outcome = file == nil ? .failure(CocoaError(.fileNoSuchFile)) : .success(())
+            } else {
+                do {
+                    try write(buffer)
+                    return nil
+                } catch {
+                    outcome = .failure(error)
+                }
+            }
+            return takeContinuation().map { ($0, outcome) }
+        }
+        if let (continuation, outcome) = ending { finish(continuation, with: outcome) }
+    }
+
+    private func write(_ buffer: AVAudioPCMBuffer) throws {
+        if file == nil {
+            file = try AVAudioFile(forWriting: url, settings: [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: buffer.format.sampleRate,
+                AVNumberOfChannelsKey: buffer.format.channelCount,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false
+            ], commonFormat: buffer.format.commonFormat, interleaved: buffer.format.isInterleaved)
+        }
+        try file?.write(from: buffer)
+    }
+
+    /// Call holding `lock`.
+    private func takeContinuation() -> CheckedContinuation<Data, Error>? {
+        defer { continuation = nil }
+        return continuation
+    }
+
+    /// Closes the file, hands back its bytes memory-mapped, and removes it either way.
+    private func finish(_ continuation: CheckedContinuation<Data, Error>, with outcome: Result<Void, Error>) {
+        lock.withLock { file = nil }
+        defer { try? FileManager.default.removeItem(at: url) }
+        continuation.resume(with: outcome.flatMap { Result { try Data(contentsOf: url, options: .alwaysMapped) } })
+    }
+}
 
 /// Audio-session settings for the "Listen" (TTS) feature. `.playback` routes audio
 /// to the speaker by default instead of the receiver/earpiece, and `.spokenAudio` is
@@ -9116,30 +9143,5 @@ final class ListenAudioSessionController: ListenAudioSessionControlling {
             false,
             options: ListenAudioSessionConfiguration.deactivationOptions
         )
-    }
-}
-
-private final class SpeechSynthesizerDelegate: NSObject, AVSpeechSynthesizerDelegate {
-    private let onFinished: @MainActor @Sendable (ObjectIdentifier) -> Void
-
-    init(onFinished: @escaping @MainActor @Sendable (ObjectIdentifier) -> Void) {
-        self.onFinished = onFinished
-    }
-
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        finishOnMainActor(for: utterance)
-    }
-
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        finishOnMainActor(for: utterance)
-    }
-
-    private func finishOnMainActor(for utterance: AVSpeechUtterance) {
-        // Capture identity synchronously; `ObjectIdentifier` is `Sendable`, so nothing
-        // non-`Sendable` crosses the actor hop into the `@MainActor` task below.
-        let utteranceID = ObjectIdentifier(utterance)
-        Task { @MainActor [onFinished] in
-            onFinished(utteranceID)
-        }
     }
 }
