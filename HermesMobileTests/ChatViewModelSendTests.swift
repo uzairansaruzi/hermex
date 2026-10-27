@@ -323,6 +323,37 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(reloadedViewModel.listenPlaybackSpeed, .oneAndHalf)
     }
 
+    /// iOS shows Now Playing as Stopped right after a mid-play rate change, so the Lock
+    /// Screen would offer a dead play button; Listen sends Now Playing again once that settles.
+    @MainActor
+    func testChangingSpeedWhilePlayingSendsNowPlayingAgainOnceItSettles() async throws {
+        let settle = ManualAsyncDelay()
+        let remoteControlCenter = SpyListenRemoteControlCenter()
+        let player = SpyListenAudioPlayer()
+        let viewModel = try makeViewModel(
+            listenSpeedChangeSettleDelay: { await settle.wait() },
+            listenRemoteControlCenter: remoteControlCenter,
+            listenAudioPlayerFactory: { _ in player },
+            userDefaults: try makeEphemeralUserDefaults()
+        ) { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                           headerFields: ["Content-Type": "audio/mpeg"])!
+            return (response, Data([0xFF, 0xF3]))
+        }
+        viewModel.toggleListening(to: try listenContext("Faster, please.", id: "speed"))
+        await viewModel.listenPreparationTask?.value
+
+        viewModel.setListenPlaybackSpeed(.oneAndHalf)
+        await settle.waitForRegistrationCount(1)
+        let sentBeforeSettling = remoteControlCenter.snapshots.count
+        await settle.resumeNext()
+        await viewModel.listenNowPlayingRefreshTask?.value
+
+        XCTAssertEqual(remoteControlCenter.snapshots.count, sentBeforeSettling + 1)
+        XCTAssertEqual(remoteControlCenter.snapshots.last?.isPlaying, true)
+        XCTAssertEqual(remoteControlCenter.snapshots.last?.speed, .oneAndHalf)
+    }
+
     @MainActor
     func testStartingListenOnDifferentMessageStopsCurrentServerAudio() async throws {
         let firstPlayer = SpyListenAudioPlayer()
@@ -9125,6 +9156,9 @@ final class ChatViewModelSendTests: XCTestCase {
         },
         streamingScrollCoalescingDelayNanoseconds: UInt64 = 16_000_000,
         renderOnDeviceSpeech: @escaping @MainActor (String) async throws -> Data = { _ in SpyOnDeviceSpeech.audio },
+        listenSpeedChangeSettleDelay: @escaping @Sendable () async throws -> Void = {
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+        },
         listenAudioSession: (any ListenAudioSessionControlling)? = nil,
         listenRemoteControlCenter: (any ListenRemoteControlControlling)? = nil,
         listenAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil,
@@ -9163,6 +9197,7 @@ final class ChatViewModelSendTests: XCTestCase {
             steeringConfirmationDismissDelay: steeringConfirmationDismissDelay,
             streamingScrollCoalescingDelayNanoseconds: streamingScrollCoalescingDelayNanoseconds,
             renderOnDeviceSpeech: renderOnDeviceSpeech,
+            listenSpeedChangeSettleDelay: listenSpeedChangeSettleDelay,
             // Default to a spy so unit tests never drive the live shared AVAudioSession.
             listenAudioSession: listenAudioSession ?? SpyListenAudioSession(),
             listenRemoteControlCenter: listenRemoteControlCenter ?? SpyListenRemoteControlCenter(),

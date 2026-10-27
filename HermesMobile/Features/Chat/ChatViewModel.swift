@@ -631,6 +631,10 @@ final class ChatViewModel {
     // A reply spoken by the on-device voice, as playable audio (#1352). Injectable so tests
     // never run the real synthesizer.
     private let renderOnDeviceSpeech: @MainActor (String) async throws -> Data
+    // Waits out iOS's reaction to a Listen speed change before Now Playing is sent again
+    // (1 s in production). Injectable, and the task readable, so tests await it.
+    private let listenSpeedChangeSettleDelay: @Sendable () async throws -> Void
+    @ObservationIgnored private(set) var listenNowPlayingRefreshTask: Task<Void, Never>?
     // A reply's server speech for Listen, or nil to speak it on device: webui's `/api/tts`
     // with the saved engine and voice, or a Hermes host's voice for the chat's Profile
     // (#1072). Any throw also falls back on device (#15). Injectable so tests stub the server.
@@ -719,6 +723,9 @@ final class ChatViewModel {
             try await Task.sleep(nanoseconds: 50_000_000)
         },
         renderOnDeviceSpeech: @escaping @MainActor (String) async throws -> Data = { try await OnDeviceSpeech.render($0) },
+        listenSpeedChangeSettleDelay: @escaping @Sendable () async throws -> Void = {
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+        },
         listenAudioSession: (any ListenAudioSessionControlling)? = nil,
         listenRemoteControlCenter: (any ListenRemoteControlControlling)? = nil,
         listenAudioPlayerFactory: (@MainActor (Data) throws -> any ListenAudioPlaying)? = nil,
@@ -781,6 +788,7 @@ final class ChatViewModel {
         self.streamingScrollCoalescingDelayNanoseconds = streamingScrollCoalescingDelayNanoseconds
         self.streamingRevealTick = streamingRevealTick
         self.renderOnDeviceSpeech = renderOnDeviceSpeech
+        self.listenSpeedChangeSettleDelay = listenSpeedChangeSettleDelay
         self.listenAudioSession = listenAudioSession ?? ListenAudioSessionController()
         self.listenRemoteControlCenter = listenRemoteControlCenter ?? ListenRemoteControlController()
         self.userDefaults = userDefaults
@@ -6228,6 +6236,16 @@ final class ChatViewModel {
         userDefaults.set(speed.rawValue, forKey: ListenPlaybackSpeed.storageKey)
         listenAudioPlayer?.rate = Float(speed.rawValue)
         updateListenNowPlaying()
+        // iOS reads Now Playing's state from the audio itself, and a rate change mid-play
+        // makes it report Stopped about 60 ms later while speech carries on, so the Lock
+        // Screen would show a paused reply whose play button does nothing. Sending Now
+        // Playing again once that settles puts it back to Playing.
+        listenNowPlayingRefreshTask?.cancel()
+        let settle = listenSpeedChangeSettleDelay
+        listenNowPlayingRefreshTask = Task { @MainActor [weak self] in
+            guard (try? await settle()) != nil, !Task.isCancelled else { return }
+            self?.updateListenNowPlaying()
+        }
     }
 
     func scrubListenPlayback(to time: TimeInterval) {
