@@ -1,5 +1,14 @@
 import UIKit
 
+/// Mac send commands must leave marked input with the IME and unresolved completion
+/// with the editor. The existing caller owns empty-draft, attachment and send gates.
+enum ComposerKeyboardSendPolicy {
+    static func canSend(isEnabled: Bool, hasMarkedText: Bool,
+                        isPlainReturn: Bool, allowsPlainReturn: Bool) -> Bool {
+        isEnabled && !hasMarkedText && (!isPlainReturn || allowsPlainReturn)
+    }
+}
+
 /// Where the composer's caret is, and whose idea that was.
 ///
 /// The range is reported up on every edit and caret move, so the composer can

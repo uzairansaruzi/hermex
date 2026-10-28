@@ -375,6 +375,7 @@ struct KanbanStatusFocusView: View {
                 cardList
             }
         }
+        .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
     }
 
     private var dispatcherSheet: some View {
@@ -1128,7 +1129,20 @@ struct KanbanStatusFocusView: View {
         }
     }
 
+    @ViewBuilder
     private var cardList: some View {
+        #if targetEnvironment(macCatalyst)
+        if model.visibleCards.isEmpty && !model.showsBoardLoadingRow && !model.isRefreshing {
+            emptyContent.frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            cardListRows
+        }
+        #else
+        cardListRows
+        #endif
+    }
+
+    private var cardListRows: some View {
         List {
             if model.showsBoardLoadingRow {
                 HStack {
@@ -1381,6 +1395,12 @@ struct KanbanStatusFocusView: View {
                 Button("Clear Filters") { Task { await model.clearFilters() } }
                     .frame(minHeight: 44)
             }
+            #if targetEnvironment(macCatalyst)
+            Button("Refresh", systemImage: "arrow.clockwise") {
+                Task { await model.refresh() }
+            }
+            .disabled(model.isRefreshing)
+            #endif
         }
     }
 

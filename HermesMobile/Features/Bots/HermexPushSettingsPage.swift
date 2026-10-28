@@ -21,6 +21,10 @@ import SwiftUI
     }
 
     var body: some View {
+        #if targetEnvironment(macCatalyst)
+        List { sharedSections }
+            .settingsPage(String(localized: "Notifications"))
+        #else
         List {
             Section {
                 pushSettings
@@ -75,6 +79,7 @@ import SwiftUI
         } message: {
             Text("Bot turns running on this host stop. Hermex reconnects when Hermes is back.")
         }
+        #endif
     }
 
     @ViewBuilder private var pushSettings: some View {

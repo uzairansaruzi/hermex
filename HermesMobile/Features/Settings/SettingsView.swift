@@ -77,11 +77,15 @@ struct SettingsView: View {
                 NavigationLink {
                     SettingsNotificationsPage(server: server)
                 } label: {
+                    #if targetEnvironment(macCatalyst)
+                    SettingsLabel(title: String(localized: "Notifications"), systemImage: "bell")
+                    #else
                     LabeledContent {
                         Text(isPushOn ? String(localized: "Push on") : String(localized: "Push off"))
                     } label: {
                         SettingsLabel(title: String(localized: "Notifications"), systemImage: "bell")
                     }
+                    #endif
                 }
 
                 NavigationLink {
@@ -92,7 +96,9 @@ struct SettingsView: View {
             } header: {
                 Text(verbatim: "Hermex")
             } footer: {
+                #if !targetEnvironment(macCatalyst)
                 Text("Applies on this iPhone to every server.")
+                #endif
             }
 
             Section {
@@ -115,8 +121,12 @@ struct SettingsView: View {
                 }
             }
         }
+        .macReadableForm(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
         .listStyle(.insetGrouped)
         .navigationTitle("Settings")
+        #if targetEnvironment(macCatalyst)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .onAppear {
             isPushOn = PushRegistrar.shared?.pairing(for: server) != nil
         }

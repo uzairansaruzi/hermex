@@ -24,9 +24,11 @@ struct SettingsAppearancePage: View {
                 }
             }
 
+            #if !targetEnvironment(macCatalyst)
             Section {
                 AppIconSettingsSection()
             }
+            #endif
         }
         .settingsPage(String(localized: "Appearance"))
     }
@@ -39,6 +41,14 @@ struct SettingsComposerPage: View {
     @AppStorage(ComposerSTTProviderPreference.storageKey) private var sttProviderPreferenceRawValue = ComposerSTTProviderPreference.defaultValue.rawValue
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsChatFilesButton = true
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsChatGitControls = true
+
+    private var dictationNote: String? {
+        #if targetEnvironment(macCatalyst)
+        nil
+        #else
+        String(localized: "On-device only keeps audio on this iPhone.")
+        #endif
+    }
 
     var body: some View {
         List {
@@ -55,9 +65,11 @@ struct SettingsComposerPage: View {
                     )
                 }
 
+                #if !targetEnvironment(macCatalyst)
                 Toggle(isOn: $dismissKeyboardAfterSend) {
                     SettingsLabel(title: String(localized: "Dismiss keyboard after sending"), systemImage: "keyboard.chevron.compact.down")
                 }
+                #endif
             }
 
             Section {
@@ -69,7 +81,7 @@ struct SettingsComposerPage: View {
                     SettingsLabel(
                         title: String(localized: "Dictation Provider"),
                         systemImage: "mic",
-                        note: String(localized: "On-device only keeps audio on this iPhone.")
+                        note: dictationNote
                     )
                 }
             }
@@ -174,6 +186,7 @@ struct SettingsGeneralPage: View {
 
     var body: some View {
         List {
+            #if !targetEnvironment(macCatalyst)
             Section {
                 Toggle(isOn: $isHapticsEnabled) {
                     SettingsLabel(title: String(localized: "Haptic Feedback"), systemImage: "iphone.radiowaves.left.and.right")
@@ -189,6 +202,7 @@ struct SettingsGeneralPage: View {
                     }
                 }
             }
+            #endif
 
             AppLockSection()
         }

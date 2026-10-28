@@ -20,6 +20,10 @@ import UIKit
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = scene as? UIWindowScene, session.role == .windowApplication else { return }
+        #if targetEnvironment(macCatalyst)
+        // Keep the desktop sidebar usable as the user resizes the window.
+        windowScene.sizeRestrictions?.minimumSize = CGSize(width: 800, height: 600)
+        #endif
         let window = UIWindow(windowScene: windowScene)
         window.windowLevel = .alert + 1
         let host = UIHostingController(rootView: AppLockView(lock: lock, icon: .current))

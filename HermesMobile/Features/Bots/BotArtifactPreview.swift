@@ -107,6 +107,9 @@ struct BotArtifactPreview: View {
                 }
             }
         }
+        #if targetEnvironment(macCatalyst)
+        .adaptiveFormPresentation(preferredMacSize: CGSize(width: 800, height: 600))
+        #endif
         .fileExporter(
             isPresented: $isFileExporterPresented,
             document: model.export.map { ExportedFileDocument(data: $0.data) },

@@ -57,6 +57,14 @@ struct GitDiffView: View {
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    #if targetEnvironment(macCatalyst)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Refresh", systemImage: "arrow.clockwise") {
+                            Task { await refresh() }
+                        }
+                        .disabled(isRefreshing || !hasLoaded || files.isEmpty || git == nil)
+                    }
+                    #endif
                     ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
                 }
                 .safeAreaInset(edge: .bottom) {

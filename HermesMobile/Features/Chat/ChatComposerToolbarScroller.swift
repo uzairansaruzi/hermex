@@ -21,6 +21,10 @@ struct ComposerToolbarScroller<Content: View>: View {
             .frame(minHeight: minimumRowHeight, alignment: .leading)
         }
         .scrollIndicators(.hidden)
+        #if targetEnvironment(macCatalyst)
+        // A horizontal scroll view otherwise accepts the empty chat's full height.
+        .frame(height: minimumRowHeight)
+        #endif
         // Horizontal only, and inert when everything fits, so the row never
         // feels draggable for no reason.
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)

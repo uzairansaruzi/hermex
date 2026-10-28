@@ -976,13 +976,19 @@ struct ChatView: View {
                     listenPlaybackBar
 
                     messageContent
+                        #if targetEnvironment(macCatalyst)
+                        // Empty and error placeholders must fill the transcript area too.
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        #endif
                         // Scope RTL to the chat transcript only (#259): the offline
                         // banner above stays in the app's default direction.
                         .environment(\.layoutDirection, chatLayoutDirection)
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.showsListenPlaybackBar)
 
+                #if !targetEnvironment(macCatalyst)
                 BottomComposerMaterialFade(composerHeight: composerHeight)
+                #endif
 
                 composerAccessoryStack
 
@@ -990,9 +996,17 @@ struct ChatView: View {
 
                 messageComposer
                     .frame(maxWidth: composerMaximumWidth)
+                    #if targetEnvironment(macCatalyst)
+                    .fixedSize(horizontal: false, vertical: true)
+                    #endif
 
                 approvalOverlay
             }
+            #if targetEnvironment(macCatalyst)
+            // Empty transcript placeholders have intrinsic size; keep their composer
+            // anchored to the full viewport just like a populated ScrollView.
+            .frame(width: viewport.size.width, height: viewport.size.height, alignment: .bottom)
+            #endif
         }
         .overlay(alignment: .top) {
             GitActionToastOverlay(state: gitToastState)

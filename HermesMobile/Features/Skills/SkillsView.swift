@@ -41,7 +41,7 @@ struct SkillsView: View {
             .task {
                 await loadSkills()
             }
-            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search skills...")
+            .macReadableSearchable(text: $searchText, prompt: Text("Search skills..."))
             .alert("Could Not Update Skill", isPresented: Binding(
                 get: { viewModel.toggleErrorMessage != nil },
                 set: { if !$0 { viewModel.clearToggleError() } }
@@ -367,6 +367,7 @@ struct SkillDetailView: View {
                     }
                 }
                 .padding(.vertical)
+                .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
             }
         } else {
             ContentUnavailableView {
@@ -507,6 +508,7 @@ struct SkillLinkedFileView: View {
                         MarkdownRenderer(content: content)
                     }
                     .padding()
+                    .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
                 }
             } else {
                 ContentUnavailableView {

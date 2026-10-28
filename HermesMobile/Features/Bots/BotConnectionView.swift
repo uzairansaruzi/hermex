@@ -117,14 +117,22 @@ import Observation
                 }
             } footer: {
                 if setup.offersHostReplacement {
+                    #if targetEnvironment(macCatalyst)
+                    Text("Connecting to this host instead clears this connection’s drafts, cached chats and notification pairing on this Mac.")
+                    #else
                     Text("Connecting to this host instead clears this connection’s drafts, cached chats and notification pairing on this iPhone.")
+                    #endif
                 }
             }
             Section("Need your connection details?") {
                 Text("Copy a prompt for your Hermes agent. It will check your setup and help you find the right address and sign-in details.")
                     .font(.subheadline).foregroundStyle(.secondary)
                 Button(copiedPrompt ? String(localized: "Copied") : String(localized: "Copy setup prompt"), systemImage: "doc.on.doc") {
+                    #if targetEnvironment(macCatalyst)
+                    UIPasteboard.general.string = BotConnectionSetup.prompt.replacingOccurrences(of: "iPhone", with: "Mac")
+                    #else
                     UIPasteboard.general.string = BotConnectionSetup.prompt
+                    #endif
                     copiedPrompt = true
                 }
                 DisclosureGroup("Manual setup") {
@@ -146,11 +154,15 @@ import Observation
                 }
             }
         }
+        .macReadableForm()
         .navigationTitle("Hermes connection")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if !isRoot { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         }
+        #if targetEnvironment(macCatalyst)
+        .adaptiveFormPresentation(preferredMacSize: isRoot ? nil : CGSize(width: 640, height: 640))
+        #endif
         .task {
             setup.offlineCache = modelContext
             if !loaded {
@@ -166,7 +178,11 @@ import Observation
                 operation = Task { if await setup.remove(), !Task.isCancelled { dismiss() } }
             }
         } message: {
+            #if targetEnvironment(macCatalyst)
+            Text("Saved sign-in details, this connection’s drafts and its notification keys will be deleted. This Mac stops receiving this host’s notifications. Bots and their work remain on the host.")
+            #else
             Text("Saved sign-in details, this connection’s drafts and its notification keys will be deleted. This iPhone stops receiving this host’s notifications. Bots and their work remain on the host.")
+            #endif
         }
     }
 
@@ -573,7 +589,11 @@ extension BotHostStatus {
     private func commit(_ candidate: BotConnection) async -> Bool {
         let old = saved
         do { try store.save(candidate, server: server) } catch {
+            #if targetEnvironment(macCatalyst)
+            errorMessage = String(localized: "Could not save sign-in details on this Mac.")
+            #else
             errorMessage = String(localized: "Could not save sign-in details on this iPhone.")
+            #endif
             return false
         }
         saved = candidate

@@ -8,9 +8,9 @@ struct OnboardingTailscalePage: View {
             VStack(spacing: 28) {
                 OnboardingStepHeader(
                     stepNumber: 2,
-                    icon: "iphone.and.arrow.forward",
+                    icon: networkIcon,
                     title: String(localized: "Join your private network"),
-                    description: String(localized: "Put your iPhone on the same private network as your server, such as Tailscale or NetBird. Your agent will reply with the exact URL to use on the next screen.")
+                    description: networkDescription
                 )
 
                 VStack(alignment: .leading, spacing: 14) {
@@ -40,6 +40,22 @@ struct OnboardingTailscalePage: View {
             .padding(.bottom, 16)
         }
         .scrollBounceBehavior(.basedOnSize)
+    }
+
+    private var networkIcon: String {
+        #if targetEnvironment(macCatalyst)
+        "desktopcomputer"
+        #else
+        "iphone.and.arrow.forward"
+        #endif
+    }
+
+    private var networkDescription: String {
+        #if targetEnvironment(macCatalyst)
+        String(localized: "Put your Mac on the same private network as your server, such as Tailscale or NetBird. Your agent will reply with the exact URL to use on the next screen.")
+        #else
+        String(localized: "Put your iPhone on the same private network as your server, such as Tailscale or NetBird. Your agent will reply with the exact URL to use on the next screen.")
+        #endif
     }
 
     private func openTailscaleInAppStore() {

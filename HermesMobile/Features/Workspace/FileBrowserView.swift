@@ -20,12 +20,7 @@ struct FileBrowserView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            searchBar
-
-            content
-                .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.workspace)
-        }
+        pageLayout
         .navigationTitle("Files")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openedFile) { node in
@@ -47,6 +42,27 @@ struct FileBrowserView: View {
             await viewModel.loadInitialRootIfNeeded()
             handleLastError()
         }
+    }
+
+    @ViewBuilder private var pageLayout: some View {
+        #if targetEnvironment(macCatalyst)
+        VStack(spacing: 0) {
+            searchBar
+                .fixedSize(horizontal: false, vertical: true)
+
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.workspace)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        #else
+        VStack(spacing: 0) {
+            searchBar
+
+            content
+                .adaptiveReadableScrollContent(maxWidth: AdaptiveReadableContentWidth.workspace)
+        }
+        #endif
     }
 
     @ViewBuilder
@@ -163,6 +179,7 @@ struct FileBrowserView: View {
         .background(Color(.tertiarySystemFill).opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal)
         .padding(.vertical, 10)
+        .macReadableContent(maxWidth: AdaptiveReadableContentWidth.workspace)
         .background(Color(.systemBackground))
         .overlay(alignment: .bottom) {
             Divider()

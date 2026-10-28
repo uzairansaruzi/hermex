@@ -13,10 +13,10 @@ struct HermesHome {
     let tab: Binding<HermesHomeTab>
 }
 
-/// The Hermes home's bar chrome (#709), the same on both sides: no top bar, since each side's
-/// list leads with the session list's header (`SessionsHeader`), and a bottom bar of
-/// `(filter) [Bots | Sessions] (new chat)` whose ends each side fills. The title names a pushed
-/// screen's back button, and stays inline so a pushed screen such as Tasks keeps the one-line bar.
+/// The Hermes home's bar chrome (#709), the same on both sides. On iPhone and iPad each list
+/// leads with `SessionsHeader` and has a bottom bar of `(filter) [Bots | Sessions] (new chat)`.
+/// Mac Catalyst puts those actions beside the list header instead, so this modifier only hides
+/// its navigation bar there. The title names a pushed screen's back button on mobile.
 /// On iOS 26 the bar's glass pills float over the list: the system's bottom scroll edge effect
 /// read as a solid band behind them, so it is hidden.
 struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
@@ -25,6 +25,10 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
     @ViewBuilder let newChat: NewChat
 
     func body(content: Content) -> some View {
+        #if targetEnvironment(macCatalyst)
+        content
+            .toolbar(.hidden, for: .navigationBar)
+        #else
         content
             .modifier(HiddenBottomScrollEdge())
             .navigationTitle(home.title)
@@ -43,8 +47,32 @@ struct HermesHomeChrome<Filter: View, NewChat: View>: ViewModifier {
                 }
                 ToolbarItem(placement: .bottomBar) { newChat }
             }
+        #endif
     }
 }
+
+#if targetEnvironment(macCatalyst)
+/// The mobile bottom bar does not fit a Mac sidebar. Keep the same actions beside the
+/// list header so they remain visible at every window size without toolbar overflow.
+struct HermesHomeDesktopControls<Filter: View, NewChat: View>: View {
+    let home: HermesHome
+    @ViewBuilder let filter: Filter
+    @ViewBuilder let newChat: NewChat
+
+    var body: some View {
+        HStack(spacing: 8) {
+            filter.labelStyle(.iconOnly)
+            Spacer(minLength: 0)
+            HermesHomeSwitch(tab: home.tab)
+            Spacer(minLength: 0)
+            newChat.labelStyle(.iconOnly)
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+    }
+}
+#endif
 
 private struct HiddenBottomScrollEdge: ViewModifier {
     func body(content: Content) -> some View {

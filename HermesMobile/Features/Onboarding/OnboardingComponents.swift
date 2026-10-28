@@ -313,15 +313,42 @@ struct OnboardingSecondaryButtonStyle: ButtonStyle {
     }
 }
 
-/// The connect form's connection modes as three choice rows, shared by onboarding and
-/// Add Server (#900). Each row says what its mode means and wraps at any text size; the
-/// selected one has a checkmark. Choosing changes only the form's help, placeholder and
-/// header rows.
+/// Connection modes shared by onboarding and Add Server (#900). Mac uses a compact
+/// horizontal picker; mobile keeps its wrapping choice rows. Choosing changes only
+/// the form's help, placeholder and header rows.
 struct ConnectionModePicker: View {
     @Binding var selection: OnboardingViewModel.ConnectionMode
     var style: CustomHeadersEditor.Style = .standard
 
     var body: some View {
+        #if targetEnvironment(macCatalyst)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
+                ForEach(OnboardingViewModel.ConnectionMode.allCases) { mode in
+                    Button { selection = mode } label: {
+                        Text(mode.title)
+                            .font(AppFont.subheadline(weight: .medium))
+                            .foregroundStyle(style.primaryText)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity, minHeight: 34)
+                            .padding(.horizontal, 6)
+                            .background(selection == mode ? style.accent.opacity(0.16) : Color.clear,
+                                        in: RoundedRectangle(cornerRadius: 6))
+                            .overlay(RoundedRectangle(cornerRadius: 6)
+                                .stroke(selection == mode ? style.accent : style.fieldStroke, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selection == mode ? .isSelected : [])
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(Text("Network"))
+            Text(selection.subtitle)
+                .font(AppFont.caption())
+                .foregroundStyle(style.secondaryText)
+        }
+        .padding(.vertical, 10)
+        #else
         VStack(spacing: 0) {
             ForEach(OnboardingViewModel.ConnectionMode.allCases) { mode in
                 if mode != OnboardingViewModel.ConnectionMode.allCases.first {
@@ -334,6 +361,7 @@ struct ConnectionModePicker: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Network"))
+        #endif
     }
 
     private func row(_ mode: OnboardingViewModel.ConnectionMode) -> some View {

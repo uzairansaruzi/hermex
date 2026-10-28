@@ -94,7 +94,9 @@ import SwiftUI
         if usesSplit {
             SessionSplitView(rootRevision: inbox.selection.pick.hashValue) {
                 list
+                    #if !targetEnvironment(macCatalyst)
                     .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 420)
+                    #endif
             } detail: {
                 regularWidthDetail
             }
@@ -115,7 +117,12 @@ import SwiftUI
             }), roster: inbox.profiles, avatars: inbox.avatars,
                 onUpdateSignIn: { inbox.noteRejectedSignIn(connection); inbox.selection.room = nil; updateSignIn() })
                 .id(key)
-        } else { ContentUnavailableView("Select a Bot", systemImage: "bubble.left.and.bubble.right") }
+        } else {
+            ContentUnavailableView("Select a Bot", systemImage: "bubble.left.and.bubble.right")
+                #if targetEnvironment(macCatalyst)
+                .navigationTitle(home?.title ?? server.host ?? server.absoluteString)
+                #endif
+        }
     }
 
     private var compactList: some View {
@@ -216,6 +223,10 @@ import SwiftUI
             }
         }
         .listStyle(.plain)
+        #if targetEnvironment(macCatalyst)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemBackground))
+        #endif
         .overlay {
             if inbox.connection == nil {
                 GeometryReader { geometry in
@@ -242,6 +253,10 @@ import SwiftUI
                            searchLabel: "Search bots and messages", isSearchDisabled: inbox.connection == nil,
                            openSearch: { showingSearch = true })
                 .sessionsTopChromeListRow()
+            #if targetEnvironment(macCatalyst)
+            HermesHomeDesktopControls(home: home, filter: { filterMenu }, newChat: { newChatMenu })
+                .sessionsScreenListRow()
+            #endif
         }
     }
 

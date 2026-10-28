@@ -1,10 +1,14 @@
 import SwiftUI
 import UIKit
 
-/// Hermes home owns a split only at regular width; pushed lists keep their caller's stack.
+/// Hermes home uses a desktop split on Mac or a regular-width split on iPad; pushed lists keep their caller's stack.
 enum HermesHomeLayout {
     static func usesSplit(isHome: Bool, horizontalSizeClass: UserInterfaceSizeClass?) -> Bool {
+        #if targetEnvironment(macCatalyst)
+        isHome
+        #else
         isHome && horizontalSizeClass == .regular
+        #endif
     }
 }
 
@@ -16,12 +20,19 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
     let rootRevision: Int
     @ViewBuilder let sidebar: Sidebar
     @ViewBuilder let detail: Detail
+    #if targetEnvironment(macCatalyst)
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    #else
     @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    #endif
     @State private var detailColumn = DetailColumnNavigation()
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
+                #if targetEnvironment(macCatalyst)
+                .navigationSplitViewColumnWidth(min: 240, ideal: 300, max: 420)
+                #endif
         } detail: {
             NavigationStack {
                 detail
@@ -30,8 +41,15 @@ struct SessionSplitView<Sidebar: View, Detail: View>: View {
             .id(rootRevision)
         }
         .navigationSplitViewStyle(.balanced)
+        #if targetEnvironment(macCatalyst)
+        .environment(\.horizontalSizeClass, .regular)
+        #endif
         .onChange(of: rootRevision) {
+            #if targetEnvironment(macCatalyst)
+            if columnVisibility != .detailOnly { columnVisibility = .all }
+            #else
             columnVisibility = columnVisibility.afterRootSelection
+            #endif
             detailColumn.popToRoot()
         }
     }
@@ -243,9 +261,9 @@ struct SessionsHeader: View {
     let openSearch: () -> Void
 
     var body: some View {
-        HStack(alignment: .center, spacing: isExpanded ? 0 : 16) {
+        HStack(alignment: .center, spacing: isExpanded ? 0 : headerSpacing) {
             HermesHeaderLogo(selectedColor: logoColor)
-                .frame(width: isExpanded ? 0 : 160, alignment: .leading)
+                .frame(width: isExpanded ? 0 : logoWidth, alignment: .leading)
                 .opacity(isExpanded ? 0 : 1)
                 .clipped()
                 .accessibilityHidden(isExpanded)
@@ -253,13 +271,45 @@ struct SessionsHeader: View {
             pill
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 28)
+        .padding(.horizontal, headerHorizontalPadding)
+        .padding(.top, headerTopPadding)
         .animation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion), value: isExpanded)
         .animation(SessionListMotion.searchFocusAnimation(reduceMotion: reduceMotion), value: showsClearButton)
     }
 
     private var isExpanded: Bool { field?.isExpanded == true }
+
+    private var logoWidth: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        104
+        #else
+        160
+        #endif
+    }
+
+    private var headerSpacing: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        8
+        #else
+        16
+        #endif
+    }
+
+    private var headerHorizontalPadding: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        16
+        #else
+        24
+        #endif
+    }
+
+    private var headerTopPadding: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        0
+        #else
+        28
+        #endif
+    }
 
     private var showsClearButton: Bool {
         guard let field else { return false }
@@ -1091,7 +1141,12 @@ struct ScheduledSessionsView: View {
         .environment(\.defaultMinListRowHeight, 0)
         .scrollContentBackground(.hidden)
         .navigationTitle("Scheduled sessions")
+        #if targetEnvironment(macCatalyst)
+        .macReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
+        .macReadableSearchable(text: $searchText, prompt: Text("Search sessions"))
+        #else
         .searchable(text: $searchText, prompt: "Search sessions")
+        #endif
         .task(id: searchText) {
             if viewModel.isHermes { await viewModel.searchSessions(query: searchText) }
         }
@@ -1411,7 +1466,12 @@ extension View {
     }
 
     func sessionsTopChromeListRow() -> some View {
-        listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 18, trailing: 0))
+        #if targetEnvironment(macCatalyst)
+        let bottomInset: CGFloat = 8
+        #else
+        let bottomInset: CGFloat = 18
+        #endif
+        return listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: bottomInset, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
             .zIndex(1)
