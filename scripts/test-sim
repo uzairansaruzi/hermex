@@ -107,6 +107,9 @@ def select_device(entries, requested):
 
 
 def boot(device, run_dir, locks_dir, owner, lock_fds, timeout):
+    """Returns whether this call booted the device, so the run can leave it
+    the way it found it."""
+    booted = False
     # Serialize only the boot request/count check, not the tests. This keeps
     # concurrent runners from racing past the four-device pool limit.
     with lock(locks_dir / "boot.lock", owner, timeout) as boot_fd:
@@ -118,11 +121,26 @@ def boot(device, run_dir, locks_dir, owner, lock_fds, timeout):
             if run(["xcrun", "simctl", "boot", device["udid"]],
                    run_dir / "boot.log", timeout, (*lock_fds, boot_fd)):
                 raise RunnerError("Simulator boot failed; see boot.log.")
+            booted = True
         elif current["state"] not in ("Booted", "Booting"):
             raise RunnerError("Simulator is " + current["state"] + "; stop here.")
     if run(["xcrun", "simctl", "bootstatus", device["udid"], "-b"],
            run_dir / "bootstatus.log", timeout, lock_fds):
         raise RunnerError("Simulator did not become ready; see bootstatus.log.")
+    return booted
+
+
+def shut_down(device, run_dir, lock_fds, timeout):
+    """A simulator left booted holds gigabytes on a 16 GB Mac long after its
+    session ends. A failed shutdown is reported but never changes the result."""
+    output = run_dir / "shutdown-after.log"
+    try:
+        failed = run(["xcrun", "simctl", "shutdown", device["udid"]], output, timeout, lock_fds)
+    except subprocess.TimeoutExpired:
+        failed = True
+    print("NOTE: could not shut down the simulator; see " + str(output) if failed
+          else "Simulator: shut down, as this run booted it (--keep-booted keeps it running).",
+          flush=True)
 
 
 def reboot(device, run_dir, locks_dir, owner, lock_fds, timeout):
@@ -214,6 +232,9 @@ def main():
     parser.add_argument("--repeat", type=positive, metavar="N",
                         help="run the selected tests up to N times in one build and launch, "
                              "stopping at the first failure")
+    parser.add_argument("--keep-booted", action="store_true",
+                        help="leave a simulator this run booted running afterwards, "
+                             "e.g. for manual testing")
     parser.add_argument("--boot-timeout", type=positive, default=120,
                         help="seconds per simulator readiness operation (default: 120)")
     parser.add_argument("--test-timeout", type=positive, default=1800,
@@ -242,7 +263,7 @@ def main():
             # Swap at start, so a stalled run can be matched against memory
             # pressure later (scripts/sim-doctor).
             run(["sysctl", "hw.memsize", "vm.swapusage"], run_dir / "memory.log", 10)
-            boot(device, run_dir, locks_dir, owner, lock_fds, args.boot_timeout)
+            booted = boot(device, run_dir, locks_dir, owner, lock_fds, args.boot_timeout)
             # One deadline covers the first attempt and any retry.
             deadline = time.monotonic() + args.test_timeout
             for attempt in ("", "-retry"):
@@ -274,6 +295,10 @@ def main():
                 remaining = max(1, deadline - time.monotonic())
                 reboot(device, run_dir, locks_dir, owner, lock_fds,
                        min(args.boot_timeout, remaining))
+            # Only after a finished run: timeouts and setup failures leave the
+            # device up for scripts/sim-doctor.
+            if booted and not args.keep_booted:
+                shut_down(device, run_dir, lock_fds, args.boot_timeout)
             if code:
                 print("FAIL: xcodebuild exited {}. No further retry performed.".format(code), flush=True)
                 failure_excerpt(log)

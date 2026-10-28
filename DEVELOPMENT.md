@@ -110,6 +110,13 @@ main checkout normally uses **iPhone 17**. Resolve its UDID with
 are ambiguous, so pass the UDID. The runner never chooses another device or
 creates one, and refuses to boot a fifth simulator.
 
+A run that boots its simulator shuts it down again once the tests finish, pass
+or fail, so a session's device doesn't keep holding gigabytes of memory after
+the session ends. A simulator that was already booted stays booted. Pass
+`--keep-booted` to leave a device the run booted running, for manual testing or
+a quick fix-and-rerun loop. After a timeout or setup failure the device stays up
+for `scripts/sim-doctor`.
+
 The tests run inside the installed app, so a test can change its real Keychain,
 cookies and defaults. `HermesMobileTests/TestHostStateGuard.swift` snapshots
 them when the test bundle starts and restores them when it finishes. A simulator
