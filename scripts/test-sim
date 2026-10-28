@@ -136,7 +136,7 @@ def shut_down(device, run_dir, lock_fds, timeout):
     output = run_dir / "shutdown-after.log"
     try:
         failed = run(["xcrun", "simctl", "shutdown", device["udid"]], output, timeout, lock_fds)
-    except subprocess.TimeoutExpired:
+    except (subprocess.TimeoutExpired, OSError):
         failed = True
     print("NOTE: could not shut down the simulator; see " + str(output) if failed
           else "Simulator: shut down, as this run booted it (--keep-booted keeps it running).",
@@ -295,9 +295,9 @@ def main():
                 remaining = max(1, deadline - time.monotonic())
                 reboot(device, run_dir, locks_dir, owner, lock_fds,
                        min(args.boot_timeout, remaining))
-            # Only after a finished run: timeouts and setup failures leave the
+            # Timeouts, setup failures and a runner that hung twice leave the
             # device up for scripts/sim-doctor.
-            if booted and not args.keep_booted:
+            if booted and not args.keep_booted and not runner_hung(summary):
                 shut_down(device, run_dir, lock_fds, args.boot_timeout)
             if code:
                 print("FAIL: xcodebuild exited {}. No further retry performed.".format(code), flush=True)

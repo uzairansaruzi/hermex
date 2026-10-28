@@ -285,8 +285,10 @@ class SimulatorRunnerTests(unittest.TestCase):
 
     def test_repeated_runner_hang_stops_after_one_retry(self):
         self.hung_runs = 2
+        self.device["state"] = "Shutdown"
         self.assertEqual(self.invoke(), 1)
         self.assertEqual(sum(c[0] == "xcodebuild" for c in self.commands), 2)
+        self.assertEqual(self.device["state"], "Booted", "Left up for sim-doctor")
 
     def test_failed_results_cannot_be_reported_as_success(self):
         self.failed = 1

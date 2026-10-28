@@ -114,8 +114,8 @@ A run that boots its simulator shuts it down again once the tests finish, pass
 or fail, so a session's device doesn't keep holding gigabytes of memory after
 the session ends. A simulator that was already booted stays booted. Pass
 `--keep-booted` to leave a device the run booted running, for manual testing or
-a quick fix-and-rerun loop. After a timeout or setup failure the device stays up
-for `scripts/sim-doctor`.
+a quick fix-and-rerun loop. After a timeout, a setup failure, or a test runner
+that hung twice, the device stays up for `scripts/sim-doctor`.
 
 The tests run inside the installed app, so a test can change its real Keychain,
 cookies and defaults. `HermesMobileTests/TestHostStateGuard.swift` snapshots
