@@ -117,9 +117,11 @@ class SimulatorRunnerTests(unittest.TestCase):
 
     def test_lookup_error_stops_without_termination_or_tests(self):
         self.lookup_status = 1
+        self.device["state"] = "Shutdown"
         self.assertEqual(self.invoke(), 2)
         self.assertFalse(any(c[:3] == ["xcrun", "simctl", "terminate"] for c in self.commands))
         self.assertEqual(self.xcodebuild_runs, 0)
+        self.assertEqual(self.device["state"], "Booted", "Left up for sim-doctor")
 
     def test_preparation_uses_remaining_test_budget_after_lookup(self):
         now = [100.0]
@@ -187,9 +189,11 @@ class SimulatorRunnerTests(unittest.TestCase):
 
     def test_installation_check_timeout_stops_without_termination_or_tests(self):
         self.timeout_operation = "get_app_container"
+        self.device["state"] = "Shutdown"
         self.assertEqual(self.invoke(), 124)
         self.assertFalse(any(c[:3] == ["xcrun", "simctl", "terminate"] for c in self.commands))
         self.assertEqual(self.xcodebuild_runs, 0)
+        self.assertEqual(self.device["state"], "Booted", "Left up for sim-doctor")
 
     def test_installed_app_termination_timeout_stops_without_tests(self):
         self.timeout_operation = "terminate"
