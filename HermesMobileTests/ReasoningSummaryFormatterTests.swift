@@ -63,8 +63,8 @@ final class ReasoningSummaryFormatterTests: XCTestCase {
     }
 
     func testPreviewsStripCommonMarkupButKeepIdentifiers() {
-        let text = "## Plan\n- Check `retry_policy` in [the docs](https://example.com/a_(b)) and **bold** *em*, `2*3`, 4*5 and `**kwargs`"
-        let expected = "Plan Check retry_policy in the docs and bold em, 2*3, 4*5 and **kwargs"
+        let text = "## Plan\n- Check `retry_policy` in [the docs](https://example.com/a_(b)) and **bold** *em*, `2*3`, 4*5, `**kwargs` and ``**opts``"
+        let expected = "Plan Check retry_policy in the docs and bold em, 2*3, 4*5, **kwargs and **opts"
         XCTAssertEqual(ReasoningSummaryFormatter.summary(for: text), expected)
         XCTAssertEqual(ReasoningSummaryFormatter.latestThought(in: text), expected)
     }

@@ -131,12 +131,14 @@ enum ReasoningSummaryFormatter {
 
             switch characters[index] {
             case "`":
+                let runEnd = characters[index...].firstIndex { $0 != "`" } ?? characters.count
+                let runLength = runEnd - index
                 let spanLimit = linkTargetSkip?.from ?? characters.count
-                if let close = characters[(index + 1)..<spanLimit].firstIndex(of: "`") {
-                    result.append(contentsOf: characters[(index + 1)..<close])
-                    index = close + 1
+                if let close = closingBackticks(in: characters, from: runEnd, length: runLength, limit: spanLimit) {
+                    result.append(contentsOf: characters[runEnd..<close])
+                    index = close + runLength
                 } else {
-                    index += 1
+                    index = runEnd
                 }
             case "*":
                 let runEnd = characters[index...].firstIndex { $0 != "*" } ?? characters.count
@@ -165,6 +167,24 @@ enum ReasoningSummaryFormatter {
             }
         }
         return result
+    }
+
+    /// The start of the next backtick run of exactly `length` before `limit`,
+    /// which closes a code span the way CommonMark pairs them (``a `b` c``).
+    private static func closingBackticks(
+        in characters: [Character], from start: Int, length: Int, limit: Int
+    ) -> Int? {
+        var index = start
+        while index < limit {
+            guard characters[index] == "`" else {
+                index += 1
+                continue
+            }
+            let runEnd = characters[index..<limit].firstIndex { $0 != "`" } ?? limit
+            if runEnd - index == length { return index }
+            index = runEnd
+        }
+        return nil
     }
 
     /// The `)` closing a link target that starts at `start`, past any balanced
