@@ -4688,13 +4688,14 @@ final class ChatViewModel {
     var offersFilePathSearch: Bool { fileReferenceSource != nil }
 
     /// One query's rows for the composer's `@` panel, into `filePathSearch`. A Hermes chat's
-    /// host ranks its own rows; a webui chat's folder is listed and ranked here.
+    /// host searches every folder and ranks its own rows; a webui chat's folder is listed and
+    /// ranked here.
     func searchFilePaths(_ query: String) async {
         switch fileReferenceSource {
         case .webui(let sessionID):
             await filePathSearch.search(query, sessionID: sessionID, apiClient: client)
         case .hermes(let turn):
-            await filePathSearch.search(query) { try await turn.completeFilePaths($0) }
+            await filePathSearch.search(query) { try await turn.completeFilePaths($0, as: .panel) }
         case nil:
             return
         }
@@ -4895,7 +4896,7 @@ final class ChatViewModel {
             var answered: Set<String> = []
             for candidate in wanted.sorted() {
                 guard !Task.isCancelled else { throw CancellationError() }
-                guard let entries = try? await turn.completeFilePaths(candidate) else { continue }
+                guard let entries = try? await turn.completeFilePaths(candidate, as: .listing) else { continue }
                 answered.insert(candidate)
                 if entries.contains(where: { $0.path == candidate }) {
                     listed.insert(candidate)

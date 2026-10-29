@@ -9,16 +9,38 @@ import Foundation
 /// not files, and a path with whitespace or `..` could never read back as a
 /// reference.
 enum BotFilePathSearch {
-    /// What one `complete.path` call asks for. The host answers a listing only
-    /// for a non-empty word, and `.` is its own spelling for the root.
-    static func word(for query: String) -> String {
+    /// Which question one `complete.path` call asks the host.
+    enum Word {
+        /// The `@` panel's search (`panelWord`): a name finds matches in any folder.
+        case panel
+        /// One folder's entries starting with a name (`listingWord`), which is what
+        /// confirms a known `@path`.
+        case listing
+    }
+
+    /// The `@` panel's word for a query (#1388). A name of two or more characters
+    /// asks the host's fuzzy search over the whole working folder as `@file:name`,
+    /// which ranks files and folders alike and skips Profile mentions. A path with
+    /// `/`, a single character and the bare trigger keep the one-folder listing, so
+    /// `@src/` lists `src` and `@s` still offers the root's folders.
+    static func panelWord(for query: String) -> String {
+        guard !query.contains("/"), query.trimmingCharacters(in: .whitespaces).count >= 2 else {
+            return listingWord(for: query)
+        }
+        return "@file:" + query
+    }
+
+    /// A one-folder listing's word: the folder the query names, filtered to entries
+    /// starting with its last component. The host answers only a non-empty word, and
+    /// `.` is its own spelling for the root.
+    static func listingWord(for query: String) -> String {
         query.isEmpty ? "." : query
     }
 
     /// The panel rows from one `complete.path` reply.
     ///
-    /// A path word answers plain relative paths; the host's directive and fuzzy
-    /// forms spell the same entries as `@file:` and `@folder:`. Directories end
+    /// A listing word answers plain relative paths; the panel's fuzzy word answers
+    /// the same root-relative paths spelled `@file:` and `@folder:`. Directories end
     /// in `/` and carry `meta: "dir"`.
     static func matches(from reply: BotJSON) -> [ComposerFilePathSearch.Match] {
         guard let items = reply["items"].list else { return [] }

@@ -2,10 +2,11 @@ import Foundation
 
 /// The workspace files and folders the composer's `@` panel offers for one query.
 ///
-/// The query is a path being typed, so exactly one folder has to be listed: the
-/// one the query names. `src/Ch` lists `src` and ranks its entries against `Ch`;
-/// `Ch` ranks the workspace root's own entries. Nothing recurses, so a large
-/// workspace costs the same as a small one.
+/// For a webui session the query is a path being typed, so exactly one folder has
+/// to be listed: the one the query names. `src/Ch` lists `src` and ranks its
+/// entries against `Ch`; `Ch` ranks the workspace root's own entries. Nothing
+/// recurses, so a large workspace costs the same as a small one. A Hermes host
+/// searches every folder itself (`search(_:load:)`).
 ///
 /// Listings are cached for the composer's lifetime, so walking back up a path
 /// the user is retyping costs no requests at all. The cache is dropped when the

@@ -1211,9 +1211,11 @@ panel (#1113) and Git (#1114) read the same context.
   from the old folder.
 - **`@` panel and chips (#1113).** The composer's `@` panel asks `complete.path` on the
   attached runtime, not `/api/fs/list`: the host completes against the
-  session's `cwd` and ranks and caps its own rows (30). An `@path` in the draft or transcript
-  becomes a chip when `complete.path` for that path lists it, so a big folder still confirms
-  it. Same `local` gate as Files. A `cwd` or backend change drops the chips and the pass in
+  session's `cwd` and ranks and caps its own rows (30). A name of two or more characters
+  with no `/` goes as `@file:name`, the host's fuzzy search over every folder (#1388); a
+  path, one character or the bare `@` lists one folder. An `@path` in the draft or transcript
+  becomes a chip when `complete.path` for that plain path lists it, so a big folder still
+  confirms it. Same `local` gate as Files. A `cwd` or backend change drops the chips and the pass in
   flight, and the chat checks again in the new folder; an open panel asks again there (a
   webui switch does not reload it: that switch is optimistic). A `complete.path` with no
   reply fails only that lookup, never the chat's connection.

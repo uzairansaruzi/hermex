@@ -2,9 +2,12 @@ import XCTest
 @testable import HermesMobile
 
 final class BotFilePathSearchTests: XCTestCase {
-    func testWordForBareTriggerListsTheRoot() {
-        XCTAssertEqual(BotFilePathSearch.word(for: ""), ".")
-        XCTAssertEqual(BotFilePathSearch.word(for: "src/Ch"), "src/Ch")
+    /// A name searches every folder; the bare trigger, one character and a path keep the
+    /// one-folder listing, which is also all a known `@path` check ever asks.
+    func testPanelSearchesEveryFolderOnlyForANameOfTwoOrMoreCharacters() {
+        XCTAssertEqual(["", "s", "src/Ch", "View"].map(BotFilePathSearch.panelWord(for:)),
+                       [".", "s", "src/Ch", "@file:View"])
+        XCTAssertEqual(["", "View"].map(BotFilePathSearch.listingWord(for:)), [".", "View"])
     }
 
     func testPlainAndDirectiveItemsDecodeToRows() throws {

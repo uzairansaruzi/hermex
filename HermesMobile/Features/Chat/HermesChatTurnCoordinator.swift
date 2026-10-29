@@ -637,14 +637,18 @@ struct HermesChatTranscript: Equatable {
         return reply["text"].text ?? ""
     }
 
-    /// One query's rows for the composer's `@` panel and its `@path` check (#1113):
-    /// `complete.path` on the attached runtime, which completes against the
-    /// session's working folder and ranks and caps its own rows. Throws `.stale` while
+    /// One query's rows for the composer's `@` panel (`.panel`) and its `@path` check
+    /// (`.listing`) (#1113): `complete.path` on the attached runtime, which completes against
+    /// the session's working folder and ranks and caps its own rows. Throws `.stale` while
     /// detached, and for a reply that lands after a reattach; an unanswered one fails only
     /// itself, never the chat's connection.
-    func completeFilePaths(_ query: String) async throws -> [ComposerFilePathSearch.Match] {
+    func completeFilePaths(_ query: String, as word: BotFilePathSearch.Word) async throws -> [ComposerFilePathSearch.Match] {
         guard engine.connectionState == .connected, let runtime = engine.runtime else { throw BotFailure.stale }
-        let reply = try await engine.request(.completePath(word: BotFilePathSearch.word(for: query), sessionID: runtime,
+        let spelled = switch word {
+        case .panel: BotFilePathSearch.panelWord(for: query)
+        case .listing: BotFilePathSearch.listingWord(for: query)
+        }
+        let reply = try await engine.request(.completePath(word: spelled, sessionID: runtime,
                                                            profile: engine.target.profile, timesOutLocally: true),
                                              attempt: engine.generation)
         return BotFilePathSearch.matches(from: reply)

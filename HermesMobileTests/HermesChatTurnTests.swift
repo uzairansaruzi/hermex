@@ -450,8 +450,9 @@ import SwiftUI
     // MARK: `@` file references (#1113)
 
     /// The `@` panel opens only once `session.info` names a folder on a `local` backend, then
-    /// asks `complete.path` on the attached runtime under the session's Profile; a picked folder
-    /// asks again for what is inside it.
+    /// asks `complete.path` on the attached runtime under the session's Profile: a name searches
+    /// every folder through the host's `@file:` fuzzy search (#1388), and a picked folder asks
+    /// again for what is inside it.
     func testTheAtPanelCompletesPathsOnTheCurrentRuntimeOfALocalBackend() async {
         let chat = await openChat()
         XCTAssertFalse(chat.model.offersFilePathSearch, "no session.info has named a folder")
@@ -462,16 +463,18 @@ import SwiftUI
 
         chat.receive(event(2, "session.info", ["terminal_backend": .string("local")]))
         XCTAssertTrue(chat.model.offersFilePathSearch)
-        chat.host.next("complete.path", .init(result: completions(["Sources/": "dir", "Sourcery.yml": ""])))
+        chat.host.next("complete.path", .init(result: completions([
+            "@folder:Sources/": "dir", "@file:Tools/Sourcery.yml": "Tools"
+        ])))
         await chat.model.searchFilePaths("Sou")
-        XCTAssertEqual(chat.model.filePathSearch.matches.map(\.path), ["Sources", "Sourcery.yml"])
+        XCTAssertEqual(chat.model.filePathSearch.matches.map(\.path), ["Sources", "Tools/Sourcery.yml"])
         XCTAssertEqual(chat.model.filePathSearch.matches.map(\.isDirectory), [true, false])
 
         chat.host.next("complete.path", .init(result: completions(["Sources/App.swift": ""])))
         await chat.model.searchFilePaths("Sources/")
         XCTAssertEqual(chat.model.filePathSearch.matches.map(\.path), ["Sources/App.swift"])
         XCTAssertEqual(chat.writes("complete.path"), [
-            ["word": .string("Sou"), "session_id": .string("runtime"), "profile": .string("default")],
+            ["word": .string("@file:Sou"), "session_id": .string("runtime"), "profile": .string("default")],
             ["word": .string("Sources/"), "session_id": .string("runtime"), "profile": .string("default")]
         ])
     }
@@ -622,7 +625,7 @@ import SwiftUI
         await fulfillment(of: [reloaded], timeout: 5)
         guard loads == 2 else { return }
         await waitUntil("the new folder's rows") { chat.model.filePathSearch.matches.map(\.path) == ["Sourdough.md"] }
-        XCTAssertEqual(chat.writes("complete.path").map { $0["word"]?.text }, ["Sou", "Sou"])
+        XCTAssertEqual(chat.writes("complete.path").map { $0["word"]?.text }, ["@file:Sou", "@file:Sou"])
     }
 
     // MARK: Reattach
