@@ -92,11 +92,13 @@ identity is the stored key and the host's `turn_started_at`; a turn starts at
 `message.complete` and `session.info {running: false}` have both arrived. An `error`
 before the turn's `message.start` ends it at once; after it, one with no completion ends
 it failed when the host settles. Busy sends map through `BotPromptMode`: Queue is
-`prompt.submit queued:true` (the host holds one merged slot and the composer shows only a
-receipt, restored from the snapshot's `queued`), Steer is `session.steer` (a refusal keeps
-the draft and the run), and Stop & send is `session.redirect`. Stop is
-`session.interrupt`, confirmed first only when a queued prompt or an open request would be
-lost; any client's stop (an interrupted `message.complete`) clears the receipt. A Send
+`prompt.submit queued:true` (the host holds one merged slot, restored from the snapshot's
+`queued.user`; the transcript shows it last as a dimmed "Queued" bubble outside `messages`,
+#1379, until its `message.start` adds the real row; there is no composer receipt), Steer is
+`session.steer` (a refusal keeps the draft and the run), and Stop & send is
+`session.redirect`. Stop is `session.interrupt`, confirmed first only when a queued prompt
+or an open request would be lost; any client's stop (an interrupted `message.complete`)
+clears the bubble. A Send
 shows no model or reasoning change: no `config.set` or `session.cwd.set` goes out.
 Send and Queue carry staged files (#1012; see the attachments section below). New Session
 is the home's Sessions side (see Sessions list on Hermes below), on the server's picked

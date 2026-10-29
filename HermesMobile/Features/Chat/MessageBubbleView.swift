@@ -39,6 +39,9 @@ struct MessageBubbleView: View {
     /// Long-press actions, attached to the message content only so the empty
     /// gutter beside a user bubble does not open its menu.
     let contextMenuActions: [ChatMessageActionItem]
+    /// A Hermes session's queued prompt (#1379): the user bubble's fill dims, its text does
+    /// not, and it fetches no link preview.
+    let isQueued: Bool
 
     init(
         message: ChatMessage,
@@ -54,9 +57,11 @@ struct MessageBubbleView: View {
         liveTokensPerSecond: Double? = nil,
         onAskHermex: @escaping (String) -> Void = { _ in },
         contextMenuActions: [ChatMessageActionItem] = [],
-        textOnly: Bool = false
+        textOnly: Bool = false,
+        isQueued: Bool = false
     ) {
         self.textOnly = textOnly
+        self.isQueued = isQueued
         self.message = message
         self.loadAttachmentImage = loadAttachmentImage
         self.attachmentAudio = attachmentAudio
@@ -462,7 +467,7 @@ struct MessageBubbleView: View {
     /// Read once per row body; the user row needs it both to decide whether to
     /// draw the bubble stack and to draw the preview inside it.
     private var linkPreviewURL: URL? {
-        guard !textOnly else { return nil }
+        guard !textOnly, !isQueued else { return nil }
         return TranscriptLinkPreviewEligibility.previewURL(for: message, isStreaming: isStreaming)
     }
 
@@ -623,8 +628,11 @@ struct MessageBubbleView: View {
         )
     }
 
+    /// Opaque even when queued, which mixes it toward the transcript's background, so the
+    /// fold's gradient still hides the text under it.
     private var userBubbleBackground: Color {
-        colorScheme == .dark ? Color(.systemGray3) : Color(.systemGray6)
+        let fill = colorScheme == .dark ? Color(.systemGray3) : Color(.systemGray6)
+        return isQueued ? fill.mix(with: Color(.systemBackground), by: 0.45) : fill
     }
 
     private var userBubbleForeground: Color {

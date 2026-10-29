@@ -128,6 +128,10 @@ struct ChatTranscriptView: View {
     var settledPlanAfterRenderID: String? = nil
     /// How a Hermes chat's last turn ended (#1139), under that turn.
     var turnOutcome: HermesTurnOutcomeRow? = nil
+    /// A Hermes chat's queued prompt (`ChatViewModel.queuedPromptMessage`, #1379), drawn last
+    /// as a pending bubble whose only action is `onCopyQueuedPrompt`.
+    var queuedPrompt: ChatMessage? = nil
+    var onCopyQueuedPrompt: (String) -> Void = { _ in }
 
     /// What stands in for a transcript with no rows. Nil draws the transcript, as for a Hermes
     /// turn that failed before the host saved any row, whose outcome row still shows (#1139).
@@ -287,6 +291,15 @@ struct ChatTranscriptView: View {
                     }
                     releasingHold { onScrollToLatestContent(proxy, false) }
                 }
+                .onChange(of: queuedPrompt?.content) {
+                    // The queued bubble came, grew with a merged prompt, or went without
+                    // the transcript gaining a row: follow it only from the live edge.
+                    guard isFollowingLatestContent else {
+                        pinReader(proxy: proxy)
+                        return
+                    }
+                    releasingHold { onScrollToBottom(proxy) }
+                }
                 .onChange(of: clarificationPromptID) {
                     // The bar above the composer just grew the bottom inset; keep
                     // the latest content above it for a reader who was following.
@@ -432,6 +445,10 @@ struct ChatTranscriptView: View {
             }
             turnChangesCard
             inlineCommitButton
+            if let queuedPrompt {
+                ChatQueuedPromptRow(message: queuedPrompt, onCopy: onCopyQueuedPrompt)
+                    .id(queuedPrompt.id)
+            }
 
             Color.clear
                 .frame(height: 1)
@@ -898,6 +915,24 @@ struct ChatTranscriptMessageBlock: View, Equatable {
             showsThinkingAndToolCards &&
             toolCallAnchorMessageID == transcriptMessage.anchorID &&
             !liveToolCalls.isEmpty
+    }
+}
+
+/// A Hermes session's queued prompt at the transcript's end (#1379): a dimmed user bubble
+/// whose meta reads "Queued" in place of a time, with Copy its only action. It loads no
+/// attachment media, and its turn's start replaces it with the real row.
+private struct ChatQueuedPromptRow: View {
+    let message: ChatMessage
+    let onCopy: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            MessageBubbleView(message: message, transcriptMediaCacheNamespace: "", isQueued: true)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(String(localized: "Queued message, \(message.content ?? "")"))
+            ChatMessageMetaRow(isUserMessage: true, timeText: String(localized: "Queued"),
+                               onCopy: { onCopy(message.content ?? "") })
+        }
     }
 }
 

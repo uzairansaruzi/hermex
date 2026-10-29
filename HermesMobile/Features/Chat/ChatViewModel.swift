@@ -536,12 +536,23 @@ final class ChatViewModel {
     var uploadAttachmentErrorMessage: String? { attachmentCoordinator.uploadAttachmentErrorMessage }
     var localAttachmentPreviews: [String: [String: Data]] { attachmentCoordinator.localAttachmentPreviews }
     private(set) var pinnedLocalNotices: [String] = []
-    /// The one composer line shown while messages wait behind the run. It is
-    /// derived from the queue, so it goes away when the queue drains or is
-    /// handed over, and it never enters a stream snapshot.
+    /// The one composer line shown while this chat's own messages wait behind
+    /// the run. It is derived from the queue, so it goes away when the queue
+    /// drains or is handed over, and it never enters a stream snapshot. A Hermes
+    /// session's queued prompt shows as `queuedPromptMessage` instead.
     var queuedMessagesReceipt: String? {
-        guard !queuedSlashMessages.isEmpty || hermesTurn?.queuedPrompt != nil else { return nil }
+        guard !queuedSlashMessages.isEmpty else { return nil }
         return String(localized: "Queued, sends when this run finishes")
+    }
+    /// The prompt a Hermes host holds for its next turn, as the transcript's pending bubble
+    /// shows it (#1379): outside `messages`, and gone once that turn's start shows the real
+    /// row or a Stop discards it. Its reference lines are chips, as on a sent row.
+    var queuedPromptMessage: ChatMessage? {
+        hermesTurn?.queuedPrompt.map {
+            HermesChatTurnCoordinator.displayed(ChatMessage(
+                role: "user", content: $0, timestamp: nil, messageId: "hermes-queued-prompt"
+            ))
+        }
     }
     private(set) var steeringConfirmationNotice: String?
     /// "Couldn't steer", plus the system's reason for a network or HTTP
@@ -3093,7 +3104,7 @@ final class ChatViewModel {
 
     /// Sends one prompt to the Hermes session in `mode`, once (#1010). A Send shows the
     /// prompt at once and a Stop & send once it takes over; a steer shows its echo once
-    /// accepted; a queued prompt shows only the composer receipt until the host runs it.
+    /// accepted; a queued prompt shows as `queuedPromptMessage` until the host runs it.
     /// False keeps the draft: the host refused it, did not confirm it, or it was not sent.
     /// `shown` is the prompt's row when it differs from what is sent, as for a goal's message;
     /// such a prompt leaves the staged files where they are.

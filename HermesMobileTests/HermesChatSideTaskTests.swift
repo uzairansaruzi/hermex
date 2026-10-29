@@ -67,7 +67,7 @@ import Observation
         XCTAssertTrue(resumed)
         XCTAssertEqual(chat.writes("command.dispatch").map { $0["arg"] }, [.string("pause"), .string("resume")])
         XCTAssertEqual(chat.writes("prompt.submit").map { $0["text"] }, [.string("[Continuing toward your standing goal]")])
-        XCTAssertEqual(chat.model.queuedMessagesReceipt, "Queued, sends when this run finishes",
+        XCTAssertEqual(chat.model.queuedPromptMessage?.content, "[Continuing toward your standing goal]",
                        "the host holds the resume for the next turn")
         XCTAssertEqual(chat.model.pinnedLocalNotices,
                        ["⏸ Goal paused: write three haiku", "▶ Goal resumed: write three haiku"], "pinned until the turn ends")

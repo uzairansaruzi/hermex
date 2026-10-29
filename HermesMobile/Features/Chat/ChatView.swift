@@ -2076,7 +2076,12 @@ struct ChatView: View {
             onOpenForkParent: openForkParent,
             settledPlan: viewModel.hermesActivity?.settledPlan?.plan,
             settledPlanAfterRenderID: settledPlanAfterRenderID,
-            turnOutcome: hermesTurnOutcome
+            turnOutcome: hermesTurnOutcome,
+            queuedPrompt: viewModel.queuedPromptMessage,
+            onCopyQueuedPrompt: { text in
+                UIPasteboard.general.string = text
+                ChatHaptics.copied(isEnabled: isHapticsEnabled)
+            }
         )
         // Off the main body chain, which is at the type-checker's limit.
         .onChange(of: viewModel.latestRunOutcome) {
