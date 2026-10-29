@@ -286,10 +286,15 @@ final class MarkdownMathRendererTests: XCTestCase {
 
     func testChatTypographyGrowsWithDynamicTypeUpToTheCap() {
         let large = ChatTypography(dynamicTypeSize: .large)
+        let xxxLarge = ChatTypography(dynamicTypeSize: .xxxLarge)
         let ax5 = ChatTypography(dynamicTypeSize: .accessibility5)
 
         XCTAssertEqual(large.bodySize, 16, accuracy: 0.01)
         XCTAssertEqual(large.codeSize, 13, accuracy: 0.01)
+        XCTAssertGreaterThan(xxxLarge.bodySize, large.bodySize)
+        XCTAssertLessThan(xxxLarge.bodySize, ax5.bodySize)
+        XCTAssertGreaterThan(xxxLarge.codeSize, large.codeSize)
+        XCTAssertLessThan(xxxLarge.codeSize, ax5.codeSize)
         XCTAssertEqual(ax5.bodySize, 16 * 2.2, accuracy: 0.01)
         XCTAssertEqual(ax5.codeSize, 13 * 2.2, accuracy: 0.01)
     }
