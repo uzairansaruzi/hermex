@@ -37,8 +37,10 @@ struct BotRoomComposerView: View {
                         text: Binding(get: { reader.draft(in: threadID) }, set: { reader.setDraft($0, in: threadID) }), selection: $selection, isFocused: $focused,
                         inputHeight: $inputHeight, measuredHeight: $measuredHeight,
                         isDisabled: !reader.mayEditDraft(in: threadID), isCollapsed: !focused,
-                        isKeyboardSendEnabled: reader.maySend(in: threadID), verticalPadding: 12,
-                        chipSkills: [], chipFilePaths: [], quotes: [], onKeyboardSend: send,
+                        // Send only: a room has no send choices, and its Stop halts every bot in it.
+                        keyboardCommands: ComposerKeyboardCommands(send: reader.maySend(in: threadID)
+                            ? .init(title: String(localized: "Send Message"), perform: send) : nil),
+                        verticalPadding: 12, chipSkills: [], chipFilePaths: [], quotes: [],
                         onPasteFileProviders: { _ in }, onPasteFileURLs: { _ in },
                         onPasteImageProviders: { _ in }, onPasteImages: { _ in },
                         onTapChip: { _ in }, onTapQuote: { _ in }, onRemoveQuote: { _ in },

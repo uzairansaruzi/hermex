@@ -449,7 +449,38 @@ import XCTest
         await settle(window)
 
         XCTAssertEqual(probe.editedDrafts, ["Next step"])
-        XCTAssertFalse(editor.isKeyboardSendEnabled)
+        XCTAssertNil(editor.keyboardCommands.send)
+    }
+
+    /// Esc (#1380) closes the `/` panel first and keeps it closed, then stops the run
+    /// through the composer's Stop; the draft stays. ⌘-hold titles name the real sends.
+    func testEscapeClosesTheSlashPanelBeforeStoppingTheRun() async throws {
+        let focus = ComposerFixtureFocus()
+        let probe = SessionFixtureProbe()
+        let window = try show(SessionChatPresentationFixture(focus: focus, probe: probe, isWaitingForStream: true))
+        defer { close(window) }
+        await settle(window)
+        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
+        focus.isFocused = true
+        await settle(window)
+        editor.insertText("/")
+        await settle(window)
+        XCTAssertEqual(editor.keyboardCommands.send?.title, StreamingSendBehavior.steer.settingsDescription)
+        XCTAssertEqual(editor.keyboardCommands.alternateSend?.title, StreamingSendBehavior.queue.settingsDescription)
+
+        try pressEscape(editor)
+        await settle(window)
+        XCTAssertEqual(probe.cancels, 0, "Esc must close the open panel before it stops the run")
+
+        try pressEscape(editor)
+        await settle(window)
+        XCTAssertEqual(probe.cancels, 1)
+        XCTAssertEqual(editor.sourceText, "/")
+    }
+
+    private func pressEscape(_ editor: ComposerChipTextView) throws {
+        let escape = try XCTUnwrap(editor.keyCommands?.first { $0.input == UIKeyCommand.inputEscape })
+        editor.perform(try XCTUnwrap(escape.action))
     }
 
     /// Safety net only: these waits end on a notification or callback, and the
@@ -622,12 +653,14 @@ private struct AttachmentOverlayHarnessView: View {
     var scannedDrafts: [String] = []
     var editedDrafts: [String] = []
     var draftSeenOnAppear: String?
+    var cancels = 0
 }
 
 private struct SessionChatPresentationFixture: View {
     @Bindable var focus: ComposerFixtureFocus
     var probe = SessionFixtureProbe()
     var access = ChatComposerAccess(session: SessionSummary(), isViewingCachedData: false)
+    var isWaitingForStream = false
     @State private var draft = ""
     @State private var quotes: [ComposerQuote] = []
     @State private var paths = ComposerFilePathSearch()
@@ -651,7 +684,7 @@ private struct SessionChatPresentationFixture: View {
         // with edits reported for persistence.
         MessageComposerView(
             draftMessage: $draft, quotes: $quotes, isFocused: $focus.isFocused,
-            isSending: false, isCompressingSession: false, isWaitingForStream: false,
+            isSending: false, isCompressingSession: false, isWaitingForStream: isWaitingForStream,
             isCancellingStream: false, access: access, errorMessage: nil,
             errorFixPrompt: nil, configurationErrorMessage: nil, contextWindowSnapshot: nil, gitViewModel: git,
             modelGroups: [], selectedModelID: nil, selectedModelProviderID: nil, selectedModelTitle: "Model",
@@ -665,7 +698,7 @@ private struct SessionChatPresentationFixture: View {
             autoStartsVoiceInput: false, apiClient: nil, sessionID: nil, searchFilePaths: nil, chipFilePaths: [],
             filePathSearch: paths, uploadAttachmentErrorMessage: nil, steerFailure: nil,
             streamingSendBehavior: .steer, onSend: { _ in },
-            onSendVoiceNote: { _, _ in }, onCancel: {}, onSelectModel: { _ in },
+            onSendVoiceNote: { _, _ in }, onCancel: { probe.cancels += 1 }, onSelectModel: { _ in },
             onModelPickerOpen: {}, onSelectReasoningEffort: { _ in }, onLoadWorkspaceSuggestions: { _ in },
             onWorkspaceRegistryChanged: {}, onLoadPersonalitySuggestions: {}, onLoadSkillSuggestions: {},
             onSelectWorkspace: { _ in }, onSelectProfile: { _ in }, onHeightChange: { _ in },

@@ -37,7 +37,7 @@ struct ComposerTextInputView: View {
     /// focuses it. The text view stays in the hierarchy (invisible) so focus and
     /// the draft survive the pill-to-card morph without recreating it.
     let isCollapsed: Bool
-    let isKeyboardSendEnabled: Bool
+    let keyboardCommands: ComposerKeyboardCommands
     let verticalPadding: CGFloat
     /// The skills whose references the editor draws as chips. Empty until the
     /// server's skill list has loaded, which leaves the draft as plain text.
@@ -47,7 +47,6 @@ struct ComposerTextInputView: View {
     let chipFilePaths: Set<String>
     var chipBots: [String: ComposerBotReference] = [:]
     let quotes: [ComposerQuote]
-    let onKeyboardSend: () -> Void
     let onPasteFileProviders: ([NSItemProvider]) -> Void
     let onPasteFileURLs: ([URL]) -> Void
     let onPasteImageProviders: ([NSItemProvider]) -> Void
@@ -72,7 +71,7 @@ struct ComposerTextInputView: View {
                 selection: $selection,
                 isFocused: $isFocused,
                 isDisabled: isDisabled,
-                isKeyboardSendEnabled: isKeyboardSendEnabled,
+                keyboardCommands: keyboardCommands,
                 chipSkills: chipSkills,
                 chipFilePaths: chipFilePaths,
                 chipBots: chipBots,
@@ -81,7 +80,6 @@ struct ComposerTextInputView: View {
                 onTapChip: onTapChip,
                 onTapQuote: onTapQuote,
                 onRemoveQuote: onRemoveQuote,
-                onKeyboardSend: onKeyboardSend,
                 recallLastSentText: recallLastSentText,
                 onHeightChange: updateMeasuredHeight,
                 onPasteFileProviders: onPasteFileProviders,
@@ -199,7 +197,7 @@ private struct ComposerTextView: UIViewRepresentable {
     @Binding var selection: ComposerSelection
     @Binding var isFocused: Bool
     let isDisabled: Bool
-    let isKeyboardSendEnabled: Bool
+    let keyboardCommands: ComposerKeyboardCommands
     let chipSkills: [SkillSlashSuggestion]
     let chipFilePaths: Set<String>
     let chipBots: [String: ComposerBotReference]
@@ -208,7 +206,6 @@ private struct ComposerTextView: UIViewRepresentable {
     let onTapChip: (ComposerChipToken) -> Void
     let onTapQuote: (ComposerQuote) -> Void
     let onRemoveQuote: (UUID) -> Void
-    let onKeyboardSend: () -> Void
     let recallLastSentText: (() -> String?)?
     let onHeightChange: (CGFloat) -> Void
     let onPasteFileProviders: ([NSItemProvider]) -> Void
@@ -245,8 +242,7 @@ private struct ComposerTextView: UIViewRepresentable {
         // text. Rich-text editing would let UIKit insert one it cannot read,
         // which would reach the server as an object-replacement character.
         textView.allowsEditingTextAttributes = false
-        textView.isKeyboardSendEnabled = isKeyboardSendEnabled
-        textView.onKeyboardSend = onKeyboardSend
+        textView.keyboardCommands = keyboardCommands
         textView.recallLastSentText = recallLastSentText
         textView.onPasteFileProviders = onPasteFileProviders
         textView.onPasteFileURLs = onPasteFileURLs
@@ -278,8 +274,7 @@ private struct ComposerTextView: UIViewRepresentable {
         }
         context.coordinator.acceptsAttachments = acceptsAttachments
         context.coordinator.syncEditing(for: textView, isDisabled: isDisabled)
-        textView.isKeyboardSendEnabled = isKeyboardSendEnabled
-        textView.onKeyboardSend = onKeyboardSend
+        textView.keyboardCommands = keyboardCommands
         textView.recallLastSentText = recallLastSentText
         textView.onPasteFileProviders = onPasteFileProviders
         textView.onPasteFileURLs = onPasteFileURLs
@@ -672,8 +667,20 @@ struct ComposerDropRoute {
     }
 }
 
-enum ComposerKeyboardCommand {
-    static let title = String(localized: "Send Message")
-    static let input = "\r"
-    static let modifierFlags: UIKeyModifierFlags = .command
+/// The hardware-keyboard commands the composer's editor offers (#1380), each titled by
+/// what it does right now. A nil command leaves its key alone. The editor refuses every
+/// one while it is locked or an IME composition is unfinished; each action rechecks its
+/// own gate when it runs.
+struct ComposerKeyboardCommands {
+    struct Command {
+        let title: String
+        let perform: () -> Void
+    }
+
+    /// ⌘↩: Send as a tap on the circle would. Never Stop.
+    var send: Command?
+    /// ⌘⇧↩: the send-choice card's safe alternate to Send's behavior.
+    var alternateSend: Command?
+    /// Esc: closes an open panel or card, or stops the running response.
+    var escape: Command?
 }

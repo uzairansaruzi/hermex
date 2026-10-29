@@ -63,8 +63,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     }
 
     var acceptsAttachments = true
-    var isKeyboardSendEnabled = false
-    var onKeyboardSend: () -> Void = {}
+    var keyboardCommands = ComposerKeyboardCommands()
     /// The chat's last sent message, which ↑ brings back into an empty editor
     /// on a hardware keyboard. Nil where there is no single author to recall
     /// (Bot rooms), which leaves ↑ to move the caret.
@@ -580,15 +579,27 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     }
 
     override var keyCommands: [UIKeyCommand]? {
-        let sendCommand = UIKeyCommand(
-            title: ComposerKeyboardCommand.title,
-            action: #selector(sendMessageFromKeyboard),
-            input: ComposerKeyboardCommand.input,
-            modifierFlags: ComposerKeyboardCommand.modifierFlags
-        )
-        guard recallLastSentText != nil else {
-            return (super.keyCommands ?? []) + [sendCommand]
+        var commands = super.keyCommands ?? []
+        if let send = keyboardCommands.send {
+            commands.append(UIKeyCommand(
+                title: send.title, action: #selector(sendFromKeyboard), input: "\r", modifierFlags: .command
+            ))
         }
+        if let alternateSend = keyboardCommands.alternateSend {
+            commands.append(UIKeyCommand(
+                title: alternateSend.title, action: #selector(alternateSendFromKeyboard), input: "\r",
+                modifierFlags: [.command, .shift]
+            ))
+        }
+        if let escape = keyboardCommands.escape {
+            let command = UIKeyCommand(
+                title: escape.title, action: #selector(escapeFromKeyboard), input: UIKeyCommand.inputEscape,
+                modifierFlags: []
+            )
+            command.wantsPriorityOverSystemBehavior = true
+            commands.append(command)
+        }
+        guard recallLastSentText != nil else { return commands }
         let recallCommand = UIKeyCommand(
             title: ComposerRecall.commandTitle,
             action: #selector(recallLastSentTextFromKeyboard),
@@ -597,12 +608,20 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         )
         // Arrow keys go to text editing first otherwise.
         recallCommand.wantsPriorityOverSystemBehavior = true
-        return (super.keyCommands ?? []) + [sendCommand, recallCommand]
+        return commands + [recallCommand]
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        if action == #selector(sendMessageFromKeyboard) {
-            return isKeyboardSendEnabled
+        if action == #selector(sendFromKeyboard) {
+            return acceptsKeyboardCommands && keyboardCommands.send != nil
+        }
+
+        if action == #selector(alternateSendFromKeyboard) {
+            return acceptsKeyboardCommands && keyboardCommands.alternateSend != nil
+        }
+
+        if action == #selector(escapeFromKeyboard) {
+            return acceptsKeyboardCommands && keyboardCommands.escape != nil
         }
 
         if action == #selector(recallLastSentTextFromKeyboard) {
@@ -620,15 +639,32 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
         return super.canPerformAction(action, withSender: sender)
     }
 
-    @objc private func sendMessageFromKeyboard() {
-        guard isKeyboardSendEnabled else { return }
-        onKeyboardSend()
+    /// A locked editor takes no command, and an unfinished IME composition keeps
+    /// Return and Esc for itself: ⌘↩ must never submit half-composed text. Checked
+    /// again when a key fires, since UIKit can dispatch a command it listed earlier.
+    private var acceptsKeyboardCommands: Bool {
+        isEditable && markedTextRange == nil
+    }
+
+    @objc private func sendFromKeyboard() {
+        guard acceptsKeyboardCommands else { return }
+        keyboardCommands.send?.perform()
+    }
+
+    @objc private func alternateSendFromKeyboard() {
+        guard acceptsKeyboardCommands else { return }
+        keyboardCommands.alternateSend?.perform()
+    }
+
+    @objc private func escapeFromKeyboard() {
+        guard acceptsKeyboardCommands else { return }
+        keyboardCommands.escape?.perform()
     }
 
     /// What ↑ would bring back. Only an empty editor takes it, so ↑ inside a
     /// draft, or with a quote staged, keeps moving the caret.
     private var recallableText: String? {
-        guard isEditable, quotes.isEmpty, textStorage.length == 0,
+        guard acceptsKeyboardCommands, quotes.isEmpty, textStorage.length == 0,
               let text = recallLastSentText?(), !text.isEmpty
         else {
             return nil

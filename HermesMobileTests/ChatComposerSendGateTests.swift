@@ -55,6 +55,24 @@ final class ChatComposerSendGateTests: XCTestCase {
 
     /// A quick tap acts; the release of a hold that opened the card does not,
     /// and only that one release is dropped.
+    /// ⌘⇧↩ (#1380) takes the other safe choice from what Send does now, never Stop and send.
+    func testKeyboardAlternateIsTheOtherSafeChoiceFromTheEffectiveDefault() {
+        func alternate(_ defaultBehavior: StreamingSendBehavior, waiting: Bool = true,
+                       stagedFiles: Bool = false) -> StreamingSendBehavior? {
+            ChatComposerSendButton(
+                isWaitingForStream: waiting, hasText: true, hasQuotes: false,
+                defaultBehavior: defaultBehavior, stagedFilesDropSteer: stagedFiles
+            ).alternateBehavior
+        }
+
+        XCTAssertEqual(alternate(.steer), .queue)
+        XCTAssertEqual(alternate(.queue), .steer)
+        XCTAssertEqual(alternate(.interrupt), .steer)
+        // Staged files turn a Steer default into Queue, leaving only Stop and send.
+        XCTAssertNil(alternate(.steer, stagedFiles: true))
+        XCTAssertNil(alternate(.steer, waiting: false))
+    }
+
     func testHoldReleaseIsDroppedAndQuickTapActs() {
         var hold = ChatComposerSendHold()
         hold.pressBegan()

@@ -131,6 +131,13 @@ struct ChatComposerSendButton: Equatable {
         guard runningBehavior != nil, !queuesStagedFilesOnly else { return [] }
         return stagedFilesDropSteer ? [.queue, .interrupt] : [.steer, .queue, .interrupt]
     }
+
+    /// ⌘⇧↩'s pick from `choices` (#1380): the first one Send does not already do. Never
+    /// Stop and send, so a key chord cannot end the run; nil while idle or when that
+    /// would be all that is left.
+    var alternateBehavior: StreamingSendBehavior? {
+        choices.first { $0 != runningBehavior && $0 != .interrupt }
+    }
 }
 
 /// Keeps a hold on Send from also counting as a tap. A hold that opens the

@@ -317,6 +317,9 @@ struct MessageComposerView: View {
     /// design: a restored draft starts with the caret at its end, not wherever
     /// it was left last week.
     @State private var composerSelection = ComposerSelection()
+    /// Where Esc closed the `/` or `@` panel (#1380). It stays closed until the draft or
+    /// the caret moves, so the trigger it closed does not reopen it at once.
+    @State private var dismissedSuggestionsAnchor: SuggestionAnchor?
     @State private var noticeMessage: String?
     @State private var showsAllModelsSheet = false
     @State private var showsWorkspaceSheet = false
@@ -363,7 +366,17 @@ struct MessageComposerView: View {
     /// The `/…` the caret is sitting in, whether that is the start of the draft
     /// or the middle of a sentence.
     private var slashTrigger: ComposerSlashTrigger? {
-        ComposerSlashTrigger.detect(in: draftMessage, selection: composerSelection.range, scope: slashScope)
+        guard !areSuggestionsDismissed else { return nil }
+        return ComposerSlashTrigger.detect(in: draftMessage, selection: composerSelection.range, scope: slashScope)
+    }
+
+    private struct SuggestionAnchor: Equatable {
+        let draft: String
+        let caret: NSRange
+    }
+
+    private var areSuggestionsDismissed: Bool {
+        dismissedSuggestionsAnchor == SuggestionAnchor(draft: draftMessage, caret: composerSelection.range)
     }
 
     /// The draft up to the caret while it is at a host command's argument (#1036), which the
@@ -379,7 +392,9 @@ struct MessageComposerView: View {
     /// Needs `searchFilePaths`, since every path the panel offers comes from
     /// the chat's own workspace.
     private var fileTrigger: ComposerFileTrigger? {
-        guard !holdsHostControls, searchFilePaths != nil || botMentions != nil else { return nil }
+        guard !holdsHostControls, !areSuggestionsDismissed, searchFilePaths != nil || botMentions != nil else {
+            return nil
+        }
         return ComposerFileTrigger.detect(in: draftMessage, selection: composerSelection.range)
     }
 
@@ -975,13 +990,12 @@ struct MessageComposerView: View {
                     measuredHeight: $textFieldHeight,
                     isDisabled: isReadOnly,
                     isCollapsed: !isExpanded,
-                    isKeyboardSendEnabled: !showsStopButton && !isActionButtonDisabled,
+                    keyboardCommands: keyboardCommands,
                     verticalPadding: 12,
                     chipSkills: skillSuggestions,
                     chipFilePaths: chipFilePaths,
                     chipBots: botMentions?.chipReferences(avatars: mentionAvatars) ?? [:],
                     quotes: quotes,
-                    onKeyboardSend: actionButtonTapped,
                     onPasteFileProviders: onPasteFileProviders,
                     onPasteFileURLs: onPasteFileURLs,
                     onPasteImageProviders: onPasteImageProviders,
@@ -1548,8 +1562,8 @@ struct MessageComposerView: View {
         actionButtonTapped()
     }
 
-    /// Stop, or Send with the behavior it shows. Command-Return comes straight here,
-    /// so a hold that arrived after the key was enabled still stops it.
+    /// Stop, or Send with the behavior it shows. Keyboard sends come here too, so a
+    /// hold that arrived after the key was enabled still stops it.
     private func actionButtonTapped() {
         guard !isActionButtonDisabled else { return }
         if showsStopButton {
@@ -1560,6 +1574,33 @@ struct MessageComposerView: View {
             }
             onSend(sendButton.runningBehavior)
         }
+    }
+
+    /// The hardware-keyboard commands (#1380), titled like the circle and the send-choice
+    /// card. ⌘↩ is Send, never Stop; ⌘⇧↩ is the card's safe alternate; Esc closes what is
+    /// open before it stops the run through the usual confirmation, keeping the draft.
+    private var keyboardCommands: ComposerKeyboardCommands {
+        let button = sendButton
+        var commands = ComposerKeyboardCommands()
+        if !button.showsStop, !isActionButtonDisabled {
+            commands.send = .init(title: button.accessibilityLabel) {
+                guard !showsStopButton else { return }
+                actionButtonTapped()
+            }
+        }
+        if let alternate = isActionButtonDisabled ? nil : button.alternateBehavior {
+            commands.alternateSend = .init(title: alternate.settingsDescription) { pickSendBehavior(alternate) }
+        }
+        if choosingSendBehavior {
+            commands.escape = .init(title: String(localized: "Close"), perform: closeSendChoices)
+        } else if showsSlashAutocomplete || showsFileAutocomplete {
+            commands.escape = .init(title: String(localized: "Close")) {
+                dismissedSuggestionsAnchor = SuggestionAnchor(draft: draftMessage, caret: composerSelection.range)
+            }
+        } else if isWaitingForStream, !isReadOnly, !isCancellingStream {
+            commands.escape = .init(title: String(localized: "Stop response"), perform: onCancel)
+        }
+        return commands
     }
 
     /// Starts dictation once for a composer opened by the "New Chat with Voice" intent (#338),

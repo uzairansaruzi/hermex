@@ -583,12 +583,11 @@ private struct ComposerPresentationHarness: View {
             measuredHeight: binding(\ComposerPresentationHarnessState.measuredHeight),
             isDisabled: false,
             isCollapsed: false,
-            isKeyboardSendEnabled: false,
+            keyboardCommands: ComposerKeyboardCommands(),
             verticalPadding: 0,
             chipSkills: [],
             chipFilePaths: [],
             quotes: [],
-            onKeyboardSend: {},
             onPasteFileProviders: { _ in },
             onPasteFileURLs: { _ in },
             onPasteImageProviders: { _ in },
@@ -896,5 +895,58 @@ final class ComposerUndoTests: XCTestCase {
         DispatchQueue.main.async { turned.fulfill() }
         wait(for: [turned], timeout: 5)
         XCTAssertFalse(undoManager.canUndo, "Undo must not put back text the redrawn chips no longer describe")
+    }
+}
+
+/// The editor's hardware-keyboard commands (#1380), driven through the key commands
+/// UIKit would dispatch.
+@MainActor final class ComposerKeyboardCommandTests: XCTestCase {
+    /// An IME's Return confirms the composition; no shortcut may act on half-composed text.
+    func testKeyboardCommandsWaitForIMECompositionToFinish() throws {
+        let editor = ComposerChipTextView()
+        var performed: [String] = []
+        editor.keyboardCommands = commands { performed.append($0) }
+        let keys = try XCTUnwrap(editor.keyCommands?.filter { $0.title.hasPrefix("test-") })
+        XCTAssertEqual(keys.count, 3)
+
+        editor.setMarkedText("に", selectedRange: NSRange(location: 1, length: 0))
+        _ = try XCTUnwrap(editor.markedTextRange)
+        for key in keys {
+            let action = try XCTUnwrap(key.action)
+            XCTAssertFalse(editor.canPerformAction(action, withSender: key))
+            editor.perform(action)
+        }
+        XCTAssertEqual(performed, [])
+
+        editor.unmarkText()
+        for key in keys {
+            editor.perform(try XCTUnwrap(key.action))
+        }
+        XCTAssertEqual(performed, ["test-send", "test-alternate", "test-escape"])
+    }
+
+    /// A key UIKit listed before the editor locked, or before the gate closed, does nothing.
+    func testAKeyListedEarlierDoesNothingOnceTheEditorLocksOrTheGateCloses() throws {
+        let editor = ComposerChipTextView()
+        var performed: [String] = []
+        editor.keyboardCommands = commands { performed.append($0) }
+        let send = try XCTUnwrap(editor.keyCommands?.first { $0.title == "test-send" }?.action)
+
+        editor.isEditable = false
+        editor.perform(send)
+        editor.isEditable = true
+        editor.keyboardCommands = ComposerKeyboardCommands()
+        XCTAssertFalse(editor.canPerformAction(send, withSender: nil))
+        editor.perform(send)
+
+        XCTAssertEqual(performed, [])
+    }
+
+    private func commands(_ record: @escaping (String) -> Void) -> ComposerKeyboardCommands {
+        ComposerKeyboardCommands(
+            send: .init(title: "test-send") { record("test-send") },
+            alternateSend: .init(title: "test-alternate") { record("test-alternate") },
+            escape: .init(title: "test-escape") { record("test-escape") }
+        )
     }
 }
