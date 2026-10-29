@@ -3777,7 +3777,8 @@ struct ChatView: View {
         animated: Bool = true,
         isUserInitiated: Bool = false
     ) {
-        guard !viewModel.messages.isEmpty else { return }
+        // An empty chat still draws the transcript for a queued prompt (#1379).
+        guard !viewModel.messages.isEmpty || viewModel.queuedPromptMessage != nil else { return }
 
         scheduleFollowScroll(
             proxy,
