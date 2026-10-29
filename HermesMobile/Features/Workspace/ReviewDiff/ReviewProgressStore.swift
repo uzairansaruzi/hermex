@@ -37,8 +37,9 @@ import Foundation
 
 /// One open review's folds and viewed marks: `GitDiffView`'s render state, written through to the
 /// chat's `ReviewProgressStore`. It opens with the stored choices, except that the file the user
-/// tapped reads open without changing what is stored, and a stored viewed mark shows only once its
-/// file's loaded patch matches; a different patch clears the mark and opens the file. Marking a
+/// tapped reads open without changing what is stored, and a stored viewed mark shows only while its
+/// file's patch in the current load matches, so a refresh hides it until the patch loads again; a
+/// different patch clears the mark and opens the file. Marking a
 /// file viewed folds it; un-viewing leaves it folded (#399). Files the user hasn't chosen for take
 /// `ReviewDiffDefaultCollapse`.
 @MainActor struct ReviewDiffProgress {
@@ -101,13 +102,17 @@ import Foundation
         }
     }
 
-    /// Takes the loader's latest full row list and the patches loaded so far, checking each newly
-    /// loaded patch against its stored viewed mark before the defaults fold anything.
+    /// Takes the loader's latest full row list and the patches loaded so far, checking each stored
+    /// viewed mark against them before the defaults fold anything. A file without a patch yet
+    /// (loading, failed, binary or too large) hides its mark and keeps it stored.
     mutating func apply(_ rows: [ReviewDiffRow], patches: [String: Int]) {
         if let scope {
-            let stored = store.files(in: scope)
-            for (fileID, patch) in patches where self.patches[fileID] != patch {
-                guard let viewedPatch = stored[fileID]?.viewedPatch else { continue }
+            for (fileID, stored) in store.files(in: scope) {
+                guard let viewedPatch = stored.viewedPatch else { continue }
+                guard let patch = patches[fileID] else {
+                    viewedFileIDs.remove(fileID)
+                    continue
+                }
                 if viewedPatch == patch {
                     viewedFileIDs.insert(fileID)
                     continue

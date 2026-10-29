@@ -24,6 +24,8 @@ struct GitDiffView: View {
     @State private var loadGeneration = 0
     @State private var hasLoaded = false
     @State private var isRefreshing = false
+    /// Cancelled as the sheet leaves, so a late answer can't reach the chat's review progress.
+    @State private var refreshTask: Task<Void, Never>?
     @State private var review: ReviewDiffProgress
     @State private var selection = ReviewDiffSelection()
     @State private var scrollTarget: ReviewDiffScrollTarget?
@@ -74,6 +76,7 @@ struct GitDiffView: View {
                     await load()
                 }
         }
+        .onDisappear { refreshTask?.cancel() }
         .presentationDetents([.medium, .large])
         .adaptivePagePresentation()
     }
@@ -94,7 +97,10 @@ struct GitDiffView: View {
                 onToggleFile: toggleFile,
                 onToggleViewed: toggleViewed,
                 onLinePress: handleLinePress,
-                onRefresh: { Task { await refresh() } }
+                onRefresh: {
+                    refreshTask?.cancel()
+                    refreshTask = Task { await refresh() }
+                }
             )
         }
     }

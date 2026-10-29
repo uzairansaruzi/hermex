@@ -240,15 +240,15 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
         XCTAssertEqual(published.count, 4)
     }
 
-    /// A dismissed sheet or a newer load owns what lands after it: no rows or patches, so a
-    /// stale answer can't mark or clear the chat's review progress.
+    /// A dismissed sheet cancels its load (`GitDiffView` cancels its refresh as it leaves), and an
+    /// answer landing after that publishes no rows or patches, so it can't mark or clear the chat's
+    /// review progress.
     @MainActor
-    func testALoadNoLongerCurrentPublishesNothingMore() async throws {
+    func testACancelledLoadPublishesNothingMore() async throws {
         let files = try ["a.swift", "b.swift"].map { try file($0) }
         let results = try Dictionary(uniqueKeysWithValues: files.map { ($0.id, try loadedDiff(for: $0)) })
         let (gate, openGate) = AsyncStream<Void>.makeStream()
         let aPainted = expectation(description: "a painted while b loads")
-        var isCurrent = true
         var publishedPatches: [[String: Int]] = []
 
         let load = Task { @MainActor in
@@ -258,10 +258,11 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
                 maxConcurrent: 2,
                 coalescing: ReviewDiffLoader.Coalescing(interval: .seconds(3600), batch: 4, sleep: { _ in }),
                 fetch: { file in
+                    // b's answer lands whether or not the load was cancelled.
                     if file.id == "b.swift" { for await _ in gate { break } }
                     return results[file.id]
                 },
-                isCurrent: { isCurrent },
+                isCurrent: { true },
                 publish: { _, patches in
                     publishedPatches.append(patches)
                     if patches.keys.contains("a.swift") { aPainted.fulfill() }
@@ -271,8 +272,7 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
         }
 
         await fulfillment(of: [aPainted], timeout: 5)
-        isCurrent = false
-        openGate.yield()
+        load.cancel()
         openGate.finish()
         await load.value
         XCTAssertFalse(publishedPatches.contains { $0.keys.contains("b.swift") })

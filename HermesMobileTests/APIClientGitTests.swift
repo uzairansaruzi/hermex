@@ -564,6 +564,34 @@ extension APIClientGitTests {
         XCTAssertNil(oversized?.diff)
     }
 
+    /// A diff or file read whose answer has no text has nothing a viewed mark could vouch for,
+    /// while an empty diff is a real, empty patch.
+    @MainActor
+    func testAHermesDiffWithoutTextCanNotBeMarkedViewed() async throws {
+        let git = HermesGitHost.client { request in
+            switch (request.url?.path, HermesGitHost.query(request, "file")) {
+            case ("/api/git/review/diff", "Empty.swift"): .json(200, .object(["diff": .string("")]))
+            case ("/api/git/review/diff", _): .json(200, .object([:]))
+            case ("/api/git/file-diff", _): .json(200, .object(["diff": .string("")]))
+            case ("/api/fs/read-text", _): .json(200, .object(["binary": .bool(false), "truncated": .bool(false)]))
+            default: HermesGitHost.repositoryReply(request)
+            }
+        }
+        let modified = { (path: String) in
+            GitFile(path: path, status: "M", staged: false, unstaged: true, untracked: false, conflict: false,
+                    additions: 1, deletions: 0)
+        }
+        let added = GitFile(path: "New.swift", status: "A", staged: true, unstaged: nil, untracked: false,
+                            conflict: false, additions: 1, deletions: 0)
+
+        for file in [modified("Missing.swift"), added, modified("Empty.swift")] {
+            let loaded = try await git.diff(for: file)
+            let diff = try XCTUnwrap(loaded)
+            XCTAssertEqual(ReviewDiffProgress.patch(for: file, state: .loaded(diff)) != nil, file.displayPath == "Empty.swift",
+                           file.displayPath)
+        }
+    }
+
     /// A failed git call is 400 `{detail}`, git's own stderr, which can name host paths: it reads
     /// as the existing repository-unavailable copy, never the detail.
     @MainActor

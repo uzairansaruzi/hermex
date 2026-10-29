@@ -93,12 +93,12 @@ final class ReviewProgressStoreTests: XCTestCase {
         XCTAssertEqual(reopened.viewedFileIDs, [], "Neither mark was made against a loaded text patch.")
         reopened.toggleViewed(source.id)
 
-        var failing = open(files, store: store)
-        land(&failing, files, [source.id: .failed("Boom"), image.id: binary])
-        XCTAssertEqual(failing.viewedFileIDs, [], "A failed load can't appear verified.")
-        var recovered = open(files, store: store)
-        land(&recovered, files, [source.id: try text("+a"), image.id: binary])
-        XCTAssertEqual(recovered.viewedFileIDs, [source.id], "...or clear the mark.")
+        var refreshed = open(files, store: store)
+        land(&refreshed, files, [source.id: try text("+a"), image.id: binary])
+        land(&refreshed, files, [source.id: .failed("Boom"), image.id: binary])
+        XCTAssertEqual(refreshed.viewedFileIDs, [], "A failed refresh can't leave a restored mark looking verified.")
+        land(&refreshed, files, [source.id: try text("+a"), image.id: binary])
+        XCTAssertEqual(refreshed.viewedFileIDs, [source.id], "...or clear the mark.")
     }
 
     func testATurnsSubsetKeepsProgressOnTheFilesOutsideIt() throws {

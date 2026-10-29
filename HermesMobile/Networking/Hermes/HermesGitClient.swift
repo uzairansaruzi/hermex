@@ -103,12 +103,13 @@ import Foundation
         let kind = wholeChange ? nil : file.preferredDiffKind
         let request: HermesREST = wholeChange ? .gitFileDiff(repository: root, file: path)
             : .gitDiff(repository: root, file: path, staged: kind == "staged")
-        let text = try Self.json(try await send(request))["diff"].text ?? ""
-        if wholeChange, text.isEmpty, file.changeKind == .added {
+        // A missing diff stays nil, so it shows as no changes but has no patch to mark viewed.
+        let text = try Self.json(try await send(request))["diff"].text
+        if wholeChange, text?.isEmpty != false, file.changeKind == .added {
             return try await currentContent(of: path, root: root)
         }
-        let tooLarge = text.utf8.count > Self.maximumDiffBytes
-        return GitDiff(path: path, kind: kind, binary: Self.isBinary(text),
+        let tooLarge = (text?.utf8.count ?? 0) > Self.maximumDiffBytes
+        return GitDiff(path: path, kind: kind, binary: Self.isBinary(text ?? ""),
                        tooLarge: tooLarge, additions: nil, deletions: nil, diff: tooLarge ? nil : text)
     }
 
@@ -118,10 +119,12 @@ import Foundation
         let file = try Self.json(try await send(.fsReadText(path: root + "/" + path)))
         let binary = file["binary"].flag == true
         let tooLarge = file["truncated"].flag == true
-        var lines = (file["text"].text ?? "").components(separatedBy: "\n")
-        if lines.last == "" { lines.removeLast() }
-        let diff = "diff --git a/\(path) b/\(path)\n--- /dev/null\n+++ b/\(path)\n"
-            + (lines.isEmpty ? "" : "@@ -0,0 +1,\(lines.count) @@\n" + lines.map { "+\($0)\n" }.joined())
+        let diff = file["text"].text.map { text in
+            var lines = text.components(separatedBy: "\n")
+            if lines.last == "" { lines.removeLast() }
+            return "diff --git a/\(path) b/\(path)\n--- /dev/null\n+++ b/\(path)\n"
+                + (lines.isEmpty ? "" : "@@ -0,0 +1,\(lines.count) @@\n" + lines.map { "+\($0)\n" }.joined())
+        }
         return GitDiff(path: path, kind: nil, binary: binary, tooLarge: tooLarge, additions: nil, deletions: nil,
                        diff: binary || tooLarge ? nil : diff)
     }
@@ -166,14 +169,16 @@ import Foundation
     /// every change; `status.files` stops at 200 and adds the flags a row lacks. A row past it has
     /// no `unstaged` flag (unknown, not clean) and takes untracked and conflicted from its status
     /// letter (`?`, `U`).
-    /// The list is whole, so it is never `truncated`; `changed` is the host's full count.
+    /// The list is whole, so it is never `truncated`, unless `review/list` sent none, which leaves
+    /// its completeness unknown (nil); `changed` is the host's full count.
     nonisolated static func status(summary: BotJSON, changes: BotJSON) -> GitStatus {
         guard summary.fields != nil else { return notARepository }
         var flags: [String: BotJSON] = [:]
         for entry in summary["files"].list ?? [] {
             if let path = entry["path"].text { flags[path] = entry }
         }
-        let files = (changes["files"].list ?? []).compactMap { row -> GitFile? in
+        let rows = changes["files"].list
+        let files = (rows ?? []).compactMap { row -> GitFile? in
             guard let path = row["path"].text, !path.isEmpty else { return nil }
             let flag = flags[path]
             let letter = row["status"].text
@@ -186,7 +191,7 @@ import Foundation
                                unstaged: summary["unstaged"].integer, untracked: summary["untracked"].integer,
                                conflicts: summary["conflicted"].integer)
         return GitStatus(isGit: true, branch: branch(summary), upstream: nil, ahead: summary["ahead"].integer,
-                         behind: summary["behind"].integer, totals: totals, files: files, truncated: false)
+                         behind: summary["behind"].integer, totals: totals, files: files, truncated: rows == nil ? nil : false)
     }
 
     private nonisolated static let notARepository = GitStatus(isGit: false, branch: nil, upstream: nil, ahead: nil,

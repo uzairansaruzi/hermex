@@ -454,6 +454,27 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(DiffHunk.parse(diff?.diff ?? "").map(\.additions), [2])
     }
 
+    /// A `review/list` answer without its file list says nothing about which files are gone, so
+    /// the chat's review progress keeps them; an empty list is a clean tree and forgets them.
+    @MainActor
+    func testAHermesChangeListWithoutItsFilesForgetsNoReviewProgress() async throws {
+        var listed: BotJSON = .null
+        let git = HermesGitHost.client { request in
+            guard request.url?.path == "/api/git/review/list" else { return HermesGitHost.repositoryReply(request) }
+            return .json(200, .object(["base": .null, "files": listed]))
+        }
+        let progress = ReviewProgressStore()
+        progress.update("A.swift", in: git.reviewScope) { $0.isCollapsed = true }
+        let changes = GitWorkspaceViewModel(git: git, progress: progress)
+
+        await changes.load()
+        XCTAssertEqual(Array(progress.files(in: git.reviewScope).keys), ["A.swift"])
+
+        listed = .array([])
+        await changes.load()
+        XCTAssertEqual(progress.files(in: git.reviewScope), [:])
+    }
+
     /// Before the first commit `file-diff` (`git diff HEAD`) is empty, so a staged new file past
     /// the cap shows its current content as all additions, worktree edits included, as webui shows
     /// an untracked file; a binary one reads as binary.
