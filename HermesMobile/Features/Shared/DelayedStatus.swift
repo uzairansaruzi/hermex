@@ -93,6 +93,7 @@ final class DelayedStatusDriver<Value: Equatable> {
         immediately: Bool = false,
         animation: Animation? = nil
     ) async {
+        guard !Task.isCancelled else { return }
         var deadline = step(target: target, policy: policy, immediately: immediately, animation: animation)
         while let next = deadline {
             do {

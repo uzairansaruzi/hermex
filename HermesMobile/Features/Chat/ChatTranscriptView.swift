@@ -557,13 +557,15 @@ struct ChatTranscriptView: View {
                     )
                 }
             }
+        }
 
-            DelayedStatusView(driver: recoveryChip) { state in
-                StreamRecoveryStatusView(state: state)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityHidden(hidesRunStatusAccessibility)
-                    .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
-            }
+        // Outside the stream check, so a chip held past the stream's end stays
+        // until its hold ends.
+        DelayedStatusView(driver: recoveryChip) { state in
+            StreamRecoveryStatusView(state: state)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityHidden(hidesRunStatusAccessibility)
+                .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
         }
     }
 

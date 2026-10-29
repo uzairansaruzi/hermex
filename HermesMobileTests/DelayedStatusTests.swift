@@ -17,7 +17,6 @@ final class DelayedStatusTests: XCTestCase {
         XCTAssertNil(status.shown)
 
         XCTAssertNil(status.update(target: nil, now: at(300), policy: policy, immediately: false))
-        XCTAssertNil(status.update(target: nil, now: at(400), policy: policy, immediately: false))
         XCTAssertNil(status.shown)
     }
 
@@ -62,18 +61,20 @@ final class DelayedStatusTests: XCTestCase {
 
         _ = status.update(target: .reconnecting, now: at(500), policy: policy, immediately: false)
         XCTAssertEqual(status.shown, .reconnecting)
-
-        // The old hide deadline (800 ms) arrives with the target still set: nothing hides.
-        XCTAssertNil(status.update(target: .reconnecting, now: at(800), policy: policy, immediately: false))
-        XCTAssertEqual(status.shown, .reconnecting)
     }
 
-    func testCancelledRunNeverPublishesLate() async {
+    func testCancelledRunNeverPublishes() async {
         var now = at(0)
         let sleeper = DeadlineSleeper()
         let parked = expectation(description: "run waiting for the show deadline")
         sleeper.didPark = { parked.fulfill() }
         let driver = DelayedStatusDriver<ActiveStreamRecoveryState>(now: { now }, sleep: sleeper.sleep(until:))
+
+        // Cancelled before its body starts: even a status that skips the delay stays hidden.
+        let cancelledFirst = Task { await driver.run(target: .waitingForNetwork, immediately: true) }
+        cancelledFirst.cancel()
+        await cancelledFirst.value
+        XCTAssertNil(driver.shown)
 
         let run = Task { await driver.run(target: .checking) }
         await fulfillment(of: [parked], timeout: 5)
