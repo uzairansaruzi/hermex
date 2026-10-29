@@ -254,8 +254,8 @@ final class TranscriptMediaVisibilityTests: XCTestCase {
     func testOffscreenMediaWaitsUntilItScrollsIntoView() async throws {
         let log = MediaLoadLog()
         let transcript = MediaTranscript(log: log, top: Self.mediaMessages("near"), bottom: Self.mediaMessages("far"))
-        let near = ["/u/near.png", "/u/near.m4a", "/tmp/media/near-shot.png"]
-        let far = ["/u/far.png", "/u/far.m4a", "/tmp/media/far-shot.png"]
+        let near = ["/u/near.png", "/u/near.m4a", "/tmp/media/near-shot.png", "https://cdn.example/media/near-probe"]
+        let far = ["/u/far.png", "/u/far.m4a", "/tmp/media/far-shot.png", "https://cdn.example/media/far-probe"]
         let nearLoads = near.map { log.expect($0) }
         let (window, scroll) = try await show(transcript)
         defer { window.isHidden = true; window.rootViewController = nil }
@@ -339,14 +339,15 @@ final class TranscriptMediaVisibilityTests: XCTestCase {
     }
 
     /// A user message with an image and an audio attachment, then a settled
-    /// reply showing a MEDIA image.
+    /// reply showing a MEDIA image and an extensionless remote MEDIA URL, which
+    /// the reply probes through its data loader to learn what it is.
     private static func mediaMessages(_ name: String) -> [ChatMessage] {
         [
             ChatMessage(role: "user", content: "", timestamp: 1, messageId: "\(name)-user", attachments: [
                 MessageAttachment(name: "\(name).png", path: "/u/\(name).png", mime: "image/png", isImage: true),
                 MessageAttachment(name: "\(name).m4a", path: "/u/\(name).m4a", mime: "audio/mp4")
             ]),
-            ChatMessage(role: "assistant", content: "Here: ![Shot](/tmp/media/\(name)-shot.png)", timestamp: 1, messageId: "\(name)-reply")
+            ChatMessage(role: "assistant", content: "Here: ![Shot](/tmp/media/\(name)-shot.png) MEDIA:https://cdn.example/media/\(name)-probe", timestamp: 1, messageId: "\(name)-reply")
         ]
     }
 
@@ -469,6 +470,7 @@ private struct MediaTranscriptView: View {
             loadAttachmentImage: { await log.load($0) },
             attachmentAudio: AttachmentAudioSource(load: { await log.load($0) }, isHost: false, loadKey: transcript.audioLoadKey),
             loadTranscriptMediaImage: { await log.load($0.rawReference) },
+            loadTranscriptMediaData: { await log.load($0.rawReference) },
             transcriptMediaCacheNamespace: transcript.namespace
         )
     }
