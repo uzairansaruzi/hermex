@@ -510,10 +510,12 @@ final class AuthManager {
 
         if kind(of: active) == .hermes {
             try? await BotHistoryCache.shared.removeServer(active, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: active))?.id)
-            await BotRosterCache.shared.remove(server: active)
             await ChatDraftStore.shared.discardBotDrafts(server: active)
             await forgetPush(active)
             removeBotConnection(for: active)
+            // Only once the record's removal has retired the shared connection: a Bots inbox
+            // still on screen can save a roster it reads during the awaits above (#1403).
+            await BotRosterCache.shared.remove(server: active)
             lastErrorMessage = nil
             state = .loggedOut(server: active)
             return
@@ -524,11 +526,12 @@ final class AuthManager {
         }
 
         try? await BotHistoryCache.shared.removeServer(active, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: active))?.id)
-        await BotRosterCache.shared.remove(server: active)
         SessionUnreadStore().remove(for: active)
         await ChatDraftStore.shared.discardBotDrafts(server: active)
         await forgetPush(active)
         advanceAfterRemoving(activeServer: active)
+        // After the Bot record and its connection are gone, as in the Hermes branch above.
+        await BotRosterCache.shared.remove(server: active)
     }
 
     /// Removes a configured server. When it's the active one this behaves like
@@ -543,7 +546,6 @@ final class AuthManager {
         // A move committed during the awaits below leaves an orphan journal, which `MoveToHermesPending.all` deletes.
         let movedSources = (servers.first { $0.id == account.id } ?? account).movedWebuiServers.map(\.sourceServerID)
         try? await BotHistoryCache.shared.removeServer(serverURL, activeConnectionID: (try? BotConnectionStore(keychain: keychain).load(server: serverURL))?.id)
-        await BotRosterCache.shared.remove(server: serverURL)
         SessionUnreadStore().remove(for: serverURL)
         // Kept through a sign-out, which the Shortcuts picker still lists the server's Profiles across (#1180).
         HermesProfileNameCache.shared.remove(server: serverURL)
@@ -561,6 +563,8 @@ final class AuthManager {
             serverRegistry.remove(id: account.id)
             refreshServers()
         }
+        // After the Bot record and its connection are gone, as in `signOut`.
+        await BotRosterCache.shared.remove(server: serverURL)
         // After the entry is gone, so a running Move finds no record and writes nothing more (#1216).
         MoveToHermesJournal.discard(sources: movedSources, destinationID: account.id)
     }

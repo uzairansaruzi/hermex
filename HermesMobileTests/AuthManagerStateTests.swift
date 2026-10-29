@@ -748,6 +748,39 @@ final class AuthManagerStateTests: XCTestCase {
         XCTAssertEqual(forgottenPush, [hermesServer], "this iPhone stops getting the host's pushes")
     }
 
+    /// A Bots inbox left on screen keeps reading over the old connection while sign-out or
+    /// removal awaits push teardown. A roster it saves meanwhile is deleted with the rest (#1403).
+    func testSignOutAndRemovalLeaveNoCachedBotRoster() async throws {
+        let paths: [(String, URL, (AuthManager) async -> Void)] = [
+            ("Hermes sign-out", hermesServer, { await $0.signOut() }),
+            ("Hermes removal", hermesServer, { manager in
+                guard let active = manager.activeServer else { return }
+                await manager.removeServer(active)
+            }),
+            ("webui sign-out", webuiServer, { await $0.signOut() })
+        ]
+        for (path, server, leave) in paths {
+            let keychain = InMemoryKeychainStore()
+            var scope: BotRosterCache.Scope?
+            let manager = try await makeHermesManager(keychain: keychain, forgetPush: { _ in
+                guard let scope else { return }
+                await BotRosterCache.shared.save([.object(["name": .string("late")])], scope: scope, readAt: .now)
+            })
+            let store = BotConnectionStore(keychain: keychain)
+            if server == webuiServer {
+                try store.save(BotConnection(id: UUID(), name: "Side", address: hermesServer, username: "me", password: "secret"),
+                               server: webuiServer)
+                manager.switchActiveServer(to: try XCTUnwrap(manager.servers.first { $0.id == webuiServer.absoluteString }))
+            }
+            scope = .init(server: server, connectionID: try XCTUnwrap(store.load(server: server)).id)
+
+            await leave(manager)
+
+            let left = await BotRosterCache.shared.load(try XCTUnwrap(scope))
+            XCTAssertNil(left, path)
+        }
+    }
+
     /// Removing a paired Hermes server tears down its push pairing, as a webui server's
     /// removal does; `PushRegistrar.forget` keeps a relay device another entry still holds.
     func testRemovingAHermesServerForgetsItsPushPairing() async throws {

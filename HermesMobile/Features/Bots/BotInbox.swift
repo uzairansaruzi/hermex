@@ -362,9 +362,11 @@ import UIKit
             if profiles.isEmpty {
                 // The roster this connection last read paints while it connects (#1403). It
                 // claims nothing live and allows no server edit; the first read replaces it.
+                // The connection form may save or remove the record during the load without
+                // closing this inbox, so the record is re-read before painting or connecting.
                 let serial = openSerial
                 let cached = await rosterCache.load(.init(server: server, connectionID: saved.id))
-                guard serial == openSerial, !Task.isCancelled else { return }
+                guard serial == openSerial, !Task.isCancelled, (try? store.load(server: server)) == saved else { return }
                 if let cached, profiles.isEmpty {
                     profiles = Self.roster(cached)
                     avatars = avatarStore.images(connectionID: saved.id)

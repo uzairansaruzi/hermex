@@ -1290,11 +1290,11 @@ import SwiftUI
 
         let opening = Task { await inbox.open() }
         await Task.yield()
-        // The form replaced A with B while A's roster was being read; the inbox closes for it.
+        // The form replaced A with B while A's roster was being read, and the inbox stays
+        // open until the form's sheet dismisses.
         let b = BotConnection(id: UUID(), name: "Other", address: URL(string: "https://other.example")!,
                               username: "u", password: "p", hermesVersion: nil)
         try store.save(b, server: server)
-        inbox.close()
         await opening.value
         XCTAssertEqual(inbox.profiles, [], "the outdated load paints nothing")
         XCTAssertEqual(aWire.closed + aWire.calls.count, 0, "and never connects A")
