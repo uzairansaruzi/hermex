@@ -23,7 +23,7 @@ enum APIError: LocalizedError {
 
             switch statusCode {
             case -1:
-                return String(localized: "The server response could not be read. Check that the URL points to a Hermes Web UI server.")
+                return String(localized: "The server response could not be read. Check that the URL points to your configured server.")
             case 400:
                 if let message = Self.displayableServerMessage(from: body) {
                     return String(localized: "The server rejected the request: \(message)")
@@ -37,7 +37,7 @@ enum APIError: LocalizedError {
                 }
                 return String(localized: "The server refused the request. Check the server permissions and try again.")
             case 404:
-                return String(localized: "The server endpoint was not found. Check that the URL points to a Hermes Web UI server.")
+                return String(localized: "The server endpoint was not found. Check that the URL points to your configured server.")
             case 408:
                 return String(localized: "The server did not respond in time. Check that the server is running and the connection is available.")
             case 429:
@@ -45,7 +45,7 @@ enum APIError: LocalizedError {
             case 500:
                 return String(localized: "The Hermes server hit an internal error. Check the server logs, then try again.")
             case 502, 503, 504:
-                return String(localized: "Could not connect to the server. Check that hermes-webui is running and the tunnel is connected.")
+                return String(localized: "Could not connect to the server. Check that it is running and your network connection is available.")
             default:
                 if let message = Self.displayableServerMessage(from: body) {
                     return String(localized: "Server returned HTTP \(statusCode): \(message)")
@@ -208,7 +208,7 @@ private extension APIError {
         case .cannotFindHost, .dnsLookupFailed:
             return String(localized: "Could not find that server. Check the URL and Cloudflare DNS hostname.")
         case .cannotConnectToHost, .networkConnectionLost:
-            return String(localized: "Could not connect to the server. Check that hermes-webui is running and the tunnel is connected.")
+            return String(localized: "Could not connect to the server. Check that it is running and your network connection is available.")
         case .notConnectedToInternet, .dataNotAllowed:
             return String(localized: "This device is offline. Connect to the internet, then try again.")
         case .secureConnectionFailed,

@@ -48189,108 +48189,108 @@
       }
     },
     "Could not confirm whether the bot was deleted. Pull down to refresh." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Es konnte nicht bestätigt werden, ob der Bot gelöscht wurde. Zum Aktualisieren nach unten ziehen." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "No se pudo confirmar si el bot se eliminó. Desliza hacia abajo para actualizar." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossible de confirmer si le bot a été supprimé. Tirez vers le bas pour actualiser." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Impossibile confermare se il bot è stato eliminato. Trascina verso il basso per aggiornare." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Nie udało się potwierdzić, czy bot został usunięty. Pociągnij w dół, aby odświeżyć." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Não foi possível confirmar se o bot foi excluído. Puxe para baixo para atualizar." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kon niet bevestigen of de bot is verwijderd. Trek omlaag om te vernieuwen." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Botun silinip silinmediği doğrulanamadı. Yenilemek için aşağı çekin." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Не удалось подтвердить, удалён ли бот. Потяните вниз, чтобы обновить." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "ボットが削除されたか確認できませんでした。下に引いて更新してください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "无法确认机器人是否已删除。下拉以刷新。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "봇이 삭제되었는지 확인할 수 없습니다. 아래로 당겨 새로 고치세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تعذّر التأكد مما إذا كان البوت قد حُذف. اسحب لأسفل للتحديث." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "לא ניתן לאשר אם הבוט נמחק. משכו למטה כדי לרענן." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "تصدیق نہیں ہو سکی کہ بوٹ حذف ہوا یا نہیں۔ ریفریش کرنے کے لیے نیچے کھینچیں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "無法確認機器人是否已刪除。下拉以重新整理。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "無法確認機器人是否已刪除。下拉以重新整理。" } } } },
-    "Could not connect to the server. Check that hermes-webui is running and the tunnel is connected." : {
+    "Could not connect to the server. Check that it is running and your network connection is available." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "تعذّر الاتصال بالخادم. تأكّد من أن hermes-webui قيد التشغيل وأن النفق متصل."
+            "value" : "تعذّر الاتصال بالخادم. تأكّد من أنه قيد التشغيل وأن اتصال الشبكة متاح."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Verbindung zum Server fehlgeschlagen. Prüfe, ob hermes-webui läuft und der Tunnel verbunden ist."
+            "value" : "Verbindung zum Server fehlgeschlagen. Prüfe, ob er läuft und deine Netzwerkverbindung verfügbar ist."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "No se pudo conectar al servidor. Comprueba que hermes-webui esté en ejecución y que el túnel esté conectado."
+            "value" : "No se pudo conectar al servidor. Comprueba que esté en ejecución y que tu conexión de red esté disponible."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Impossible de se connecter au serveur. Vérifiez que hermes-webui est en cours d'exécution et que le tunnel est connecté."
+            "value" : "Impossible de se connecter au serveur. Vérifiez qu'il est en cours d'exécution et que votre connexion réseau est disponible."
           }
         },
         "he" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "לא ניתן להתחבר לשרת. ודא ש-hermes-webui פועל ושהמנהרה מחוברת."
+            "value" : "לא ניתן להתחבר לשרת. ודא שהוא פועל ושחיבור הרשת שלך זמין."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Impossibile connettersi al server. Verifica che hermes-webui sia in esecuzione e che il tunnel sia connesso."
+            "value" : "Impossibile connettersi al server. Verifica che sia in esecuzione e che la connessione di rete sia disponibile."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "サーバに接続できませんでした。hermes-webuiが実行中で、トンネルが接続されていることを確認してください。"
+            "value" : "サーバに接続できませんでした。サーバが実行中で、ネットワーク接続が利用可能であることを確認してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "서버에 연결할 수 없어요. hermes-webui가 실행 중이고 터널이 연결되어 있는지 확인하세요."
+            "value" : "서버에 연결할 수 없어요. 서버가 실행 중이고 네트워크 연결을 사용할 수 있는지 확인하세요."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Kan geen verbinding maken met de server. Controleer of hermes-webui draait en of de tunnel is verbonden."
+            "value" : "Kan geen verbinding maken met de server. Controleer of deze draait en of je netwerkverbinding beschikbaar is."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Nie można połączyć się z serwerem. Sprawdź, czy hermes-webui działa i tunel jest podłączony."
+            "value" : "Nie można połączyć się z serwerem. Sprawdź, czy działa i czy połączenie sieciowe jest dostępne."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Não foi possível conectar ao servidor. Verifique se o hermes-webui está em execução e se o túnel está conectado."
+            "value" : "Não foi possível conectar ao servidor. Verifique se ele está em execução e se sua conexão de rede está disponível."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Не удалось подключиться к серверу. Убедитесь, что hermes-webui запущен и туннель подключён."
+            "value" : "Не удалось подключиться к серверу. Убедитесь, что он запущен и подключение к сети доступно."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Sunucuya bağlanılamadı. hermes-webui'nin çalıştığından ve tünelin bağlı olduğundan emin olun."
+            "value" : "Sunucuya bağlanılamadı. Sunucunun çalıştığından ve ağ bağlantınızın kullanılabilir olduğundan emin olun."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "سرور سے منسلک نہ ہو سکا۔ یقینی بنائیں کہ hermes-webui چل رہا ہے اور ٹنل منسلک ہے۔"
+            "value" : "سرور سے منسلک نہ ہو سکا۔ یقینی بنائیں کہ یہ چل رہا ہے اور آپ کا نیٹ ورک کنکشن دستیاب ہے۔"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "無法連線至伺服器。請檢查 hermes-webui 是否正在執行，以及隧道是否已連線。"
+            "value" : "無法連線至伺服器。請檢查伺服器是否正在執行，以及網絡連線是否可用。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "无法连接到服务器。请检查 hermes-webui 是否正在运行，以及隧道是否已连接。"
+            "value" : "无法连接到服务器。请检查服务器是否正在运行，以及网络连接是否可用。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "無法連線到伺服器。請檢查 hermes-webui 是否正在執行，以及通道是否已連線。"
+            "value" : "無法連線到伺服器。請檢查伺服器是否正在執行，以及網路連線是否可用。"
           }
         }
       }
@@ -146268,108 +146268,108 @@
         }
       }
     },
-    "The server endpoint was not found. Check that the URL points to a Hermes Web UI server." : {
+    "The server endpoint was not found. Check that the URL points to your configured server." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "تعذّر العثور على نقطة نهاية الخادم. تأكد من أن عنوان URL يشير إلى خادم Hermes Web UI."
+            "value" : "تعذّر العثور على نقطة نهاية الخادم. تأكد من أن عنوان URL يشير إلى الخادم الذي أعددته."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Der Server-Endpunkt wurde nicht gefunden. Prüfe, ob die URL auf einen Hermes-Web-UI-Server verweist."
+            "value" : "Der Server-Endpunkt wurde nicht gefunden. Prüfe, ob die URL auf deinen konfigurierten Server verweist."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "No se encontró el punto de acceso del servidor. Verifica que la URL apunte a un servidor Hermes Web UI."
+            "value" : "No se encontró el punto de acceso del servidor. Verifica que la URL apunte a tu servidor configurado."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Le point d'accès du serveur est introuvable. Vérifiez que l'URL pointe vers un serveur Hermes Web UI."
+            "value" : "Le point d'accès du serveur est introuvable. Vérifiez que l'URL pointe vers votre serveur configuré."
           }
         },
         "he" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "נקודת הקצה של השרת לא נמצאה. ודא שכתובת ה-URL מצביעה אל שרת Hermes Web UI."
+            "value" : "נקודת הקצה של השרת לא נמצאה. ודא שכתובת ה-URL מצביעה אל השרת שהגדרת."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "L'endpoint del server non è stato trovato. Verifica che l'URL punti a un server Hermes Web UI."
+            "value" : "L'endpoint del server non è stato trovato. Verifica che l'URL punti al server che hai configurato."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "サーバのエンドポイントが見つかりませんでした。URLがHermes Web UIサーバを指していることを確認してください。"
+            "value" : "サーバのエンドポイントが見つかりませんでした。URLが設定済みのサーバを指していることを確認してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "서버 엔드포인트를 찾을 수 없어요. URL이 Hermes Web UI 서버를 가리키는지 확인하세요."
+            "value" : "서버 엔드포인트를 찾을 수 없어요. URL이 설정한 서버를 가리키는지 확인하세요."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Het serverendpoint is niet gevonden. Controleer of de URL naar een Hermes Web UI-server verwijst."
+            "value" : "Het serverendpoint is niet gevonden. Controleer of de URL naar je geconfigureerde server verwijst."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Nie znaleziono punktu końcowego serwera. Sprawdź, czy adres URL wskazuje na serwer Hermes Web UI."
+            "value" : "Nie znaleziono punktu końcowego serwera. Sprawdź, czy adres URL wskazuje na skonfigurowany serwer."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "O endpoint do servidor não foi encontrado. Verifique se o URL aponta para um servidor Hermes Web UI."
+            "value" : "O endpoint do servidor não foi encontrado. Verifique se o URL aponta para o seu servidor configurado."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Конечная точка сервера не найдена. Убедитесь, что URL-адрес указывает на сервер Hermes Web UI."
+            "value" : "Конечная точка сервера не найдена. Убедитесь, что URL-адрес указывает на ваш настроенный сервер."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Sunucu uç noktası bulunamadı. URL'nin bir Hermes Web UI sunucusuna işaret ettiğini kontrol edin."
+            "value" : "Sunucu uç noktası bulunamadı. URL'nin yapılandırdığınız sunucuya işaret ettiğini kontrol edin."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "سرور اینڈ پوائنٹ نہیں ملا۔ یقینی بنائیں کہ URL کسی Hermes Web UI سرور کی طرف اشارہ کرتا ہے۔"
+            "value" : "سرور اینڈ پوائنٹ نہیں ملا۔ یقینی بنائیں کہ URL آپ کے کنفیگر کردہ سرور کی طرف اشارہ کرتا ہے۔"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "找不到伺服器端點。請檢查 URL 是否指向 Hermes Web UI 伺服器。"
+            "value" : "找不到伺服器端點。請檢查 URL 是否指向你已設定的伺服器。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "未找到服务器端点。请检查 URL 是否指向 Hermes Web UI 服务器。"
+            "value" : "未找到服务器端点。请检查 URL 是否指向你配置的服务器。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "找不到伺服器端點。請檢查 URL 是否指向 Hermes Web UI 伺服器。"
+            "value" : "找不到伺服器端點。請檢查 URL 是否指向你設定的伺服器。"
           }
         }
       }
@@ -147263,108 +147263,108 @@
         }
       }
     },
-    "The server response could not be read. Check that the URL points to a Hermes Web UI server." : {
+    "The server response could not be read. Check that the URL points to your configured server." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "تعذّرت قراءة استجابة الخادم. تأكد من أن عنوان URL يشير إلى خادم Hermes Web UI."
+            "value" : "تعذّرت قراءة استجابة الخادم. تأكد من أن عنوان URL يشير إلى الخادم الذي أعددته."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Die Antwort des Servers konnte nicht gelesen werden. Überprüfe, ob die URL auf einen Hermes Web UI-Server zeigt."
+            "value" : "Die Antwort des Servers konnte nicht gelesen werden. Prüfe, ob die URL auf deinen konfigurierten Server verweist."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "No se pudo leer la respuesta del servidor. Verifica que la URL apunte a un servidor Hermes Web UI."
+            "value" : "No se pudo leer la respuesta del servidor. Verifica que la URL apunte a tu servidor configurado."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "La réponse du serveur n'a pas pu être lue. Vérifiez que l'URL pointe vers un serveur Hermes Web UI."
+            "value" : "La réponse du serveur n'a pas pu être lue. Vérifiez que l'URL pointe vers votre serveur configuré."
           }
         },
         "he" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "לא ניתן היה לקרוא את תגובת השרת. ודא שכתובת ה-URL מצביעה אל שרת Hermes Web UI."
+            "value" : "לא ניתן היה לקרוא את תגובת השרת. ודא שכתובת ה-URL מצביעה אל השרת שהגדרת."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Impossibile leggere la risposta del server. Verifica che l'URL punti a un server Hermes Web UI."
+            "value" : "Impossibile leggere la risposta del server. Verifica che l'URL punti al server che hai configurato."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "サーバの応答を読み取れませんでした。URLがHermes Web UIサーバを指していることを確認してください。"
+            "value" : "サーバの応答を読み取れませんでした。URLが設定済みのサーバを指していることを確認してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "서버 응답을 읽을 수 없었어요. URL이 Hermes Web UI 서버를 가리키는지 확인하세요."
+            "value" : "서버 응답을 읽을 수 없었어요. URL이 설정한 서버를 가리키는지 확인하세요."
           }
         },
         "nl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Het serverantwoord kon niet worden gelezen. Controleer of de URL naar een Hermes Web UI-server verwijst."
+            "value" : "Het serverantwoord kon niet worden gelezen. Controleer of de URL naar je geconfigureerde server verwijst."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Nie można odczytać odpowiedzi serwera. Sprawdź, czy adres URL wskazuje na serwer Hermes Web UI."
+            "value" : "Nie można odczytać odpowiedzi serwera. Sprawdź, czy adres URL wskazuje na skonfigurowany serwer."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Não foi possível ler a resposta do servidor. Verifique se o URL aponta para um servidor Hermes Web UI."
+            "value" : "Não foi possível ler a resposta do servidor. Verifique se o URL aponta para o seu servidor configurado."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Не удалось прочитать ответ сервера. Убедитесь, что URL-адрес указывает на сервер Hermes Web UI."
+            "value" : "Не удалось прочитать ответ сервера. Убедитесь, что URL-адрес указывает на ваш настроенный сервер."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "Sunucu yanıtı okunamadı. URL'nin bir Hermes Web UI sunucusuna işaret ettiğini kontrol edin."
+            "value" : "Sunucu yanıtı okunamadı. URL'nin yapılandırdığınız sunucuya işaret ettiğini kontrol edin."
           }
         },
         "ur" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "سرور کا جواب پڑھا نہیں جا سکا۔ یقینی بنائیں کہ URL کسی Hermes Web UI سرور کی طرف اشارہ کرتا ہے۔"
+            "value" : "سرور کا جواب پڑھا نہیں جا سکا۔ یقینی بنائیں کہ URL آپ کے کنفیگر کردہ سرور کی طرف اشارہ کرتا ہے۔"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "無法讀取伺服器回應。請檢查 URL 是否指向 Hermes Web UI 伺服器。"
+            "value" : "無法讀取伺服器回應。請檢查 URL 是否指向你已設定的伺服器。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "无法读取服务器响应。请检查 URL 是否指向 Hermes Web UI 服务器。"
+            "value" : "无法读取服务器响应。请检查 URL 是否指向你配置的服务器。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "無法讀取伺服器回應。請檢查 URL 是否指向 Hermes Web UI 伺服器。"
+            "value" : "無法讀取伺服器回應。請檢查 URL 是否指向你設定的伺服器。"
           }
         }
       }
