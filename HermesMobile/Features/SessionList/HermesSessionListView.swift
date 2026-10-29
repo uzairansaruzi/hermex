@@ -136,7 +136,7 @@ struct HermesSessionListView: View {
                     logoColor: HeaderLogoColor.color(for: headerLogoColorHex), avatar: home.avatar,
                     field: SessionsHeader.Field(isExpanded: isSearchExpanded, text: $navigation.searchText,
                                                 isFocused: $isSearchFieldFocused, close: closeSearch),
-                    isReconnecting: isReconnecting, reconnectNow: viewModel.reconnectNow,
+                    connection: viewModel.hermesConnection, reconnectNow: viewModel.reconnectNow,
                     openSearch: openSearch
                 )
                 .sessionsTopChromeListRow()
@@ -481,12 +481,9 @@ struct HermesSessionListView: View {
     /// The home's chrome, or the pushed list's own title and toolbar.
     private var chrome: some ViewModifier {
         HermesSessionListChrome(home: home, searchText: $navigation.searchText, isSearchPresented: $navigation.isSearchExpanded,
-                                isReconnecting: isReconnecting, reconnectNow: viewModel.reconnectNow,
+                                connection: viewModel.hermesConnection, reconnectNow: viewModel.reconnectNow,
                                 profileMenu: { profileMenu }, filter: { profileFilter }, newSession: { newSessionButton })
     }
-
-    /// The status line's reconnect (#1374), which the offline cache's banner already explains.
-    private var isReconnecting: Bool { viewModel.isHermesReconnecting && !viewModel.showsOfflineCache }
 
     private func openSearch() {
         withAnimation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion)) { isSearchExpanded = true }
@@ -993,18 +990,18 @@ private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSessi
     let home: HermesHome?
     @Binding var searchText: String
     @Binding var isSearchPresented: Bool
-    let isReconnecting: Bool
+    let connection: HomeConnectionStatus.Facts
     let reconnectNow: () -> Void
     let profileMenu: ProfileMenu
     let filter: Filter
     let newSession: NewSession
 
     init(home: HermesHome?, searchText: Binding<String>, isSearchPresented: Binding<Bool>,
-         isReconnecting: Bool, reconnectNow: @escaping () -> Void,
+         connection: HomeConnectionStatus.Facts, reconnectNow: @escaping () -> Void,
          @ViewBuilder profileMenu: () -> ProfileMenu, @ViewBuilder filter: () -> Filter,
          @ViewBuilder newSession: () -> NewSession) {
         self.home = home; _searchText = searchText; _isSearchPresented = isSearchPresented
-        self.isReconnecting = isReconnecting; self.reconnectNow = reconnectNow
+        self.connection = connection; self.reconnectNow = reconnectNow
         self.profileMenu = profileMenu(); self.filter = filter(); self.newSession = newSession()
     }
 
@@ -1021,7 +1018,7 @@ private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSessi
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .principal) {
-                        SessionsToolbarTitle(isReconnecting: isReconnecting, reconnectNow: reconnectNow)
+                        SessionsToolbarTitle(connection: connection, reconnectNow: reconnectNow)
                     }
                     ToolbarItem(placement: .topBarTrailing) { profileMenu }
                     ToolbarItem(placement: .topBarTrailing) { newSession }
@@ -1032,7 +1029,7 @@ private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSessi
 
 /// The pushed Sessions list's title, with the home's reconnect line under it (#1374).
 private struct SessionsToolbarTitle: View {
-    let isReconnecting: Bool
+    let connection: HomeConnectionStatus.Facts
     let reconnectNow: () -> Void
     @State private var connectionStatus = DelayedStatusDriver<HomeConnectionStatus>()
 
@@ -1041,7 +1038,7 @@ private struct SessionsToolbarTitle: View {
             Text("Sessions").font(.headline).accessibilityAddTraits(.isHeader)
             HomeConnectionStatusLine(driver: connectionStatus, reconnectNow: reconnectNow)
         }
-        .drivesHomeConnectionStatus(connectionStatus, isReconnecting: isReconnecting)
+        .drivesHomeConnectionStatus(connectionStatus, connection: connection)
     }
 }
 

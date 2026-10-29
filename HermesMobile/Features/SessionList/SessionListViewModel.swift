@@ -111,6 +111,18 @@ final class SessionListViewModel {
     private(set) var searchErrorMessage: String?
     private(set) var isSearchingRemoteSessions = false
     private(set) var sessionLoadError: Error?
+    /// The list's error while rows stay on screen: only a refusal the user has to act on (#1374).
+    /// A retryable failure retries behind the rows instead.
+    var hermesRefusalOverRows: String? {
+        guard !sessions.isEmpty, let sessionLoadError, !BotConnectionAdvice.isRetryable(sessionLoadError) else { return nil }
+        return errorMessage
+    }
+    /// What the home's status line speaks for (#1374): rows the host sent, which no cached copy
+    /// or refusal already explains, and whether the socket is coming back.
+    var hermesConnection: HomeConnectionStatus.Facts {
+        HomeConnectionStatus.Facts(keepsRows: !sessions.isEmpty && !isViewingCachedData && hermesRefusalOverRows == nil,
+                                   isReconnecting: isHermesReconnecting)
+    }
     private(set) var lastError: Error?
     private(set) var activeProfileName: String?
     private(set) var activeProfileDisplayName: String?
@@ -2014,6 +2026,8 @@ final class SessionListViewModel {
                     return
                 }
             }
+            // A read on a socket that just came back recovers as a lost socket does (#1374).
+            if isHermesReconnecting { return dropHermes(error) }
             if showCachedHermesSessions(after: error) { return }
             showHermesFailure(error)
         }
@@ -2230,7 +2244,13 @@ final class SessionListViewModel {
 
     /// The device's network path changed (#1372): a reconnect waiting on its backoff runs now if
     /// the network is back, or holds until it is. A list a chat covers stays down.
-    func networkPathDidChange() { hermesReconnect?.networkPathDidChange() }
+    /// Offline, the live states are only the last known ones, whatever the socket says (#1374).
+    func networkPathDidChange() {
+        if hermes?.isNetworkAvailable() == false, !attentionStatesBySessionID.isEmpty {
+            setHermesStates(attentionStatesBySessionID, stale: true)
+        }
+        hermesReconnect?.networkPathDidChange()
+    }
 
     /// The user tapped "Reconnecting…" (#1374): the waiting reconnect runs now, past its backoff,
     /// the way a network return runs it. Offline, or with no reconnect waiting, nothing happens.

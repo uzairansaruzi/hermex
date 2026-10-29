@@ -475,6 +475,48 @@ import Observation
         XCTAssertEqual(list.attentionStatesBySessionID, [:], "a refusal leaves nothing to reconnect to")
     }
 
+    /// A read that fails on the socket that just came back recovers as a lost socket does
+    /// (#1374): a retryable failure waits on another reconnect, which a tap runs; a refusal
+    /// ends the reconnect, clears the states and shows over the rows.
+    func testAFailedReadAfterAReconnectRecoversAsALostSocket() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
+        wire.active = [live("a", "working")]
+        let list = makeList(wire)
+        await list.openHermes()
+        await waitUntil("states read") { !list.attentionStatesBySessionID.isEmpty }
+
+        wire.onDisconnect?(BotFailure.transport)
+        wire.pageFailure = .rejected(503)
+        list.reconnectNow()
+        await waitUntil("the read failed") { wire.connects == 2 && wire.pageFailure == nil }
+        XCTAssertTrue(list.isHermesReconnecting)
+
+        wire.pageFailure = .rejected(403)
+        list.reconnectNow()
+        await waitUntil("reconnected and refused") { wire.connects == 3 && !list.isHermesReconnecting }
+        XCTAssertEqual(list.attentionStatesBySessionID, [:])
+        XCTAssertNotNil(list.hermesRefusalOverRows, "the refusal shows over the rows")
+    }
+
+    /// An offline path makes the states the last known ones, and the home says Offline, before
+    /// the socket notices (#1374).
+    func testAnOfflinePathMarksTheStatesStaleBeforeTheSocketDrops() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
+        wire.active = [live("a", "working")]
+        var online = true
+        let list = makeList(wire, isNetworkAvailable: { online })
+        await list.openHermes()
+        await waitUntil("states read") { !list.attentionStatesBySessionID.isEmpty }
+
+        online = false
+        list.networkPathDidChange()
+        XCTAssertEqual(list.attentionStatesBySessionID, ["a": .working])
+        XCTAssertTrue(list.attentionStatesAreStale)
+        XCTAssertEqual(HomeConnectionStatus(list.hermesConnection, isOnline: false), .offline)
+    }
+
     /// A lost list's reconnect holds while offline; the network's return runs it at once, not on
     /// its backoff, unless a chat now covers the list (#1372).
     func testALostListReconnectsAtOnceWhenTheNetworkReturns() async {

@@ -449,13 +449,15 @@ backgrounding or covering the screen cancels a waiting reconnect.
 While the inbox or the session list reconnects with rows on screen, it keeps two facts
 apart (#1374). `isReconnecting` (`isHermesReconnecting`) starts at a retryable drop and
 ends only when a roster or list read on the new socket succeeds, or at a refusal, a close
-or another connection or Profile. The rows' live states stay as the last known ones
-(`liveStatusesAreStale`, `attentionStatesAreStale`) through the drop and through a failed
+or another connection or Profile; a failed read on the new socket counts as another drop.
+The rows' live states stay as the last known ones (`liveStatusesAreStale`,
+`attentionStatesAreStale`) through the drop, an offline device path and a failed
 `session.active_list`, until a current status reply replaces them; rows can land first.
 A -32601 status reply, a refusal or a close clears them instead. The home's header, and
 the pushed list's title, say "Reconnecting…" after 800 ms (a tap runs the waiting
-reconnect now) or, at once while the device is offline, "Offline · showing last known
-status"; the offline cache's banner suppresses the line.
+reconnect now) or, at once whenever the device is offline, "Offline · showing last known
+status". The line stays away when the offline cache's banner or a refusal shown over the
+rows already explains them.
 
 ## Connection status
 

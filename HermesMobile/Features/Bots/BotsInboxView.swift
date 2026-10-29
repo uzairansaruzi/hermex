@@ -241,7 +241,7 @@ import SwiftUI
         if let home {
             SessionsHeader(logoColor: HeaderLogoColor.color(for: headerLogoColorHex), avatar: home.avatar,
                            searchLabel: "Search bots and messages", isSearchDisabled: inbox.connection == nil,
-                           isReconnecting: inbox.isReconnecting, reconnectNow: inbox.reconnectNow,
+                           connection: inbox.homeConnection, reconnectNow: inbox.reconnectNow,
                            openSearch: { showingSearch = true })
                 .sessionsTopChromeListRow()
         }

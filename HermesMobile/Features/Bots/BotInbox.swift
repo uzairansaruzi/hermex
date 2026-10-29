@@ -204,10 +204,17 @@ import UIKit
     /// socket succeeds (#1374). A refusal the user has to act on, a closed inbox or another
     /// connection ends it instead.
     private(set) var isReconnecting = false
+    /// What the home's status line speaks for (#1374): a roster that no message already
+    /// explains, and whether the socket is coming back.
+    var homeConnection: HomeConnectionStatus.Facts {
+        HomeConnectionStatus.Facts(keepsRows: !profiles.isEmpty && errorMessage == nil && routeAdvice == nil,
+                                   isReconnecting: isReconnecting)
+    }
 
     private var wire: (any BotTransport)?
     /// The quiet reconnect after a lost socket, on backoff while online and held while offline.
     private let reconnect: BotReconnectSchedule
+    private let isNetworkAvailable: @MainActor () -> Bool
     /// Bumped by every `teardown()`, which each `open()` starts with, so an open that
     /// awaited the roster cache meanwhile stops before painting or connecting.
     private var openSerial = 0
@@ -263,6 +270,7 @@ import UIKit
         self.sectionOrderStore = sectionOrderStore
         self.avatarStore = avatarStore ?? .shared; self.reloadSpacing = reloadSpacing
         reconnect = BotReconnectSchedule(delays: reconnectDelays, isNetworkAvailable: isNetworkAvailable)
+        self.isNetworkAvailable = isNetworkAvailable
         self.historyCache = historyCache; self.rosterCache = rosterCache; self.profileNames = profileNames
         self.statusPollInterval = statusPollInterval
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }
@@ -467,7 +475,11 @@ import UIKit
 
     /// The device's network path changed (#1372): a quiet reconnect waiting on its backoff runs
     /// now if the network is back, or holds until it is. `BotsInboxView` calls it while on screen.
-    func networkPathDidChange() { reconnect.networkPathDidChange() }
+    /// Offline, the statuses are only the last known ones, whatever the socket says (#1374).
+    func networkPathDidChange() {
+        if !isNetworkAvailable(), !liveStatuses.isEmpty { setLiveStatuses(liveStatuses, stale: true) }
+        reconnect.networkPathDidChange()
+    }
 
     /// The user tapped "Reconnecting…" (#1374): the waiting reconnect runs now, past its backoff,
     /// the way a network return runs it. Offline, or with no reconnect waiting, nothing happens.

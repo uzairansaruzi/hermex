@@ -1097,8 +1097,8 @@ import SwiftUI
 
     /// A lost socket keeps the last known statuses, marked stale, while the inbox reconnects
     /// (#1374). A tap reconnects past the backoff; the roster settles the reconnect, and only
-    /// the host's next status reply makes them current. A refusal the user has to act on
-    /// clears them, and another connection's never show.
+    /// the host's next status reply makes them current. Another connection's never show, and a
+    /// refusal the user has to act on clears them.
     func testALostSocketKeepsTheLastKnownStatusesUntilTheHostAnswersAgain() async throws {
         let store = try connectedStore()
         let first = BotInboxFixtureWire(roster: [row("triage")])
@@ -1107,6 +1107,7 @@ import SwiftUI
         second.active = [live("triage-tip", "working")]
         second.holdsActive = true
         let third = BotInboxFixtureWire(roster: [row("triage")])
+        third.active = [live("triage-tip", "waiting")]
         third.holdsConnect = true
         let inbox = try makeInbox(wires: [first, second, third], store: store, reconnectDelays: [.seconds(3600)])
         await inbox.open()
@@ -1124,9 +1125,6 @@ import SwiftUI
         await settle(inbox) { !$0.liveStatusesAreStale }
         XCTAssertEqual(inbox.liveStatuses, ["triage": .working])
 
-        second.onDisconnect?(BotFailure.upgradeRefused(403))
-        XCTAssertEqual(inbox.liveStatuses, [:], "a refusal leaves nothing to reconnect to")
-
         try store.save(BotConnection(id: UUID(), name: "Other", address: URL(string: "https://other.example")!,
                                      username: "u", password: "p", hermesVersion: nil), server: server)
         let reopened = Task { await inbox.open() }
@@ -1134,7 +1132,28 @@ import SwiftUI
         XCTAssertEqual(inbox.liveStatuses, [:], "another connection's statuses never show")
         third.release()
         await reopened.value
+        await settle(inbox) { !$0.liveStatuses.isEmpty }
+        third.onDisconnect?(BotFailure.upgradeRefused(403))
+        XCTAssertEqual(inbox.liveStatuses, [:], "a refusal leaves nothing to reconnect to")
         inbox.close()
+    }
+
+    /// An offline path makes the statuses the last known ones, and the home says Offline, before
+    /// the socket notices (#1374).
+    func testAnOfflinePathMarksTheStatusesStaleBeforeTheSocketDrops() async throws {
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.active = [live("triage-tip", "working")]
+        var online = true
+        let inbox = try makeInbox(wires: [wire], isNetworkAvailable: { online })
+        await inbox.open()
+        defer { inbox.close() }
+        await settle(inbox) { !$0.liveStatuses.isEmpty }
+
+        online = false
+        inbox.networkPathDidChange()
+        XCTAssertEqual(inbox.liveStatuses, ["triage": .working])
+        XCTAssertTrue(inbox.liveStatusesAreStale)
+        XCTAssertEqual(HomeConnectionStatus(inbox.homeConnection, isOnline: false), .offline)
     }
 
     func testEachGroupSortsWaitingThenWorkingThenUnreadThenNewest() async throws {
