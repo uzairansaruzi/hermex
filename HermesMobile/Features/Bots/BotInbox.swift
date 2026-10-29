@@ -352,7 +352,7 @@ import UIKit
             }
             if connection != saved { needsSignIn = false }
             connection = saved
-            guard let saved else { link = .idle; return }
+            guard var saved else { link = .idle; return }
             if seen.isEmpty { seen = unread.load(connectionID: saved.id) }
             if roomFlags == BotRoomOrganizeStore.Flags() { roomFlags = roomStore.load(connectionID: saved.id) }
             if sectionOrder.isEmpty { sectionOrder = sectionOrderStore.load(server: server, connectionID: saved.id) }
@@ -364,9 +364,15 @@ import UIKit
                 // claims nothing live and allows no server edit; the first read replaces it.
                 // The connection form may save or remove the record during the load without
                 // closing this inbox, so the record is re-read before painting or connecting.
+                // Another client of a browser sign-in may rotate its refresh token meanwhile
+                // (`saveRotatedRefreshToken`); that is still this connection, opened on the new token.
                 let serial = openSerial
                 let cached = await rosterCache.load(.init(server: server, connectionID: saved.id))
-                guard serial == openSerial, !Task.isCancelled, (try? store.load(server: server)) == saved else { return }
+                guard serial == openSerial, !Task.isCancelled, let fresh = try? store.load(server: server) else { return }
+                var unrotated = fresh
+                if let token = saved.oauth?.refreshToken { unrotated.oauth?.refreshToken = token }
+                guard unrotated == saved else { return }
+                saved = fresh; connection = fresh
                 if let cached, profiles.isEmpty {
                     profiles = Self.roster(cached)
                     avatars = avatarStore.images(connectionID: saved.id)

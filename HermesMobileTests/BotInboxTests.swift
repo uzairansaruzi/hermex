@@ -1317,6 +1317,35 @@ import SwiftUI
         XCTAssertEqual(kept?.count, 1, "another server's roster stays")
     }
 
+    /// Another client of the same browser sign-in rotating its refresh token during the load
+    /// is still this connection: the cached roster paints and the inbox connects on the new token.
+    func testARefreshTokenRotationDuringTheCachedLoadKeepsOpening() async throws {
+        let store = BotConnectionStore(keychain: InMemoryKeychainStore())
+        var signedIn = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://mac.example")!,
+                                     username: "u1", password: "", hermesVersion: nil)
+        signedIn.oauth = HermesOAuth(provider: "nous", userID: "u1", refreshToken: "refresh-1")
+        try store.save(signedIn, server: server)
+        let cache = makeRosterCache().cache
+        await cache.save([row("triage")], scope: .init(server: server, connectionID: signedIn.id), readAt: .now)
+        let wire = BotInboxFixtureWire(roster: [row("triage")])
+        wire.holdsConnect = true
+        var openedWith: String?
+        let inbox = try makeInbox(wires: [], store: store, rosterCache: cache) {
+            openedWith = $0.oauth?.refreshToken
+            return wire
+        }
+
+        let opening = Task { await inbox.open() }
+        await Task.yield()
+        try store.saveRotatedRefreshToken("refresh-2", replacing: "refresh-1", connection: signedIn.id, server: server)
+        await settle(inbox) { $0.link == .connecting }
+        XCTAssertEqual(inbox.profiles.map(\.id), ["triage"])
+        XCTAssertEqual(openedWith, "refresh-2")
+        wire.release()
+        await opening.value
+        XCTAssertEqual(inbox.link, .live)
+    }
+
     /// An unreadable copy is a miss: the inbox shows its skeleton and connects as usual.
     func testAnUnreadableCachedRosterFallsBackToTheConnection() async throws {
         let store = try connectedStore()
