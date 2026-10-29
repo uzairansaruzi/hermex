@@ -452,8 +452,9 @@ import XCTest
         XCTAssertNil(editor.keyboardCommands.send)
     }
 
-    /// Esc (#1380) closes the `/` panel first and keeps it closed, then stops the run
-    /// through the composer's Stop; the draft stays. ⌘-hold titles name the real sends.
+    /// Esc (#1380) closes the `/` panel first and keeps it closed only until the draft changes,
+    /// then stops the run through the composer's Stop; the draft stays. ⌘-hold titles name
+    /// the real sends.
     func testEscapeClosesTheSlashPanelBeforeStoppingTheRun() async throws {
         let focus = ComposerFixtureFocus()
         let probe = SessionFixtureProbe()
@@ -471,6 +472,14 @@ import XCTest
         try pressEscape(editor)
         await settle(window)
         XCTAssertEqual(probe.cancels, 0, "Esc must close the open panel before it stops the run")
+
+        editor.deleteBackward()
+        await settle(window)
+        editor.insertText("/")
+        await settle(window)
+        try pressEscape(editor)
+        await settle(window)
+        XCTAssertEqual(probe.cancels, 0, "Retyping the trigger must reopen the panel Esc closed")
 
         try pressEscape(editor)
         await settle(window)

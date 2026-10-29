@@ -318,7 +318,8 @@ struct MessageComposerView: View {
     /// it was left last week.
     @State private var composerSelection = ComposerSelection()
     /// Where Esc closed the `/` or `@` panel (#1380). It stays closed until the draft or
-    /// the caret moves, so the trigger it closed does not reopen it at once.
+    /// the caret moves, so the trigger it closed does not reopen it at once; the first move
+    /// clears it, so coming back to the same spot opens the panel again.
     @State private var dismissedSuggestionsAnchor: SuggestionAnchor?
     @State private var noticeMessage: String?
     @State private var showsAllModelsSheet = false
@@ -730,6 +731,9 @@ struct MessageComposerView: View {
             guard choices.isEmpty else { return }
             cancelScheduledSendChoices()
             closeSendChoices()
+        }
+        .onChange(of: areSuggestionsDismissed) { _, dismissed in
+            if !dismissed { dismissedSuggestionsAnchor = nil }
         }
         .onChange(of: isPressingSend) { _, isPressing in
             if isPressing {
