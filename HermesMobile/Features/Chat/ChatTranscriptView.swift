@@ -929,9 +929,10 @@ private struct ChatQueuedPromptRow: View {
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
+            // VoiceOver reads the bubble's own labels (text, chips, attachment names), then "Queued".
             MessageBubbleView(message: message, transcriptMediaCacheNamespace: "", isQueued: true)
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel(String(localized: "Queued message, \(message.content ?? "")"))
+                .accessibilityValue(Text("Queued"))
             ChatMessageMetaRow(isUserMessage: true, timeText: String(localized: "Queued"),
                                onCopy: { onCopy(message.content ?? "") })
         }
