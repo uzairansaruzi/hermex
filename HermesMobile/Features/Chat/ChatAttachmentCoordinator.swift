@@ -53,6 +53,8 @@ final class ChatAttachmentCoordinator {
     /// Names held by pasted text still staging, so a paste that starts before the
     /// last one lands takes the next name (#1381).
     private var stagingPasteNames: Set<String> = []
+    /// Long pastes still staging, so `cancelPastedTextStaging()` can stop them.
+    private var pasteTasks: [UUID: Task<PendingAttachment?, Never>] = [:]
     /// A Hermes session (#1012): staging keeps only the local copy, under Bot Chat's
     /// limits and image conversion, and Send or Queue uploads it
     /// (`HermesChatTurnCoordinator`). A webui session uploads each file as it is staged.
@@ -133,20 +135,34 @@ final class ChatAttachmentCoordinator {
         return attachment
     }
 
-    /// Stages a long paste as a text file under the next free `pasted-text` name
-    /// (#1381). The name is held before the first await, against the strip and every
-    /// paste still staging, and counts as an upload while the text is encoded, so
-    /// Send waits for it.
+    /// Starts staging a long paste as a text file under the next free `pasted-text`
+    /// name (#1381). The name is held before the task starts, against the strip and
+    /// every paste still staging, and the paste counts as an upload while the text is
+    /// encoded, so Send waits for it. The chat stops it with `cancelPastedTextStaging()`
+    /// as it goes away.
     @discardableResult
-    func stagePastedText(_ text: String) async -> PendingAttachment? {
+    func stagePastedText(_ text: String) -> Task<PendingAttachment?, Never> {
         let filename = ComposerLargePaste.filename(avoiding: stagingPasteNames.union(pendingAttachments.map(\.name)))
         stagingPasteNames.insert(filename)
-        defer { stagingPasteNames.remove(filename) }
-
         activeUploadCount += 1
-        let data = await Task.detached { Data(text.utf8) }.value
-        activeUploadCount = max(activeUploadCount - 1, 0)
-        return await uploadAttachment(data: data, filename: filename)
+        let id = UUID()
+        let task = Task { () -> PendingAttachment? in
+            defer {
+                stagingPasteNames.remove(filename)
+                pasteTasks[id] = nil
+            }
+            let data = await Task.detached { Data(text.utf8) }.value
+            activeUploadCount = max(activeUploadCount - 1, 0)
+            guard !Task.isCancelled else { return nil }
+            return await uploadAttachment(data: data, filename: filename)
+        }
+        pasteTasks[id] = task
+        return task
+    }
+
+    /// Stops every long paste still staging, so none lands after its chat is gone.
+    func cancelPastedTextStaging() {
+        pasteTasks.values.forEach { $0.cancel() }
     }
 
     /// Re-uploads a restored draft attachment from its durable local copy,
@@ -216,6 +232,11 @@ final class ChatAttachmentCoordinator {
         defer { stagingBytes -= prepared.data.count }
         guard let file = await saveDraftCopy(prepared.data, filename: prepared.name, attachmentID: stagingID,
                                              maximumBytes: BotAttachmentUpload.maximumFileBytes) else { return nil }
+        // A cancelled import (a paste whose chat went away) keeps no copy and no tile.
+        guard !Task.isCancelled else {
+            await deleteDraftCopy(named: file, attachmentID: stagingID)
+            return nil
+        }
         let attachment = PendingAttachment(
             id: stagingID, name: prepared.name, path: "", mime: prepared.mime, size: prepared.data.count,
             isImage: prepared.image, thumbnailData: prepared.image ? await Self.thumbnail(of: prepared.data) : nil,

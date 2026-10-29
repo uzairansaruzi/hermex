@@ -685,7 +685,7 @@ struct ChatView: View {
             onDraftEdit: persistDraftEdit,
             recallLastSentText: { viewModel.lastSentText },
             onPasteLargeText: isHermesSession ? { text in
-                Task { await viewModel.stagePastedText(text) }
+                viewModel.stagePastedText(text)
             } : nil,
             onOpenFileReference: { path in
                 openedFileReference = FileReference(path: path, line: nil, column: nil)
@@ -1040,6 +1040,7 @@ struct ChatView: View {
                 appearanceTask = nil
                 activeStreamStatusRefreshTask?.cancel()
                 activeStreamStatusRefreshTask = nil
+                viewModel.cancelPastedTextStaging()
                 viewModel.stopListening()
                 viewModel.suspendStreamForNavigation()
                 viewModel.cleanupPollingTasks()

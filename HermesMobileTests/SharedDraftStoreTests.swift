@@ -1016,8 +1016,8 @@ final class SharedDraftStoreTests: XCTestCase {
     }
 }
 
-/// Draft copies whose next write waits for `resume`, so a test can cut a share's move short.
-private actor PausingCopies: ChatDraftAttachmentStoring {
+/// Draft copies whose next write waits for `resume`, so a test can cut a share or paste short.
+actor PausingCopies: ChatDraftAttachmentStoring {
     private let copies = BotAttachmentCopies()
     private var saved: (() -> Void)?
     private var paused: CheckedContinuation<Void, Never>?

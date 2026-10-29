@@ -1729,8 +1729,13 @@ final class ChatViewModel {
 
     /// Stages a long paste as a `pasted-text` file (#1381), with the editor left alone.
     @discardableResult
-    func stagePastedText(_ text: String) async -> PendingAttachment? {
-        await attachmentCoordinator.stagePastedText(text)
+    func stagePastedText(_ text: String) -> Task<PendingAttachment?, Never> {
+        attachmentCoordinator.stagePastedText(text)
+    }
+
+    /// Stops long pastes still staging; `ChatView` calls it as it disappears.
+    func cancelPastedTextStaging() {
+        attachmentCoordinator.cancelPastedTextStaging()
     }
 
     /// Re-uploads a restored draft attachment from its durable local copy,
