@@ -146,14 +146,22 @@ final class ChatAttachmentCoordinator {
         stagingPasteNames.insert(filename)
         activeUploadCount += 1
         let id = UUID()
+        let limit = uploadsOnSend ? BotAttachmentUpload.maximumFileBytes : PendingAttachment.maximumUploadBytes
         let task = Task { () -> PendingAttachment? in
             defer {
                 stagingPasteNames.remove(filename)
                 pasteTasks[id] = nil
             }
-            let data = await Task.detached { Data(text.utf8) }.value
+            // Measured before encoding, so a paste over the file limit never copies its text.
+            let data = await Task.detached { text.utf8.count <= limit ? Data(text.utf8) : nil }.value
             activeUploadCount = max(activeUploadCount - 1, 0)
             guard !Task.isCancelled else { return nil }
+            guard let data else {
+                uploadAttachmentErrorMessage = uploadsOnSend
+                    ? BotAttachmentFailure.limit.localizedDescription
+                    : PendingAttachment.uploadTooLargeMessage(filename: filename)
+                return nil
+            }
             return await uploadAttachment(data: data, filename: filename)
         }
         pasteTasks[id] = task
