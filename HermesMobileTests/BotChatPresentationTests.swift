@@ -640,7 +640,7 @@ private struct SessionChatPresentationFixture: View {
             attachmentUploadCount: 0, attachmentUploadGeneration: 0, isSendingVoiceNote: false,
             autoStartsVoiceInput: false, apiClient: nil, sessionID: nil, searchFilePaths: nil, chipFilePaths: [],
             filePathSearch: paths, uploadAttachmentErrorMessage: nil, steerFailure: nil,
-            streamingSendBehavior: .steer, onSend: {}, onSendWithBehavior: { _ in },
+            streamingSendBehavior: .steer, onSend: { _ in },
             onSendVoiceNote: { _, _ in }, onCancel: {}, onSelectModel: { _ in },
             onModelPickerOpen: {}, onSelectReasoningEffort: { _ in }, onLoadWorkspaceSuggestions: { _ in },
             onWorkspaceRegistryChanged: {}, onLoadPersonalitySuggestions: {}, onLoadSkillSuggestions: {},

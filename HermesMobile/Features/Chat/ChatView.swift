@@ -589,10 +589,7 @@ struct ChatView: View {
                 }
             },
             streamingSendBehavior: StreamingSendBehavior.storedValue(streamingSendBehaviorRawValue),
-            onSend: {
-                Task { await sendDraftMessage() }
-            },
-            onSendWithBehavior: { behavior in
+            onSend: { behavior in
                 Task { await sendDraftMessage(behavior: behavior) }
             },
             onSendVoiceNote: { data, filename in
@@ -2579,9 +2576,10 @@ struct ChatView: View {
     }
 
     /// Sends the composer's draft. A send during a run uses `behavior`, or the
-    /// Send While Responding setting when it is nil: a long-press on Send picks
-    /// one for this message, and Retry after a refused steer forces `.steer`.
-    private func sendDraftMessage(behavior: StreamingSendBehavior? = nil) async {
+    /// Send While Responding setting when it is nil (a run that started after the
+    /// composer last drew Send): Send passes the behavior it shows, a long-press
+    /// picks one for this message, and Retry after a refused steer forces `.steer`.
+    private func sendDraftMessage(behavior: StreamingSendBehavior?) async {
         viewModel.clearSteerFailure()
         let submittedContent = ComposerDraftContent(text: draftMessage, quotes: draftQuotes)
         let submittedDraft = submittedContent.text

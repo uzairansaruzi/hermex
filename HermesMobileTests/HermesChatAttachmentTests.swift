@@ -221,6 +221,28 @@ import UIKit
         XCTAssertEqual(row.attachments?.map(\.name), ["notes.txt"])
     }
 
+    /// A files-only draft mid-run under a Stop and send default (#1367): Send's tap and
+    /// ⌘Return dispatch the behavior it shows, so the file goes out as a queued prompt and
+    /// the run is neither redirected nor stopped.
+    func testAFileOnlyDraftMidRunQueuesUnderAStopAndSendDefault() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "message.start"))
+        chat.host.always("file.attach", .init(result: .object([
+            "attached": .bool(true), "path": .string("/a/notes.txt"), "ref_text": .string("@file:/a/notes.txt")
+        ])))
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("queued")])))
+        await chat.model.uploadAttachment(data: Data("notes".utf8), filename: "notes.txt")
+        let button = ChatComposerSendButton(isWaitingForStream: true, hasText: false, hasQuotes: false,
+                                            defaultBehavior: .interrupt, stagedFilesDropSteer: true)
+
+        let result = await chat.model.submitStreamingMessage("", behavior: try XCTUnwrap(button.runningBehavior))
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(chat.writes("prompt.submit").map { $0["text"] }, [.string("@file:/a/notes.txt")])
+        XCTAssertEqual(chat.writes("session.redirect"), [])
+        XCTAssertEqual(chat.writes("session.interrupt"), [])
+        XCTAssertEqual(chat.model.pendingAttachments, [])
+    }
+
     // MARK: Steer and limits
 
     /// Steer and Stop and send never carry files. With files staged on a Hermes session,

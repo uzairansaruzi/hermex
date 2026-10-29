@@ -37,6 +37,22 @@ final class ChatComposerSendGateTests: XCTestCase {
         ))
     }
 
+    /// Staged files are content (#1367): a Hermes draft holding only files mid-run
+    /// queues them under every Send While Responding default instead of offering
+    /// Stop, with no other choice to hold for. A webui session keeps Stop.
+    func testHermesFileOnlyDraftMidRunQueuesInsteadOfStop() {
+        for behavior in StreamingSendBehavior.allCases {
+            let button = ChatComposerSendButton(isWaitingForStream: true, hasText: false, hasQuotes: false,
+                                                defaultBehavior: behavior, stagedFilesDropSteer: true)
+            XCTAssertFalse(button.showsStop, "\(behavior)")
+            XCTAssertEqual(button.runningBehavior, .queue, "\(behavior)")
+            XCTAssertEqual(button.choices, [], "\(behavior)")
+        }
+        let webui = ChatComposerSendButton(isWaitingForStream: true, hasText: false, hasQuotes: false,
+                                           defaultBehavior: .queue)
+        XCTAssertTrue(webui.showsStop)
+    }
+
     /// A quick tap acts; the release of a hold that opened the card does not,
     /// and only that one release is dropped.
     func testHoldReleaseIsDroppedAndQuickTapActs() {
@@ -73,10 +89,7 @@ final class ChatComposerSendGateTests: XCTestCase {
             hasText: false,
             hasQuotes: true,
             hasStagedAttachments: false,
-            isSending: false,
-            isCompressingSession: false,
-            isUploadingAttachment: false,
-            isUpdatingConfiguration: false
+            block: nil
         ))
     }
 
@@ -84,10 +97,7 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertFalse(ChatComposerSendGate.isDisabled(
             hasText: false,
             hasStagedAttachments: true,
-            isSending: false,
-            isCompressingSession: false,
-            isUploadingAttachment: false,
-            isUpdatingConfiguration: false
+            block: nil
         ))
     }
 
@@ -95,46 +105,29 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertTrue(ChatComposerSendGate.isDisabled(
             hasText: false,
             hasStagedAttachments: false,
-            isSending: false,
-            isCompressingSession: false,
-            isUploadingAttachment: false,
-            isUpdatingConfiguration: false
+            block: nil
         ))
     }
 
+    /// Each busy flag holds Send with content, and the block names what it waits
+    /// on for VoiceOver.
     func testBusyFlagsDisableEvenWithContent() {
-        XCTAssertTrue(ChatComposerSendGate.isDisabled(
-            hasText: true,
-            hasStagedAttachments: true,
-            isSending: true,
-            isCompressingSession: false,
-            isUploadingAttachment: false,
-            isUpdatingConfiguration: false
-        ))
-        XCTAssertTrue(ChatComposerSendGate.isDisabled(
-            hasText: true,
-            hasStagedAttachments: true,
-            isSending: false,
-            isCompressingSession: true,
-            isUploadingAttachment: false,
-            isUpdatingConfiguration: false
-        ))
-        XCTAssertTrue(ChatComposerSendGate.isDisabled(
-            hasText: true,
-            hasStagedAttachments: true,
-            isSending: false,
-            isCompressingSession: false,
-            isUploadingAttachment: true,
-            isUpdatingConfiguration: false
-        ))
-        XCTAssertTrue(ChatComposerSendGate.isDisabled(
-            hasText: true,
-            hasStagedAttachments: true,
-            isSending: false,
-            isCompressingSession: false,
-            isUploadingAttachment: false,
-            isUpdatingConfiguration: true
-        ))
+        let busy = [
+            ChatComposerSendBlock(isSending: true, isCompressingSession: false,
+                                  isUploadingAttachment: false, isUpdatingConfiguration: false),
+            ChatComposerSendBlock(isSending: false, isCompressingSession: true,
+                                  isUploadingAttachment: false, isUpdatingConfiguration: false),
+            ChatComposerSendBlock(isSending: false, isCompressingSession: false,
+                                  isUploadingAttachment: true, isUpdatingConfiguration: false),
+            ChatComposerSendBlock(isSending: false, isCompressingSession: false,
+                                  isUploadingAttachment: false, isUpdatingConfiguration: true)
+        ]
+        XCTAssertEqual(busy, [.sending, .compressingSession, .uploadingAttachment, .updatingConfiguration])
+        for block in busy {
+            XCTAssertTrue(ChatComposerSendGate.isDisabled(hasText: true, hasStagedAttachments: true, block: block))
+        }
+        XCTAssertNil(ChatComposerSendBlock(isSending: false, isCompressingSession: false,
+                                           isUploadingAttachment: false, isUpdatingConfiguration: false))
     }
 }
 

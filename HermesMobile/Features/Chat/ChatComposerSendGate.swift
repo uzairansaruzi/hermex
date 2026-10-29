@@ -3,7 +3,7 @@ import Foundation
 /// Decides whether the composer's Send/Stop action button is disabled.
 /// Send is allowed when the user typed something, added a quote, or staged at
 /// least one attachment. Attachment-only sends synthesize their message text in
-/// `PendingAttachment.chatMessageText`; the busy flags always disable.
+/// `PendingAttachment.chatMessageText`; a send block always disables.
 enum ChatComposerSendGate {
     static func showsStopButton(
         isWaitingForStream: Bool,
@@ -17,16 +17,43 @@ enum ChatComposerSendGate {
         hasText: Bool,
         hasQuotes: Bool = false,
         hasStagedAttachments: Bool,
-        isSending: Bool,
-        isCompressingSession: Bool,
-        isUploadingAttachment: Bool,
-        isUpdatingConfiguration: Bool
+        block: ChatComposerSendBlock?
     ) -> Bool {
-        guard !isSending, !isCompressingSession, !isUploadingAttachment, !isUpdatingConfiguration else {
-            return true
-        }
+        block != nil || (!hasText && !hasQuotes && !hasStagedAttachments)
+    }
+}
 
-        return !hasText && !hasQuotes && !hasStagedAttachments
+/// Work in progress that holds Send even with a draft to send. VoiceOver reads it
+/// as a dimmed Send's value, so the user knows what they are waiting for.
+enum ChatComposerSendBlock: Equatable {
+    case sending
+    case compressingSession
+    case uploadingAttachment
+    case updatingConfiguration
+
+    /// The first busy flag that holds Send, or nil when none does.
+    init?(isSending: Bool, isCompressingSession: Bool, isUploadingAttachment: Bool, isUpdatingConfiguration: Bool) {
+        if isSending {
+            self = .sending
+        } else if isCompressingSession {
+            self = .compressingSession
+        } else if isUploadingAttachment {
+            self = .uploadingAttachment
+        } else if isUpdatingConfiguration {
+            self = .updatingConfiguration
+        } else {
+            return nil
+        }
+    }
+
+    /// The composer status line's wording for the same work.
+    var accessibilityValue: String {
+        switch self {
+        case .sending: String(localized: "Sending…")
+        case .compressingSession: String(localized: "Compressing context...")
+        case .uploadingAttachment: String(localized: "Uploading attachment...")
+        case .updatingConfiguration: String(localized: "Updating composer settings...")
+        }
     }
 }
 
@@ -38,19 +65,24 @@ enum ChatComposerSendGate {
 struct ChatComposerSendButton: Equatable {
     let showsStop: Bool
     /// What a tap on Send does to the running response; nil while idle or
-    /// while the circle is Stop.
+    /// while the circle is Stop. The composer dispatches exactly this, so the
+    /// glyph never says one behavior while a tap does another.
     let runningBehavior: StreamingSendBehavior?
     /// A Hermes session with files staged (#1012): only a fresh turn takes them, so Steer
     /// drops out and a Steer default queues them. Stop and send stays, text-only, and
-    /// leaves them staged.
+    /// leaves them staged. Files alone are a draft too (#1367): mid-run they queue under
+    /// every default, with nothing else to choose.
     let stagedFilesDropSteer: Bool
+    private let queuesStagedFilesOnly: Bool
 
     init(isWaitingForStream: Bool, hasText: Bool, hasQuotes: Bool, defaultBehavior: StreamingSendBehavior,
          stagedFilesDropSteer: Bool = false) {
         showsStop = ChatComposerSendGate.showsStopButton(
             isWaitingForStream: isWaitingForStream, hasText: hasText, hasQuotes: hasQuotes
-        )
-        let behavior: StreamingSendBehavior = stagedFilesDropSteer && defaultBehavior == .steer ? .queue : defaultBehavior
+        ) && !stagedFilesDropSteer
+        queuesStagedFilesOnly = stagedFilesDropSteer && !hasText && !hasQuotes
+        let behavior: StreamingSendBehavior =
+            stagedFilesDropSteer && (queuesStagedFilesOnly || defaultBehavior == .steer) ? .queue : defaultBehavior
         runningBehavior = isWaitingForStream && !showsStop ? behavior : nil
         self.stagedFilesDropSteer = stagedFilesDropSteer
     }
@@ -70,7 +102,7 @@ struct ChatComposerSendButton: Equatable {
     /// The long-press choices, in the Bot card's order. On a webui session, staged
     /// files keep Steer: a steer carries them as an attached-files note (#856).
     var choices: [StreamingSendBehavior] {
-        guard runningBehavior != nil else { return [] }
+        guard runningBehavior != nil, !queuesStagedFilesOnly else { return [] }
         return stagedFilesDropSteer ? [.queue, .interrupt] : [.steer, .queue, .interrupt]
     }
 }

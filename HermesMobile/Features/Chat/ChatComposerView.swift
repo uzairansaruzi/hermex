@@ -232,11 +232,10 @@ struct MessageComposerView: View {
     /// The Send While Responding default: what a tap on Send does mid-run, and
     /// the glyph and VoiceOver label that say so.
     let streamingSendBehavior: StreamingSendBehavior
-    /// Sends with the default; a mid-run send uses `streamingSendBehavior`.
-    let onSend: () -> Void
-    /// Sends this one message with a behavior picked from the send-choice card
-    /// or a VoiceOver action. The default does not change.
-    let onSendWithBehavior: (StreamingSendBehavior) -> Void
+    /// Sends the draft. Mid-run it carries the behavior Send shows (tap and
+    /// Command-Return) or one picked for this message from the send-choice card
+    /// or a VoiceOver action; the default does not change. Nil while idle.
+    let onSend: (StreamingSendBehavior?) -> Void
     let onSendVoiceNote: (Data, String) -> Void
     let onCancel: () -> Void
     let onSelectModel: (ModelCatalogOption) -> Void
@@ -1059,9 +1058,9 @@ struct MessageComposerView: View {
     }
 
     /// One trailing circle in both states. Stop while a response streams and the
-    /// draft is empty; Send as soon as there is text. Mid-run a tap sends with
-    /// the Send While Responding default, and a hold opens the send-choice card
-    /// for this one message (`ChatComposerSendButton`).
+    /// draft is empty; Send as soon as there is text (or, on Hermes, a staged
+    /// file). Mid-run a tap sends with the behavior its glyph shows, and a hold
+    /// opens the send-choice card for this one message (`ChatComposerSendButton`).
     private var actionButton: some View {
         Button(action: actionButtonPressed) {
             actionButtonLabel
@@ -1074,6 +1073,7 @@ struct MessageComposerView: View {
         .simultaneousGesture(sendHoldGesture)
         .disabled(isActionButtonDisabled)
         .accessibilityLabel(sendButton.accessibilityLabel)
+        .accessibilityValue(blockedSendReason ?? "")
         .accessibilityActions {
             // VoiceOver can't hold, so each choice is a named action.
             ForEach(sendChoices, id: \.self) { behavior in
@@ -1145,7 +1145,7 @@ struct MessageComposerView: View {
         if voiceInput.isListening {
             voiceInput.stopBeforeSubmittingDraft()
         }
-        onSendWithBehavior(behavior)
+        onSend(behavior)
     }
 
     /// Whether the draft holds anything that could be drawn as a skill chip.
@@ -1508,11 +1508,25 @@ struct MessageComposerView: View {
             hasText: !trimmedDraftMessage.isEmpty,
             hasQuotes: !quotes.isEmpty,
             hasStagedAttachments: !pendingAttachments.isEmpty,
+            block: sendBlock
+        )
+    }
+
+    private var sendBlock: ChatComposerSendBlock? {
+        ChatComposerSendBlock(
             isSending: isSending,
             isCompressingSession: isCompressingSession,
             isUploadingAttachment: isUploadingAttachment,
             isUpdatingConfiguration: isUpdatingConfiguration
         )
+    }
+
+    /// VoiceOver's value on a Send that has a draft but is held by work in
+    /// progress. Stop, a read-only chat and an empty draft explain themselves.
+    private var blockedSendReason: String? {
+        guard !isReadOnly, !showsStopButton,
+              !trimmedDraftMessage.isEmpty || !quotes.isEmpty || !pendingAttachments.isEmpty else { return nil }
+        return sendBlock?.accessibilityValue
     }
 
     /// A tap on the circle. The release of a hold that opened the send-choice
@@ -1522,7 +1536,7 @@ struct MessageComposerView: View {
         actionButtonTapped()
     }
 
-    /// Stop, or Send with the default. Command-Return comes straight here.
+    /// Stop, or Send with the behavior it shows. Command-Return comes straight here.
     private func actionButtonTapped() {
         if showsStopButton {
             onCancel()
@@ -1530,7 +1544,7 @@ struct MessageComposerView: View {
             if voiceInput.isListening {
                 voiceInput.stopBeforeSubmittingDraft()
             }
-            onSend()
+            onSend(sendButton.runningBehavior)
         }
     }
 
