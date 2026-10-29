@@ -4,6 +4,8 @@ import SwiftUI
 /// state, word-level highlights, and line selection that feeds the composer. Diffs
 /// load one file at a time (a few in flight) so the first file paints before the rest
 /// arrive; each file's rows build once, off the main thread, as its answer lands.
+/// Lockfiles, generated output, and huge changes start folded (`ReviewDiffDefaultCollapse`),
+/// except the file the user tapped or a single-file review.
 struct GitDiffView: View {
     let onAPIError: (Error) -> Void
     /// Receives the selected lines as Markdown. Nil hides "Add to prompt", for hosts
@@ -20,7 +22,8 @@ struct GitDiffView: View {
     @State private var loadGeneration = 0
     @State private var hasLoaded = false
     @State private var isRefreshing = false
-    @State private var collapsedFileIDs: Set<String> = []
+    @State private var collapsedFileIDs: Set<String>
+    @State private var defaultCollapse: ReviewDiffDefaultCollapse
     @State private var viewedFileIDs: Set<String> = []
     @State private var selection = ReviewDiffSelection()
     @State private var scrollTarget: ReviewDiffScrollTarget?
@@ -42,6 +45,9 @@ struct GitDiffView: View {
         self.onAPIError = onAPIError
         self.onAddToPrompt = onAddToPrompt
         _scrollTarget = State(initialValue: initialFile.map { ReviewDiffScrollTarget(fileID: $0.id, token: UUID()) })
+        let defaultCollapse = ReviewDiffDefaultCollapse(files: files, initialFile: initialFile)
+        _defaultCollapse = State(initialValue: defaultCollapse)
+        _collapsedFileIDs = State(initialValue: defaultCollapse.initiallyCollapsedFileIDs)
     }
 
     private var title: String {
@@ -117,6 +123,7 @@ struct GitDiffView: View {
     // MARK: - Interaction
 
     private func toggleFile(_ fileID: String) {
+        defaultCollapse.settle(fileID)
         if collapsedFileIDs.contains(fileID) {
             collapsedFileIDs.remove(fileID)
         } else {
@@ -127,6 +134,7 @@ struct GitDiffView: View {
 
     /// Marking a file viewed also collapses it; un-viewing leaves it collapsed.
     private func toggleViewed(_ fileID: String) {
+        defaultCollapse.settle(fileID)
         if viewedFileIDs.contains(fileID) {
             viewedFileIDs.remove(fileID)
         } else {
@@ -183,6 +191,7 @@ struct GitDiffView: View {
 
     private func publish(_ built: [ReviewDiffRow]) {
         rows = built
+        defaultCollapse.apply(built, to: &collapsedFileIDs)
         rowsVersion += 1
     }
 
