@@ -109,25 +109,19 @@ final class ChatComposerSendGateTests: XCTestCase {
         ))
     }
 
-    /// Each busy flag holds Send with content, and the block names what it waits
-    /// on for VoiceOver.
+    /// Each busy flag, and the offline cache (#1375), holds Send with content, and the
+    /// block names what it waits on for VoiceOver.
     func testBusyFlagsDisableEvenWithContent() {
-        let busy = [
-            ChatComposerSendBlock(isSending: true, isCompressingSession: false,
-                                  isUploadingAttachment: false, isUpdatingConfiguration: false),
-            ChatComposerSendBlock(isSending: false, isCompressingSession: true,
-                                  isUploadingAttachment: false, isUpdatingConfiguration: false),
-            ChatComposerSendBlock(isSending: false, isCompressingSession: false,
-                                  isUploadingAttachment: true, isUpdatingConfiguration: false),
-            ChatComposerSendBlock(isSending: false, isCompressingSession: false,
-                                  isUploadingAttachment: false, isUpdatingConfiguration: true)
-        ]
-        XCTAssertEqual(busy, [.sending, .compressingSession, .uploadingAttachment, .updatingConfiguration])
+        func block(_ flag: Int) -> ChatComposerSendBlock? {
+            ChatComposerSendBlock(isOffline: flag == 0, isSending: flag == 1, isCompressingSession: flag == 2,
+                                  isUploadingAttachment: flag == 3, isUpdatingConfiguration: flag == 4)
+        }
+        let busy = (0...4).map(block)
+        XCTAssertEqual(busy, [.offline, .sending, .compressingSession, .uploadingAttachment, .updatingConfiguration])
         for block in busy {
             XCTAssertTrue(ChatComposerSendGate.isDisabled(hasText: true, hasStagedAttachments: true, block: block))
         }
-        XCTAssertNil(ChatComposerSendBlock(isSending: false, isCompressingSession: false,
-                                           isUploadingAttachment: false, isUpdatingConfiguration: false))
+        XCTAssertNil(block(-1))
     }
 }
 

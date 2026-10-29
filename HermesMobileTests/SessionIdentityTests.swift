@@ -111,27 +111,14 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertNil(imported.sourceDisplayLabel)
     }
 
-    func testChatComposerReadOnlyMessageUsesServerAndOfflineState() {
-        XCTAssertEqual(
-            ChatView.composerReadOnlyMessage(
-                for: SessionSummary(sessionId: "read-only", readOnly: true),
-                isViewingCachedData: false
-            ),
-            "Read-only"
-        )
-        XCTAssertEqual(
-            ChatView.composerReadOnlyMessage(
-                for: SessionSummary(sessionId: "offline"),
-                isViewingCachedData: true
-            ),
-            "Reconnect to send messages."
-        )
-        XCTAssertNil(
-            ChatView.composerReadOnlyMessage(
-                for: SessionSummary(sessionId: "writable"),
-                isViewingCachedData: false
-            )
-        )
+    /// Offline only holds Send (#1375); a read-only session stays locked either way.
+    func testReadOnlySessionStaysLockedOffline() {
+        for isViewingCachedData in [false, true] {
+            let access = ChatComposerAccess(session: SessionSummary(sessionId: "read-only", readOnly: true),
+                                            isViewingCachedData: isViewingCachedData)
+            XCTAssertFalse(access.allowsEditing)
+            XCTAssertFalse(access.allowsHostControls)
+        }
     }
 
     /// A row without a `session_id` gets the same identity every time it decodes, so a list

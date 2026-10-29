@@ -165,7 +165,8 @@ struct MessageComposerView: View {
     let isCompressingSession: Bool
     let isWaitingForStream: Bool
     let isCancellingStream: Bool
-    let readOnlyMessage: String?
+    /// A read-only session locks the editor; an offline chat holds only Send and host controls.
+    let access: ChatComposerAccess
     let errorMessage: String?
     /// Offered as Copy fix prompt on the `errorMessage` banner (#955).
     let errorFixPrompt: String?
@@ -345,7 +346,12 @@ struct MessageComposerView: View {
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
 
     private var isReadOnly: Bool {
-        readOnlyMessage != nil
+        !access.allowsEditing
+    }
+
+    /// Offline or read-only: nothing that reaches the host starts, open controls included.
+    private var holdsHostControls: Bool {
+        !access.allowsHostControls
     }
 
     private enum DeferredUploadFocusPhase: Equatable {
@@ -363,7 +369,7 @@ struct MessageComposerView: View {
     /// The draft up to the caret while it is at a host command's argument (#1036), which the
     /// host is asked to complete.
     private var hostSlashArgumentText: String? {
-        guard fileTrigger == nil, let trigger = slashTrigger, trigger.startsDraft,
+        guard !holdsHostControls, fileTrigger == nil, let trigger = slashTrigger, trigger.startsDraft,
               ParsedSlashQuery(query: trigger.text, scope: slashScope).isHostArgumentMode else { return nil }
         return trigger.text
     }
@@ -373,7 +379,7 @@ struct MessageComposerView: View {
     /// Needs `searchFilePaths`, since every path the panel offers comes from
     /// the chat's own workspace.
     private var fileTrigger: ComposerFileTrigger? {
-        guard !isReadOnly, searchFilePaths != nil || botMentions != nil else { return nil }
+        guard !holdsHostControls, searchFilePaths != nil || botMentions != nil else { return nil }
         return ComposerFileTrigger.detect(in: draftMessage, selection: composerSelection.range)
     }
 
@@ -822,9 +828,10 @@ struct MessageComposerView: View {
                 workspaceRoots: workspaceRoots,
                 selectedWorkspacePath: displayedWorkspacePath,
                 suggestions: workspaceSuggestions,
-                managementServer: isReadOnly ? nil : workspaceManagementServer,
+                managementServer: holdsHostControls ? nil : workspaceManagementServer,
                 onLoadSuggestions: onLoadWorkspaceSuggestions,
                 onSelect: { path in
+                    guard !holdsHostControls else { return }
                     optimisticWorkspacePath = path
                     showsWorkspaceSheet = false
                     await onSelectWorkspace(path)
@@ -1223,10 +1230,10 @@ struct MessageComposerView: View {
                 branches: gitViewModel.branches,
                 isLoading: gitViewModel.isLoadingBranches,
                 isSwitching: gitViewModel.isSwitchingBranch,
-                isDisabled: isReadOnly || isWaitingForStream || gitViewModel.isWriteLocked,
+                isDisabled: holdsHostControls || isWaitingForStream || gitViewModel.isWriteLocked,
                 allowsCreate: gitViewModel.supportsSync,
-                onSelect: onSelectGitBranch,
-                onCreate: onCreateGitBranch,
+                onSelect: { if !holdsHostControls { onSelectGitBranch($0) } },
+                onCreate: { if !holdsHostControls { onCreateGitBranch($0) } },
                 onRefresh: onRefreshGitBranches,
                 showsPicker: $showsGitBranchPicker
             )
@@ -1327,8 +1334,10 @@ struct MessageComposerView: View {
 
     private var composerStatus: (text: String, isError: Bool, isDismissible: Bool, onRetry: (() -> Void)?, fixPrompt: String?,
                                  onCancel: (() -> Void)?)? {
-        if let readOnlyMessage {
+        if let readOnlyMessage = access.readOnlyMessage {
             return (readOnlyMessage, false, false, nil, nil, nil)
+        } else if access.isOffline {
+            return (ChatComposerSendBlock.offline.accessibilityValue, false, false, nil, nil, nil)
         } else if isWaitingForStream && isCancellingStream {
             return (String(localized: "Stopping response..."), false, false, nil, nil, nil)
         } else if isCompressingSession {
@@ -1431,7 +1440,7 @@ struct MessageComposerView: View {
     }
 
     private var isConfigurationControlDisabled: Bool {
-        isReadOnly || isSending || isCompressingSession || isWaitingForStream || isUpdatingConfiguration
+        holdsHostControls || isSending || isCompressingSession || isWaitingForStream || isUpdatingConfiguration
     }
 
     private var isVoiceInputDisabled: Bool {
@@ -1439,7 +1448,7 @@ struct MessageComposerView: View {
             return false
         }
 
-        return isReadOnly
+        return holdsHostControls
             || isSending
             || isCompressingSession
             || isWaitingForStream
@@ -1453,7 +1462,7 @@ struct MessageComposerView: View {
     /// this does not block on `isWaitingForStream`.
     private var isVoiceNoteRecordingDisabled: Bool {
         !showsSessionControls
-            || isReadOnly
+            || holdsHostControls
             || isSending
             || isSendingVoiceNote
             || isCompressingSession
@@ -1514,6 +1523,7 @@ struct MessageComposerView: View {
 
     private var sendBlock: ChatComposerSendBlock? {
         ChatComposerSendBlock(
+            isOffline: access.isOffline,
             isSending: isSending,
             isCompressingSession: isCompressingSession,
             isUploadingAttachment: isUploadingAttachment,
@@ -1536,8 +1546,10 @@ struct MessageComposerView: View {
         actionButtonTapped()
     }
 
-    /// Stop, or Send with the behavior it shows. Command-Return comes straight here.
+    /// Stop, or Send with the behavior it shows. Command-Return comes straight here,
+    /// so a hold that arrived after the key was enabled still stops it.
     private func actionButtonTapped() {
+        guard !isActionButtonDisabled else { return }
         if showsStopButton {
             onCancel()
         } else {

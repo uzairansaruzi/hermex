@@ -302,6 +302,11 @@ import XCTest
         XCTAssertTrue(chat.model.showsOfflineCache, "the transcript shown while connecting becomes the offline state")
         XCTAssertEqual(chat.model.messages.map(\.content), ["Hi", "Hello."])
         XCTAssertEqual(chat.model.messages.map(\.rowID), [1, 2])
+        // Offline the draft stays editable; Send and the host's controls wait (#1375).
+        let access = ChatComposerAccess(session: SessionSummary(profile: "default"),
+                                        isViewingCachedData: chat.model.showsOfflineCache)
+        XCTAssertTrue(access.allowsEditing)
+        XCTAssertFalse(access.allowsHostControls)
         let sent = await chat.model.sendMessage("Still there?")
         XCTAssertFalse(sent)
         XCTAssertEqual(chat.model.sendErrorMessage, "Reconnect to the server to send a message.")
@@ -335,8 +340,8 @@ import XCTest
         XCTAssertTrue(chat.model.isCachedCopyProvisional)
         XCTAssertFalse(chat.model.showsOfflineCache)
         XCTAssertFalse(chat.model.isLoading)
-        XCTAssertNil(ChatView.composerReadOnlyMessage(for: SessionSummary(profile: "default"),
-                                                      isViewingCachedData: chat.model.showsOfflineCache))
+        XCTAssertTrue(ChatComposerAccess(session: SessionSummary(profile: "default"),
+                                         isViewingCachedData: chat.model.showsOfflineCache).allowsHostControls)
         let sent = await chat.model.sendMessage("Too soon")
         XCTAssertFalse(sent)
         XCTAssertNil(chat.model.sendErrorMessage)

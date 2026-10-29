@@ -429,6 +429,29 @@ import XCTest
         XCTAssertEqual(probe.draftSeenOnAppear, "")
     }
 
+    /// Offline (#1375) the draft stays editable while Send, keyboard included, waits for
+    /// the reconnect.
+    func testOfflineComposerKeepsTheDraftEditableAndHoldsSend() async throws {
+        let focus = ComposerFixtureFocus()
+        let probe = SessionFixtureProbe()
+        let window = try show(SessionChatPresentationFixture(
+            focus: focus, probe: probe,
+            access: ChatComposerAccess(session: SessionSummary(), isViewingCachedData: true)
+        ))
+        defer { close(window) }
+        await settle(window)
+        let editor = try XCTUnwrap(descendants(window).compactMap { $0 as? ComposerChipTextView }.first)
+
+        XCTAssertTrue(editor.isEditable)
+        focus.isFocused = true
+        await settle(window)
+        editor.insertText("Next step")
+        await settle(window)
+
+        XCTAssertEqual(probe.editedDrafts, ["Next step"])
+        XCTAssertFalse(editor.isKeyboardSendEnabled)
+    }
+
     /// Safety net only: these waits end on a notification or callback, and the
     /// class warms the keyboard first. UIKit's own keyboard work can still hold
     /// the main thread for seconds on a hosted runner.
@@ -604,6 +627,7 @@ private struct AttachmentOverlayHarnessView: View {
 private struct SessionChatPresentationFixture: View {
     @Bindable var focus: ComposerFixtureFocus
     var probe = SessionFixtureProbe()
+    var access = ChatComposerAccess(session: SessionSummary(), isViewingCachedData: false)
     @State private var draft = ""
     @State private var quotes: [ComposerQuote] = []
     @State private var paths = ComposerFilePathSearch()
@@ -628,7 +652,7 @@ private struct SessionChatPresentationFixture: View {
         MessageComposerView(
             draftMessage: $draft, quotes: $quotes, isFocused: $focus.isFocused,
             isSending: false, isCompressingSession: false, isWaitingForStream: false,
-            isCancellingStream: false, readOnlyMessage: nil, errorMessage: nil,
+            isCancellingStream: false, access: access, errorMessage: nil,
             errorFixPrompt: nil, configurationErrorMessage: nil, contextWindowSnapshot: nil, gitViewModel: git,
             modelGroups: [], selectedModelID: nil, selectedModelProviderID: nil, selectedModelTitle: "Model",
             workspaceRoots: [], selectedWorkspacePath: nil, workspaceSuggestions: [], workspaceManagementServer: nil,

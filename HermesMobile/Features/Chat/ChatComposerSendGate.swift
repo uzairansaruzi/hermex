@@ -23,17 +23,42 @@ enum ChatComposerSendGate {
     }
 }
 
+/// How the chat's state limits its composer. A read-only session locks the draft and
+/// every control. A chat showing its offline cache (#1375) keeps the draft editable and
+/// holds Send and every control that reaches the host until it reconnects.
+struct ChatComposerAccess: Equatable {
+    /// The status line's "Read-only"; it locks the editor.
+    let readOnlyMessage: String?
+    /// The chat shows its offline cache, so Send waits for the reconnect.
+    let isOffline: Bool
+
+    init(session: SessionSummary, isViewingCachedData: Bool) {
+        readOnlyMessage = session.isSessionReadOnly ? String(localized: "Read-only") : nil
+        isOffline = isViewingCachedData
+    }
+
+    var allowsEditing: Bool { readOnlyMessage == nil }
+
+    /// File and host-argument searches, dictation, voice notes, attachments, and
+    /// configuration, branch, and workspace changes all reach the host.
+    var allowsHostControls: Bool { allowsEditing && !isOffline }
+}
+
 /// Work in progress that holds Send even with a draft to send. VoiceOver reads it
 /// as a dimmed Send's value, so the user knows what they are waiting for.
 enum ChatComposerSendBlock: Equatable {
+    case offline
     case sending
     case compressingSession
     case uploadingAttachment
     case updatingConfiguration
 
-    /// The first busy flag that holds Send, or nil when none does.
-    init?(isSending: Bool, isCompressingSession: Bool, isUploadingAttachment: Bool, isUpdatingConfiguration: Bool) {
-        if isSending {
+    /// The first condition that holds Send, or nil when none does.
+    init?(isOffline: Bool, isSending: Bool, isCompressingSession: Bool, isUploadingAttachment: Bool,
+          isUpdatingConfiguration: Bool) {
+        if isOffline {
+            self = .offline
+        } else if isSending {
             self = .sending
         } else if isCompressingSession {
             self = .compressingSession
@@ -46,9 +71,10 @@ enum ChatComposerSendBlock: Equatable {
         }
     }
 
-    /// The composer status line's wording for the same work.
+    /// The composer status line's wording for the same state.
     var accessibilityValue: String {
         switch self {
+        case .offline: String(localized: "Reconnect to send messages.")
         case .sending: String(localized: "Sending…")
         case .compressingSession: String(localized: "Compressing context...")
         case .uploadingAttachment: String(localized: "Uploading attachment...")

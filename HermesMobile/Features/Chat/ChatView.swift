@@ -536,7 +536,8 @@ struct ChatView: View {
             isCompressingSession: viewModel.isCompressingSession,
             isWaitingForStream: viewModel.activeStreamID != nil,
             isCancellingStream: viewModel.isCancellingStream,
-            readOnlyMessage: composerReadOnlyMessage,
+            // Offline the draft stays editable and Send waits for the reconnect (#1375).
+            access: ChatComposerAccess(session: session, isViewingCachedData: viewModel.showsOfflineCache),
             errorMessage: viewModel.sendErrorMessage,
             errorFixPrompt: viewModel.sendErrorRuntimeStale?.fixPrompt,
             configurationErrorMessage: viewModel.composerConfigurationErrorMessage
@@ -725,26 +726,6 @@ struct ChatView: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
         )
-    }
-
-    private var composerReadOnlyMessage: String? {
-        Self.composerReadOnlyMessage(
-            for: session,
-            isViewingCachedData: viewModel.showsOfflineCache
-        )
-    }
-
-    static func composerReadOnlyMessage(
-        for session: SessionSummary,
-        isViewingCachedData: Bool
-    ) -> String? {
-        if isViewingCachedData {
-            return String(localized: "Reconnect to send messages.")
-        }
-        if session.isSessionReadOnly {
-            return String(localized: "Read-only")
-        }
-        return nil
     }
 
     /// Hermes documents share BotArtifactPreview. An image is known to be an image

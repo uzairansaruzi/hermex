@@ -2457,10 +2457,7 @@ final class SessionListMutationTests: XCTestCase {
         let opened = try XCTUnwrap(result)
 
         XCTAssertTrue(opened.isSessionReadOnly)
-        XCTAssertEqual(
-            ChatView.composerReadOnlyMessage(for: opened, isViewingCachedData: false),
-            "Read-only"
-        )
+        XCTAssertFalse(ChatComposerAccess(session: opened, isViewingCachedData: false).allowsEditing)
     }
 
     @MainActor
@@ -2568,10 +2565,7 @@ final class SessionListMutationTests: XCTestCase {
         let opened = try XCTUnwrap(result)
 
         XCTAssertTrue(opened.isSessionReadOnly)
-        XCTAssertEqual(
-            ChatView.composerReadOnlyMessage(for: opened, isViewingCachedData: false),
-            "Read-only"
-        )
+        XCTAssertFalse(ChatComposerAccess(session: opened, isViewingCachedData: false).allowsEditing)
         XCTAssertNil(viewModel.actionErrorMessage)
     }
 
