@@ -173,6 +173,7 @@ final class APIClientAuthAndErrorTests: APIClientTestCase {
             let message = APIError.http(statusCode: statusCode, body: body).localizedDescription
             XCTAssertFalse(message.contains("<html>"))
             XCTAssertFalse(message.localizedCaseInsensitiveContains("bad gateway"))
+            XCTAssertFalse(message.localizedCaseInsensitiveContains("webui"), "A 502 is not always hermes-webui: \(message)")
         } catch {
             XCTFail("Expected HTTP error, got \(error)")
         }
