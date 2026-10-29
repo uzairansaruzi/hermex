@@ -43,8 +43,6 @@ struct ReviewDiffFileHeader: Equatable {
     let changeKind: GitFile.ChangeKind
     let additions: Int
     let deletions: Int
-    /// The file's diff hasn't answered yet, so its counts may be placeholders.
-    var isLoading = false
 
     var displayPath: String {
         guard let previousPath else { return path }
@@ -147,8 +145,7 @@ enum ReviewDiffRowBuilder {
             previousPath: previousPath(for: file),
             changeKind: file.changeKind,
             additions: file.additions ?? hunks.reduce(0) { $0 + $1.additions },
-            deletions: file.deletions ?? hunks.reduce(0) { $0 + $1.deletions },
-            isLoading: input.state == .loading
+            deletions: file.deletions ?? hunks.reduce(0) { $0 + $1.deletions }
         )
 
         var rows: [ReviewDiffRow] = [ReviewDiffRow(id: "\(fileID):header", fileID: fileID, kind: .file(header))]

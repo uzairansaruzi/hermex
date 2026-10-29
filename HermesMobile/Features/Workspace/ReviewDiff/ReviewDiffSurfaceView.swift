@@ -109,11 +109,13 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
     }
 
     /// Collapsing one file keeps its header where it is drawn (pinned at the top when
-    /// sticky), so the reader is not thrown to a different file.
+    /// sticky), so the reader is not thrown to a different file. Default folds of files
+    /// above the viewport, one or several at once, keep the file at the top where it was.
     func setCollapsedFileIDs(_ collapsedFileIDs: Set<String>) {
         let changed = canvas.collapsedFileIDs.symmetricDifference(collapsedFileIDs)
-        var anchor: Anchor?
-        if changed.count == 1, let fileID = changed.first, let screenY = canvas.scrollAnchorScreenY(forFileID: fileID) {
+        guard !changed.isEmpty else { return }
+        var anchor = currentAnchor()
+        if changed.count == 1, let fileID = changed.first, let screenY = canvas.scrollAnchorScreenY(forFileID: fileID), screenY >= 0 {
             anchor = Anchor(fileID: fileID, screenY: screenY)
         }
         canvas.setCollapsedFileIDs(collapsedFileIDs)

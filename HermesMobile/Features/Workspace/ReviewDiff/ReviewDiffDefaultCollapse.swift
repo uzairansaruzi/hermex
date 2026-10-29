@@ -1,58 +1,50 @@
 import Foundation
 
-/// Which files a multi-file review starts folded: lockfiles, generated output, and changes
+/// Which files a multi-file review folds by default: lockfiles, generated output, and changes
 /// of more than `maxChangedLines` added and deleted lines, so the real edits come first.
-/// Each file's default applies once per sheet. A header tap or viewed toggle settles it,
-/// so later loads and refreshes never fold a file the user opened.
+/// A default fold covers only a loaded diff: loading, binary, too-large and failed notices
+/// read in the open. A header tap or viewed toggle settles the file, so no later load or
+/// refresh folds or unfolds it again.
 ///
-/// `GitDiffView` seeds its collapsed files from `initiallyCollapsedFileIDs`, calls
-/// `apply(_:to:)` on every publish, and `settle(_:)` on every user toggle.
+/// `GitDiffView` builds this in its init, calls `apply(_:to:)` on every publish, and
+/// `settle(_:)` on every user toggle.
 struct ReviewDiffDefaultCollapse {
     static let maxChangedLines = 400
 
-    private enum Pending {
-        /// Folded from the start by its path or status counts. A notice unfolds it until
-        /// rows load.
+    private enum Default {
+        /// Folds whenever its loaded diff is showing.
         case fold
-        /// Its status counts were missing, so the first loaded rows decide.
+        /// Its status counts were missing, so the first loaded diff decides.
         case measure
     }
 
-    let initiallyCollapsedFileIDs: Set<String>
-    /// Files whose default hasn't met loaded rows or a user choice yet.
-    private var pending: [String: Pending] = [:]
+    /// Files the user hasn't toggled whose default folds them, or hasn't been measured yet.
+    private var defaults: [String: Default] = [:]
 
     init(files: [GitFile], initialFile: GitFile?) {
-        var collapsed: Set<String> = []
         // A single file, or the one the user tapped, is what they came to read.
-        if files.count > 1 {
-            for file in files where file.id != initialFile?.id {
-                let decision: Pending?
-                if Self.isGenerated(file.displayPath) {
-                    decision = .fold
-                } else if let additions = file.additions, let deletions = file.deletions {
-                    decision = additions + deletions > Self.maxChangedLines ? .fold : nil
-                } else {
-                    decision = .measure
-                }
-                pending[file.id] = decision
-                if decision == .fold { collapsed.insert(file.id) }
+        guard files.count > 1 else { return }
+        for file in files where file.id != initialFile?.id {
+            if Self.isGenerated(file.displayPath) {
+                defaults[file.id] = .fold
+            } else if let additions = file.additions, let deletions = file.deletions {
+                if additions + deletions > Self.maxChangedLines { defaults[file.id] = .fold }
+            } else {
+                defaults[file.id] = .measure
             }
         }
-        initiallyCollapsedFileIDs = collapsed
     }
 
     /// Records the user's own collapse or viewed choice; no default touches the file again.
     mutating func settle(_ fileID: String) {
-        pending[fileID] = nil
+        defaults[fileID] = nil
     }
 
-    /// Applies pending defaults to the latest full row list. Loading placeholders decide
-    /// nothing. A notice (binary, too large, failed, empty) unfolds a default fold so it
-    /// stays readable, and leaves the default for a later successful load. Loaded lines
-    /// settle the file, measured by added and deleted lines, not context.
+    /// Folds or unfolds each defaulted file for the latest full row list: folded while its
+    /// loaded diff shows, open while it shows a notice. A file awaiting measurement is
+    /// decided by its first loaded diff, counting added and deleted lines, not context.
     mutating func apply(_ rows: [ReviewDiffRow], to collapsedFileIDs: inout Set<String>) {
-        guard !pending.isEmpty else { return }
+        guard !defaults.isEmpty else { return }
         // Rows arrive grouped by file, each group led by its header.
         var end = rows.startIndex
         while end < rows.endIndex {
@@ -60,19 +52,25 @@ struct ReviewDiffDefaultCollapse {
             let fileID = rows[start].fileID
             end += 1
             while end < rows.endIndex, rows[end].fileID == fileID { end += 1 }
-            guard let decision = pending[fileID], rows[start].fileHeader?.isLoading == false else { continue }
+            guard let current = defaults[fileID] else { continue }
 
             let fileRows = rows[(start + 1)..<end]
             if fileRows.contains(where: { if case .notice = $0.kind { true } else { false } }) {
-                if decision == .fold { collapsedFileIDs.remove(fileID) }
+                collapsedFileIDs.remove(fileID)
                 continue
             }
-            pending[fileID] = nil
-            let changed = fileRows.reduce(0) { count, row in
-                guard let change = row.line?.change, change != .context else { return count }
-                return count + 1
+            if current == .measure {
+                let changed = fileRows.reduce(0) { count, row in
+                    guard let change = row.line?.change, change != .context else { return count }
+                    return count + 1
+                }
+                guard changed > Self.maxChangedLines else {
+                    defaults[fileID] = nil
+                    continue
+                }
+                defaults[fileID] = .fold
             }
-            if decision == .fold || changed > Self.maxChangedLines { collapsedFileIDs.insert(fileID) }
+            collapsedFileIDs.insert(fileID)
         }
     }
 

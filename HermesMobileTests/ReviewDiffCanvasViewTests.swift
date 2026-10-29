@@ -133,6 +133,35 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertEqual(screenYAfter, screenYBefore, accuracy: 0.5)
     }
 
+    /// Files above the reader load and fold by default, one or several per publish, applied
+    /// the way `ReviewDiffSurface` does (rows, then collapse). The line being read stays put.
+    func testDefaultFoldsAboveTheViewportKeepTheReadingPosition() throws {
+        func loading(_ fileID: String) -> [ReviewDiffRow] {
+            [header(fileID), ReviewDiffRow(id: "\(fileID):notice", fileID: fileID, kind: .notice("Loading…"))]
+        }
+        func loaded(_ fileID: String) -> [ReviewDiffRow] { [header(fileID)] + (0..<30).map { line(fileID, $0) } }
+        let read = [header("r")] + (0..<60).map { line("r", $0) } + loaded("z")
+        let view = ReviewDiffSurfaceView()
+        view.frame = CGRect(x: 0, y: 0, width: 390, height: 300)
+        view.layoutIfNeeded()
+        view.setRows(loading("a") + loading("b") + loading("c") + read)
+        view.scroll(to: .row("r:line:20"), animated: false)
+        func readingY() throws -> CGFloat { try XCTUnwrap(view.frame(forRowID: "r:line:20")).minY - view.verticalOffset }
+        let before = try readingY()
+
+        view.setRows(loaded("a") + loading("b") + loading("c") + read)
+        view.setCollapsedFileIDs(["a"])
+        XCTAssertEqual(try readingY(), before, accuracy: 0.5)
+
+        view.setRows(loaded("a") + loaded("b") + loaded("c") + read)
+        view.setCollapsedFileIDs(["a", "b", "c"])
+        XCTAssertEqual(try readingY(), before, accuracy: 0.5)
+
+        // Collapsing the file being read from its pinned header keeps that header on top (#399).
+        view.setCollapsedFileIDs(["a", "b", "c", "r"])
+        XCTAssertEqual(view.verticalOffset, try XCTUnwrap(view.frame(forRowID: "r:header")).minY, accuracy: 0.5)
+    }
+
     func testStickyHeaderReportsItsPinnedFrame() {
         let rows = [header("a")] + (0..<40).map { line("a", $0) } + [header("b")] + (0..<5).map { line("b", $0) }
         let canvas = makeCanvas(rows: rows)

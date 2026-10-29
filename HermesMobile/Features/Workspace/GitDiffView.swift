@@ -4,7 +4,7 @@ import SwiftUI
 /// state, word-level highlights, and line selection that feeds the composer. Diffs
 /// load one file at a time (a few in flight) so the first file paints before the rest
 /// arrive; each file's rows build once, off the main thread, as its answer lands.
-/// Lockfiles, generated output, and huge changes start folded (`ReviewDiffDefaultCollapse`),
+/// Lockfiles, generated output, and huge changes fold once loaded (`ReviewDiffDefaultCollapse`),
 /// except the file the user tapped or a single-file review.
 struct GitDiffView: View {
     let onAPIError: (Error) -> Void
@@ -22,7 +22,7 @@ struct GitDiffView: View {
     @State private var loadGeneration = 0
     @State private var hasLoaded = false
     @State private var isRefreshing = false
-    @State private var collapsedFileIDs: Set<String>
+    @State private var collapsedFileIDs: Set<String> = []
     @State private var defaultCollapse: ReviewDiffDefaultCollapse
     @State private var viewedFileIDs: Set<String> = []
     @State private var selection = ReviewDiffSelection()
@@ -45,9 +45,7 @@ struct GitDiffView: View {
         self.onAPIError = onAPIError
         self.onAddToPrompt = onAddToPrompt
         _scrollTarget = State(initialValue: initialFile.map { ReviewDiffScrollTarget(fileID: $0.id, token: UUID()) })
-        let defaultCollapse = ReviewDiffDefaultCollapse(files: files, initialFile: initialFile)
-        _defaultCollapse = State(initialValue: defaultCollapse)
-        _collapsedFileIDs = State(initialValue: defaultCollapse.initiallyCollapsedFileIDs)
+        _defaultCollapse = State(initialValue: ReviewDiffDefaultCollapse(files: files, initialFile: initialFile))
     }
 
     private var title: String {

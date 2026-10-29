@@ -16,11 +16,19 @@ final class ReviewDiffDefaultCollapseTests: XCTestCase {
         return ReviewDiffRowBuilder.rows(for: ReviewDiffFileInput(file: file, state: .loaded(diff)))
     }
 
-    private func rows(_ file: GitFile, _ state: ReviewDiffFileState) -> [ReviewDiffRow] {
-        ReviewDiffRowBuilder.rows(for: ReviewDiffFileInput(file: file, state: state))
+    private func rows(_ files: [GitFile], _ state: ReviewDiffFileState) -> [ReviewDiffRow] {
+        ReviewDiffRowBuilder.rows(for: files.map { ReviewDiffFileInput(file: $0, state: state) })
     }
 
-    func testMultiFileReviewStartsGeneratedFilesAndLargeChangesFolded() {
+    /// Folds `files` would get once each loads a small diff.
+    private func foldsOnceLoaded(_ files: [GitFile], initialFile: GitFile?) throws -> Set<String> {
+        var defaults = ReviewDiffDefaultCollapse(files: files, initialFile: initialFile)
+        var collapsed: Set<String> = []
+        defaults.apply(try files.flatMap { try loadedRows($0, changed: 2) }, to: &collapsed)
+        return collapsed
+    }
+
+    func testMultiFileReviewFoldsGeneratedFilesAndLargeChanges() throws {
         let files = [
             file("web/package-lock.json"),
             file("src/__snapshots__/view.test.ts.snap"),
@@ -31,73 +39,81 @@ final class ReviewDiffDefaultCollapseTests: XCTestCase {
             file("src/AtLimit.swift", additions: 300, deletions: 100)
         ]
 
-        let defaults = ReviewDiffDefaultCollapse(files: files, initialFile: nil)
-
-        XCTAssertEqual(defaults.initiallyCollapsedFileIDs, [
+        XCTAssertEqual(try foldsOnceLoaded(files, initialFile: nil), [
             "web/package-lock.json", "src/__snapshots__/view.test.ts.snap", "node_modules/left-pad/index.js",
             "src/Big.swift"
         ])
     }
 
-    func testTappedFileAndSingleFileReviewStartExpanded() {
+    func testTappedFileAndSingleFileReviewStayExpanded() throws {
         let lockfile = file("yarn.lock")
         let huge = file("src/Huge.swift", additions: 5000, deletions: 0)
 
-        let tapped = ReviewDiffDefaultCollapse(files: [lockfile, huge], initialFile: lockfile)
-        XCTAssertEqual(tapped.initiallyCollapsedFileIDs, ["src/Huge.swift"])
-
-        let single = ReviewDiffDefaultCollapse(files: [huge], initialFile: nil)
-        XCTAssertEqual(single.initiallyCollapsedFileIDs, [])
+        XCTAssertEqual(try foldsOnceLoaded([lockfile, huge], initialFile: lockfile), ["src/Huge.swift"])
+        XCTAssertEqual(try foldsOnceLoaded([huge], initialFile: nil), [])
     }
 
     func testMissingCountsWaitForLoadedRowsAndCountOnlyChangedLines() throws {
         let large = file("src/Large.swift", additions: nil, deletions: nil)
         let contextHeavy = file("src/Context.swift", additions: nil, deletions: 3)
         var defaults = ReviewDiffDefaultCollapse(files: [large, contextHeavy], initialFile: nil)
-        var collapsed = defaults.initiallyCollapsedFileIDs
-        XCTAssertEqual(collapsed, [])
+        var collapsed: Set<String> = []
 
-        defaults.apply(rows(large, .loading) + rows(contextHeavy, .loading), to: &collapsed)
+        defaults.apply(rows([large, contextHeavy], .loading), to: &collapsed)
         XCTAssertEqual(collapsed, [], "A loading placeholder's zero counts decide nothing.")
 
         defaults.apply(try loadedRows(large, changed: 401) + loadedRows(contextHeavy, changed: 400, context: 600), to: &collapsed)
         XCTAssertEqual(collapsed, ["src/Large.swift"])
     }
 
-    func testUserExpansionBeforeLoadSurvivesLoadAndRefresh() throws {
+    func testUserExpansionSurvivesLoadAndRefresh() throws {
         let source = file("src/App.swift")
         let measured = file("src/Large.swift", additions: nil, deletions: nil)
         let lockfile = file("Cargo.lock")
-        var defaults = ReviewDiffDefaultCollapse(files: [source, measured, lockfile], initialFile: source)
-        var collapsed = defaults.initiallyCollapsedFileIDs
-        XCTAssertEqual(collapsed, ["Cargo.lock"])
-
-        // The user opens the lockfile while everything is still loading.
-        defaults.settle("Cargo.lock")
-        collapsed.remove("Cargo.lock")
-        // ...and folds and reopens the not-yet-measured file.
+        let files = [source, measured, lockfile]
+        var defaults = ReviewDiffDefaultCollapse(files: files, initialFile: source)
+        var collapsed: Set<String> = []
+        defaults.apply(rows(files, .loading), to: &collapsed)
+        // The user folds and reopens the not-yet-measured file while it loads.
         defaults.settle("src/Large.swift")
 
         let loaded = try loadedRows(source, changed: 2) + loadedRows(measured, changed: 900) + loadedRows(lockfile, changed: 900)
         defaults.apply(loaded, to: &collapsed)
-        defaults.apply(rows(source, .loading) + rows(measured, .loading) + rows(lockfile, .loading), to: &collapsed)
+        XCTAssertEqual(collapsed, ["Cargo.lock"])
+        // ...then opens the folded lockfile and refreshes.
+        defaults.settle("Cargo.lock")
+        collapsed.remove("Cargo.lock")
+        defaults.apply(rows(files, .loading), to: &collapsed)
         defaults.apply(loaded, to: &collapsed)
 
         XCTAssertEqual(collapsed, [])
     }
 
-    func testNoticeUnfoldsOnlyADefaultFoldAndLeavesItOpenForALaterLoad() throws {
+    /// Loading, failed, binary and too-large notices read in the open: a default fold steps
+    /// aside for them on every load and refresh, and comes back with the next real diff.
+    func testNoticesLiftOnlyADefaultFold() throws {
         let lockfile = file("Gemfile.lock")
         let snapshot = file("ui/__snapshots__/a.snap")
-        var defaults = ReviewDiffDefaultCollapse(files: [lockfile, snapshot], initialFile: nil)
-        var collapsed = defaults.initiallyCollapsedFileIDs
-        // The user expands the snapshot and folds it again: an explicit choice.
+        let files = [lockfile, snapshot]
+        var defaults = ReviewDiffDefaultCollapse(files: files, initialFile: nil)
+        var collapsed: Set<String> = []
+        // The user folds the snapshot before anything loads: an explicit choice.
         defaults.settle("ui/__snapshots__/a.snap")
+        collapsed.insert("ui/__snapshots__/a.snap")
 
-        defaults.apply(rows(lockfile, .failed("Boom")) + rows(snapshot, .failed("Boom")), to: &collapsed)
-        XCTAssertEqual(collapsed, ["ui/__snapshots__/a.snap"], "The failure reads in the open; the user's fold stays.")
+        defaults.apply(rows(files, .loading), to: &collapsed)
+        XCTAssertEqual(collapsed, ["ui/__snapshots__/a.snap"], "Loading… reads in the open; the user's fold stays.")
+        let loaded = try loadedRows(lockfile, changed: 12) + loadedRows(snapshot, changed: 12)
+        defaults.apply(loaded, to: &collapsed)
+        XCTAssertEqual(collapsed, ["Gemfile.lock", "ui/__snapshots__/a.snap"])
 
-        defaults.apply(try loadedRows(lockfile, changed: 12) + loadedRows(snapshot, changed: 12), to: &collapsed)
-        XCTAssertEqual(collapsed, ["Gemfile.lock", "ui/__snapshots__/a.snap"], "A successful refresh applies the default.")
+        // A refresh shows Loading… again, then fails.
+        defaults.apply(rows(files, .loading), to: &collapsed)
+        XCTAssertEqual(collapsed, ["ui/__snapshots__/a.snap"])
+        defaults.apply(rows(files, .failed("Boom")), to: &collapsed)
+        XCTAssertEqual(collapsed, ["ui/__snapshots__/a.snap"], "The failure reads in the open.")
+
+        defaults.apply(loaded, to: &collapsed)
+        XCTAssertEqual(collapsed, ["Gemfile.lock", "ui/__snapshots__/a.snap"], "A successful refresh folds it again.")
     }
 }
