@@ -106,6 +106,21 @@ import Observation
         XCTAssertFalse(list.hasMoreScheduledSessions)
     }
 
+    /// A refused scheduled "Load more" shows over the rows until a retry loads the page (#1374).
+    func testARefusedScheduledLoadMoreClearsOnceARetryLoads() async {
+        let wire = HermesSessionListWire()
+        wire.scheduledPages = ["default": [0: page(rows(0..<100)), 100: page(rows(100..<101))]]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        await list.openHermes()
+
+        wire.pageFailure = .rejected(403)
+        await list.loadMoreHermesScheduledSessions()
+        XCTAssertNotNil(list.hermesRefusalOverRows)
+        await list.loadMoreHermesScheduledSessions()
+        XCTAssertNil(list.hermesRefusalOverRows, "the loaded page answers the refusal")
+    }
+
     func testScheduledSearchRequestAndOrdinaryRequestsKeepSeparateSourceScopes() throws {
         let calls: [HermesREST] = [.sessionList(profile: "default", offset: 0, scheduled: true),
                                   .sessionList(profile: "default", offset: 100, scheduled: true),
@@ -1240,6 +1255,7 @@ import Observation
         scheduledReads.append((profile, offset))
         let reply = scheduledPages[profile]?[offset] ?? HermesSessionPage(rows: [])
         if holdsScheduledPages { await withCheckedContinuation { held.append($0) } }
+        if let failure = pageFailure { pageFailure = nil; throw failure }
         return reply
     }
 

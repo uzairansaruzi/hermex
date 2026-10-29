@@ -1824,7 +1824,6 @@ final class SessionListViewModel {
         do {
             try await wire.connect()
             guard hermesWire === wire else { return }
-            hermesReconnect?.succeeded()
             if hermesProfile == nil || hermesShowsAllProfiles { await readHermesProfiles(wire) }
             if hermesProfile == nil { await resolveHermesProfile(wire) }
             guard hermesWire === wire else { return }
@@ -1946,6 +1945,8 @@ final class SessionListViewModel {
             applyHermesScheduled(pages)
             showHermesPages(hermesPages, animation: nil)
             cacheHermesRows(hermesPages)
+            // The page answers an earlier refusal, which shows over the rows.
+            if errorMessage != nil || sessionLoadError != nil { errorMessage = nil; sessionLoadError = nil }
         } catch {
             guard serial == hermesReadSerial, hermesWire === wire, !Task.isCancelled else { return }
             showHermesFailure(error)
@@ -2003,6 +2004,8 @@ final class SessionListViewModel {
             applyHermesScheduled(scheduled)
             applyHermes(pages, readSerial: serial)
             setHermesReconnecting(false)
+            // Only the rows prove the host is back: a socket whose reads fail keeps its backoff.
+            hermesReconnect?.succeeded()
             // The rows are in, and the lanes, read next, never hold them back. A "Load more"
             // that starts meanwhile owns the paging flag, so this read lets go of it once.
             holdsPaging = false
