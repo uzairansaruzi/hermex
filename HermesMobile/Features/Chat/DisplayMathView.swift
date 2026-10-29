@@ -311,10 +311,13 @@ struct MathInlineText: View {
     var fontScale: Double = 1
     var weight: Font.Weight = .regular
     var tintImages = false
-    @ScaledMetric(relativeTo: .body) private var fontSize: CGFloat = 16
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.displayScale) private var displayScale
     @State private var loaded: (style: InlineMathImageStyle, images: [URL: Image])?
+
+    /// Matches the surrounding Markdown prose, which `Theme.chat` sizes the same way.
+    private var fontSize: CGFloat { ChatTypography(dynamicTypeSize: dynamicTypeSize).bodySize }
 
     private var request: InlineMathTextRequest {
         InlineMathTextRequest(markdown: markdown, fontSize: fontSize * fontScale,

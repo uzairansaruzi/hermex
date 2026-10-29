@@ -192,6 +192,8 @@ private struct ChatMarkdownView: View {
     let colorScheme: ColorScheme
     let isStreaming: Bool
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
         // Parsed here rather than inside `Markdown(_: String)` so the parse alone is timed.
         let signpost = performanceSignposter.beginInterval("Markdown Parse")
@@ -201,7 +203,11 @@ private struct ChatMarkdownView: View {
         return Markdown(parsedContent)
             .environment(\.containsInlineMath, content.contains(InlineMathSource.marker)
                 || MarkdownContentRenderingPolicy.hasTooManyInlineElements(content))
-            .markdownTheme(MarkdownUI.Theme.chat(colorScheme: colorScheme, isStreaming: isStreaming))
+            .markdownTheme(MarkdownUI.Theme.chat(
+                colorScheme: colorScheme,
+                isStreaming: isStreaming,
+                bodySize: ChatTypography(dynamicTypeSize: dynamicTypeSize).bodySize
+            ))
             .markdownTextStyle {
                 ForegroundColor(.primary)
                 BackgroundColor(nil)
@@ -478,6 +484,8 @@ private struct PlainCodeBlockText: View {
     /// in an `HStack` for the horizontal-scroll layout.
     var wraps = false
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private var lines: [MarkdownPlainCodeLine] {
         MarkdownPlainCodeFormatter.lines(in: content)
     }
@@ -501,7 +509,7 @@ private struct PlainCodeBlockText: View {
                 }
             }
         }
-        .font(.system(size: 13, weight: .regular, design: .monospaced))
+        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont)
         .foregroundStyle(.primary)
     }
 
@@ -517,6 +525,8 @@ private struct HighlightedCodeBlockText: View {
     /// See `PlainCodeBlockText.wraps`; the concatenated `Text` preserves each
     /// segment's syntax-highlight attributes.
     var wraps = false
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var lines: [MarkdownAttributedCodeLine] {
         MarkdownAttributedCodeFormatter.lines(in: content)
@@ -541,6 +551,8 @@ private struct HighlightedCodeBlockText: View {
                 }
             }
         }
+        // The highlighter strips its absolute fonts, so this sets every token's face and size.
+        .font(ChatTypography(dynamicTypeSize: dynamicTypeSize).codeFont)
     }
 
     private func combinedText(for line: MarkdownAttributedCodeLine) -> Text {
@@ -1087,7 +1099,7 @@ actor MarkdownCodeHighlighter {
         }
 
         // Freeze the result so a cached string never aliases a mutable one.
-        let frozen = highlighted.copy() as? NSAttributedString ?? highlighted
+        let frozen = Self.removingAbsoluteFonts(from: highlighted)
         let key = Self.cacheKey(for: request)
         cache.setObject(frozen, forKey: key, cost: key.length + frozen.length)
         return .highlighted(frozen)
@@ -1105,6 +1117,26 @@ actor MarkdownCodeHighlighter {
         highlightr.setTheme(to: colorScheme == .dark ? "github-dark" : "xcode")
         highlightrsByAppearance[colorScheme] = highlightr
         return highlightr
+    }
+
+    /// Drops the engines' fixed-size fonts (Splash 13 pt, Highlightr Courier 14) so the code
+    /// view's `ChatTypography.codeFont` sizes every token, keeping the cache size-independent.
+    /// Bold and italic tokens keep their emphasis as relative presentation intents.
+    private static func removingAbsoluteFonts(from highlighted: NSAttributedString) -> NSAttributedString {
+        let result = NSMutableAttributedString(attributedString: highlighted)
+        let range = NSRange(location: 0, length: result.length)
+        result.enumerateAttribute(.font, in: range) { value, runRange, _ in
+            guard let font = value as? UIFont else { return }
+            result.removeAttribute(.font, range: runRange)
+            let traits = font.fontDescriptor.symbolicTraits
+            var intent: InlinePresentationIntent = []
+            if traits.contains(.traitBold) { intent.insert(.stronglyEmphasized) }
+            if traits.contains(.traitItalic) { intent.insert(.emphasized) }
+            if !intent.isEmpty {
+                result.addAttribute(.inlinePresentationIntent, value: intent.rawValue, range: runRange)
+            }
+        }
+        return result.copy() as? NSAttributedString ?? result
     }
 
     private static func cacheKey(for request: MarkdownCodeHighlightRequest) -> NSString {
@@ -1149,6 +1181,38 @@ private struct PlainMarkdownFallbackView: View {
     }
 }
 
+/// Rendered Markdown text sizes for a Dynamic Type size: 16 pt prose and 13 pt code at
+/// `.large`, scaled like body text and capped at 2.2x (the review diff's cap). Views read
+/// `dynamicTypeSize` from the environment and resolve through `init(dynamicTypeSize:)`.
+struct ChatTypography: Equatable {
+    static let maximumScale: CGFloat = 2.2
+
+    let bodySize: CGFloat
+    let codeSize: CGFloat
+
+    /// Resolved once per size, so scrolling cells never re-run font metrics.
+    private static let bySize: [DynamicTypeSize: ChatTypography] = Dictionary(
+        uniqueKeysWithValues: DynamicTypeSize.allCases.map { ($0, ChatTypography(resolving: $0)) }
+    )
+
+    init(dynamicTypeSize: DynamicTypeSize) {
+        self = Self.bySize[dynamicTypeSize] ?? ChatTypography(resolving: dynamicTypeSize)
+    }
+
+    private init(resolving dynamicTypeSize: DynamicTypeSize) {
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(dynamicTypeSize))
+        let metrics = UIFontMetrics(forTextStyle: .body)
+        func scaled(_ base: CGFloat) -> CGFloat {
+            min(metrics.scaledValue(for: base, compatibleWith: traits), base * Self.maximumScale)
+        }
+        bodySize = scaled(16)
+        codeSize = scaled(13)
+    }
+
+    /// The monospaced font for code block bodies (plain, highlighted, and diff).
+    var codeFont: SwiftUI.Font { .system(size: codeSize, weight: .regular, design: .monospaced) }
+}
+
 enum ChatMarkdownInlineStyle {
     static let codeFontScale = 0.85
 
@@ -1158,12 +1222,13 @@ enum ChatMarkdownInlineStyle {
 }
 
 private extension MarkdownUI.Theme {
-    static func chat(colorScheme: ColorScheme, isStreaming: Bool) -> MarkdownUI.Theme {
+    /// `bodySize` is `ChatTypography.bodySize`; headings and inline code scale relative to it.
+    static func chat(colorScheme: ColorScheme, isStreaming: Bool, bodySize: CGFloat) -> MarkdownUI.Theme {
         MarkdownUI.Theme.gitHub
             .text {
                 ForegroundColor(.primary)
                 BackgroundColor(nil)
-                FontSize(16)
+                FontSize(bodySize)
             }
             .paragraph { configuration in
                 MathMarkdownLabel(content: configuration.content, label: configuration.label)

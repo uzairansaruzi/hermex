@@ -284,6 +284,44 @@ final class MarkdownMathRendererTests: XCTestCase {
         XCTAssertGreaterThan(colors.count, 1)
     }
 
+    func testChatTypographyGrowsWithDynamicTypeUpToTheCap() {
+        let large = ChatTypography(dynamicTypeSize: .large)
+        let ax5 = ChatTypography(dynamicTypeSize: .accessibility5)
+
+        XCTAssertEqual(large.bodySize, 16, accuracy: 0.01)
+        XCTAssertEqual(large.codeSize, 13, accuracy: 0.01)
+        XCTAssertEqual(ax5.bodySize, 16 * 2.2, accuracy: 0.01)
+        XCTAssertEqual(ax5.codeSize, 13 * 2.2, accuracy: 0.01)
+    }
+
+    @MainActor
+    func testHighlightedCodeTakesItsSizeFromTheParentFontAndKeepsEmphasis() async {
+        let result = await MarkdownCodeHighlighter().highlightedCode(
+            for: MarkdownCodeHighlightRequest(
+                code: "**strong** and *emphasis*",
+                language: "markdown",
+                colorScheme: .light,
+                isStreaming: false
+            )
+        )
+        guard case .highlighted(let highlightedCode) = result else {
+            return XCTFail("Expected Highlightr to highlight Markdown code.")
+        }
+
+        let intents = AttributedString(highlightedCode).runs.compactMap(\.inlinePresentationIntent)
+        XCTAssertTrue(intents.contains(.stronglyEmphasized))
+        XCTAssertTrue(intents.contains(.emphasized))
+
+        // A Dynamic Type code size reaches the token only when no absolute font is attached to it.
+        func renderedWidth(codeSize: CGFloat) -> CGFloat {
+            let text = Text(AttributedString(highlightedCode))
+                .font(.system(size: codeSize, design: .monospaced))
+                .fixedSize()
+            return ImageRenderer(content: text).uiImage?.size.width ?? 0
+        }
+        XCTAssertGreaterThan(renderedWidth(codeSize: 26), renderedWidth(codeSize: 13) * 1.8)
+    }
+
     func testMarkdownCodeHighlighterSkipsStreamingBlocks() async {
         let result = await MarkdownCodeHighlighter().highlightedCode(
             for: MarkdownCodeHighlightRequest(
