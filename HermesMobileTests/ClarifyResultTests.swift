@@ -35,7 +35,8 @@ final class ClarifyResultTests: XCTestCase {
     }
 
     func testLegacyTimeoutSentinelReadsAsUnansweredTimeout() throws {
-        let sentinel = try XCTUnwrap(String(data: JSONEncoder().encode(ClarifyResult.legacyTimeoutResponse), encoding: .utf8))
+        // `TIMEOUT_RESPONSE` in `tools/clarify_tool.py` at the pinned hermes-agent commit.
+        let sentinel = #""The user did not provide a response within the time limit. Use your best judgement to make the choice and proceed.""#
         for answer in [sentinel, "[\(sentinel)]"] {
             let result = try XCTUnwrap(ClarifyResult(
                 preview: #"{"question":"Ship it?","choices_offered":["Yes","No"],"user_response":\#(answer)}"#
@@ -45,7 +46,7 @@ final class ClarifyResultTests: XCTestCase {
         }
     }
 
-    func testUnrecognizedResultsKeepTheGenericRow() {
+    func testUnrecognizedResultsKeepTheGenericRow() throws {
         let previews = [
             #"{"error":"No question provided."}"#,
             #"{"responses":[{"question":"Which?","user_response":3}]}"#,
@@ -54,10 +55,11 @@ final class ClarifyResultTests: XCTestCase {
         ]
         for preview in previews {
             let toolCall = ToolCall(name: "clarify", preview: preview, args: nil, isCompleted: true)
-            XCTAssertNil(ToolCallSummaryFormatter.row(for: toolCall, isLive: false)?.clarify, preview)
+            let row = try XCTUnwrap(ToolCallSummaryFormatter.row(for: toolCall, isLive: false), preview)
+            XCTAssertNil(row.clarify, preview)
         }
 
         let otherTool = ToolCall(name: "terminal", preview: batchPreview, args: nil, isCompleted: true)
-        XCTAssertNil(ToolCallSummaryFormatter.row(for: otherTool, isLive: false)?.clarify)
+        XCTAssertNil(try XCTUnwrap(ToolCallSummaryFormatter.row(for: otherTool, isLive: false)).clarify)
     }
 }
