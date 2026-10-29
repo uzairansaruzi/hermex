@@ -206,9 +206,7 @@ enum ToolCallSummaryFormatter {
         case .memory:
             return firstString(in: args, keys: ["target", "name", "action"]).flatMap(compacted)
         case .read:
-            guard let path = firstString(in: args, keys: ["path", "file_path", "file", "target", "name"]) else {
-                return nil
-            }
+            guard let path = readPath(args: args) else { return nil }
             let fileName = basename(path)
             if normalizedName(name) == "read_file", let range = readRange(args: args) {
                 return compacted("\(range) · \(fileName)")
@@ -237,9 +235,23 @@ enum ToolCallSummaryFormatter {
         return overflow ? nil : "L\(offset)-\(end)"
     }
 
-    /// First changed file plus `+N more`, from the same path arguments the
-    /// per-turn file recap reads (`path`, `paths[]`, `edits[].path`, …).
+    /// The file a read call names, as given.
+    static func readPath(args: [String: JSONValue]) -> String? {
+        firstString(in: args, keys: ["path", "file_path", "file", "target", "name"])
+    }
+
+    /// First changed file plus `+N more`, from `changedPaths(args:)`.
     static func changedFilesPreview(args: [String: JSONValue]) -> String? {
+        let paths = changedPaths(args: args)
+        guard let first = paths.first else { return nil }
+        let remaining = paths.count - 1
+        guard remaining > 0 else { return compacted(basename(first)) }
+        return compacted("\(basename(first)) \(String(localized: "+\(remaining) more"))")
+    }
+
+    /// A write call's unique full paths in argument order, from the same
+    /// arguments the per-turn file recap reads (`path`, `paths[]`, `edits[].path`, …).
+    static func changedPaths(args: [String: JSONValue]) -> [String] {
         var paths: [String] = []
         func append(_ value: JSONValue?) {
             if let string = string(value), !paths.contains(string) {
@@ -260,11 +272,7 @@ enum ToolCallSummaryFormatter {
                 }
             }
         }
-
-        guard let first = paths.first else { return nil }
-        let remaining = paths.count - 1
-        guard remaining > 0 else { return compacted(basename(first)) }
-        return compacted("\(basename(first)) \(String(localized: "+\(remaining) more"))")
+        return paths
     }
 
     /// `bash -lc "git status"`, `pwsh -Command "…"`, and `cmd /c …` read as the
