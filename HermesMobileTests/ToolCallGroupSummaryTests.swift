@@ -6,10 +6,24 @@ final class ToolCallGroupSummaryTests: XCTestCase {
         let summary = summary(of: [
             call("patch", args: ["path": .string("Sources/App.swift")]),
             call("patch", args: ["path": .string("Sources/App.swift")]),
-            call("write_file", args: ["paths": .array([.string("Sources/App.swift"), .string("README.md")])])
+            call("write_file", args: ["paths": .array([.string("Sources/App.swift"), .string("README.md")])]),
+            // The webui unwraps an MCP filesystem write's success text into plain text.
+            call(
+                "mcp__filesystem__write_file",
+                preview: "Successfully wrote to /tmp/a.txt",
+                args: ["path": .string("/tmp/a.txt"), "content": .string("hello")],
+                isError: false
+            ),
+            // A failure keyword inside the path is not an error.
+            call(
+                "mcp__filesystem__write_file",
+                preview: "Successfully wrote to /tmp/ENOENT.md",
+                args: ["path": .string("/tmp/ENOENT.md"), "content": .string("# ENOENT\n")],
+                isError: false
+            )
         ])
 
-        XCTAssertEqual(summary.parts, [.changedFiles(2)])
+        XCTAssertEqual(summary.parts, [.changedFiles(4)])
         XCTAssertEqual(summary.otherActionCount, 0)
     }
 
@@ -17,11 +31,26 @@ final class ToolCallGroupSummaryTests: XCTestCase {
         let summary = summary(of: [
             call("patch", args: ["path": .string("A.swift")], isError: true),
             call("patch", args: ["path": .string("B.swift")], isCompleted: false),
-            call("write_file", args: nil)
+            call("write_file", args: nil),
+            call("patch", preview: #"{"success": true, "no_change": true}"#, args: ["path": .string("C.swift")]),
+            // The webui unwraps a failed edit's error into plain text.
+            call("patch", preview: "Could not find match for old_string in D.swift", args: ["path": .string("D.swift")]),
+            call(
+                "patch",
+                preview: "Found 2 matches for old_string. Provide more context to make it unique, or use replace_all=True. Matches:\n  L1: foo\n  L2: foo",
+                args: ["path": .string("E.swift"), "old_string": .string("foo"), "new_string": .string("bar")],
+                isError: false
+            ),
+            call(
+                "write_file",
+                preview: "Refusing to overwrite /workspace/a.txt: /workspace/a.txt exists but this task has not seen its full current content (never read, only patched, or only a redacted/partial view). Read the file — every page of it, if it needs offset/limit — or use patch for a targeted edit; a stale conversation copy must not overwrite the current disk content. The file was NOT modified. Reload the current contents with read_file (every page, for a file that needs offset/limit), merge the requested change, then call write_file again. For small edits, prefer patch so existing unrelated changes are preserved.",
+                args: ["path": .string("/workspace/a.txt"), "content": .string("replacement\n")],
+                isError: false
+            )
         ])
 
         XCTAssertEqual(summary.parts, [])
-        XCTAssertEqual(summary.otherActionCount, 3)
+        XCTAssertEqual(summary.otherActionCount, 7)
         XCTAssertEqual(summary.failedCount, 1)
     }
 
@@ -59,10 +88,11 @@ final class ToolCallGroupSummaryTests: XCTestCase {
 
     private func call(
         _ name: String,
+        preview: String? = nil,
         args: [String: JSONValue]?,
         isError: Bool? = nil,
         isCompleted: Bool = true
     ) -> ToolCall {
-        ToolCall(name: name, preview: nil, args: args, isError: isError, isCompleted: isCompleted)
+        ToolCall(name: name, preview: preview, args: args, isError: isError, isCompleted: isCompleted)
     }
 }

@@ -6,7 +6,7 @@ import Foundation
 /// `accessibilityLabel(title:)` turn it into localized copy.
 struct ToolCallGroupSummary: Equatable {
     enum Part: Equatable {
-        /// Distinct paths across successful writes that named them.
+        /// Distinct paths across successful writes that named them and landed.
         case changedFiles(Int)
         case commands(Int)
         case delegatedTasks(Int)
@@ -20,7 +20,7 @@ struct ToolCallGroupSummary: Equatable {
     /// At most two, in priority order: write, shell, delegate, search, read, web.
     let parts: [Part]
     /// Hidden calls no part describes: lower-priority kinds, other tools, and
-    /// writes that failed, never finished, or named no path.
+    /// writes that failed, changed nothing, never finished, or named no path.
     let otherActionCount: Int
     let failedCount: Int
 
@@ -44,8 +44,9 @@ struct ToolCallGroupSummary: Equatable {
 
             switch ToolCallSummaryFormatter.kind(forToolNamed: entry.toolCall.name) {
             case .write:
-                // Only a finished, successful write changed anything.
-                let paths = status == .success ? ToolCallSummaryFormatter.changedPaths(args: args) : []
+                // Only a finished, successful write whose result shows it landed changed anything.
+                let landed = status == .success && !ToolCallDiff.resultReportsNoChange(for: entry.toolCall)
+                let paths = landed ? ToolCallSummaryFormatter.changedPaths(args: args) : []
                 if paths.isEmpty {
                     other += 1
                 } else {
