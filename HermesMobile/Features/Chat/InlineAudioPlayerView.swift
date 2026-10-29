@@ -12,13 +12,15 @@ struct InlineAudioPlayerView: View {
     /// Lazily fetches the raw audio bytes; returns `nil` on failure.
     let load: () async -> Data?
     /// When `load` can run: nil waits without loading (a detached Hermes chat), and a new key
-    /// loads again unless the clip is already ready.
+    /// loads again unless the clip is already ready. A key is admitted only once the player
+    /// is on screen (`loadsOnceVisible`).
     var loadKey: Int? = 0
     /// Opens the clip's file preview from a trailing button, shown whether or not
     /// playback works; nil hides the button.
     var onOpen: (() -> Void)? = nil
 
     @State private var model = InlineAudioPlayerModel()
+    @State private var admittedLoadKey: Int?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -58,8 +60,9 @@ struct InlineAudioPlayerView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
         )
-        .task(id: loadKey) {
-            await model.loadIfNeeded(key: loadKey, using: load)
+        .loadsOnceVisible(id: loadKey) { admittedLoadKey = $0 }
+        .task(id: admittedLoadKey) {
+            await model.loadIfNeeded(key: admittedLoadKey, using: load)
         }
         .onDisappear {
             model.teardown()

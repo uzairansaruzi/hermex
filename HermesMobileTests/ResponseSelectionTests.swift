@@ -247,6 +247,233 @@ final class ResponseSelectionVisibilityTests: XCTestCase {
     }
 }
 
+/// Transcript media loads only once its leaf scrolls into view (#1370): the
+/// transcript is an eager stack, so every row mounts when the chat opens.
+@MainActor
+final class TranscriptMediaVisibilityTests: XCTestCase {
+    func testOffscreenMediaWaitsUntilItScrollsIntoView() async throws {
+        let log = MediaLoadLog()
+        let transcript = MediaTranscript(log: log, top: Self.mediaMessages("near"), bottom: Self.mediaMessages("far"))
+        let near = ["/u/near.png", "/u/near.m4a", "/tmp/media/near-shot.png"]
+        let far = ["/u/far.png", "/u/far.m4a", "/tmp/media/far-shot.png"]
+        let nearLoads = near.map { log.expect($0) }
+        let (window, scroll) = try await show(transcript)
+        defer { window.isHidden = true; window.rootViewController = nil }
+
+        // The visible reply's MEDIA sits in the selection host, so this also
+        // proves the hosted fallback admits a reply that is on screen.
+        await fulfillment(of: nearLoads, timeout: 5)
+        await render(window)
+        for path in far {
+            XCTAssertEqual(log.calls[path, default: 0], 0, "\(path) loaded before it scrolled into view")
+        }
+
+        let farLoads = far.map { log.expect($0) }
+        scrollToBottom(scroll)
+        await renderVisibleRows(window)
+        await fulfillment(of: farLoads, timeout: 5)
+        for path in near + far {
+            XCTAssertEqual(log.calls[path], 1, path)
+        }
+    }
+
+    func testScrollingAwayKeepsAnAdmittedLoadAndRemountRetries() async throws {
+        let log = MediaLoadLog()
+        log.heldPath = "/u/near.m4a"
+        let transcript = MediaTranscript(log: log, top: Self.mediaMessages("near"), bottom: [])
+        let started = log.expect("/u/near.m4a")
+        let (window, scroll) = try await show(transcript)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        await fulfillment(of: [started], timeout: 5)
+
+        scrollToBottom(scroll)
+        await renderVisibleRows(window)
+        let finished = log.expectFinish("/u/near.m4a")
+        log.releaseHeldLoads()
+        await fulfillment(of: [finished], timeout: 5)
+        XCTAssertEqual(log.cancelled["/u/near.m4a", default: 0], 0, "Scrolling away must not cancel an admitted load")
+
+        // Removing the row cancels its held load, and mounting it again retries.
+        scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
+        await renderVisibleRows(window)
+        let restarted = log.expect("/u/near.m4a")
+        transcript.showsTop = false
+        await renderVisibleRows(window)
+        transcript.showsTop = true
+        await renderVisibleRows(window)
+        await fulfillment(of: [restarted], timeout: 5)
+        let cancelled = log.expectFinish("/u/near.m4a")
+        transcript.showsTop = false
+        await renderVisibleRows(window)
+        await fulfillment(of: [cancelled], timeout: 5)
+        XCTAssertEqual(log.cancelled["/u/near.m4a"], 1)
+
+        let retried = log.expect("/u/near.m4a")
+        let retryFinished = log.expectFinish("/u/near.m4a")
+        transcript.showsTop = true
+        await renderVisibleRows(window)
+        await fulfillment(of: [retried], timeout: 5)
+        log.releaseHeldLoads()
+        await fulfillment(of: [retryFinished], timeout: 5)
+        XCTAssertEqual(log.cancelled["/u/near.m4a"], 1, "The remounted row's load must run to completion")
+    }
+
+    func testDetachedAudioWaitsForItsLoadKeyAfterScrollingIn() async throws {
+        let log = MediaLoadLog()
+        let transcript = MediaTranscript(log: log, top: [], bottom: Self.mediaMessages("far"))
+        transcript.audioLoadKey = nil
+        let (window, scroll) = try await show(transcript)
+        defer { window.isHidden = true; window.rootViewController = nil }
+
+        let image = log.expect("/u/far.png")
+        scrollToBottom(scroll)
+        await renderVisibleRows(window)
+        await fulfillment(of: [image], timeout: 5)
+        await render(window)
+        XCTAssertEqual(log.calls["/u/far.m4a", default: 0], 0, "A detached chat's audio waits for the attach")
+
+        let audio = log.expect("/u/far.m4a")
+        transcript.audioLoadKey = 1
+        await renderVisibleRows(window)
+        await fulfillment(of: [audio], timeout: 5)
+    }
+
+    /// A user message with an image and an audio attachment, then a settled
+    /// reply showing a MEDIA image.
+    private static func mediaMessages(_ name: String) -> [ChatMessage] {
+        [
+            ChatMessage(role: "user", content: "", timestamp: 1, messageId: "\(name)-user", attachments: [
+                MessageAttachment(name: "\(name).png", path: "/u/\(name).png", mime: "image/png", isImage: true),
+                MessageAttachment(name: "\(name).m4a", path: "/u/\(name).m4a", mime: "audio/mp4")
+            ]),
+            ChatMessage(role: "assistant", content: "Here: ![Shot](/tmp/media/\(name)-shot.png)", timestamp: 1, messageId: "\(name)-reply")
+        ]
+    }
+
+    private func show(_ transcript: MediaTranscript) async throws -> (UIWindow, UIScrollView) {
+        let host = UIHostingController(rootView: MediaTranscriptView(transcript: transcript))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        await renderVisibleRows(window)
+        let scroll = try XCTUnwrap(descendants(host.view, of: UIScrollView.self).first)
+        return (window, scroll)
+    }
+
+    private func scrollToBottom(_ scroll: UIScrollView) {
+        let bottom = scroll.contentSize.height - scroll.bounds.height + scroll.adjustedContentInset.bottom
+        scroll.setContentOffset(CGPoint(x: 0, y: bottom), animated: false)
+    }
+
+    private func descendants<T: UIView>(_ view: UIView, of type: T.Type) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants($0, of: type) }
+    }
+
+    /// The first pass reports which leaves are visible; the second admits them.
+    private func renderVisibleRows(_ window: UIWindow) async {
+        await render(window)
+        await render(window)
+    }
+}
+
+/// Counts every media load by path. A held path parks its loads until
+/// `releaseHeldLoads()`, or until the load's task is cancelled.
+@MainActor
+private final class MediaLoadLog {
+    private(set) var calls: [String: Int] = [:]
+    private(set) var cancelled: [String: Int] = [:]
+    var heldPath: String?
+    private var started: [String: XCTestExpectation] = [:]
+    private var finished: [String: XCTestExpectation] = [:]
+    private var held: [UUID: CheckedContinuation<Void, Never>] = [:]
+
+    /// Fulfilled by the next load of `path`.
+    func expect(_ path: String) -> XCTestExpectation {
+        let expectation = XCTestExpectation(description: "load \(path)")
+        started[path] = expectation
+        return expectation
+    }
+
+    /// Fulfilled when the next load of `path` returns.
+    func expectFinish(_ path: String) -> XCTestExpectation {
+        let expectation = XCTestExpectation(description: "finish \(path)")
+        finished[path] = expectation
+        return expectation
+    }
+
+    func releaseHeldLoads() {
+        let continuations = held.values
+        held = [:]
+        continuations.forEach { $0.resume() }
+    }
+
+    func load(_ path: String) async -> Data? {
+        calls[path, default: 0] += 1
+        started.removeValue(forKey: path)?.fulfill()
+        if path == heldPath {
+            let id = UUID()
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { held[id] = $0 }
+            } onCancel: {
+                Task { @MainActor in self.held.removeValue(forKey: id)?.resume() }
+            }
+            if Task.isCancelled { cancelled[path, default: 0] += 1 }
+        }
+        finished.removeValue(forKey: path)?.fulfill()
+        return nil
+    }
+}
+
+@MainActor @Observable
+private final class MediaTranscript {
+    let log: MediaLoadLog
+    let top: [ChatMessage]
+    let bottom: [ChatMessage]
+    let namespace = "https://webui.example|visibility-\(UUID().uuidString)"
+    var showsTop = true
+    var audioLoadKey: Int? = 0
+
+    init(log: MediaLoadLog, top: [ChatMessage], bottom: [ChatMessage]) {
+        self.log = log
+        self.top = top
+        self.bottom = bottom
+    }
+}
+
+/// An eager transcript like `ChatTranscriptView`'s: `top`, a screenful of text
+/// several times over, then `bottom`.
+private struct MediaTranscriptView: View {
+    let transcript: MediaTranscript
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                if transcript.showsTop {
+                    ForEach(transcript.top) { bubble($0) }
+                }
+                ForEach(0..<12, id: \.self) { index in
+                    bubble(ChatMessage(role: "assistant", content: String(repeating: "Filler \(index) that wraps onto several lines.\n\n", count: 6), timestamp: 1, messageId: "filler-\(index)"))
+                }
+                ForEach(transcript.bottom) { bubble($0) }
+            }
+            .padding(12)
+        }
+    }
+
+    private func bubble(_ message: ChatMessage) -> MessageBubbleView {
+        let log = transcript.log
+        return MessageBubbleView(
+            message: message,
+            loadAttachmentImage: { await log.load($0) },
+            attachmentAudio: AttachmentAudioSource(load: { await log.load($0) }, isHost: false, loadKey: transcript.audioLoadKey),
+            loadTranscriptMediaImage: { await log.load($0.rawReference) },
+            transcriptMediaCacheNamespace: transcript.namespace
+        )
+    }
+}
+
 /// Lays out and draws `window` once, after one main-queue turn so SwiftUI can
 /// commit pending state. There is no deadline: both calls are synchronous, and
 /// the assertions that follow decide whether the pass rendered what they read.

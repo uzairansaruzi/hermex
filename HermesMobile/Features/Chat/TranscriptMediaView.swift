@@ -104,6 +104,7 @@ private struct TranscriptMediaThumbnailView: View {
 
     @State private var image: UIImage?
     @State private var didAttemptLoad = false
+    @State private var admittedImageKey: TranscriptMediaImageCacheKey?
 
     private let thumbnailWidth: CGFloat = 210
     private let thumbnailHeight: CGFloat = 132
@@ -129,8 +130,9 @@ private struct TranscriptMediaThumbnailView: View {
             }
             .buttonStyle(.chatTactile(.thumbnail))
             .accessibilityLabel(imageButtonAccessibilityLabel)
-            .task(id: imageCacheKey) {
-                guard let loadMediaImage else { return }
+            .loadsOnceVisible(id: imageCacheKey) { admittedImageKey = $0 }
+            .task(id: admittedImageKey) {
+                guard let loadMediaImage, admittedImageKey == imageCacheKey else { return }
                 image = nil
                 didAttemptLoad = false
                 let reference = reference
@@ -232,6 +234,7 @@ private struct TranscriptMediaResolvedRemoteView: View {
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
 
     @State private var resolvedMedia: ResolvedMedia?
+    @State private var admittedReferenceID: String?
 
     var body: some View {
         Group {
@@ -274,7 +277,9 @@ private struct TranscriptMediaResolvedRemoteView: View {
                     }
             }
         }
-        .task(id: reference.id) {
+        .loadsOnceVisible(id: reference.id) { admittedReferenceID = $0 }
+        .task(id: admittedReferenceID) {
+            guard admittedReferenceID == reference.id else { return }
             resolvedMedia = nil
             guard let data = await loadMediaData(reference) else {
                 guard !Task.isCancelled else { return }

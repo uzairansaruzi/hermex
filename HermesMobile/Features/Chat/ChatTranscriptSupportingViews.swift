@@ -732,6 +732,54 @@ extension View {
     func forcedLeftToRight() -> some View {
         modifier(ForcedLeftToRightModifier())
     }
+
+    /// Calls `admit` with `id` the first time this media leaf is on screen, so opening
+    /// a chat loads only the media the user can see: the transcript is an eager stack,
+    /// so every row mounts at open. The leaf keeps the admitted id in its own `@State`
+    /// and keys its load `.task` by it.
+    ///
+    /// Admission latches per `id`. Scrolling away never withdraws it, so a load in
+    /// flight keeps running; a new `id` waits until the leaf is on screen again.
+    func loadsOnceVisible<ID: Equatable>(id: ID, admit: @escaping (ID) -> Void) -> some View {
+        modifier(LoadsOnceVisibleModifier(id: id, admit: admit))
+    }
+}
+
+private struct LoadsOnceVisibleModifier<ID: Equatable>: ViewModifier {
+    let id: ID
+    let admit: (ID) -> Void
+    @Environment(\.responseSelectionScope) private var selectionScope
+    @State private var placement = Placement.unmeasured
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: Placement.self) { geometry in
+                guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else {
+                    return .outsideScrollView
+                }
+                return .inScrollView(isVisible: viewport.intersects(CGRect(origin: .zero, size: geometry.size)))
+            } action: { placement = $0 }
+            .onChange(of: isVisible ? Optional(id) : nil, initial: true) { _, visibleID in
+                if let visibleID { admit(visibleID) }
+            }
+    }
+
+    /// A settled reply's selection host is a separate SwiftUI graph that can't see the
+    /// transcript's scroll view, so its media follows the whole reply's visibility.
+    /// Anywhere else without a scroll view, such as a preview sheet, counts as visible.
+    private var isVisible: Bool {
+        switch placement {
+        case .unmeasured: false
+        case .outsideScrollView: selectionScope?.collectsGlyphs ?? true
+        case let .inScrollView(isVisible): isVisible
+        }
+    }
+
+    private enum Placement: Equatable {
+        case unmeasured
+        case outsideScrollView
+        case inScrollView(isVisible: Bool)
+    }
 }
 
 struct ChatVerticalScrollAxisGuard: UIViewRepresentable {

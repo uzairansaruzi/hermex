@@ -12,6 +12,7 @@ struct TranscriptLinkPreviewView: View {
     @State private var previewImage: UIImage?
     @State private var didFail = false
     @State private var isLoading = false
+    @State private var admittedURL: URL?
 
     var body: some View {
         Button {
@@ -24,7 +25,9 @@ struct TranscriptLinkPreviewView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Opens the web page")
-        .task(id: url.absoluteString) {
+        .loadsOnceVisible(id: url) { admittedURL = $0 }
+        .task(id: admittedURL) {
+            guard admittedURL == url else { return }
             await loadMetadataIfNeeded()
         }
     }

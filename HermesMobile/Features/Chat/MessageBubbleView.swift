@@ -883,6 +883,7 @@ private struct RemoteAttachmentImage: View {
     let loadAttachmentImage: (String) async -> Data?
     @State private var image: UIImage?
     @State private var didAttempt = false
+    @State private var admittedImageKey: AttachmentImageCacheKey?
 
     var body: some View {
         ZStack {
@@ -896,7 +897,9 @@ private struct RemoteAttachmentImage: View {
                 fallbackImage
             }
         }
-        .task(id: imageCacheKey) {
+        .loadsOnceVisible(id: imageCacheKey) { admittedImageKey = $0 }
+        .task(id: admittedImageKey) {
+            guard admittedImageKey == imageCacheKey else { return }
             image = nil
             didAttempt = false
             let path = path
