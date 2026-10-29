@@ -2,8 +2,9 @@ import SwiftUI
 import UIKit
 
 /// A turn's reasoning as the same dense log row tool calls use: brain icon,
-/// bold `Thinking`, dim one-line summary, chevron, and an empty status slot so
-/// the labels line up. Tap reveals the reasoning under the row; long-press
+/// bold title, dim one-line preview, chevron, and an empty status slot so the
+/// labels line up. Live rows read `Thinking` with the latest thought; settled
+/// rows read `Thought` with the block's beginning. Tap reveals the reasoning under the row; long-press
 /// copies it. Live thinking streams through `LiveReasoningTextView`; settled
 /// text is selectable. "Expand Thinking by Default" decides the initial state.
 struct ReasoningBlockView: View {
@@ -27,13 +28,18 @@ struct ReasoningBlockView: View {
 
     var body: some View {
         if let displayText = ReasoningBlockContent.displayText(from: text) {
-            let summary = ReasoningSummaryFormatter.summary(for: displayText)
+            let isLive = liveStreamID != nil
+            let detail = isLive
+                ? ReasoningSummaryFormatter.latestThought(in: displayText)
+                : ReasoningSummaryFormatter.summary(for: displayText)
 
             TranscriptLogRowView(
-                summary: String(localized: "Thinking"),
-                detail: summary,
+                summary: isLive ? String(localized: "Thinking") : String(localized: "Thought"),
+                detail: detail,
                 isExpanded: isExpanded,
-                accessibilityLabel: String(localized: "Thinking, \(summary)"),
+                accessibilityLabel: isLive
+                    ? String(localized: "Thinking, \(detail)")
+                    : String(localized: "Thought, \(detail)"),
                 copyText: { displayText },
                 toggleExpansion: { userToggledExpansion = !isExpanded }
             ) {
