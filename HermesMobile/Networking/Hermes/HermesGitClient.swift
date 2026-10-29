@@ -34,6 +34,7 @@ import Foundation
     typealias WriteOwner = @MainActor @Sendable () throws -> Dispatch
 
     let context: HermesWorkspaceContext
+    nonisolated let reviewScope: String
     private let http: HermesConnection
     private let writeMessage: MessageWriter?
     private let writeOwner: WriteOwner?
@@ -53,6 +54,7 @@ import Foundation
     init(context: HermesWorkspaceContext, http: HermesConnection, writeMessage: MessageWriter? = nil,
          writeOwner: WriteOwner? = nil) {
         self.context = context
+        reviewScope = "\(context.server.absoluteString)|hermes|\(context.profile)|\(context.storedKey)|\(context.cwd)"
         self.http = http
         self.writeMessage = writeMessage
         self.writeOwner = writeOwner

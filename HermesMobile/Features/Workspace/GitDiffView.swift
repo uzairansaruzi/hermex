@@ -5,7 +5,9 @@ import SwiftUI
 /// load one file at a time (a few in flight) so the first file paints before the rest
 /// arrive; each file's rows build once, off the main thread, as its answer lands.
 /// Lockfiles, generated output, and huge changes fold once loaded (`ReviewDiffDefaultCollapse`),
-/// except the file the user tapped or a single-file review.
+/// except the file the user tapped or a single-file review. Folds and viewed marks last as long as
+/// the chat (`ReviewProgressStore`), so a reopened review picks up where it was left; a file whose
+/// patch changed since it was marked viewed reopens unviewed and unfolded.
 struct GitDiffView: View {
     let onAPIError: (Error) -> Void
     /// Receives the selected lines as Markdown. Nil hides "Add to prompt", for hosts
@@ -22,9 +24,7 @@ struct GitDiffView: View {
     @State private var loadGeneration = 0
     @State private var hasLoaded = false
     @State private var isRefreshing = false
-    @State private var collapsedFileIDs: Set<String> = []
-    @State private var defaultCollapse: ReviewDiffDefaultCollapse
-    @State private var viewedFileIDs: Set<String> = []
+    @State private var review: ReviewDiffProgress
     @State private var selection = ReviewDiffSelection()
     @State private var scrollTarget: ReviewDiffScrollTarget?
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
@@ -36,6 +36,7 @@ struct GitDiffView: View {
         git: (any GitDataClient)?,
         files: [GitFile],
         initialFile: GitFile? = nil,
+        progress: ReviewProgressStore,
         onAPIError: @escaping (Error) -> Void,
         onAddToPrompt: ((String) -> Void)? = nil
     ) {
@@ -45,7 +46,7 @@ struct GitDiffView: View {
         self.onAPIError = onAPIError
         self.onAddToPrompt = onAddToPrompt
         _scrollTarget = State(initialValue: initialFile.map { ReviewDiffScrollTarget(fileID: $0.id, token: UUID()) })
-        _defaultCollapse = State(initialValue: ReviewDiffDefaultCollapse(files: files, initialFile: initialFile))
+        _review = State(initialValue: ReviewDiffProgress(files: files, initialFile: initialFile, store: progress, scope: git?.reviewScope))
     }
 
     private var title: String {
@@ -85,8 +86,8 @@ struct GitDiffView: View {
             ReviewDiffSurface(
                 rows: rows,
                 rowsVersion: rowsVersion,
-                collapsedFileIDs: collapsedFileIDs,
-                viewedFileIDs: viewedFileIDs,
+                collapsedFileIDs: review.collapsedFileIDs,
+                viewedFileIDs: review.viewedFileIDs,
                 selectedRowIDs: selectedRowIDs,
                 isRefreshing: isRefreshing,
                 scrollTarget: scrollTarget,
@@ -121,24 +122,13 @@ struct GitDiffView: View {
     // MARK: - Interaction
 
     private func toggleFile(_ fileID: String) {
-        defaultCollapse.settle(fileID)
-        if collapsedFileIDs.contains(fileID) {
-            collapsedFileIDs.remove(fileID)
-        } else {
-            collapsedFileIDs.insert(fileID)
-        }
+        review.toggleFile(fileID)
         ChatHaptics.disclosureToggled(isEnabled: isHapticsEnabled)
     }
 
     /// Marking a file viewed also collapses it; un-viewing leaves it collapsed.
     private func toggleViewed(_ fileID: String) {
-        defaultCollapse.settle(fileID)
-        if viewedFileIDs.contains(fileID) {
-            viewedFileIDs.remove(fileID)
-        } else {
-            viewedFileIDs.insert(fileID)
-            collapsedFileIDs.insert(fileID)
-        }
+        review.toggleViewed(fileID)
         ChatHaptics.disclosureToggled(isEnabled: isHapticsEnabled)
     }
 
@@ -172,7 +162,7 @@ struct GitDiffView: View {
         let generation = loadGeneration
         guard let git else {
             let message = String(localized: "Session ID is missing.")
-            publish(files.flatMap { ReviewDiffRowBuilder.rows(for: ReviewDiffFileInput(file: $0, state: .failed(message))) })
+            publish(files.flatMap { ReviewDiffRowBuilder.rows(for: ReviewDiffFileInput(file: $0, state: .failed(message))) }, patches: [:])
             return
         }
         await ReviewDiffLoader.load(
@@ -187,9 +177,9 @@ struct GitDiffView: View {
         )
     }
 
-    private func publish(_ built: [ReviewDiffRow]) {
+    private func publish(_ built: [ReviewDiffRow], patches: [String: Int]) {
         rows = built
-        defaultCollapse.apply(built, to: &collapsedFileIDs)
+        review.apply(built, patches: patches)
         rowsVersion += 1
     }
 
@@ -219,10 +209,11 @@ struct GitDiffView: View {
 }
 
 /// Fetches per-file diffs a few at a time (the first file first) and publishes the
-/// flat row list as answers land. Each file's rows build once, next to its fetch and
-/// off the main actor, so a landed answer never re-parses the files before it. The
-/// first answer publishes at once; later ones coalesce to one publish per `interval`
-/// or per `batch` answers, so a large change set lays out a bounded number of times.
+/// flat row list as answers land, with each loaded file's patch fingerprint
+/// (`ReviewDiffProgress.patch(for:state:)`). Each file's rows and fingerprint build once,
+/// next to its fetch and off the main actor, so a landed answer never re-parses the files
+/// before it. The first answer publishes at once; later ones coalesce to one publish per
+/// `interval` or per `batch` answers, so a large change set lays out a bounded number of times.
 enum ReviewDiffLoader {
     struct FileResult {
         let fileID: String
@@ -239,7 +230,7 @@ enum ReviewDiffLoader {
 
     private enum Event {
         /// Nil when the fetch was cancelled.
-        case file(FileResult?, [ReviewDiffRow])
+        case file(FileResult?, [ReviewDiffRow], patch: Int?)
         /// Carries the token it was scheduled with; a publish in between makes it stale.
         case flush(Int)
     }
@@ -255,20 +246,21 @@ enum ReviewDiffLoader {
         fetch: @escaping @Sendable (GitFile) async -> FileResult?,
         buildRows: @escaping @Sendable (ReviewDiffFileInput) -> [ReviewDiffRow] = { ReviewDiffRowBuilder.rows(for: $0) },
         isCurrent: () -> Bool,
-        publish: ([ReviewDiffRow]) -> Void,
+        publish: (_ rows: [ReviewDiffRow], _ patches: [String: Int]) -> Void,
         onError: (Error) -> Void
     ) async {
         var rowsByFileID: [String: [ReviewDiffRow]] = [:]
         for file in files {
             rowsByFileID[file.id] = ReviewDiffRowBuilder.rows(for: ReviewDiffFileInput(file: file, state: .loading))
         }
+        var patchesByFileID: [String: Int] = [:]
         let clock = ContinuousClock()
         var lastPublish: ContinuousClock.Instant?
         var pending = 0
         var scheduledFlush: Int?
         var flushCount = 0
         func publishRows() {
-            publish(files.flatMap { rowsByFileID[$0.id] ?? [] })
+            publish(files.flatMap { rowsByFileID[$0.id] ?? [] }, patchesByFileID)
             pending = 0
             // Answers after this publish get a fresh interval, not the rest of an old one.
             scheduledFlush = nil
@@ -288,8 +280,9 @@ enum ReviewDiffLoader {
                 guard let file = queue.next() else { return }
                 inFlight += 1
                 group.addTask {
-                    guard let result = await fetch(file) else { return .file(nil, []) }
-                    return .file(result, buildRows(ReviewDiffFileInput(file: file, state: result.state)))
+                    guard let result = await fetch(file) else { return .file(nil, [], patch: nil) }
+                    let rows = buildRows(ReviewDiffFileInput(file: file, state: result.state))
+                    return .file(result, rows, patch: ReviewDiffProgress.patch(for: file, state: result.state))
                 }
             }
             for _ in 0..<maxConcurrent { enqueueNext() }
@@ -306,10 +299,11 @@ enum ReviewDiffLoader {
                         publishRows()
                         lastPublish = clock.now
                     }
-                case .file(let result, let rows):
+                case .file(let result, let rows, let patch):
                     inFlight -= 1
                     guard let result else { continue }
                     rowsByFileID[result.fileID] = rows
+                    patchesByFileID[result.fileID] = patch
                     pending += 1
                     if let error = result.error, !reportedError {
                         reportedError = true

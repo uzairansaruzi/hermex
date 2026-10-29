@@ -10,6 +10,8 @@ import Foundation
 final class GitWorkspaceViewModel {
     /// Nil for a webui session without an ID.
     private let git: (any GitDataClient)?
+    /// The chat's review progress, pruned to each successful status read (`ReviewProgressStore`).
+    private let progress: ReviewProgressStore?
 
     private(set) var status: GitStatus?
     private(set) var isLoading = false
@@ -17,8 +19,9 @@ final class GitWorkspaceViewModel {
     private(set) var lastError: Error?
     private var hasLoaded = false
 
-    init(git: (any GitDataClient)?) {
+    init(git: (any GitDataClient)?, progress: ReviewProgressStore? = nil) {
         self.git = git
+        self.progress = progress
     }
 
     convenience init(session: SessionSummary, server: URL, apiClient: APIClient? = nil) {
@@ -56,6 +59,7 @@ final class GitWorkspaceViewModel {
         do {
             status = try await git.status()
             hasLoaded = true
+            progress?.prune(to: status, in: git.reviewScope)
         } catch {
             lastError = error
             errorMessage = error.localizedDescription

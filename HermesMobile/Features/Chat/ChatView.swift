@@ -371,6 +371,8 @@ struct ChatView: View {
     @State private var showsGoalSheet = false
     @State private var activeGitSheet: ActiveGitSheet?
     @State private var turnDiffPresentation: TurnDiffPresentation?
+    /// Folds and viewed marks the Changes sheet and turn diffs share for as long as this chat is open.
+    @State private var reviewProgress = ReviewProgressStore()
     @State private var viewModel: ChatViewModel
     @State private var gitAvailabilityViewModel: GitWorkspaceAvailabilityViewModel
     @State private var gitToastState = GitActionToastState()
@@ -1384,6 +1386,7 @@ struct ChatView: View {
         case .changes:
             GitWorkspaceView(
                 git: gitAvailabilityViewModel.git,
+                progress: reviewProgress,
                 onAPIError: onAPIError,
                 onAddToPrompt: addDiffSelectionToDraft
             )
@@ -1407,6 +1410,7 @@ struct ChatView: View {
                 git: gitAvailabilityViewModel.git,
                 files: files,
                 initialFile: initial,
+                progress: reviewProgress,
                 onAPIError: onAPIError,
                 onAddToPrompt: addDiffSelectionToDraft
             )

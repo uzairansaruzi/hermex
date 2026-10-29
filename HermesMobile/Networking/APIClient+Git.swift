@@ -12,6 +12,10 @@ protocol GitDataClient: Sendable {
     func status() async throws -> GitStatus?
     /// One changed file's diff, of the kind `GitFile.preferredDiffKind` names where it is known.
     func diff(for file: GitFile) async throws -> GitDiff?
+    /// The repository a chat's review progress is kept under (`ReviewProgressStore`): the session
+    /// on webui; the server, Profile, session and folder on a Hermes host. Never shown, logged or
+    /// persisted.
+    var reviewScope: String { get }
     /// The row path a turn's tool names a file by, for the turn-changes card's join.
     @MainActor func rowPath(forToolPath path: String) -> String
     /// A Hermes host's repository (#1115), whose writes answer only `{ok}`: a failed write reads
@@ -87,6 +91,8 @@ struct WebUIGitClient: GitDataClient {
         self.apiClient = apiClient
         self.sessionID = sessionID
     }
+
+    var reviewScope: String { "webui|\(sessionID)" }
 
     func info() async throws -> GitInfo? {
         try await apiClient.gitInfo(sessionID: sessionID).git

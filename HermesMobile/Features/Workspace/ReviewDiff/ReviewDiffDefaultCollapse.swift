@@ -6,8 +6,8 @@ import Foundation
 /// read in the open. A header tap or viewed toggle settles the file, so no later load or
 /// refresh folds or unfolds it again.
 ///
-/// `GitDiffView` builds this in its init, calls `apply(_:to:)` on every publish, and
-/// `settle(_:)` on every user toggle.
+/// `ReviewDiffProgress` builds this as a review opens, settles the files the user already chose
+/// for, calls `apply(_:to:)` on every publish, and `settle(_:)` on every user toggle.
 struct ReviewDiffDefaultCollapse {
     static let maxChangedLines = 400
 

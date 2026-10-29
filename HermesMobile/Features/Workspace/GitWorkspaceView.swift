@@ -6,20 +6,24 @@ struct GitWorkspaceView: View {
     let onAddToPrompt: ((String) -> Void)?
 
     private let git: (any GitDataClient)?
+    private let progress: ReviewProgressStore
     @State private var viewModel: GitWorkspaceViewModel
     @State private var selectedFile: GitFile?
     @Environment(\.dismiss) private var dismiss
 
-    /// `git` is the chat's repository client, shared with its toolbar menu.
+    /// `git` is the chat's repository client, shared with its toolbar menu; `progress` is the
+    /// chat's review progress, which each complete status read prunes.
     init(
         git: (any GitDataClient)?,
+        progress: ReviewProgressStore,
         onAPIError: @escaping (Error) -> Void,
         onAddToPrompt: ((String) -> Void)? = nil
     ) {
         self.git = git
         self.onAPIError = onAPIError
         self.onAddToPrompt = onAddToPrompt
-        _viewModel = State(initialValue: GitWorkspaceViewModel(git: git))
+        self.progress = progress
+        _viewModel = State(initialValue: GitWorkspaceViewModel(git: git, progress: progress))
     }
 
     var body: some View {
@@ -46,6 +50,7 @@ struct GitWorkspaceView: View {
                 git: git,
                 files: viewModel.status?.trackedFiles ?? [file],
                 initialFile: file,
+                progress: progress,
                 onAPIError: onAPIError,
                 onAddToPrompt: onAddToPrompt
             )
