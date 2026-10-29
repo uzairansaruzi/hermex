@@ -123,6 +123,13 @@ final class ChatScrollPolicyTests: XCTestCase {
         XCTAssertFalse(reduce(settled, .contentScrolled(isAtBottom: false, isUserScrolling: true)).isFollowing)
     }
 
+    /// Queue adds no transcript row (#1379): a reader up in history who queues a prompt stays
+    /// there, while Steer and Stop and send jump to the row they add.
+    func testOnlyAStreamingSendThatAddsARowJumpsAReaderToTheEnd() {
+        XCTAssertFalse(ChatScrollPolicy.streamingSendReArmsFollow(.queue))
+        XCTAssertTrue(ChatScrollPolicy.streamingSendReArmsFollow(.steer))
+    }
+
     func testNewDragAfterResetTurnsFollowOff() {
         let latch = reduce(Latch(), .reset, .userScrollBegin)
         XCTAssertFalse(latch.isFollowing)

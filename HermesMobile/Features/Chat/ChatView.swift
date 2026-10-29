@@ -2657,8 +2657,10 @@ struct ChatView: View {
 
         let didStart: Bool
         if viewModel.activeStreamID != nil {
-            prepareTranscriptForExplicitSend()
             let behavior = behavior ?? StreamingSendBehavior.storedValue(streamingSendBehaviorRawValue)
+            if ChatScrollPolicy.streamingSendReArmsFollow(behavior) {
+                prepareTranscriptForExplicitSend()
+            }
             let result = await viewModel.submitStreamingMessage(outboundMessage, behavior: behavior)
             handleSlashExecutionResult(
                 result,

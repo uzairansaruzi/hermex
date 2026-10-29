@@ -134,19 +134,21 @@ struct ChatTranscriptView: View {
     var onCopyQueuedPrompt: (String) -> Void = { _ in }
 
     /// What stands in for a transcript with no rows. Nil draws the transcript, as for a Hermes
-    /// turn that failed before the host saved any row, whose outcome row still shows (#1139).
+    /// turn that failed before the host saved any row, whose outcome row still shows (#1139),
+    /// or a prompt queued behind another client's first turn, whose bubble still shows (#1379).
     enum Placeholder: Equatable {
         case loading
         case loadFailed(String)
         case startPrompt
 
-        init?(isLoading: Bool, errorMessage: String?, isEmpty: Bool, showsTurnOutcome: Bool) {
+        init?(isLoading: Bool, errorMessage: String?, isEmpty: Bool, showsTurnOutcome: Bool,
+              showsQueuedPrompt: Bool) {
             guard isEmpty else { return nil }
             if isLoading {
                 self = .loading
             } else if let errorMessage {
                 self = .loadFailed(errorMessage)
-            } else if showsTurnOutcome {
+            } else if showsTurnOutcome || showsQueuedPrompt {
                 return nil
             } else {
                 self = .startPrompt
@@ -156,7 +158,7 @@ struct ChatTranscriptView: View {
 
     var body: some View {
         switch Placeholder(isLoading: isLoading, errorMessage: errorMessage, isEmpty: messages.isEmpty,
-                           showsTurnOutcome: turnOutcome != nil) {
+                           showsTurnOutcome: turnOutcome != nil, showsQueuedPrompt: queuedPrompt != nil) {
         case .loading?:
             ChatTranscriptLoadingSkeletonView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -298,7 +300,7 @@ struct ChatTranscriptView: View {
                         pinReader(proxy: proxy)
                         return
                     }
-                    releasingHold { onScrollToBottom(proxy) }
+                    releasingHold { onScrollToLatestContent(proxy, false) }
                 }
                 .onChange(of: clarificationPromptID) {
                     // The bar above the composer just grew the bottom inset; keep

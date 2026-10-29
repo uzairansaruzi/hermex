@@ -436,10 +436,11 @@ import SwiftUI
         chat.host.always("prompt.submit", .init(result: .object(["status": .string("queued")])))
         _ = await chat.model.submitStreamingMessage("Afterwards", behavior: .queue)
         XCTAssertTrue(chat.model.stopNeedsConfirmation)
+        XCTAssertEqual(chat.model.queuedPromptMessage?.content, "Afterwards")
         chat.host.always("session.interrupt", .init(result: .object(["status": .string("interrupted")])))
         _ = await chat.model.cancelActiveStream()
         XCTAssertFalse(chat.model.stopNeedsConfirmation, "the host discarded the queue")
-        XCTAssertNil(chat.model.queuedMessagesReceipt)
+        XCTAssertNil(chat.model.queuedPromptMessage)
     }
 
     /// A refused password (#884, #942) is never sent again unasked: neither returning from the
@@ -1025,16 +1026,23 @@ import SwiftUI
     }
 
     /// A first turn that failed before the host saved any row still shows its outcome row, with
-    /// Retry and the billing page, in place of the empty chat's start prompt. Loading and a
-    /// failed load keep their own placeholders.
-    func testAnEmptyChatShowsAFailedTurnsOutcome() {
+    /// Retry and the billing page, in place of the empty chat's start prompt, as a prompt queued
+    /// behind another client's first turn still shows its bubble. Loading and a failed load keep
+    /// their own placeholders.
+    func testAnEmptyChatShowsAFailedTurnsOutcomeOrAQueuedPrompt() {
         typealias Placeholder = ChatTranscriptView.Placeholder
-        XCTAssertNil(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true, showsTurnOutcome: true))
-        XCTAssertEqual(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true, showsTurnOutcome: false), .startPrompt)
-        XCTAssertEqual(Placeholder(isLoading: true, errorMessage: nil, isEmpty: true, showsTurnOutcome: true), .loading)
-        XCTAssertEqual(Placeholder(isLoading: false, errorMessage: "Offline", isEmpty: true, showsTurnOutcome: true),
-                       .loadFailed("Offline"))
-        XCTAssertNil(Placeholder(isLoading: false, errorMessage: nil, isEmpty: false, showsTurnOutcome: false))
+        XCTAssertNil(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true, showsTurnOutcome: true,
+                                 showsQueuedPrompt: false))
+        XCTAssertNil(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true, showsTurnOutcome: false,
+                                 showsQueuedPrompt: true))
+        XCTAssertEqual(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true, showsTurnOutcome: false,
+                                   showsQueuedPrompt: false), .startPrompt)
+        XCTAssertEqual(Placeholder(isLoading: true, errorMessage: nil, isEmpty: true, showsTurnOutcome: true,
+                                   showsQueuedPrompt: true), .loading)
+        XCTAssertEqual(Placeholder(isLoading: false, errorMessage: "Offline", isEmpty: true, showsTurnOutcome: true,
+                                   showsQueuedPrompt: true), .loadFailed("Offline"))
+        XCTAssertNil(Placeholder(isLoading: false, errorMessage: nil, isEmpty: false, showsTurnOutcome: false,
+                                 showsQueuedPrompt: false))
     }
 
     /// A failed turn says why in its outcome row, not as error text: the host's surface, its

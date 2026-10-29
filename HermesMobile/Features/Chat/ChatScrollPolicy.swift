@@ -130,6 +130,13 @@ enum ChatScrollPolicy {
         var ignoresCoastingGesture = false
     }
 
+    /// Whether a send while a response streams jumps the reader to the end (`.reset`). Steer
+    /// and Stop and send show the prompt as a transcript row; Queue holds it as a pending
+    /// bubble or composer receipt (#1379), so a reader up in history stays there.
+    static func streamingSendReArmsFollow(_ behavior: StreamingSendBehavior) -> Bool {
+        behavior != .queue
+    }
+
     /// Reduces one event onto the current latch state.
     static func resolveFollow(current: FollowLatch, event: FollowEvent) -> FollowLatch {
         var latch = current
