@@ -302,10 +302,15 @@ actor BotRosterCache {
     private var savedReadAt: [Scope: ContinuousClock.Instant] = [:]
     /// Removals by server digest, and by `<digest>-<connection UUID>` for one connection.
     private var removedAt: [String: ContinuousClock.Instant] = [:]
+    /// Runs as each load starts. Fixtures change the saved connection here, while an open waits on the load.
+    private let willLoad: @Sendable () async -> Void
 
-    init(directory: URL) { self.directory = directory }
+    init(directory: URL, willLoad: @escaping @Sendable () async -> Void = {}) {
+        self.directory = directory; self.willLoad = willLoad
+    }
 
-    func load(_ scope: Scope) -> [BotJSON]? {
+    func load(_ scope: Scope) async -> [BotJSON]? {
+        await willLoad()
         let file = file(scope)
         guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= Self.maximumBytes,
               let data = try? Data(contentsOf: file),

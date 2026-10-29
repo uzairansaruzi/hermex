@@ -1277,8 +1277,12 @@ import SwiftUI
     /// outdated paints and connects nothing, and a removal revokes saves read before it.
     func testACachedRosterNeverCrossesConnectionsOrOutlivesItsRemoval() async throws {
         let store = try connectedStore()
-        let cache = makeRosterCache().cache
         let a = try XCTUnwrap(store.load(server: server))
+        let b = BotConnection(id: UUID(), name: "Other", address: URL(string: "https://other.example")!,
+                              username: "u", password: "p", hermesVersion: nil)
+        // The form replaces A with B while A's roster is being read, and the inbox stays
+        // open until the form's sheet dismisses.
+        let cache = makeRosterCache { try store.save(b, server: self.server) }
         let other = URL(string: "https://two.example")!
         let otherScope = BotRosterCache.Scope(server: other, connectionID: a.id)
         await cache.save([row("from-a")], scope: .init(server: server, connectionID: a.id), readAt: .now)
@@ -1288,14 +1292,7 @@ import SwiftUI
         bWire.holdsConnect = true
         let inbox = try makeInbox(wires: [], store: store, rosterCache: cache) { $0.id == a.id ? aWire : bWire }
 
-        let opening = Task { await inbox.open() }
-        await Task.yield()
-        // The form replaced A with B while A's roster was being read, and the inbox stays
-        // open until the form's sheet dismisses.
-        let b = BotConnection(id: UUID(), name: "Other", address: URL(string: "https://other.example")!,
-                              username: "u", password: "p", hermesVersion: nil)
-        try store.save(b, server: server)
-        await opening.value
+        await inbox.open()
         XCTAssertEqual(inbox.profiles, [], "the outdated load paints nothing")
         XCTAssertEqual(aWire.closed + aWire.calls.count, 0, "and never connects A")
 
@@ -1325,7 +1322,9 @@ import SwiftUI
                                      username: "u1", password: "", hermesVersion: nil)
         signedIn.oauth = HermesOAuth(provider: "nous", userID: "u1", refreshToken: "refresh-1")
         try store.save(signedIn, server: server)
-        let cache = makeRosterCache().cache
+        let cache = makeRosterCache {
+            try store.saveRotatedRefreshToken("refresh-2", replacing: "refresh-1", connection: signedIn.id, server: self.server)
+        }
         await cache.save([row("triage")], scope: .init(server: server, connectionID: signedIn.id), readAt: .now)
         let wire = BotInboxFixtureWire(roster: [row("triage")])
         wire.holdsConnect = true
@@ -1336,8 +1335,6 @@ import SwiftUI
         }
 
         let opening = Task { await inbox.open() }
-        await Task.yield()
-        try store.saveRotatedRefreshToken("refresh-2", replacing: "refresh-1", connection: signedIn.id, server: server)
         await settle(inbox) { $0.link == .connecting }
         XCTAssertEqual(inbox.profiles.map(\.id), ["triage"])
         XCTAssertEqual(openedWith, "refresh-2")
@@ -1387,6 +1384,14 @@ import SwiftUI
     private func makeRosterCache() -> (cache: BotRosterCache, directory: URL) {
         let directory = rosterRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
         return (BotRosterCache(directory: directory), directory)
+    }
+
+    /// A roster cache that runs `duringFirstLoad` inside its first load, between an open's
+    /// read of the saved connection and its re-read.
+    private func makeRosterCache(duringFirstLoad: @escaping @MainActor () throws -> Void) -> BotRosterCache {
+        let change = FirstLoadChange(duringFirstLoad)
+        return BotRosterCache(directory: rosterRoot.appendingPathComponent(UUID().uuidString, isDirectory: true),
+                              willLoad: { await change.run() })
     }
 
     private func connectedStore(server: URL? = nil) throws -> BotConnectionStore {
@@ -1446,6 +1451,17 @@ import SwiftUI
             done.fulfill()
         }
         await fulfillment(of: [done], timeout: 5)
+    }
+}
+
+/// A change to the saved connection that runs once, inside the roster cache's first load.
+@MainActor private final class FirstLoadChange {
+    private var change: (() throws -> Void)?
+    init(_ change: @escaping () throws -> Void) { self.change = change }
+
+    func run() {
+        defer { change = nil }
+        XCTAssertNoThrow(try change?())
     }
 }
 
