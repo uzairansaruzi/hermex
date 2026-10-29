@@ -1370,6 +1370,16 @@ import SwiftUI
 
     // MARK: Delegated work
 
+    /// Restored background workers remain inspectable even when the session has no visible
+    /// transcript rows, rather than being covered by the new-conversation placeholder.
+    func testLiveWorkersReplaceTheEmptyConversationPlaceholder() {
+        typealias Placeholder = ChatTranscriptView.Placeholder
+        XCTAssertNil(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true,
+                                 showsTurnOutcome: false, showsQueuedPrompt: false, showsDelegatedWork: true))
+        XCTAssertEqual(Placeholder(isLoading: false, errorMessage: nil, isEmpty: true,
+                                   showsTurnOutcome: false, showsQueuedPrompt: false, showsDelegatedWork: false), .startPrompt)
+    }
+
     /// The worker count lists the session's workers once it connects, then again only on the
     /// lifecycle frames that change the roster, which coalesce into one read; leaving drops it,
     /// so the toolbar button goes with the connection (#1140).
