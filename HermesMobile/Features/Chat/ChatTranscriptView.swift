@@ -133,22 +133,25 @@ struct ChatTranscriptView: View {
     var queuedPrompt: ChatMessage? = nil
     var onCopyQueuedPrompt: (String) -> Void = { _ in }
 
-    /// What stands in for a transcript with no rows. Nil draws the transcript, as for a Hermes
-    /// turn that failed before the host saved any row, whose outcome row still shows (#1139),
-    /// or a prompt queued behind another client's first turn, whose bubble still shows (#1379).
+    /// The session's live workers. The preview observes roster changes independently of rows.
+    var delegatedWork: HermesDelegatedWork? = nil
+    var onOpenDelegatedWork: () -> Void = {}
+
+    /// What stands in for a transcript with no rows. Nil draws the transcript when a Hermes
+    /// turn's outcome, queued prompt or live workers still need to show before rows were saved.
     enum Placeholder: Equatable {
         case loading
         case loadFailed(String)
         case startPrompt
 
         init?(isLoading: Bool, errorMessage: String?, isEmpty: Bool, showsTurnOutcome: Bool,
-              showsQueuedPrompt: Bool) {
+              showsQueuedPrompt: Bool, showsDelegatedWork: Bool = false) {
             guard isEmpty else { return nil }
             if isLoading {
                 self = .loading
             } else if let errorMessage {
                 self = .loadFailed(errorMessage)
-            } else if showsTurnOutcome || showsQueuedPrompt {
+            } else if showsTurnOutcome || showsQueuedPrompt || showsDelegatedWork {
                 return nil
             } else {
                 self = .startPrompt
@@ -158,7 +161,8 @@ struct ChatTranscriptView: View {
 
     var body: some View {
         switch Placeholder(isLoading: isLoading, errorMessage: errorMessage, isEmpty: messages.isEmpty,
-                           showsTurnOutcome: turnOutcome != nil, showsQueuedPrompt: queuedPrompt != nil) {
+                           showsTurnOutcome: turnOutcome != nil, showsQueuedPrompt: queuedPrompt != nil,
+                           showsDelegatedWork: !isViewingCachedData && (delegatedWork?.activeCount ?? 0) > 0) {
         case .loading?:
             ChatTranscriptLoadingSkeletonView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -440,6 +444,9 @@ struct ChatTranscriptView: View {
 
             transcriptLooseBlocks
             liveResponseBlocks
+            if !isViewingCachedData, let delegatedWork {
+                HermesDelegatedWorkInlineView(work: delegatedWork, onOpen: onOpenDelegatedWork)
+            }
             workingRow
             turnOutcome
             if let requestWithdrawal {
