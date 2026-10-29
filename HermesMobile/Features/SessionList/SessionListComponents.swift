@@ -887,7 +887,14 @@ struct SessionInteractiveRow: View {
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             sessionLeadingSwipeActions(for: session)
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+        // A full swipe commits Archive, which has Undo (#1394): never a lone Delete, and never
+        // a second archive while one is in flight.
+        .swipeActions(
+            edge: .trailing,
+            allowsFullSwipe: SessionRowActionPolicy.offersArchive(for: session)
+                && canShowSessionMutationActions(for: session)
+                && !viewModel.isMutating(session)
+        ) {
             sessionTrailingSwipeActions(for: session)
         }
         .contextMenu {
@@ -924,6 +931,7 @@ struct SessionInteractiveRow: View {
     @ViewBuilder
     private func sessionTrailingSwipeActions(for session: SessionSummary) -> some View {
         if canShowSessionMutationActions(for: session) {
+            // Archive must stay first: a full swipe commits the edge-most button.
             if SessionRowActionPolicy.offersArchive(for: session) {
                 Button {
                     actions.archive(session)
