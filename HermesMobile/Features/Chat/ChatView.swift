@@ -2125,9 +2125,11 @@ struct ChatView: View {
     /// transcript that swaps in the server's messages still warms the list when
     /// the count of messages did not change but their text did. Zero once the
     /// list has loaded or this chat has already asked, which is what keeps the
-    /// scan off the streaming path.
+    /// scan off the streaming path. Zero while offline too, so the ask waits
+    /// for the reconnect.
     private var transcriptSkillReferenceCount: Int {
-        guard !hasRequestedSkillsForTranscriptChips, !viewModel.hasLoadedSkillSlashSuggestions else {
+        guard !hasRequestedSkillsForTranscriptChips, !viewModel.hasLoadedSkillSlashSuggestions,
+              !viewModel.showsOfflineCache else {
             return 0
         }
 

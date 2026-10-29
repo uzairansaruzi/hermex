@@ -723,13 +723,15 @@ struct MessageComposerView: View {
                 cancelScheduledSendChoices()
             }
         }
-        .task(id: draftMayReferenceSkill) {
+        // The view model holds both list loads while offline; going online is
+        // part of each identity so the held load runs on reconnect.
+        .task(id: [draftMayReferenceSkill, access.isOffline]) {
             await loadSkillSuggestionsForChipsIfNeeded()
         }
         .task(id: ComposerChipTokenizer.fileReferenceCandidates(in: draftMessage)) {
             await onFileReferenceCandidatesChange(draftMessage)
         }
-        .task(id: slashAutocompleteLoadKey) {
+        .task(id: [slashAutocompleteLoadKey, access.isOffline ? "offline" : ""]) {
             await loadSlashAutocompleteSubArgsIfNeeded()
         }
         .task(id: hostSlashArgumentText) {

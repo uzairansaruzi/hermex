@@ -1290,9 +1290,10 @@ final class ChatViewModel {
     /// cannot take the fetch down with it, and a caller arriving mid-flight
     /// waits for that same result instead of racing past an "already loading"
     /// flag and finding an empty list. A failed load clears the handle, so the
-    /// next caller retries.
+    /// next caller retries. Held while the chat shows its offline cache; the
+    /// composer asks again on reconnect.
     func loadPersonalitySuggestions() async {
-        guard !hasLoadedPersonalitySuggestions else { return }
+        guard !hasLoadedPersonalitySuggestions, !showsOfflineCache else { return }
         // A Hermes host lists its own (#1016), here for the `/personality ` panel (#1036).
         if let hermesSettings {
             guard let personalities = try? await hermesSettings.personalities() else { return }
@@ -1333,9 +1334,11 @@ final class ChatViewModel {
     /// this view model owns: a cancelled caller cannot take the fetch down with
     /// it, and a caller arriving mid-flight waits for that same result instead
     /// of racing past an "already loading" flag and finding an empty list. A
-    /// failed load clears the handle, so the next caller retries.
+    /// failed load clears the handle, so the next caller retries. Held while the
+    /// chat shows its offline cache; the composer and transcript ask again on
+    /// reconnect.
     func loadSkillSlashSuggestions() async {
-        guard hermesTurn == nil, !hasLoadedSkillSlashSuggestions else { return }
+        guard hermesTurn == nil, !hasLoadedSkillSlashSuggestions, !showsOfflineCache else { return }
 
         let load: Task<Void, Never>
         if let existing = skillSlashSuggestionsLoad {
