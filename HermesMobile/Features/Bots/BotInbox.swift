@@ -199,6 +199,9 @@ import UIKit
 
     private var wire: (any BotTransport)?
     private var reconnectTask: Task<Void, Never>?
+    /// Bumped by every `close()`, which each `open()` starts with, so an open that
+    /// awaited the roster cache meanwhile stops before painting or connecting.
+    private var openSerial = 0
     private var reconnectAttempts = 0
     private var routeFailures = 0
     private static let routeFailuresBeforeAdvice = 3
@@ -220,6 +223,8 @@ import UIKit
     private let sectionOrderStore: BotSectionOrderStore
     private let avatarStore: BotAvatarStore
     private let historyCache: BotHistoryCache
+    /// The last roster each connection read, painted while the next open connects (#1403).
+    private let rosterCache: BotRosterCache
     /// Where each roster read leaves the Profiles' names for the Shortcuts picker (#1180).
     private let profileNames: HermesProfileNameCache
     private let makeWire: @MainActor (BotConnection) -> any BotTransport
@@ -241,7 +246,7 @@ import UIKit
     init(server: URL, store: BotConnectionStore? = nil, unread: BotUnreadStore = BotUnreadStore(),
          roomStore: BotRoomOrganizeStore = BotRoomOrganizeStore(),
          sectionOrderStore: BotSectionOrderStore = BotSectionOrderStore(),
-         avatarStore: BotAvatarStore? = nil, historyCache: BotHistoryCache = .shared,
+         avatarStore: BotAvatarStore? = nil, historyCache: BotHistoryCache = .shared, rosterCache: BotRosterCache = .shared,
          profileNames: HermesProfileNameCache = .shared, reloadSpacing: Duration = .seconds(1),
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
          statusPollInterval: Duration = .seconds(5),
@@ -250,7 +255,8 @@ import UIKit
         self.server = server; self.store = store ?? BotConnectionStore(); self.unread = unread; self.roomStore = roomStore
         self.sectionOrderStore = sectionOrderStore
         self.avatarStore = avatarStore ?? .shared; self.reloadSpacing = reloadSpacing
-        self.reconnectDelays = reconnectDelays; self.historyCache = historyCache; self.profileNames = profileNames
+        self.reconnectDelays = reconnectDelays; self.historyCache = historyCache; self.rosterCache = rosterCache
+        self.profileNames = profileNames
         self.statusPollInterval = statusPollInterval
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }
         self.purgeLocalState = purgeLocalState ?? { connectionID, profile in
@@ -353,6 +359,17 @@ import UIKit
             // Each resend spends one of the host's ten password logins a minute per client
             // IP, which Desktop and the browser may share behind the same tunnel.
             guard !needsSignIn else { link = .disconnected; return }
+            if profiles.isEmpty {
+                // The roster this connection last read paints while it connects (#1403). It
+                // claims nothing live and allows no server edit; the first read replaces it.
+                let serial = openSerial
+                let cached = await rosterCache.load(.init(server: server, connectionID: saved.id))
+                guard serial == openSerial, !Task.isCancelled else { return }
+                if let cached, profiles.isEmpty {
+                    profiles = Self.roster(cached)
+                    avatars = avatarStore.images(connectionID: saved.id)
+                }
+            }
             let opened = makeWire(saved)
             client = opened
             wire = opened; link = .connecting; errorMessage = nil; notice = nil; readsLiveStatus = true; retriesStatusRead = false
@@ -433,6 +450,7 @@ import UIKit
     }
 
     func close() {
+        openSerial += 1
         reconnectTask?.cancel(); reconnectTask = nil
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
         statusPollTask?.cancel(); statusPollTask = nil
@@ -574,18 +592,20 @@ import UIKit
         }
     }
 
-    /// One `profiles.list` on the live socket, then starts a live-status read against
-    /// it without waiting for one. Only the newest request's reply is applied, and
-    /// only while `client` still owns the inbox.
+    /// One `profiles.list` on the live socket, saved as the connection's cached roster,
+    /// then starts a live-status read against it without waiting for one. Only the newest
+    /// request's reply is applied, and only while `client` still owns the inbox.
     private func reload(_ client: any BotTransport) async -> Bool {
         reloadSerial += 1
         let serial = reloadSerial
+        // The scope this read belongs to, and when it started, so a removal meanwhile revokes its save.
+        let scope = connection.map { BotRosterCache.Scope(server: server, connectionID: $0.id) }
+        let readAt = ContinuousClock.now
         do {
             let roster = try await client.call(.profilesList(includeSessions: true))
             guard wire === client, serial == reloadSerial else { return false }
             guard let rows = roster["profiles"].list else { throw BotFailure.unsupported }
-            var ids = Set<String>()
-            profiles = rows.compactMap(BotProfile.init).filter { ids.insert($0.id).inserted }
+            profiles = Self.roster(rows)
             if profileNames.save(profiles.map { .init(profile: $0.id, title: $0.name) }, for: server) {
                 ProfileEntityProvider.refreshAppShortcuts(changed: true)
             }
@@ -602,6 +622,10 @@ import UIKit
             uncertainDeletions = []
             for name in settled where !present.contains(name) {
                 await forget(name)
+                guard wire === client, serial == reloadSerial else { return false }
+            }
+            if let scope {
+                await rosterCache.save(rows, scope: scope, readAt: readAt)
                 guard wire === client, serial == reloadSerial else { return false }
             }
             startLiveStatusRead(client)
@@ -652,6 +676,12 @@ import UIKit
         }
         if liveStatuses.isEmpty && !retriesStatusRead { statusPollTask = nil }
         else { startLiveStatusRead(client, after: statusPollInterval) }
+    }
+
+    /// `profiles.list` rows as the inbox lists them: unnamed rows dropped, the first of each Profile kept.
+    private static func roster(_ rows: [BotJSON]) -> [BotProfile] {
+        var ids = Set<String>()
+        return rows.compactMap(BotProfile.init).filter { ids.insert($0.id).inserted }
     }
 
     /// Writes only a real change, so an unchanged re-read never invalidates the list.

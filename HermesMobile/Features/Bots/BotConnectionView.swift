@@ -386,6 +386,7 @@ extension BotHostStatus {
         self.discard = discard ?? { old in
             await PushRegistrar.shared?.forget(for: server)
             try? await BotHistoryCache.shared.remove(server: server, connectionID: old.id)
+            await BotRosterCache.shared.remove(server: server, connectionID: old.id)
             await ChatDraftStore.shared.discardBotDrafts(server: server, connectionID: old.id)
             BotAvatarStore.shared.removeAll(connectionID: old.id)
             BotUnreadStore().remove(connectionID: old.id)

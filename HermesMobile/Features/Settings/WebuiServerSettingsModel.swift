@@ -265,6 +265,7 @@ import SwiftUI
             // never wipes another configured server's offline data (#18).
             try CacheStore.clearCache(for: server, in: modelContext)
             try await BotHistoryCache.shared.remove(server: server)
+            await BotRosterCache.shared.remove(server: server)
             cacheStatusMessage = String(localized: "This server's offline cache was cleared.")
         } catch {
             cacheStatusMessage = String(localized: "Could not clear offline cache.")
