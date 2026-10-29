@@ -449,8 +449,8 @@ backgrounding or covering the screen cancels a waiting reconnect.
 While the inbox or the session list reconnects with rows on screen, it keeps two facts
 apart (#1374). `isReconnecting` (`isHermesReconnecting`) starts at a retryable drop and
 ends only when a roster or list read on the new socket succeeds, or at a refusal, a close
-or another connection or Profile; a failed read on the new socket counts as another drop,
-and the backoff restarts from its first step only once that read succeeds.
+or another connection or Profile; a failed connect or read on the new socket counts as
+another drop, keeps the live rows rather than swapping in the offline cache, and the backoff restarts from its first step only once that read succeeds.
 The rows' live states stay as the last known ones (`liveStatusesAreStale`,
 `attentionStatesAreStale`) through the drop, an offline device path and a failed
 `session.active_list`, until a current status reply replaces them; rows can land first.

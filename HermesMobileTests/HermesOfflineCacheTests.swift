@@ -68,6 +68,27 @@ import XCTest
                        ["Pinned", "Later", "Newest", "Chain"])
     }
 
+    /// A lost socket's reconnect that can't reach the host keeps the live rows and their last
+    /// known states under "Reconnecting…" instead of swapping in the cached copy (#1374).
+    func testAnUnreachableReconnectKeepsTheLiveRowsReconnecting() async throws {
+        let context = try makeContext()
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: HermesSessionPage(rows: [HermesSessionRow(id: "a")])]
+        wire.active = [.object(["session_key": .string("a"), "status": .string("working")])]
+        let list = makeList(wire)
+        await list.openHermes(modelContext: context)
+        await waitUntil("states read") { !list.attentionStatesBySessionID.isEmpty }
+
+        wire.onDisconnect?(BotFailure.transport)
+        wire.connectFailure = URLError(.cannotConnectToHost)
+        list.reconnectNow()
+        await waitUntil("reconnect failed") { wire.connects == 2 }
+
+        XCTAssertFalse(list.isViewingCachedData)
+        XCTAssertEqual(list.attentionStatesBySessionID, ["a": .working])
+        XCTAssertEqual(HomeConnectionStatus(list.hermesConnection, isOnline: true), .reconnecting)
+    }
+
     /// A search typed while the list shows cached rows filters them at once, and asks the host
     /// once a read replaces them, so a match the cache lacks shows too.
     func testASearchWhileCachedReachesTheHostOnceItAnswers() async throws {

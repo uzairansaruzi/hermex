@@ -1836,7 +1836,8 @@ final class SessionListViewModel {
             guard hermesWire === wire else { return }
             // The screen left while connecting: the next open starts a fresh client.
             if Task.isCancelled { wire.close(); hermesWire = nil; isLoading = false; return }
-            showCachedHermesSessions(after: error)
+            // A reconnect keeps the live rows and their last known states over the cached copy (#1374).
+            if !isHermesReconnecting { showCachedHermesSessions(after: error) }
             dropHermes(error)
         }
     }
