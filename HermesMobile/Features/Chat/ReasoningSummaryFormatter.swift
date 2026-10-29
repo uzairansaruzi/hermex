@@ -42,12 +42,13 @@ enum ReasoningSummaryFormatter {
         return oneLine(stripped[..<(sentenceEnd(in: stripped) ?? stripped.endIndex)])
     }
 
-    /// The last `tailLimit` characters. When that cuts the text, the cut-off
+    /// The last `tailLimit` characters. When that cuts a line, the cut-off
     /// leading line (or sentence, for one long line) is dropped if anything
     /// follows it, so a fragment never reads as a whole paragraph.
     private static func completeTail(of text: String) -> Substring {
         let tail = text.suffix(tailLimit)
-        guard tail.startIndex > text.startIndex else { return tail }
+        guard tail.startIndex > text.startIndex,
+              !text[text.index(before: tail.startIndex)].isNewline else { return tail }
 
         let restart = [tail.firstIndex(where: \.isNewline), sentenceEnd(in: tail)]
             .compactMap { $0 }
@@ -112,8 +113,9 @@ enum ReasoningSummaryFormatter {
     }
 
     /// Removes backticks and `*` emphasis runs, and reduces `[label](url)` to
-    /// its label. A `*` between spaces (`2 * 3`) stays, and underscores are
-    /// never touched, so identifiers like `retry_policy` survive.
+    /// its label. A code span's text is kept as written, a `*` between spaces
+    /// (`2 * 3`) or within an ASCII word (`2*3`) stays, and underscores are never
+    /// touched, so identifiers like `retry_policy` survive.
     private static func stripInlineMarkup(_ line: Substring) -> String {
         let characters = Array(line)
         var result = ""
@@ -129,18 +131,29 @@ enum ReasoningSummaryFormatter {
 
             switch characters[index] {
             case "`":
-                index += 1
+                let spanLimit = linkTargetSkip?.from ?? characters.count
+                if let close = characters[(index + 1)..<spanLimit].firstIndex(of: "`") {
+                    result.append(contentsOf: characters[(index + 1)..<close])
+                    index = close + 1
+                } else {
+                    index += 1
+                }
             case "*":
                 let runEnd = characters[index...].firstIndex { $0 != "*" } ?? characters.count
-                let spaced = index > 0 && characters[index - 1].isWhitespace
-                    && runEnd < characters.count && characters[runEnd].isWhitespace
-                if spaced { result.append(contentsOf: characters[index..<runEnd]) }
+                let before = index > 0 ? characters[index - 1] : nil
+                let after = runEnd < characters.count ? characters[runEnd] : nil
+                let isASCIIWord = { (character: Character?) in
+                    character.map { $0.isASCII && ($0.isLetter || $0.isNumber) } == true
+                }
+                let literal = before?.isWhitespace == true && after?.isWhitespace == true
+                    || isASCIIWord(before) && isASCIIWord(after)
+                if literal { result.append(contentsOf: characters[index..<runEnd]) }
                 index = runEnd
             case "[":
                 if linkTargetSkip == nil,
                    let labelEnd = characters[(index + 1)...].firstIndex(of: "]"),
                    labelEnd + 1 < characters.count, characters[labelEnd + 1] == "(",
-                   let targetEnd = characters[(labelEnd + 2)...].firstIndex(of: ")") {
+                   let targetEnd = closingParenthesis(in: characters, from: labelEnd + 2) {
                     linkTargetSkip = (labelEnd, targetEnd + 1)
                 } else {
                     result.append("[")
@@ -152,6 +165,24 @@ enum ReasoningSummaryFormatter {
             }
         }
         return result
+    }
+
+    /// The `)` closing a link target that starts at `start`, past any balanced
+    /// pairs inside it, as in `https://example.com/a_(b)`.
+    private static func closingParenthesis(in characters: [Character], from start: Int) -> Int? {
+        var depth = 0
+        for index in start..<characters.count {
+            switch characters[index] {
+            case "(":
+                depth += 1
+            case ")":
+                if depth == 0 { return index }
+                depth -= 1
+            default:
+                break
+            }
+        }
+        return nil
     }
 
     /// Newline runs collapse to a single space and anything past the limit is
