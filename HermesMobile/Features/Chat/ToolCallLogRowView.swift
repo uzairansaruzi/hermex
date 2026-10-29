@@ -30,11 +30,16 @@ struct ToolCallLogRowView: View {
         } status: {
             statusGlyph
         } expandedBody: {
-            ToolCallDetailBodyView(toolCall: entry.toolCall, status: row.status)
+            if let clarify = row.clarify {
+                ClarifyHistoryBody(result: clarify)
+            } else {
+                ToolCallDetailBodyView(toolCall: entry.toolCall, status: row.status)
+            }
         }
         // Commands, paths, and results are code-like and stay left-to-right
-        // inside an RTL transcript (#259), like the live card.
-        .forcedLeftToRight()
+        // inside an RTL transcript (#259), like the live card. Answered
+        // questions are prose and keep the transcript's direction.
+        .forcedLeftToRight(row.clarify == nil)
     }
 
     @ViewBuilder
@@ -263,5 +268,100 @@ struct ToolCallDetailBodyView: View {
             .font(AppFont.mono(style: .caption))
             .foregroundStyle(.primary)
             .textSelection(.enabled)
+    }
+}
+
+/// What an answered `clarify` row opens to: each question over its answer,
+/// selectable and in the transcript's own direction, then how the wait ended.
+struct ClarifyHistoryBody: View {
+    let result: ClarifyResult
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            ForEach(Array(result.exchanges.enumerated()), id: \.offset) { _, exchange in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(exchange.question)
+                        .font(AppFont.caption())
+                        .foregroundStyle(.secondary)
+
+                    ClarifyText.answer(exchange)
+                }
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(exchange.spokenText)
+            }
+
+            if let note = result.note {
+                ClarifyText.note(note)
+            }
+        }
+        .padding(7)
+        .chatTimelineAccessoryInsetSurface()
+    }
+}
+
+/// One answered question as a compact transcript line, shown in place of the
+/// tool rows a folded turn hides: question-bubble icon, the question dimmed,
+/// the answer bold, and the timeout note under the result's last question.
+struct ClarifyAnswerLineView: View {
+    let line: ClarifyResult.Line
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "questionmark.bubble")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    questionText
+                    ClarifyText.answer(line.exchange)
+                } else {
+                    questionText + Text(" ") + ClarifyText.answer(line.exchange)
+                }
+
+                if let note = line.note {
+                    ClarifyText.note(note)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel([line.exchange.spokenText, line.note].compactMap { $0 }.joined(separator: ". "))
+    }
+
+    private var questionText: Text {
+        Text(line.exchange.question)
+            .font(AppFont.caption())
+            .foregroundStyle(.secondary)
+    }
+}
+
+/// The styled answer and note text both clarify views share.
+private enum ClarifyText {
+    /// The answer in bold, or a dimmed "No answer" when the exchange has none.
+    static func answer(_ exchange: ClarifyResult.Exchange) -> Text {
+        if let answer = exchange.answerText {
+            return Text(answer)
+                .font(AppFont.caption(weight: .semibold))
+                .foregroundStyle(.primary)
+        }
+        return Text("No answer")
+            .font(AppFont.caption(weight: .medium))
+            .foregroundStyle(.secondary)
+    }
+
+    /// How the wait ended, as the server worded it.
+    static func note(_ note: String) -> Text {
+        Text(note)
+            .font(AppFont.caption2())
+            .italic()
+            .foregroundStyle(.secondary)
     }
 }

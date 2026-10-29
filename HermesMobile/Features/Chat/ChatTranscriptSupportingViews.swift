@@ -715,22 +715,26 @@ final class ChatScrollPositionController {
 /// guide closures return the unmodified values, so it is a no-op.
 private struct ForcedLeftToRightModifier: ViewModifier {
     @Environment(\.layoutDirection) private var parentDirection
+    let isForced: Bool
 
     func body(content: Content) -> some View {
+        let flips = isForced && parentDirection == .rightToLeft
         content
-            .environment(\.layoutDirection, .leftToRight)
+            .environment(\.layoutDirection, isForced ? .leftToRight : parentDirection)
             .alignmentGuide(.leading) { dimensions in
-                parentDirection == .rightToLeft ? dimensions[.trailing] : dimensions[.leading]
+                flips ? dimensions[.trailing] : dimensions[.leading]
             }
             .alignmentGuide(.trailing) { dimensions in
-                parentDirection == .rightToLeft ? dimensions[.leading] : dimensions[.trailing]
+                flips ? dimensions[.leading] : dimensions[.trailing]
             }
     }
 }
 
 extension View {
-    func forcedLeftToRight() -> some View {
-        modifier(ForcedLeftToRightModifier())
+    /// Lays the view out left to right inside an RTL transcript, keeping its
+    /// leading edge where the transcript's is. `false` leaves the direction alone.
+    func forcedLeftToRight(_ isForced: Bool = true) -> some View {
+        modifier(ForcedLeftToRightModifier(isForced: isForced))
     }
 
     /// Calls `admit` with `id` the first time this media leaf is on screen, so opening

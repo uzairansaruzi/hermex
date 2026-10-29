@@ -728,9 +728,10 @@ struct ChatTranscriptMessageBlock: View, Equatable {
     }
 
     var body: some View {
+        let foldedQuestions = foldedQuestionLines
         // Yield nothing when every part is folded away, so the outer stack adds
         // no spacing for an empty row.
-        if hasVisibleContent {
+        if hasVisibleContent || !foldedQuestions.isEmpty {
             VStack(alignment: .leading, spacing: transcriptSpacing) {
                 if let fold = foldState?.fold {
                     TranscriptTurnFoldRowView(
@@ -746,6 +747,13 @@ struct ChatTranscriptMessageBlock: View, Equatable {
                         liveReasoningBlock
                         toolActivityGroups
                         liveToolActivityGroup
+                    }
+                    .transition(foldTransition)
+                } else if !foldedQuestions.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(foldedQuestions) { line in
+                            ClarifyAnswerLineView(line: line)
+                        }
                     }
                     .transition(foldTransition)
                 }
@@ -777,6 +785,13 @@ struct ChatTranscriptMessageBlock: View, Equatable {
             && (!toolCallGroups.isEmpty
                 || !reasoningGroups.isEmpty)
         return hasArchivedActivity || shouldRenderLiveReasoningBlock || shouldRenderLiveToolActivityGroup
+    }
+
+    /// The answered questions a folded turn keeps in view while it hides this
+    /// row's tool rows. Expanded, the clarify rows themselves show them instead.
+    private var foldedQuestionLines: [ClarifyResult.Line] {
+        guard showsThinkingAndToolCards, !showsActivity else { return [] }
+        return ClarifyResult.lines(in: toolCallGroups)
     }
 
     private var hasVisibleContent: Bool {

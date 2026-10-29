@@ -21,6 +21,9 @@ struct ToolCallLogRow: Equatable {
     let status: Status
     /// An edit's "+N −M", shown before the chevron once the call succeeds.
     let diffCounts: ToolCallDiff.Counts?
+    /// An answered `clarify` call's questions, which the row opens to instead
+    /// of its arguments and raw result.
+    var clarify: ClarifyResult?
 
     var isFailure: Bool { status == .failure }
 
@@ -74,6 +77,18 @@ enum ToolCallSummaryFormatter {
         let toolKind = kind(forToolNamed: name)
         let resultText = resultText(for: toolCall)
         let rowStatus = status(for: toolCall, kind: toolKind, resultText: resultText, isLive: isLive)
+
+        if let clarify = ClarifyResult(toolCall: toolCall), let first = clarify.exchanges.first {
+            return ToolCallLogRow(
+                icon: "questionmark.bubble",
+                summary: String(localized: "Asked \(clarify.exchanges.count) questions"),
+                detail: compacted("\(first.question) · \(first.answerText ?? String(localized: "No answer"))"),
+                status: rowStatus,
+                diffCounts: nil,
+                clarify: clarify
+            )
+        }
+
         let detail = targetDetail(kind: toolKind, name: name, args: toolCall.args)
             ?? resultText.flatMap(firstLine)
 
@@ -92,17 +107,23 @@ enum ToolCallSummaryFormatter {
     }
 
     /// Everything a long-press puts on the pasteboard: the row line, then the
-    /// same arguments and result the expanded body shows.
+    /// same questions and answers, or arguments and result, the expanded body shows.
     static func copyText(for toolCall: ToolCall) -> String {
+        let row = row(for: toolCall, isLive: false)
         var lines: [String] = []
-        if let row = row(for: toolCall, isLive: false) {
+        if let row {
             lines.append([row.summary, row.detail].compactMap { $0 }.joined(separator: " "))
         }
 
-        let content = ToolCallDisplayFormatter.content(for: toolCall)
-        lines += content.argumentRows.map { "\($0.key): \($0.value)" }
-        if let result = content.result {
-            lines.append(result.text)
+        if let clarify = row?.clarify {
+            lines += clarify.exchanges.map(\.spokenText)
+            lines += [clarify.note].compactMap { $0 }
+        } else {
+            let content = ToolCallDisplayFormatter.content(for: toolCall)
+            lines += content.argumentRows.map { "\($0.key): \($0.value)" }
+            if let result = content.result {
+                lines.append(result.text)
+            }
         }
 
         return lines.joined(separator: "\n")

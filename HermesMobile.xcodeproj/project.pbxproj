@@ -277,6 +277,7 @@
 		C0DE12000000000000000003 /* TranscriptLinkPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE12000000000000000004 /* TranscriptLinkPreviewTests.swift */; };
 		1A2B3C4D5E6F7000000000DC /* SSEClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000DD /* SSEClientTests.swift */; };
 		1A2B3C4D5E6F7000000000DE /* ToolCall.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000DF /* ToolCall.swift */; };
+		C0AA13780000000000000B01 /* ClarifyResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA13780000000000000F01 /* ClarifyResult.swift */; };
 		C12800000000000000000001 /* ToolActivityGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C12800000000000000000002 /* ToolActivityGroupView.swift */; };
 		C0AA02000000000000000B02 /* ToolCallLogRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA02000000000000000F02 /* ToolCallLogRowView.swift */; };
 		C0AA020000000000000000B12 /* ReasoningSummaryFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */; };
@@ -381,6 +382,7 @@
 		C03120000000000000B008 /* TurnFileChangeAggregatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */; };
 		C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */; };
 		C0AA13760000000000000B02 /* ToolCallGroupSummaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA13760000000000000F02 /* ToolCallGroupSummaryTests.swift */; };
+		C0AA13780000000000000B02 /* ClarifyResultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA13780000000000000F02 /* ClarifyResultTests.swift */; };
 		C08640000000000000000003 /* ToolCallDiffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08640000000000000000004 /* ToolCallDiffTests.swift */; };
 		C0AA03000000000000000B02 /* TranscriptTurnFoldingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */; };
 		C0AA07000000000000000B07 /* ChatTranscriptRowEntryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0AA07000000000000000F07 /* ChatTranscriptRowEntryTests.swift */; };
@@ -957,6 +959,7 @@
 		C0DE12000000000000000004 /* TranscriptLinkPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptLinkPreviewTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000DD /* SSEClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSEClientTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000DF /* ToolCall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCall.swift; sourceTree = "<group>"; };
+		C0AA13780000000000000F01 /* ClarifyResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClarifyResult.swift; sourceTree = "<group>"; };
 		C12800000000000000000002 /* ToolActivityGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolActivityGroupView.swift; sourceTree = "<group>"; };
 		C0AA02000000000000000F02 /* ToolCallLogRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallLogRowView.swift; sourceTree = "<group>"; };
 		C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasoningSummaryFormatterTests.swift; sourceTree = "<group>"; };
@@ -1061,6 +1064,7 @@
 		C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnFileChangeAggregatorTests.swift; sourceTree = "<group>"; };
 		C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallSummaryFormatterTests.swift; sourceTree = "<group>"; };
 		C0AA13760000000000000F02 /* ToolCallGroupSummaryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallGroupSummaryTests.swift; sourceTree = "<group>"; };
+		C0AA13780000000000000F02 /* ClarifyResultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClarifyResultTests.swift; sourceTree = "<group>"; };
 		C08640000000000000000004 /* ToolCallDiffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolCallDiffTests.swift; sourceTree = "<group>"; };
 		C0AA03000000000000000F02 /* TranscriptTurnFoldingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptTurnFoldingTests.swift; sourceTree = "<group>"; };
 		C0AA07000000000000000F07 /* ChatTranscriptRowEntryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptRowEntryTests.swift; sourceTree = "<group>"; };
@@ -1613,6 +1617,7 @@
 				C03120000000000000F008 /* TurnFileChangeAggregatorTests.swift */,
 				C0AA02000000000000000F03 /* ToolCallSummaryFormatterTests.swift */,
 				C0AA13760000000000000F02 /* ToolCallGroupSummaryTests.swift */,
+				C0AA13780000000000000F02 /* ClarifyResultTests.swift */,
 				C08640000000000000000004 /* ToolCallDiffTests.swift */,
 				C0AA020000000000000000F12 /* ReasoningSummaryFormatterTests.swift */,
 				C0AA020000000000000000F13 /* TranscriptLogRowBodyWindowTests.swift */,
@@ -1765,6 +1770,7 @@
 				1A2B3C4D5E6F70000000142 /* ModelFavoritesStore.swift */,
 				1A2B3C4D5E6F700000000301 /* ServerAccount.swift */,
 				1A2B3C4D5E6F7000000000DF /* ToolCall.swift */,
+				C0AA13780000000000000F01 /* ClarifyResult.swift */,
 				C03180000000000000F005 /* TurnFileChangeSummary.swift */,
 				1A2B3C4D5E6F7000000000B9 /* JSONValue.swift */,
 				1A2B3C4D5E6F70000000120 /* ContextWindowSnapshot.swift */,
@@ -2691,6 +2697,7 @@
 				1A2B3C4D5E6F7000000000AE /* ServerCatalog.swift in Sources */,
 				1A2B3C4D5E6F70000000140 /* ModelFavoritesStore.swift in Sources */,
 				1A2B3C4D5E6F7000000000DE /* ToolCall.swift in Sources */,
+				C0AA13780000000000000B01 /* ClarifyResult.swift in Sources */,
 				1A2B3C4D5E6F7000000000A9 /* JSONValue.swift in Sources */,
 				1A2B3C4D5E6F7000000000EC /* CachedSession.swift in Sources */,
 				1A2B3C4D5E6F7000000000ED /* CachedMessage.swift in Sources */,
@@ -3083,6 +3090,7 @@
 				C03120000000000000B008 /* TurnFileChangeAggregatorTests.swift in Sources */,
 				C0AA02000000000000000B03 /* ToolCallSummaryFormatterTests.swift in Sources */,
 				C0AA13760000000000000B02 /* ToolCallGroupSummaryTests.swift in Sources */,
+				C0AA13780000000000000B02 /* ClarifyResultTests.swift in Sources */,
 				C08640000000000000000003 /* ToolCallDiffTests.swift in Sources */,
 				C0AA020000000000000000B12 /* ReasoningSummaryFormatterTests.swift in Sources */,
 				C0AA020000000000000000B13 /* TranscriptLogRowBodyWindowTests.swift in Sources */,
