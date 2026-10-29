@@ -24,6 +24,9 @@ struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var scrollPositionController = ChatScrollPositionController()
+    /// The stream recovery chip, shown 400 ms after recovery starts and held
+    /// at least 400 ms, so quick recoveries don't flash (#1373).
+    @State private var recoveryChip = DelayedStatusDriver<ActiveStreamRecoveryState>()
 
     let isLoading: Bool
     let errorMessage: String?
@@ -446,6 +449,15 @@ struct ChatTranscriptView: View {
             pinReader(proxy: proxy)
             onDisclosureToggle()
         }
+        .task(id: activeStreamRecoveryState) {
+            let state = activeStreamRecoveryState
+            await recoveryChip.run(
+                target: state == .idle ? nil : state,
+                // Offline needs no confirming: nothing resumes until the network does.
+                immediately: state == .waitingForNetwork,
+                animation: ChatMotion.quickState(reduceMotion: reduceMotion)
+            )
+        }
         .id(transcriptContentID)
         .background {
             ZStack {
@@ -546,8 +558,8 @@ struct ChatTranscriptView: View {
                 }
             }
 
-            if activeStreamRecoveryState != .idle {
-                StreamRecoveryStatusView(state: activeStreamRecoveryState)
+            DelayedStatusView(driver: recoveryChip) { state in
+                StreamRecoveryStatusView(state: state)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityHidden(hidesRunStatusAccessibility)
                     .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))

@@ -47,6 +47,7 @@
 		C0DE512E0000000000000202 /* InsightsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E0000000000000201 /* InsightsModels.swift */; };
 		C0DE512E0000000000000204 /* SectionCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E0000000000000203 /* SectionCard.swift */; };
 		C08650000000000000000002 /* ActionToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08650000000000000000001 /* ActionToast.swift */; };
+		C13730000000000000000002 /* DelayedStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = C13730000000000000000001 /* DelayedStatus.swift */; };
 		879A00000000000000000002 /* QuickLookFilePreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 879A00000000000000000001 /* QuickLookFilePreview.swift */; };
 		C0DE512E00000000000002206 /* UsageChartData.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E00000000000002205 /* UsageChartData.swift */; };
 		C0DE512E00000000000002208 /* UsageChartCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE512E00000000000002207 /* UsageChartCard.swift */; };
@@ -131,6 +132,7 @@
 		C15210000000000000000007 /* OnboardingFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C15200000000000000000007 /* OnboardingFlowTests.swift */; };
 		C0391000000000000000000F /* SessionListMutationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0390000000000000000000F /* SessionListMutationTests.swift */; };
 		C08650000000000000000004 /* ActionToastStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08650000000000000000003 /* ActionToastStateTests.swift */; };
+		C13730000000000000000004 /* DelayedStatusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C13730000000000000000003 /* DelayedStatusTests.swift */; };
 		C03910000000000000000019 /* SessionRowAttentionStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000019 /* SessionRowAttentionStateTests.swift */; };
 		A10900000000000000000002 /* SessionNavigationStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10900000000000000000012 /* SessionNavigationStateTests.swift */; };
 		E1046000000000000000A005 /* HermesSessionListTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1046000000000000000A006 /* HermesSessionListTests.swift */; };
@@ -808,6 +810,7 @@
 		C15200000000000000000007 /* OnboardingFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowTests.swift; sourceTree = "<group>"; };
 		C0390000000000000000000F /* SessionListMutationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListMutationTests.swift; sourceTree = "<group>"; };
 		C08650000000000000000003 /* ActionToastStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionToastStateTests.swift; sourceTree = "<group>"; };
+		C13730000000000000000003 /* DelayedStatusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DelayedStatusTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000019 /* SessionRowAttentionStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRowAttentionStateTests.swift; sourceTree = "<group>"; };
 		A10900000000000000000012 /* SessionNavigationStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionNavigationStateTests.swift; sourceTree = "<group>"; };
 		E1046000000000000000A006 /* HermesSessionListTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesSessionListTests.swift; sourceTree = "<group>"; };
@@ -1128,6 +1131,7 @@
 		C0DE512E0000000000000201 /* InsightsModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = InsightsModels.swift; sourceTree = "<group>"; };
 		C0DE512E0000000000000203 /* SectionCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SectionCard.swift; sourceTree = "<group>"; };
 		C08650000000000000000001 /* ActionToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionToast.swift; sourceTree = "<group>"; };
+		C13730000000000000000001 /* DelayedStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DelayedStatus.swift; sourceTree = "<group>"; };
 		879A00000000000000000001 /* QuickLookFilePreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickLookFilePreview.swift; sourceTree = "<group>"; };
 		C0DE512E00000000000002205 /* UsageChartData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageChartData.swift; sourceTree = "<group>"; };
 		C0DE512E00000000000002207 /* UsageChartCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = UsageChartCard.swift; sourceTree = "<group>"; };
@@ -1542,6 +1546,7 @@
 					C15200000000000000000007 /* OnboardingFlowTests.swift */,
 				C0390000000000000000000F /* SessionListMutationTests.swift */,
 				C08650000000000000000003 /* ActionToastStateTests.swift */,
+				C13730000000000000000003 /* DelayedStatusTests.swift */,
 				C03900000000000000000019 /* SessionRowAttentionStateTests.swift */,
 				A10900000000000000000012 /* SessionNavigationStateTests.swift */,
 				E1046000000000000000A006 /* HermesSessionListTests.swift */,
@@ -1885,6 +1890,7 @@
 				C0366000000000000000004 /* ModelPickerConfiguration.swift */,
 				C0DE512E0000000000000203 /* SectionCard.swift */,
 				C08650000000000000000001 /* ActionToast.swift */,
+				C13730000000000000000001 /* DelayedStatus.swift */,
 				879A00000000000000000001 /* QuickLookFilePreview.swift */,
 			);
 			path = Shared;
@@ -2889,6 +2895,7 @@
 				C0DE512E0000000000000202 /* InsightsModels.swift in Sources */,
 				C0DE512E0000000000000204 /* SectionCard.swift in Sources */,
 				C08650000000000000000002 /* ActionToast.swift in Sources */,
+				C13730000000000000000002 /* DelayedStatus.swift in Sources */,
 				879A00000000000000000002 /* QuickLookFilePreview.swift in Sources */,
 				C0DE512E00000000000002206 /* UsageChartData.swift in Sources */,
 				C0DE512E00000000000002208 /* UsageChartCard.swift in Sources */,
@@ -3006,6 +3013,7 @@
 					C15210000000000000000007 /* OnboardingFlowTests.swift in Sources */,
 				C0391000000000000000000F /* SessionListMutationTests.swift in Sources */,
 				C08650000000000000000004 /* ActionToastStateTests.swift in Sources */,
+				C13730000000000000000004 /* DelayedStatusTests.swift in Sources */,
 				C03910000000000000000019 /* SessionRowAttentionStateTests.swift in Sources */,
 				A10900000000000000000002 /* SessionNavigationStateTests.swift in Sources */,
 				E1046000000000000000A005 /* HermesSessionListTests.swift in Sources */,
