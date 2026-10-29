@@ -445,6 +445,36 @@ import Observation
         XCTAssertEqual(list.sessions.map(\.sessionId), ["a"], "the rows stay")
     }
 
+    /// A lost socket keeps the rows' last known states, marked stale, while the list reconnects
+    /// (#1374). A tap reconnects past the backoff; the rows settle the reconnect, and only the
+    /// host's next status reply makes the states current. A refusal the user has to act on
+    /// clears them.
+    func testALostSocketKeepsTheLastKnownStatesUntilTheHostAnswersAgain() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
+        wire.active = [live("a", "working")]
+        let list = makeList(wire)
+        await list.openHermes()
+        await waitUntil("states read") { !list.attentionStatesBySessionID.isEmpty }
+
+        wire.onDisconnect?(BotFailure.transport)
+        XCTAssertTrue(list.isHermesReconnecting)
+        XCTAssertEqual(list.attentionStatesBySessionID, ["a": .working], "the last known states stay")
+        XCTAssertTrue(list.attentionStatesAreStale)
+
+        wire.holdsActive = true
+        wire.active = [live("a", "waiting")]
+        list.reconnectNow()
+        await waitUntil("rows read") { wire.connects == 2 && !list.isHermesReconnecting }
+        XCTAssertTrue(list.attentionStatesAreStale, "rows vouch for no run")
+        wire.release()
+        await waitUntil("states read") { !list.attentionStatesAreStale }
+        XCTAssertEqual(list.attentionStatesBySessionID, ["a": .input])
+
+        wire.onDisconnect?(BotFailure.outdated("0.20.0"))
+        XCTAssertEqual(list.attentionStatesBySessionID, [:], "a refusal leaves nothing to reconnect to")
+    }
+
     /// A lost list's reconnect holds while offline; the network's return runs it at once, not on
     /// its backoff, unless a chat now covers the list (#1372).
     func testALostListReconnectsAtOnceWhenTheNetworkReturns() async {
@@ -1085,6 +1115,8 @@ import Observation
     var onDisconnect: ((Error) -> Void)?
     var pages: [String: [Int: HermesSessionPage]] = [:]
     var active: [BotJSON] = []
+    /// While true, `session.active_list` waits for `release()`, then answers from `active` as it is then.
+    var holdsActive = false
     var profiles = ["default", "research"]
     var current = "default"
     /// Profiles the host no longer has: 4064 over the socket, 404 over REST.
@@ -1138,7 +1170,9 @@ import Observation
         case "session.most_recent":
             if removed.contains(params["profile"]?.text ?? "") { throw BotFailure.rejected(4064) }
             return .object(["session_id": .null])
-        case "session.active_list": return .object(["sessions": .array(active)])
+        case "session.active_list":
+            if holdsActive { await withCheckedContinuation { held.append($0) } }
+            return .object(["sessions": .array(active)])
         case "profiles.list": return .object(["profiles": .array(profiles.map { .object(["name": .string($0)]) })])
         case "session.delete": return .object([:])
         case "projects.tree":

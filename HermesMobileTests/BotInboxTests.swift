@@ -1095,23 +1095,38 @@ import SwiftUI
         XCTAssertEqual(seenAtNextRead, [:])
     }
 
-    func testStatusesClearWhenTheSocketDropsAndWhenTheConnectionChanges() async throws {
+    /// A lost socket keeps the last known statuses, marked stale, while the inbox reconnects
+    /// (#1374). A tap reconnects past the backoff; the roster settles the reconnect, and only
+    /// the host's next status reply makes them current. A refusal the user has to act on
+    /// clears them, and another connection's never show.
+    func testALostSocketKeepsTheLastKnownStatusesUntilTheHostAnswersAgain() async throws {
         let store = try connectedStore()
         let first = BotInboxFixtureWire(roster: [row("triage")])
         first.active = [live("triage-tip", "waiting")]
         let second = BotInboxFixtureWire(roster: [row("triage")])
-        second.active = [live("triage-tip", "waiting")]
+        second.active = [live("triage-tip", "working")]
+        second.holdsActive = true
         let third = BotInboxFixtureWire(roster: [row("triage")])
         third.holdsConnect = true
-        let inbox = try makeInbox(wires: [first, second, third], store: store)
+        let inbox = try makeInbox(wires: [first, second, third], store: store, reconnectDelays: [.seconds(3600)])
         await inbox.open()
-        XCTAssertEqual(inbox.liveStatuses, ["triage": .waiting])
 
         first.onDisconnect?(BotFailure.transport)
-        XCTAssertEqual(inbox.liveStatuses, [:], "a dropped socket cannot vouch for any turn")
-        XCTAssertEqual(inbox.profiles.map(\.id), ["triage"], "the roster stays")
+        XCTAssertTrue(inbox.isReconnecting)
+        XCTAssertEqual(inbox.liveStatuses, ["triage": .waiting], "the last known statuses stay")
+        XCTAssertTrue(inbox.liveStatusesAreStale)
 
-        await settle(inbox) { $0.liveStatuses == ["triage": .waiting] }
+        inbox.reconnectNow()
+        await settle(inbox) { $0.link == .live }
+        XCTAssertFalse(inbox.isReconnecting, "the roster settles the reconnect")
+        XCTAssertTrue(inbox.liveStatusesAreStale, "a roster vouches for no turn")
+        second.release()
+        await settle(inbox) { !$0.liveStatusesAreStale }
+        XCTAssertEqual(inbox.liveStatuses, ["triage": .working])
+
+        second.onDisconnect?(BotFailure.upgradeRefused(403))
+        XCTAssertEqual(inbox.liveStatuses, [:], "a refusal leaves nothing to reconnect to")
+
         try store.save(BotConnection(id: UUID(), name: "Other", address: URL(string: "https://other.example")!,
                                      username: "u", password: "p", hermesVersion: nil), server: server)
         let reopened = Task { await inbox.open() }
@@ -1177,24 +1192,28 @@ import SwiftUI
         await inbox.open()
         defer { inbox.close() }
 
-        // Each read records what the inbox showed as it went out. The empty state
+        // Each read records what the inbox showed as it went out. The stale state
         // between the failures lasts only until the next retry answers, so a test
         // that waits to observe it can miss it (#1018).
-        var shownAtRead: [[String: BotLiveStatus]] = []
+        var staleAtRead: [Bool] = []
         let retried = expectation(description: "the read after both failures went out")
         wire.onCall = { method in
             guard method == "session.active_list" else { return }
-            shownAtRead.append(inbox.liveStatuses)
-            if shownAtRead.count == 3 { retried.fulfill() }
+            XCTAssertEqual(inbox.liveStatuses, ["triage": .working], "a failed read keeps the last known statuses")
+            staleAtRead.append(inbox.liveStatusesAreStale)
+            if staleAtRead.count == 3 { retried.fulfill() }
         }
         wire.failsActive = 2
         await fulfillment(of: [retried], timeout: 5)
         wire.onCall = nil
-        XCTAssertEqual(Array(shownAtRead.prefix(3)), [["triage": .working], [:], [:]],
-                       "a failed read shows no statuses and tries again")
-        await settle(inbox) { $0.liveStatuses == ["triage": .working] }
+        XCTAssertEqual(Array(staleAtRead.prefix(3)), [false, true, true], "marked stale, and read again")
+        await settle(inbox) { !$0.liveStatusesAreStale }
         XCTAssertEqual(inbox.link, .live, "a failed status read never drops the socket")
         XCTAssertEqual(wire.listCalls, 1, "the retry is a status read, not a roster read")
+
+        // A host without the method has no statuses to wait for (#1374).
+        wire.active = nil
+        await settle(inbox) { $0.liveStatuses.isEmpty }
     }
 
     func testStatusReReadsStopWhenTheInboxCloses() async throws {

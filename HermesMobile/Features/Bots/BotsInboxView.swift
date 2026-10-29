@@ -189,7 +189,7 @@ import SwiftUI
                             case .bot(let profile):
                                 Menu { organizeMenu(profile) } label: {
                                     BotHeroTile(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile),
-                                                status: inbox.liveStatuses[profile.id])
+                                                status: inbox.liveStatuses[profile.id], statusIsStale: inbox.liveStatusesAreStale)
                                 } primaryAction: { inbox.selection.profile = profile }
                                 .buttonStyle(.plain)
                             case .room(let room):
@@ -241,6 +241,7 @@ import SwiftUI
         if let home {
             SessionsHeader(logoColor: HeaderLogoColor.color(for: headerLogoColorHex), avatar: home.avatar,
                            searchLabel: "Search bots and messages", isSearchDisabled: inbox.connection == nil,
+                           isReconnecting: inbox.isReconnecting, reconnectNow: inbox.reconnectNow,
                            openSearch: { showingSearch = true })
                 .sessionsTopChromeListRow()
         }
@@ -350,7 +351,7 @@ import SwiftUI
     private func row(_ profile: BotProfile, dimmed: Bool) -> some View {
         Button { inbox.selection.profile = profile } label: {
             BotInboxRow(profile: profile, avatar: inbox.avatars[profile.id], unread: inbox.isUnread(profile),
-                        status: inbox.liveStatuses[profile.id])
+                        status: inbox.liveStatuses[profile.id], statusIsStale: inbox.liveStatusesAreStale)
         }
         .buttonStyle(.plain)
         .opacity(dimmed ? 0.5 : 1)
@@ -808,6 +809,7 @@ private struct BotHeroTile: View {
     let avatar: UIImage?
     let unread: Bool
     let status: BotLiveStatus?
+    let statusIsStale: Bool
     var body: some View {
         VStack(spacing: 14) {
             BotAvatarView(profile: profile, avatar: avatar, size: 84)
@@ -818,7 +820,7 @@ private struct BotHeroTile: View {
                 }
                 if let status {
                     // Two lines, so a long translation at a large size still reads whole.
-                    BotLiveStatusLabel(status: status, font: .footnote.weight(.semibold))
+                    BotLiveStatusLabel(status: status, font: .footnote.weight(.semibold), isStale: statusIsStale)
                         .lineLimit(2).multilineTextAlignment(.center)
                 }
             }
@@ -854,6 +856,7 @@ private struct BotInboxRow: View {
     let avatar: UIImage?
     let unread: Bool
     let status: BotLiveStatus?
+    let statusIsStale: Bool
     /// A description short enough to read as a role sits beside the name; a
     /// longer one only stands in for the preview when the chat has none.
     private var chip: String? {
@@ -904,7 +907,7 @@ private struct BotInboxRow: View {
     /// otherwise the last activity.
     @ViewBuilder private var trailingSlot: some View {
         if let status {
-            BotLiveStatusLabel(status: status, font: .subheadline.weight(.semibold))
+            BotLiveStatusLabel(status: status, font: .subheadline.weight(.semibold), isStale: statusIsStale)
                 .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
         } else if let date = profile.lastActive {
             Text(BotInboxDateLabel.text(for: date)).font(.subheadline).foregroundStyle(.secondary)
@@ -914,15 +917,20 @@ private struct BotInboxRow: View {
 
 /// A bot's live status as a still, tinted word: the Live Activity's translated
 /// "Working" and "Waiting for you" in the Sessions list's attention tints. It never
-/// animates; the word carries the meaning without the color.
+/// animates; the word carries the meaning without the color. A last known status
+/// (#1374) is drawn secondary and read "Last known".
 private struct BotLiveStatusLabel: View {
     let status: BotLiveStatus
     let font: Font
+    let isStale: Bool
     var body: some View {
-        switch status {
-        case .working: Text("Working").font(font).foregroundStyle(Color("AttentionWorking"))
-        case .waiting: Text("Waiting for you").font(font).foregroundStyle(Color("AttentionApproval"))
+        let (word, tint) = switch status {
+        case .working: (String(localized: "Working"), Color("AttentionWorking"))
+        case .waiting: (String(localized: "Waiting for you"), Color("AttentionApproval"))
         }
+        Text(word).font(font)
+            .foregroundStyle(isStale ? AnyShapeStyle(.secondary) : AnyShapeStyle(tint))
+            .accessibilityLabel(isStale ? String(localized: "Last known: \(word)") : word)
     }
 }
 

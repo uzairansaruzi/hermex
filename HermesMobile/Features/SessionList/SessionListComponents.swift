@@ -208,7 +208,8 @@ enum SessionListMotion {
 /// HERMEX, and one glass pill of search and the server's avatar. A tap on the avatar opens
 /// Settings and a hold switches servers. With a `field`, search grows the pill into a text field
 /// that pushes the wordmark out and turns the avatar into Close; without one (the Bots side,
-/// whose search is a sheet) the pill stays put and `openSearch` alone runs.
+/// whose search is a sheet) the pill stays put and `openSearch` alone runs. A Hermes home's
+/// list passes `isReconnecting` for the status line under the wordmark (#1374).
 struct SessionsHeader: View {
     /// The pill's search field and the state it grows with.
     struct Field {
@@ -240,23 +241,31 @@ struct SessionsHeader: View {
     /// What the search button opens, for VoiceOver: the sessions, or the Bots side's sheet.
     var searchLabel: LocalizedStringKey = "Search sessions"
     var isSearchDisabled = false
+    /// The list kept its rows through a lost connection and is getting them back (#1374).
+    var isReconnecting = false
+    var reconnectNow: () -> Void = {}
     let openSearch: () -> Void
+    @State private var connectionStatus = DelayedStatusDriver<HomeConnectionStatus>()
 
     var body: some View {
-        HStack(alignment: .center, spacing: isExpanded ? 0 : 16) {
-            HermesHeaderLogo(selectedColor: logoColor)
-                .frame(width: isExpanded ? 0 : 160, alignment: .leading)
-                .opacity(isExpanded ? 0 : 1)
-                .clipped()
-                .accessibilityHidden(isExpanded)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: isExpanded ? 0 : 16) {
+                HermesHeaderLogo(selectedColor: logoColor)
+                    .frame(width: isExpanded ? 0 : 160, alignment: .leading)
+                    .opacity(isExpanded ? 0 : 1)
+                    .clipped()
+                    .accessibilityHidden(isExpanded)
 
-            pill
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                pill
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            HomeConnectionStatusLine(driver: connectionStatus, reconnectNow: reconnectNow)
         }
         .padding(.horizontal, 24)
         .padding(.top, 28)
         .animation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion), value: isExpanded)
         .animation(SessionListMotion.searchFocusAnimation(reduceMotion: reduceMotion), value: showsClearButton)
+        .drivesHomeConnectionStatus(connectionStatus, isReconnecting: isReconnecting)
     }
 
     private var isExpanded: Bool { field?.isExpanded == true }
@@ -722,6 +731,75 @@ struct SessionSidebarUtilityRows: View {
     }
 }
 
+/// What a Hermes home's list says while it keeps its rows through a lost connection (#1374).
+enum HomeConnectionStatus: Equatable {
+    /// Online and reconnecting; a tap reconnects now, past the backoff.
+    case reconnecting
+    /// The device has no network. Nothing reconnects until it returns, so the line only says
+    /// why the statuses are old.
+    case offline
+
+    /// Reconnecting shows once it has lasted 800 ms, so a quick recovery never flashes, and
+    /// stays at least 400 ms.
+    static let policy = DelayedStatusPolicy(showAfter: .milliseconds(800))
+
+    /// Nil unless the list is reconnecting.
+    init?(isReconnecting: Bool, isOnline: Bool) {
+        guard isReconnecting else { return nil }
+        self = isOnline ? .reconnecting : .offline
+    }
+}
+
+/// The quiet line under a Hermes home's wordmark, and under the pushed Sessions list's title,
+/// while the list reconnects (#1374). Nothing while `driver` shows nothing; its owner steps it
+/// with `drivesHomeConnectionStatus`.
+struct HomeConnectionStatusLine: View {
+    let driver: DelayedStatusDriver<HomeConnectionStatus>
+    let reconnectNow: () -> Void
+
+    var body: some View {
+        DelayedStatusView(driver: driver) { status in
+            Group {
+                switch status {
+                case .reconnecting:
+                    Button("Reconnecting…", action: reconnectNow)
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Reconnects now.")
+                case .offline:
+                    Text("Offline · showing last known status")
+                }
+            }
+            .font(AppFont.footnote())
+            .foregroundStyle(.secondary)
+            .transition(.opacity)
+        }
+    }
+}
+
+extension View {
+    /// Steps `driver` toward what the list's reconnect and the device's network say: offline
+    /// at once, reconnecting after `HomeConnectionStatus.policy`'s delay. Opacity only, and no
+    /// animation under Reduce Motion. Only this modifier reads the network, so a path change
+    /// re-evaluates nothing else.
+    func drivesHomeConnectionStatus(_ driver: DelayedStatusDriver<HomeConnectionStatus>, isReconnecting: Bool) -> some View {
+        modifier(HomeConnectionStatusDriving(driver: driver, isReconnecting: isReconnecting))
+    }
+}
+
+private struct HomeConnectionStatusDriving: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let driver: DelayedStatusDriver<HomeConnectionStatus>
+    let isReconnecting: Bool
+
+    func body(content: Content) -> some View {
+        let target = HomeConnectionStatus(isReconnecting: isReconnecting, isOnline: NetworkPathMonitor.shared.isSatisfied)
+        content.task(id: target) {
+            await driver.run(target: target, policy: HomeConnectionStatus.policy, immediately: target == .offline,
+                             animation: reduceMotion ? nil : .easeInOut(duration: 0.2))
+        }
+    }
+}
+
 struct SessionListRowsSection: View {
     let viewModel: SessionListViewModel
     /// The sidebar's current query, forwarded to rows for match excerpts.
@@ -735,11 +813,19 @@ struct SessionListRowsSection: View {
     let selectedSessionID: String?
     let actions: SessionListRowActions
     var suppressEmptyState = false
+    /// A Hermes list shows its error over the rows too: a refusal the user has to act on keeps
+    /// them on screen (#1374).
+    var showsErrorOverRows = false
 
     var body: some View {
         sessionsHeaderRow
             .padding(.top, isSearchActive ? 16 : 28)
             .sessionsScreenListRow()
+
+        if showsErrorOverRows, !viewModel.sessions.isEmpty, let errorMessage = viewModel.errorMessage {
+            sessionsErrorRow(message: errorMessage)
+                .sessionsScreenListRow()
+        }
 
         if viewModel.isLoading && viewModel.sessions.isEmpty {
             sessionLoadingSkeletonRows
@@ -870,6 +956,7 @@ struct SessionInteractiveRow: View {
                 isCachedCopyProvisional: viewModel.isCachedCopyProvisional,
                 isUnread: viewModel.isUnread(session),
                 attentionState: viewModel.attentionState(for: session),
+                isAttentionStale: viewModel.attentionStatesAreStale,
                 searchExcerpt: viewModel.searchExcerpt(for: session, searchText: searchText),
                 labelsArchived: true,
                 profileTag: viewModel.hermesShowsAllProfiles ? session.profile : nil

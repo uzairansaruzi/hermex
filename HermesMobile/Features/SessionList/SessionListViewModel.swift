@@ -133,6 +133,14 @@ final class SessionListViewModel {
     /// have an entry, and the map is reassigned only when a value actually
     /// changes so rows do not invalidate on every poll tick.
     private(set) var attentionStatesBySessionID: [String: SessionRowAttentionState] = [:]
+    /// True while a Hermes list's states are only the last ones known (#1374): kept through a
+    /// lost socket or a failed status read, until a current status reply replaces them. Never
+    /// on a webui list.
+    private(set) var attentionStatesAreStale = false
+    /// True from a lost Hermes socket that kept the rows on screen until a list read on a new
+    /// socket succeeds (#1374). A refusal the user has to act on, a closed list or a Profile
+    /// change ends it instead.
+    private(set) var isHermesReconnecting = false
     private(set) var seenMessageTimes: [String: Double]
 
     private(set) var remoteContentSearchSessionIDs: [String] = []
@@ -1830,8 +1838,18 @@ final class SessionListViewModel {
         hermesStatusTask?.cancel(); hermesStatusTask = nil
     }
 
-    /// The list left the screen for good, or the app went to the background.
+    /// The list left the screen for good, or the app went to the background: it stops
+    /// reconnecting, and states that were only the last known ones go, since nothing re-reads
+    /// them meanwhile.
     func closeHermes() {
+        teardownHermes()
+        setHermesReconnecting(false)
+        if attentionStatesAreStale { setHermesStates([:]) }
+    }
+
+    /// Ends the socket and everything waiting on it. A lost socket starts with it, so the
+    /// reconnect keeps the last known states and its reconnecting state.
+    private func teardownHermes() {
         pauseHermes()
         hermesReconnect?.cancel()
         hermesReloadTask?.cancel(); hermesReloadTask = nil; hermesReloadWanted = false
@@ -1972,6 +1990,7 @@ final class SessionListViewModel {
             }
             applyHermesScheduled(scheduled)
             applyHermes(pages, readSerial: serial)
+            setHermesReconnecting(false)
             // The rows are in, and the lanes, read next, never hold them back. A "Load more"
             // that starts meanwhile owns the paging flag, so this read lets go of it once.
             holdsPaging = false
@@ -2169,7 +2188,7 @@ final class SessionListViewModel {
         projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false
         clearHermesSearchMatches()
         errorMessage = nil; sessionLoadError = nil
-        setHermesStates([:])
+        setHermesStates([:]); setHermesReconnecting(false)
         guard let wire = hermesWire else { return await openHermes() }
         isLoading = true
         if hermesShowsAllProfiles && hermesProfiles.isEmpty { await readHermesProfiles(wire) }
@@ -2192,7 +2211,7 @@ final class SessionListViewModel {
         hermesUnreadMarks = [:]; hermesReturnedFrom = []
         projects = []; hermesProjectOwners = [:]; hermesProjectsRead = false
         clearHermesSearchMatches()
-        setHermesStates([:])
+        setHermesStates([:]); setHermesReconnecting(false)
         isLoading = true
         return true
     }
@@ -2213,20 +2232,34 @@ final class SessionListViewModel {
     /// the network is back, or holds until it is. A list a chat covers stays down.
     func networkPathDidChange() { hermesReconnect?.networkPathDidChange() }
 
-    /// A lost socket: the rows stay, live states clear, and the list reconnects on the inbox's
-    /// backoff while it is on screen and the device is online. A refusal the user has to act on
-    /// (`BotConnectionAdvice.isRetryable`) stops there and is kept as the list's error, which
-    /// shows once no rows do; pull to refresh tries again.
+    /// The user tapped "Reconnecting…" (#1374): the waiting reconnect runs now, past its backoff,
+    /// the way a network return runs it. Offline, or with no reconnect waiting, nothing happens.
+    func reconnectNow() { hermesReconnect?.networkPathDidChange() }
+
+    /// A lost socket: the rows and their last known states stay, and the list reconnects on the
+    /// inbox's backoff while it is on screen and the device is online; `isHermesReconnecting`
+    /// says so. A refusal the user has to act on (`BotConnectionAdvice.isRetryable`) clears the
+    /// states and stops there, kept as the list's error, which shows over the rows; pull to
+    /// refresh tries again.
     private func dropHermes(_ error: Error) {
         // Rows shown while connecting stay only as the offline state.
         if isCachedCopyProvisional { showCachedHermesSessions(after: error) }
         let listening = hermesIsListening
-        closeHermes()
+        teardownHermes()
         hermesIsListening = listening
-        setHermesStates([:])
-        let retries = BotConnectionAdvice.isRetryable(error)
-        if sessions.isEmpty || !retries { showHermesFailure(error) }
-        guard listening, retries else { return }
+        guard BotConnectionAdvice.isRetryable(error) else {
+            setHermesStates([:]); setHermesReconnecting(false)
+            return showHermesFailure(error)
+        }
+        setHermesStates(attentionStatesBySessionID, stale: !attentionStatesBySessionID.isEmpty)
+        if sessions.isEmpty {
+            showHermesFailure(error)
+        } else {
+            // The reconnecting line speaks for the rows instead of an earlier read's failure.
+            if errorMessage != nil || sessionLoadError != nil { errorMessage = nil; sessionLoadError = nil }
+            setHermesReconnecting(true)
+        }
+        guard listening else { return }
         hermesReconnect?.schedule { [weak self] in
             guard let self, self.hermesIsListening else { return }
             await self.openHermes()
@@ -2269,9 +2302,10 @@ final class SessionListViewModel {
         }
     }
 
-    /// One `session.active_list`, mapped onto the listed rows by session key. A failed read
-    /// shows no states rather than old ones. While a row is busy, or a read failed while one
-    /// was, it reads again after `statusPollInterval`; once all are idle it stops.
+    /// One `session.active_list`, mapped onto the listed rows by session key. A failed read keeps
+    /// the states as the last known ones; a host without the method shows none. While a row is
+    /// busy, or a read failed while one was, it reads again after `statusPollInterval`; once all
+    /// are idle it stops.
     private func readHermesStatuses(_ wire: any BotTransport) async {
         guard let hermes else { return }
         hermesStatusSerial += 1
@@ -2285,17 +2319,26 @@ final class SessionListViewModel {
             hermesRetriesStatus = false
         } catch {
             guard current() else { return }
-            if error as? BotFailure == .rejected(-32601) { hermesReadsStatus = false }
-            hermesRetriesStatus = hermesRetriesStatus || !attentionStatesBySessionID.isEmpty
-            setHermesStates([:])
+            if error as? BotFailure == .rejected(-32601) {
+                hermesReadsStatus = false
+                setHermesStates([:])
+            } else {
+                hermesRetriesStatus = hermesRetriesStatus || !attentionStatesBySessionID.isEmpty
+                setHermesStates(attentionStatesBySessionID, stale: !attentionStatesBySessionID.isEmpty)
+            }
         }
         if attentionStatesBySessionID.isEmpty && !hermesRetriesStatus { hermesStatusTask = nil }
         else { startHermesStatusRead(wire, after: hermes.statusPollInterval) }
     }
 
     /// Writes only a real change, so an unchanged re-read never invalidates the rows.
-    private func setHermesStates(_ states: [String: SessionRowAttentionState]) {
+    private func setHermesStates(_ states: [String: SessionRowAttentionState], stale: Bool = false) {
         if states != attentionStatesBySessionID { attentionStatesBySessionID = states }
+        if stale != attentionStatesAreStale { attentionStatesAreStale = stale }
+    }
+
+    private func setHermesReconnecting(_ reconnecting: Bool) {
+        if reconnecting != isHermesReconnecting { isHermesReconnecting = reconnecting }
     }
 
     // MARK: Hermes search (#1053)

@@ -16,6 +16,8 @@ struct SessionRowView: View {
     /// polls the server (`SessionListViewModel`). Screens that do not poll pass
     /// nothing and the row falls back to what the session itself reports.
     var attentionState: SessionRowAttentionState?
+    /// `attentionState` is only the last one known (#1374): drawn secondary, read "Last known".
+    var isAttentionStale = false
     /// Set only while a remote content search is showing this row, so the row
     /// can say why it matched.
     var searchExcerpt: SessionSearchExcerpt?
@@ -100,6 +102,7 @@ struct SessionRowView: View {
         isViewingCachedData: Bool,
         isCachedCopyProvisional: Bool = false,
         attentionState: SessionRowAttentionState? = nil,
+        isAttentionStale: Bool = false,
         isUnread: Bool = false,
         labelsArchived: Bool = false
     ) -> [String] {
@@ -110,7 +113,9 @@ struct SessionRowView: View {
             attentionState: attentionState,
             isViewingCachedData: isViewingCachedData
         ) {
-            labels.append(state.accessibilityLabel)
+            labels.append(isAttentionStale && attentionState != nil
+                ? String(localized: "Last known: \(state.accessibilityLabel)")
+                : state.accessibilityLabel)
         } else if isUnread {
             labels.append(String(localized: "Unread"))
         }
@@ -237,7 +242,7 @@ struct SessionRowView: View {
         Text(state.title)
             .font(AppFont.caption(weight: .semibold))
             .monospacedDigit()
-            .foregroundStyle(state.tint)
+            .foregroundStyle(isAttentionStale && attentionState != nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(state.tint))
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .accessibilityHidden(true)
@@ -429,6 +434,7 @@ struct SessionRowView: View {
             isViewingCachedData: isViewingCachedData,
             isCachedCopyProvisional: isCachedCopyProvisional,
             attentionState: attentionState,
+            isAttentionStale: isAttentionStale,
             isUnread: isUnread,
             labelsArchived: labelsArchived
         ))

@@ -136,6 +136,7 @@ struct HermesSessionListView: View {
                     logoColor: HeaderLogoColor.color(for: headerLogoColorHex), avatar: home.avatar,
                     field: SessionsHeader.Field(isExpanded: isSearchExpanded, text: $navigation.searchText,
                                                 isFocused: $isSearchFieldFocused, close: closeSearch),
+                    isReconnecting: isReconnecting, reconnectNow: viewModel.reconnectNow,
                     openSearch: openSearch
                 )
                 .sessionsTopChromeListRow()
@@ -177,7 +178,8 @@ struct HermesSessionListView: View {
                 showsWorkspace: showsWorkspace,
                 selectedSessionID: usesSplit ? selectedSessionID : nil,
                 actions: actions,
-                suppressEmptyState: !groups.scheduled.isEmpty
+                suppressEmptyState: !groups.scheduled.isEmpty,
+                showsErrorOverRows: true
             )
             // A search reads the host's whole list, so it pages nothing in.
             if showsLoadMore && !isSearching { loadMoreRow }
@@ -479,8 +481,12 @@ struct HermesSessionListView: View {
     /// The home's chrome, or the pushed list's own title and toolbar.
     private var chrome: some ViewModifier {
         HermesSessionListChrome(home: home, searchText: $navigation.searchText, isSearchPresented: $navigation.isSearchExpanded,
+                                isReconnecting: isReconnecting, reconnectNow: viewModel.reconnectNow,
                                 profileMenu: { profileMenu }, filter: { profileFilter }, newSession: { newSessionButton })
     }
+
+    /// The status line's reconnect (#1374), which the offline cache's banner already explains.
+    private var isReconnecting: Bool { viewModel.isHermesReconnecting && !viewModel.showsOfflineCache }
 
     private func openSearch() {
         withAnimation(SessionListMotion.searchChromeAnimation(reduceMotion: reduceMotion)) { isSearchExpanded = true }
@@ -980,20 +986,25 @@ private struct SearchScope: Hashable {
 
 /// The Sessions list's title and toolbar. As the Hermes home's Sessions side it takes the home's
 /// bar, with the Profile filter and New Session at its ends, and searches from its header; pushed,
-/// it is titled "Sessions" with its Profile menu and New Session at the top right and a search
-/// field under them, which `isSearchPresented` activates (⌘F).
+/// it is titled "Sessions", with the home's reconnect line under the title (#1374), its Profile
+/// menu and New Session at the top right and a search field under them, which
+/// `isSearchPresented` activates (⌘F).
 private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSession: View>: ViewModifier {
     let home: HermesHome?
     @Binding var searchText: String
     @Binding var isSearchPresented: Bool
+    let isReconnecting: Bool
+    let reconnectNow: () -> Void
     let profileMenu: ProfileMenu
     let filter: Filter
     let newSession: NewSession
 
     init(home: HermesHome?, searchText: Binding<String>, isSearchPresented: Binding<Bool>,
+         isReconnecting: Bool, reconnectNow: @escaping () -> Void,
          @ViewBuilder profileMenu: () -> ProfileMenu, @ViewBuilder filter: () -> Filter,
          @ViewBuilder newSession: () -> NewSession) {
         self.home = home; _searchText = searchText; _isSearchPresented = isSearchPresented
+        self.isReconnecting = isReconnecting; self.reconnectNow = reconnectNow
         self.profileMenu = profileMenu(); self.filter = filter(); self.newSession = newSession()
     }
 
@@ -1009,10 +1020,28 @@ private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSessi
                 .navigationTitle("Sessions")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        SessionsToolbarTitle(isReconnecting: isReconnecting, reconnectNow: reconnectNow)
+                    }
                     ToolbarItem(placement: .topBarTrailing) { profileMenu }
                     ToolbarItem(placement: .topBarTrailing) { newSession }
                 }
         }
+    }
+}
+
+/// The pushed Sessions list's title, with the home's reconnect line under it (#1374).
+private struct SessionsToolbarTitle: View {
+    let isReconnecting: Bool
+    let reconnectNow: () -> Void
+    @State private var connectionStatus = DelayedStatusDriver<HomeConnectionStatus>()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text("Sessions").font(.headline).accessibilityAddTraits(.isHeader)
+            HomeConnectionStatusLine(driver: connectionStatus, reconnectNow: reconnectNow)
+        }
+        .drivesHomeConnectionStatus(connectionStatus, isReconnecting: isReconnecting)
     }
 }
 
