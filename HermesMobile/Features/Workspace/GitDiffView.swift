@@ -1,9 +1,10 @@
 import SwiftUI
 
 /// Every changed file in one scroll: sticky file headers, per-file collapse and viewed
-/// state, word-level highlights, and line selection that feeds the composer. Diffs
-/// load one file at a time (a few in flight) so the first file paints before the rest
-/// arrive; each file's rows build once, off the main thread, as its answer lands.
+/// state, word-level highlights, syntax colour for the rows on screen, optional line
+/// wrap (shared with the source viewer), and line selection that feeds the composer.
+/// Diffs load one file at a time (a few in flight) so the first file paints before the
+/// rest arrive; each file's rows build once, off the main thread, as its answer lands.
 /// Lockfiles, generated output, and huge changes fold once loaded (`ReviewDiffDefaultCollapse`),
 /// except the file the user tapped or a single-file review. Folds and viewed marks last as long as
 /// the chat (`ReviewProgressStore`), so a reopened review picks up where it was left; a file whose
@@ -31,8 +32,12 @@ struct GitDiffView: View {
     @State private var review: ReviewDiffProgress
     @State private var selection = ReviewDiffSelection()
     @State private var scrollTarget: ReviewDiffScrollTarget?
+    @State private var highlights = ReviewDiffHighlightModel()
+    @AppStorage(SourceFileSurface.wrapsLinesKey) private var wrapsLines = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     private static let maxConcurrentDiffLoads = 4
 
@@ -66,13 +71,20 @@ struct GitDiffView: View {
 
     private var selectedRowIDs: Set<String> { selection.selectedRowIDs(in: rows) }
 
+    private var highlightAppearance: ReviewDiffHighlightModel.Appearance {
+        ReviewDiffHighlightModel.Appearance(isDark: colorScheme == .dark, increasedContrast: colorSchemeContrast == .increased)
+    }
+
     var body: some View {
         NavigationStack {
             content
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } }
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        diffActionsMenu
+                        Button("Done") { dismiss() }
+                    }
                 }
                 .safeAreaInset(edge: .bottom) {
                     let selected = selectedRowIDs
@@ -83,8 +95,14 @@ struct GitDiffView: View {
                     hasLoaded = true
                     await load()
                 }
+                .onChange(of: highlightAppearance, initial: true) { highlights.setAppearance(highlightAppearance) }
+                .onChange(of: review.collapsedFileIDs, initial: true) { highlights.setCollapsedFileIDs(review.collapsedFileIDs) }
         }
-        .onDisappear { refreshTask?.cancel() }
+        // On the sheet's root, so only dismissal (not a pushed screen) stops colour.
+        .onDisappear {
+            refreshTask?.cancel()
+            highlights.cancel()
+        }
         .presentationDetents([.medium, .large])
         .adaptivePagePresentation()
     }
@@ -102,6 +120,10 @@ struct GitDiffView: View {
                 selectedRowIDs: selectedRowIDs,
                 isRefreshing: isRefreshing,
                 scrollTarget: scrollTarget,
+                wrapsLines: wrapsLines,
+                tokensByRowID: highlights.tokensByRowID,
+                tokensVersion: highlights.tokensVersion,
+                onVisibleRowRangeChange: { highlights.visibleRowRangeChanged($0) },
                 onToggleFile: toggleFile,
                 onToggleViewed: toggleViewed,
                 onLinePress: handleLinePress,
@@ -111,6 +133,16 @@ struct GitDiffView: View {
                 }
             )
         }
+    }
+
+    /// Presentation options for the whole sheet, matching the source viewer's menu.
+    private var diffActionsMenu: some View {
+        Menu {
+            Toggle("Wrap Lines", systemImage: "text.justify.leading", isOn: $wrapsLines)
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel("More")
     }
 
     private func selectionBar(count: Int) -> some View {
@@ -174,6 +206,8 @@ struct GitDiffView: View {
     private func load() async {
         loadGeneration += 1
         let generation = loadGeneration
+        // A refresh can reuse row ids for different text; colour starts over.
+        highlights.reset()
         guard let git else {
             let message = String(localized: "Session ID is missing.")
             publish(files.flatMap { ReviewDiffRowBuilder.rows(for: ReviewDiffFileInput(file: $0, state: .failed(message))) }, patches: [:])
@@ -195,6 +229,7 @@ struct GitDiffView: View {
         rows = built
         review.apply(built, patches: patches)
         rowsVersion += 1
+        highlights.setRows(built)
     }
 
     /// Nil when the request was cancelled: not a failure to show or report.

@@ -327,13 +327,23 @@ extension ReviewDiffCanvasView {
         case .deletion: fill = theme.deleteTint.withAlphaComponent(0.28)
         case .context: return
         }
-        let height = max(4, min(rowRect.height - 4, style.codeFont.lineHeight))
-        let y = rowRect.midY - height / 2
+        let height = max(4, min(style.metrics.rowHeight - 4, style.codeFont.lineHeight))
+        let firstLineY = rowRect.minY + (style.metrics.rowHeight - height) / 2
+        // Unwrapped, every range sits on one line; wrapped, a range splits at each wrap.
+        let wrapColumns = layout.wrapColumns ?? Int.max
         fill.setFill()
         for range in line.wordDiffRanges where !range.isEmpty {
-            let x = style.codeStartX - horizontalOffset + CGFloat(range.lowerBound) * style.codeCharacterWidth
-            let width = max(2, CGFloat(range.count) * style.codeCharacterWidth)
-            UIBezierPath(roundedRect: CGRect(x: x, y: y, width: width, height: height), cornerRadius: 3).fill()
+            var start = range.lowerBound
+            while start < range.upperBound {
+                let visualLine = start / wrapColumns
+                let lineStart = visualLine * wrapColumns
+                let end = min(range.upperBound, lineStart + wrapColumns)
+                let x = style.codeStartX - horizontalOffset + CGFloat(start - lineStart) * style.codeCharacterWidth
+                let y = firstLineY + CGFloat(visualLine) * style.metrics.wrappedLineHeight
+                let width = max(2, CGFloat(end - start) * style.codeCharacterWidth)
+                UIBezierPath(roundedRect: CGRect(x: x, y: y, width: width, height: height), cornerRadius: 3).fill()
+                start = end
+            }
         }
     }
 

@@ -363,6 +363,7 @@
 		1D1FF0000000000000000B01 /* ReviewWordDiff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F01 /* ReviewWordDiff.swift */; };
 		1D1FF0000000000000000B02 /* ReviewDiffLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F02 /* ReviewDiffLayout.swift */; };
 		1D1FF0000000000000000B03 /* ReviewDiffSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F03 /* ReviewDiffSelection.swift */; };
+		1D1FF0000000000000000B37 /* ReviewDiffHighlightModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F37 /* ReviewDiffHighlightModel.swift */; };
 		1D1FF0000000000000000B04 /* ReviewDiffStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F04 /* ReviewDiffStyle.swift */; };
 		1D1FF0000000000000000B05 /* ReviewDiffCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F05 /* ReviewDiffCanvasView.swift */; };
 		1D1FF0000000000000000B06 /* ReviewDiffCanvasView+Drawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F06 /* ReviewDiffCanvasView+Drawing.swift */; };
@@ -375,6 +376,7 @@
 		1D1FF0000000000000000B0C /* ReviewDiffSelectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F0C /* ReviewDiffSelectionTests.swift */; };
 		138300000000000000000B01 /* ReviewDiffDefaultCollapseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 138300000000000000000F01 /* ReviewDiffDefaultCollapseTests.swift */; };
 		138400000000000000000B01 /* ReviewProgressStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 138400000000000000000F01 /* ReviewProgressStoreTests.swift */; };
+		1D1FF0000000000000000B38 /* ReviewDiffHighlightModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F38 /* ReviewDiffHighlightModelTests.swift */; };
 		1D1FF0000000000000000B21 /* ReviewDiffCanvasViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F21 /* ReviewDiffCanvasViewTests.swift */; };
 		1D1FF0000000000000000B30 /* SourceHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F30 /* SourceHighlighter.swift */; };
 		1D1FF0000000000000000B31 /* SourceFileRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F31 /* SourceFileRows.swift */; };
@@ -1049,6 +1051,7 @@
 		1D1FF0000000000000000F01 /* ReviewWordDiff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewWordDiff.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F02 /* ReviewDiffLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffLayout.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F03 /* ReviewDiffSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffSelection.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F37 /* ReviewDiffHighlightModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffHighlightModel.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F04 /* ReviewDiffStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffStyle.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F05 /* ReviewDiffCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffCanvasView.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F06 /* ReviewDiffCanvasView+Drawing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReviewDiffCanvasView+Drawing.swift"; sourceTree = "<group>"; };
@@ -1061,6 +1064,7 @@
 		1D1FF0000000000000000F0C /* ReviewDiffSelectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffSelectionTests.swift; sourceTree = "<group>"; };
 		138300000000000000000F01 /* ReviewDiffDefaultCollapseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffDefaultCollapseTests.swift; sourceTree = "<group>"; };
 		138400000000000000000F01 /* ReviewProgressStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewProgressStoreTests.swift; sourceTree = "<group>"; };
+		1D1FF0000000000000000F38 /* ReviewDiffHighlightModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffHighlightModelTests.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F21 /* ReviewDiffCanvasViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffCanvasViewTests.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F30 /* SourceHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceHighlighter.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F31 /* SourceFileRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceFileRows.swift; sourceTree = "<group>"; };
@@ -1613,6 +1617,7 @@
 				1D1FF0000000000000000F0C /* ReviewDiffSelectionTests.swift */,
 				138300000000000000000F01 /* ReviewDiffDefaultCollapseTests.swift */,
 				138400000000000000000F01 /* ReviewProgressStoreTests.swift */,
+				1D1FF0000000000000000F38 /* ReviewDiffHighlightModelTests.swift */,
 				1D1FF0000000000000000F21 /* ReviewDiffCanvasViewTests.swift */,
 				1D1FF0000000000000000F34 /* SourceFileRowsTests.swift */,
 				1F16000000000000000000F2 /* FileTreeTests.swift */,
@@ -2076,6 +2081,7 @@
 				1D1FF0000000000000000F01 /* ReviewWordDiff.swift */,
 				1D1FF0000000000000000F02 /* ReviewDiffLayout.swift */,
 				1D1FF0000000000000000F03 /* ReviewDiffSelection.swift */,
+				1D1FF0000000000000000F37 /* ReviewDiffHighlightModel.swift */,
 				1D1FF0000000000000000F04 /* ReviewDiffStyle.swift */,
 				1D1FF0000000000000000F05 /* ReviewDiffCanvasView.swift */,
 				1D1FF0000000000000000F06 /* ReviewDiffCanvasView+Drawing.swift */,
@@ -2658,6 +2664,7 @@
 				1D1FF0000000000000000B01 /* ReviewWordDiff.swift in Sources */,
 				1D1FF0000000000000000B02 /* ReviewDiffLayout.swift in Sources */,
 				1D1FF0000000000000000B03 /* ReviewDiffSelection.swift in Sources */,
+				1D1FF0000000000000000B37 /* ReviewDiffHighlightModel.swift in Sources */,
 				1D1FF0000000000000000B04 /* ReviewDiffStyle.swift in Sources */,
 				1D1FF0000000000000000B05 /* ReviewDiffCanvasView.swift in Sources */,
 				1D1FF0000000000000000B06 /* ReviewDiffCanvasView+Drawing.swift in Sources */,
@@ -3092,6 +3099,7 @@
 				1D1FF0000000000000000B0C /* ReviewDiffSelectionTests.swift in Sources */,
 				138300000000000000000B01 /* ReviewDiffDefaultCollapseTests.swift in Sources */,
 				138400000000000000000B01 /* ReviewProgressStoreTests.swift in Sources */,
+				1D1FF0000000000000000B38 /* ReviewDiffHighlightModelTests.swift in Sources */,
 				1D1FF0000000000000000B21 /* ReviewDiffCanvasViewTests.swift in Sources */,
 				1D1FF0000000000000000B34 /* SourceFileRowsTests.swift in Sources */,
 				1F16000000000000000000B2 /* FileTreeTests.swift in Sources */,

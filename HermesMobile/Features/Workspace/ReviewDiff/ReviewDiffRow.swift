@@ -59,16 +59,26 @@ struct ReviewDiffLine: Equatable {
     let newLineNumber: Int?
     /// Character offsets into `content` to highlight as the changed words.
     var wordDiffRanges: [Range<Int>] = []
+    /// A "\ No newline at end of file" marker: not code on either side.
+    let isNoNewlineMarker: Bool
     /// `content.count`, counted once: layout and drawing ask for it on every frame, and
     /// a minified line can run to hundreds of thousands of characters.
     let columnCount: Int
 
-    init(content: String, change: DiffLine.Kind, oldLineNumber: Int?, newLineNumber: Int?, wordDiffRanges: [Range<Int>] = []) {
+    init(
+        content: String,
+        change: DiffLine.Kind,
+        oldLineNumber: Int?,
+        newLineNumber: Int?,
+        wordDiffRanges: [Range<Int>] = [],
+        isNoNewlineMarker: Bool = false
+    ) {
         self.content = content
         self.change = change
         self.oldLineNumber = oldLineNumber
         self.newLineNumber = newLineNumber
         self.wordDiffRanges = wordDiffRanges
+        self.isNoNewlineMarker = isNoNewlineMarker
         columnCount = content.count
     }
 
@@ -179,12 +189,14 @@ enum ReviewDiffRowBuilder {
     private static func reviewLine(for line: DiffLine) -> ReviewDiffLine {
         // "\ No newline at end of file" markers keep their text; real lines drop the
         // +/-/space prefix.
-        let raw = line.text.hasPrefix("\\") ? line.text : String(line.text.dropFirst())
+        let isMarker = line.text.hasPrefix("\\")
+        let raw = isMarker ? line.text : String(line.text.dropFirst())
         return ReviewDiffLine(
             content: raw.replacingOccurrences(of: "\t", with: "    "),
             change: line.kind,
             oldLineNumber: line.oldLineNumber,
-            newLineNumber: line.newLineNumber
+            newLineNumber: line.newLineNumber,
+            isNoNewlineMarker: isMarker
         )
     }
 }
