@@ -160,6 +160,52 @@ import XCTest
         XCTAssertEqual(first.sentRequests.filter { $0["method"].text == "session.interrupt" }.count, 1, "Never resent")
     }
 
+    /// A network change probes the shared socket (#1372); one that answers stays open.
+    func testAProbeKeepsASocketThatAnswers() async throws {
+        let http = connection()
+        let chat = BotClient(http: http)
+        try await chat.connect()
+        defer { chat.close() }
+        var lost = 0
+        chat.onDisconnect = { _ in lost += 1 }
+
+        await http.liveGateway?.probe()
+
+        let socket = try XCTUnwrap(sockets.first)
+        XCTAssertEqual(socket.outbound.filter { $0["method"].text == "gateway.ping" }.count, 1)
+        XCTAssertFalse(socket.isClosed)
+        XCTAssertEqual(lost, 0)
+    }
+
+    /// A handover can leave the socket open but dead, with even the probe's ping stuck in its
+    /// send. The probe's deadline still ends it: concurrent probes send one ping, each consumer
+    /// hears the loss once, and their reconnects share one replacement.
+    func testASilentSocketIsLostAtTheProbeDeadlineAndConsumersShareOneReplacement() async throws {
+        let http = connection(probeDeadline: .milliseconds(50))
+        let chat = BotClient(http: http), inbox = BotClient(http: http)
+        try await chat.connect()
+        try await inbox.connect()
+        defer { chat.close(); inbox.close() }
+        var lost: [String] = []
+        chat.onDisconnect = { lost.append("chat"); XCTAssertEqual($0 as? BotFailure, .transport) }
+        inbox.onDisconnect = { lost.append("inbox"); XCTAssertEqual($0 as? BotFailure, .transport) }
+        let first = try XCTUnwrap(sockets.first)
+        first.holdsSend = { $0["method"].text == "gateway.ping" }
+        let gateway = try XCTUnwrap(http.liveGateway)
+
+        async let probe: Void = gateway.probe()
+        async let again: Void = gateway.probe()
+        _ = await (probe, again)
+
+        XCTAssertTrue(first.isClosed)
+        XCTAssertEqual(lost.sorted(), ["chat", "inbox"])
+        XCTAssertEqual(first.outbound.filter { $0["method"].text == "gateway.ping" }.count, 1)
+        async let chatBack: Void = chat.connect()
+        async let inboxBack: Void = inbox.connect()
+        _ = try await (chatBack, inboxBack)
+        XCTAssertEqual(sockets.count, 2, "One replacement for both")
+    }
+
     /// The socket fails both consumers' sends and then its reader: one report each. A
     /// consumer that has not reconnected stays out of the replacement: it sends nothing,
     /// hears nothing, and is not told when the replacement drops.
@@ -436,10 +482,10 @@ import XCTest
     }
 
     /// A saved connection whose gateway opens scripted sockets, kept in `sockets`.
-    private func connection(rpcDeadline: Duration = .seconds(30),
+    private func connection(rpcDeadline: Duration = .seconds(30), probeDeadline: Duration = .seconds(30),
                             _ answer: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> HermesConnection {
         HermesConnection(connection: record, configuration: HermesHostFixture.configuration(answer),
-                         gateway: .init(rpcDeadline: rpcDeadline) { [weak self] _ in
+                         gateway: .init(rpcDeadline: rpcDeadline, probeDeadline: probeDeadline) { [weak self] _ in
                              let socket = BotScriptedSocket()
                              self?.sockets.append(socket)
                              return socket

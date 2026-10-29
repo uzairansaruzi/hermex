@@ -202,6 +202,8 @@ import SwiftUI
             }
         }
         .onDisappear { visible = false; reader.leave(owner: owner, preservingLoadedHistory: true) }
+        // A lost room reconnects as the network returns rather than on its backoff (#1372).
+        .onChange(of: NetworkPathMonitor.shared.changeCount) { if visible { reader.networkPathDidChange() } }
         .onChange(of: reader.feedback) { _, feedback in
             if let feedback { ChatHaptics.botFeedback(feedback.event, isEnabled: isHapticsEnabled) }
         }

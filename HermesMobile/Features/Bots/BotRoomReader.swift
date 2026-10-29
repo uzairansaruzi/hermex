@@ -4,6 +4,8 @@ import Observation
 
 /// One visible room owns one socket. Closing invalidates replies before
 /// cancelling transport; backgrounding keeps the loaded window but stops all reads.
+/// A lost connection reconnects on its own a few times on backoff, at once when the network
+/// returns, and never while offline (#1372); it never resends a message or command.
 @MainActor @Observable final class BotRoomReader {
     enum Link: Equatable { case idle, connecting, live, stopped }
     let key: BotRoomKey
@@ -76,17 +78,22 @@ import Observation
     @ObservationIgnored private let onExpired: () -> Void
     @ObservationIgnored private let onChanged: (BotGroupRoom) -> Void
     @ObservationIgnored private let onDisbanded: () -> Void
+    @ObservationIgnored private let reconnect: BotReconnectSchedule
 
     init(key: BotRoomKey, connection: BotConnection, room: BotGroupRoom,
          cache: BotHistoryCache = .shared, initialSequence: Int? = nil,
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
          onExpired: @escaping () -> Void = {},
          onChanged: @escaping (BotGroupRoom) -> Void = { _ in },
-         onDisbanded: @escaping () -> Void = {}) {
+         onDisbanded: @escaping () -> Void = {},
+         reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
+         isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
         self.key = key; self.connection = connection; self.room = room
         self.cache = cache; self.initialSequence = initialSequence
         self.onChanged = onChanged; self.onDisbanded = onDisbanded
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: key.server) }; self.onExpired = onExpired
+        reconnect = BotReconnectSchedule(delays: reconnectDelays, limit: reconnectDelays.count,
+                                         isNetworkAvailable: isNetworkAvailable)
         if let recent = cache.recent.log(for: .init(key)) {
             log = recent; publishLog()
             hasRecentLog = true
@@ -158,6 +165,7 @@ import Observation
             if try observeAuthority(pages.last, client) { _ = try await readState(client) }
             try check(client)
             link = .live; didOpen = true; hasRecentLog = true
+            reconnect.succeeded()
             saveRecentTranscript()
             pollTask = Task { [weak self] in
                 while let self, self.wire === client, !Task.isCancelled {
@@ -202,7 +210,12 @@ import Observation
         viewOwner = nil
     }
 
+    /// The device's network path changed: a reconnect waiting on its backoff runs now if the
+    /// network is back, or holds until it is. The room's screens call it while on screen.
+    func networkPathDidChange() { reconnect.networkPathDidChange() }
+
     func suspend() {
+        reconnect.cancel()
         ApprovalSummaries.shared.leave(summaryScope)
         saveRecentTranscript()
         if busy && dispatched {
@@ -516,5 +529,12 @@ import Observation
         errorMessage = error.localizedDescription
         needsSignIn = error as? BotFailure == .rejected(401)
         if let failure = error as? BotRoomFailure, failure.expired { discardHistory(); close(); onExpired() }
+        // Only a lost connection heals on its own; the screen that owns the room reopens it,
+        // keeping the loaded history.
+        guard let owner = viewOwner, error is URLError || (error as? BotFailure) == .transport else { return }
+        reconnect.schedule { [weak self] in
+            guard let self, self.viewOwner == owner, self.link == .stopped else { return }
+            await self.open(owner: owner, preservingLoadedHistory: true)
+        }
     }
 }

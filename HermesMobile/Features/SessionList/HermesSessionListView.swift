@@ -325,6 +325,8 @@ struct HermesSessionListView: View {
             default: break
             }
         }
+        // A lost list reconnects as the network returns rather than on its backoff (#1372).
+        .onChange(of: NetworkPathMonitor.shared.changeCount) { viewModel.networkPathDidChange() }
     }
 
     private var usesSplit: Bool {

@@ -79,6 +79,8 @@ struct HermesSessionListSource {
     var statusPollInterval: Duration = .seconds(5)
     /// Waits before each reconnect after a lost socket; the last one repeats.
     var reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)]
+    /// Whether the device has a network; the list's reconnect holds while it doesn't (#1372).
+    var isNetworkAvailable: @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }
 }
 
 @MainActor
@@ -200,8 +202,8 @@ final class SessionListViewModel {
     @ObservationIgnored private var hermesReloadWanted = false
     @ObservationIgnored private var hermesDebounceTask: Task<Void, Never>?
     @ObservationIgnored private var hermesStatusTask: Task<Void, Never>?
-    @ObservationIgnored private var hermesReconnectTask: Task<Void, Never>?
-    @ObservationIgnored private var hermesReconnectAttempts = 0
+    /// The reconnect after a lost socket, on backoff while online and held while offline.
+    @ObservationIgnored private let hermesReconnect: BotReconnectSchedule?
     /// False once the host answered `session.active_list` "method not found".
     @ObservationIgnored private var hermesReadsStatus = true
     /// A live-state read failed while a row was busy, so re-reads go on until one succeeds.
@@ -243,6 +245,7 @@ final class SessionListViewModel {
         self.unreadStore = unreadStore
         self.hermes = hermes
         hermesProfile = hermes?.profile
+        hermesReconnect = hermes.map { BotReconnectSchedule(delays: $0.reconnectDelays, isNetworkAvailable: $0.isNetworkAvailable) }
         hermesShowsAllProfiles = hermes.map { HermesProfilePreference.showsAllProfiles(for: server, in: $0.preferences) } ?? false
         // A Hermes list loads as soon as it appears, so it starts on the skeleton.
         isLoading = hermes != nil
@@ -1784,6 +1787,7 @@ final class SessionListViewModel {
             if !hermesShowsAllProfiles { await readHermesProfiles(wire) }
             return
         }
+        hermesReconnect?.cancel()
         let wire = hermes.makeWire(hermes.connection)
         hermesWire = wire
         hermesReadsStatus = true
@@ -1800,7 +1804,7 @@ final class SessionListViewModel {
         do {
             try await wire.connect()
             guard hermesWire === wire else { return }
-            hermesReconnectAttempts = 0
+            hermesReconnect?.succeeded()
             if hermesProfile == nil || hermesShowsAllProfiles { await readHermesProfiles(wire) }
             if hermesProfile == nil { await resolveHermesProfile(wire) }
             guard hermesWire === wire else { return }
@@ -1829,7 +1833,7 @@ final class SessionListViewModel {
     /// The list left the screen for good, or the app went to the background.
     func closeHermes() {
         pauseHermes()
-        hermesReconnectTask?.cancel(); hermesReconnectTask = nil
+        hermesReconnect?.cancel()
         hermesReloadTask?.cancel(); hermesReloadTask = nil; hermesReloadWanted = false
         hermesReadSerial += 1
         isLoading = false; isLoadingMoreSessions = false; isLoadingMoreScheduledSessions = false
@@ -2205,12 +2209,15 @@ final class SessionListViewModel {
         }
     }
 
+    /// The device's network path changed (#1372): a reconnect waiting on its backoff runs now if
+    /// the network is back, or holds until it is. A list a chat covers stays down.
+    func networkPathDidChange() { hermesReconnect?.networkPathDidChange() }
+
     /// A lost socket: the rows stay, live states clear, and the list reconnects on the inbox's
-    /// backoff while it is on screen. A refusal the user has to act on
+    /// backoff while it is on screen and the device is online. A refusal the user has to act on
     /// (`BotConnectionAdvice.isRetryable`) stops there and is kept as the list's error, which
     /// shows once no rows do; pull to refresh tries again.
     private func dropHermes(_ error: Error) {
-        guard let hermes else { return }
         // Rows shown while connecting stay only as the offline state.
         if isCachedCopyProvisional { showCachedHermesSessions(after: error) }
         let listening = hermesIsListening
@@ -2220,11 +2227,8 @@ final class SessionListViewModel {
         let retries = BotConnectionAdvice.isRetryable(error)
         if sessions.isEmpty || !retries { showHermesFailure(error) }
         guard listening, retries else { return }
-        let delay = hermes.reconnectDelays[min(hermesReconnectAttempts, hermes.reconnectDelays.count - 1)]
-        hermesReconnectAttempts += 1
-        hermesReconnectTask = Task { [weak self] in
-            guard (try? await Task.sleep(for: delay)) != nil, let self, self.hermesIsListening else { return }
-            self.hermesReconnectTask = nil
+        hermesReconnect?.schedule { [weak self] in
+            guard let self, self.hermesIsListening else { return }
             await self.openHermes()
         }
     }

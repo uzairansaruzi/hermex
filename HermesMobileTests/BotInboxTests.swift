@@ -693,6 +693,54 @@ import SwiftUI
         XCTAssertNil(inbox.errorMessage)
     }
 
+    /// A lost inbox's quiet retry holds while offline; the network's return runs it at once,
+    /// not on its backoff, and once (#1372).
+    func testALostInboxReconnectsAtOnceWhenTheNetworkReturns() async throws {
+        let first = BotInboxFixtureWire(roster: [row("triage")])
+        let second = BotInboxFixtureWire(roster: [row("triage", preview: "back")])
+        let spare = BotInboxFixtureWire(roster: [row("triage")])
+        var online = true
+        let inbox = try makeInbox(wires: [first, second, spare], reconnectDelays: [.seconds(3600)], isNetworkAvailable: { online })
+        await inbox.open()
+
+        first.onDisconnect?(BotFailure.transport)
+        online = false
+        inbox.networkPathDidChange()
+        online = true
+        inbox.networkPathDidChange()
+        await settle(inbox) { $0.link == .live }
+        XCTAssertEqual(inbox.profiles.map(\.preview), ["back"])
+        inbox.networkPathDidChange()
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(spare.listCalls, 0, "one reconnect")
+        inbox.close()
+    }
+
+    /// Only a quiet retry the inbox still owns wakes on the network's return: not one the
+    /// inbox closed over, nor a refusal the user has to fix (#1372).
+    func testTheNetworksReturnReopensNeitherAClosedNorARefusedInbox() async throws {
+        let first = BotInboxFixtureWire(roster: [row("triage")])
+        let second = BotInboxFixtureWire(roster: [row("triage")])
+        let spare = BotInboxFixtureWire(roster: [row("triage")])
+        var online = true
+        let inbox = try makeInbox(wires: [first, second, spare], isNetworkAvailable: { online })
+        await inbox.open()
+        online = false
+        first.onDisconnect?(BotFailure.transport)
+        inbox.close()
+        online = true
+        inbox.networkPathDidChange()
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(second.listCalls, 0, "a closed inbox stays closed")
+
+        await inbox.open()
+        second.onDisconnect?(BotFailure.upgradeRefused(403))
+        inbox.networkPathDidChange()
+        await Task.yield(); await Task.yield()
+        XCTAssertNotNil(inbox.errorMessage)
+        XCTAssertEqual(spare.listCalls, 0, "a refusal waits for the user")
+    }
+
     /// Control Center and banners (`.inactive`) keep the inbox on the shared socket; only
     /// the background closes it, and the return reopens it once (#902).
     func testOnlyTheBackgroundClosesTheInboxAndTheReturnReopensItOnce() async throws {
@@ -1367,7 +1415,9 @@ import SwiftUI
     /// An inbox on `wires` in order, or on `wireFor`'s pick per saved connection.
     private func makeInbox(wires: [BotInboxFixtureWire], store: BotConnectionStore? = nil, server: URL? = nil,
                            rosterCache: BotRosterCache? = nil, statusPollInterval: Duration = .seconds(3600),
-                           wireFor: ((BotConnection) -> BotInboxFixtureWire)? = nil) throws -> BotInbox {
+                           reconnectDelays: [Duration] = [.zero],
+                           wireFor: ((BotConnection) -> BotInboxFixtureWire)? = nil,
+                           isNetworkAvailable: @escaping @MainActor () -> Bool = { true }) throws -> BotInbox {
         let server = server ?? self.server
         let store = try store ?? connectedStore(server: server)
         var queue = wires
@@ -1376,8 +1426,9 @@ import SwiftUI
                         sectionOrderStore: BotSectionOrderStore(defaults: defaults),
                         avatarStore: BotAvatarStore(), rosterCache: rosterCache ?? makeRosterCache().cache,
                         profileNames: HermesProfileNameCache(defaults: defaults),
-                        reloadSpacing: .zero, reconnectDelays: [.zero],
-                        statusPollInterval: statusPollInterval) { wireFor?($0) ?? queue.removeFirst() }
+                        reloadSpacing: .zero, reconnectDelays: reconnectDelays,
+                        statusPollInterval: statusPollInterval, makeWire: { wireFor?($0) ?? queue.removeFirst() },
+                        isNetworkAvailable: isNetworkAvailable)
     }
 
     /// An empty roster cache in its own directory under this test's root.

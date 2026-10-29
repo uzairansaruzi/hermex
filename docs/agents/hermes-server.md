@@ -369,6 +369,14 @@ socket answers pings), so `HermesGateway` sends `gateway.ping` every 15 seconds
 with string ids that never settle an RPC. Any inbound frame resets the 45-second
 silence deadline; a socket quiet for longer is dropped and reconnects.
 
+A Wi-Fi to cellular handover can leave the socket open but dead, so a network path
+change (`NetworkPathMonitor.changeCount`, satisfied, app not in the background) probes
+the current connection's open socket once (`HermesGateway.probe()`, #1372): one more
+`gateway.ping`, and any frame within 8 seconds proves it alive. Silence, even with the
+ping stuck in its send, drops the socket for every screen, which reconnect onto one
+replacement. One deadline for every route; record slow-tunnel false positives before
+adding per-route policy. The probe never opens a socket.
+
 ## Pin and minimum release
 
 `HERMES_AGENT_TESTED_SHA` at the repo root pins the tested hermes-agent commit
@@ -429,6 +437,13 @@ are not retried. Leaving the screen or backgrounding
 cancels recovery. Foreground/recovery reloads canonical identity, history and
 current state before enabling commands. Authentication, identity and unsupported
 host errors still surface actionable messages; commands are never retried.
+
+The inbox, the Hermes session list and a room on screen reconnect after a lost socket
+through `BotReconnectSchedule`: the same delays on backoff while online, no attempts
+while the network path is unsatisfied, and one immediate attempt from the first step
+when it returns (#1372). A room tries the delays once and then waits for Reconnect;
+only a transport loss (`.transport`, a `URLError`) heals there on its own. Closing,
+backgrounding or covering the screen cancels a waiting reconnect.
 
 ## Connection status
 

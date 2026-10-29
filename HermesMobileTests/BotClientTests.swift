@@ -1036,6 +1036,9 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     var onPing: (() -> Void)?
     /// Thrown by every send, handshake and keepalive included, as a dropped connection would.
     var sendFailure: Error?
+    /// Sends it matches never return until the socket is cancelled, as on a dead route.
+    var holdsSend: ((BotJSON) -> Bool)?
+    private var heldSends: [CheckedContinuation<Void, Error>] = []
     /// Thrown by the next receive instead of its frame, as a refused upgrade fails the first read.
     var receiveFailure: Error?
     /// Replies to caller RPCs; the handshake and keepalive are not counted.
@@ -1058,6 +1061,13 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
         let request = try JSONDecoder().decode(BotJSON.self, from: Data(text.utf8))
         logOutbound(request)
         if let sendFailure { throw sendFailure }
+        if holdsSend?(request) == true {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                lock.lock()
+                if closed { lock.unlock(); continuation.resume(throwing: BotFailure.transport) }
+                else { heldSends.append(continuation); lock.unlock() }
+            }
+        }
         switch request["method"].text {
         case "client.capabilities":
             let response = capabilitiesReply?(request)
@@ -1096,8 +1106,10 @@ final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     func cancel() {
         lock.lock(); closed = true
         let waiting = waiter; waiter = nil
+        let sends = heldSends; heldSends = []
         lock.unlock()
         waiting?.resume(throwing: BotFailure.transport)
+        for send in sends { send.resume(throwing: BotFailure.transport) }
     }
 }
 

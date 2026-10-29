@@ -374,6 +374,30 @@ import XCTest
         reader.close()
     }
 
+    /// A probe can end the room's socket after the network change that started it, so no second
+    /// change will come: a room on screen reconnects on its own, keeping its history. Leaving it
+    /// cancels that (#1372).
+    func testALostRoomOnScreenReconnectsOnItsOwnAndLeavingCancelsIt() async {
+        let wire = RoomWire(), next = RoomWire(), spare = RoomWire(); next.latest = 1
+        var wires = [wire, next, spare]
+        let reader = BotRoomReader(key: key(), connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!,
+                                   cache: BotHistoryCache(), makeWire: { _ in wires.removeFirst() },
+                                   reconnectDelays: [.zero], isNetworkAvailable: { true })
+        let owner = UUID()
+        await reader.open(owner: owner)
+
+        wire.onDisconnect?(BotFailure.transport)
+        XCTAssertEqual(reader.link, .stopped)
+        await waitUntil("reconnected") { reader.link == .live }
+        XCTAssertEqual(reader.events.count, 1)
+
+        next.onDisconnect?(BotFailure.transport)
+        reader.leave(owner: owner)
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(reader.link, .idle)
+        XCTAssertEqual(spare.stateCalls, 0, "a room off screen stays down")
+    }
+
     func testExpiredAndWorkerErrorsHaveRequiredRecovery() async {
         for error in [BotRoomFailure(code: 4114, reason: nil), BotRoomFailure(code: 4112, reason: "room_history_expired")] {
             let wire = RoomWire(); var expired = false

@@ -25,12 +25,18 @@ import OSLog
 /// attached screen's part, and each hears it once; anything later from that socket is
 /// dropped by its generation. `retire()` does the same with `.stale` when the
 /// connection's server or configuration is replaced, and refuses reconnects.
+///
+/// A Wi-Fi to cellular handover can leave the socket open but dead. `probe()` checks it when
+/// the network path changes: no frame within `probeDeadline` is a lost socket (#1372).
 @MainActor final class HermesGateway {
     /// Tests shorten the deadlines and script the socket; production takes the defaults.
     struct Options {
         var rpcDeadline: Duration = .seconds(30)
         /// The `gateway.ping` cadence.
         var heartbeatInterval: Duration = .seconds(15)
+        /// How long `probe()` waits for any frame before it calls the socket lost. One deadline
+        /// for every route; slow tunnels' false positives get recorded before any per-route policy.
+        var probeDeadline: Duration = .seconds(8)
         /// Gets the finished gateway upgrade; nil opens a native socket on the connection's session.
         var socketFactory: ((URLRequest) -> any BotSocket)?
     }
@@ -44,6 +50,9 @@ import OSLog
     private var opening: Task<Void, Error>?
     private var reader: Task<Void, Never>?
     private var heartbeat: Task<Void, Never>?
+    /// The socket the probe in flight checks, its deadline, and every `probe()` waiting on it.
+    private var probing: (generation: Int, deadline: Task<Void, Never>)?
+    private var probeWaiters: [CheckedContinuation<Void, Never>] = []
     /// Numbers sockets. A frame, failure or deadline from an older one is ignored.
     private var generation = 0
     private var isRetired = false
@@ -140,6 +149,46 @@ import OSLog
         let label = socketLabel(generation)
         HermesConnectionLog.logger.notice("\(label, privacy: .public) closed, dashboard restarted")
         end(BotFailure.transport)
+    }
+
+    /// Checks the open socket after the network path changed (#1372): a `gateway.ping` goes
+    /// out, and any frame from the socket within `probeDeadline` proves it alive. Silence
+    /// ends it as lost, so attached screens hear `.transport` once and reconnect onto one
+    /// replacement. A send that never returns still meets the deadline. Calls made while one
+    /// probe runs wait on it. Nothing happens while no socket is open, or while it opens.
+    /// Returns once the probe settles; a leave, background, retirement or fault ends it early.
+    func probe() async {
+        if probing == nil {
+            guard let socket, opening == nil, !isRetired else { return }
+            let owner = generation, deadline = options.probeDeadline
+            let watchdog = Task { [weak self] in
+                do { try await Task.sleep(for: deadline) } catch { return }
+                self?.settleProbe(alive: false, generation: owner)
+            }
+            probing = (owner, watchdog)
+            // Sent beside the deadline rather than before it, so a blocked send can't hold it off.
+            Task { [weak self] in
+                do { try await socket.send(.string(#"{"jsonrpc":"2.0","id":"probe","method":"gateway.ping","params":{}}"#)) }
+                catch { self?.fail(error, generation: owner) }
+            }
+        }
+        await withCheckedContinuation { probeWaiters.append($0) }
+    }
+
+    /// Settles the probe on socket `owner`: alive for any frame from it, or once it ended
+    /// for another reason; not alive at the deadline, which ends it as lost.
+    private func settleProbe(alive: Bool, generation owner: Int) {
+        guard let probe = probing, probe.generation == owner else { return }
+        probing = nil
+        probe.deadline.cancel()
+        let waiters = probeWaiters
+        probeWaiters = []
+        if !alive {
+            let label = socketLabel(owner), seconds = options.probeDeadline.components.seconds
+            HermesConnectionLog.logger.error("\(label, privacy: .public): no frame \(seconds, privacy: .public) s after the network changed; closing")
+            end(BotFailure.transport)
+        }
+        for waiter in waiters { waiter.resume() }
     }
 
     /// Ends the socket for good because the connection was replaced. Attached screens hear
@@ -307,6 +356,7 @@ import OSLog
                 while !Task.isCancelled {
                     let frame = try await Self.receive(socket, label: label)
                     guard let self, self.generation == owner else { return }
+                    self.settleProbe(alive: true, generation: owner)
                     self.consume(frame, generation: owner)
                 }
             } catch {
@@ -417,6 +467,7 @@ import OSLog
     /// waiters get the error from `join`), and the caller logs why.
     private func end(_ error: Error?) {
         let label = socketLabel(generation), wasLive = socket != nil || opening != nil
+        settleProbe(alive: true, generation: generation)
         generation += 1
         opening = nil
         reader?.cancel(); reader = nil

@@ -445,6 +445,32 @@ import Observation
         XCTAssertEqual(list.sessions.map(\.sessionId), ["a"], "the rows stay")
     }
 
+    /// A lost list's reconnect holds while offline; the network's return runs it at once, not on
+    /// its backoff, unless a chat now covers the list (#1372).
+    func testALostListReconnectsAtOnceWhenTheNetworkReturns() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
+        var online = true
+        let list = makeList(wire, isNetworkAvailable: { online })
+        await list.openHermes()
+
+        wire.onDisconnect?(BotFailure.transport)
+        online = false
+        list.networkPathDidChange()
+        online = true
+        list.networkPathDidChange()
+        await waitUntil("reconnected") { wire.connects == 2 }
+
+        online = false
+        wire.onDisconnect?(BotFailure.transport)
+        list.pauseHermes()
+        online = true
+        list.networkPathDidChange()
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(wire.connects, 2, "a list a chat covers stays down")
+        XCTAssertEqual(list.sessions.map(\.sessionId), ["a"], "the rows stay")
+    }
+
     /// A client that left the socket without a word answers every read `.stale`: the next read
     /// reconnects instead of leaving the list stale for as long as it is open.
     func testAClientThatLeftTheSocketReconnects() async {
@@ -698,10 +724,12 @@ import Observation
     // MARK: Fixture
 
     private func makeList(_ wire: HermesSessionListWire, profile: String? = "default",
-                          reconnectDelays: [Duration] = [.seconds(3600)]) -> SessionListViewModel {
+                          reconnectDelays: [Duration] = [.seconds(3600)],
+                          isNetworkAvailable: @escaping @MainActor () -> Bool = { true }) -> SessionListViewModel {
         SessionListViewModel(server: server, unreadStore: SessionUnreadStore(defaults: defaults), hermes: HermesSessionListSource(
             connection: connection, profile: profile, makeWire: { _ in wire }, preferences: defaults,
-            changeDebounce: .zero, statusPollInterval: .seconds(3600), reconnectDelays: reconnectDelays
+            changeDebounce: .zero, statusPollInterval: .seconds(3600), reconnectDelays: reconnectDelays,
+            isNetworkAvailable: isNetworkAvailable
         ))
     }
 

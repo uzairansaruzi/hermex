@@ -55,6 +55,12 @@ struct ContentView: View {
                 // paths own notifications while the app is alive.
                 Task { await reconcileOrphanedLiveActivities(notifiesOnCompletion: false) }
             }
+            .onChange(of: NetworkPathMonitor.shared.changeCount) {
+                // A handover can leave the shared Bot socket open but dead; one probe checks it
+                // for every Bot screen (#1372). The background already closed it.
+                guard scenePhase != .background, NetworkPathMonitor.shared.isSatisfied else { return }
+                HermesConnections.shared.networkPathDidChange()
+            }
     }
 
     private func reconcileOrphanedLiveActivities(notifiesOnCompletion: Bool) async {

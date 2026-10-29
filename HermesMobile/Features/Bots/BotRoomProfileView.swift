@@ -94,6 +94,8 @@ import SwiftUI
             }
         }
         .onDisappear { visible = false; reader.leave(owner: owner) }
+        // A lost room reconnects as the network returns rather than on its backoff (#1372).
+        .onChange(of: NetworkPathMonitor.shared.changeCount) { if visible { reader.networkPathDidChange() } }
     }
     private func commitName() {
         guard reader.mayRename, BotRoomRPC.validName(name) else { return }

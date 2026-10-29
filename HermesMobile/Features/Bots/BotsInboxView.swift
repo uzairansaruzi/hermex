@@ -662,6 +662,8 @@ extension BotsInboxView {
                 }
             }
             .onDisappear { inbox.close() }
+            // A quiet reconnect holds while offline and runs as the network returns (#1372).
+            .onChange(of: NetworkPathMonitor.shared.changeCount) { inbox.networkPathDidChange() }
     }
 }
 

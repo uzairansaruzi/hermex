@@ -643,6 +643,15 @@ import OSLog
         current?.liveGateway?.closeForBackground()
     }
 
+    /// Checks the current connection's gateway socket, if one is open, after the network path
+    /// changed (#1372): a handover can leave it open but dead. `ContentView` calls it while the
+    /// app is not in the background and the path is satisfied; an unsatisfied path alone never
+    /// closes a healthy socket. It never opens a connection or a socket.
+    func networkPathDidChange() {
+        guard let gateway = current?.liveGateway else { return }
+        Task { await gateway.probe() }
+    }
+
     /// Ends `server`'s gateway socket as lost because its dashboard restarted on an update
     /// (#1075), so every Bot screen on it reconnects now, onto a fresh ticket and handshake,
     /// rather than on its backoff or its next `.active`. Nothing happens for another server.

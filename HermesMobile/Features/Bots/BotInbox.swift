@@ -198,11 +198,11 @@ import UIKit
     private(set) var liveStatuses: [String: BotLiveStatus] = [:]
 
     private var wire: (any BotTransport)?
-    private var reconnectTask: Task<Void, Never>?
+    /// The quiet reconnect after a lost socket, on backoff while online and held while offline.
+    private let reconnect: BotReconnectSchedule
     /// Bumped by every `close()`, which each `open()` starts with, so an open that
     /// awaited the roster cache meanwhile stops before painting or connecting.
     private var openSerial = 0
-    private var reconnectAttempts = 0
     private var routeFailures = 0
     private static let routeFailuresBeforeAdvice = 3
     private var reloadTask: Task<Void, Never>?
@@ -236,8 +236,6 @@ import UIKit
     /// Minimum gap between event-driven roster reads; the host already floors
     /// `sessions.changed` at two seconds, this guards against a chattier one.
     private let reloadSpacing: Duration
-    /// Waits before each silent reconnect after a lost socket; the last one repeats.
-    private let reconnectDelays: [Duration]
     /// Gap between status-only re-reads while some bot is busy. `sessions.changed`
     /// can miss a turn's end (post-turn work writes nothing), so the inbox re-reads
     /// on its own while it is open, connected, and a row shows Working or Waiting.
@@ -251,12 +249,13 @@ import UIKit
          reconnectDelays: [Duration] = [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(30)],
          statusPollInterval: Duration = .seconds(5),
          makeWire: (@MainActor (BotConnection) -> any BotTransport)? = nil,
-         purgeLocalState: (@MainActor (UUID, String) async -> Void)? = nil) {
+         purgeLocalState: (@MainActor (UUID, String) async -> Void)? = nil,
+         isNetworkAvailable: @escaping @MainActor () -> Bool = { NetworkPathMonitor.shared.isSatisfied }) {
         self.server = server; self.store = store ?? BotConnectionStore(); self.unread = unread; self.roomStore = roomStore
         self.sectionOrderStore = sectionOrderStore
         self.avatarStore = avatarStore ?? .shared; self.reloadSpacing = reloadSpacing
-        self.reconnectDelays = reconnectDelays; self.historyCache = historyCache; self.rosterCache = rosterCache
-        self.profileNames = profileNames
+        reconnect = BotReconnectSchedule(delays: reconnectDelays, isNetworkAvailable: isNetworkAvailable)
+        self.historyCache = historyCache; self.rosterCache = rosterCache; self.profileNames = profileNames
         self.statusPollInterval = statusPollInterval
         self.makeWire = makeWire ?? { BotClient(saved: $0, server: server) }
         self.purgeLocalState = purgeLocalState ?? { connectionID, profile in
@@ -401,7 +400,7 @@ import UIKit
             await refreshRooms(opened)
             guard wire === opened, !Task.isCancelled else { return }
             link = .live
-            reconnectAttempts = 0
+            reconnect.succeeded()
             await refreshAvatars(opened)
             // A pull-to-refresh ends once the fresh statuses are in, too.
             await statuses?.value
@@ -457,9 +456,13 @@ import UIKit
         needsSignIn = true
     }
 
+    /// The device's network path changed (#1372): a quiet reconnect waiting on its backoff runs
+    /// now if the network is back, or holds until it is. `BotsInboxView` calls it while on screen.
+    func networkPathDidChange() { reconnect.networkPathDidChange() }
+
     func close() {
         openSerial += 1
-        reconnectTask?.cancel(); reconnectTask = nil
+        reconnect.cancel()
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
         statusPollTask?.cancel(); statusPollTask = nil
         wire?.close(); wire = nil
@@ -885,10 +888,10 @@ import UIKit
     }
 
     /// A lost socket or a failed read is retried quietly, with growing delays, for as long as
-    /// the inbox stays open; the roster stays on screen meanwhile. Only a refusal the user has
-    /// to act on (`BotConnectionAdvice.isRetryable`) shows a message and the Reconnect button
-    /// (Update sign-in for a rejected password). An empty inbox shows `routeAdvice` if the
-    /// host stays unreachable.
+    /// the inbox stays open, and held while the device is offline; the roster stays on screen
+    /// meanwhile. Only a refusal the user has to act on (`BotConnectionAdvice.isRetryable`)
+    /// shows a message and the Reconnect button (Update sign-in for a rejected password). An
+    /// empty inbox shows `routeAdvice` if the host stays unreachable.
     private func drop(_ client: any BotTransport, error: Error) {
         reloadTask?.cancel(); reloadTask = nil; reloadWanted = false
         statusPollTask?.cancel(); statusPollTask = nil; setLiveStatuses([:])
@@ -906,14 +909,7 @@ import UIKit
         if routeFailures >= Self.routeFailuresBeforeAdvice, profiles.isEmpty, let address {
             routeAdvice = BotConnectionAdvice.message(for: error, address: address)
         }
-        let delay = reconnectDelays[min(reconnectAttempts, reconnectDelays.count - 1)]
-        reconnectAttempts += 1
-        reconnectTask?.cancel()
-        reconnectTask = Task { [weak self] in
-            guard (try? await Task.sleep(for: delay)) != nil, let self, !Task.isCancelled else { return }
-            self.reconnectTask = nil
-            await self.open()
-        }
+        reconnect.schedule { [weak self] in await self?.open() }
     }
 
     private func persistSeen() {
