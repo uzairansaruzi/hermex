@@ -551,7 +551,23 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertEqual(adjacent(-1, from: nil), "c")
         XCTAssertEqual(adjacent(1, from: "filtered-out"), "a")
         XCTAssertEqual(adjacent(-1, from: "filtered-out"), "c")
-        XCTAssertNil(ChatShortcutNavigation.adjacentChat(offset: 1, from: "a", in: []))
+        XCTAssertNil(ChatShortcutNavigation.adjacentChat(offset: 1, from: "a", in: [SessionSummary]()))
+    }
+
+    /// The Bots home steps through bots and rooms alike, a room never mistaken for a bot of its name.
+    func testNextAndPreviousChatStepThroughBotsAndRooms() throws {
+        let ops = try XCTUnwrap(BotProfile(.object(["name": .string("ops")])))
+        let helper = try XCTUnwrap(BotProfile(.object(["name": .string("helper")])))
+        let room = try XCTUnwrap(BotGroupRoom(.object(["room_id": .string("ops")])))
+        let chats: [BotInbox.ChatRow] = [.bot(ops), .room(room), .bot(helper)]
+        func adjacent(_ offset: Int, from selectedID: String?) -> String? {
+            ChatShortcutNavigation.adjacentChat(offset: offset, from: selectedID, in: chats)?.id
+        }
+
+        XCTAssertEqual(adjacent(1, from: "bot:ops"), "room:ops")
+        XCTAssertEqual(adjacent(1, from: "room:ops"), "bot:helper")
+        XCTAssertEqual(adjacent(1, from: "bot:helper"), "bot:ops", "next wraps from the last chat to the first")
+        XCTAssertEqual(adjacent(-1, from: "bot:ops"), "bot:helper", "previous wraps from the first chat to the last")
     }
 }
 

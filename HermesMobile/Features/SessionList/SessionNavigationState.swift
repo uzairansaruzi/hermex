@@ -137,24 +137,25 @@ struct SessionNavigationState: Equatable {
 }
 
 /// Resolves the hardware-keyboard chat shortcuts (⌘1–⌘9, Next and Previous
-/// Chat) against the ordinary chat rows in on-screen order.
+/// Chat) against a list's chat rows in on-screen order: the webui list's and
+/// Hermes Sessions' ordinary sessions, and the Bots inbox's tiles then rows.
 enum ChatShortcutNavigation {
     /// The chat at a 1-based list position, or nil when the list is shorter.
-    static func chat(atPosition position: Int, in chats: [SessionSummary]) -> SessionSummary? {
+    static func chat<Row>(atPosition position: Int, in chats: [Row]) -> Row? {
         chats.indices.contains(position - 1) ? chats[position - 1] : nil
     }
 
-    /// The chat `offset` rows from the selection, wrapping at the ends. Without
-    /// a selection in the list, next starts at the first chat and previous at
-    /// the last.
-    static func adjacentChat(
+    /// The chat `offset` rows from the one whose `id` is selected, wrapping at
+    /// the ends. Without a selection in the list, next starts at the first chat
+    /// and previous at the last.
+    static func adjacentChat<Row: Identifiable>(
         offset: Int,
-        from selectedSessionID: String?,
-        in chats: [SessionSummary]
-    ) -> SessionSummary? {
+        from selectedID: Row.ID?,
+        in chats: [Row]
+    ) -> Row? {
         guard !chats.isEmpty else { return nil }
-        guard let selectedSessionID,
-              let selectedIndex = chats.firstIndex(where: { $0.sessionId == selectedSessionID })
+        guard let selectedID,
+              let selectedIndex = chats.firstIndex(where: { $0.id == selectedID })
         else {
             return offset > 0 ? chats.first : chats.last
         }

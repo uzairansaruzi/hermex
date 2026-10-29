@@ -191,6 +191,7 @@ struct HermesSessionListView: View {
 
     var body: some View {
         navigationSurface
+        .focusedSceneValue(\.hermexSceneActions, sceneActions)
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: projectsAreExpanded)
         .animation(SessionListMotion.disclosureAnimation(reduceMotion: reduceMotion), value: scheduledSessionsAreExpanded)
         .overlay(alignment: .bottom) {
@@ -477,8 +478,8 @@ struct HermesSessionListView: View {
 
     /// The home's chrome, or the pushed list's own title and toolbar.
     private var chrome: some ViewModifier {
-        HermesSessionListChrome(home: home, searchText: $navigation.searchText, profileMenu: { profileMenu },
-                                filter: { profileFilter }, newSession: { newSessionButton })
+        HermesSessionListChrome(home: home, searchText: $navigation.searchText, isSearchPresented: $navigation.isSearchExpanded,
+                                profileMenu: { profileMenu }, filter: { profileFilter }, newSession: { newSessionButton })
     }
 
     private func openSearch() {
@@ -493,12 +494,55 @@ struct HermesSessionListView: View {
     }
 
     private var newSessionButton: some View {
-        Button("New Session", systemImage: "square.and.pencil") {
-            guard let profile else { return }
-            prepareRootSelection()
-            covers.chat = HermesSessionChat(server: entry.server, connection: entry.connection, target: .new(profile: profile))
+        Button("New Session", systemImage: "square.and.pencil", action: openNewSession)
+            .disabled(!canOpenNewSession)
+    }
+
+    /// New Session needs the live list and a Profile to open in.
+    private var canOpenNewSession: Bool { !viewModel.isViewingCachedData && profile != nil }
+
+    /// New Session and ⌘N. Guarded again here, so a stale menu can't pass the disabled button.
+    private func openNewSession() {
+        guard canOpenNewSession, let profile else { return }
+        prepareRootSelection()
+        covers.chat = HermesSessionChat(server: entry.server, connection: entry.connection, target: .new(profile: profile))
+    }
+
+    /// The hardware-keyboard commands (`HermexCommands`) for this list, the home's Sessions side or
+    /// a pushed `/sessions`, acting as its New Session button, search and rows do.
+    private var sceneActions: HermexSceneActions {
+        HermexSceneActions(
+            canCreateNewChat: canOpenNewSession,
+            createNewChat: openNewSession,
+            searchSessions: openSearchFromKeyboard,
+            openChat: { position in
+                if let session = ChatShortcutNavigation.chat(atPosition: position, in: keyboardShortcutSessions) { actions.open(session) }
+            },
+            // A row opens its chat at once, so a second press steps on from it.
+            openAdjacentChat: { offset in
+                if let session = ChatShortcutNavigation.adjacentChat(offset: offset, from: selectedSessionID, in: keyboardShortcutSessions) {
+                    actions.open(session)
+                }
+            }
+        )
+    }
+
+    /// Chat shortcuts walk the ordinary rows as they appear, after search and the project lane,
+    /// skipping Scheduled so ⌘1 does not depend on that disclosure. Grouped only on a key press,
+    /// never in `body`.
+    private var keyboardShortcutSessions: [SessionSummary] {
+        viewModel.scheduledSessionGroups(searchText: searchText, selectedProjectID: selectedProjectID).ordinary
+    }
+
+    /// ⌘F: a phone's rows come forward from what covers them, then the search opens, the home
+    /// header's field or the pushed list's native one. Focus drops first so it can land again.
+    private func openSearchFromKeyboard() {
+        isSearchFieldFocused = false
+        if !usesSplit { covers.bringForward() }
+        Task { @MainActor in
+            await Task.yield()
+            openSearch()
         }
-        .disabled(viewModel.isViewingCachedData || profile == nil)
     }
 
     private var isSearching: Bool { !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -937,18 +981,20 @@ private struct SearchScope: Hashable {
 /// The Sessions list's title and toolbar. As the Hermes home's Sessions side it takes the home's
 /// bar, with the Profile filter and New Session at its ends, and searches from its header; pushed,
 /// it is titled "Sessions" with its Profile menu and New Session at the top right and a search
-/// field under them.
+/// field under them, which `isSearchPresented` activates (⌘F).
 private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSession: View>: ViewModifier {
     let home: HermesHome?
     @Binding var searchText: String
+    @Binding var isSearchPresented: Bool
     let profileMenu: ProfileMenu
     let filter: Filter
     let newSession: NewSession
 
-    init(home: HermesHome?, searchText: Binding<String>, @ViewBuilder profileMenu: () -> ProfileMenu,
-         @ViewBuilder filter: () -> Filter, @ViewBuilder newSession: () -> NewSession) {
-        self.home = home; _searchText = searchText; self.profileMenu = profileMenu(); self.filter = filter()
-        self.newSession = newSession()
+    init(home: HermesHome?, searchText: Binding<String>, isSearchPresented: Binding<Bool>,
+         @ViewBuilder profileMenu: () -> ProfileMenu, @ViewBuilder filter: () -> Filter,
+         @ViewBuilder newSession: () -> NewSession) {
+        self.home = home; _searchText = searchText; _isSearchPresented = isSearchPresented
+        self.profileMenu = profileMenu(); self.filter = filter(); self.newSession = newSession()
     }
 
     func body(content: Content) -> some View {
@@ -956,7 +1002,8 @@ private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSessi
             content.modifier(HermesHomeChrome(home: home, filter: { filter }, newChat: { newSession }))
         } else {
             content
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search sessions")
+                .searchable(text: $searchText, isPresented: $isSearchPresented,
+                            placement: .navigationBarDrawer(displayMode: .always), prompt: "Search sessions")
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .navigationTitle("Sessions")
@@ -978,7 +1025,8 @@ private struct HermesSessionListChrome<ProfileMenu: View, Filter: View, NewSessi
     /// The project lane the list shows; nil shows every session.
     var selectedProjectID: String?
     var searchText: String
-    /// The home's header has grown its search pill into a field (`SessionsHeader`).
+    /// The home's header has grown its search pill into a field (`SessionsHeader`); on a pushed
+    /// list, its native search is presented.
     var isSearchExpanded = false
 
     init(_ covers: HermesSessionListCovers = HermesSessionListCovers(), searchText: String = "") {

@@ -71,6 +71,7 @@ import SwiftUI
 
     var body: some View {
         let toasted = navigationSurface
+            .focusedSceneValue(\.hermexSceneActions, sceneActions)
             .overlay(alignment: .bottom) {
                 if let toast {
                     Text(toast).font(.callout).padding()
@@ -454,6 +455,48 @@ import SwiftUI
     private func openRoom(_ room: BotGroupRoom) {
         guard let key = inbox.roomKey(room) else { return }
         roomSequence = nil; inbox.selection.room = key
+    }
+
+    /// The hardware-keyboard commands (`HermexCommands`) on the home's Bots side, acting as its
+    /// New Bot, search, tiles and rows do. An inbox the webui list pushed publishes none, so that
+    /// list keeps its own.
+    private var sceneActions: HermexSceneActions? {
+        guard home != nil else { return nil }
+        return HermexSceneActions(
+            canCreateNewChat: inbox.link == .live,
+            createNewChat: { if inbox.link == .live { creation = .new } },
+            searchSessions: { if inbox.connection != nil { showingSearch = true } },
+            openChat: { position in
+                if let chat = ChatShortcutNavigation.chat(atPosition: position, in: keyboardShortcutChats) { open(chat) }
+            },
+            openAdjacentChat: { offset in
+                if let chat = ChatShortcutNavigation.adjacentChat(offset: offset, from: selectedChatID, in: keyboardShortcutChats) {
+                    open(chat)
+                }
+            }
+        )
+    }
+
+    /// The tiles, then the rows under them, as the list shows them, which it does only with a
+    /// connection. Read only on a key press, never in `body`.
+    private var keyboardShortcutChats: [BotInbox.ChatRow] {
+        guard inbox.connection != nil else { return [] }
+        return inbox.pinned + inbox.sections.flatMap(\.chats)
+    }
+
+    /// The open bot's or room's `ChatRow.id`, where Next and Previous Chat step from.
+    private var selectedChatID: String? {
+        if let profile = inbox.selection.profile { return BotInbox.ChatRow.bot(profile).id }
+        guard let key = inbox.selection.room, let room = inbox.rooms.first(where: { $0.id == key.roomID }) else { return nil }
+        return BotInbox.ChatRow.room(room).id
+    }
+
+    /// Opens a tile or row as its tap does.
+    private func open(_ chat: BotInbox.ChatRow) {
+        switch chat {
+        case .bot(let profile): inbox.selection.profile = profile
+        case .room(let room): openRoom(room)
+        }
     }
 
     /// Pin and hide are this phone's own marks and always apply; Rename and
