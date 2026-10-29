@@ -72,6 +72,12 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     var onPasteFileURLs: ([URL]) -> Void = { _ in }
     var onPasteImageProviders: ([NSItemProvider]) -> Void = { _ in }
     var onPasteImages: ([UIImage]) -> Void = { _ in }
+    /// Takes a paste past `ComposerLargePaste.threshold` as a file (#1381). Nil
+    /// keeps every paste inline and turns Paste as Text off.
+    var onPasteLargeText: ((String) -> Void)?
+    /// What paste reads and copy writes. Tests use a private one rather than the
+    /// clipboard the simulator shares with the Mac.
+    var pasteboard = UIPasteboard.general
     /// Reports a tap that landed on a chip's glyph. Every chip reports; what a
     /// tap means belongs to the composer.
     var onTapChip: (ComposerChipToken) -> Void = { _ in }
@@ -533,7 +539,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             super.copy(sender)
             return
         }
-        UIPasteboard.general.string = attributedText.composerSourceText(in: selectedRange)
+        pasteboard.string = attributedText.composerSourceText(in: selectedRange)
     }
 
     override func cut(_ sender: Any?) {
@@ -541,7 +547,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             super.cut(sender)
             return
         }
-        UIPasteboard.general.string = attributedText.composerSourceText(in: selectedRange)
+        pasteboard.string = attributedText.composerSourceText(in: selectedRange)
         replace(range, withText: "")
     }
 
@@ -599,6 +605,12 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             command.wantsPriorityOverSystemBehavior = true
             commands.append(command)
         }
+        if onPasteLargeText != nil {
+            commands.append(UIKeyCommand(
+                title: ComposerLargePaste.bypassTitle, action: #selector(pasteAsText), input: "v",
+                modifierFlags: [.command, .shift]
+            ))
+        }
         guard recallLastSentText != nil else { return commands }
         let recallCommand = UIKeyCommand(
             title: ComposerRecall.commandTitle,
@@ -628,8 +640,12 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             return recallableText != nil
         }
 
+        if action == #selector(pasteAsText) {
+            return canPasteAsText
+        }
+
         if action == #selector(paste(_:)), !acceptsAttachments {
-            return isEditable && UIPasteboard.general.hasStrings
+            return isEditable && pasteboard.hasStrings
         }
 
         if action == #selector(paste(_:)), hasPasteboardContent {
@@ -695,7 +711,7 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
 
     override func paste(_ sender: Any?) {
         guard acceptsAttachments else {
-            guard isEditable, let text = UIPasteboard.general.string else { return }
+            guard isEditable, let text = pasteboard.string else { return }
             insertText(text)
             return
         }
@@ -718,17 +734,36 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
             return
         }
 
-        let images = UIPasteboard.general.images ?? []
+        let images = pasteboard.images ?? []
         if !images.isEmpty {
             onPasteImages(images)
+            return
+        }
+
+        // An IME composition keeps UIKit's own paste.
+        if let onPasteLargeText, isEditable, markedTextRange == nil,
+           let text = pasteboard.string, ComposerLargePaste.converts(text) {
+            onPasteLargeText(text)
             return
         }
 
         super.paste(sender)
     }
 
+    /// Whether ⌘⇧V and the edit menu's Paste as Text are on: only where long
+    /// pastes convert, and never mid-composition.
+    var canPasteAsText: Bool {
+        onPasteLargeText != nil && acceptsKeyboardCommands && pasteboard.hasStrings
+    }
+
+    /// Puts the copied text in inline however long it is, as an ordinary edit
+    /// that publishes the draft and that undo takes back.
+    @objc func pasteAsText() {
+        guard canPasteAsText, let text = pasteboard.string else { return }
+        insertText(text)
+    }
+
     private var hasPasteboardContent: Bool {
-        let pasteboard = UIPasteboard.general
         return pasteboard.hasStrings
             || !pasteboardFileProviders.isEmpty
             || !pasteboardFileURLs.isEmpty
@@ -737,17 +772,17 @@ final class ComposerChipTextView: UITextView, UIGestureRecognizerDelegate {
     }
 
     private var pasteboardFileProviders: [NSItemProvider] {
-        UIPasteboard.general.itemProviders.filter {
+        pasteboard.itemProviders.filter {
             $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
         }
     }
 
     private var pasteboardFileURLs: [URL] {
-        UIPasteboard.general.urls?.filter(\.isFileURL) ?? []
+        pasteboard.urls?.filter(\.isFileURL) ?? []
     }
 
     private var pasteboardImageProviders: [NSItemProvider] {
-        UIPasteboard.general.itemProviders.filter {
+        pasteboard.itemProviders.filter {
             $0.hasItemConformingToTypeIdentifier(UTType.image.identifier)
         }
     }

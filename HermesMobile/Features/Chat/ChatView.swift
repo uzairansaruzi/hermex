@@ -684,6 +684,9 @@ struct ChatView: View {
             },
             onDraftEdit: persistDraftEdit,
             recallLastSentText: { viewModel.lastSentText },
+            onPasteLargeText: isHermesSession ? { text in
+                Task { await viewModel.stagePastedText(text) }
+            } : nil,
             onOpenFileReference: { path in
                 openedFileReference = FileReference(path: path, line: nil, column: nil)
             },

@@ -58,6 +58,9 @@ struct ComposerTextInputView: View {
     /// The chat's last sent message, for ↑ in an empty editor. Nil turns the
     /// shortcut off.
     var recallLastSentText: (() -> String?)? = nil
+    /// Takes a paste past `ComposerLargePaste.threshold` as a file. Nil keeps
+    /// every paste inline and leaves Paste as Text out.
+    var onPasteLargeText: ((String) -> Void)? = nil
 
     var placeholder = String(localized: "Ask anything... /commands")
     /// Text-only clients reject file/image paste and drop before invoking callbacks.
@@ -86,6 +89,7 @@ struct ComposerTextInputView: View {
                 onPasteFileURLs: onPasteFileURLs,
                 onPasteImageProviders: onPasteImageProviders,
                 onPasteImages: onPasteImages,
+                onPasteLargeText: onPasteLargeText,
                 acceptsAttachments: acceptsAttachments,
                 accessibilityLabel: placeholder
             )
@@ -212,6 +216,7 @@ private struct ComposerTextView: UIViewRepresentable {
     let onPasteFileURLs: ([URL]) -> Void
     let onPasteImageProviders: ([NSItemProvider]) -> Void
     let onPasteImages: ([UIImage]) -> Void
+    let onPasteLargeText: ((String) -> Void)?
 
     let acceptsAttachments: Bool
     let accessibilityLabel: String
@@ -248,6 +253,7 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.onPasteFileURLs = onPasteFileURLs
         textView.onPasteImageProviders = onPasteImageProviders
         textView.onPasteImages = onPasteImages
+        textView.onPasteLargeText = onPasteLargeText
         textView.onTapChip = onTapChip
         textView.onTapQuote = onTapQuote
         textView.onRemoveQuote = onRemoveQuote
@@ -280,6 +286,7 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.onPasteFileURLs = onPasteFileURLs
         textView.onPasteImageProviders = onPasteImageProviders
         textView.onPasteImages = onPasteImages
+        textView.onPasteLargeText = onPasteLargeText
         textView.onTapChip = onTapChip
         textView.onTapQuote = onTapQuote
         textView.onRemoveQuote = onRemoveQuote
@@ -580,6 +587,27 @@ private struct ComposerTextView: UIViewRepresentable {
             return true
         }
 
+        /// Puts Paste as Text after Paste where the editor converts long pastes (#1381).
+        func textView(
+            _ textView: UITextView,
+            editMenuForTextIn range: NSRange,
+            suggestedActions: [UIMenuElement]
+        ) -> UIMenu? {
+            guard let editor = textView as? ComposerChipTextView, editor.canPasteAsText else { return nil }
+
+            let pasteAsText = UIAction(title: ComposerLargePaste.bypassTitle) { [weak editor] _ in
+                editor?.pasteAsText()
+            }
+            var actions = suggestedActions
+            if let index = actions.firstIndex(where: { ($0 as? UIMenu)?.identifier == .standardEdit }),
+               let standardEdit = actions[index] as? UIMenu {
+                actions[index] = standardEdit.replacingChildren(standardEdit.children + [pasteAsText])
+            } else {
+                actions.append(pasteAsText)
+            }
+            return UIMenu(children: actions)
+        }
+
         // MARK: - Drops
 
         /// Claims a drop only when the composer can route every item through the
@@ -664,6 +692,33 @@ struct ComposerDropRoute {
 
         self.files = files
         self.images = images
+    }
+}
+
+/// Hermes pastes longer than Hermes Desktop's limit become a `pasted-text.txt`
+/// attachment instead of filling the editor (#1381). ⌘⇧V and the edit menu's
+/// Paste as Text keep one inline.
+enum ComposerLargePaste {
+    /// Desktop's limit, counted in UTF-16 units as JavaScript counts a string.
+    static let threshold = 3_000
+    static let bypassTitle = String(localized: "Paste as Text")
+
+    /// Walks at most `threshold + 1` units, so a huge paste costs what a short one does.
+    static func converts(_ text: String) -> Bool {
+        !text.utf16.dropFirst(threshold).isEmpty
+    }
+
+    /// `pasted-text.txt`, then `pasted-text-2.txt` and on: the first name `taken`
+    /// does not hold, compared without case.
+    static func filename(avoiding taken: Set<String>) -> String {
+        let taken = Set(taken.map { $0.lowercased() })
+        var candidate = "pasted-text.txt"
+        var index = 1
+        while taken.contains(candidate) {
+            index += 1
+            candidate = "pasted-text-\(index).txt"
+        }
+        return candidate
     }
 }
 

@@ -271,6 +271,8 @@ struct MessageComposerView: View {
     /// The chat's last sent message, for ↑ in an empty composer on a hardware
     /// keyboard. A closure, so the transcript is scanned only when ↑ is pressed.
     var recallLastSentText: (() -> String?)? = nil
+    /// Takes a long paste as a file; a Hermes session's (#1381). Nil keeps pastes inline.
+    var onPasteLargeText: ((String) -> Void)? = nil
     /// A file chip the user tapped, by workspace-relative path.
     let onOpenFileReference: (String) -> Void
     let onSelectGitBranch: (GitCheckoutTarget) -> Void
@@ -1011,7 +1013,8 @@ struct MessageComposerView: View {
                     },
                     onTapQuote: presentQuote,
                     onRemoveQuote: removeQuote,
-                    recallLastSentText: recallLastSentText
+                    recallLastSentText: recallLastSentText,
+                    onPasteLargeText: onPasteLargeText
                 )
 
                 if !isExpanded {

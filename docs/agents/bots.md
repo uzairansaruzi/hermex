@@ -605,6 +605,14 @@ Imports allow eight files, 25 MB each and 50 MB total
 when they contain transparency, limited to 4096 pixels on the longest edge; PDFs, text,
 audio and common document formats retain their original bytes.
 
+A plain-text paste longer than 3,000 UTF-16 units (Hermes Desktop's limit) stages as a
+`pasted-text.txt` file instead of entering the editor (#1381); a second paste staging at
+the same time takes `pasted-text-2.txt`. File and image pastes keep precedence, an IME
+composition keeps UIKit's paste, and ⌘⇧V or the edit menu's Paste as Text puts the text
+inline. This keeps the editor small, not the prompt: the host may expand the file inline,
+warn, or leave a stub that agent tools read, as for any document below. Webui sessions
+and rooms always paste inline.
+
 Send and Queue upload the selected files and put only acknowledged references in
 that prompt. Steer/Redirect remain text-only. Images use the authenticated
 `POST /api/chat/image-upload?profile=…` with `{filename, data_url}` using the

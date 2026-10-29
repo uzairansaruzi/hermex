@@ -1727,6 +1727,12 @@ final class ChatViewModel {
         )
     }
 
+    /// Stages a long paste as a `pasted-text` file (#1381), with the editor left alone.
+    @discardableResult
+    func stagePastedText(_ text: String) async -> PendingAttachment? {
+        await attachmentCoordinator.stagePastedText(text)
+    }
+
     /// Re-uploads a restored draft attachment from its durable local copy,
     /// preserving the draft record's identity. Quiet on failure (returns nil):
     /// the caller reports in aggregate and keeps the record for a later retry.

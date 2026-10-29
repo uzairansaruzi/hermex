@@ -950,3 +950,60 @@ final class ComposerUndoTests: XCTestCase {
         )
     }
 }
+
+/// A Hermes paste past Desktop's limit becomes a file (#1381); Paste as Text keeps it
+/// inline. Each test reads a private pasteboard, never the clipboard shared with the Mac.
+@MainActor
+final class ComposerLargePasteTests: XCTestCase {
+    /// The limit counts UTF-16 units: 1,501 emoji are 3,002 units but 1,501 characters, so a
+    /// character count would have left them inline. What was typed stays as it was.
+    func testAPastePastTheLimitStagesAFileAndLeavesTheEditorAlone() {
+        XCTAssertFalse(ComposerLargePaste.converts(String(repeating: "😀", count: 1_500)))
+        let (textView, pasteboard) = makeEditor()
+        textView.replaceDocument(with: "Why does this crash?")
+        var staged: [String] = []
+        textView.onPasteLargeText = { staged.append($0) }
+        let log = String(repeating: "😀", count: 1_501)
+        pasteboard.string = log
+
+        textView.paste(nil)
+
+        XCTAssertEqual(staged, [log])
+        XCTAssertEqual(textView.sourceText, "Why does this crash?")
+    }
+
+    /// ⌘⇧V, offered only where pastes convert, puts a long paste inline as one edit undo
+    /// takes back.
+    func testPasteAsTextInsertsInlineAndUndoes() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let (textView, pasteboard) = makeEditor()
+        window.addSubview(textView)
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        XCTAssertNil(pasteAsTextCommand(in: textView), "Rooms and webui keep plain paste only")
+        textView.onPasteLargeText = { _ in XCTFail("Paste as Text never stages a file") }
+        XCTAssertTrue(textView.becomeFirstResponder())
+        textView.replaceDocument(with: "Why? ")
+        let log = String(repeating: "x", count: 3_001)
+        pasteboard.string = log
+        let action = try XCTUnwrap(pasteAsTextCommand(in: textView)?.action)
+
+        textView.perform(action, with: nil)
+        XCTAssertEqual(textView.sourceText, "Why? " + log)
+
+        try XCTUnwrap(textView.undoManager).undo()
+        XCTAssertEqual(textView.sourceText, "Why? ")
+    }
+
+    private func makeEditor() -> (ComposerChipTextView, UIPasteboard) {
+        let pasteboard = UIPasteboard.withUniqueName()
+        addTeardownBlock { UIPasteboard.remove(withName: pasteboard.name) }
+        let textView = ComposerChipTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 120))
+        textView.pasteboard = pasteboard
+        return (textView, pasteboard)
+    }
+
+    private func pasteAsTextCommand(in textView: ComposerChipTextView) -> UIKeyCommand? {
+        textView.keyCommands?.first { $0.input == "v" && $0.modifierFlags == [.command, .shift] }
+    }
+}

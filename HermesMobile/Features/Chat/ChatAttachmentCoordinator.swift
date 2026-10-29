@@ -50,6 +50,9 @@ final class ChatAttachmentCoordinator {
     private let draftStore: ChatDraftStore?
     private let attachmentLease: ChatDraftAttachmentLease?
     private var reservedUploadFilenames: Set<String> = []
+    /// Names held by pasted text still staging, so a paste that starts before the
+    /// last one lands takes the next name (#1381).
+    private var stagingPasteNames: Set<String> = []
     /// A Hermes session (#1012): staging keeps only the local copy, under Bot Chat's
     /// limits and image conversion, and Send or Queue uploads it
     /// (`HermesChatTurnCoordinator`). A webui session uploads each file as it is staged.
@@ -128,6 +131,22 @@ final class ChatAttachmentCoordinator {
         pendingAttachments.append(attachment)
         refreshAttachmentSlots()
         return attachment
+    }
+
+    /// Stages a long paste as a text file under the next free `pasted-text` name
+    /// (#1381). The name is held before the first await, against the strip and every
+    /// paste still staging, and counts as an upload while the text is encoded, so
+    /// Send waits for it.
+    @discardableResult
+    func stagePastedText(_ text: String) async -> PendingAttachment? {
+        let filename = ComposerLargePaste.filename(avoiding: stagingPasteNames.union(pendingAttachments.map(\.name)))
+        stagingPasteNames.insert(filename)
+        defer { stagingPasteNames.remove(filename) }
+
+        activeUploadCount += 1
+        let data = await Task.detached { Data(text.utf8) }.value
+        activeUploadCount = max(activeUploadCount - 1, 0)
+        return await uploadAttachment(data: data, filename: filename)
     }
 
     /// Re-uploads a restored draft attachment from its durable local copy,
