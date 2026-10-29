@@ -21,9 +21,13 @@ struct ClarifyResult: Equatable {
             answers.isEmpty ? nil : answers.formatted(.list(type: .and, width: .narrow))
         }
 
-        /// "Question: …. Answer: …", for VoiceOver and the copied text.
+        /// "Question: …. Answer: …", for VoiceOver and the copied text. A
+        /// question that ends in its own mark ("Ship it?") gets no extra period.
         var spokenText: String {
             let answer = answerText ?? String(localized: "No answer")
+            if let last = question.last, ".?!…。？！؟۔".contains(last) {
+                return String(localized: "Question: \(question) Answer: \(answer)")
+            }
             return String(localized: "Question: \(question). Answer: \(answer)")
         }
     }

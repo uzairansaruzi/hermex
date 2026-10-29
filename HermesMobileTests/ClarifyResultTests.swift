@@ -24,6 +24,7 @@ final class ClarifyResultTests: XCTestCase {
         XCTAssertTrue(copy.contains("Lint, Unit tests"))
         XCTAssertTrue(copy.contains("The phone went offline."))
         XCTAssertFalse(copy.contains("user_response"))
+        XCTAssertFalse(copy.contains("?."), "A question's own mark ends it; no second period.")
     }
 
     func testBatchReadsEveryExchangeAndHowTheWaitEnded() throws {
@@ -32,6 +33,35 @@ final class ClarifyResultTests: XCTestCase {
         XCTAssertEqual(result.exchanges.map(\.question), ["Which environment?", "Which checks should run?", "Branch name?"])
         XCTAssertEqual(result.exchanges.map(\.answers), [["Staging"], ["Lint", "Unit tests"], []])
         XCTAssertEqual(result.lines(toolCallID: "call-1").compactMap(\.note), ["The phone went offline."])
+    }
+
+    func testFoldedTurnShowsEachAnswerOnceAndOnlyWhileFolded() {
+        let groups = [ToolCallGroup(anchorMessageID: "a1", toolCalls: [
+            ToolCall(id: "call-1", name: "clarify", preview: batchPreview, args: nil, isCompleted: true),
+            ToolCall(id: "call-2", name: "terminal", preview: batchPreview, args: nil, isCompleted: true),
+            ToolCall(
+                id: "call-3",
+                name: "clarify",
+                preview: #"{"question":"Ship it?","choices_offered":null,"user_response":"Yes"}"#,
+                args: nil,
+                isCompleted: true
+            )
+        ])]
+        let folded = TranscriptTurnFoldRowState(fold: nil, isExpanded: false, hidesBubble: false, hidesActivity: true)
+        let expanded = TranscriptTurnFoldRowState(fold: nil, isExpanded: true, hidesBubble: false, hidesActivity: false)
+        func lines(_ foldState: TranscriptTurnFoldRowState?, cardsOn: Bool = true) -> [String] {
+            ChatTranscriptMessageBlock.foldedQuestionLines(
+                in: groups,
+                foldState: foldState,
+                showsThinkingAndToolCards: cardsOn
+            ).map(\.id)
+        }
+
+        XCTAssertEqual(lines(folded), ["call-1#0", "call-1#1", "call-1#2", "call-3#0"])
+        // Expanded and unfolded rows draw the clarify rows instead; cards off shows neither.
+        XCTAssertEqual(lines(expanded), [])
+        XCTAssertEqual(lines(nil), [])
+        XCTAssertEqual(lines(folded, cardsOn: false), [])
     }
 
     func testLegacyTimeoutSentinelReadsAsUnansweredTimeout() throws {
