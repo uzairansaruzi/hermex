@@ -398,6 +398,43 @@ import XCTest
         XCTAssertEqual(spare.stateCalls, 0, "a room off screen stays down")
     }
 
+    /// A room that spent its automatic reconnects still reconnects when the network returns,
+    /// without resending anything (#1372).
+    func testARoomOutOfRetriesReconnectsWhenTheNetworkReturns() async {
+        let wire = RoomWire(), offline = RoomWire(), next = RoomWire(); next.latest = 1
+        offline.connectFailure = URLError(.notConnectedToInternet)
+        var wires = [wire, offline, next]
+        let reader = BotRoomReader(key: key(), connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!,
+                                   cache: BotHistoryCache(), makeWire: { _ in wires.removeFirst() },
+                                   reconnectDelays: [.zero], isNetworkAvailable: { true })
+        await reader.open(owner: UUID())
+
+        wire.onDisconnect?(BotFailure.transport)
+        let offlineMessage = URLError(.notConnectedToInternet).localizedDescription
+        await waitUntil("out of retries") { reader.link == .stopped && reader.errorMessage == offlineMessage }
+        reader.networkPathDidChange()
+        await waitUntil("reconnected") { reader.link == .live }
+        XCTAssertEqual(reader.events.count, 1)
+        XCTAssertTrue(next.writes.isEmpty, "a reconnect never resends")
+    }
+
+    /// A tunnel's passing 503 during an automatic reconnect doesn't end the room's recovery
+    /// (#1372).
+    func testARoomKeepsReconnectingPastATransientRefusal() async {
+        let wire = RoomWire(), refused = RoomWire(), next = RoomWire(); next.latest = 1
+        refused.connectFailure = BotFailure.rejected(503)
+        var wires = [wire, refused, next]
+        let reader = BotRoomReader(key: key(), connection: connection, room: BotGroupRoom(RoomFixture.room(latest: 0))!,
+                                   cache: BotHistoryCache(), makeWire: { _ in wires.removeFirst() },
+                                   reconnectDelays: [.zero, .zero], isNetworkAvailable: { true })
+        await reader.open(owner: UUID())
+
+        wire.onDisconnect?(BotFailure.transport)
+        await waitUntil("reconnected") { reader.link == .live }
+        XCTAssertEqual(reader.events.count, 1)
+        XCTAssertTrue(next.writes.isEmpty, "a reconnect never resends")
+    }
+
     func testExpiredAndWorkerErrorsHaveRequiredRecovery() async {
         for error in [BotRoomFailure(code: 4114, reason: nil), BotRoomFailure(code: 4112, reason: "room_history_expired")] {
             let wire = RoomWire(); var expired = false

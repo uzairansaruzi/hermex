@@ -529,9 +529,14 @@ import Observation
         errorMessage = error.localizedDescription
         needsSignIn = error as? BotFailure == .rejected(401)
         if let failure = error as? BotRoomFailure, failure.expired { discardHistory(); close(); onExpired() }
-        // Only a lost connection heals on its own; the screen that owns the room reopens it,
-        // keeping the loaded history.
-        guard let owner = viewOwner, error is URLError || (error as? BotFailure) == .transport else { return }
+        // Only a lost connection or a passing refusal (a tunnel's 502, a rate limit) heals on
+        // its own; the screen that owns the room reopens it, keeping the loaded history.
+        let heals = switch error as? BotFailure {
+        case .transport: true
+        case .rejected: BotConnectionAdvice.isRetryable(error)
+        default: error is URLError
+        }
+        guard let owner = viewOwner, heals else { return }
         reconnect.schedule { [weak self] in
             guard let self, self.viewOwner == owner, self.link == .stopped else { return }
             await self.open(owner: owner, preservingLoadedHistory: true)

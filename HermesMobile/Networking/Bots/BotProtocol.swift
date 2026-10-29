@@ -110,7 +110,7 @@ enum BotFailure: Error, Equatable, LocalizedError {
 /// non-`BotFailure` error as transport, so only the copy maps them.
 enum BotConnectionAdvice {
     /// Whether a screen that lost its connection to `error` should reconnect on its backoff
-    /// (the inbox, the Sessions list). False for a refusal the user has to act on: sign-in,
+    /// (the inbox, the Sessions list, and a room for its `.rejected` cases). False for a refusal the user has to act on: sign-in,
     /// an unsupported host or address, an address that now reaches a different host or is not
     /// a dashboard, an access proxy's own sign-in, a host with browser sign-in only, an expired
     /// browser sign-in, a host that now requires a sign-in, a refused gateway upgrade, a Hermes

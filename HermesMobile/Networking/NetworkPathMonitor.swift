@@ -100,8 +100,8 @@ private final class NetworkPathDeduplicator: @unchecked Sendable {
 @MainActor final class BotReconnectSchedule {
     /// Waits before each attempt; the last one repeats.
     private let delays: [Duration]
-    /// Attempts on backoff before it stops for the screen's Reconnect button; nil never stops.
-    /// A network return always gets one more.
+    /// Attempts on backoff before its timer stops for the screen's Reconnect button; nil never
+    /// stops. The reconnect still waits for a network return, which always gets one more.
     private let limit: Int?
     private let isNetworkAvailable: @MainActor () -> Bool
     /// The reconnect waiting on its backoff step or on the network.
@@ -118,8 +118,8 @@ private final class NetworkPathDeduplicator: @unchecked Sendable {
     /// any reconnect already waiting.
     func schedule(_ reconnect: @escaping @MainActor () async -> Void) {
         cancel()
-        if let limit, attempts >= limit { return }
         pending = reconnect
+        if let limit, attempts >= limit { return }
         guard isNetworkAvailable() else { return }
         let delay = delays[min(attempts, delays.count - 1)]
         attempts += 1

@@ -441,8 +441,9 @@ host errors still surface actionable messages; commands are never retried.
 The inbox, the Hermes session list and a room on screen reconnect after a lost socket
 through `BotReconnectSchedule`: the same delays on backoff while online, no attempts
 while the network path is unsatisfied, and one immediate attempt from the first step
-when it returns (#1372). A room tries the delays once and then waits for Reconnect;
-only a transport loss (`.transport`, a `URLError`) heals there on its own. Closing,
+when it returns (#1372). A room tries the delays once and then waits for Reconnect or
+the network's return; only a transport loss (`.transport`, a `URLError`) or a refusal
+`BotConnectionAdvice.isRetryable` passes (408, 429, 5xx) heals there on its own. Closing,
 backgrounding or covering the screen cancels a waiting reconnect.
 
 ## Connection status
