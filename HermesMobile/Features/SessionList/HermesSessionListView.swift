@@ -154,6 +154,12 @@ struct HermesSessionListView: View {
                 projectPendingRename: $navigation.covers.renamingProject, openDestination: open, switchActiveProfile: { _ in },
                 presentProjectCreation: { covers.creatingProject = HermesProjectCreation(folder: "") }
             )
+            if !groups.needsYou.isEmpty {
+                NeedsYouSessionsSection(
+                    viewModel: viewModel, sessions: groups.needsYou, showsMessageCount: showsMessageCount,
+                    showsWorkspace: showsWorkspace, selectedSessionID: usesSplit ? selectedSessionID : nil, actions: actions
+                )
+            }
             if groups.showsDisclosure(isSearchActive: isSearching) {
                 ScheduledSessionsDisclosure(
                     viewModel: viewModel, searchText: searchText, sessions: groups.scheduled,
@@ -178,7 +184,7 @@ struct HermesSessionListView: View {
                 showsWorkspace: showsWorkspace,
                 selectedSessionID: usesSplit ? selectedSessionID : nil,
                 actions: actions,
-                suppressEmptyState: !groups.scheduled.isEmpty,
+                suppressEmptyState: !groups.scheduled.isEmpty || !groups.needsYou.isEmpty,
                 showsErrorOverRows: true
             )
             // A search reads the host's whole list, so it pages nothing in.
@@ -530,11 +536,12 @@ struct HermesSessionListView: View {
         )
     }
 
-    /// Chat shortcuts walk the ordinary rows as they appear, after search and the project lane,
-    /// skipping Scheduled so ⌘1 does not depend on that disclosure. Grouped only on a key press,
-    /// never in `body`.
+    /// Chat shortcuts walk Needs you, then the ordinary rows, as they appear after search and the
+    /// project lane, skipping Scheduled so ⌘1 does not depend on that disclosure. Grouped only on
+    /// a key press, never in `body`.
     private var keyboardShortcutSessions: [SessionSummary] {
-        viewModel.scheduledSessionGroups(searchText: searchText, selectedProjectID: selectedProjectID).ordinary
+        let groups = viewModel.scheduledSessionGroups(searchText: searchText, selectedProjectID: selectedProjectID)
+        return groups.needsYou + groups.ordinary
     }
 
     /// ⌘F: a phone's rows come forward from what covers them, then the search opens, the home

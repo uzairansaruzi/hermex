@@ -398,6 +398,43 @@ import Observation
         XCTAssertEqual(list.attentionStatesBySessionID, ["a": .working, "b": .input])
     }
 
+    /// Loaded rows waiting on the user lift into Needs you in list order, pinned ones too, after
+    /// the project lane; working and cron rows stay put, a search lifts nothing, and an answered
+    /// row returns on the next status read (#1393).
+    func testWaitingRowsLiftIntoNeedsYouUntilAnswered() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([
+            HermesSessionRow(id: "pinned-idle", title: "Row", lastActive: 1, pinned: true),
+            HermesSessionRow(id: "pinned-waiting", title: "Row", lastActive: 2, pinned: true),
+            HermesSessionRow(id: "working", title: "Row", lastActive: 5),
+            HermesSessionRow(id: "waiting", title: "Row", lastActive: 4),
+            HermesSessionRow(id: "idle", title: "Row", lastActive: 3)
+        ])]
+        wire.scheduledPages = ["default": [0: HermesSessionPage(rows: [HermesSessionRow(id: "job", source: "cron")], total: 1)]]
+        wire.projectTree = .object(["projects": .array([.object([
+            "id": .string("p_1"), "label": .string("Launch"), "path": .string("/launch"), "isAuto": .bool(false),
+            "isNoProject": .bool(false), "sessionCount": .number(2), "sessionIds": .array([.string("waiting"), .string("idle")])
+        ])])])
+        wire.active = [live("pinned-waiting", "waiting"), live("working", "working"), live("waiting", "waiting"), live("job", "waiting")]
+        let list = makeList(wire)
+        defer { list.closeHermes() }
+        await list.openHermes()
+        await waitUntil("states read") { !list.attentionStatesBySessionID.isEmpty }
+        func ids(_ rows: [SessionSummary]) -> [String] { rows.compactMap(\.sessionId) }
+
+        let groups = list.scheduledSessionGroups(searchText: "", selectedProjectID: nil)
+        XCTAssertEqual(ids(groups.needsYou), ["pinned-waiting", "waiting"])
+        XCTAssertEqual(ids(groups.ordinary), ["pinned-idle", "working", "idle"])
+        XCTAssertEqual(ids(list.scheduledSessionGroups(searchText: "", selectedProjectID: "p_1").needsYou), ["waiting"])
+        XCTAssertEqual(list.scheduledSessionGroups(searchText: "row", selectedProjectID: nil).needsYou, [], "a search keeps list order")
+
+        wire.active = [live("working", "working")]
+        wire.emit("sessions.changed")
+        await waitUntil("answered") { list.attentionStatesBySessionID["waiting"] == nil }
+        XCTAssertEqual(ids(list.scheduledSessionGroups(searchText: "", selectedProjectID: nil).ordinary),
+                       ["pinned-waiting", "pinned-idle", "working", "waiting", "idle"])
+    }
+
     // MARK: Refresh
 
     /// A burst of `sessions.changed` reads once; events while that read is out ask for one more

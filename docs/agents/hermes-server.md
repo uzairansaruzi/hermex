@@ -460,6 +460,11 @@ reconnect now) or, at once whenever the device is offline, "Offline · showing l
 status". The line stays away when the offline cache's banner or a refusal shown over the
 rows already explains them.
 
+The session list lifts loaded rows whose state is Input into a "Needs you" group above
+Scheduled (#1393), by the same states the labels show, last known ones included; a search
+or the offline cache keeps list order. `session.active_list` items carry no Profile or
+source, so the group never adds a row the loaded pages lack.
+
 ## Connection status
 
 With a saved connection, the screen's Status section reads the public `/api/status`

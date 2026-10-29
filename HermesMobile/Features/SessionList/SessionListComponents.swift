@@ -1141,6 +1141,46 @@ struct ScheduledSessionsDisclosure: View {
     }
 }
 
+/// A Hermes list's rows waiting on the user, under a "Needs you" header with their count (#1393).
+/// The list shows it only when it has rows; a row moves here and back without animation.
+struct NeedsYouSessionsSection: View {
+    let viewModel: SessionListViewModel
+    let sessions: [SessionSummary]
+    let showsMessageCount: Bool
+    let showsWorkspace: Bool
+    let selectedSessionID: String?
+    let actions: SessionListRowActions
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("Needs you")
+            Spacer(minLength: 0)
+            Text("\(sessions.count)")
+        }
+        .font(.footnote.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Needs you"))
+        .accessibilityValue(Text("\(sessions.count) sessions"))
+        .accessibilityAddTraits(.isHeader)
+        .sessionsScreenListRow()
+
+        ForEach(sessions) { session in
+            SessionInteractiveRow(
+                viewModel: viewModel,
+                session: session,
+                showsMessageCount: showsMessageCount,
+                showsWorkspace: showsWorkspace,
+                selectedSessionID: selectedSessionID,
+                actions: actions
+            )
+        }
+    }
+}
+
 /// View all of the scheduled sessions. On Hermes it shows the list's rows and leaves the
 /// list's socket to the list: a phone's push reopens it, a split's sidebar keeps it.
 struct ScheduledSessionsView: View {

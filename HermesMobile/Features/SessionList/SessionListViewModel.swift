@@ -19,22 +19,30 @@ struct SessionListSection: Identifiable {
 }
 
 struct ScheduledSessionGroups: Equatable {
+    /// Rows waiting on the user, shown above the rest (#1393); empty unless the list asked for it.
+    let needsYou: [SessionSummary]
     let ordinary: [SessionSummary]
     let scheduled: [SessionSummary]
     let totalScheduledCount: Int
 
     /// Splits the visible rows in one pass, keeping their order: cron rows go
-    /// to `scheduled` unless archived, everything else to `ordinary`.
-    init(partitioning visible: [SessionSummary], totalScheduledCount: Int) {
+    /// to `scheduled` unless archived, unarchived rows `needsInput` picks to
+    /// `needsYou`, everything else to `ordinary`.
+    init(partitioning visible: [SessionSummary], totalScheduledCount: Int,
+         needsInput: ((SessionSummary) -> Bool)? = nil) {
+        var needsYou: [SessionSummary] = []
         var ordinary: [SessionSummary] = []
         var scheduled: [SessionSummary] = []
         for session in visible {
             if session.isCronSession {
                 if session.archived != true { scheduled.append(session) }
+            } else if session.archived != true, needsInput?(session) == true {
+                needsYou.append(session)
             } else {
                 ordinary.append(session)
             }
         }
+        self.needsYou = needsYou
         self.ordinary = ordinary
         self.scheduled = scheduled.first?.hermes == nil ? scheduled : scheduled.sorted {
             let left = $0.lastMessageAt ?? $0.createdAt ?? 0, right = $1.lastMessageAt ?? $1.createdAt ?? 0
@@ -406,12 +414,16 @@ final class SessionListViewModel {
         return sortedLocalMatches + Self.sortedSessions(remoteMatches)
     }
 
+    /// The visible rows grouped as the list shows them. A Hermes list showing the host's rows
+    /// lifts the ones waiting for input into `needsYou` (#1393), by the same states their labels
+    /// show, last known ones included (#1374); a search or the cache keeps list order.
     func scheduledSessionGroups(
         searchText: String,
         selectedProjectID: String?,
         automatedVisibility: AutomatedSessionVisibility = .showAll
     ) -> ScheduledSessionGroups {
-        ScheduledSessionGroups(
+        let liftsWaiting = hermes != nil && !isViewingCachedData && Self.normalizedSearchQuery(searchText).isEmpty
+        return ScheduledSessionGroups(
             partitioning: visibleSessions(
                 searchText: searchText,
                 selectedProjectID: selectedProjectID,
@@ -419,7 +431,8 @@ final class SessionListViewModel {
             ),
             totalScheduledCount: automatedVisibility.showsCron
                 ? (hermes != nil && !isViewingCachedData ? hermesScheduledTotal : sessions.filter { $0.isCronSession && $0.archived != true }.count)
-                : 0
+                : 0,
+            needsInput: liftsWaiting ? { self.attentionState(for: $0) == .input } : nil
         )
     }
 
