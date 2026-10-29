@@ -633,10 +633,12 @@ extension ResponseSelectionTests {
         XCTAssertEqual(probe.builds, builds, "An update the reply does not render from keeps its hosted content")
 
         surroundings.colorScheme = .dark
+        await render(window)
+        XCTAssertEqual(probe.colorScheme, .dark, "The reply follows the new appearance")
+
         surroundings.dynamicTypeSize = .accessibility2
         await render(window)
         await render(window)
-        XCTAssertEqual(probe.colorScheme, .dark)
         XCTAssertGreaterThan(probe.glyphHeight, height * 1.5, "The reply's text follows the new text size")
     }
 

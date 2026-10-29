@@ -1016,7 +1016,10 @@ private struct SettledReplyInputs: Hashable {
 
 /// A settled reply's media callbacks. The selection host keeps its content while
 /// the reply is unchanged, so that content calls through this reference, refreshed
-/// on every pass, instead of closures captured on an earlier one.
+/// on every pass, instead of closures captured on an earlier one. Main-actor
+/// isolated because body passes refresh it while detached thumbnail loads call
+/// the forwarders; each forwarder reads the latest callback there, then awaits it.
+@MainActor
 private final class SettledReplyMedia {
     private var loadImage: ((TranscriptMediaReference) async -> Data?)?
     private var loadData: ((TranscriptMediaReference) async -> Data?)?
@@ -1036,8 +1039,8 @@ private final class SettledReplyMedia {
         self.loadData = loadData
         self.preview = preview
         return (
-            loadImage.map { _ in { await self.loadImage?($0) ?? nil } },
-            loadData.map { _ in { await self.loadData?($0) ?? nil } },
+            loadImage.map { _ in { @MainActor reference in await self.loadImage?(reference) ?? nil } },
+            loadData.map { _ in { @MainActor reference in await self.loadData?(reference) ?? nil } },
             preview.map { _ in { self.preview?($0) } }
         )
     }
