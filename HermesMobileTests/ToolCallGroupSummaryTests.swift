@@ -30,7 +30,7 @@ final class ToolCallGroupSummaryTests: XCTestCase {
             call("read_file", args: ["path": .string("A.swift")]),
             call("search_files", args: ["pattern": .string("retry")]),
             call("terminal", args: ["command": .string("make")]),
-            call("search_files", args: ["pattern": .string("cron")]),
+            call("web_search", args: ["query": .string("cron syntax")]),
             call("terminal", args: ["command": .string("make test")]),
             call("skill_view", args: ["name": .string("triage")])
         ])

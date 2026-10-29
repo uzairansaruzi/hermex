@@ -62,7 +62,14 @@ struct ToolCallGroupSummary: Equatable {
             case .shell: commands += 1
             case .delegate: delegatedTasks += 1
             case .search: searches += 1
-            case .web: webPages += 1
+            case .web:
+                // The row says "Checked" for every web tool, but web_search
+                // fetched no page, so the summary counts it as a search.
+                if (entry.toolCall.name ?? "").lowercased().contains("search") {
+                    searches += 1
+                } else {
+                    webPages += 1
+                }
             case .list, .skill, .memory, .unknown: other += 1
             }
         }
