@@ -162,6 +162,23 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertEqual(view.verticalOffset, try XCTUnwrap(view.frame(forRowID: "r:header")).minY, accuracy: 0.5)
     }
 
+    /// A wrapped deletion can be far taller than the screen; only the stripes on screen
+    /// are drawn, in the phase of the row's top.
+    func testDeleteStripesStayInsideTheDirtyRect() throws {
+        let dirty = CGRect(x: 0, y: 0, width: 390, height: 300)
+
+        let top = Array(ReviewDiffCanvasView.deleteStripeOrigins(bar: CGRect(x: 0, y: 10, width: 3, height: 60_000), dirtyRect: dirty))
+        XCTAssertEqual(top.first, 10)
+        XCTAssertEqual(top.count, 145)
+
+        // Scrolled deep into the row: its top is far above the screen, at an odd offset.
+        let deep = Array(ReviewDiffCanvasView.deleteStripeOrigins(bar: CGRect(x: 0, y: -50_001, width: 3, height: 60_000), dirtyRect: dirty))
+        let first = try XCTUnwrap(deep.first)
+        XCTAssertEqual(first, -1, "Drawing starts on the row's 2 pt phase, just above the screen top.")
+        XCTAssertEqual(deep.count, 151)
+        XCTAssertLessThan(try XCTUnwrap(deep.last), dirty.maxY)
+    }
+
     func testStickyHeaderReportsItsPinnedFrame() {
         let rows = [header("a")] + (0..<40).map { line("a", $0) } + [header("b")] + (0..<5).map { line("b", $0) }
         let canvas = makeCanvas(rows: rows)

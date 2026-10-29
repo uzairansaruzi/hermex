@@ -229,7 +229,7 @@ extension ReviewDiffCanvasView {
             theme.addTint.setFill()
             context.fill(barRect)
         case .deletion:
-            drawDeleteStripes(rect: barRect, context: context)
+            drawDeleteStripes(rect: barRect, dirtyRect: dirtyRect, context: context)
         case .context:
             break
         }
@@ -364,13 +364,21 @@ extension ReviewDiffCanvasView {
     }
 
     /// Alternating 1 pt stripes so a deletion reads without relying on red alone.
-    private func drawDeleteStripes(rect: CGRect, context: CGContext) {
+    private func drawDeleteStripes(rect: CGRect, dirtyRect: CGRect, context: CGContext) {
         theme.deleteTint.setFill()
-        var y = rect.minY
-        while y < rect.maxY {
+        for y in Self.deleteStripeOrigins(bar: rect, dirtyRect: dirtyRect) {
             context.fill(CGRect(x: rect.minX, y: y, width: rect.width, height: 1))
-            y += 2
         }
+    }
+
+    /// The y of each stripe of a delete bar that `dirtyRect` shows. A wrapped deletion can be
+    /// thousands of points tall, so only the visible stripes are drawn; they keep the phase
+    /// of the bar's top so scrolling never shifts the pattern.
+    static func deleteStripeOrigins(bar: CGRect, dirtyRect: CGRect) -> StrideTo<CGFloat> {
+        let minY = max(bar.minY, dirtyRect.minY)
+        let maxY = min(bar.maxY, dirtyRect.maxY)
+        let first = bar.minY + ((minY - bar.minY) / 2).rounded(.down) * 2
+        return stride(from: first, to: max(first, maxY), by: 2)
     }
 
     // MARK: - Glyphs
