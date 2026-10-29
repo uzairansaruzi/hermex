@@ -915,18 +915,6 @@ import XCTest
         .object(["session_id": .string("runtime"), "seq": .number(Double(seq)), "type": .string("message.delta"),
                  "payload": .object(["text": .string(text)])])
     }
-
-    /// Waits on observation, never a clock, and fails once nothing it reads changes for 5 s.
-    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
-                           _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
-                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
-            }
-        }
-    }
 }
 
 /// Holds a wait until `open()`, then lets every wait through.

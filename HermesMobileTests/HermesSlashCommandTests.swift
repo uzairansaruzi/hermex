@@ -454,18 +454,6 @@ import Observation
         if catalog { await waitUntil("the catalog") { !turn.slashCommands.catalog.commands.isEmpty } }
         return Chat(model: model, turn: turn, host: host)
     }
-
-    /// Waits on observation, never a clock, until `condition` holds.
-    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
-                           _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
-                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
-            }
-        }
-    }
 }
 
 private extension HermesSlashRoute {

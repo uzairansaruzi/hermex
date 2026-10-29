@@ -9233,11 +9233,13 @@ final class ChatViewModelSendTests: XCTestCase {
         liveActivityManager: (any AgentLiveActivityManaging)? = nil,
         pollingIntervals: ChatPollingIntervals = .standard,
         steeringConfirmationDismissDelay: @escaping @Sendable () async throws -> Void = {
+            // test-wait: a factory default no test waits out; tests that dismiss pass their own.
             try await Task.sleep(nanoseconds: 3_000_000_000)
         },
         streamingScrollCoalescingDelayNanoseconds: UInt64 = 16_000_000,
         renderOnDeviceSpeech: @escaping @MainActor (String) async throws -> Data = { _ in SpyOnDeviceSpeech.audio },
         listenSpeedChangeSettleDelay: @escaping @Sendable () async throws -> Void = {
+            // test-wait: a factory default no test waits out; tests that settle pass their own.
             try await Task.sleep(nanoseconds: 1_000_000_000)
         },
         listenAudioSession: (any ListenAudioSessionControlling)? = nil,
@@ -9295,19 +9297,6 @@ final class ChatViewModelSendTests: XCTestCase {
         }
 
         return viewModel
-    }
-
-    /// Waits on observation, never a clock, until `condition` holds.
-    @MainActor
-    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
-                           _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
-                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
-            }
-        }
     }
 
     private func makeSession(
@@ -9524,6 +9513,7 @@ final class ChatViewModelSendTests: XCTestCase {
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
                                         target: .session(profile: "work", key: "tip"),
                                         wire: BotClient(http: host.connection(Self.connection)),
+                                        // test-wait: a reconnect waits until the test ends; none is expected.
                                         reconnectDelay: { _ in try await Task.sleep(for: .seconds(3600)) })
         self.engine = engine
         let model = ChatViewModel(
@@ -9555,6 +9545,7 @@ private func pollClock(slept: XCTestExpectation,
     { _ in
         slept.fulfill()
         await withTaskCancellationHandler {
+            // test-wait: a poll sleeps until it is cancelled; the test waits on `slept`/`cancelled`.
             try? await Task.sleep(for: .seconds(3_600))
         } onCancel: { cancelled?.fulfill() }
     }

@@ -541,19 +541,6 @@ import Observation
         XCTAssertEqual(chat.turn.engine.connectionState, .connected)
     }
 
-    /// Waits on observation, never a clock, until `condition` holds; fails once nothing it
-    /// reads changes for the wait's ceiling.
-    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
-                           _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
-                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
-            }
-        }
-    }
-
     private func event(_ seq: Int, _ type: String, _ payload: [String: BotJSON] = [:]) -> BotJSON {
         .object(["session_id": .string("runtime"), "seq": .number(Double(seq)), "type": .string(type),
                  "payload": .object(payload)])

@@ -271,24 +271,15 @@ final class FileBrowserViewModelTests: APIClientTestCase {
 
     @MainActor
     func testStaleRootListingNeverOverwritesANewerOne() async throws {
-        let slowRequestStarted = expectation(description: "slow root request started")
-        let calls = RequestLog()
-        let client = makeClient { request in
-            calls.record(".")
-            if calls.listedPaths.count == 1 {
-                slowRequestStarted.fulfill()
-                Thread.sleep(forTimeInterval: 0.3)
-                return apiTestJSONResponse(#"{"path": ".", "entries": [{"name": "old.txt", "path": "old.txt", "type": "file"}]}"#, for: request)
-            }
-            return apiTestJSONResponse(#"{"path": ".", "entries": [{"name": "new.txt", "path": "new.txt", "type": "file"}]}"#, for: request)
-        }
-        let viewModel = try makeViewModel(client: client)
+        let files = HeldFirstRootListing()
+        let viewModel = FileBrowserViewModel(files: files, defaults: defaults)
 
         let slowLoad = Task { await viewModel.loadInitialRootIfNeeded() }
-        await fulfillment(of: [slowRequestStarted], timeout: 1)
-        let latestLoad = Task { await viewModel.refresh() }
+        await fulfillment(of: [files.firstListingHeld], timeout: 5)
+        await viewModel.refresh()
+        XCTAssertEqual(viewModel.tree.rootNodes.map(\.name), ["new.txt"])
 
-        await latestLoad.value
+        await files.releaseFirstListing()
         await slowLoad.value
 
         XCTAssertEqual(viewModel.tree.rootNodes.map(\.name), ["new.txt"])
@@ -480,5 +471,43 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         let same = FileBrowserViewModel(files: HermesWorkspaceFileClientTests.client(script), defaults: defaults)
         await same.loadInitialRootIfNeeded()
         XCTAssertEqual(same.expandedPaths, ["src"], "The same chat and folder remembers its layout")
+    }
+}
+
+/// A workspace whose first root listing waits until the test releases it, then answers with
+/// `old.txt`; every later listing answers `new.txt` at once.
+private actor HeldFirstRootListing: WorkspaceFileClient {
+    nonisolated let scope = "held-first-root-listing"
+    nonisolated let opensTopLevelFolders = false
+    /// Fulfilled once the first listing is held.
+    nonisolated let firstListingHeld = XCTestExpectation(description: "the first root listing is held")
+    private var listings = 0
+    private var held: CheckedContinuation<Void, Never>?
+
+    func directoryList(path: String) async throws -> DirectoryListResponse {
+        listings += 1
+        guard listings == 1 else { return Self.listing("new.txt") }
+        await withCheckedContinuation {
+            held = $0
+            firstListingHeld.fulfill()
+        }
+        return Self.listing("old.txt")
+    }
+
+    func releaseFirstListing() {
+        held?.resume()
+        held = nil
+    }
+
+    func file(path: String) async throws -> FileResponse { throw URLError(.unsupportedURL) }
+    func rawFileData(path: String) async throws -> Data { throw URLError(.unsupportedURL) }
+    func rawFilePreviewData(path: String) async throws -> Data { throw URLError(.unsupportedURL) }
+    func imagePreviewData(path: String) async throws -> Data { throw URLError(.unsupportedURL) }
+    func mediaData(path: String) async throws -> Data { throw URLError(.unsupportedURL) }
+    func mediaExportData(path: String) async throws -> Data { throw URLError(.unsupportedURL) }
+
+    private static func listing(_ name: String) -> DirectoryListResponse {
+        try! JSONDecoder().decode(DirectoryListResponse.self, from: Data(
+            #"{"path": ".", "entries": [{"name": "\#(name)", "path": "\#(name)", "type": "file"}]}"#.utf8))
     }
 }

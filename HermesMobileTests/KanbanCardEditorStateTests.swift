@@ -247,7 +247,7 @@ final class KanbanCardEditorStateTests: XCTestCase {
         state.title = "Edited"
 
         let staleSave = Task { await state.save(allowsMutation: true) }
-        try await waitUntil { await client.firstReadStarted }
+        await fulfillment(of: [client.firstReadStarted], timeout: 5)
         await state.save(allowsMutation: true)
         await client.finishFirstRead(with: .baseline)
         await staleSave.value
@@ -268,7 +268,7 @@ final class KanbanCardEditorStateTests: XCTestCase {
         state.title = "Edited"
 
         let save = Task { await state.save(allowsMutation: true) }
-        try await waitUntil { await client.firstReadStarted }
+        await fulfillment(of: [client.firstReadStarted], timeout: 5)
         state.priorityText = "5.5"
         await client.finishFirstRead(with: .baseline)
         await save.value
@@ -313,19 +313,6 @@ final class KanbanCardEditorStateTests: XCTestCase {
             prerequisiteID: "CARD-0",
             prerequisiteOptions: [.prerequisite]
         )
-    }
-
-    private func waitUntil(
-        timeout: Duration = .seconds(1),
-        condition: @escaping @Sendable () async -> Bool
-    ) async throws {
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: timeout)
-        while clock.now < deadline {
-            if await condition() { return }
-            await Task.yield()
-        }
-        XCTFail("Condition was not met before timeout")
     }
 }
 
@@ -383,7 +370,8 @@ private actor StaleEditorClient: KanbanDataClient {
     private var firstContinuation: CheckedContinuation<KanbanCardDetailEnvelope, Never>?
     private(set) var editCallCount = 0
 
-    var firstReadStarted: Bool { firstContinuation != nil }
+    /// Fulfilled once the first detail read is held, so the test can act while it waits.
+    nonisolated let firstReadStarted = XCTestExpectation(description: "the first detail read is held")
 
     func finishFirstRead(with detail: KanbanCardDetailEnvelope) {
         firstContinuation?.resume(returning: detail)
@@ -400,7 +388,10 @@ private actor StaleEditorClient: KanbanDataClient {
     func kanbanCardDetail(_ request: KanbanCardDetailRequest) async -> KanbanCardDetailEnvelope {
         detailCallCount += 1
         if detailCallCount == 1 {
-            return await withCheckedContinuation { firstContinuation = $0 }
+            return await withCheckedContinuation {
+                firstContinuation = $0
+                firstReadStarted.fulfill()
+            }
         }
         return .baseline
     }

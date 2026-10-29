@@ -188,6 +188,7 @@ final class ReviewDiffRowBuilderTests: XCTestCase {
                 return
             }
             if index == 2 { secondScheduled.fulfill() }
+            // test-wait: an hour-long flush interval that ends when the load cancels it.
             try await Task.sleep(for: delay)
         }
     }

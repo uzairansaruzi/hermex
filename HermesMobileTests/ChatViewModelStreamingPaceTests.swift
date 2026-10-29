@@ -218,7 +218,7 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
     @MainActor
     private func makeViewModel(
         streamClient: PacingSpySSEStreamingClient,
-        revealTick: (@Sendable () async throws -> Void)? = nil
+        revealTick: @escaping @Sendable () async throws -> Void
     ) throws -> ChatViewModel {
         MockURLProtocol.requestHandler = { request in
             switch request.url?.path {
@@ -258,7 +258,7 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
             approvalStreamClient: PacingSpySSEStreamingClient(),
             clarifyStreamClient: PacingSpySSEStreamingClient(),
             streamingScrollCoalescingDelayNanoseconds: 1_000_000,
-            streamingRevealTick: revealTick ?? { try await Task.sleep(nanoseconds: 50_000_000) }
+            streamingRevealTick: revealTick
         )
     }
 

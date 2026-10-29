@@ -371,6 +371,8 @@ import Observation
     /// `tip`'s own row otherwise has no parent. `refusedFirst` refuses the first attach (4007),
     /// which the engine retries after `reconnectDelay`.
     private func openChat(pages: [Int: [BotJSON]], refusedFirst: Bool = false,
+                          // test-wait: a factory default; a reconnect waits 1 s or more, so a test that
+                          // reaches one passes its own delay.
                           reconnectDelay: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
                           _ answer: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) async -> Chat {
         let host = BotSocketHost()
@@ -506,18 +508,6 @@ import Observation
             return .json(200, .object(["id": .string("parent"), "title": .string("Plan the launch"),
                                        "parent_session_id": .null, "model_config": .null, "pinned": .number(0)]))
         default: return nil
-        }
-    }
-
-    /// Waits on observation, never a clock, until `condition` holds.
-    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
-                           _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
-                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
-            }
         }
     }
 

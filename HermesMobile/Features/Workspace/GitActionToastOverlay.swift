@@ -19,7 +19,16 @@ struct GitActionSuccess: Equatable, Identifiable {
 final class GitActionToastState {
     private(set) var progress: GitActionProgress?
     private(set) var success: GitActionSuccess?
-    private var dismissTask: Task<Void, Never>?
+    /// The pending auto-dismissal; tests await a replaced one to see it leave the newer toast.
+    private(set) var dismissTask: Task<Void, Never>?
+    private let sleep: @MainActor (Duration) async throws -> Void
+
+    /// Tests inject `sleep` to end a toast's display time on cue.
+    init(sleep: @escaping @MainActor (Duration) async throws -> Void = { duration in
+        try await Task.sleep(for: duration)
+    }) {
+        self.sleep = sleep
+    }
 
     static func toastAnimation(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeInOut(duration: 0.18)
@@ -43,8 +52,8 @@ final class GitActionToastState {
             progress = nil
             success = value
         }
-        dismissTask = Task { [weak self] in
-            try? await Task.sleep(for: duration)
+        dismissTask = Task { [weak self, sleep] in
+            try? await sleep(duration)
             guard !Task.isCancelled else { return }
             self?.dismissSuccess()
         }

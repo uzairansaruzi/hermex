@@ -718,19 +718,6 @@ import Observation
                  "last_active": .number(100), "started_at": .number(90), "message_count": .number(2),
                  "model": .string("m"), "preview": .string(""), "title": .string(""), "current": .bool(false)])
     }
-
-    /// Waits on observation of the list and the wire, never a clock, and fails once nothing
-    /// changes for 5 s.
-    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
-                           _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
-                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
-            }
-        }
-    }
 }
 
 /// A Hermes server's Sessions list search (#1053): the host's matches merged into the loaded
@@ -1055,18 +1042,6 @@ import Observation
             connection: connection, profile: "default", makeWire: { _ in wire }, preferences: defaults,
             changeDebounce: .zero, statusPollInterval: .seconds(3600), reconnectDelays: [.seconds(3600)]
         ))
-    }
-
-    /// Waits on observation of the wire, never a clock, and fails once nothing changes for 5 s.
-    private func waitUntil(_ description: String, file: StaticString = #filePath, line: UInt = #line,
-                           _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
-                return XCTFail("Nothing changed while waiting for: \(description)", file: file, line: line)
-            }
-        }
     }
 }
 

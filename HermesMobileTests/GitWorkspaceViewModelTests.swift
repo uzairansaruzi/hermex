@@ -694,13 +694,20 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
 
     @MainActor
     func testToastRapidReplacementDoesNotDismissLatestSuccess() async {
-        let state = GitActionToastState()
+        let sleeps = HeldToastSleeps()
+        let state = GitActionToastState(sleep: sleeps.sleep)
         state.showSuccess(GitActionSuccess(title: "First"), autoDismissAfter: .milliseconds(5))
+        let staleDismissal = state.dismissTask
         state.showSuccess(GitActionSuccess(title: "Second"), autoDismissAfter: .seconds(1))
+        await waitUntil("both dismissals wait") { sleeps.waiting.count == 2 }
 
-        try? await Task.sleep(for: .milliseconds(20))
+        // The first toast's time runs out just after it was replaced.
+        sleeps.end(.milliseconds(5))
+        await staleDismissal?.value
+
         XCTAssertEqual(state.success?.title, "Second")
         state.dismissSuccess()
+        sleeps.end(.seconds(1))
     }
 
     @MainActor
@@ -1815,5 +1822,25 @@ extension GitWorkspaceViewModelTests {
         XCTAssertEqual(branchReads, 2)
         XCTAssertEqual(outcome, .retired)
         XCTAssertEqual(HermesGitHost.writes, ["switch dev"])
+    }
+}
+
+/// Stands in for the Git toast's display-time sleep: each sleep waits, even once cancelled,
+/// until the test ends it, so a replaced toast's dismissal can run as if its time just ran out.
+@MainActor @Observable
+private final class HeldToastSleeps {
+    private(set) var waiting: [Duration] = []
+    @ObservationIgnored private var continuations: [Duration: CheckedContinuation<Void, Never>] = [:]
+
+    func sleep(_ duration: Duration) async {
+        await withCheckedContinuation { continuation in
+            continuations[duration] = continuation
+            waiting.append(duration)
+        }
+    }
+
+    func end(_ duration: Duration) {
+        waiting.removeAll { $0 == duration }
+        continuations.removeValue(forKey: duration)?.resume()
     }
 }

@@ -1378,18 +1378,6 @@ import SwiftUI
         return activity
     }
 
-    /// Waits on observation, never a clock, until `condition` holds; fails once nothing it reads
-    /// changes for 5 s.
-    private func waitUntil(_ description: String, _ condition: @escaping @MainActor () -> Bool) async {
-        while !condition() {
-            let changed = XCTestExpectation(description: description)
-            withObservationTracking { _ = condition() } onChange: { changed.fulfill() }
-            guard await XCTWaiter().fulfillment(of: [changed], timeout: 5) == .completed else {
-                return XCTFail("Nothing changed while waiting: \(description)")
-            }
-        }
-    }
-
     private func recorded(_ name: String) throws -> [BotJSON] {
         guard let data = try? Data(contentsOf: Self.fixtures.appendingPathComponent(name + ".json")) else {
             throw XCTSkip("The source tree is not present (physical device or remote runner).")

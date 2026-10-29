@@ -190,7 +190,7 @@ final class InsightsViewModelTests: XCTestCase {
 
         viewModel.selectedTimeframe = .last7Days
         let refreshTask = Task { await viewModel.load() }
-        await client.waitForPendingRequest()
+        await fulfillment(of: [client.requestHeld], timeout: 5)
 
         XCTAssertTrue(viewModel.isLoading)
         XCTAssertTrue(viewModel.isRefreshing)
@@ -524,6 +524,8 @@ private final class DelayedInsightsClient: InsightsDataClient {
     nonisolated var insightsFeatures: InsightsFeatures { .webui }
     private var firstResponse: InsightsResponse?
     private var pendingContinuation: CheckedContinuation<InsightsResponse, Error>?
+    /// Fulfilled once a request after the first is held.
+    let requestHeld = XCTestExpectation(description: "the refresh request is held")
 
     init(firstResponse: InsightsResponse) {
         self.firstResponse = firstResponse
@@ -537,6 +539,7 @@ private final class DelayedInsightsClient: InsightsDataClient {
 
         return try await withCheckedThrowingContinuation { continuation in
             pendingContinuation = continuation
+            requestHeld.fulfill()
         }
     }
 
@@ -550,12 +553,6 @@ private final class DelayedInsightsClient: InsightsDataClient {
 
     func providerQuota(provider: String, refresh: Bool) async throws -> ProviderQuotaResponse {
         throw StubInsightsError()
-    }
-
-    func waitForPendingRequest() async {
-        while pendingContinuation == nil {
-            await Task.yield()
-        }
     }
 
     func completePendingRequest(with result: Result<InsightsResponse, Error>) {

@@ -714,6 +714,8 @@ private final class DelayedSSEURLProtocol: URLProtocol {
             for chunk in chunks {
                 guard !Task.isCancelled else { return }
                 if chunk.delayNanoseconds > 0 {
+                    // test-wait: scripted network pacing, so chunks arrive apart like a live
+                    // stream; tests wait on the events, not on this delay.
                     try? await Task.sleep(nanoseconds: chunk.delayNanoseconds)
                 }
                 guard !Task.isCancelled else { return }

@@ -300,7 +300,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertNotNil(state.assigneeHistory)
 
         let switchBoard = Task { await state.selectBoard("release") }
-        await client.waitForReleaseRead()
+        await fulfillment(of: [client.releaseReadHeld], timeout: 5)
 
         XCTAssertEqual(state.selectedBoardSlug, "release")
         XCTAssertNil(state.snapshot)
@@ -351,7 +351,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         await state.load()
 
         let stale = Task { await state.setTenantFilter("ops") }
-        await client.waitForDeferredRead()
+        await fulfillment(of: [client.readHeld], timeout: 5)
         await state.setProfileFilter("review")
         XCTAssertEqual(state.allCards.first?.cardID, "NEW")
 
@@ -366,7 +366,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         await state.load()
 
         let filter = Task { await state.setTenantFilter("ops") }
-        await client.waitForDeferredRead()
+        await fulfillment(of: [client.readHeld], timeout: 5)
 
         // The Cards on screen came from the unfiltered read, so the list says it is loading.
         XCTAssertNotNil(state.snapshot)
@@ -460,7 +460,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         await state.load()
 
         let preview = Task { await state.previewDispatch() }
-        await client.waitForDeferredDispatch()
+        await fulfillment(of: [client.dispatchHeld], timeout: 5)
         await state.previewDispatch()
 
         let inFlightRequestCount = await client.dispatchRequestCount
@@ -498,7 +498,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         await state.load()
 
         let run = Task { await state.runDispatcher() }
-        await client.waitForDeferredDispatch()
+        await fulfillment(of: [client.dispatchHeld], timeout: 5)
 
         XCTAssertFalse(state.canMutateCards)
         XCTAssertFalse(state.canManageBoards)
@@ -725,7 +725,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         await state.load()
 
         let run = Task { await state.runDispatcher() }
-        await client.waitForDeferredCollection()
+        await fulfillment(of: [client.collectionHeld], timeout: 5)
 
         await state.load()
         await client.resumeDeferredCollection(
@@ -749,7 +749,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         let secondCard = try XCTUnwrap(state.allCards.first { $0.cardID == "CARD-2" })
 
         let firstWrite = Task { await state.moveCard(firstCard, to: "ready") }
-        try await waitUntil { await client.statusRequestCount == 1 }
+        await fulfillment(of: [client.statusRequests(reaching: 1)], timeout: 5)
         XCTAssertEqual(state.allCards.first { $0.cardID == "CARD-1" }?.status?.rawValue, "ready")
         XCTAssertEqual(state.mutationState(for: "CARD-1")?.phase, .updating)
 
@@ -760,7 +760,7 @@ final class KanbanFeatureStateTests: XCTestCase {
 
         let duplicateWrite = Task { await state.completeCard(firstCard) }
         let unrelatedWrite = Task { await state.moveCard(secondCard, to: "todo") }
-        try await waitUntil { await client.statusRequestCount == 2 }
+        await fulfillment(of: [client.statusRequests(reaching: 2)], timeout: 5)
         let firstCardRequestCount = await client.requestCount(for: "CARD-1")
         let maximumConcurrentWrites = await client.maximumConcurrentWrites
         XCTAssertEqual(firstCardRequestCount, 1)
@@ -1151,7 +1151,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         state.toggleCardSelection(first)
 
         let submission = Task { await state.performBulkAction(.changeStatus("done")) }
-        await client.waitForDeferredBulkResponse()
+        await fulfillment(of: [client.bulkResponseHeld], timeout: 5)
 
         XCTAssertEqual(state.bulkActionPhase, .submitting)
         XCTAssertEqual(state.bulkActionsAvailability, .boardBusy)
@@ -1216,7 +1216,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         state.toggleCardSelection(first)
 
         let submission = Task { await state.performBulkAction(.changeStatus("done")) }
-        await client.waitForDeferredBulkResponse()
+        await fulfillment(of: [client.bulkResponseHeld], timeout: 5)
         await state.load()
 
         XCTAssertNil(state.selectedBoardSlug)
@@ -1254,7 +1254,7 @@ final class KanbanFeatureStateTests: XCTestCase {
                 color: ""
             ))
         }
-        await client.waitForDeferredCreate()
+        await fulfillment(of: [client.createHeld], timeout: 5)
         XCTAssertEqual(state.boardMutationState?.phase, .updating)
 
         await state.makeBoardActive(slug: "main")
@@ -1367,7 +1367,7 @@ final class KanbanFeatureStateTests: XCTestCase {
         await state.load()
 
         let refresh = Task { await state.refresh() }
-        await client.waitForDeferredCollection()
+        await fulfillment(of: [client.collectionHeld], timeout: 5)
         refresh.cancel()
         await client.resumeDeferredCollection()
         await refresh.value
@@ -1472,7 +1472,7 @@ final class KanbanFeatureStateTests: XCTestCase {
                 color: ""
             ))
         }
-        await client.waitForDeferredCreate()
+        await fulfillment(of: [client.createHeld], timeout: 5)
         XCTAssertEqual(state.boardMutationState?.phase, .updating)
 
         await state.load()
@@ -1544,19 +1544,6 @@ final class KanbanFeatureStateTests: XCTestCase {
         XCTAssertFalse(KanbanEndpointCompatibility.isMissingCapability(
             APIError.http(statusCode: 404, body: nil)
         ))
-    }
-
-    private func waitUntil(
-        timeout: Duration = .seconds(1),
-        condition: @escaping @Sendable () async -> Bool
-    ) async throws {
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: timeout)
-        while clock.now < deadline {
-            if await condition() { return }
-            await Task.yield()
-        }
-        XCTFail("Condition was not met before timeout")
     }
 }
 
@@ -1635,7 +1622,8 @@ private actor BoardManagementClient: KanbanDataClient {
     private let configuration: KanbanConfiguration
     private var boardSnapshots: [KanbanBoardSnapshot]
     private var createContinuation: CheckedContinuation<Void, Never>?
-    private let defersCreate: Bool
+    /// Fulfilled once a deferred create is held.
+    nonisolated let createHeld = XCTestExpectation(description: "the create is held")
     private var shouldDeferCreate: Bool
     private var recordedBoardRequests: [KanbanBoardRequest] = []
     private(set) var createRequestCount = 0
@@ -1660,7 +1648,6 @@ private actor BoardManagementClient: KanbanDataClient {
         if let refreshBoardSnapshot {
             boardSnapshots.append(refreshBoardSnapshot)
         }
-        self.defersCreate = defersCreate
         shouldDeferCreate = defersCreate
     }
 
@@ -1689,7 +1676,10 @@ private actor BoardManagementClient: KanbanDataClient {
         createRequestCount += 1
         if shouldDeferCreate {
             shouldDeferCreate = false
-            await withCheckedContinuation { createContinuation = $0 }
+            await withCheckedContinuation {
+                createContinuation = $0
+                createHeld.fulfill()
+            }
         }
         return try createResult.get()
     }
@@ -1716,11 +1706,6 @@ private actor BoardManagementClient: KanbanDataClient {
 
     func boardRequests() -> [KanbanBoardRequest] { recordedBoardRequests }
 
-    func waitForDeferredCreate() async {
-        guard defersCreate else { return }
-        while createContinuation == nil { await Task.yield() }
-    }
-
     func resumeDeferredCreate() {
         createContinuation?.resume()
         createContinuation = nil
@@ -1730,6 +1715,8 @@ private actor BoardManagementClient: KanbanDataClient {
 private actor DeferredBoardCollectionClient: KanbanDataClient {
     private var collectionRequestCount = 0
     private var collectionContinuation: CheckedContinuation<KanbanBoardsResponse, Never>?
+    /// Fulfilled once the second Board-list read is held.
+    nonisolated let collectionHeld = XCTestExpectation(description: "the Board list read is held")
     private(set) var boardRequestCount = 0
 
     func kanbanConfiguration() -> KanbanConfiguration { KanbanFixtures.configuration }
@@ -1739,7 +1726,10 @@ private actor DeferredBoardCollectionClient: KanbanDataClient {
         if collectionRequestCount != 2 {
             return KanbanFixtures.boards
         }
-        return await withCheckedContinuation { collectionContinuation = $0 }
+        return await withCheckedContinuation {
+            collectionContinuation = $0
+            collectionHeld.fulfill()
+        }
     }
 
     func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot {
@@ -1754,10 +1744,6 @@ private actor DeferredBoardCollectionClient: KanbanDataClient {
         mutationDecode(
             #"{"spawned":[],"promoted":0,"reclaimed":0,"skipped_unassigned":[],"skipped_nonspawnable":[],"auto_blocked":[],"timed_out":[],"crashed":[]}"#
         )
-    }
-
-    func waitForDeferredCollection() async {
-        while collectionContinuation == nil { await Task.yield() }
     }
 
     func resumeDeferredCollection(
@@ -1776,6 +1762,8 @@ private actor DispatcherClient: KanbanDataClient {
     private let statsError: Error?
     private var shouldDeferDispatch: Bool
     private var dispatchContinuation: CheckedContinuation<Void, Never>?
+    /// Fulfilled once the first dispatch is held.
+    nonisolated let dispatchHeld = XCTestExpectation(description: "the dispatch is held")
     private(set) var dispatchRequests: [KanbanDispatchRequest] = []
     private(set) var boardRequestCount = 0
 
@@ -1834,13 +1822,12 @@ private actor DispatcherClient: KanbanDataClient {
         dispatchRequests.append(request)
         if shouldDeferDispatch {
             shouldDeferDispatch = false
-            await withCheckedContinuation { dispatchContinuation = $0 }
+            await withCheckedContinuation {
+                dispatchContinuation = $0
+                dispatchHeld.fulfill()
+            }
         }
         return try dispatchResults.removeFirst().get()
-    }
-
-    func waitForDeferredDispatch() async {
-        while dispatchContinuation == nil { await Task.yield() }
     }
 
     func resumeDeferredDispatch() {
@@ -1855,7 +1842,9 @@ private actor DeferredMutationClient: KanbanDataClient {
     private var concurrentWrites = 0
     private(set) var maximumConcurrentWrites = 0
 
-    var statusRequestCount: Int { requests.count }
+    private var statusCalls = CallCount()
+
+    func statusRequests(reaching count: Int) -> XCTestExpectation { statusCalls.expectation(reaching: count) }
 
     func requestCount(for cardID: String) -> Int {
         requests.count { $0.cardID == cardID }
@@ -1873,6 +1862,7 @@ private actor DeferredMutationClient: KanbanDataClient {
 
     func setKanbanCardStatus(_ request: KanbanCardStatusRequest) async -> KanbanCardMutationEnvelope {
         requests.append(request)
+        statusCalls.record()
         concurrentWrites += 1
         maximumConcurrentWrites = max(maximumConcurrentWrites, concurrentWrites)
         return await withCheckedContinuation { continuation in
@@ -1953,6 +1943,8 @@ private actor BulkActionClient: KanbanDataClient {
     private var recordedDetailRequests: [String] = []
     private var shouldDeferBulkResponse: Bool
     private var bulkContinuation: CheckedContinuation<Void, Never>?
+    /// Fulfilled once the first bulk response is held.
+    nonisolated let bulkResponseHeld = XCTestExpectation(description: "the bulk response is held")
     private var bulkError: Error?
 
     init(
@@ -1998,7 +1990,10 @@ private actor BulkActionClient: KanbanDataClient {
         recordedBulkRequests.append(request)
         if shouldDeferBulkResponse {
             shouldDeferBulkResponse = false
-            await withCheckedContinuation { bulkContinuation = $0 }
+            await withCheckedContinuation {
+                bulkContinuation = $0
+                bulkResponseHeld.fulfill()
+            }
         }
         if let error = bulkError {
             bulkError = nil
@@ -2019,10 +2014,6 @@ private actor BulkActionClient: KanbanDataClient {
 
     func bulkRequests() -> [KanbanBulkActionRequest] { recordedBulkRequests }
     func detailRequests() -> [String] { recordedDetailRequests }
-
-    func waitForDeferredBulkResponse() async {
-        while bulkContinuation == nil { await Task.yield() }
-    }
 
     func resumeDeferredBulkResponse() {
         bulkContinuation?.resume()
@@ -2098,6 +2089,8 @@ private actor BrowsingClient: KanbanDataClient {
 private actor DeferredBoardClient: KanbanDataClient {
     private var boardCallCount = 0
     private var continuation: CheckedContinuation<KanbanBoardSnapshot, Never>?
+    /// Fulfilled once the second Board read is held.
+    nonisolated let readHeld = XCTestExpectation(description: "the Board read is held")
 
     func kanbanConfiguration() -> KanbanConfiguration { KanbanFixtures.configuration }
     func kanbanBoards() -> KanbanBoardsResponse { KanbanFixtures.boards }
@@ -2105,16 +2098,15 @@ private actor DeferredBoardClient: KanbanDataClient {
         boardCallCount += 1
         if boardCallCount == 1 { return KanbanFixtures.richSnapshot }
         if boardCallCount == 2 {
-            return await withCheckedContinuation { continuation = $0 }
+            return await withCheckedContinuation {
+                continuation = $0
+                readHeld.fulfill()
+            }
         }
         return KanbanFixtures.newSnapshot
     }
     func kanbanStats(board: String) -> KanbanStats { KanbanFixtures.stats }
     func kanbanAssignees(board: String) -> KanbanAssigneeHistory { KanbanFixtures.history }
-
-    func waitForDeferredRead() async {
-        while continuation == nil { await Task.yield() }
-    }
 
     func resumeDeferredRead() {
         continuation?.resume(returning: KanbanFixtures.staleSnapshot)
@@ -2125,20 +2117,21 @@ private actor DeferredBoardClient: KanbanDataClient {
 private actor DeferredBoardSwitchClient: KanbanDataClient {
     private var boardCallCount = 0
     private var releaseContinuation: CheckedContinuation<KanbanBoardSnapshot, Never>?
+    /// Fulfilled once the release Board's read is held.
+    nonisolated let releaseReadHeld = XCTestExpectation(description: "the release Board read is held")
 
     func kanbanConfiguration() -> KanbanConfiguration { KanbanFixtures.configuration }
     func kanbanBoards() -> KanbanBoardsResponse { KanbanFixtures.multiBoards }
     func kanbanBoard(_ request: KanbanBoardRequest) async -> KanbanBoardSnapshot {
         boardCallCount += 1
         if boardCallCount == 1 { return KanbanFixtures.supportedSnapshot }
-        return await withCheckedContinuation { releaseContinuation = $0 }
+        return await withCheckedContinuation {
+            releaseContinuation = $0
+            releaseReadHeld.fulfill()
+        }
     }
     func kanbanStats(board: String) -> KanbanStats { KanbanFixtures.stats }
     func kanbanAssignees(board: String) -> KanbanAssigneeHistory { KanbanFixtures.history }
-
-    func waitForReleaseRead() async {
-        while releaseContinuation == nil { await Task.yield() }
-    }
 
     func resumeReleaseRead() {
         releaseContinuation?.resume(returning: KanbanFixtures.futureSnapshot)

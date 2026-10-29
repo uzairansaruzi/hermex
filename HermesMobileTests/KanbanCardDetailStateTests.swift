@@ -142,7 +142,7 @@ final class KanbanCardDetailStateTests: XCTestCase {
         await state.load()
 
         let staleRefresh = Task { await state.reconcile(revision: 1) }
-        try await waitUntil { await client.staleReadStarted }
+        await fulfillment(of: [client.staleReadStarted], timeout: 5)
         state.commentDraft = "Ready for review"
         await state.submitComment(allowsMutation: true)
         await client.finishStaleRead()
@@ -158,7 +158,7 @@ final class KanbanCardDetailStateTests: XCTestCase {
         let state = makeState(client: client)
 
         let missingLoad = Task { await state.load() }
-        try await waitUntil { await client.boardReadStarted }
+        await fulfillment(of: [client.boardReadStarted], timeout: 5)
         await state.refresh()
         XCTAssertEqual(state.loadState, .loaded)
 
@@ -212,19 +212,6 @@ final class KanbanCardDetailStateTests: XCTestCase {
 
     private func makeState(client: any KanbanDataClient) -> KanbanCardDetailState {
         KanbanCardDetailState(cardID: "CARD-1", board: "main", client: client)
-    }
-
-    private func waitUntil(
-        timeout: Duration = .seconds(1),
-        condition: @escaping @Sendable () async -> Bool
-    ) async throws {
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: timeout)
-        while clock.now < deadline {
-            if await condition() { return }
-            await Task.yield()
-        }
-        XCTFail("Condition was not met before timeout")
     }
 }
 
@@ -280,12 +267,15 @@ private actor CardDetailClient: KanbanDataClient {
 private actor StaleMissingEntityClient: KanbanDataClient {
     private var detailCallCount = 0
     private var boardContinuation: CheckedContinuation<KanbanBoardsResponse, Never>?
-    private(set) var boardReadStarted = false
+    /// Fulfilled once the Board read is held, so the test can overtake it.
+    nonisolated let boardReadStarted = XCTestExpectation(description: "the Board read is held")
 
     func kanbanConfiguration() -> KanbanConfiguration { decode(#"{"columns":["ready"],"read_only":false}"#) }
     func kanbanBoards() async -> KanbanBoardsResponse {
-        boardReadStarted = true
-        return await withCheckedContinuation { boardContinuation = $0 }
+        return await withCheckedContinuation {
+            boardContinuation = $0
+            boardReadStarted.fulfill()
+        }
     }
     func kanbanBoard(_ request: KanbanBoardRequest) -> KanbanBoardSnapshot { decode(#"{"changed":true,"columns":[{"name":"ready","tasks":[]}],"read_only":false}"#) }
     func kanbanStats(board: String) -> KanbanStats { decode("{}") }
@@ -309,7 +299,8 @@ private actor StaleMissingEntityClient: KanbanDataClient {
 private actor StaleDetailClient: KanbanDataClient {
     private var detailCallCount = 0
     private var staleContinuation: CheckedContinuation<KanbanCardDetailEnvelope, Never>?
-    private(set) var staleReadStarted = false
+    /// Fulfilled once the second detail read is held, so the test can overtake it.
+    nonisolated let staleReadStarted = XCTestExpectation(description: "the stale detail read is held")
 
     func kanbanConfiguration() -> KanbanConfiguration { decode(#"{"columns":["ready"],"read_only":false}"#) }
     func kanbanBoards() -> KanbanBoardsResponse { .main }
@@ -324,8 +315,10 @@ private actor StaleDetailClient: KanbanDataClient {
         case 1:
             return .baseline
         case 2:
-            staleReadStarted = true
-            return await withCheckedContinuation { staleContinuation = $0 }
+            return await withCheckedContinuation {
+                staleContinuation = $0
+                staleReadStarted.fulfill()
+            }
         default:
             return .withComment
         }
