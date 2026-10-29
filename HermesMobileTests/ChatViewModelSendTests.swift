@@ -8819,6 +8819,43 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.transcriptRelayoutScrollToken, 0)
     }
 
+    /// A draft typed while the chat shows its offline cache asks the host nothing; its
+    /// `@path` is confirmed once the chat reconnects.
+    @MainActor
+    func testAnOfflineDraftReferenceWaitsForTheReconnect() async throws {
+        let context = try makeContext()
+        try CacheStore.cacheMessages(
+            [ChatMessage(role: "user", content: "Cached question", timestamp: 1_770_000_001, messageId: "cached-user")],
+            serverURL: try XCTUnwrap(URL(string: "https://example.test")),
+            sessionID: "session-abc",
+            in: context
+        )
+        let sessionRequests = LockedCounter()
+        let listed = LockedStrings()
+        let viewModel = try makeViewModel { [self] request in
+            if request.url?.path == "/api/session" {
+                guard sessionRequests.increment() > 1 else { throw URLError(.timedOut) }
+                return apiTestJSONResponse(#"{"session": {"session_id": "session-abc", "messages": []}}"#, for: request)
+            }
+            let path = listedPath(in: request)
+            listed.append(path)
+            return apiTestJSONResponse(try XCTUnwrap(fileListingJSON(for: path)), for: request)
+        }
+
+        await viewModel.loadMessages(modelContext: context)
+        XCTAssertTrue(viewModel.showsOfflineCache)
+        await viewModel.loadFileChipReferences(draft: "read @a/b.md please")
+
+        XCTAssertEqual(listed.values, [])
+
+        await viewModel.loadMessages(modelContext: context)
+        XCTAssertFalse(viewModel.showsOfflineCache)
+        await viewModel.loadFileChipReferences(draft: "read @a/b.md please")
+
+        XCTAssertEqual(listed.values, ["a"])
+        XCTAssertTrue(viewModel.composerChipCatalog.containsFile(path: "a/b.md"))
+    }
+
     @MainActor
     func testTwoReferencesInOneFolderCostOneListing() async throws {
         let listed = LockedStrings()

@@ -2106,15 +2106,17 @@ struct ChatView: View {
     /// file, or whenever the answers already given have been thrown away: the
     /// transcript grew, was swapped for the server's copy (which can rewrite a
     /// message in the middle without changing the count or the last id), or the
-    /// workspace moved. The composer asks for a scan when the draft gains or
-    /// loses a finished `@…`.
+    /// workspace moved. Leaving the offline cache also changes it, so a draft
+    /// typed offline is confirmed on reconnect. The composer asks for a scan
+    /// when the draft gains or loses a finished `@…`.
     ///
     /// Everything here is O(1), because it runs on every transcript update,
     /// including each token of a live stream. The scan of the transcript itself
     /// is the view model's, and it skips candidates the server has already
     /// answered for.
     private var transcriptFileChipScanToken: [Int] {
-        [viewModel.messages.count, viewModel.transcriptRevision, viewModel.fileChipScopeRevision]
+        [viewModel.messages.count, viewModel.transcriptRevision, viewModel.fileChipScopeRevision,
+         viewModel.showsOfflineCache ? 1 : 0]
     }
 
     /// How many sent messages look like they name a skill.
