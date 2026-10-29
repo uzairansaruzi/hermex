@@ -184,10 +184,12 @@ enum ChatScrollPolicy {
 /// invalidate every reader. `chatDisclosureToggled(perform:)` keeps one
 /// instance and refreshes `handler` in place, which nothing observes, so
 /// readers see the same value on every pass.
-final class ChatDisclosureToggleAction {
+final class ChatDisclosureToggleAction: Equatable {
     var handler: () -> Void = {}
 
     func callAsFunction() { handler() }
+
+    static func == (lhs: ChatDisclosureToggleAction, rhs: ChatDisclosureToggleAction) -> Bool { lhs === rhs }
 }
 
 struct ChatDisclosureToggledKey: EnvironmentKey {

@@ -8,6 +8,7 @@ struct MessageBubbleView: View {
     /// Show more and Show less. It survives scrolling, which keeps row
     /// identity, and resets when the chat reopens.
     @State private var userBubbleIsExpanded = false
+    @State private var settledReplyMedia = SettledReplyMedia()
     @Environment(\.chatDisclosureToggled) private var chatDisclosureToggled
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
@@ -207,10 +208,36 @@ struct MessageBubbleView: View {
             }
 
             if isStreaming {
-                assistantContent(segments: segments)
+                assistantContent(
+                    segments: segments,
+                    loadMediaImage: loadTranscriptMediaImage,
+                    loadMediaData: loadTranscriptMediaData,
+                    onPreviewMedia: onPreviewTranscriptMedia
+                )
             } else {
-                ResponseTextSelection(identity: messageText, collectsGlyphs: responseIsVisible, onAskHermex: onAskHermex) {
-                    assistantContent(segments: segments)
+                let media = settledReplyMedia.refreshed(
+                    loadImage: loadTranscriptMediaImage,
+                    loadData: loadTranscriptMediaData,
+                    preview: onPreviewTranscriptMedia
+                )
+                ResponseTextSelection(
+                    identity: messageText,
+                    inputs: SettledReplyInputs(
+                        workspaceRoot: chatWorkspaceRoot,
+                        cacheNamespace: transcriptMediaCacheNamespace,
+                        loadsMediaImages: loadTranscriptMediaImage != nil,
+                        loadsMediaData: loadTranscriptMediaData != nil,
+                        previewsMedia: onPreviewTranscriptMedia != nil
+                    ),
+                    collectsGlyphs: responseIsVisible,
+                    onAskHermex: onAskHermex
+                ) {
+                    assistantContent(
+                        segments: segments,
+                        loadMediaImage: media.loadImage,
+                        loadMediaData: media.loadData,
+                        onPreviewMedia: media.preview
+                    )
                 }
                 .onGeometryChange(for: Bool.self) { geometry in
                     guard let viewport = geometry.bounds(of: .scrollView(axis: .vertical)) else { return true }
@@ -224,14 +251,19 @@ struct MessageBubbleView: View {
     }
 
     @ViewBuilder
-    private func assistantContent(segments: [TranscriptMediaSegment]) -> some View {
+    private func assistantContent(
+        segments: [TranscriptMediaSegment],
+        loadMediaImage: ((TranscriptMediaReference) async -> Data?)?,
+        loadMediaData: ((TranscriptMediaReference) async -> Data?)?,
+        onPreviewMedia: ((TranscriptMediaReference) -> Void)?
+    ) -> some View {
         if segments.containsTranscriptMedia {
             TranscriptMediaContentView(
                 segments: segments,
                 cacheNamespace: transcriptMediaCacheNamespace,
-                loadMediaImage: loadTranscriptMediaImage,
-                loadMediaData: loadTranscriptMediaData,
-                onPreviewMedia: onPreviewTranscriptMedia,
+                loadMediaImage: loadMediaImage,
+                loadMediaData: loadMediaData,
+                onPreviewMedia: onPreviewMedia,
                 isStreaming: isStreaming
             )
         } else {
@@ -968,5 +1000,45 @@ enum ResponseSpeedFormatter {
         guard let compact = compactText(tokensPerSecond, locale: locale) else { return nil }
         let value = compact.dropLast(4)
         return "\(value) \(String(localized: "tokens per second"))"
+    }
+}
+
+/// What a settled reply's hosted content renders from besides its text and the
+/// environment `ResponseTextSelection` forwards. A media callback's presence
+/// changes the rows drawn; the callbacks themselves go through `SettledReplyMedia`.
+private struct SettledReplyInputs: Hashable {
+    let workspaceRoot: String?
+    let cacheNamespace: String
+    let loadsMediaImages: Bool
+    let loadsMediaData: Bool
+    let previewsMedia: Bool
+}
+
+/// A settled reply's media callbacks. The selection host keeps its content while
+/// the reply is unchanged, so that content calls through this reference, refreshed
+/// on every pass, instead of closures captured on an earlier one.
+private final class SettledReplyMedia {
+    private var loadImage: ((TranscriptMediaReference) async -> Data?)?
+    private var loadData: ((TranscriptMediaReference) async -> Data?)?
+    private var preview: ((TranscriptMediaReference) -> Void)?
+
+    /// Stores the latest callbacks and returns forwarders to them, nil where the callback is.
+    func refreshed(
+        loadImage: ((TranscriptMediaReference) async -> Data?)?,
+        loadData: ((TranscriptMediaReference) async -> Data?)?,
+        preview: ((TranscriptMediaReference) -> Void)?
+    ) -> (
+        loadImage: ((TranscriptMediaReference) async -> Data?)?,
+        loadData: ((TranscriptMediaReference) async -> Data?)?,
+        preview: ((TranscriptMediaReference) -> Void)?
+    ) {
+        self.loadImage = loadImage
+        self.loadData = loadData
+        self.preview = preview
+        return (
+            loadImage.map { _ in { await self.loadImage?($0) ?? nil } },
+            loadData.map { _ in { await self.loadData?($0) ?? nil } },
+            preview.map { _ in { self.preview?($0) } }
+        )
     }
 }
