@@ -111,8 +111,12 @@ final class SessionIdentityTests: XCTestCase {
         XCTAssertNil(imported.sourceDisplayLabel)
     }
 
-    /// Offline only holds Send (#1375); a read-only session stays locked either way.
-    func testReadOnlySessionStaysLockedOffline() {
+    /// Offline keeps the draft editable and holds the host's controls (#1375); a read-only
+    /// session stays locked either way.
+    func testOfflineHoldsHostControlsAndReadOnlyStaysLocked() {
+        let offline = ChatComposerAccess(session: SessionSummary(sessionId: "writable"), isViewingCachedData: true)
+        XCTAssertTrue(offline.allowsEditing)
+        XCTAssertFalse(offline.allowsHostControls)
         for isViewingCachedData in [false, true] {
             let access = ChatComposerAccess(session: SessionSummary(sessionId: "read-only", readOnly: true),
                                             isViewingCachedData: isViewingCachedData)

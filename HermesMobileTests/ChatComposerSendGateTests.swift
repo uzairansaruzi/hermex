@@ -53,8 +53,6 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertTrue(webui.showsStop)
     }
 
-    /// A quick tap acts; the release of a hold that opened the card does not,
-    /// and only that one release is dropped.
     /// ⌘⇧↩ (#1380) takes the other safe choice from what Send does now, never Stop and send.
     func testKeyboardAlternateIsTheOtherSafeChoiceFromTheEffectiveDefault() {
         func alternate(_ defaultBehavior: StreamingSendBehavior, waiting: Bool = true,
@@ -73,6 +71,8 @@ final class ChatComposerSendGateTests: XCTestCase {
         XCTAssertNil(alternate(.steer, waiting: false))
     }
 
+    /// A quick tap acts; the release of a hold that opened the card does not,
+    /// and only that one release is dropped.
     func testHoldReleaseIsDroppedAndQuickTapActs() {
         var hold = ChatComposerSendHold()
         hold.pressBegan()

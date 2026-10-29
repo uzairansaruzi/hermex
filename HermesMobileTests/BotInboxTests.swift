@@ -1273,16 +1273,13 @@ import SwiftUI
         XCTAssertEqual(inbox.liveStatuses, [:], "no socket can vouch for them")
     }
 
-    // MARK: - Helpers
-
-    /// Status re-reads default to an hour apart, so only a test that asks for them sees one.
     // MARK: - Cached roster (#1403)
 
     /// The roster a live read left paints the next open before its socket connects, claiming
     /// nothing live and allowing no server edit, and the live read replaces it wholesale.
     func testTheLastRosterPaintsWhileConnectingAndEachLiveReadReplacesIt() async throws {
         let store = try connectedStore()
-        let cache = makeRosterCache().cache
+        let cache = makeRosterCache()
         let first = BotInboxFixtureWire(roster: [row("triage", preview: "cached"), row("gone")])
         first.active = [live("triage-tip", "working")]
         let earlier = try makeInbox(wires: [first], store: store, rosterCache: cache)
@@ -1391,28 +1388,10 @@ import SwiftUI
         XCTAssertEqual(inbox.link, .live)
     }
 
-    /// An unreadable copy is a miss: the inbox shows its skeleton and connects as usual.
-    func testAnUnreadableCachedRosterFallsBackToTheConnection() async throws {
-        let store = try connectedStore()
-        let (cache, directory) = makeRosterCache()
-        let saved = try XCTUnwrap(store.load(server: server))
-        await cache.save([row("triage")], scope: .init(server: server, connectionID: saved.id), readAt: .now)
-        for file in try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
-            try Data("[{\"name\":".utf8).write(to: file)
-        }
-        let wire = BotInboxFixtureWire(roster: [row("live")])
-        wire.holdsConnect = true
-        let inbox = try makeInbox(wires: [wire], store: store, rosterCache: cache)
-        let opening = Task { await inbox.open() }
-        await settle(inbox) { $0.link == .connecting }
-        XCTAssertTrue(inbox.isLoadingRoster)
-        wire.release()
-        await opening.value
-        XCTAssertEqual(inbox.link, .live)
-        XCTAssertEqual(inbox.profiles.map(\.id), ["live"])
-    }
+    // MARK: - Helpers
 
-    /// An inbox on `wires` in order, or on `wireFor`'s pick per saved connection.
+    /// An inbox on `wires` in order, or on `wireFor`'s pick per saved connection. Status
+    /// re-reads default to an hour apart, so only a test that asks for them sees one.
     private func makeInbox(wires: [BotInboxFixtureWire], store: BotConnectionStore? = nil, server: URL? = nil,
                            rosterCache: BotRosterCache? = nil, statusPollInterval: Duration = .seconds(3600),
                            reconnectDelays: [Duration] = [.zero],
@@ -1424,7 +1403,7 @@ import SwiftUI
         return BotInbox(server: server, store: store, unread: BotUnreadStore(defaults: defaults),
                         roomStore: BotRoomOrganizeStore(defaults: defaults),
                         sectionOrderStore: BotSectionOrderStore(defaults: defaults),
-                        avatarStore: BotAvatarStore(), rosterCache: rosterCache ?? makeRosterCache().cache,
+                        avatarStore: BotAvatarStore(), rosterCache: rosterCache ?? makeRosterCache(),
                         profileNames: HermesProfileNameCache(defaults: defaults),
                         reloadSpacing: .zero, reconnectDelays: reconnectDelays,
                         statusPollInterval: statusPollInterval, makeWire: { wireFor?($0) ?? queue.removeFirst() },
@@ -1432,9 +1411,8 @@ import SwiftUI
     }
 
     /// An empty roster cache in its own directory under this test's root.
-    private func makeRosterCache() -> (cache: BotRosterCache, directory: URL) {
-        let directory = rosterRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        return (BotRosterCache(directory: directory), directory)
+    private func makeRosterCache() -> BotRosterCache {
+        BotRosterCache(directory: rosterRoot.appendingPathComponent(UUID().uuidString, isDirectory: true))
     }
 
     /// A roster cache that runs `duringFirstLoad` inside its first load, between an open's

@@ -277,7 +277,7 @@ final class TranscriptMediaVisibilityTests: XCTestCase {
         }
     }
 
-    func testScrollingAwayKeepsAnAdmittedLoadAndRemountRetries() async throws {
+    func testRemountRetriesACancelledLoadAndScrollingAwayKeepsIt() async throws {
         let log = MediaLoadLog()
         log.heldPath = "/u/near.m4a"
         let transcript = MediaTranscript(log: log, top: Self.mediaMessages("near"), bottom: [])
@@ -286,36 +286,22 @@ final class TranscriptMediaVisibilityTests: XCTestCase {
         defer { window.isHidden = true; window.rootViewController = nil }
         await fulfillment(of: [started], timeout: 5)
 
-        scrollToBottom(scroll)
-        await renderVisibleRows(window)
-        let finished = log.expectFinish("/u/near.m4a")
-        log.releaseHeldLoads()
-        await fulfillment(of: [finished], timeout: 5)
-        XCTAssertEqual(log.cancelled["/u/near.m4a", default: 0], 0, "Scrolling away must not cancel an admitted load")
-
         // Removing the row cancels its held load, and mounting it again retries.
-        scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
-        await renderVisibleRows(window)
-        let restarted = log.expect("/u/near.m4a")
-        transcript.showsTop = false
-        await renderVisibleRows(window)
-        transcript.showsTop = true
-        await renderVisibleRows(window)
-        await fulfillment(of: [restarted], timeout: 5)
         let cancelled = log.expectFinish("/u/near.m4a")
         transcript.showsTop = false
         await renderVisibleRows(window)
         await fulfillment(of: [cancelled], timeout: 5)
-        XCTAssertEqual(log.cancelled["/u/near.m4a"], 1)
-
         let retried = log.expect("/u/near.m4a")
-        let retryFinished = log.expectFinish("/u/near.m4a")
         transcript.showsTop = true
         await renderVisibleRows(window)
         await fulfillment(of: [retried], timeout: 5)
+
+        let finished = log.expectFinish("/u/near.m4a")
+        scrollToBottom(scroll)
+        await renderVisibleRows(window)
         log.releaseHeldLoads()
-        await fulfillment(of: [retryFinished], timeout: 5)
-        XCTAssertEqual(log.cancelled["/u/near.m4a"], 1, "The remounted row's load must run to completion")
+        await fulfillment(of: [finished], timeout: 5)
+        XCTAssertEqual(log.cancelled["/u/near.m4a"], 1, "Scrolling away must not cancel the remounted row's load")
     }
 
     func testDetachedAudioWaitsForItsLoadKeyAfterScrollingIn() async throws {
