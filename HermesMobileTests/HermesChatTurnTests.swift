@@ -771,7 +771,7 @@ import SwiftUI
     /// A `complete.path` the host never answers empties the panel and leaves the candidate
     /// open; the chat keeps its connection and its next call is answered.
     func testAnUnansweredCompletionFailsOnlyItself() async throws {
-        let chat = await openChat(rpcDeadline: .milliseconds(50))
+        let chat = await openChat(completionDeadline: .milliseconds(50))
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
         let resumes = chat.writes("session.resume").count
         chat.host.withhold("complete.path")
@@ -1451,6 +1451,117 @@ import SwiftUI
         }
     }
 
+    /// Routes the engine's calls by method: `complete.path` goes to the short-deadline
+    /// client whose expiry the test asserts; every other call — the attach, the reads and
+    /// the call that must outlive a timed-out lookup — keeps the standard deadline, so a
+    /// loaded runner cannot fail an uninvolved call with the completion's deadline (#1475).
+    @MainActor private final class CompletionDeadlineRouter: BotTransport {
+        let standard: BotTransport
+        /// Its `rpcDeadline` makes the withheld `complete.path` calls expire mid-test.
+        let completions: BotTransport
+
+        init(standard: BotTransport, completions: BotTransport) {
+            self.standard = standard
+            self.completions = completions
+        }
+
+        var replayEpoch: String? { standard.replayEpoch }
+        var serverVersion: String? { standard.serverVersion }
+        var serverInstallID: String? { standard.serverInstallID }
+        var unavailableMethods: Set<String> { standard.unavailableMethods }
+        var attachedRuntimes: Set<String> { standard.attachedRuntimes }
+
+        var onEvent: ((BotJSON) -> Void)? {
+            get { standard.onEvent }
+            set { standard.onEvent = newValue }
+        }
+
+        var onDisconnect: ((Error) -> Void)? {
+            get { standard.onDisconnect }
+            set { standard.onDisconnect = newValue }
+        }
+
+        func connect() async throws {
+            try await standard.connect()
+        }
+
+        func call(_ call: HermesCall, validateDispatch: (() throws -> Void)?) async throws -> BotJSON {
+            if call.method == "complete.path" {
+                return try await completions.call(call, validateDispatch: validateDispatch)
+            }
+            return try await standard.call(call, validateDispatch: validateDispatch)
+        }
+
+        func close() {
+            standard.close()
+            completions.close()
+        }
+
+        func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String {
+            try await standard.uploadImage(data: data, filename: filename, context: context)
+        }
+
+        func artifactData(path: String, context: BotArtifactContext, limit: Int?) async throws -> Data {
+            try await standard.artifactData(path: path, context: context, limit: limit)
+        }
+
+        func keepPlatformNote(profile: String) async {
+            await standard.keepPlatformNote(profile: profile)
+        }
+
+        func deleteProfile(_ name: String) async throws {
+            try await standard.deleteProfile(name)
+        }
+
+        func currentProfile() async throws -> String {
+            try await standard.currentProfile()
+        }
+
+        func sessionMessages(_ key: String, profile: String, offset: Int?) async throws -> [BotJSON]? {
+            try await standard.sessionMessages(key: key, profile: profile, offset: offset)
+        }
+
+        func speech(text: String, profile: String) async throws -> Data {
+            try await standard.speech(text: text, profile: profile)
+        }
+
+        func sessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage {
+            try await standard.sessionPage(profile: profile, offset: offset, archived: archived)
+        }
+
+        func scheduledSessionPage(profile: String, offset: Int, archived: Bool) async throws -> HermesSessionPage {
+            try await standard.scheduledSessionPage(profile: profile, offset: offset, archived: archived)
+        }
+
+        func searchScheduledSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
+            try await standard.searchScheduledSessions(query: query, profile: profile, limit: limit)
+        }
+
+        func sessionScanPage(profile: String, offset: Int) async throws -> HermesScanPage {
+            try await standard.sessionScanPage(profile: profile, offset: offset)
+        }
+
+        func updateSession(_ change: HermesSessionChange, key: String, profile: String) async throws -> String? {
+            try await standard.updateSession(change, key: key, profile: profile)
+        }
+
+        func exportSession(key: String, profile: String) async throws -> Data {
+            try await standard.exportSession(key: key, profile: profile)
+        }
+
+        func sessionRow(key: String, profile: String) async throws -> BotJSON? {
+            try await standard.sessionRow(key: key, profile: profile)
+        }
+
+        func importSessions(body: Data) async throws -> BotJSON {
+            try await standard.importSessions(body: body)
+        }
+
+        func searchSessions(query: String, profile: String, limit: Int) async throws -> [HermesSessionSearchResult] {
+            try await standard.searchSessions(query: query, profile: profile, limit: limit)
+        }
+    }
+
     /// The two reference lines a photo-only send appends, for an upload the host named
     /// `dashboard_<date>_<time>_<hex>_IMG_2041.jpg`.
     private static let photoReference = "[The user attached an image: dashboard_20261005_120000_0123abcd_IMG_2041.jpg]\n"
@@ -1459,7 +1570,7 @@ import SwiftUI
     private func openChat(runtime: String = "runtime", key: String = "tip", profile: String = "default",
                           target: ConversationTarget? = nil, drafts: ChatDraftStore? = nil, lineageRoot: String? = nil,
                           history: [BotJSON] = [], snapshot: BotJSON? = nil, subagents: [BotJSON] = [],
-                          rpcDeadline: Duration = .seconds(30)) async -> Chat {
+                          rpcDeadline: Duration = .seconds(30), completionDeadline: Duration? = nil) async -> Chat {
         addTeardownBlock { HermesHostFixture.reset() }
         let host = BotSocketHost()
         host.always("subagent.list", .init(result: .object(["subagents": .array(subagents), "delegations": .array([])])))
@@ -1471,9 +1582,15 @@ import SwiftUI
             "messages": .array([]), "info": .object(["profile_name": .string(profile)])
         ])))
         let client = BotClient(http: host.connection(Self.connection, rpcDeadline: rpcDeadline))
+        var wire: BotTransport = client
+        if let completionDeadline {
+            wire = CompletionDeadlineRouter(standard: client,
+                                            completions: BotClient(http: host.connection(Self.connection,
+                                                                                          rpcDeadline: completionDeadline)))
+        }
         serveHistory(history, key: key)
         let engine = HermesConversation(server: URL(string: "https://hermes.example")!, connection: Self.connection,
-                                        target: target ?? .session(profile: profile, key: key), wire: client)
+                                        target: target ?? .session(profile: profile, key: key), wire: wire)
         let turn = HermesChatTurnCoordinator(engine: engine, lineageRoot: lineageRoot, isNetworkAvailable: { true })
         let liveActivity = TitleRecordingLiveActivity()
         let model = ChatViewModel(
