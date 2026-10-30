@@ -5,8 +5,10 @@ import Foundation
 // The recap's file list is derived from an assistant turn's *tool-call metadata* (which
 // file-mutating tools ran, and on which paths) rather than a `git/status` snapshot — a
 // snapshot can't isolate a single turn's edits from accumulated uncommitted/external
-// changes. Each derived path is then joined to `git/status` for the `+N −M` line counts
-// and the status chip. No new endpoint; read-only over data the chat already has.
+// changes. Each derived path is then joined to the rows of one range for the `+N −M` line
+// counts and the status chip: `git/status` on webui and for a Hermes turn without a base, or
+// a Hermes turn's range since the HEAD its send read (#1392), which keeps work the agent
+// committed. Read-only over data the chat already has.
 //
 // Mirrors the webui reference aggregation in `.codex-tmp/hermes-webui/static/workspace.js`
 // (mutation tool-name set, path-arg keys, path normalization, ignore filter).
@@ -15,16 +17,16 @@ import Foundation
 struct TurnFileChange: Identifiable, Equatable {
     /// Normalized, workspace-relative (or absolute, if the tool reported one) path.
     let path: String
-    /// Added lines, from the matched `git/status` entry (`0` when there is no net change).
+    /// Added lines, from the matched row (`0` when there is no net change).
     let additions: Int
-    /// Removed lines, from the matched `git/status` entry (`0` when there is no net change).
+    /// Removed lines, from the matched row (`0` when there is no net change).
     let deletions: Int
     /// What the tool did to the file (drives the streaming action label / fallback chip).
     let action: Action
-    /// Status chip kind — the matched `git/status` kind when available, else derived
+    /// Status chip kind — the matched row's kind when available, else derived
     /// from `action`.
     let changeKind: GitFile.ChangeKind
-    /// The matched `git/status` file, when one exists. `nil` for a tool-touched path with
+    /// The matched row, when one exists. `nil` for a tool-touched path with
     /// no net git change (the row then shows `+0 −0` and is not openable in the diff sheet).
     let gitFile: GitFile?
 
@@ -41,7 +43,7 @@ struct TurnFileChange: Identifiable, Equatable {
         case deleted
         case renamed
 
-        /// Fallback chip kind when the path didn't match a `git/status` entry.
+        /// Fallback chip kind when the path didn't match a row.
         var changeKind: GitFile.ChangeKind {
             switch self {
             case .edited: return .modified
@@ -57,6 +59,9 @@ struct TurnFileChange: Identifiable, Equatable {
 /// (a turn that changed no files, or a non-git workspace).
 struct TurnFileChangeSummary: Equatable {
     let changes: [TurnFileChange]
+    /// The range the counts were read in, which the card names and its diff reads (#1392); nil
+    /// on webui, whose card names none and reads uncommitted changes.
+    var scope: GitReviewScope?
 
     static let empty = TurnFileChangeSummary(changes: [])
 
@@ -65,7 +70,7 @@ struct TurnFileChangeSummary: Equatable {
     var totalAdditions: Int { changes.reduce(0) { $0 + $1.additions } }
     var totalDeletions: Int { changes.reduce(0) { $0 + $1.deletions } }
 
-    /// `git/status` files backing the changes, for opening the per-turn diff sheet.
+    /// The range's files backing the changes, for opening the per-turn diff sheet.
     var diffFiles: [GitFile] { changes.compactMap(\.gitFile) }
 
     /// Compact composer-capsule title, e.g. "1 change" / "3 changes".
@@ -83,16 +88,17 @@ struct TurnFileChangeSummary: Equatable {
     }
 }
 
-/// Pure aggregation of a turn's file changes from tool-call metadata, joined to git status.
+/// Pure aggregation of a turn's file changes from tool-call metadata, joined to one range's rows.
 /// Stateless and deterministic so it can be unit-tested in isolation.
 enum TurnFileChangeAggregator {
     /// Build the recap for one assistant turn.
     /// - Parameters:
     ///   - toolCalls: the turn's tool calls (live during streaming, or the archived group).
-    ///   - status: the latest `git/status`, joined for line counts and chips (`nil` ok).
-    ///   - rowPath: maps a normalized tool path to the path status rows use, as
+    ///   - files: the changed files of `scope`, joined for line counts and chips.
+    ///   - scope: the range `files` were read in; nil on webui.
+    ///   - rowPath: maps a normalized tool path to the path the rows use, as
     ///     `GitDataClient.rowPath(forToolPath:)` does; webui's are the same.
-    static func summarize(toolCalls: [ToolCall], status: GitStatus?,
+    static func summarize(toolCalls: [ToolCall], files: [GitFile], scope: GitReviewScope? = nil,
                           rowPath: (String) -> String = { $0 }) -> TurnFileChangeSummary {
         var orderedPaths: [String] = []
         var actionByPath: [String: TurnFileChange.Action] = [:]
@@ -114,7 +120,7 @@ enum TurnFileChangeAggregator {
             }
         }
 
-        let trackedFiles = status?.trackedFiles ?? []
+        let trackedFiles = files.filter { !$0.isIgnoredFile }
         let changes = orderedPaths.map { path -> TurnFileChange in
             let action = actionByPath[path] ?? .edited
             let match = matchingFile(for: path, in: trackedFiles)
@@ -128,7 +134,7 @@ enum TurnFileChangeAggregator {
             )
         }
 
-        return TurnFileChangeSummary(changes: changes)
+        return TurnFileChangeSummary(changes: changes, scope: scope)
     }
 
     // MARK: - Tool-call metadata extraction
@@ -252,9 +258,9 @@ enum TurnFileChangeAggregator {
         path.split(separator: "/").contains { ignoredComponents.contains(String($0)) }
     }
 
-    // MARK: - git/status join
+    // MARK: - Row join
 
-    /// Find the `git/status` entry for a tool path, tolerating absolute-vs-relative
+    /// Find the row for a tool path, tolerating absolute-vs-relative
     /// references to the same repo file.
     private static func matchingFile(for path: String, in files: [GitFile]) -> GitFile? {
         if let exact = files.first(where: { displayPath($0) == path }) {

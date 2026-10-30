@@ -644,6 +644,50 @@ extension APIClientGitTests {
         XCTAssertEqual(review.files.map(\.changeKind), [.unknown, .unknown])
         XCTAssertEqual(diff?.diff, HermesGitHost.diffText(for: "Sources/New.swift"))
     }
+
+    /// A turn's range (#1392) is read since its base, with that base on the list and on each diff.
+    /// A tracked row claims no kind. An untracked row's empty range diff opens all-add through
+    /// `file-diff`, which all-adds only a file still untracked; one committed since the list was
+    /// read keeps its range patch.
+    @MainActor
+    func testAHermesTurnRangeReadsSinceItsBaseAndOpensAnUntrackedFileAllAdd() async throws {
+        let base = HermesGitHost.headSHA
+        let git = HermesGitHost.client { request in
+            switch (request.url?.path, HermesGitHost.query(request, "file")) {
+            case ("/api/git/review/list", _):
+                return .json(200, .object(["base": .string(base), "files": .array([
+                    .object(["path": .string("App.swift"), "added": .number(5), "removed": .number(1),
+                             "status": .string("M"), "staged": .bool(false)]),
+                    .object(["path": .string("notes.md"), "added": .number(3), "removed": .number(0),
+                             "status": .string("?"), "staged": .bool(false)]),
+                    .object(["path": .string("later.md"), "added": .number(2), "removed": .number(0),
+                             "status": .string("?"), "staged": .bool(false)])
+                ])]))
+            case ("/api/git/review/diff", "notes.md"):
+                return .json(200, .object(["diff": .string("")]))
+            default:
+                return HermesGitHost.repositoryReply(request)
+            }
+        }
+
+        let listed = try await git.changes(since: base)
+        let files = try XCTUnwrap(listed)
+        _ = try await git.diff(for: files[0], in: .since(base: base))
+        let untracked = try await git.diff(for: files[1], in: .since(base: base))
+        _ = try await git.diff(for: files[2], in: .since(base: base))
+
+        let list = try XCTUnwrap(HermesGitHost.requests.first { $0.url?.path == "/api/git/review/list" })
+        XCTAssertEqual(HermesGitHost.query(list, "scope"), "lastTurn")
+        XCTAssertEqual(HermesGitHost.query(list, "base"), base)
+        let diffs = HermesGitHost.requests.filter { $0.url?.path == "/api/git/review/diff" }
+        XCTAssertEqual(diffs.map { HermesGitHost.query($0, "scope") }, ["lastTurn", "lastTurn", "lastTurn"])
+        XCTAssertEqual(diffs.map { HermesGitHost.query($0, "base") }, [base, base, base])
+        XCTAssertEqual(HermesGitHost.requests.filter { $0.url?.path == "/api/git/file-diff" }.map { HermesGitHost.query($0, "file") },
+                       ["notes.md"])
+        XCTAssertEqual(files.map { [$0.additions, $0.deletions] }, [[5, 1], [3, 0], [2, 0]])
+        XCTAssertEqual(files.map(\.changeKind), [.unknown, .untracked, .untracked])
+        XCTAssertEqual(untracked?.diff, HermesGitHost.diffText(for: "notes.md"))
+    }
 }
 
 // MARK: - Hermes writes (#1115)

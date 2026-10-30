@@ -176,6 +176,16 @@ struct HermesChatTranscript: Equatable {
     /// The terminal backend the session runs commands on (`local`, `docker`, …), as the same
     /// reports name it (#1112).
     private(set) var terminalBackend: String?
+    /// The HEAD the latest turn's direct send read before its prompt went out (#1392), while that
+    /// turn is still the latest and the chat is in the folder it was read in.
+    var latestTurnBase: GitTurnBase? { turnBase?.workspace == workspace ? turnBase : nil }
+    /// `latestTurnBase` as bound when its turn began (`beginTurn`). Any other turn starting, a
+    /// folder move, a rewind and an attach that can't tell whether another turn ran clear it.
+    private var turnBase: GitTurnBase?
+    /// The HEAD the send in flight read, until its turn begins or it ends without one.
+    @ObservationIgnored private var pendingBase: (sha: String, workspace: HermesWorkspaceContext)?
+    /// Reads HEAD for `pendingBase`, kept per folder so its repository root is found once.
+    @ObservationIgnored private var headReader: HermesGitClient?
     /// The session's model and provider, as the latest `session.info` or attach reports them:
     /// `/clear`'s new chat takes it while the model chip has no choice to offer (#1050).
     @ObservationIgnored private(set) var reportedModel: HermesCall.Model?
@@ -443,10 +453,12 @@ struct HermesChatTranscript: Equatable {
     /// Sends `text` in `mode` on the attached runtime, attaching first if the chat has not.
     /// `attachments` (Send and Queue only) upload first on that attach and runtime, and
     /// their references follow the text. A Steer or Queue then releases an open connection
-    /// operation (`continueConnection`); a lost release holds the message. `beforePrompt`
-    /// runs just before the prompt goes out. Returns what the host said; throws `NotSent` when it
-    /// never went out, and the failure itself when its reply was refused or lost. Never
-    /// resent: after a lost reply the next snapshot says what happened.
+    /// operation (`continueConnection`); a lost release holds the message. An idle Send in a local
+    /// folder then waits for one HEAD read, the base its turn's File changes card compares
+    /// against (#1392); a failed read sends without one, and a cancel or reattach meanwhile sends
+    /// nothing. `beforePrompt` runs just before the prompt goes out. Returns what the host said;
+    /// throws `NotSent` when it never went out, and the failure itself when its reply was refused
+    /// or lost. Never resent: after a lost reply the next snapshot says what happened.
     func submit(_ text: String, mode: BotPromptMode, attachments: [OutgoingAttachment] = [],
                 beforePrompt: () async throws -> Void = {}) async throws -> BotPromptOutcome {
         submitsInFlight += 1
@@ -464,17 +476,27 @@ struct HermesChatTranscript: Equatable {
         if mode == .steer || mode == .queue {
             do { try await requests.continueConnection(runtime: runtime, attempt: attempt) } catch { throw NotSent(underlying: error) }
         }
+        var head: (sha: String, workspace: HermesWorkspaceContext)?
+        if mode == .send, isOnlySubmission, let workspace, workspace.isLocal {
+            let sha = try? await headSHA(in: workspace)
+            do { try Task.checkCancellation(); try engine.check(attempt) } catch { throw NotSent(underlying: error) }
+            head = sha.map { (sha: $0, workspace: workspace) }
+        }
         do { try await beforePrompt() } catch { throw NotSent(underlying: error) }
         let prompt = ([text] + references).filter { !$0.isEmpty }.joined(separator: "\n\n")
         // A Bot Chat's mentions travel as Desktop's note after the prompt, resolved from the
         // typed text only; the chat shows the prompt without it (#523).
         let mentionNote = mentions?.annotation(for: text) ?? ""
         let startsBefore = turnsStarted
-        if mode == .send { isSubmittingSend = true }
+        if mode == .send {
+            isSubmittingSend = true
+            // Only a send still alone on an idle chat in the same folder can tell its turn apart.
+            if let head, isOnlySubmission, workspace == head.workspace { pendingBase = head }
+        }
         // A stop withdrawal while Stop & send is in flight is this phone's doing.
         if mode == .redirect { requests.isStoppingHere = true }
         defer {
-            if mode == .send { isSubmittingSend = false }
+            if mode == .send { isSubmittingSend = false; pendingBase = nil }
             if mode == .redirect { requests.isStoppingHere = false }
         }
         var dispatched = false
@@ -508,6 +530,16 @@ struct HermesChatTranscript: Equatable {
         requests.promptAccepted()
         acceptPrompt()
         return outcome
+    }
+
+    /// Inside `submit`, the chat is idle: no turn runs and no other send or rewind is in flight.
+    private var isOnlySubmission: Bool { activeStreamID == nil && submitsInFlight == 1 }
+
+    /// HEAD's sha in `workspace`'s repository (#1392).
+    private func headSHA(in workspace: HermesWorkspaceContext) async throws -> String? {
+        guard let http = (engine.wire as? BotClient)?.http else { return nil }
+        if headReader?.context != workspace { headReader = HermesGitClient(context: workspace, http: http) }
+        return try await headReader?.headSHA()
     }
 
     /// Uploads a send's files in order on the attach and runtime it captured
@@ -798,6 +830,7 @@ struct HermesChatTranscript: Equatable {
         let reply = try await writeOnce(.sessionUndo(runtime: runtime), runtime: runtime)
         guard reply["removed"].integer != 0 else { return }
         activity.newestTurnWasUndone()
+        turnBase = nil
         await readNewestRows(attempt: attempt)
         guard attempt == engine.generation, isIdle else { return }
         if let historyFailure { throw historyFailure }
@@ -954,6 +987,10 @@ struct HermesChatTranscript: Equatable {
 
     private func beginTurn(startedAt: Double?, prompt: String?) {
         turnsStarted += 1
+        // A send's own turn can begin from its start frame, ahead of the reply; any other has no base.
+        let base = isSubmittingSend ? pendingBase : nil
+        turnBase = base.map { GitTurnBase(sha: $0.sha, workspace: $0.workspace, turn: turnsStarted) }
+        pendingBase = nil
         latestRunEnding = nil; successfulResponseCompletion = nil
         pendingEnding = nil; awaitingStart = false; stopRequested = false
         savedTurn = nil; completedFailed = false
@@ -1148,6 +1185,7 @@ struct HermesChatTranscript: Equatable {
             // before it began (#1158): it counts as a turn, so reads begun before it drop, and
             // the last outcome goes. A failure is read again for that turn's own Retry.
             turnsStarted += 1
+            turnBase = nil
             activity.unseenTurnDidComplete()
             if payload["status"].text == "error" { readFailedTurn() }
             return
@@ -1196,7 +1234,7 @@ struct HermesChatTranscript: Equatable {
     private func noteWorkspace(folder: String?, backend: String?) {
         let folder = folder.flatMap { $0 == cwd ? nil : $0 }
         let backend = backend.flatMap { $0 == terminalBackend ? nil : $0 }
-        if let folder { cwd = folder }
+        if let folder { cwd = folder; turnBase = nil }
         if let backend { terminalBackend = backend }
         if folder != nil || backend != nil { delegate?.hermesWorkspaceDidChange() }
     }
@@ -1226,6 +1264,8 @@ struct HermesChatTranscript: Equatable {
             finish(pendingEnding ?? (failed ? .failed : stopRequested ? .cancelled : .completed))
         }
         let continuing = running && activeStreamID != nil
+        // Without the frames missed, another turn may have run since the one the base is for.
+        if lostFrames, !continuing { turnBase = nil }
         if running, activeStreamID == nil { beginTurn(startedAt: startedAt, prompt: nil) }
         if running, let startedAt, turnStartedAt == nil { adoptStart(startedAt) }
         // The same turn after a reattach: adopt its activity again, which is current once more.
@@ -1748,7 +1788,7 @@ extension HermesChatTurnCoordinator: HermesConversationOwner {
     /// history and snapshot and rebuilds.
     func conversationDidFollowReplacedChat() {
         followedReplacements += 1
-        savedTurn = nil; completedFailed = false; queuedPrompt = nil
+        savedTurn = nil; completedFailed = false; queuedPrompt = nil; turnBase = nil
         finish(.cancelled)
         sideTasks.forgetChat()
         forgetHistoryUntilRebuild()

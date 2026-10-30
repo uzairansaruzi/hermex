@@ -18,7 +18,8 @@ final class GitWorkspaceViewModel {
     /// The chat's review progress, pruned to each successful status read (`ReviewProgressStore`).
     private let progress: ReviewProgressStore?
 
-    /// The picker's selection. Each sheet opens on Uncommitted.
+    /// The picker's selection: Uncommitted or This Branch, never a turn's range. Each sheet opens
+    /// on Uncommitted.
     var scope: GitReviewScope = .uncommitted
 
     private(set) var status: GitStatus?
@@ -74,7 +75,7 @@ final class GitWorkspaceViewModel {
     func loadIfNeeded() async {
         lastError = nil
         switch scope {
-        case .uncommitted: guard !hasLoaded else { return }
+        case .uncommitted, .since: guard !hasLoaded else { return }
         case .branch: guard !hasLoadedBranch else { return }
         }
         await load()
@@ -86,7 +87,7 @@ final class GitWorkspaceViewModel {
     @MainActor
     func load() async {
         switch scope {
-        case .uncommitted: await loadStatus()
+        case .uncommitted, .since: await loadStatus()
         case .branch: await loadBranch()
         }
     }
@@ -177,6 +178,10 @@ final class GitWorkspaceAvailabilityViewModel {
     private var hasLoaded = false
     /// Set once the chat leaves this repository (`retire()`).
     private(set) var isRetired = false
+    /// The latest turn's range since the base its send read (#1392), apart from `status`, which the
+    /// toolbar and commit surfaces keep reading. Only the newest read publishes (`turnReviewRead`).
+    private var turnReview: (base: GitTurnBase, review: GitTurnReview)?
+    private var turnReviewRead = 0
 
     init(git: (any GitDataClient)?) {
         self.git = git
@@ -192,6 +197,43 @@ final class GitWorkspaceAvailabilityViewModel {
     /// and no message for a remote action), so nothing from this repository appears under the next.
     func retire() {
         isRetired = true
+    }
+
+    /// Reads the latest turn's range since `base` at turn end (#1392); nil, for a turn without
+    /// one, forgets the last. A read the chat has moved past, to another turn or folder, publishes
+    /// nothing.
+    @MainActor
+    func loadTurnReview(since base: GitTurnBase?) async {
+        turnReviewRead += 1
+        let read = turnReviewRead
+        guard let base, let git else {
+            turnReview = nil
+            return
+        }
+        turnReview = (base, .reading)
+        let review: GitTurnReview
+        do {
+            review = try await git.changes(since: base.sha).map(GitTurnReview.read) ?? .failed
+        } catch {
+            review = .failed
+        }
+        guard read == turnReviewRead, !isRetired else { return }
+        turnReview = (base, review)
+    }
+
+    /// The rows the latest turn's card joins and the range they were read in (#1392): the range
+    /// since `base` once read; the uncommitted status without a base or once that read failed; nil
+    /// while it reads, so the card shows once, under the right label.
+    @MainActor
+    func turnChangeRows(since base: GitTurnBase?) -> (files: [GitFile], scope: GitReviewScope)? {
+        let uncommitted = (files: status?.files ?? [], scope: GitReviewScope.uncommitted)
+        guard let base else { return uncommitted }
+        guard let turnReview, turnReview.base == base else { return nil }
+        switch turnReview.review {
+        case .reading: return nil
+        case .read(let files): return (files, .since(base: base.sha))
+        case .failed: return uncommitted
+        }
     }
 
     /// Whether the menu can stage, commit and push: a repository client to write through.

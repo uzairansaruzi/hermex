@@ -216,11 +216,32 @@ extension GitFile {
 
 // MARK: - Review scope (#1386)
 
-/// Which changes the Changes sheet reviews: the working tree's uncommitted ones, or what the
-/// branch committed since it left its base (a Hermes host's `scope=branch`).
+/// Which changes a review reads: the working tree's uncommitted ones, what the branch committed
+/// since it left its base (a Hermes host's `scope=branch`), or a Hermes turn's range since the HEAD
+/// its send read (`scope=lastTurn&base=`, #1392). The Changes sheet offers only the first two; the
+/// latest turn's card and its diff read the third.
 enum GitReviewScope: Hashable {
     case uncommitted
     case branch
+    case since(base: String)
+}
+
+/// The HEAD a Hermes chat's direct send read just before its prompt went out (#1392), bound to the
+/// turn that send started. `turn` is the chat's count of turns started, so no other turn, folder,
+/// Profile, session or server shares it.
+struct GitTurnBase: Hashable {
+    let sha: String
+    let workspace: HermesWorkspaceContext
+    let turn: Int
+}
+
+/// What the latest turn's card has read of its range since a `GitTurnBase`.
+enum GitTurnReview: Equatable {
+    case reading
+    /// The range's rows; an untracked file's carries `untracked`, the rest claim no kind.
+    case read([GitFile])
+    /// The read failed, or the host had no range: the card shows uncommitted changes instead.
+    case failed
 }
 
 /// A Hermes branch's committed changes, against the merge-base the host picked itself.

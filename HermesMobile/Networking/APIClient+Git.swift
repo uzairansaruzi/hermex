@@ -15,8 +15,12 @@ protocol GitDataClient: Sendable {
     /// The branch's committed changes against its base (#1386); nil outside a repository. Only a
     /// Hermes host has them: webui throws `GitReviewScopeUnsupported`.
     func branchReview() async throws -> GitBranchReview?
-    /// One file's diff in `scope`: `diff(for:)` for uncommitted changes, the branch's range for a
-    /// branch row.
+    /// Every change since `base` (#1392): what was committed since, and the working tree's tracked
+    /// and untracked changes. Nil outside a repository, or when the host has no range for `base`.
+    /// Only a Hermes host has them: webui throws `GitReviewScopeUnsupported`.
+    func changes(since base: String) async throws -> [GitFile]?
+    /// One file's diff in `scope`: `diff(for:)` for uncommitted changes, the scope's range for a
+    /// branch or turn row.
     func diff(for file: GitFile, in scope: GitReviewScope) async throws -> GitDiff?
     /// The repository a chat's review progress is kept under (`ReviewProgressStore`): the session
     /// on webui; the server, Profile, session and folder on a Hermes host. Never shown, logged or
@@ -68,23 +72,27 @@ extension GitDataClient {
 
     func branchReview() async throws -> GitBranchReview? { throw GitReviewScopeUnsupported() }
 
+    func changes(since base: String) async throws -> [GitFile]? { throw GitReviewScopeUnsupported() }
+
     func diff(for file: GitFile, in scope: GitReviewScope) async throws -> GitDiff? {
         guard scope == .uncommitted else { throw GitReviewScopeUnsupported() }
         return try await diff(for: file)
     }
 
     /// The `ReviewProgressStore` key for a review in `scope`: `reviewScope` for uncommitted changes;
-    /// for a branch, that key with the merge-base its rows were read against, so neither range's
-    /// progress or pruning reaches the other's and a moved base starts afresh.
+    /// for a branch, that key with the merge-base its rows were read against; for a turn's range,
+    /// that key with its base (#1392). So no range's progress or pruning reaches another's, and a
+    /// moved base starts afresh.
     func progressScope(_ scope: GitReviewScope, base: String?) -> String {
         switch scope {
         case .uncommitted: reviewScope
         case .branch: "\(reviewScope)|branch|\(base ?? "")"
+        case .since(let base): "\(reviewScope)|since|\(base)"
         }
     }
 }
 
-/// A review scope this repository's server can't read: webui has no branch range.
+/// A review scope this repository's server can't read: webui has no branch or turn range.
 struct GitReviewScopeUnsupported: Error {}
 
 /// One Hermes repository's write in flight (#1115). The Git menu's quick commit and push, the

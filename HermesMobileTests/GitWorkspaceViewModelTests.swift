@@ -569,7 +569,7 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
             ToolCall(name: "write_file", preview: nil, args: ["path": .string("App.swift")]),
             ToolCall(name: "patch", preview: nil, args: ["path": .string("./App.swift")]),
             ToolCall(name: "patch", preview: nil, args: ["path": .string(HermesGitHost.repository + "/Sources/Model.swift")])
-        ], status: availability.status, rowPath: git.rowPath(forToolPath:))
+        ], files: availability.status?.files ?? [], rowPath: git.rowPath(forToolPath:))
         let diff = try await git.diff(for: try XCTUnwrap(summary.diffFiles.first))
 
         XCTAssertEqual(summary.changes.map(\.path), ["Sources/App.swift", "Sources/Model.swift"])
@@ -596,7 +596,7 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         let summary = TurnFileChangeAggregator.summarize(toolCalls: [
             ToolCall(name: "write_file", preview: nil, args: ["path": .string("../README.md")]),
             ToolCall(name: "patch", preview: nil, args: ["path": .string("Nested/../Model.swift")])
-        ], status: availability.status, rowPath: git.rowPath(forToolPath:))
+        ], files: availability.status?.files ?? [], rowPath: git.rowPath(forToolPath:))
         _ = try await git.diff(for: try XCTUnwrap(summary.diffFiles.first))
 
         XCTAssertEqual(summary.changes.map(\.path), ["README.md", "Sources/Model.swift"])
@@ -624,7 +624,7 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         let summary = TurnFileChangeAggregator.summarize(toolCalls: [
             ToolCall(name: "write_file", preview: nil, args: ["path": .string("App.swift")]),
             ToolCall(name: "patch", preview: nil, args: ["path": .string("/tmp/app/Sources/Model.swift")])
-        ], status: availability.status, rowPath: git.rowPath(forToolPath:))
+        ], files: availability.status?.files ?? [], rowPath: git.rowPath(forToolPath:))
         _ = try await git.diff(for: try XCTUnwrap(summary.diffFiles.first))
 
         XCTAssertEqual(summary.changes.map(\.path), ["Sources/App.swift", "Sources/Model.swift"])
@@ -812,6 +812,78 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         changes.scope = .branch
         await changes.load()
         XCTAssertEqual(Array(progress.files(in: branchScope).keys), ["kept.swift"])
+    }
+
+    // MARK: - A turn's range (#1392)
+
+    /// The latest turn's card joins its range since the base its send read, so a file the agent
+    /// committed keeps its counts and opens. It waits for that read; an older base's read landing
+    /// late is dropped; a failed read falls back to the uncommitted status and says so.
+    @MainActor
+    func testTheTurnCardJoinsItsRangeForTheLatestBaseAndFallsBackOnFailure() async throws {
+        let workspace = HermesWorkspaceFileClientTests.context(cwd: HermesGitHost.repository)
+        let older = GitTurnBase(sha: "1111", workspace: workspace, turn: 1)
+        let latest = GitTurnBase(sha: "2222", workspace: workspace, turn: 2)
+        let failing = GitTurnBase(sha: "3333", workspace: workspace, turn: 3)
+        let git = HermesGitHost.client { request in
+            guard HermesGitHost.query(request, "scope") == "lastTurn" else {
+                return HermesGitHost.repositoryReply(request, rows: [("Other.swift", 1, 0, "M", false)],
+                                                     flags: [("Other.swift", false, true, false, false)])
+            }
+            switch HermesGitHost.query(request, "base") {
+            case "1111": return .park
+            case "2222": return Self.turnReply(base: "2222", files: [("App.swift", 4, 2)])
+            default: return .json(500, .object(["detail": .string("boom")]))
+            }
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        await availability.load()
+        let parked = expectation(description: "The older read waits")
+        HermesHostFixture.onPark = { parked.fulfill() }
+
+        let late = Task { await availability.loadTurnReview(since: older) }
+        await fulfillment(of: [parked], timeout: 5)
+        XCTAssertNil(availability.turnChangeRows(since: older), "the card waits for its range")
+        await availability.loadTurnReview(since: latest)
+        HermesHostFixture.releaseParked(Self.turnReply(base: "1111", files: [("Old.swift", 9, 9)]))
+        await late.value
+
+        let rows = try XCTUnwrap(availability.turnChangeRows(since: latest))
+        let summary = TurnFileChangeAggregator.summarize(
+            toolCalls: [ToolCall(name: "patch", preview: nil, args: ["path": .string("App.swift")])],
+            files: rows.files, scope: rows.scope, rowPath: git.rowPath(forToolPath:))
+        XCTAssertEqual(rows.scope, .since(base: "2222"))
+        XCTAssertEqual(summary.changes.map { [$0.additions, $0.deletions] }, [[4, 2]])
+        XCTAssertEqual(summary.diffFiles.map(\.displayPath), ["App.swift"])
+
+        await availability.loadTurnReview(since: failing)
+        let fallback = try XCTUnwrap(availability.turnChangeRows(since: failing))
+        XCTAssertEqual(fallback.scope, .uncommitted)
+        XCTAssertEqual(fallback.files.map(\.displayPath), ["Other.swift"])
+    }
+
+    /// A turn's range keeps its review progress under its own base: the working tree's status never
+    /// prunes it, and another turn's base starts afresh.
+    @MainActor
+    func testATurnRangeKeepsItsReviewProgressApart() async throws {
+        let git = HermesGitHost.client { HermesGitHost.repositoryReply($0) }
+        let progress = ReviewProgressStore()
+        let turnScope = git.progressScope(.since(base: "2222"), base: nil)
+        progress.update("App.swift", in: turnScope) { $0.isCollapsed = true }
+        let changes = GitWorkspaceViewModel(git: git, progress: progress)
+
+        await changes.load()
+
+        XCTAssertEqual(Array(progress.files(in: turnScope).keys), ["App.swift"])
+        XCTAssertEqual(progress.files(in: git.progressScope(.since(base: "3333"), base: nil)), [:])
+    }
+
+    /// `review/list?scope=lastTurn`'s answer: tracked `files` changed since `base`.
+    private static func turnReply(base: String, files: [(path: String, added: Int, removed: Int)]) -> HermesHostFixture.Reply {
+        .json(200, .object(["base": .string(base), "files": .array(files.map {
+            .object(["path": .string($0.path), "added": .number(Double($0.added)), "removed": .number(Double($0.removed)),
+                     "status": .string("M"), "staged": .bool(false)])
+        })]))
     }
 
     // MARK: - Diff parsing

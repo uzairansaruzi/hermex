@@ -212,6 +212,95 @@ import SwiftUI
         XCTAssertEqual(chat.model.messages.map(\.role), ["user", "assistant"], "its own message.start is the same turn")
     }
 
+    // MARK: Turn base (#1392)
+
+    /// An idle direct Send reads HEAD at the folder's repository before its prompt goes out: the
+    /// prompt waits for that read. The base belongs to the turn the send started alone, so the
+    /// next turn the host starts (a queued prompt, another client's) has none.
+    func testADirectSendReadsHeadBeforeItsPromptAndOnlyItsTurnKeepsTheBase() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/git/review/rev-parse" ? .park : HermesGitHost.repositoryReply(request, root: "/work/app")
+        }
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        let parked = expectation(description: "The HEAD read waits")
+        HermesHostFixture.onPark = { parked.fulfill() }
+
+        let send = Task { await chat.model.sendMessage("Edit and commit") }
+        await fulfillment(of: [parked], timeout: 5)
+        XCTAssertEqual(chat.writes("prompt.submit").count, 0, "the prompt waits for the HEAD read")
+        HermesHostFixture.releaseParked(.json(200, .object(["sha": .string(HermesGitHost.headSHA)])))
+        let sent = await send.value
+
+        XCTAssertTrue(sent)
+        XCTAssertEqual(chat.writes("prompt.submit").count, 1)
+        let read = try XCTUnwrap(HermesHostFixture.requests.first { $0.url?.path == "/api/git/review/rev-parse" })
+        XCTAssertEqual(HermesGitHost.query(read, "path"), "/work/app")
+        chat.receive(event(2, "message.start"))
+        chat.receive(event(3, "message.complete", ["status": .string("complete")]))
+        chat.receive(event(4, "session.info", ["running": .bool(false)]))
+        XCTAssertEqual(chat.model.hermesTurnBase?.sha, HermesGitHost.headSHA)
+
+        chat.receive(event(5, "message.start"))
+        XCTAssertNil(chat.model.hermesTurnBase, "a turn this chat did not send has no base")
+    }
+
+    /// A HEAD read that fails sends anyway, with no base, so the card shows uncommitted changes.
+    /// A send cancelled during the read sends nothing.
+    func testAFailedHeadReadStillSendsAndACancelledOneSendsNothing() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
+        nonisolated(unsafe) var head: HermesHostFixture.Reply = .json(500, .object(["detail": .string("boom")]))
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/git/review/rev-parse" ? head : HermesGitHost.repositoryReply(request, root: "/work/app")
+        }
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+
+        let sent = await chat.model.sendMessage("Edit it")
+        XCTAssertTrue(sent)
+        XCTAssertEqual(chat.writes("prompt.submit").count, 1)
+        XCTAssertEqual(HermesHostFixture.count("/api/git/review/rev-parse"), 1)
+        chat.receive(event(2, "message.start"))
+        chat.receive(event(3, "message.complete", ["status": .string("complete")]))
+        chat.receive(event(4, "session.info", ["running": .bool(false)]))
+        XCTAssertNil(chat.model.hermesTurnBase)
+
+        HermesHostFixture.script { head = .park }
+        let parked = expectation(description: "The HEAD read waits")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        let send = Task { await chat.model.sendMessage("Edit it again") }
+        await fulfillment(of: [parked], timeout: 5)
+        send.cancel()
+        HermesHostFixture.releaseParked(.json(200, .object(["sha": .string(HermesGitHost.headSHA)])))
+        let cancelled = await send.value
+
+        XCTAssertFalse(cancelled)
+        XCTAssertEqual(chat.writes("prompt.submit").count, 1, "a cancelled send never reaches the host")
+    }
+
+    /// The base stays with its turn across a reattach that finds the turn still running, and goes
+    /// once the chat moves to another folder.
+    func testATurnsBaseSurvivesItsReattachButNotAFolderMove() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/sessions/tip/messages"
+                ? .json(200, .object(["session_id": .string("tip"), "messages": .array([])]))
+                : HermesGitHost.repositoryReply(request, root: "/work/app")
+        }
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("Edit and commit")
+        chat.receive(event(2, "message.start"))
+
+        await reattach(chat, resume(running: true), latest: 2)
+        XCTAssertNotNil(chat.model.activeStreamID)
+        XCTAssertEqual(chat.model.hermesTurnBase?.sha, HermesGitHost.headSHA, "the same turn keeps its base")
+
+        chat.receive(event(3, "session.info", ["cwd": .string("/work/moved"), "terminal_backend": .string("local")]))
+        XCTAssertNil(chat.model.hermesTurnBase)
+    }
+
     /// Each mode reads only its own receipt: a steer is `queued`, an interrupt `redirected` or
     /// `queued`, a send `streaming` or `queued`, and the host's voice-stop acknowledgment
     /// clears a send without claiming a turn ran. Anything else is unknown, never success.

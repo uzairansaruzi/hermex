@@ -1798,6 +1798,10 @@ final class ChatViewModel {
     /// names it.
     var hermesWorkspace: HermesWorkspaceContext? { hermesTurn?.workspace }
 
+    /// The HEAD a Hermes chat's latest turn's direct send read before its prompt went out (#1392),
+    /// which its File changes card reads its range since; nil on webui and for any other turn.
+    var hermesTurnBase: GitTurnBase? { hermesTurn?.latestTurnBase }
+
     /// The files of `hermesWorkspace`, on the session's connection.
     var hermesWorkspaceFiles: HermesWorkspaceFileClient? { hermesTurn?.workspaceFiles }
 

@@ -261,6 +261,13 @@ enum HermesREST: Equatable, Sendable {
     case gitBranchChanges(repository: String)
     /// `{diff}`: one file's diff over the branch's range, empty without a base.
     case gitBranchDiff(repository: String, file: String)
+    /// `{files: [{path, added, removed, status, staged: false}], base}`: every change since the
+    /// commit `base` (#1392), `git diff --numstat <base>`, so commits since it and the tree's tracked
+    /// uncommitted changes, marked `M`, then untracked files, marked `?` with their line counts. No
+    /// files and a null base for a base it can't read.
+    case gitTurnChanges(repository: String, base: String)
+    /// `{diff}`: one file's `git diff <base> -- file`, empty for an untracked file.
+    case gitTurnDiff(repository: String, file: String, base: String)
     // Repository writes (#1115): each answers `{ok}`, or 400 `{detail}` with git's stderr. The
     // host hands `file` to git as a pathspec, where `*` matches other files and `.` or no file the
     // whole tree, so a file goes out literal (`:(literal)file`) and one that isn't a single
@@ -601,6 +608,15 @@ enum HermesREST: Equatable, Sendable {
             return try Self.pathQuery(base, "api/git/review/diff", [URLQueryItem(name: "path", value: repository),
                                                                     URLQueryItem(name: "file", value: file),
                                                                     URLQueryItem(name: "scope", value: "branch")])
+        case .gitTurnChanges(let repository, let sha):
+            return try Self.pathQuery(base, "api/git/review/list", [URLQueryItem(name: "path", value: repository),
+                                                                    URLQueryItem(name: "scope", value: "lastTurn"),
+                                                                    URLQueryItem(name: "base", value: sha)])
+        case .gitTurnDiff(let repository, let file, let sha):
+            return try Self.pathQuery(base, "api/git/review/diff", [URLQueryItem(name: "path", value: repository),
+                                                                    URLQueryItem(name: "file", value: file),
+                                                                    URLQueryItem(name: "scope", value: "lastTurn"),
+                                                                    URLQueryItem(name: "base", value: sha)])
         case .gitStage(let repository, let file):
             return try Self.gitWrite(base, "api/git/review/stage", repository: repository, file: file)
         case .gitUnstage(let repository, let file):

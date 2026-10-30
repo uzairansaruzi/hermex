@@ -1262,6 +1262,20 @@ panel (#1113) and Git (#1114) read the same context.
   `git/status`. Each scope keeps its own state, and branch review progress is keyed by the
   repository plus the merge-base (`GitDataClient.progressScope`), so the working tree's status
   never prunes it. Read-only: writes stay on the commit sheet and the Git menu.
+- **Since turn start (#1392).** An idle Send in a `local` folder (no turn running, no other send
+  or rewind in flight) waits for one `git/review/rev-parse` before its prompt goes out; the sha
+  is bound to the turn that send starts, whose start frame can beat the reply. A failed read
+  sends without a base; a cancel or reattach meanwhile sends nothing. Any other turn (a queued
+  prompt, another client's, a rewind), a folder move, `/undo` and an attach that lost frames
+  outside the turn drop it; a reopened chat has none. At turn end the latest turn's File changes
+  card reads `git/review/list?scope=lastTurn&base=<sha>` (`git diff --numstat <sha>`: commits
+  since it plus the tree's tracked uncommitted changes, all `M`, then untracked files as `?`)
+  apart from the toolbar's status, and its rows and diff use `review/diff?scope=lastTurn&base=`,
+  so committed work keeps its counts and opens. An untracked row's range diff is empty, so it
+  reads `git/file-diff`, which all-adds only a file still untracked. The card says "Since turn
+  start", or "Uncommitted changes" without a base or after a failed read, with what each covers
+  behind an info button. Progress is keyed by the base. No exact turn snapshot exists: edits
+  that predate the turn, and other clients' edits, are in the range.
 - **Git writes (#1115).** Stage Changes, Commit, Commit & Push, Push and the inline commit button
   go through `HermesGitClient` too, on `git/review/stage|unstage|revert|commit|push` with
   `path=<root>`, each `{ok}` or 400 `{detail}`. The host guards none of it, so the client does.

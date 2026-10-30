@@ -89,7 +89,7 @@ struct GitWorkspaceView: View {
                 .padding(.top, 8)
 
                 switch viewModel.scope {
-                case .uncommitted: uncommittedContent
+                case .uncommitted, .since: uncommittedContent
                 case .branch: branchContent
                 }
             }

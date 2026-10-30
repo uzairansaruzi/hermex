@@ -16,7 +16,8 @@ import Foundation
 /// is a write too, refused while the tree has any uncommitted change. Fetch, pull and New Branch
 /// (#1236) go through the host's hermex-push plugin, the only place they exist, and show only
 /// while it lists their routes (`supportsSync()`). This Branch (#1386) reads the branch's committed
-/// range through the same review routes, read-only.
+/// range through the same review routes, read-only, and so does a turn's range since the HEAD its
+/// send read (#1392).
 ///
 /// Neither the root nor git's own output (a refusal's `detail`, which can name host paths) reaches
 /// the screen or a log. Checked at the `HERMES_AGENT_TESTED_SHA` pin (ca678285) in
@@ -121,13 +122,46 @@ import Foundation
         return Self.branchReview(summary: try Self.json(summaryBody), changes: try Self.json(changesBody))
     }
 
-    /// A branch row's diff over the branch's range, skipping the staged and worktree choice
-    /// `diff(for:)` makes for an uncommitted one.
+    /// HEAD's full sha (#1392), read just before a direct send's prompt goes out; nil outside a
+    /// repository and before the first commit.
+    func headSHA() async throws -> String? {
+        guard let root = try await repositoryRoot() else { return nil }
+        return Self.text(try Self.json(try await send(.gitHead(repository: root)))["sha"])
+    }
+
+    /// A turn's range (#1392): `review/list`'s rows since `base`. The host marks every tracked row
+    /// `M`, whatever happened to it, so those claim no kind; an untracked row (`?`) keeps its flag,
+    /// which its diff needs. Nil without the base echoed back, which the host sends only for a
+    /// range it read.
+    func changes(since base: String) async throws -> [GitFile]? {
+        guard let root = try await repositoryRoot() else { return nil }
+        let changes = try Self.json(try await send(.gitTurnChanges(repository: root, base: base)))
+        guard Self.text(changes["base"]) == base else { return nil }
+        return (changes["files"].list ?? []).compactMap { row in
+            guard let path = row["path"].text, !path.isEmpty else { return nil }
+            let untracked = row["status"].text == "?"
+            return GitFile(path: path, status: untracked ? "?" : nil, staged: nil, unstaged: nil, untracked: untracked,
+                           conflict: nil, additions: row["added"].integer, deletions: row["removed"].integer)
+        }
+    }
+
+    /// A branch or turn row's diff over its range, skipping the staged and worktree choice
+    /// `diff(for:)` makes for an uncommitted one. The range's diff of a file untracked when listed
+    /// is empty, so it reads `file-diff`, which all-adds a file still untracked and never a clean
+    /// tracked one; a file committed since keeps its range patch.
     func diff(for file: GitFile, in scope: GitReviewScope) async throws -> GitDiff? {
-        guard scope == .branch else { return try await diff(for: file) }
+        let request: (_ root: String, _ path: String) -> HermesREST
+        switch scope {
+        case .uncommitted: return try await diff(for: file)
+        case .branch: request = { .gitBranchDiff(repository: $0, file: $1) }
+        case .since(let base): request = { .gitTurnDiff(repository: $0, file: $1, base: base) }
+        }
         guard let root = try await repositoryRoot() else { return nil }
         let path = file.displayPath
-        let text = try Self.json(try await send(.gitBranchDiff(repository: root, file: path)))["diff"].text
+        var text = try Self.json(try await send(request(root, path)))["diff"].text
+        if case .since = scope, file.untracked == true, text?.isEmpty != false {
+            text = try Self.json(try await send(.gitFileDiff(repository: root, file: path)))["diff"].text
+        }
         return Self.diff(text, path: path, kind: nil)
     }
 
