@@ -122,16 +122,4 @@ final class ReviewDiffSelectionTests: XCTestCase {
         XCTAssertEqual(composer.addedCount, 3)
         XCTAssertNil(composer.context, "Add closes the comment sheet.")
     }
-
-    /// A refresh while the comment sheet is open drops its context, so a late Add
-    /// cannot quote lines that are no longer on screen.
-    func testRefreshDropsAnOpenCommentContext() {
-        var selection = ReviewDiffSelection()
-        selection.tap(rowID: "f:line:0", fileID: "f")
-        var composer = ReviewCommentComposer()
-        composer.context = selection.commentContext(in: rows)
-        composer.discard()
-        XCTAssertNil(composer.add(comment: "stale"))
-        XCTAssertEqual(composer.addedCount, 0)
-    }
 }

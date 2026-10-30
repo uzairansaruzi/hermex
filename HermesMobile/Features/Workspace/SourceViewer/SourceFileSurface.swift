@@ -20,8 +20,6 @@ struct SourceFileSurface: View {
     private let path: String
     private let serverLanguage: String?
     @State private var viewModel: SourceFileViewModel
-    @State private var selection = ReviewDiffSelection()
-    @State private var commentComposer = ReviewCommentComposer()
     @State private var scrollTarget: ReviewDiffScrollTarget?
     @AppStorage(SourceFileSurface.wrapsLinesKey) private var wrapsLines = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
@@ -48,7 +46,7 @@ struct SourceFileSurface: View {
         _viewModel = State(initialValue: SourceFileViewModel(path: path, serverLanguage: serverLanguage))
     }
 
-    private var selectedRowIDs: Set<String> { selection.selectedRowIDs(in: viewModel.rows) }
+    private var selectedRowIDs: Set<String> { viewModel.selection.selectedRowIDs(in: viewModel.rows) }
 
     var body: some View {
         ReviewDiffSurface(
@@ -76,17 +74,16 @@ struct SourceFileSurface: View {
             let selected = selectedRowIDs
             if !selected.isEmpty {
                 selectionBar(count: selected.count)
-            } else if commentComposer.addedCount > 0 {
-                ReviewCommentStatusBar(addedCount: commentComposer.addedCount, onReturnToChat: onReturnToChat)
+            } else if viewModel.commentComposer.addedCount > 0 {
+                ReviewCommentStatusBar(addedCount: viewModel.commentComposer.addedCount, onReturnToChat: onReturnToChat)
             }
         }
-        .sheet(item: $commentComposer.context) { context in
+        .sheet(item: $viewModel.commentComposer.context) { context in
             ReviewCommentSheet(context: context, onAdd: addComment)
         }
-        // New text renumbers the lines: drop a selection or open comment that quotes the old ones.
-        .onChange(of: content) {
-            selection.clear()
-            commentComposer.discard()
+        // A refresh may renumber the lines (the model drops them again when new rows land).
+        .onChange(of: isRefreshing) {
+            if isRefreshing { viewModel.dropSelection() }
         }
         .task(id: content) {
             await viewModel.load(content: content)
@@ -117,7 +114,7 @@ struct SourceFileSurface: View {
                 .font(AppFont.footnote(weight: .semibold))
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
-            Button("Clear") { selection.clear() }
+            Button("Clear") { viewModel.selection.clear() }
                 .font(AppFont.footnote())
             if onAddToPrompt != nil {
                 Button(action: copySelection) {
@@ -127,7 +124,7 @@ struct SourceFileSurface: View {
                 .buttonStyle(.bordered)
                 prominentButton("Comment…") {
                     let language = SourceHighlightLanguage.resolve(path: path, serverLanguage: serverLanguage)
-                    commentComposer.context = selection.sourceCommentContext(in: viewModel.rows, path: path, language: language)
+                    viewModel.commentComposer.context = viewModel.selection.sourceCommentContext(in: viewModel.rows, path: path, language: language)
                 }
             } else {
                 prominentButton("Copy", action: copySelection)
@@ -153,34 +150,34 @@ struct SourceFileSurface: View {
 
     /// The requested line is selected and scrolled to once, when the rows first exist.
     private func seedTargetLineIfNeeded() {
-        guard let targetLine, scrollTarget == nil, selection.isEmpty,
+        guard let targetLine, scrollTarget == nil, viewModel.selection.isEmpty,
               targetLine >= 1, targetLine <= viewModel.rows.count else { return }
         let rowID = SourceFileRows.rowID(forLineIndex: targetLine - 1)
-        selection.tap(rowID: rowID, fileID: SourceFileRows.fileID)
+        viewModel.selection.tap(rowID: rowID, fileID: SourceFileRows.fileID)
         scrollTarget = ReviewDiffScrollTarget(anchor: .row(rowID), token: UUID())
     }
 
     private func handleLinePress(_ press: ReviewDiffLinePress) {
         switch press.gesture {
-        case .tap: selection.tap(rowID: press.rowID, fileID: press.fileID)
-        case .longPress: selection.longPress(rowID: press.rowID, fileID: press.fileID)
+        case .tap: viewModel.selection.tap(rowID: press.rowID, fileID: press.fileID)
+        case .longPress: viewModel.selection.longPress(rowID: press.rowID, fileID: press.fileID)
         }
         ChatHaptics.diffLineSelected(isEnabled: isHapticsEnabled)
     }
 
     private func addComment(_ comment: String) {
-        guard let markdown = commentComposer.add(comment: comment) else { return }
+        guard let markdown = viewModel.commentComposer.add(comment: comment) else { return }
         onAddToPrompt?(markdown)
         ChatHaptics.addedToPrompt(isEnabled: isHapticsEnabled)
-        selection.clear()
+        viewModel.selection.clear()
     }
 
     /// Copies the selected lines, blank ones included, so a selection always answers.
     private func copySelection() {
-        let selected = selection.selectedRows(in: viewModel.rows)
+        let selected = viewModel.selection.selectedRows(in: viewModel.rows)
         guard !selected.isEmpty else { return }
         UIPasteboard.general.string = selected.compactMap { $0.line?.content }.joined(separator: "\n")
         ChatHaptics.copied(isEnabled: isHapticsEnabled)
-        selection.clear()
+        viewModel.selection.clear()
     }
 }
