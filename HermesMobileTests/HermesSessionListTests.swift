@@ -870,6 +870,20 @@ import Observation
         XCTAssertEqual(confirmed, .missingProfile("research"))
     }
 
+    /// A Shortcut's text held past its lifetime while its list couldn't open it (#1402) is
+    /// consumed without a chat once the list shows, not opened a day late.
+    func testAShortcutTextHeldPastItsLifetimeOpensNoChat() {
+        let entry = HermesSessionListEntry(server: server, connection: connection, profile: "default")
+        var covers = HermesSessionListCovers()
+        let share = SharedImportReservation(
+            itemID: "shortcut-1", reservationID: "reservation",
+            createdAt: Date().addingTimeInterval(-HermesShareDraft.shortcutTextLifetime - 60),
+            sharedImport: SharedImport(draft: "Hi", attachments: [], shortcut: SharedShortcutDestination(server: server, profile: nil))
+        )
+
+        XCTAssertEqual(covers.open(share, on: entry, listed: "default", isLive: true), .nothing)
+    }
+
     // MARK: Fixture
 
     private func makeList(_ wire: HermesSessionListWire, profile: String? = "default",

@@ -39,8 +39,14 @@ struct ContentView: View {
             .onChange(of: shares.pending?.reservationID) {
                 switchServer(shares.shortcutRoute(state: authManager.state, servers: authManager.servers))
             }
-            .alert("Shortcut Can’t Open", isPresented: Binding(get: { unopenableShortcut != nil }, set: { _ in }),
-                   presenting: unopenableShortcut) { shortcut in
+            .alert("Shortcut Can’t Open", isPresented: Binding(get: { unopenableShortcut != nil }, set: { isPresented in
+                // Dismissed without a button (Escape, VoiceOver's escape) is Not Now. A button's
+                // action may run after this, so the release waits a turn and skips a settled text.
+                guard !isPresented, let share = unopenableShortcut?.share else { return }
+                Task { @MainActor in
+                    if shares.pending?.reservationID == share.reservationID { releasePendingSharedImport(share) }
+                }
+            }), presenting: unopenableShortcut) { shortcut in
                 Button("Discard", role: .destructive) { consumePendingSharedImport(shortcut.share) }
                 Button("Not Now", role: .cancel) { releasePendingSharedImport(shortcut.share) }
             } message: { shortcut in

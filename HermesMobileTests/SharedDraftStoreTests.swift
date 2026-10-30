@@ -1060,7 +1060,7 @@ final class SharedDraftStoreTests: XCTestCase {
         let connection = BotConnection(id: UUID(), name: "Host", address: studio, username: "me", password: "secret")
         let entry = HermesSessionListEntry(server: studio, connection: connection, profile: nil)
         func shortcut(_ server: URL, _ profile: String?) -> SharedImportReservation {
-            SharedImportReservation(itemID: "shortcut-1", reservationID: UUID().uuidString, createdAt: Date(timeIntervalSince1970: 0),
+            SharedImportReservation(itemID: "shortcut-1", reservationID: UUID().uuidString, createdAt: Date(),
                                     sharedImport: SharedImport(draft: "Hi", attachments: [],
                                                                shortcut: SharedShortcutDestination(server: server, profile: profile)))
         }

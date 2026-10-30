@@ -922,7 +922,8 @@ enum HermesShareOpening: Equatable {
     /// A new session in New Session's Profile, or the Shortcut's, which opens once its draft holds
     /// the share.
     case chat(HermesSessionChat)
-    /// Nothing in the share survived staging: it is consumed without a chat, as on webui.
+    /// Nothing in the share survived staging, or a Shortcut's text expired: it is consumed without
+    /// a chat, as on webui.
     case nothing
     /// The Shortcut named a Profile the host no longer lists.
     case missingProfile(String)
@@ -932,7 +933,8 @@ extension SharedImportReservation {
     /// What `entry`'s Sessions list opens for this share, in `listed`, the Profile its New Session
     /// uses; nil until the list `isLive`, having read the host and showing no offline cache, as a
     /// Shortcut's new session does. A Shortcut's text opens only on its own server, in its
-    /// Profile when it named one, which `confirmingProfile` then checks with the host.
+    /// Profile when it named one, which `confirmingProfile` then checks with the host; one held
+    /// past its lifetime, as when its server couldn't be reached, opens nothing.
     @MainActor func hermesOpening(on entry: HermesSessionListEntry, listed: String?, isLive: Bool) -> HermesShareOpening? {
         guard let shortcut = sharedImport.shortcut else {
             guard let chat = HermesNewChatDestination(server: entry.server, profile: nil)
@@ -940,6 +942,8 @@ extension SharedImportReservation {
             let isEmpty = HermesShareDraft.composerDraft(from: sharedImport.draft).isEmpty && sharedImport.attachments.isEmpty
             return isEmpty ? .nothing : .chat(chat)
         }
+        guard shortcut.server == entry.server else { return nil }
+        guard Date().timeIntervalSince(createdAt) < HermesShareDraft.shortcutTextLifetime else { return .nothing }
         return HermesNewChatDestination(server: shortcut.server, profile: shortcut.profile)
             .chat(on: entry, listed: listed, isLive: isLive).map { .chat($0) }
     }

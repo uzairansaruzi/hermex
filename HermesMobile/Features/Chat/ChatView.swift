@@ -1995,10 +1995,10 @@ struct ChatView: View {
 
     private var showsShortcutNotice: Bool { showsShortcutProvenance || waitingShortcut != nil }
 
-    /// The draft holds text from Shortcuts, or nothing once Remove Hidden Characters took all of
-    /// it, which keeps its Undo.
+    /// The draft holds text from Shortcuts, or a removal of its hidden characters can still be
+    /// undone, even one that took all of it.
     private var showsShortcutProvenance: Bool {
-        isFromShortcut && (!draftMessage.isEmpty || textBeforeHiddenRemoval != nil)
+        (isFromShortcut && !draftMessage.isEmpty) || textBeforeHiddenRemoval != nil
     }
 
     private var shortcutNotice: some View {
@@ -2016,7 +2016,8 @@ struct ChatView: View {
                 guard let before = textBeforeHiddenRemoval else { return }
                 persistDraftEdit(before)
                 draftMessage = before
-                // A removal that emptied the draft dropped it, notice and all.
+                // A removal that emptied the draft ended its provenance.
+                isFromShortcut = true
                 draftStore.setFromShortcut(true, for: draftKey)
             },
             waiting: waitingShortcut,
@@ -2024,7 +2025,7 @@ struct ChatView: View {
         )
     }
 
-    /// The user dismissed the Shortcuts notice or sent its text.
+    /// The user dismissed the Shortcuts notice, deleted its text, or sent it.
     private func dismissShortcutNotice() {
         isFromShortcut = false
         textBeforeHiddenRemoval = nil
@@ -2925,6 +2926,7 @@ struct ChatView: View {
         ) {
             // The destination owns the retained work now; don't show a second
             // unsent copy when the user returns to the sealed parent.
+            if isFromShortcut { dismissShortcutNotice() }
             draftMessage = ""
             draftQuotes = []
             draftAttachmentsPendingRetry = []
@@ -3067,6 +3069,7 @@ struct ChatView: View {
     private func persistDraftEdit(_ text: String) {
         viewModel.clearSteerFailure()
         textBeforeHiddenRemoval = nil
+        if text.isEmpty, isFromShortcut { dismissShortcutNotice() }
         draftRevision &+= 1
         draftStore.setContent(
             ComposerDraftContent(text: text, quotes: draftQuotes),
@@ -3280,6 +3283,7 @@ struct ChatView: View {
         submittedDraftRevision: Int,
         preserveRejectedSubmission: Bool = false
     ) {
+        if isFromShortcut { dismissShortcutNotice() }
         let resolvedContent = draftStore.resolveConsumedInput(
             submitted: submittedContent,
             current: ComposerDraftContent(text: draftMessage, quotes: draftQuotes),
