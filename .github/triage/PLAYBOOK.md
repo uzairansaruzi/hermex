@@ -113,9 +113,13 @@ a second thread.
 
 ## 7. Offer outcomes
 
-Present what you found and let the user choose: fix it now, file an issue, comment on
-an existing one, or nothing. For fixes, prefer server configuration and settings in
-the app; propose exact commands, explain them, and run them only with approval.
+Present what you found, marking each claim as seen (a log line, a source line) or
+inferred. A log event that lines up in time is a candidate until the user confirms it
+matches what they saw, and a code path that could fail is not proof that it did.
+
+Then let the user choose: fix it now, file an issue, comment on an existing one, or
+nothing. For fixes, prefer server configuration and settings in the app; propose
+exact commands, explain them, and run them only with approval.
 
 Leave Hermex and Hermes source unpatched: a good issue with strong repro steps helps
 every user, a local patch helps one machine until the next update.
@@ -127,8 +131,8 @@ Its field ids, in order:
 
 - `what-happened`: the symptom in the user's words, plus expected behavior.
 - `repro`: numbered steps from a known state.
-- `diagnosis`: what you found and where in the source, with file paths relative to
-  the repo root and the tag you read.
+- `diagnosis`: what you found and where in the source, seen and inferred kept apart,
+  with file paths relative to the repo root and the tag you read.
 - `environment`: app version, build and channel; iOS version and device; server kind
   and release; how the phone reaches the server.
 - `evidence`: short, redacted log excerpts with timestamps.
