@@ -69,6 +69,7 @@ class SimulatorRunnerTests(unittest.TestCase):
             Path(command[command.index("-resultBundlePath") + 1]).mkdir()
             output.write_text("test log\n")
             self.xcodebuild_runs += 1
+            self.build_lock_fds = lock_fds
             return 65 if self.is_hung_run() else self.exit_code
         elif command[:3] == ["xcrun", "xcresulttool", "get"]:
             if self.is_hung_run():
@@ -321,6 +322,10 @@ class SimulatorRunnerTests(unittest.TestCase):
             self.assertEqual(self.xcodebuild_runs, 0)
             self.host_bytes = 32 * 1024 ** 3
             self.assertEqual(self.invoke(), 0)
+            self.assertEqual(len(self.build_lock_fds), 2, "A large Mac skips the host lock")
+        self.host_bytes = 16 * 1024 ** 3
+        self.assertEqual(self.invoke(), 0)
+        self.assertEqual(len(self.build_lock_fds), 3, "The build holds the host lock once it is free")
 
     def test_child_keeps_lock_until_it_exits(self):
         path = self.home / "SIM-A.lock"
