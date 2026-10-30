@@ -152,13 +152,17 @@ final class InsightsViewModel {
     private(set) var dataSource: InsightsDataSource = .local
     private(set) var fallbackReason: String?
     /// The provider quota cards above the window picker (#415). Empty until a
-    /// provider qualifies, and empty again the moment one stops qualifying.
+    /// provider qualifies. A card leaves once its provider leaves the selection
+    /// or the server says it no longer qualifies; a failed probe keeps it (#1408).
     private(set) var limitCards: [ProviderLimitCard] = []
     /// True only while quota probes for at least one candidate provider are in
     /// flight. It exists so the Limits slot can be reserved before the answers
     /// arrive instead of popping in and shoving the analytics down (#415), so a
     /// server with no keyed provider must never set it.
     private(set) var isLoadingLimits = false
+    /// The ids of the `limitCards` the latest refresh failed to update, so they
+    /// still show the last values loaded (#1408). Drives the Limits notice.
+    private(set) var staleLimitIDs: Set<String> = []
     private var activeLoadID: UUID?
     /// Same generation guard as `ProvidersViewModel`: quota has three
     /// overlapping entry points (`.task`, `.refreshable`, the toolbar button),
@@ -236,10 +240,11 @@ final class InsightsViewModel {
     /// account-limits probe can take several seconds upstream, and the chart
     /// must never wait on it.
     ///
-    /// Every failure here is silent. Quota is a bonus panel, so a 404 on an
-    /// older server, a decode failure, or a dead provider hides the group
-    /// rather than putting an error over the analytics the user came for —
-    /// which is why this never touches `errorMessage` or `lastError`.
+    /// Failures never reach `errorMessage` or `lastError`: quota is a bonus
+    /// panel, and must not put an error over the analytics the user came for.
+    /// A failure with nothing on screen stays silent. One with cards showing
+    /// keeps them as they were and marks them in `staleLimitIDs` (#1408), so a
+    /// network blip does not look like a vanished subscription.
     ///
     /// `refresh` bypasses the server's 45 s probe cache and belongs only to the
     /// toolbar button and pull-to-refresh.
@@ -260,44 +265,61 @@ final class InsightsViewModel {
         do {
             selection = providerQuotaSelection(from: try await client.providers())
         } catch {
-            // Nothing to correct the cards with — leave whatever is on screen.
+            // Nothing to correct the cards with: keep them, but say they may be old.
+            guard generation == limitsGeneration, !Task.isCancelled else { return }
+            staleLimitIDs = Set(limitCards.map(\.id))
             return
         }
 
         guard generation == limitsGeneration, !Task.isCancelled else { return }
         guard !selection.isEmpty else {
             limitCards = []
+            staleLimitIDs = []
             return
         }
 
         isLoadingLimits = true
 
         let fetchedAt = Date()
-        let cards = await withTaskGroup(of: (Int, ProviderLimitCard?).self) { group in
+        let probes = await withTaskGroup(of: (Int, LimitProbe).self) { group in
             for (index, provider) in selection.enumerated() {
                 group.addTask { [client] in
-                    guard let response = try? await client.providerQuota(provider: provider, refresh: refresh) else {
-                        return (index, nil)
+                    do {
+                        let response = try await client.providerQuota(provider: provider, refresh: refresh)
+                        return (index, LimitProbe(provider: provider, response: response, fetchedAt: fetchedAt))
+                    } catch {
+                        return (index, .failed)
                     }
-
-                    return (index, ProviderLimitCard(provider: provider, response: response, fetchedAt: fetchedAt))
-                }
-            }
-
-            var collected: [(Int, ProviderLimitCard)] = []
-            for await (index, card) in group {
-                if let card {
-                    collected.append((index, card))
                 }
             }
 
             // Selection order, not completion order: cards must not reshuffle
             // because one provider answered faster this time.
-            return collected.sorted { $0.0 < $1.0 }.map(\.1)
+            var probes = Array(repeating: LimitProbe.failed, count: selection.count)
+            for await (index, probe) in group {
+                probes[index] = probe
+            }
+            return probes
         }
 
         guard generation == limitsGeneration, !Task.isCancelled else { return }
+        var cards: [ProviderLimitCard] = []
+        var stale: Set<String> = []
+        for (provider, probe) in zip(selection, probes) {
+            switch probe {
+            case .card(let card):
+                cards.append(card)
+            case .gone:
+                break
+            case .failed:
+                if let previous = limitCards.first(where: { $0.id == provider }) {
+                    cards.append(previous)
+                    stale.insert(provider)
+                }
+            }
+        }
         limitCards = cards
+        staleLimitIDs = stale
     }
 
     /// What this server's insights report.
@@ -618,5 +640,31 @@ struct UsageTotalsCell: Identifiable, Equatable {
 private extension SessionSummary {
     var analyticsTimestamp: Double? {
         lastMessageAt ?? updatedAt ?? createdAt
+    }
+}
+
+/// What one refresh learned about one provider's limits (#1408). Only a status
+/// saying the server can't report this provider removes its card: `unsupported`
+/// (hermex-push and webui), `no_key` or `invalid_key` (webui). Anything else
+/// that is not a usable card is a failure and keeps the last one: a thrown
+/// request, an unknown status or empty payload, and `unavailable`, which both
+/// servers also answer when the provider's own API can't be reached.
+private enum LimitProbe {
+    case card(ProviderLimitCard)
+    case gone
+    case failed
+
+    init(provider: String, response: ProviderQuotaResponse, fetchedAt: Date) {
+        if let card = ProviderLimitCard(provider: provider, response: response, fetchedAt: fetchedAt) {
+            self = .card(card)
+            return
+        }
+
+        switch response.status?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "unsupported", "no_key", "invalid_key":
+            self = .gone
+        default:
+            self = .failed
+        }
     }
 }
