@@ -55,8 +55,9 @@ working and get fixes, and new features go to Hermes.
   plugin, Usage shows provider limits. ([#1077], [#1078], [#1080], [#1086],
   [#1242])
 - Listen to replies in the host's voice, or the phone's when the host can't
-  speak, with pause, scrub and speed in the app and on the Lock Screen.
-  Dictation uses the host's speech-to-text. ([#1082], [#1087], [#1246], [#1353])
+  speak. Pause and scrub in the app or on the Lock Screen, and change speed in
+  the app. Dictation uses the host's speech-to-text. ([#1082], [#1087],
+  [#1246], [#1353])
 - Update Hermes, and add, replace or remove a Profile's API keys, from
   Settings. ([#1083], [#1319])
 - Hermes sessions open from everywhere a webui session does: links that name
