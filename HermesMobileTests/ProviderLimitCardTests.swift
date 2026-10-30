@@ -462,7 +462,7 @@ private final class QuotaStubClient: InsightsDataClient {
     /// release the stale one first.
     private var heldContinuations: [Int: CheckedContinuation<Void, Never>] = [:]
     /// Tests in `waitForHeldQuota`, each with the parked-probe count it waits for.
-    private var parkWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    private var parkWaiters: [(count: Int, fulfill: () -> Void)] = []
 
     init(
         providers: ProvidersResponse?,
@@ -499,7 +499,7 @@ private final class QuotaStubClient: InsightsDataClient {
                 let parked = heldContinuations.count
                 let ready = parkWaiters.filter { $0.count <= parked }
                 parkWaiters.removeAll { $0.count <= parked }
-                ready.forEach { $0.continuation.resume() }
+                ready.forEach { $0.fulfill() }
             }
         }
 
@@ -510,7 +510,13 @@ private final class QuotaStubClient: InsightsDataClient {
     /// Returns once `count` probes are parked at the same time.
     func waitForHeldQuota(count: Int = 1) async {
         guard heldContinuations.count < count else { return }
-        await withCheckedContinuation { parkWaiters.append((count, $0)) }
+        // The bound only ends a broken pass: probes that never park would otherwise
+        // hold the test, and the runner, forever (#1475's CI hang).
+        let parked = XCTestExpectation(description: "\(count) quota probe(s) parked")
+        parkWaiters.append((count, parked.fulfill))
+        guard await XCTWaiter().fulfillment(of: [parked], timeout: 30) == .completed else {
+            return XCTFail("only \(heldContinuations.count) of \(count) quota probe(s) ever parked")
+        }
     }
 
     func releaseHeldQuota() {

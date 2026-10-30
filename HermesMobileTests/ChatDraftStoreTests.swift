@@ -1287,7 +1287,7 @@ private actor BlockingChatDraftPersistence: ChatDraftPersisting {
     private let initialDrafts: [ChatDraftKey: ChatDraft]
     private var latest: [ChatDraftKey: ChatDraft]
     private var loadStarted = false
-    private var loadStartContinuation: CheckedContinuation<Void, Never>?
+    private var loadStartWaiters: [() -> Void] = []
     private var loadReleaseContinuation: CheckedContinuation<Void, Never>?
 
     init(initialDrafts: [ChatDraftKey: ChatDraft]) {
@@ -1297,8 +1297,9 @@ private actor BlockingChatDraftPersistence: ChatDraftPersisting {
 
     func load() async -> [ChatDraftKey: ChatDraft] {
         loadStarted = true
-        loadStartContinuation?.resume()
-        loadStartContinuation = nil
+        let waiters = loadStartWaiters
+        loadStartWaiters.removeAll()
+        waiters.forEach { $0() }
         await withCheckedContinuation { continuation in
             loadReleaseContinuation = continuation
         }
@@ -1311,8 +1312,12 @@ private actor BlockingChatDraftPersistence: ChatDraftPersisting {
 
     func waitUntilLoadStarts() async {
         guard !loadStarted else { return }
-        await withCheckedContinuation { continuation in
-            loadStartContinuation = continuation
+        // The bound only ends a broken pass: a store that never loads would otherwise
+        // hold the test, and the runner, forever (#1475's CI hang).
+        let started = XCTestExpectation(description: "draft load started")
+        loadStartWaiters.append(started.fulfill)
+        guard await XCTWaiter().fulfillment(of: [started], timeout: 30) == .completed else {
+            return XCTFail("the draft store never started its load")
         }
     }
 
@@ -1328,7 +1333,7 @@ private actor BlockingChatDraftPersistence: ChatDraftPersisting {
 
 private actor RecordingChatDraftAttachmentStore: ChatDraftAttachmentStoring {
     private var sweeps: [(referenced: Set<String>, maxAge: TimeInterval)] = []
-    private var sweepContinuations: [CheckedContinuation<Void, Never>] = []
+    private var sweepWaiters: [() -> Void] = []
     private var deletes: [String] = []
 
     func save(data: Data, suggestedFilename: String) async throws -> String {
@@ -1349,19 +1354,22 @@ private actor RecordingChatDraftAttachmentStore: ChatDraftAttachmentStoring {
 
     func sweep(keepingReferenced fileNames: Set<String>, olderThan maxAge: TimeInterval) async {
         sweeps.append((fileNames, maxAge))
-        let continuations = sweepContinuations
-        sweepContinuations.removeAll()
-        for continuation in continuations {
-            continuation.resume()
-        }
+        let waiters = sweepWaiters
+        sweepWaiters.removeAll()
+        waiters.forEach { $0() }
     }
 
     func waitForSweep() async -> (referenced: Set<String>, maxAge: TimeInterval)? {
         if let first = sweeps.first {
             return first
         }
-        await withCheckedContinuation { continuation in
-            sweepContinuations.append(continuation)
+        // The bound only ends a broken pass: a store that never sweeps would otherwise
+        // hold the test, and the runner, forever (#1475's CI hang).
+        let swept = XCTestExpectation(description: "attachment sweep")
+        sweepWaiters.append(swept.fulfill)
+        guard await XCTWaiter().fulfillment(of: [swept], timeout: 30) == .completed else {
+            XCTFail("the draft store never swept its attachments")
+            return nil
         }
         return sweeps.first
     }
@@ -1412,7 +1420,7 @@ private actor RetentionTestPersistence: ChatDraftPersisting {
     private let failWrites: Bool
     private var blockFirstWrite: Bool
     private var started = false
-    private var startWaiter: CheckedContinuation<Void, Never>?
+    private var startWaiters: [() -> Void] = []
     private var releaseWaiter: CheckedContinuation<Void, Never>?
     init(drafts: [ChatDraftKey: ChatDraft], failWrites: Bool = false, blockFirstWrite: Bool = false) {
         self.drafts = drafts
@@ -1425,15 +1433,22 @@ private actor RetentionTestPersistence: ChatDraftPersisting {
         if blockFirstWrite {
             blockFirstWrite = false
             started = true
-            startWaiter?.resume()
-            startWaiter = nil
+            let waiters = startWaiters
+            startWaiters.removeAll()
+            waiters.forEach { $0() }
             await withCheckedContinuation { releaseWaiter = $0 }
         }
         self.drafts = drafts
     }
     func waitForWrite() async {
         if started { return }
-        await withCheckedContinuation { startWaiter = $0 }
+        // The bound only ends a broken pass: a store that never writes would otherwise
+        // hold the test, and the runner, forever (#1475's CI hang).
+        let written = XCTestExpectation(description: "draft write started")
+        startWaiters.append(written.fulfill)
+        guard await XCTWaiter().fulfillment(of: [written], timeout: 30) == .completed else {
+            return XCTFail("the draft store never started its write")
+        }
     }
     func releaseWrite() {
         releaseWaiter?.resume()

@@ -1058,12 +1058,18 @@ private actor PausingDrafts: ChatDraftPersisting {
     private(set) var values: [ChatDraftKey: ChatDraft] = [:]
     private var pausesNextWrite = false
     private var paused: CheckedContinuation<Void, Never>?
-    private var pauseWaiter: CheckedContinuation<Void, Never>?
+    private var pauseWaiters: [() -> Void] = []
 
     func pauseNextWrite() { pausesNextWrite = true }
     func waitUntilPaused() async {
         guard paused == nil else { return }
-        await withCheckedContinuation { pauseWaiter = $0 }
+        // The bound only ends a broken pass: a write that never pauses would otherwise
+        // hold the test, and the runner, forever (#1475's CI hang).
+        let pausedWrite = XCTestExpectation(description: "share's write paused")
+        pauseWaiters.append(pausedWrite.fulfill)
+        guard await XCTWaiter().fulfillment(of: [pausedWrite], timeout: 30) == .completed else {
+            return XCTFail("the share's write never paused")
+        }
     }
     func resume() {
         paused?.resume()
@@ -1074,8 +1080,9 @@ private actor PausingDrafts: ChatDraftPersisting {
     func write(_ drafts: [ChatDraftKey: ChatDraft]) async {
         if pausesNextWrite {
             pausesNextWrite = false
-            pauseWaiter?.resume()
-            pauseWaiter = nil
+            let waiters = pauseWaiters
+            pauseWaiters.removeAll()
+            waiters.forEach { $0() }
             await withCheckedContinuation { paused = $0 }
         }
         values = drafts
