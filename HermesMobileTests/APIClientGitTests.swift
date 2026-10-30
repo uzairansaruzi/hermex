@@ -609,6 +609,41 @@ extension APIClientGitTests {
             XCTAssertEqual(error.localizedDescription, String(localized: "Repository status unavailable"))
         }
     }
+
+    /// This Branch (#1386) reads the branch's range at the root. The host marks every row `M`,
+    /// added and deleted files too, so rows keep their counts but claim no kind, and each file's
+    /// diff asks for the same range.
+    @MainActor
+    func testAHermesBranchReviewReadsTheBranchRangeWithoutClaimingKinds() async throws {
+        let git = HermesGitHost.client(cwd: HermesGitHost.repository + "/Sources") { request in
+            guard request.url?.path == "/api/git/review/list" else { return HermesGitHost.repositoryReply(request, detached: true) }
+            return .json(200, .object(["base": .string("1a2b3c"), "files": .array([
+                .object(["path": .string("Sources/New.swift"), "added": .number(12), "removed": .number(0),
+                         "status": .string("M"), "staged": .bool(false)]),
+                .object(["path": .string("Old.swift"), "added": .number(0), "removed": .number(7),
+                         "status": .string("M"), "staged": .bool(false)])
+            ])]))
+        }
+
+        let loaded = try await git.branchReview()
+        let review = try XCTUnwrap(loaded)
+        let diff = try await git.diff(for: try XCTUnwrap(review.files.first), in: .branch)
+
+        let list = try XCTUnwrap(HermesGitHost.requests.first { $0.url?.path == "/api/git/review/list" })
+        XCTAssertEqual(HermesGitHost.query(list, "path"), HermesGitHost.repository)
+        XCTAssertEqual(HermesGitHost.query(list, "scope"), "branch")
+        let diffRequest = try XCTUnwrap(HermesGitHost.requests.last)
+        XCTAssertEqual(diffRequest.url?.path, "/api/git/review/diff")
+        XCTAssertEqual(HermesGitHost.query(diffRequest, "path"), HermesGitHost.repository)
+        XCTAssertEqual(HermesGitHost.query(diffRequest, "file"), "Sources/New.swift")
+        XCTAssertEqual(HermesGitHost.query(diffRequest, "scope"), "branch")
+        XCTAssertEqual(review.base, "1a2b3c")
+        XCTAssertTrue(review.detached)
+        XCTAssertEqual(review.files.map(\.displayPath), ["Sources/New.swift", "Old.swift"])
+        XCTAssertEqual(review.files.map { [$0.additions, $0.deletions] }, [[12, 0], [0, 7]])
+        XCTAssertEqual(review.files.map(\.changeKind), [.unknown, .unknown])
+        XCTAssertEqual(diff?.diff, HermesGitHost.diffText(for: "Sources/New.swift"))
+    }
 }
 
 // MARK: - Hermes writes (#1115)

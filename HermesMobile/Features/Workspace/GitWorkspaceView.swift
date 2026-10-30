@@ -1,5 +1,8 @@
 import SwiftUI
 
+/// The Changes sheet: the working tree's uncommitted files and, on a Hermes host, what the branch
+/// committed since its base (This Branch, #1386). Each opens every listed file in one `GitDiffView`
+/// at the tapped one. It only reads: writes live in the commit sheet and the Git menu.
 struct GitWorkspaceView: View {
     let onAPIError: (Error) -> Void
     /// Forwarded to the diff surface so a line selection can land in the composer.
@@ -8,13 +11,23 @@ struct GitWorkspaceView: View {
     private let git: (any GitDataClient)?
     private let progress: ReviewProgressStore
     @State private var viewModel: GitWorkspaceViewModel
-    @State private var selectedFile: GitFile?
+    @State private var openedReview: OpenedReview?
     /// The latest Try Again load, cancelled by the next one and when the sheet closes.
     @State private var retryTask: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
 
+    /// The tapped file with the rows and range it was listed in.
+    private struct OpenedReview: Identifiable {
+        let file: GitFile
+        let files: [GitFile]
+        let scope: GitReviewScope
+        let base: String?
+
+        var id: String { "\(scope)|\(file.id)" }
+    }
+
     /// `git` is the chat's repository client, shared with its toolbar menu; `progress` is the
-    /// chat's review progress, which each complete status read prunes.
+    /// chat's review progress, which each complete read of a scope prunes within that scope.
     init(
         git: (any GitDataClient)?,
         progress: ReviewProgressStore,
@@ -39,7 +52,8 @@ struct GitWorkspaceView: View {
                         Button("Done") { dismiss() }
                     }
                 }
-                .task {
+                // A switch cancels the other scope's read, which then publishes nothing.
+                .task(id: viewModel.scope) {
                     await viewModel.loadIfNeeded()
                     handleLastError()
                 }
@@ -47,12 +61,13 @@ struct GitWorkspaceView: View {
         .onDisappear { retryTask?.cancel() }
         .presentationDetents([.medium, .large])
         .adaptivePagePresentation()
-        .sheet(item: $selectedFile) { file in
-            // Every changed file in one surface, opened at the tapped one.
+        .sheet(item: $openedReview) { opened in
             GitDiffView(
                 git: git,
-                files: viewModel.status?.trackedFiles ?? [file],
-                initialFile: file,
+                files: opened.files,
+                initialFile: opened.file,
+                scope: opened.scope,
+                base: opened.base,
                 progress: progress,
                 onAPIError: onAPIError,
                 onAddToPrompt: onAddToPrompt
@@ -62,31 +77,76 @@ struct GitWorkspaceView: View {
 
     @ViewBuilder
     private var content: some View {
-        if viewModel.isLoading && viewModel.status == nil {
-            ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if viewModel.errorMessage != nil && viewModel.status == nil {
+        if viewModel.showsScopePicker {
+            VStack(spacing: 0) {
+                Picker("Changes", selection: $viewModel.scope) {
+                    Text("Uncommitted").tag(GitReviewScope.uncommitted)
+                    Text("This Branch").tag(GitReviewScope.branch)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+
+                switch viewModel.scope {
+                case .uncommitted: uncommittedContent
+                case .branch: branchContent
+                }
+            }
+        } else {
+            uncommittedContent
+        }
+    }
+
+    @ViewBuilder
+    private var uncommittedContent: some View {
+        if viewModel.errorMessage != nil && viewModel.status == nil {
             unavailable("Could Not Load Changes", image: "exclamationmark.triangle", detail: viewModel.errorMessage) {
                 retry()
             }
         } else if viewModel.isNonRepository {
-            ContentUnavailableView(
-                "Not a Git Repository",
-                systemImage: "folder.badge.questionmark",
-                description: Text("Git actions are unavailable for this workspace.")
-            )
+            notARepository
         } else if let status = viewModel.status {
             statusContent(status)
         } else {
-            unavailable("Could Not Load Changes", image: "exclamationmark.triangle", detail: viewModel.errorMessage) {
+            loading
+        }
+    }
+
+    @ViewBuilder
+    private var branchContent: some View {
+        if viewModel.branchErrorMessage != nil && viewModel.branchReview == nil {
+            unavailable("Could Not Load Changes", image: "exclamationmark.triangle", detail: viewModel.branchErrorMessage) {
                 retry()
             }
+        } else if let review = viewModel.branchReview {
+            branchReviewContent(review)
+        } else if viewModel.hasLoadedBranch && !viewModel.isLoadingBranch {
+            notARepository
+        } else {
+            loading
         }
+    }
+
+    private var loading: some View {
+        ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var notARepository: some View {
+        ContentUnavailableView(
+            "Not a Git Repository",
+            systemImage: "folder.badge.questionmark",
+            description: Text("Git actions are unavailable for this workspace.")
+        )
     }
 
     private func statusContent(_ status: GitStatus) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
-                summaryHeader(status)
+                summaryHeader(changed: status.changedCount, additions: status.totalAdditions,
+                              deletions: status.totalDeletions, branch: status.branch) {
+                    GitAheadBehindBadges(ahead: status.ahead ?? 0, behind: status.behind ?? 0)
+                }
 
                 if status.trackedFiles.isEmpty {
                     ContentUnavailableView(
@@ -97,14 +157,7 @@ struct GitWorkspaceView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 36)
                 } else {
-                    ForEach(status.trackedFiles) { file in
-                        Button {
-                            selectedFile = file
-                        } label: {
-                            GitFileCard(file: file)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    fileCards(status.trackedFiles, scope: .uncommitted, base: nil)
                 }
 
                 if status.truncated == true {
@@ -120,23 +173,83 @@ struct GitWorkspaceView: View {
         .refreshable { await reload() }
     }
 
-    private func summaryHeader(_ status: GitStatus) -> some View {
+    /// The branch's committed files. The host doesn't say which branch it took the base from, so
+    /// the header never names one.
+    private func branchReviewContent(_ review: GitBranchReview) -> some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 12) {
+                summaryHeader(changed: review.files.count, additions: review.totalAdditions,
+                              deletions: review.totalDeletions, branch: review.branch,
+                              note: review.base == nil ? nil : "Compared with branch base") {
+                    if review.detached { GitDetachedChip() }
+                }
+
+                if review.files.isEmpty {
+                    Group {
+                        if review.base == nil {
+                            ContentUnavailableView("No base branch found", systemImage: "arrow.triangle.branch")
+                        } else {
+                            ContentUnavailableView(
+                                "No Changes",
+                                systemImage: "checkmark.circle",
+                                description: Text("No committed changes against the branch base.")
+                            )
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 36)
+                } else {
+                    fileCards(review.files, scope: .branch, base: review.base)
+                }
+            }
+            .padding(16)
+        }
+        .refreshable { await reload() }
+    }
+
+    private func fileCards(_ files: [GitFile], scope: GitReviewScope, base: String?) -> some View {
+        ForEach(files) { file in
+            Button {
+                openedReview = OpenedReview(file: file, files: files, scope: scope, base: base)
+            } label: {
+                GitFileCard(file: file)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// The file count and totals, then the branch (`HEAD` when it has no name) with `accessory`
+    /// at its end, then `note`.
+    private func summaryHeader(
+        changed: Int,
+        additions: Int,
+        deletions: Int,
+        branch: String?,
+        note: LocalizedStringKey? = nil,
+        @ViewBuilder accessory: () -> some View
+    ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("\(status.changedCount) files changed")
+                Text("\(changed) files changed")
                     .font(AppFont.subheadline(weight: .semibold))
                 Spacer()
-                DiffCountsLabel(additions: status.totalAdditions, deletions: status.totalDeletions)
+                DiffCountsLabel(additions: additions, deletions: deletions)
             }
 
             HStack(spacing: 8) {
                 Image(systemName: "arrow.triangle.branch").foregroundStyle(.secondary)
-                Text(status.branch ?? "HEAD")
+                Text(branch ?? "HEAD")
                     .font(AppFont.mono(style: .subheadline))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
-                GitAheadBehindBadges(ahead: status.ahead ?? 0, behind: status.behind ?? 0)
+                accessory()
+            }
+
+            if let note {
+                Text(note)
+                    .font(AppFont.footnote())
+                    .foregroundStyle(.secondary)
             }
         }
         .accessibilityElement(children: .combine)
@@ -169,6 +282,18 @@ struct GitWorkspaceView: View {
 
     private func handleLastError() {
         if let lastError = viewModel.lastError { onAPIError(lastError) }
+    }
+}
+
+/// "Detached", beside a detached HEAD's name.
+private struct GitDetachedChip: View {
+    var body: some View {
+        Text("Detached")
+            .font(AppFont.caption2(weight: .semibold))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.secondary.opacity(0.18), in: Capsule())
+            .foregroundStyle(.secondary)
     }
 }
 

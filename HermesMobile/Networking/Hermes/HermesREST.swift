@@ -254,6 +254,13 @@ enum HermesREST: Equatable, Sendable {
     case gitDiff(repository: String, file: String, staged: Bool)
     /// `{diff}`: one file's whole change against HEAD, staged and worktree edits together.
     case gitFileDiff(repository: String, file: String)
+    /// `{files: [{path, added, removed, status: "M", staged: false}], base}`: what the branch
+    /// committed since its merge-base with the first of origin/HEAD, origin/main, origin/master,
+    /// main and master that has one (#1386), or no files and a null base without one. The host
+    /// picks the base itself and ignores one sent.
+    case gitBranchChanges(repository: String)
+    /// `{diff}`: one file's diff over the branch's range, empty without a base.
+    case gitBranchDiff(repository: String, file: String)
     // Repository writes (#1115): each answers `{ok}`, or 400 `{detail}` with git's stderr. The
     // host hands `file` to git as a pathspec, where `*` matches other files and `.` or no file the
     // whole tree, so a file goes out literal (`:(literal)file`) and one that isn't a single
@@ -587,6 +594,13 @@ enum HermesREST: Equatable, Sendable {
         case .gitFileDiff(let repository, let file):
             return try Self.pathQuery(base, "api/git/file-diff", [URLQueryItem(name: "path", value: repository),
                                                                   URLQueryItem(name: "file", value: file)])
+        case .gitBranchChanges(let repository):
+            return try Self.pathQuery(base, "api/git/review/list", [URLQueryItem(name: "path", value: repository),
+                                                                    URLQueryItem(name: "scope", value: "branch")])
+        case .gitBranchDiff(let repository, let file):
+            return try Self.pathQuery(base, "api/git/review/diff", [URLQueryItem(name: "path", value: repository),
+                                                                    URLQueryItem(name: "file", value: file),
+                                                                    URLQueryItem(name: "scope", value: "branch")])
         case .gitStage(let repository, let file):
             return try Self.gitWrite(base, "api/git/review/stage", repository: repository, file: file)
         case .gitUnstage(let repository, let file):

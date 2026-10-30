@@ -214,6 +214,30 @@ extension GitFile {
     }
 }
 
+// MARK: - Review scope (#1386)
+
+/// Which changes the Changes sheet reviews: the working tree's uncommitted ones, or what the
+/// branch committed since it left its base (a Hermes host's `scope=branch`).
+enum GitReviewScope: Hashable {
+    case uncommitted
+    case branch
+}
+
+/// A Hermes branch's committed changes, against the merge-base the host picked itself.
+struct GitBranchReview: Equatable {
+    /// Root-relative rows with their counts. The host marks every row `M`, added and deleted files
+    /// too, so none claims a kind (`changeKind` is `.unknown`) or a worktree flag.
+    let files: [GitFile]
+    /// The merge-base commit; nil when the host found no base branch.
+    let base: String?
+    /// Nil on a detached HEAD.
+    let branch: String?
+    let detached: Bool
+
+    var totalAdditions: Int { files.reduce(0) { $0 + ($1.additions ?? 0) } }
+    var totalDeletions: Int { files.reduce(0) { $0 + ($1.deletions ?? 0) } }
+}
+
 // MARK: - git/branches (decoded + tested now; interactive picker is Slice B)
 
 struct GitBranchesResponse: Decodable, Equatable {

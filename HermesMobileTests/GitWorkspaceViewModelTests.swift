@@ -673,6 +673,116 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(moved.currentBranchName, "other-main")
     }
 
+    // MARK: - This Branch (#1386)
+
+    /// `review/list?scope=branch`'s answer: `files` changed since `base`, or none with a null base
+    /// when the host found no base branch.
+    private static func branchReply(base: String?, files: [String] = []) -> HermesHostFixture.Reply {
+        .json(200, .object(["base": base.map(BotJSON.string) ?? .null, "files": .array(files.map {
+            .object(["path": .string($0), "added": .number(1), "removed": .number(0), "status": .string("M"), "staged": .bool(false)])
+        })]))
+    }
+
+    /// A failed read stays a retryable failure, never an empty range; an empty answer without a
+    /// base means no base branch was found, and one with a base that nothing was committed since.
+    @MainActor
+    func testThisBranchTellsAFailureFromNoBaseAndFromAnEmptyRange() async throws {
+        var list: HermesHostFixture.Reply = .json(500, .object(["detail": .string("boom")]))
+        let git = HermesGitHost.client { request in
+            request.url?.path == "/api/git/review/list" ? list : HermesGitHost.repositoryReply(request)
+        }
+        let changes = GitWorkspaceViewModel(git: git)
+        changes.scope = .branch
+
+        await changes.loadIfNeeded()
+        XCTAssertNil(changes.branchReview)
+        XCTAssertNotNil(changes.branchErrorMessage)
+
+        HermesHostFixture.script { list = Self.branchReply(base: nil) }
+        await changes.loadIfNeeded()
+        let noBase = try XCTUnwrap(changes.branchReview)
+        XCTAssertNil(changes.branchErrorMessage)
+        XCTAssertNil(noBase.base)
+        XCTAssertEqual(noBase.files, [])
+
+        HermesHostFixture.script { list = Self.branchReply(base: "1a2b3c") }
+        await changes.load()
+        XCTAssertEqual(changes.branchReview?.base, "1a2b3c")
+        XCTAssertEqual(changes.branchReview?.files, [])
+    }
+
+    /// A refresh that answers first wins: the older read's late rows never replace it.
+    @MainActor
+    func testAnOlderBranchReadLandingLateIsDiscarded() async throws {
+        nonisolated(unsafe) var lists = 0
+        let git = HermesGitHost.client { request in
+            guard request.url?.path == "/api/git/review/list" else { return HermesGitHost.repositoryReply(request) }
+            lists += 1
+            return lists == 1 ? .park : Self.branchReply(base: "1a2b3c", files: ["new.swift"])
+        }
+        let changes = GitWorkspaceViewModel(git: git)
+        changes.scope = .branch
+        let parked = expectation(description: "The first read waits")
+        HermesHostFixture.onPark = { parked.fulfill() }
+
+        let first = Task { await changes.load() }
+        await fulfillment(of: [parked], timeout: 5)
+        await changes.load()
+        HermesHostFixture.releaseParked(Self.branchReply(base: "0f0f0f", files: ["old.swift"]), path: "/api/git/review/list")
+        await first.value
+
+        XCTAssertEqual(changes.branchReview?.files.map(\.displayPath), ["new.swift"])
+    }
+
+    /// Leaving This Branch mid-read cancels it, as the sheet's `.task(id:)` does: it shows no
+    /// error, and coming back reads the branch again.
+    @MainActor
+    func testABranchReadCancelledByAScopeSwitchIsReadAgainOnReturn() async throws {
+        nonisolated(unsafe) var lists = 0
+        let git = HermesGitHost.client { request in
+            guard request.url?.path == "/api/git/review/list" else { return HermesGitHost.repositoryReply(request) }
+            lists += 1
+            return lists == 1 ? .park : Self.branchReply(base: "1a2b3c", files: ["a.swift"])
+        }
+        let changes = GitWorkspaceViewModel(git: git)
+        changes.scope = .branch
+        let parked = expectation(description: "The first read waits")
+        HermesHostFixture.onPark = { parked.fulfill() }
+
+        let first = Task { await changes.loadIfNeeded() }
+        await fulfillment(of: [parked], timeout: 5)
+        first.cancel()
+        await first.value
+        XCTAssertNil(changes.branchErrorMessage)
+        XCTAssertFalse(changes.isLoadingBranch)
+
+        await changes.loadIfNeeded()
+        XCTAssertEqual(lists, 2)
+        XCTAssertEqual(changes.branchReview?.files.map(\.displayPath), ["a.swift"])
+    }
+
+    /// Branch progress lives under its own key: the working tree's status never prunes it, and a
+    /// branch read forgets only the branch files it no longer lists.
+    @MainActor
+    func testBranchReviewProgressIsKeptApartFromUncommittedProgress() async throws {
+        let git = HermesGitHost.client { request in
+            HermesGitHost.query(request, "scope") == "branch"
+                ? Self.branchReply(base: "1a2b3c", files: ["kept.swift"]) : HermesGitHost.repositoryReply(request)
+        }
+        let progress = ReviewProgressStore()
+        let branchScope = git.progressScope(.branch, base: "1a2b3c")
+        progress.update("kept.swift", in: branchScope) { $0.isCollapsed = true }
+        progress.update("gone.swift", in: branchScope) { $0.isCollapsed = true }
+        let changes = GitWorkspaceViewModel(git: git, progress: progress)
+
+        await changes.load()
+        XCTAssertEqual(Set(progress.files(in: branchScope).keys), ["kept.swift", "gone.swift"])
+
+        changes.scope = .branch
+        await changes.load()
+        XCTAssertEqual(Array(progress.files(in: branchScope).keys), ["kept.swift"])
+    }
+
     // MARK: - Diff parsing
 
     func testDiffParserDropsPreambleAndClassifiesLines() {

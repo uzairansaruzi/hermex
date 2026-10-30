@@ -1253,6 +1253,15 @@ panel (#1113) and Git (#1114) read the same context.
   instead. The turn-end refresh and the
   Changes card work as on webui. A `cwd` or backend change closes an open Git sheet and reads the
   new folder's repository.
+- **This Branch (#1386).** The Changes sheet's "Uncommitted | This Branch" control, Hermes only,
+  reads `git/review/list?scope=branch` and `git/review/diff?scope=branch` at the root. The host
+  picks the merge-base itself (the first of origin/HEAD, origin/main, origin/master, main and
+  master that has one) and ignores a `base` sent; no base answers no files and `base: null`
+  ("No base branch found"). Every row is `status: "M", staged: false`, added and deleted files
+  too, so rows carry counts only and no kind chip; the branch name and detached flag come from
+  `git/status`. Each scope keeps its own state, and branch review progress is keyed by the
+  repository plus the merge-base (`GitDataClient.progressScope`), so the working tree's status
+  never prunes it. Read-only: writes stay on the commit sheet and the Git menu.
 - **Git writes (#1115).** Stage Changes, Commit, Commit & Push, Push and the inline commit button
   go through `HermesGitClient` too, on `git/review/stage|unstage|revert|commit|push` with
   `path=<root>`, each `{ok}` or 400 `{detail}`. The host guards none of it, so the client does.

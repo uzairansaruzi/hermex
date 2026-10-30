@@ -1,11 +1,16 @@
 import Foundation
 
-/// Loads read-only git status for a chat's repository (issue #312, Slice A; Hermes #1114).
+/// Loads read-only git status for a chat's repository (issue #312, Slice A; Hermes #1114), and on a
+/// Hermes host the branch's committed changes too (This Branch, #1386).
 ///
 /// State is per repository client: a webui session's (`WebUIGitClient`, which only ever sends
 /// that session's `session_id`, so the server resolves the workspace path) or a Hermes chat's
 /// folder (`HermesGitClient`). Two sessions on the same folder therefore see the same git
 /// state; different folders see independent state.
+///
+/// Each scope keeps its own result, loading and error state, so neither's answer shows under the
+/// other. Within a scope only the newest read publishes, and a cancelled one (the sheet closed, or
+/// its `.task(id:)` moved to the other scope) publishes nothing, so coming back reads again.
 @Observable
 final class GitWorkspaceViewModel {
     /// Nil for a webui session without an ID.
@@ -13,11 +18,25 @@ final class GitWorkspaceViewModel {
     /// The chat's review progress, pruned to each successful status read (`ReviewProgressStore`).
     private let progress: ReviewProgressStore?
 
+    /// The picker's selection. Each sheet opens on Uncommitted.
+    var scope: GitReviewScope = .uncommitted
+
     private(set) var status: GitStatus?
     private(set) var isLoading = false
     private(set) var errorMessage: String?
+    /// The failure of the latest `load()` or `loadIfNeeded()`, for the sheet to report once.
     private(set) var lastError: Error?
     private var hasLoaded = false
+
+    /// This Branch's last answer; nil until one lands, and after one from outside a repository.
+    private(set) var branchReview: GitBranchReview?
+    private(set) var isLoadingBranch = false
+    private(set) var branchErrorMessage: String?
+    private(set) var hasLoadedBranch = false
+
+    /// Bumped by each read of its scope; a read publishes only while it is still the latest.
+    private var statusRead = 0
+    private var branchRead = 0
 
     init(git: (any GitDataClient)?, progress: ReviewProgressStore? = nil) {
         self.git = git
@@ -39,38 +58,82 @@ final class GitWorkspaceViewModel {
         status?.isGit == true
     }
 
+    /// Whether the sheet offers This Branch: a Hermes repository, since webui has no branch range.
+    var showsScopePicker: Bool {
+        git?.isHermes == true && hasRepository
+    }
+
+    /// Reads the selected scope unless it has loaded.
     @MainActor
     func loadIfNeeded() async {
-        guard !hasLoaded, !isLoading else { return }
+        lastError = nil
+        switch scope {
+        case .uncommitted: guard !hasLoaded else { return }
+        case .branch: guard !hasLoadedBranch else { return }
+        }
         await load()
     }
 
-    /// A load cancelled while it waits (its sheet closed, or a newer retry replaced it) writes
-    /// nothing when it returns, so it never prunes choices made in a sheet opened since.
+    /// Reads the selected scope again. A load cancelled while it waits (its sheet closed, or a
+    /// newer retry replaced it) writes nothing when it returns, so it never prunes choices made
+    /// in a sheet opened since.
     @MainActor
     func load() async {
+        switch scope {
+        case .uncommitted: await loadStatus()
+        case .branch: await loadBranch()
+        }
+    }
+
+    @MainActor
+    private func loadStatus() async {
         guard let git else {
             errorMessage = String(localized: "Session ID is missing.")
             return
         }
-
+        statusRead += 1
+        let read = statusRead
         isLoading = true
         errorMessage = nil
         lastError = nil
+        defer { if read == statusRead { isLoading = false } }
 
         do {
             let loaded = try await git.status()
-            guard !Task.isCancelled else { return }
+            guard read == statusRead, !Task.isCancelled else { return }
             status = loaded
             hasLoaded = true
             progress?.prune(to: loaded, in: git.reviewScope)
         } catch {
-            guard !Task.isCancelled else { return }
+            guard read == statusRead, !Task.isCancelled else { return }
             lastError = error
             errorMessage = error.localizedDescription
         }
+    }
 
-        isLoading = false
+    /// A failure is retryable and keeps the last answer; branch progress is pruned within its own
+    /// range (`GitDataClient.progressScope`), never by the working tree's status.
+    @MainActor
+    private func loadBranch() async {
+        guard let git else { return }
+        branchRead += 1
+        let read = branchRead
+        isLoadingBranch = true
+        branchErrorMessage = nil
+        lastError = nil
+        defer { if read == branchRead { isLoadingBranch = false } }
+
+        do {
+            let review = try await git.branchReview()
+            guard read == branchRead, !Task.isCancelled else { return }
+            branchReview = review
+            hasLoadedBranch = true
+            if let review { progress?.prune(toListed: review.files, in: git.progressScope(.branch, base: review.base)) }
+        } catch {
+            guard read == branchRead, !Task.isCancelled else { return }
+            lastError = error
+            branchErrorMessage = error.localizedDescription
+        }
     }
 }
 

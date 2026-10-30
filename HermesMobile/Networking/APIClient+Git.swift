@@ -12,6 +12,12 @@ protocol GitDataClient: Sendable {
     func status() async throws -> GitStatus?
     /// One changed file's diff, of the kind `GitFile.preferredDiffKind` names where it is known.
     func diff(for file: GitFile) async throws -> GitDiff?
+    /// The branch's committed changes against its base (#1386); nil outside a repository. Only a
+    /// Hermes host has them: webui throws `GitReviewScopeUnsupported`.
+    func branchReview() async throws -> GitBranchReview?
+    /// One file's diff in `scope`: `diff(for:)` for uncommitted changes, the branch's range for a
+    /// branch row.
+    func diff(for file: GitFile, in scope: GitReviewScope) async throws -> GitDiff?
     /// The repository a chat's review progress is kept under (`ReviewProgressStore`): the session
     /// on webui; the server, Profile, session and folder on a Hermes host. Never shown, logged or
     /// persisted.
@@ -59,7 +65,27 @@ extension GitDataClient {
     var isHermes: Bool { false }
 
     @MainActor var writeLock: GitWriteLock? { nil }
+
+    func branchReview() async throws -> GitBranchReview? { throw GitReviewScopeUnsupported() }
+
+    func diff(for file: GitFile, in scope: GitReviewScope) async throws -> GitDiff? {
+        guard scope == .uncommitted else { throw GitReviewScopeUnsupported() }
+        return try await diff(for: file)
+    }
+
+    /// The `ReviewProgressStore` key for a review in `scope`: `reviewScope` for uncommitted changes;
+    /// for a branch, that key with the merge-base its rows were read against, so neither range's
+    /// progress or pruning reaches the other's and a moved base starts afresh.
+    func progressScope(_ scope: GitReviewScope, base: String?) -> String {
+        switch scope {
+        case .uncommitted: reviewScope
+        case .branch: "\(reviewScope)|branch|\(base ?? "")"
+        }
+    }
 }
+
+/// A review scope this repository's server can't read: webui has no branch range.
+struct GitReviewScopeUnsupported: Error {}
 
 /// One Hermes repository's write in flight (#1115). The Git menu's quick commit and push, the
 /// composer's branch switch (#1116) and the commit sheet's stage, unstage, discard and commit each

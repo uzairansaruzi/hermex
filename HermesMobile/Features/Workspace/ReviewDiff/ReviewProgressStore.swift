@@ -30,6 +30,12 @@ import Foundation
     /// capped or unknown list, or a folder outside a repository proves nothing.
     func prune(to status: GitStatus?, in scope: String) {
         guard let status, status.isGit == true, status.truncated == false, let files = status.files else { return }
+        prune(toListed: files, in: scope)
+    }
+
+    /// Forgets the files a whole list of `scope`'s changes no longer names, as a branch's
+    /// `review/list` is (#1386).
+    func prune(toListed files: [GitFile], in scope: String) {
         let listed = Set(files.map(\.id))
         scopes[scope] = scopes[scope]?.filter { listed.contains($0.key) }
     }

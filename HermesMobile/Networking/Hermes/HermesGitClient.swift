@@ -15,7 +15,8 @@ import Foundation
 /// (`WriteOwner`). Each successful write answers the status read again. A branch switch (#1116)
 /// is a write too, refused while the tree has any uncommitted change. Fetch, pull and New Branch
 /// (#1236) go through the host's hermex-push plugin, the only place they exist, and show only
-/// while it lists their routes (`supportsSync()`).
+/// while it lists their routes (`supportsSync()`). This Branch (#1386) reads the branch's committed
+/// range through the same review routes, read-only.
 ///
 /// Neither the root nor git's own output (a refusal's `detail`, which can name host paths) reaches
 /// the screen or a log. Checked at the `HERMES_AGENT_TESTED_SHA` pin (ca678285) in
@@ -103,13 +104,51 @@ import Foundation
         let kind = wholeChange ? nil : file.preferredDiffKind
         let request: HermesREST = wholeChange ? .gitFileDiff(repository: root, file: path)
             : .gitDiff(repository: root, file: path, staged: kind == "staged")
-        // A missing diff stays nil, so it shows as no changes but has no patch to mark viewed.
         let text = try Self.json(try await send(request))["diff"].text
         if wholeChange, text?.isEmpty != false, file.changeKind == .added {
             return try await currentContent(of: path, root: root)
         }
-        let tooLarge = (text?.utf8.count ?? 0) > Self.maximumDiffBytes
-        return GitDiff(path: path, kind: kind, binary: Self.isBinary(text ?? ""),
+        return Self.diff(text, path: path, kind: kind)
+    }
+
+    /// This Branch (#1386): `review/list`'s branch rows, with the branch name and detached flag
+    /// from `git/status`. Nil outside a repository.
+    func branchReview() async throws -> GitBranchReview? {
+        guard let root = try await repositoryRoot() else { return nil }
+        async let summary = send(.gitStatus(repository: root))
+        async let changes = send(.gitBranchChanges(repository: root))
+        let (summaryBody, changesBody) = try await (summary, changes)
+        return Self.branchReview(summary: try Self.json(summaryBody), changes: try Self.json(changesBody))
+    }
+
+    /// A branch row's diff over the branch's range, skipping the staged and worktree choice
+    /// `diff(for:)` makes for an uncommitted one.
+    func diff(for file: GitFile, in scope: GitReviewScope) async throws -> GitDiff? {
+        guard scope == .branch else { return try await diff(for: file) }
+        guard let root = try await repositoryRoot() else { return nil }
+        let path = file.displayPath
+        let text = try Self.json(try await send(.gitBranchDiff(repository: root, file: path)))["diff"].text
+        return Self.diff(text, path: path, kind: nil)
+    }
+
+    /// `git/status` and the branch's `review/list` as one `GitBranchReview`. Rows keep only their
+    /// path and counts: the host's `M` and `staged: false` say nothing about the change.
+    nonisolated static func branchReview(summary: BotJSON, changes: BotJSON) -> GitBranchReview? {
+        guard summary.fields != nil else { return nil }
+        let files = (changes["files"].list ?? []).compactMap { row -> GitFile? in
+            guard let path = row["path"].text, !path.isEmpty else { return nil }
+            return GitFile(path: path, status: nil, staged: nil, unstaged: nil, untracked: nil, conflict: nil,
+                           additions: row["added"].integer, deletions: row["removed"].integer)
+        }
+        return GitBranchReview(files: files, base: text(changes["base"]), branch: summary["branch"].text,
+                               detached: summary["detached"].flag == true)
+    }
+
+    /// A diff's text as a `GitDiff`, too large past `maximumDiffBytes`. A missing diff stays nil,
+    /// so it shows as no changes but has no patch to mark viewed.
+    private static func diff(_ text: String?, path: String, kind: String?) -> GitDiff {
+        let tooLarge = (text?.utf8.count ?? 0) > maximumDiffBytes
+        return GitDiff(path: path, kind: kind, binary: isBinary(text ?? ""),
                        tooLarge: tooLarge, additions: nil, deletions: nil, diff: tooLarge ? nil : text)
     }
 

@@ -18,6 +18,8 @@ struct GitDiffView: View {
     private let git: (any GitDataClient)?
     private let files: [GitFile]
     private let initialFile: GitFile?
+    /// The range `files` were listed in, which each diff reads (#1386).
+    private let scope: GitReviewScope
 
     @State private var rows: [ReviewDiffRow] = []
     @State private var rowsVersion = 0
@@ -34,10 +36,14 @@ struct GitDiffView: View {
 
     private static let maxConcurrentDiffLoads = 4
 
+    /// `scope` is the range `files` were listed in, and `base` the merge-base a branch's list was
+    /// read against, which keys its review progress apart (`GitDataClient.progressScope`).
     init(
         git: (any GitDataClient)?,
         files: [GitFile],
         initialFile: GitFile? = nil,
+        scope: GitReviewScope = .uncommitted,
+        base: String? = nil,
         progress: ReviewProgressStore,
         onAPIError: @escaping (Error) -> Void,
         onAddToPrompt: ((String) -> Void)? = nil
@@ -45,10 +51,12 @@ struct GitDiffView: View {
         self.git = git
         self.files = files
         self.initialFile = initialFile
+        self.scope = scope
         self.onAPIError = onAPIError
         self.onAddToPrompt = onAddToPrompt
         _scrollTarget = State(initialValue: initialFile.map { ReviewDiffScrollTarget(fileID: $0.id, token: UUID()) })
-        _review = State(initialValue: ReviewDiffProgress(files: files, initialFile: initialFile, store: progress, scope: git?.reviewScope))
+        let progressScope = git?.progressScope(scope, base: base)
+        _review = State(initialValue: ReviewDiffProgress(files: files, initialFile: initialFile, store: progress, scope: progressScope))
     }
 
     private var title: String {
@@ -175,7 +183,7 @@ struct GitDiffView: View {
             files: files,
             firstFile: initialFile,
             maxConcurrent: Self.maxConcurrentDiffLoads,
-            fetch: { file in await Self.fetchDiff(for: file, git: git) },
+            fetch: { [scope] file in await Self.fetchDiff(for: file, in: scope, git: git) },
             // A dismissed sheet or a newer load owns the rest.
             isCurrent: { generation == loadGeneration },
             publish: publish,
@@ -190,9 +198,10 @@ struct GitDiffView: View {
     }
 
     /// Nil when the request was cancelled: not a failure to show or report.
-    private static func fetchDiff(for file: GitFile, git: any GitDataClient) async -> ReviewDiffLoader.FileResult? {
+    private static func fetchDiff(for file: GitFile, in scope: GitReviewScope,
+                                  git: any GitDataClient) async -> ReviewDiffLoader.FileResult? {
         do {
-            guard let diff = try await git.diff(for: file) else {
+            guard let diff = try await git.diff(for: file, in: scope) else {
                 return ReviewDiffLoader.FileResult(fileID: file.id, state: .failed(String(localized: "Could Not Load Changes")), error: nil)
             }
             return ReviewDiffLoader.FileResult(fileID: file.id, state: .loaded(diff), error: nil)
