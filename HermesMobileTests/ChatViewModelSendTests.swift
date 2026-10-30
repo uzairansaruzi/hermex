@@ -7263,6 +7263,74 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testAFailedEditAfterTruncateReloadsTheTranscriptAndKeepsTheEditedText() async throws {
+        var requestPaths: [String] = []
+        var sessionRequestCount = 0
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/session": { request in
+                sessionRequestCount += 1
+                if sessionRequestCount == 1 {
+                    return apiTestJSONResponse("""
+                    {
+                      "session": {
+                        "session_id": "session-abc",
+                        "_messages_offset": 10,
+                        "messages": [
+                          {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-10"},
+                          {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-11"},
+                          {"role": "user", "content": "Original question", "timestamp": 3, "message_id": "u-12"},
+                          {"role": "assistant", "content": "Original answer", "timestamp": 4, "message_id": "a-13"}
+                        ]
+                      }
+                    }
+                    """, for: request)
+                }
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "_messages_offset": 10,
+                    "messages": [
+                      {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-10"},
+                      {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-11"}
+                    ]
+                  }
+                }
+                """, for: request)
+            },
+            "/api/session/truncate": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "_messages_offset": 10,
+                "messages": [
+                  {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-10"},
+                  {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-11"}
+                ]
+              }
+            }
+            """),
+            "/api/chat/start": { _ in throw URLError(.badServerResponse) },
+        ], onRequest: { request in requestPaths.append(request.url?.path ?? "") }))
+
+        await viewModel.loadMessages()
+        let context = try XCTUnwrap(viewModel.actionContext(for: viewModel.messages[2], visibleIndex: 2))
+        let didEdit = await viewModel.editMessage(context, newText: "Edited question")
+
+        XCTAssertFalse(didEdit)
+        XCTAssertEqual(requestPaths, ["/api/session", "/api/session/truncate", "/api/chat/start", "/api/session"])
+        // The reload shows what the server still has after the truncate went through.
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["First question", "First answer"])
+        XCTAssertNil(viewModel.activeStreamID)
+        XCTAssertEqual(streamClient.startedURLs.count, 0)
+        XCTAssertNotNil(viewModel.messageActionErrorMessage)
+        // The typed text waits in the composer channel, taken once.
+        XCTAssertEqual(viewModel.takeUnsentEdit(), "Edited question")
+        XCTAssertNil(viewModel.takeUnsentEdit())
+    }
+
+    @MainActor
     func testRegenerateAssistantResponseUsesPrecedingUserAndTruncatesAtAssistantIndex() async throws {
         var truncateKeepCount: Int?
         var startedMessage: String?
@@ -7315,6 +7383,75 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.compactMap(\.content), ["First question", "First answer", "Second question"])
         XCTAssertEqual(viewModel.activeStreamID, "stream-regen")
         XCTAssertEqual(streamClient.startedURLs.count, 1)
+    }
+
+    @MainActor
+    func testAFailedRegenerateAfterTruncateReloadsTheTranscript() async throws {
+        var requestPaths: [String] = []
+        var sessionRequestCount = 0
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient, handler: routes([
+            "/api/session": { request in
+                sessionRequestCount += 1
+                if sessionRequestCount == 1 {
+                    return apiTestJSONResponse("""
+                    {
+                      "session": {
+                        "session_id": "session-abc",
+                        "_messages_offset": 5,
+                        "messages": [
+                          {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-5"},
+                          {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-6"},
+                          {"role": "user", "content": "Second question", "timestamp": 3, "message_id": "u-7"},
+                          {"role": "assistant", "content": "Second answer", "timestamp": 4, "message_id": "a-8"}
+                        ]
+                      }
+                    }
+                    """, for: request)
+                }
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "_messages_offset": 5,
+                    "messages": [
+                      {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-5"},
+                      {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-6"},
+                      {"role": "user", "content": "Second question", "timestamp": 3, "message_id": "u-7"}
+                    ]
+                  }
+                }
+                """, for: request)
+            },
+            "/api/session/truncate": jsonReply("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "_messages_offset": 5,
+                "messages": [
+                  {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-5"},
+                  {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-6"},
+                  {"role": "user", "content": "Second question", "timestamp": 3, "message_id": "u-7"}
+                ]
+              }
+            }
+            """),
+            "/api/chat/start": { _ in throw URLError(.badServerResponse) },
+        ], onRequest: { request in requestPaths.append(request.url?.path ?? "") }))
+
+        await viewModel.loadMessages()
+        let context = try XCTUnwrap(viewModel.actionContext(for: viewModel.messages[3], visibleIndex: 3))
+        let didRegenerate = await viewModel.regenerateAssistantResponse(context)
+
+        XCTAssertFalse(didRegenerate)
+        XCTAssertEqual(requestPaths, ["/api/session", "/api/session/truncate", "/api/chat/start", "/api/session"])
+        // The user's own turn survives the truncate; only the reply is gone.
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), ["First question", "First answer", "Second question"])
+        XCTAssertNil(viewModel.activeStreamID)
+        XCTAssertEqual(streamClient.startedURLs.count, 0)
+        XCTAssertNotNil(viewModel.messageActionErrorMessage)
+        // A regenerate keeps nothing for the composer.
+        XCTAssertNil(viewModel.takeUnsentEdit())
     }
 
     @MainActor

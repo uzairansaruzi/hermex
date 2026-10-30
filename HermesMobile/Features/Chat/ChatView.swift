@@ -4053,7 +4053,7 @@ struct ChatView: View {
         if success {
             editDraft = ""
         }
-        if let unsent = viewModel.takeUnsentHermesEdit() {
+        if let unsent = viewModel.takeUnsentEdit() {
             restoreUnsentEdit(unsent)
             editDraft = ""
         }

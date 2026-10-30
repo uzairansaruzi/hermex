@@ -147686,219 +147686,7 @@
         }
       }
     },
-    "The server did not return a stream ID after editing." : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "لم يُرجع الخادم معرّف بث بعد التحرير."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Der Server hat nach dem Bearbeiten keine Stream-ID zurückgegeben."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "El servidor no devolvió un ID de flujo después de editar."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Le serveur n'a pas renvoyé d'identifiant de flux après la modification."
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "השרת לא החזיר מזהה זרם לאחר העריכה."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Il server non ha restituito un ID stream dopo la modifica."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "編集後、サーバがストリームIDを返しませんでした。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "서버가 편집 후 스트림 ID를 반환하지 않았어요."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "De server gaf na het bewerken geen stream-ID terug."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Serwer nie zwrócił identyfikatora strumienia po edycji."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "O servidor não retornou um ID de stream após a edição."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Сервер не вернул идентификатор потока после изменения."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Sunucu düzenlemenin ardından bir akış kimliği döndürmedi."
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "سرور نے ترمیم کے بعد کوئی اسٹریم ID واپس نہیں کی۔"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "伺服器在編輯後未傳回串流 ID。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "服务器在编辑后未返回流 ID。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "伺服器在編輯後未傳回串流 ID。"
-          }
-        }
-      }
-    },
-    "The server did not return a stream ID after regenerating." : {
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "لم يُرجع الخادم معرّف بث بعد إعادة الإنشاء."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Der Server hat nach dem erneuten Generieren keine Stream-ID zurückgegeben."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "El servidor no devolvió un ID de flujo después de regenerar."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Le serveur n'a pas renvoyé d'identifiant de flux après la régénération."
-          }
-        },
-        "he" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "השרת לא החזיר מזהה זרם לאחר היצירה מחדש."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Il server non ha restituito un ID stream dopo la rigenerazione."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "再生成後、サーバがストリームIDを返しませんでした。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "서버가 다시 생성 후 스트림 ID를 반환하지 않았어요."
-          }
-        },
-        "nl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "De server gaf na het opnieuw genereren geen stream-ID terug."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Serwer nie zwrócił identyfikatora strumienia po ponownym wygenerowaniu."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "O servidor não retornou um ID de stream após regenerar."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Сервер не вернул идентификатор потока после повторной генерации."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "Sunucu yeniden oluşturmanın ardından bir akış kimliği döndürmedi."
-          }
-        },
-        "ur" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "سرور نے دوبارہ بنانے کے بعد کوئی اسٹریم ID واپس نہیں کی۔"
-          }
-        },
-        "zh-HK" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "伺服器在重新生成後未傳回串流 ID。"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "服务器在重新生成后未返回流 ID。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "needs_review",
-            "value" : "伺服器在重新生成後未傳回串流 ID。"
-          }
-        }
-      }
-    },
-    "The server did not return a stream ID after retrying." : {
+            "The server did not return a stream ID after retrying." : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
@@ -150585,6 +150373,218 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "伺服器拒絕了該請求：%@"
+          }
+        }
+      }
+    },
+    "The server removed the original message when the edit failed. Your text is back in the draft." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "أزال الخادم الرسالة الأصلية عند فشل التحرير. نصّك عاد إلى المسودة."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Der Server hat die ursprüngliche Nachricht entfernt, als die Bearbeitung fehlschlug. Dein Text ist wieder im Entwurf."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "El servidor eliminó el mensaje original cuando falló la edición. Tu texto está de nuevo en el borrador."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Le serveur a supprimé le message d'origine lors de l'échec de la modification. Votre texte est de nouveau dans le brouillon."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "השרת הסיר את ההודעה המקורית כשהעריכה נכשלה. הטקסט שלך חזר לטיוטה."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Il server ha rimosso il messaggio originale quando la modifica non è riuscita. Il tuo testo è di nuovo nella bozza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "編集に失敗した際、サーバが元のメッセージを削除しました。テキストは下書きに戻っています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "편집이 실패할 때 서버가 원본 메시지를 제거했습니다. 텍스트가 임시 저장으로 돌아왔습니다."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "De server heeft het originele bericht verwijderd toen de bewerking mislukte. Je tekst staat weer in het concept."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Serwer usunął oryginalną wiadomość, gdy edycja się nie powiodła. Twój tekst wrócił do szkicu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O servidor removeu a mensagem original quando a edição falhou. Seu texto está de volta no rascunho."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Сервер удалил исходное сообщение, когда изменение не удалось. Ваш текст снова в черновике."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Düzenleme başarısız olunca sunucu özgün iletiyi kaldırdı. Metniniz taslağa geri döndü."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ترمیم ناکام ہونے پر سرور نے اصل پیغام ہٹا دیا۔ آپ کا متن ڈرافٹ میں واپس آ گیا ہے۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "編輯失敗時，伺服器已移除原本訊息。你的文字已回到草稿。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "编辑失败时，服务器已移除原消息。你的文本已回到草稿。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "編輯失敗時，伺服器已移除原訊息。你的文字已回到草稿。"
+          }
+        }
+      }
+    },
+    "The server removed the original reply when regenerating failed. Send a follow-up to continue." : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "أزال الخادم الرد الأصلي عند فشل إعادة التوليد. أرسل رسالة متابعة للمتابعة."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Der Server hat die ursprüngliche Antwort entfernt, als das erneute Generieren fehlschlug. Sende eine Folgenachricht, um fortzufahren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "El servidor eliminó la respuesta original cuando falló la regeneración. Envía un mensaje adicional para continuar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Le serveur a supprimé la réponse d'origine lors de l'échec de la régénération. Envoyez un message complémentaire pour continuer."
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "השרת הסיר את התשובה המקורית כשההפקה מחדש נכשלה. שלחו הודעת המשך כדי להמשיך."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Il server ha rimosso la risposta originale quando la rigenerazione non è riuscita. Invia un messaggio successivo per continuare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "再生成に失敗した際、サーバが元の返信を削除しました。続けるにはフォローアップを送信してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "재생성이 실패할 때 서버가 원본 답변을 제거했습니다. 계속하려면 후속 메시지를 보내세요."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "De server heeft het originele antwoord verwijderd toen het opnieuw genereren mislukte. Stuur een vervolgbericht om door te gaan."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Serwer usunął oryginalną odpowiedź, gdy ponowne generowanie się nie powiodło. Wyślij wiadomość uzupełniającą, aby kontynuować."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "O servidor removeu a resposta original quando a regeneração falhou. Envie uma mensagem adicional para continuar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Сервер удалил исходный ответ, когда повторная генерация не удалась. Отправьте последующее сообщение, чтобы продолжить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Yeniden oluşturma başarısız olunca sunucu özgün yanıtı kaldırdı. Devam etmek için bir sonraki iletiyi gönderin."
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "دوبارہ تخلیق ناکام ہونے پر سرور نے اصل جواب ہٹا دیا۔ جاری رکھنے کے لیے ایک اور پیغام بھیجیں۔"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "重新產生失敗時，伺服器已移除原本回覆。傳送後續訊息即可繼續。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "重新生成失败时，服务器已移除原回复。发送后续消息即可继续。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "重新產生失敗時，伺服器已移除原回覆。傳送後續訊息即可繼續。"
           }
         }
       }
