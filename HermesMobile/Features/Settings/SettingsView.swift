@@ -97,7 +97,7 @@ struct SettingsView: View {
 
             Section {
                 NavigationLink {
-                    SettingsAboutPage()
+                    SettingsAboutPage(server: authManager.activeServer)
                 } label: {
                     LabeledContent {
                         Text(SettingsAboutPage.appVersion)
