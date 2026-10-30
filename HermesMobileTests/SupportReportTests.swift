@@ -50,8 +50,40 @@ import XCTest
         XCTAssertEqual(unversioned.issueURL, AppConfig.reportProblemURL)
     }
 
-    private static func account(kind: ServerKind, serverVersion: String?) -> ServerAccount {
-        ServerAccount(id: "https://hermes.example.com", urlString: "https://hermes.example.com",
+    /// The active server's current Hermes connection adds its latest attempt (#1395): when it
+    /// started and each stage's outcome, with no host or account. Another server's report, and
+    /// this one's once the connection is retired, has none.
+    func testReportCarriesOnlyTheActiveServersCurrentAttempt() async throws {
+        defer { HermesHostFixture.reset() }
+        let connections = HermesConnections(configuration: { HermesHostFixture.configuration { request in
+            request.url?.path == "/auth/password-login" ? .json(401, .object(["error": .string("invalid_credentials")])) : nil
+        } })
+        let server = URL(string: "https://hermes.example.com")!
+        let saved = BotConnection(id: UUID(), name: "Studio Mac", address: server, username: "operator", password: "secret")
+        let http = connections.connection(for: saved, server: server)
+        do { try await http.signIn(); XCTFail("The login was refused") } catch {}
+
+        let text = SupportReport(server: Self.account(kind: .hermes, serverVersion: "0.21.5"), connections: connections).text
+        let lines = text.components(separatedBy: "\n")
+        XCTAssertTrue(lines.contains { $0.hasPrefix("Last connection attempt: ") && $0.hasSuffix(" UTC") }, text)
+        XCTAssertTrue(lines.contains("Attempt status: Passed"), text)
+        XCTAssertTrue(lines.contains("Attempt sign-in: Failed (HTTP 401)"), text)
+        XCTAssertTrue(lines.contains("Attempt live handshake: Not checked"), text)
+        for secret in ["example.com", "Studio Mac", "operator", "secret"] {
+            XCTAssertFalse(text.contains(secret), text)
+        }
+
+        let other = SupportReport(server: Self.account(kind: .hermes, serverVersion: nil, url: "https://other.example.com"),
+                                  connections: connections)
+        XCTAssertFalse(other.text.localizedCaseInsensitiveContains("attempt"), other.text)
+        connections.retire(server: server)
+        let retired = SupportReport(server: Self.account(kind: .hermes, serverVersion: nil), connections: connections)
+        XCTAssertFalse(retired.text.localizedCaseInsensitiveContains("attempt"), retired.text)
+    }
+
+    private static func account(kind: ServerKind, serverVersion: String?,
+                                url: String = "https://hermes.example.com") -> ServerAccount {
+        ServerAccount(id: url, urlString: url,
                       displayName: "Studio Mac", initials: "SM", headerLogoColorHex: "#000000",
                       createdAt: .distantPast, updatedAt: .distantPast, kind: kind, serverVersion: serverVersion)
     }

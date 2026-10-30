@@ -326,7 +326,10 @@ or a webui answering at the address drops it. Copy Details exports `report()`: a
 iOS, server kind, reported and tested release, the attempt's UTC time and each stage, with a
 failure's typed category (HTTP status, timed out, couldn't connect, certificate) and never
 an error description, host, username, header, token or install id. Nothing is persisted
-and no raw log lines are copied.
+and no raw log lines are copied. About's support details (#1396) add the record of the
+active server's current shared connection (`HermesConnections.lastAttempt(server:)`): its
+time and each stage, never in Report a Problem's link. The lookup never makes a connection,
+and setup's own connections never reach it.
 
 ## Typed requests
 

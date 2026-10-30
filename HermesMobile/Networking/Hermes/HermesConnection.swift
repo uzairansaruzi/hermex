@@ -728,6 +728,14 @@ import OSLog
         current?.liveGateway?.dropSocket()
     }
 
+    /// The latest attempt record (#1395) of `server`'s current connection, for About's support
+    /// details (#1396); nil for another server, or once that connection is retired. It never
+    /// makes or signs in a connection, and setup's own connections are never here.
+    func lastAttempt(server: URL) -> HermesAttemptRecord? {
+        guard self.server == server.absoluteString else { return nil }
+        return current?.lastAttempt
+    }
+
     /// Retires `server`'s connection now unless `saved`, its newly saved record, is still
     /// that connection. `AuthManager` calls it when `server` stops being active, and
     /// `BotConnectionStore` when its credentials are saved or removed, so a sign-in in

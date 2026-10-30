@@ -229,10 +229,6 @@ struct HermesAttemptRecord: Equatable, Sendable {
     /// The text Copy Details puts on the pasteboard, in English for a bug report: the app,
     /// iOS and Hermes releases, when the attempt started, and each stage's outcome.
     func report(app: String = Self.appVersion, system: String = Self.systemVersion) -> String {
-        let time = DateFormatter()
-        time.locale = Locale(identifier: "en_US_POSIX")
-        time.timeZone = TimeZone(identifier: "UTC")
-        time.dateFormat = "yyyy-MM-dd HH:mm:ss 'UTC'"
         let lines = [
             "Hermex connection details",
             "App: \(app)",
@@ -240,9 +236,18 @@ struct HermesAttemptRecord: Equatable, Sendable {
             "Server kind: \(self[.status] == .passed ? "Hermes" : "unknown")",
             "Reported release: \(reportedRelease ?? "unknown")",
             "Tested release: \(HermesCompatibility.testedVersion)",
-            "Attempt: \(time.string(from: started))"
+            "Attempt: \(startedText)"
         ] + Stage.allCases.map { "\($0.reportName): \(self[$0].reportText)" }
         return lines.joined(separator: "\n")
+    }
+
+    /// When the attempt started, in UTC, as the reports write it.
+    var startedText: String {
+        let time = DateFormatter()
+        time.locale = Locale(identifier: "en_US_POSIX")
+        time.timeZone = TimeZone(identifier: "UTC")
+        time.dateFormat = "yyyy-MM-dd HH:mm:ss 'UTC'"
+        return time.string(from: started)
     }
 
     static var appVersion: String {
@@ -257,7 +262,8 @@ struct HermesAttemptRecord: Equatable, Sendable {
     }
 }
 
-private extension HermesAttemptRecord.Stage {
+extension HermesAttemptRecord.Stage {
+    /// The stage's name in the reports, in English.
     var reportName: String {
         switch self {
         case .status: return "Status"
@@ -269,7 +275,8 @@ private extension HermesAttemptRecord.Stage {
     }
 }
 
-private extension HermesAttemptRecord.Outcome {
+extension HermesAttemptRecord.Outcome {
+    /// The outcome as the reports write it, in English: a failure names only its category.
     var reportText: String {
         switch self {
         case .notChecked: return "Not checked"

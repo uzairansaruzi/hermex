@@ -19,6 +19,9 @@ struct SupportReport {
     var serverKind: ServerKind?
     /// The release the server reported at its last saved sign-in; nil for webui servers.
     var serverRelease: String?
+    /// The active server's latest Hermes connection attempt, while its connection is current
+    /// (#1395). Only its time and each stage's outcome are reported, never in `issueURL`.
+    var lastAttempt: HermesAttemptRecord? = nil
 
     /// The report as plain text: a header line, then one "Key: value" line per field. About's
     /// preview, its Copy, and anything that later hands the report on all read this one string.
@@ -35,6 +38,12 @@ struct SupportReport {
         ]
         if serverKind == .hermes {
             lines.append("Tested Hermes release: \(HermesCompatibility.testedVersion)")
+        }
+        if let lastAttempt {
+            lines.append("Last connection attempt: \(lastAttempt.startedText)")
+            lines += HermesAttemptRecord.Stage.allCases.map {
+                "Attempt \($0.reportName.lowercased()): \(lastAttempt[$0].reportText)"
+            }
         }
         return lines.joined(separator: "\n")
     }
@@ -71,7 +80,9 @@ struct SupportReport {
 
 extension SupportReport {
     /// This install's report for `server`, the active server.
-    @MainActor init(server: ServerAccount?) {
+    /// `connections` holds the active server's shared Hermes connection, whose latest attempt
+    /// the report carries while it has one.
+    @MainActor init(server: ServerAccount?, connections: HermesConnections = .shared) {
         let info = Bundle.main.infoDictionary
         let channel: Channel
         #if DEBUG
@@ -86,7 +97,8 @@ extension SupportReport {
             iOSVersion: UIDevice.current.systemVersion,
             device: UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone",
             serverKind: server?.kind,
-            serverRelease: server?.serverVersion
+            serverRelease: server?.serverVersion,
+            lastAttempt: server.flatMap { URL(string: $0.id) }.flatMap { connections.lastAttempt(server: $0) }
         )
     }
 }
