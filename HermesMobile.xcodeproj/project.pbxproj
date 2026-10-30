@@ -2456,6 +2456,7 @@
 				ur,
 				"zh-Hant",
 				"zh-HK",
+				fa,
 			);
 			mainGroup = 1A2B3C4D5E6F700000000030;
 			packageReferences = (

@@ -27,6 +27,12 @@
             "value": "Nuevo chat de ${applicationName}"
           }
         },
+        "fa" : {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گفتگوی جدید ${applicationName}"
+          }
+        },
         "fr": {
           "stringUnit": {
             "state": "translated",
@@ -137,6 +143,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nuevo chat de voz de ${applicationName}"
+          }
+        },
+        "fa" : {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گفتگوی صوتی جدید ${applicationName}"
           }
         },
         "fr": {
@@ -251,6 +263,12 @@
             "value": "Nuevo chat de ${profile} en ${applicationName}"
           }
         },
+        "fa" : {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گفتگوی جدید ${profile} در ${applicationName}"
+          }
+        },
         "fr": {
           "stringUnit": {
             "state": "translated",
@@ -361,6 +379,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nuevo chat en ${applicationName}"
+          }
+        },
+        "fa" : {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گفتگوی جدید در ${applicationName}"
           }
         },
         "fr": {
@@ -475,6 +499,12 @@
             "value": "Nuevo chat en ${profile} en ${applicationName}"
           }
         },
+        "fa" : {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گفتگوی جدید در ${profile} در ${applicationName}"
+          }
+        },
         "fr": {
           "stringUnit": {
             "state": "translated",
@@ -585,6 +615,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nuevo chat de voz en ${applicationName}"
+          }
+        },
+        "fa" : {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گفتگوی صوتی جدید در ${applicationName}"
           }
         },
         "fr": {
@@ -699,6 +735,12 @@
             "value": "Inicia un nuevo chat de ${profile} en ${applicationName}"
           }
         },
+        "fa" : {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شروع گفتگوی جدید ${profile} در ${applicationName}"
+          }
+        },
         "fr": {
           "stringUnit": {
             "state": "translated",
@@ -811,6 +853,12 @@
             "value": "Inicia un nuevo chat en ${applicationName}"
           }
         },
+        "fa" : {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شروع گفتگوی جدید در ${applicationName}"
+          }
+        },
         "fr": {
           "stringUnit": {
             "state": "translated",
@@ -921,6 +969,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "Inicia un chat de voz en ${applicationName}"
+          }
+        },
+        "fa" : {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شروع گفتگوی صوتی در ${applicationName}"
           }
         },
         "fr": {
