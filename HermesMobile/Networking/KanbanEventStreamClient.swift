@@ -90,6 +90,11 @@ final class KanbanEventStreamClient: KanbanEventStreamingClient {
     private let baseConfiguration: URLSessionConfiguration
     private let customHeaderProvider: @MainActor () -> [CustomHeader]
     private var eventSource: EventSource?
+    /// The handler hops its callbacks to the main actor, so this generation fences a stopped
+    /// source's late callbacks (the protocol promises nothing after `stop()`), and a new
+    /// `start` cannot inherit the old source's failure.
+    private var streamGeneration = 0
+    private var reportedFailure = false
 
     init(
         server: URL,
@@ -108,9 +113,22 @@ final class KanbanEventStreamClient: KanbanEventStreamingClient {
         onFailure: @escaping @MainActor () -> Void
     ) {
         stop()
+        streamGeneration += 1
+        reportedFailure = false
+        let generation = streamGeneration
         let url = Endpoint.kanbanEventsStream(KanbanEventsStreamRequest(board: board, since: since))
             .url(relativeTo: server)
-        let handler = Handler(onFrame: onFrame, onFailure: onFailure)
+        let handler = Handler(
+            onFrame: { [weak self] frame in
+                guard let self, streamGeneration == generation else { return }
+                onFrame(frame)
+            },
+            onFailure: { [weak self] in
+                guard let self, streamGeneration == generation, !reportedFailure else { return }
+                reportedFailure = true
+                onFailure()
+            }
+        )
         var config = EventSource.Config(handler: handler, url: url)
         config.connectionErrorHandler = { _ in .shutdown }
         config.headers = customHeaderProvider().merged(under: [
@@ -132,6 +150,9 @@ final class KanbanEventStreamClient: KanbanEventStreamingClient {
     }
 
     func stop() {
+        // The bump, not `eventSource?.stop()` alone, is what cuts a stopped source's
+        // late `onClosed`/`onError` hop off the live callbacks.
+        streamGeneration += 1
         eventSource?.stop()
         eventSource = nil
     }
