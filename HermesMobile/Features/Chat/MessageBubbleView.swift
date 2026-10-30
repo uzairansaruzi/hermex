@@ -78,6 +78,7 @@ struct MessageBubbleView: View {
     }
 
     var body: some View {
+        let _ = RenderProbe.hit("MessageBubbleView", renderID: message.messageId)
         if isLocalNotice {
             localNoticeRow
         } else if isLocalAssistant {

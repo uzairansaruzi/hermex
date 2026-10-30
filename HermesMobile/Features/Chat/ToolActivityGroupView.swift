@@ -37,6 +37,7 @@ struct ToolActivityGroupView: View {
 
     @ViewBuilder
     var body: some View {
+        let _ = RenderProbe.hit("ToolActivityGroupView")
         let entries = ToolCallSummaryFormatter.entries(for: group.toolCalls, isLive: isLive)
 
         if let lastEntry = entries.last {
