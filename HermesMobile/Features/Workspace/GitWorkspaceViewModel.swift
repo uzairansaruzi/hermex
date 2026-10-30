@@ -45,6 +45,8 @@ final class GitWorkspaceViewModel {
         await load()
     }
 
+    /// A load cancelled while it waits (its sheet closed, or a newer retry replaced it) writes
+    /// nothing when it returns, so it never prunes choices made in a sheet opened since.
     @MainActor
     func load() async {
         guard let git else {
@@ -57,10 +59,13 @@ final class GitWorkspaceViewModel {
         lastError = nil
 
         do {
-            status = try await git.status()
+            let loaded = try await git.status()
+            guard !Task.isCancelled else { return }
+            status = loaded
             hasLoaded = true
-            progress?.prune(to: status, in: git.reviewScope)
+            progress?.prune(to: loaded, in: git.reviewScope)
         } catch {
+            guard !Task.isCancelled else { return }
             lastError = error
             errorMessage = error.localizedDescription
         }

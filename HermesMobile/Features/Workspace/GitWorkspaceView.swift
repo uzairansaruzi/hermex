@@ -9,6 +9,8 @@ struct GitWorkspaceView: View {
     private let progress: ReviewProgressStore
     @State private var viewModel: GitWorkspaceViewModel
     @State private var selectedFile: GitFile?
+    /// The latest Try Again load, cancelled by the next one and when the sheet closes.
+    @State private var retryTask: Task<Void, Never>?
     @Environment(\.dismiss) private var dismiss
 
     /// `git` is the chat's repository client, shared with its toolbar menu; `progress` is the
@@ -42,6 +44,7 @@ struct GitWorkspaceView: View {
                     handleLastError()
                 }
         }
+        .onDisappear { retryTask?.cancel() }
         .presentationDetents([.medium, .large])
         .adaptivePagePresentation()
         .sheet(item: $selectedFile) { file in
@@ -63,7 +66,7 @@ struct GitWorkspaceView: View {
             ProgressView("Loading…").frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if viewModel.errorMessage != nil && viewModel.status == nil {
             unavailable("Could Not Load Changes", image: "exclamationmark.triangle", detail: viewModel.errorMessage) {
-                Task { await reload() }
+                retry()
             }
         } else if viewModel.isNonRepository {
             ContentUnavailableView(
@@ -75,7 +78,7 @@ struct GitWorkspaceView: View {
             statusContent(status)
         } else {
             unavailable("Could Not Load Changes", image: "exclamationmark.triangle", detail: viewModel.errorMessage) {
-                Task { await reload() }
+                retry()
             }
         }
     }
@@ -152,6 +155,11 @@ struct GitWorkspaceView: View {
         } actions: {
             Button("Try Again", action: retry)
         }
+    }
+
+    private func retry() {
+        retryTask?.cancel()
+        retryTask = Task { await reload() }
     }
 
     private func reload() async {

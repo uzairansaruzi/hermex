@@ -475,6 +475,30 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(progress.files(in: git.reviewScope), [:])
     }
 
+    /// A status read whose sheet stopped waiting (it closed, or a newer retry replaced it) answers
+    /// into nothing, so it can't forget choices made in a sheet opened since.
+    @MainActor
+    func testACancelledLoadForgetsNoReviewProgress() async throws {
+        let git = ParkedStatusGitClient()
+        git.parked = expectation(description: "status requested")
+        let progress = ReviewProgressStore()
+        progress.update("A.swift", in: git.reviewScope) { $0.isCollapsed = true }
+        let changes = GitWorkspaceViewModel(git: git, progress: progress)
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let clean = try decoder.decode(GitStatus.self, from: Data(#"{"is_git": true, "files": [], "truncated": false}"#.utf8))
+
+        let load = Task { await changes.load() }
+        await fulfillment(of: [git.parked!], timeout: 2)
+        load.cancel()
+        git.answer(clean)
+        await load.value
+
+        XCTAssertEqual(Array(progress.files(in: git.reviewScope).keys), ["A.swift"])
+        XCTAssertNil(changes.status)
+    }
+
     /// Before the first commit `file-diff` (`git diff HEAD`) is empty, so a staged new file past
     /// the cap shows its current content as all additions, worktree edits included, as webui shows
     /// an untracked file; a binary one reads as binary.
@@ -1863,5 +1887,40 @@ private final class HeldToastSleeps {
     func end(_ duration: Duration) {
         waiting.removeAll { $0 == duration }
         continuations.removeValue(forKey: duration)?.resume()
+    }
+}
+
+/// A repository whose status read waits until the test answers it; nothing else is called.
+@MainActor
+private final class ParkedStatusGitClient: GitDataClient {
+    let reviewScope = "repository"
+    var parked: XCTestExpectation?
+    private var reply: CheckedContinuation<GitStatus?, Never>?
+
+    func status() async throws -> GitStatus? {
+        await withCheckedContinuation { reply = $0; parked?.fulfill() }
+    }
+
+    func answer(_ status: GitStatus?) {
+        reply?.resume(returning: status)
+        reply = nil
+    }
+
+    func info() async throws -> GitInfo? { nil }
+    func diff(for file: GitFile) async throws -> GitDiff? { nil }
+    func stage(_ files: [GitFile]) async throws -> GitStatus? { nil }
+    func unstage(_ files: [GitFile]) async throws -> GitStatus? { nil }
+    func discard(_ files: [GitFile], deleteUntracked: Bool) async throws -> GitStatus? { nil }
+    func commit(message: String, only files: [GitFile]?) async throws -> GitCommitResponse { throw CancellationError() }
+    func push() async throws -> GitRemoteActionResponse { throw CancellationError() }
+    func supportsSync() async -> Bool { false }
+    func fetch() async throws -> GitRemoteActionResponse { throw CancellationError() }
+    func pull() async throws -> GitRemoteActionResponse { throw CancellationError() }
+    func suggestMessage(for files: [GitFile]?, avoiding previous: String?) async throws -> GitCommitMessageResponse {
+        throw CancellationError()
+    }
+    func branches() async throws -> GitBranches? { nil }
+    func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool) async throws -> GitCheckoutResponse {
+        throw CancellationError()
     }
 }
