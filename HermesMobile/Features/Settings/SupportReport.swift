@@ -40,14 +40,16 @@ struct SupportReport {
     }
 
     /// The bug report form with its app, iOS and server version inputs filled in from the
-    /// report; a value the app doesn't know is left for the user. Only these versions leave the
-    /// phone, and only once the user opens the link; the full text stays copy-only.
+    /// report; an uncached server release is left for the user. Without the install's version and
+    /// build it is the template chooser instead. Only these versions leave the phone, and only
+    /// once the user opens the link; the full text stays copy-only.
     var issueURL: URL {
-        guard var components = URLComponents(url: AppConfig.bugReportURL, resolvingAgainstBaseURL: false) else {
-            return AppConfig.bugReportURL
+        guard let appVersion, let build,
+              var components = URLComponents(url: AppConfig.bugReportURL, resolvingAgainstBaseURL: false) else {
+            return AppConfig.reportProblemURL
         }
         let fields: [(String, String?)] = [
-            ("app-version", appVersion.map { "\($0) (\(build ?? "unknown"))" }),
+            ("app-version", "\(appVersion) (\(build))"),
             ("ios-version", "iOS \(iOSVersion) on \(device)"),
             ("server-version", serverKindName.flatMap { kind in serverRelease.map { "\(kind) \($0)" } }),
         ]
@@ -55,7 +57,7 @@ struct SupportReport {
             + fields.compactMap { name, value in value.map { URLQueryItem(name: name, value: $0) } }
         // `URLComponents` leaves `+` as is, and GitHub reads it as a space: a canary release is `0.21.4+…`.
         components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-        return components.url ?? AppConfig.bugReportURL
+        return components.url ?? AppConfig.reportProblemURL
     }
 
     private var serverKindName: String? {

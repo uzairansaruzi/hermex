@@ -26,7 +26,8 @@ import XCTest
     }
 
     /// The link opens the bug form with its three version inputs filled in, decoded the way
-    /// GitHub reads a query (`+` is a space), and carries nothing else from the report.
+    /// GitHub reads a query (`+` is a space), and carries nothing else from the report. Without the
+    /// install's version it opens the template chooser instead.
     func testIssueURLPrefillsTheThreeVersionInputs() throws {
         let report = SupportReport(appVersion: "2.0.1", build: "412 & co", channel: .release, iOSVersion: "27.0",
                                    device: "iPhone", serverKind: .hermes, serverRelease: "0.21.4+canary.ü")
@@ -43,6 +44,10 @@ import XCTest
             "ios-version": "iOS 27.0 on iPhone",
             "server-version": "Hermes 0.21.4+canary.ü",
         ])
+
+        var unversioned = report
+        unversioned.build = nil
+        XCTAssertEqual(unversioned.issueURL, AppConfig.reportProblemURL)
     }
 
     private static func account(kind: ServerKind, serverVersion: String?) -> ServerAccount {
