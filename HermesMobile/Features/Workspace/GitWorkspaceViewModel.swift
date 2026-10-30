@@ -198,7 +198,7 @@ final class GitWorkspaceAvailabilityViewModel {
     /// nothing from this repository appears under the next.
     @MainActor func retire() {
         isRetired = true
-        cancelPullRequestRead()
+        suspendPullRequestReads()
     }
 
     /// Reads the latest turn's range since `base` at turn end (#1392); nil, for a turn without
@@ -555,8 +555,10 @@ final class GitWorkspaceAvailabilityViewModel {
     private var pullRequestRead: (branch: String, pullRequest: GitPullRequest?)?
     private var pullRequestFreshUntil: Date?
     private var pullRequestTask: Task<Void, Never>?
-    /// Bumped by each read and by `cancelPullRequestRead()`, so only the latest read's answer lands.
+    /// Bumped by each read and by `suspendPullRequestReads()`, so only the latest read's answer lands.
     private var pullRequestGeneration = 0
+    /// Set while the chat is off screen, so a switch or push finishing then reads nothing.
+    private var arePullRequestReadsSuspended = false
 
     /// The current branch's pull request, for the Git menu's link; nil when there is none, its
     /// read failed, or it was read on another branch, so a switch drops the link at once.
@@ -573,7 +575,7 @@ final class GitWorkspaceAvailabilityViewModel {
     /// Returns the read that will answer, if any, for a caller to wait on.
     @MainActor @discardableResult
     func refreshPullRequest(force: Bool = false, on branch: String? = nil) -> Task<Void, Never>? {
-        guard let git, hasRepository, !isRetired else { return nil }
+        guard let git, hasRepository, !isRetired, !arePullRequestReadsSuspended else { return nil }
         if !force {
             if let pullRequestTask { return pullRequestTask }
             if let pullRequestFreshUntil, Date() < pullRequestFreshUntil { return nil }
@@ -593,14 +595,21 @@ final class GitWorkspaceAvailabilityViewModel {
         return task
     }
 
-    /// Stops a read still out, so its answer never lands; the last answer stands, and the next
-    /// menu open reads again. Called when the chat goes off screen and by `retire()`.
-    @MainActor func cancelPullRequestRead() {
+    /// Stops a read still out, so its answer never lands, and starts none until
+    /// `resumePullRequestReads()`; the last answer stands, and the next menu open reads again.
+    /// Called when the chat goes off screen and by `retire()`.
+    @MainActor func suspendPullRequestReads() {
+        arePullRequestReadsSuspended = true
+        pullRequestFreshUntil = nil
         guard let pullRequestTask else { return }
         pullRequestTask.cancel()
         self.pullRequestTask = nil
         pullRequestGeneration += 1
-        pullRequestFreshUntil = nil
+    }
+
+    /// Lets reads start again once the chat is back on screen.
+    @MainActor func resumePullRequestReads() {
+        arePullRequestReadsSuspended = false
     }
 
     private func apply(_ response: GitCheckoutResponse) {

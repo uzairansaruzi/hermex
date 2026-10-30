@@ -1036,14 +1036,48 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         await fulfillment(of: [parked], timeout: 2)
         let read = availability.refreshPullRequest()
 
-        availability.cancelPullRequestRead()
+        availability.suspendPullRequestReads()
         HermesHostFixture.releaseParked(Self.pullRequest(42, "OPEN"))
         await read?.value
         XCTAssertNil(availability.pullRequest)
 
         HermesHostFixture.script { parks = false }
+        availability.resumePullRequestReads()
         await availability.refreshPullRequest()?.value
         XCTAssertEqual(availability.pullRequest?.number, 43)
+    }
+
+    /// A switch that finishes after the chat goes off screen reads no pull request until the chat
+    /// is back.
+    @MainActor
+    func testASwitchFinishingOffScreenReadsNoPullRequest() async throws {
+        nonisolated(unsafe) var branch = "main"
+        let git = HermesGitHost.client { request in
+            switch request.url?.path {
+            case "/api/git/branch/switch": return .park
+            case "/api/git/review/ship-info": return Self.pullRequest(42, "OPEN")
+            default: return Self.branchHost(request, branch: branch)
+            }
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        await availability.load()
+        await availability.refreshPullRequest()?.value
+        let parked = expectation(description: "switch in flight")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        let switching = Task { await availability.checkout(GitCheckoutTarget(ref: "dev", mode: .local)) }
+        await fulfillment(of: [parked], timeout: 2)
+
+        availability.suspendPullRequestReads()
+        HermesHostFixture.script { branch = "dev" }
+        HermesHostFixture.releaseParked(.json(200, .object(["branch": .string("dev")])))
+        let outcome = await switching.value
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(outcome, .success)
+        XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 1)
+
+        availability.resumePullRequestReads()
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 2)
     }
 
     /// A read still out when the chat moves to another folder never shows its link there.

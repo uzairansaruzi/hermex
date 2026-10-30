@@ -1066,11 +1066,12 @@ struct ChatView: View {
                 viewModel.stopListening()
                 viewModel.suspendStreamForNavigation()
                 viewModel.cleanupPollingTasks()
-                gitAvailabilityViewModel.cancelPullRequestRead()
+                gitAvailabilityViewModel.suspendPullRequestReads()
             }
             .onAppear {
                 viewModel.protectDraftAttachments(for: draftKey)
                 isOnScreen = true
+                gitAvailabilityViewModel.resumePullRequestReads()
                 appearanceTask?.cancel()
                 appearanceTask = Task {
                     await viewModel.reconnectStreamIfNeeded(modelContext: modelContext)
