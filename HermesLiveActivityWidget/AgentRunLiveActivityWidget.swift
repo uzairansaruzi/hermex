@@ -33,15 +33,11 @@ struct AgentRunLiveActivityWidget: Widget {
                     AgentRunExpandedIslandBottomView(state: context.presentedState, isBot: context.attributes.bot != nil)
                 }
             } compactLeading: {
-                AgentRunIslandCompactMark(status: context.presentedState.status)
+                AgentRunIslandCompactMark(state: context.presentedState, isBot: context.attributes.bot != nil)
             } compactTrailing: {
-                Text(context.presentedState.status.compactTitle)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(AgentRunStatusStyle.color(for: context.presentedState.status, isStale: context.presentedState.isStale))
-                    .minimumScaleFactor(0.72)
-                    .lineLimit(1)
+                AgentRunCompactTrailingView(state: context.presentedState)
             } minimal: {
-                AgentRunIslandCompactMark(status: context.presentedState.status)
+                AgentRunIslandCompactMark(state: context.presentedState, isBot: context.attributes.bot != nil)
             }
             .widgetURL(AgentRunTapTarget.url(attributes: context.attributes, sessionID: context.presentedState.sessionID, activityID: context.activityID))
             .keylineTint(AgentRunStatusStyle.color(for: context.presentedState.status, isStale: context.presentedState.isStale))
@@ -66,8 +62,6 @@ private struct AgentRunExpandedIslandBottomView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            AgentRunProgressRail(status: state.status)
-
             if state.responseExcerpt.isEmpty || showsStaleWaitingAnswer {
                 Text(countsLine)
                     .font(.caption2.weight(.semibold))
@@ -95,7 +89,7 @@ private struct AgentRunLockScreenView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
-            activityProgressRow(progressWidth: 112)
+            activityRow
             // A stale ask stays on the chips, including its answer action, even when
             // reply text would otherwise take this row. Counts stay counts.
             if isBot, (showsStaleWaitingAnswer || context.presentedState.responseExcerpt.isEmpty), !botChips.isEmpty {
@@ -168,20 +162,12 @@ private struct AgentRunLockScreenView: View {
         }
     }
 
-    private func activityProgressRow(progressWidth: CGFloat) -> some View {
-        HStack(alignment: .center, spacing: 8) {
-            Text(activityText)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(AgentRunLiveActivityTheme.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-                .layoutPriority(1)
-
-            Spacer(minLength: 8)
-
-            AgentRunProgressRail(status: context.presentedState.status)
-                .frame(width: progressWidth)
-        }
+    private var activityRow: some View {
+        Text(activityText)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(AgentRunLiveActivityTheme.primaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
     }
 
     private var transcriptPanel: some View {
@@ -327,8 +313,13 @@ private struct AgentRunIslandStatusView: View {
     }
 }
 
+/// The compact leading and minimal glyph. It names the working phase on its own, so
+/// it carries the full status for VoiceOver (#1398).
 private struct AgentRunIslandCompactMark: View {
-    let status: AgentRunActivityStatus
+    let state: AgentRunActivityAttributes.ContentState
+    let isBot: Bool
+
+    private var status: AgentRunActivityStatus { state.status }
 
     var body: some View {
         ZStack {
@@ -340,6 +331,56 @@ private struct AgentRunIslandCompactMark: View {
                 .foregroundStyle(AgentRunStatusStyle.color(for: status, isStale: false))
         }
         .frame(width: 22, height: 22)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    /// "Hermex, Thinking". Stale work says it shows the latest status, or for a Bot
+    /// that it is disconnected; a stale Bot also says how to recover (#584).
+    private var accessibilityLabel: String {
+        let compact = AgentRunCompactPresentation(state: state)
+        let stale = AgentRunStaleBotPresentation.presentation(state: state, isBot: isBot)
+        var parts = ["Hermex"]
+        if compact == .staleWork {
+            parts.append(stale?.lead ?? String(localized: "Latest status shown"))
+        } else {
+            parts.append(status.title)
+        }
+        if let stale, compact == .staleWork || stale.isPendingInput {
+            parts.append(stale.action)
+        }
+        return parts.joined(separator: ", ")
+    }
+}
+
+/// Compact trailing: empty while working, one short word for an ask, an outcome, or
+/// stale work (#1398). The leading mark already reads the full status, so VoiceOver
+/// skips the word.
+private struct AgentRunCompactTrailingView: View {
+    let state: AgentRunActivityAttributes.ContentState
+
+    var body: some View {
+        if let word {
+            Text(word)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(AgentRunStatusStyle.color(for: state.status, isStale: state.isStale))
+                .minimumScaleFactor(0.72)
+                .lineLimit(1)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var word: String? {
+        switch AgentRunCompactPresentation(state: state) {
+        case .working: nil
+        case .approval: String(localized: "Approve")
+        case .clarification: String(localized: "Question")
+        case .waiting: String(localized: "Waiting")
+        case .complete: String(localized: "Done")
+        case .failed: String(localized: "Failed")
+        case .cancelled: String(localized: "Stopped")
+        case .staleWork: String(localized: "Latest")
+        }
     }
 }
 
@@ -363,43 +404,6 @@ private struct AgentRunStatusDot: View {
 
     var symbolName: String {
         AgentRunStatusStyle.symbolName(for: status)
-    }
-}
-
-private struct AgentRunProgressRail: View {
-    let status: AgentRunActivityStatus
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Capsule(style: .continuous)
-                    .fill(AgentRunLiveActivityTheme.railBackground)
-
-                Capsule(style: .continuous)
-                    .fill(AgentRunStatusStyle.color(for: status, isStale: false))
-                    .frame(width: max(12, geometry.size.width * progressFraction))
-            }
-        }
-        .frame(height: 6)
-    }
-
-    private var progressFraction: CGFloat {
-        switch status {
-        case .starting:
-            0.14
-        case .thinking:
-            0.3
-        case .usingTool, .searchingFiles, .readingFiles, .runningCommand:
-            0.52
-        case .waiting, .waitingForApproval, .waitingForClarification:
-            0.62
-        case .responding:
-            0.78
-        case .complete:
-            1
-        case .failed, .cancelled:
-            1
-        }
     }
 }
 
@@ -459,7 +463,6 @@ private enum AgentRunLiveActivityTheme {
     static let secondaryText = Color.white.opacity(0.68)
     static let stroke = Color.white.opacity(0.13)
     static let pillBackground = Color.white.opacity(0.08)
-    static let railBackground = Color.white.opacity(0.14)
     static let liveDot = Color(red: 0.35, green: 0.95, blue: 0.7)
 }
 
