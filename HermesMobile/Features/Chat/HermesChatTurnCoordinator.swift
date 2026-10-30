@@ -681,8 +681,10 @@ struct HermesChatTranscript: Equatable {
     /// (`.listing`) (#1113): `complete.path` on the attached runtime, which completes against
     /// the session's working folder and ranks and caps its own rows. Throws `.stale` while
     /// detached, and for a reply that lands after a reattach; an unanswered one fails only
-    /// itself, never the chat's connection.
-    func completeFilePaths(_ query: String, as word: BotFilePathSearch.Word) async throws -> [ComposerFilePathSearch.Match] {
+    /// itself, never the chat's connection. Files' workspace search (#1389) asks `.panel` while
+    /// `browsing` (`BotFilePathSearch.matches(from:browsing:)`).
+    func completeFilePaths(_ query: String, as word: BotFilePathSearch.Word,
+                           browsing: Bool = false) async throws -> [ComposerFilePathSearch.Match] {
         guard engine.connectionState == .connected, let runtime = engine.runtime else { throw BotFailure.stale }
         let spelled = switch word {
         case .panel: BotFilePathSearch.panelWord(for: query)
@@ -691,7 +693,7 @@ struct HermesChatTranscript: Equatable {
         let reply = try await engine.request(.completePath(word: spelled, sessionID: runtime,
                                                            profile: engine.target.profile, timesOutLocally: true),
                                              attempt: engine.generation)
-        return BotFilePathSearch.matches(from: reply)
+        return BotFilePathSearch.matches(from: reply, browsing: browsing)
     }
 
     // MARK: Working folder (#1117)

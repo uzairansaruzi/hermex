@@ -1127,7 +1127,12 @@ struct ChatView: View {
                         if showsFilesButton, !isHermesSession || browsableHermesWorkspace != nil {
                             ChatToolbarActionSlot {
                                 NavigationLink {
-                                    FileBrowserView(files: workspaceFiles, onAPIError: onAPIError, onAddToPrompt: reviewCommentHook)
+                                    FileBrowserView(
+                                        files: workspaceFiles,
+                                        search: viewModel.workspaceFileSearch,
+                                        onAPIError: onAPIError,
+                                        onAddToPrompt: reviewCommentHook
+                                    )
                                 } label: {
                                     Label("Files", systemImage: "folder")
                                 }

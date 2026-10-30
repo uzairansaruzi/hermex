@@ -644,6 +644,45 @@ import SwiftUI
         XCTAssertFalse(chat.model.filePathSearch.isLoading)
     }
 
+    /// Files' workspace search (#1389) asks the `@` panel's whole-folder search on the attached
+    /// runtime, only once the folder is on a `local` backend, and keeps a path with a space,
+    /// which Files opens rather than inserts.
+    func testFilesSearchesTheWholeFolderOnALocalBackend() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("docker")]))
+        XCTAssertNil(chat.model.workspaceFileSearch, "a docker folder is not on the host")
+
+        chat.receive(event(2, "session.info", ["terminal_backend": .string("local")]))
+        let search = try XCTUnwrap(chat.model.workspaceFileSearch)
+        chat.host.next("complete.path", .init(result: completions([
+            "@file:Sources/Git Diff.swift": "Sources", "@file:Tools/GitDiff.yml": "Tools"
+        ])))
+        let rows = try await search("GitDiff")
+
+        XCTAssertEqual(rows.map(\.path), ["Sources/Git Diff.swift", "Tools/GitDiff.yml"])
+        XCTAssertEqual(chat.writes("complete.path"), [
+            ["word": .string("@file:GitDiff"), "session_id": .string("runtime"), "profile": .string("default")]
+        ])
+    }
+
+    /// A Files search reply that lands after the chat's folder moved is stale, never rows for
+    /// the new folder.
+    func testAFilesSearchReplyAfterTheFolderMovedIsStale() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
+        let search = try XCTUnwrap(chat.model.workspaceFileSearch)
+        chat.host.next("complete.path", .init(result: completions(["@file:Sources/App.swift": "Sources"]), before: [
+            event(2, "session.info", ["cwd": .string("/work/moved")])
+        ]))
+
+        do {
+            _ = try await search("App")
+            XCTFail("the old folder's rows were returned")
+        } catch {
+            XCTAssertEqual(error as? BotFailure, .stale)
+        }
+    }
+
     /// An `@path` in the draft or a sent message becomes a chip when `complete.path` lists it;
     /// one it doesn't list stays text and is not asked about again.
     func testAnAtPathBecomesAChipOnlyWhenTheHostListsIt() async {

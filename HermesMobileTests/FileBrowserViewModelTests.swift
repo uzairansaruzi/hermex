@@ -472,6 +472,115 @@ final class FileBrowserViewModelTests: APIClientTestCase {
         await same.loadInitialRootIfNeeded()
         XCTAssertEqual(same.expandedPaths, ["src"], "The same chat and folder remembers its layout")
     }
+
+    // MARK: - Workspace search (#1389)
+
+    private func hit(_ path: String, isDirectory: Bool = false) -> ComposerFilePathSearch.Match {
+        ComposerFilePathSearch.Match(path: path, name: String(path.split(separator: "/").last ?? ""),
+                                     parentPath: ComposerFilePathSearch.Match.parentPath(of: path), isDirectory: isDirectory)
+    }
+
+    @MainActor
+    private func searchingViewModel() -> FileBrowserViewModel {
+        FileBrowserViewModel(files: nil, defaults: defaults, searchDebounce: {})
+    }
+
+    /// Typing quickly settles on the last query: the newer query searches until its own reply
+    /// lands, and a slow reply for an older one never replaces it.
+    @MainActor
+    func testWorkspaceSearchSettlesOnTheLastQuery() async {
+        let viewModel = searchingViewModel()
+        let gate = QueryGate()
+        let started = expectation(description: "the older query is in flight")
+        let older = Task { @MainActor in
+            await viewModel.searchWorkspace("Sou", in: "scope") { _ in
+                started.fulfill()
+                await gate.wait()
+                return [self.hit("Sources/Old.swift")]
+            }
+        }
+        await fulfillment(of: [started], timeout: 5)
+        XCTAssertEqual(viewModel.workspaceSearchState(for: "Source", in: "scope", hiding: []), .searching)
+
+        await viewModel.searchWorkspace("Source", in: "scope") { [self] query in [hit("Sources/\(query).swift")] }
+        gate.open()
+        await older.value
+
+        XCTAssertEqual(viewModel.workspaceSearchState(for: "Source", in: "scope", hiding: []),
+                       .found([hit("Sources/Source.swift")]))
+    }
+
+    /// One character and a path keep today's loaded-tree filter: the host is never asked.
+    @MainActor
+    func testShortAndPathShapedQueriesNeverAskTheHost() async {
+        let viewModel = searchingViewModel()
+        var asked: [String] = []
+        for query in ["S", "HermesMobile/Fe"] {
+            await viewModel.searchWorkspace(query, in: "scope") { asked.append($0); return [] }
+            XCTAssertNil(viewModel.workspaceSearchState(for: query, in: "scope", hiding: []), query)
+        }
+        XCTAssertEqual(asked, [])
+    }
+
+    /// A failed search reads as unavailable, never as "No Matches"; an empty answer does.
+    @MainActor
+    func testAFailedWorkspaceSearchIsUnavailableNotEmpty() async {
+        let viewModel = searchingViewModel()
+
+        await viewModel.searchWorkspace("GitDiff", in: "scope") { _ in throw URLError(.notConnectedToInternet) }
+        XCTAssertEqual(viewModel.workspaceSearchState(for: "GitDiff", in: "scope", hiding: []), .unavailable)
+
+        await viewModel.searchWorkspace("GitDiff", in: "scope") { _ in [] }
+        XCTAssertEqual(viewModel.workspaceSearchState(for: "GitDiff", in: "scope", hiding: []), .found([]))
+    }
+
+    /// The Workspace section lists files only, and none the loaded tree already shows.
+    @MainActor
+    func testWorkspaceHitsAreFilesTheTreeDoesNotShow() async throws {
+        let viewModel = FileBrowserViewModel(files: WebUIWorkspaceFileClient(session: try session(), server: try XCTUnwrap(URL(string: "https://example.test")),
+                                                                             apiClient: makeListingClient(log: RequestLog())),
+                                             defaults: defaults, searchDebounce: {})
+        await viewModel.loadInitialRootIfNeeded()
+        await viewModel.toggleDirectory("src/Chat")
+        let shown = viewModel.visibleNodes(matching: "Chat")
+
+        await viewModel.searchWorkspace("Chat", in: "scope") { [self] _ in
+            [hit("src/Chat", isDirectory: true), hit("src/Chat/ChatView.swift"), hit("docs/Chat Notes.md")]
+        }
+
+        XCTAssertEqual(viewModel.workspaceSearchState(for: "Chat", in: "scope", hiding: shown), .found([hit("docs/Chat Notes.md")]))
+    }
+
+    /// An answer belongs to the workspace it was asked in: the same query in a moved folder
+    /// searches again rather than showing the old folder's files.
+    @MainActor
+    func testAnotherWorkspacesAnswerNeverShows() async {
+        let viewModel = searchingViewModel()
+        await viewModel.searchWorkspace("GitDiff", in: "old") { [self] _ in [hit("GitDiff.swift")] }
+        XCTAssertEqual(viewModel.workspaceSearchState(for: "GitDiff", in: "old", hiding: []), .found([hit("GitDiff.swift")]))
+
+        XCTAssertEqual(viewModel.workspaceSearchState(for: "GitDiff", in: "new", hiding: []), .searching)
+    }
+
+    /// Opening a Workspace hit opens that file without listing or expanding a folder above it
+    /// (#1233), and stops a prefetch for another file.
+    @MainActor
+    func testOpeningAWorkspaceHitListsNoFolders() async throws {
+        let log = RequestLog()
+        try saveWebUIExpansion([])
+        let viewModel = try makeViewModel(client: makeListingClient(log: log))
+        await viewModel.loadInitialRootIfNeeded()
+        viewModel.prefetchFile(at: "README.md")
+        let prefetch = try XCTUnwrap(viewModel.prefetchedFile(at: "README.md"))
+
+        let node = try XCTUnwrap(viewModel.openWorkspaceHit(hit("src/Chat/ChatView.swift")))
+
+        XCTAssertEqual(node.entry.path, "src/Chat/ChatView.swift")
+        XCTAssertFalse(node.isDirectory)
+        XCTAssertTrue(prefetch.isCancelled)
+        XCTAssertEqual(viewModel.expandedPaths, [])
+        XCTAssertEqual(log.listedPaths, ["."])
+    }
 }
 
 /// A workspace whose first root listing waits until the test releases it, then answers with

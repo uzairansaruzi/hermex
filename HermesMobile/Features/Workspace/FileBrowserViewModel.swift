@@ -1,5 +1,19 @@
 import Foundation
 
+/// A host's file-name search over a whole workspace (#1389), for a query the loaded tree can't
+/// answer: a Hermes chat's `complete.path`. Files without one filters only what it has listed.
+typealias FileWorkspaceSearch = @MainActor (String) async throws -> [ComposerFilePathSearch.Match]
+
+/// What Files' Workspace section shows for one query (#1389).
+enum WorkspaceSearchState: Equatable {
+    /// The query's answer has not landed: static "Searching…" text.
+    case searching
+    /// Files the loaded tree does not already show, possibly none.
+    case found([ComposerFilePathSearch.Match])
+    /// The search failed: inline "Try Again", and the tree still filters.
+    case unavailable
+}
+
 /// Owns the workspace file tree for one chat: lists directories through its
 /// `WorkspaceFileClient` as the user opens them, remembers which folders are open per
 /// workspace (`WorkspaceFileClient.scope`), and warms file previews on press-down so the next
@@ -30,9 +44,18 @@ final class FileBrowserViewModel {
     /// opening a file takes its task out so the next visit fetches fresh content.
     private var prefetches: [String: Task<FileResponse, Error>] = [:]
 
-    init(files: (any WorkspaceFileClient)?, defaults: UserDefaults = .standard) {
+    /// The latest settled workspace search, stamped with the workspace and query it answered.
+    private var workspaceSearch: (scope: String, query: String, state: WorkspaceSearchState)?
+    /// Bumped per search so a reply that lands after a newer query never publishes.
+    @ObservationIgnored private var searchGeneration = 0
+    /// Waits out typing before a search asks the host; tests pass one that returns at once.
+    @ObservationIgnored private let searchDebounce: @MainActor () async throws -> Void
+
+    init(files: (any WorkspaceFileClient)?, defaults: UserDefaults = .standard,
+         searchDebounce: @escaping @MainActor () async throws -> Void = { try await Task.sleep(for: .milliseconds(250)) }) {
         self.files = files
         self.defaults = defaults
+        self.searchDebounce = searchDebounce
         expansionStore = files.map { FileTreeExpansionStore(scope: $0.scope, defaults: defaults) }
     }
 
@@ -254,6 +277,52 @@ final class FileBrowserViewModel {
     private func setExpanded(_ paths: Set<String>) {
         expandedPaths = paths
         expansionStore?.save(paths)
+    }
+
+    // MARK: - Workspace search (#1389)
+
+    /// Asks `search` for the files matching `query` across the workspace `scope` names, once the
+    /// typing settles. Files runs it per query and workspace and cancels it for the next, so only
+    /// the latest search ever publishes. A short or path-shaped query, or no search at all,
+    /// clears the answer: the loaded tree alone filters it, as before.
+    func searchWorkspace(_ query: String, in scope: String?, using search: FileWorkspaceSearch?) async {
+        searchGeneration &+= 1
+        let generation = searchGeneration
+        workspaceSearch = nil
+        let query = query.trimmingCharacters(in: .whitespaces)
+        guard let scope, let search, BotFilePathSearch.searchesEveryFolder(query) else { return }
+
+        let state: WorkspaceSearchState
+        do {
+            try await searchDebounce()
+            // Folders aren't shown: opening one would list every folder above it.
+            state = .found(try await search(query).filter { !$0.isDirectory })
+        } catch {
+            state = .unavailable
+        }
+        guard generation == searchGeneration, !Task.isCancelled else { return }
+        workspaceSearch = (scope, query, state)
+    }
+
+    /// The Workspace section for `query` in `scope`: nil when it doesn't search, `.searching`
+    /// until this query's own answer lands, then the files it found minus those `shown`, the
+    /// loaded tree's matches, already lists. An answer for another workspace never shows.
+    func workspaceSearchState(for query: String, in scope: String?, hiding shown: [VisibleFileTreeNode]) -> WorkspaceSearchState? {
+        let query = query.trimmingCharacters(in: .whitespaces)
+        guard scope != nil, BotFilePathSearch.searchesEveryFolder(query) else { return nil }
+        guard let workspaceSearch, workspaceSearch.scope == scope, workspaceSearch.query == query else { return .searching }
+        guard case .found(let matches) = workspaceSearch.state else { return workspaceSearch.state }
+        let shownPaths = Set(shown.map(\.node.path))
+        return .found(matches.filter { !shownPaths.contains($0.path) })
+    }
+
+    /// Opens a Workspace hit as a file node without selecting it: selecting lists and expands
+    /// every folder above it, and a Hermes folder lists only when it is tapped (#1233). Every
+    /// prefetch stops, since none was for this file.
+    func openWorkspaceHit(_ match: ComposerFilePathSearch.Match) -> FileTreeNode? {
+        cancelPrefetches()
+        return FileTreeNode(entry: WorkspaceEntry(name: match.name, path: match.path, type: "file", isDirectory: false),
+                            parentPath: match.parentPath.isEmpty ? FileTree.rootPath : match.parentPath)
     }
 
     // MARK: - Prefetch

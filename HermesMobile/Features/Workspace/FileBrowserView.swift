@@ -1,26 +1,33 @@
 import SwiftUI
 
 /// The workspace file tree: folders open in place, search keeps matches with their parents,
-/// and a file row pushes its preview. A client for another workspace, as when a Hermes chat's
-/// folder moves, replaces the whole tree.
+/// and a file row pushes its preview. With a `search`, a query also lists the host's matching
+/// files from folders not yet opened in a Workspace section above the tree's ("Open Folders")
+/// (#1389). A client for another workspace, as when a Hermes chat's folder moves, replaces the
+/// whole tree.
 struct FileBrowserView: View {
     let onAPIError: (Error) -> Void
     /// Forwarded to each pushed preview's Comment…; nil outside a chat that can take a draft.
     let onAddToPrompt: ((String) -> Void)?
 
     private let files: (any WorkspaceFileClient)?
+    private let search: FileWorkspaceSearch?
     @State private var viewModel: FileBrowserViewModel
     @State private var searchText = ""
+    /// Bumped by the Workspace section's Try Again, which runs the same query again.
+    @State private var searchAttempt = 0
     @State private var openedFile: FileTreeNode?
     /// The warm fetch handed over when `openedFile` was tapped; consumed by that preview only.
     @State private var openedFilePrefetch: Task<FileResponse, Error>?
 
     init(
         files: (any WorkspaceFileClient)?,
+        search: FileWorkspaceSearch? = nil,
         onAPIError: @escaping (Error) -> Void,
         onAddToPrompt: ((String) -> Void)? = nil
     ) {
         self.files = files
+        self.search = search
         self.onAPIError = onAPIError
         self.onAddToPrompt = onAddToPrompt
         _viewModel = State(initialValue: FileBrowserViewModel(files: files))
@@ -55,11 +62,17 @@ struct FileBrowserView: View {
             await viewModel.loadInitialRootIfNeeded()
             handleLastError()
         }
+        .task(id: WorkspaceSearchKey(query: searchText, scope: files?.scope, attempt: searchAttempt)) {
+            await viewModel.searchWorkspace(searchText, in: files?.scope, using: search)
+        }
     }
 
     @ViewBuilder
     private var content: some View {
         let visibleNodes = viewModel.visibleNodes(matching: searchText)
+        let workspaceSearch = search == nil ? nil
+            : viewModel.workspaceSearchState(for: searchText, in: files?.scope, hiding: visibleNodes)
+        let showsWorkspaceSection = workspaceSearch.map { $0 != .found([]) } ?? false
 
         if viewModel.isLoadingRoot && !viewModel.tree.isRootLoaded {
             ProgressView("Loading files...")
@@ -77,7 +90,7 @@ struct FileBrowserView: View {
                     }
                 }
             }
-        } else if visibleNodes.isEmpty {
+        } else if visibleNodes.isEmpty, !showsWorkspaceSection {
             ContentUnavailableView {
                 Label(searchText.isEmpty ? "No Files" : "No Matches", systemImage: searchText.isEmpty ? "folder" : "magnifyingglass")
             } description: {
@@ -88,19 +101,19 @@ struct FileBrowserView: View {
                 }
             }
         } else {
-            List(visibleNodes) { item in
-                FileTreeRowView(
-                    item: item,
-                    isExpanded: viewModel.isExpanded(item.node.path),
-                    isLoading: viewModel.isLoading(item.node.path),
-                    isSelected: item.node.path == viewModel.selectedPath,
-                    hasLoadFailure: viewModel.loadFailure(for: item.node.path) != nil,
-                    childCount: viewModel.childCount(of: item.node.path),
-                    onPressDown: { viewModel.prefetchFile(at: item.node.path) },
-                    onTap: { open(item.node) }
-                )
-                .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
-                .listRowSeparator(.hidden)
+            List {
+                if let workspaceSearch, showsWorkspaceSection {
+                    workspaceSection(workspaceSearch)
+                    if !visibleNodes.isEmpty {
+                        Section {
+                            treeRows(visibleNodes)
+                        } header: {
+                            sectionHeader("Open Folders")
+                        }
+                    }
+                } else {
+                    treeRows(visibleNodes)
+                }
             }
             .listStyle(.plain)
             .refreshable {
@@ -141,6 +154,68 @@ struct FileBrowserView: View {
                 }
             }
         }
+    }
+
+    private func treeRows(_ visibleNodes: [VisibleFileTreeNode]) -> some View {
+        ForEach(visibleNodes) { item in
+            FileTreeRowView(
+                item: item,
+                isExpanded: viewModel.isExpanded(item.node.path),
+                isLoading: viewModel.isLoading(item.node.path),
+                isSelected: item.node.path == viewModel.selectedPath,
+                hasLoadFailure: viewModel.loadFailure(for: item.node.path) != nil,
+                childCount: viewModel.childCount(of: item.node.path),
+                onPressDown: { viewModel.prefetchFile(at: item.node.path) },
+                onTap: { open(item.node) }
+            )
+            .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+            .listRowSeparator(.hidden)
+        }
+    }
+
+    /// The host's matches for the query (#1389): static "Searching…" until they land, an inline
+    /// Try Again when the search failed, else one row per file.
+    private func workspaceSection(_ state: WorkspaceSearchState) -> some View {
+        Section {
+            switch state {
+            case .searching:
+                Text("Searching…")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                    .listRowSeparator(.hidden)
+            case .unavailable:
+                HStack(spacing: 12) {
+                    Label("Workspace search unavailable", systemImage: "exclamationmark.triangle")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+
+                    Spacer(minLength: 0)
+
+                    Button("Try Again") { searchAttempt += 1 }
+                        .font(.footnote.weight(.semibold))
+                        .buttonStyle(.borderless)
+                }
+                .frame(minHeight: 42)
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                .listRowSeparator(.hidden)
+            case .found(let matches):
+                ForEach(matches) { match in
+                    WorkspaceSearchRowView(match: match) { open(match) }
+                        .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
+                        .listRowSeparator(.hidden)
+                }
+            }
+        } header: {
+            sectionHeader("Workspace")
+        }
+    }
+
+    private func sectionHeader(_ title: LocalizedStringKey) -> some View {
+        Text(title)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
     }
 
     private var searchBar: some View {
@@ -191,10 +266,71 @@ struct FileBrowserView: View {
         Task { await viewModel.select(path: node.path) }
     }
 
+    /// Opens a Workspace hit's preview without selecting it, which would list every folder
+    /// above it (#1233).
+    private func open(_ match: ComposerFilePathSearch.Match) {
+        guard let node = viewModel.openWorkspaceHit(match) else { return }
+        openedFilePrefetch = nil
+        openedFile = node
+    }
+
     private func handleLastError() {
         if let error = viewModel.takeLastError() {
             onAPIError(error)
         }
+    }
+}
+
+/// What re-runs the Workspace search: the query, the workspace it searches, and Try Again.
+private struct WorkspaceSearchKey: Equatable {
+    let query: String
+    let scope: String?
+    let attempt: Int
+}
+
+/// One Workspace hit (#1389): the file's name over its folder, at the tree's top-level indent.
+private struct WorkspaceSearchRowView: View {
+    let match: ComposerFilePathSearch.Match
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 8) {
+                Color.clear.frame(width: 12, height: 1)
+
+                FileIcon.resolve(match.name).image
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 17, height: 17)
+                    .frame(width: 22)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(match.name)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    if !match.parentPath.isEmpty {
+                        Text(match.parentPath)
+                            .font(.caption2.monospaced())
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+
+                Spacer(minLength: 8)
+            }
+            .padding(.leading, 8)
+            .padding(.trailing, 12)
+            .padding(.vertical, 4)
+            .frame(minHeight: 42)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(FileTreeRowButtonStyle(isSelected: false, onPressChanged: { _ in }))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(match.parentPath.isEmpty ? match.name : String(localized: "\(match.name), in \(match.parentPath)"))
     }
 }
 

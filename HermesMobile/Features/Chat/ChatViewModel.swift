@@ -1805,6 +1805,19 @@ final class ChatViewModel {
     /// The files of `hermesWorkspace`, on the session's connection.
     var hermesWorkspaceFiles: HermesWorkspaceFileClient? { hermesTurn?.workspaceFiles }
 
+    /// Files' workspace search (#1389) while `hermesWorkspace` is on a `local` backend: the `@`
+    /// panel's whole-folder `complete.path` search, on the attached runtime. A reply that lands
+    /// after the folder moved throws `.stale`. Nil on webui and on any other backend.
+    var workspaceFileSearch: FileWorkspaceSearch? {
+        guard let hermesTurn, let workspace = hermesTurn.workspace, workspace.isLocal else { return nil }
+        return { [weak hermesTurn] query in
+            guard let hermesTurn, hermesTurn.workspace == workspace else { throw BotFailure.stale }
+            let rows = try await hermesTurn.completeFilePaths(query, as: .panel, browsing: true)
+            guard hermesTurn.workspace == workspace else { throw BotFailure.stale }
+            return rows
+        }
+    }
+
     /// The repository holding `hermesWorkspace` (#1114), on the session's connection. Each read is a
     /// new client, which resolves its root once, so keep one per folder. Its writes stop while a
     /// turn runs or this chat shows cached data (#1115).
