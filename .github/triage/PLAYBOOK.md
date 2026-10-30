@@ -101,7 +101,7 @@ grounded in source beats guessing.
 
 Search open and closed issues on the repo you chose:
 
-    gh issue list -R uzairansaruzi/hermex --state all --search "<terms>"
+    gh issue list -R <owner>/<repo> --state all --search "<terms>"
 
 Then compare the user's version with `gh release list -R uzairansaruzi/hermex -L 5`
 and read the notes of anything newer. If the fix already shipped, say so plainly and
@@ -126,8 +126,8 @@ every user, a local patch helps one machine until the next update.
 
 ## 8. Write the issue
 
-Fill the `via-triage` form (`.github/ISSUE_TEMPLATE/via-triage.yml` in the clone).
-Its field ids, in order:
+For an upstream repo, follow that repo's own issue template; the rest of this step is
+for Hermex. Fill Hermex's `via-triage` form, whose field ids are, in order:
 
 - `what-happened`: the symptom in the user's words, plus expected behavior.
 - `repro`: numbered steps from a known state.
@@ -148,10 +148,10 @@ To post, check who `gh` is logged in as (`gh api user -q .login`) and tell the u
 the issue is posted under that account, which may not be theirs. With their yes:
 
     gh issue create -R uzairansaruzi/hermex --title "<title>" --body-file <file> \
-      --label via-triage
+      --label via-triage --label needs-triage
 
 Write the body as the form would: one `### <field label>` heading per field. GitHub
-drops the label when the account cannot label issues on this repo; the closing
+drops the labels when the account cannot label issues on this repo; the closing
 "Triaged by" line still marks the issue.
 
 When `gh` is missing, signed in as someone else, or the user prefers their own
