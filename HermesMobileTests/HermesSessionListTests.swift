@@ -845,6 +845,31 @@ import Observation
         XCTAssertEqual(chat.target, .new(profile: "default"))
     }
 
+    /// A Shortcut's text naming a Profile deleted on the host while a chat paused the list (#1402)
+    /// asks the host again rather than trusting the list's last read, and opens nowhere.
+    func testAShortcutsProfileDeletedWhileAChatCoveredTheListIsReportedMissing() async {
+        let wire = HermesSessionListWire()
+        wire.pages["default"] = [0: page([HermesSessionRow(id: "a")])]
+        let list = makeList(wire)
+        await list.openHermes()
+        let entry = HermesSessionListEntry(server: server, connection: connection, profile: "default")
+        var covers = HermesSessionListCovers()
+        covers.chat = HermesSessionChat(server: server, connection: connection, target: .session(profile: "default", key: "a"))
+        list.pauseHermes()
+        wire.profiles = ["default"]
+        let share = SharedImportReservation(
+            itemID: "shortcut-1", reservationID: "reservation", createdAt: Date(),
+            sharedImport: SharedImport(draft: "Hi", attachments: [],
+                                       shortcut: SharedShortcutDestination(server: server, profile: "research"))
+        )
+
+        guard case .chat(let chat)? = covers.open(share, on: entry, listed: list.hermesProfile, isLive: list.isHermesLive) else {
+            return XCTFail("The paused list is still live")
+        }
+        let confirmed = await share.confirmingProfile(of: chat, readProfiles: list.readHostProfiles)
+        XCTAssertEqual(confirmed, .missingProfile("research"))
+    }
+
     // MARK: Fixture
 
     private func makeList(_ wire: HermesSessionListWire, profile: String? = "default",

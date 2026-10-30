@@ -31,6 +31,8 @@ struct ContentView: View {
                 // changes what it can reach.
                 switchServer(pendingLinks.reroute(state: authManager.state, servers: authManager.servers,
                                                   isBotModeEnabled: isBotModeEnabled))
+                // The home went, and a Shortcut text's chat with it.
+                shares.endReview()
                 switchServer(shares.shortcutRoute(state: authManager.state, servers: authManager.servers))
             }
             // A Shortcut's text opens only on the server it named (#1402), which may not be active.
@@ -115,7 +117,7 @@ struct ContentView: View {
                              pendingNewChat: $pendingLinks.hermesNewChat,
                              pendingShare: shares.offered(to: server), claimShare: { shares.claim($0) },
                              didRouteShare: consumePendingSharedImport, didDeclineShare: releasePendingSharedImport,
-                             didAbandonShare: { shares.abandon($0) })
+                             didAbandonShare: { shares.abandon($0) }, shortcutReview: shortcutReview)
                 .id(server)
         case .loggedOut(let server):
             OnboardingView(authManager: authManager, savedServer: server)
@@ -293,6 +295,18 @@ struct ContentView: View {
         shares.openNext(in: HermesShareDraft.containerURL(), active: authManager.state.server, servers: authManager.servers)
     }
 
+    /// The Shortcut texts behind the one a Hermes chat shows (#1402), for the Sessions list and that
+    /// chat.
+    private var shortcutReview: ShortcutTextReview {
+        ShortcutTextReview(
+            chat: shares.reviewing, hasWaiting: shares.hasWaitingShortcutText,
+            begin: { shares.beginReview(in: $0) },
+            end: { shares.endReview(in: $0, directory: HermesShareDraft.containerURL(), active: authManager.state.server,
+                                    servers: authManager.servers) },
+            discardNext: { shares.discardNextShortcutText(in: HermesShareDraft.containerURL()) }
+        )
+    }
+
     /// The Shortcut text waiting for a server that is no longer configured (#1402), and that
     /// server's host: it opens nowhere else unasked, so the user discards it or keeps it for later.
     private var unopenableShortcut: (share: SharedImportReservation, server: String)? {
@@ -305,28 +319,36 @@ struct ContentView: View {
 
 /// The shares waiting in the app group, handed to the active server's home one at a time
 /// (#1181): the one reserved for it or being moved into a Hermes draft, whether more wait, and
-/// whether one was routed since the last Open Next. `ContentView` owns it; a nil directory (no app group) reserves nothing.
+/// whether one was routed since the last Open Next. A Shortcut's text (#1402) waits only while
+/// another one's chat is shown, for that chat's Open Next or Discard or for it to close.
+/// `ContentView` owns it; a nil directory (no app group) reserves nothing.
 struct SharedImportQueue {
     /// The reserved share the active home is opening.
     var pending: SharedImportReservation?
     /// More shares wait behind it, which a webui session list offers in its Open Next banner.
     private(set) var hasWaiting = false
+    /// The Hermes chat showing a Shortcut's text, which later Shortcut texts wait behind.
+    private(set) var reviewing: UUID?
+    /// A Shortcut text waits, which the reviewing chat offers with Open Next and Discard.
+    private(set) var hasWaitingShortcutText = false
     private var hasRouted = false
     /// The share a Hermes list is moving into its draft (`claim`), offered to no home meanwhile.
     private var moving: SharedImportReservation?
 
-    /// Reserves the next waiting share when the active home opens it now (`SharedImportGate`).
+    /// Reserves the next waiting share when the active home opens it now (`SharedImportGate`), or
+    /// Shortcut text while no chat shows one.
     mutating func reserveNext(in directory: URL?, active: URL?, servers: [ServerAccount]) {
         guard pending == nil, moving == nil, let directory else { return }
-        guard SharedImportGate.opensNext(afterRouting: hasRouted, active: active, servers: servers) else {
-            return refreshWaiting(in: directory)
-        }
+        var kinds: SharedImportKinds = reviewing == nil ? .shortcutTexts : []
+        if SharedImportGate.opensNext(afterRouting: hasRouted, active: active, servers: servers) { kinds.insert(.shares) }
+        guard !kinds.isEmpty else { return refreshWaiting(in: directory) }
         do {
-            pending = try HermesShareDraft.reserveNextPendingImport(from: directory)
+            pending = try HermesShareDraft.reserveNextPendingImport(from: directory, kinds: kinds)
             refreshWaiting(in: directory)
         } catch {
             pending = nil
             hasWaiting = false
+            hasWaitingShortcutText = false
         }
     }
 
@@ -383,6 +405,35 @@ struct SharedImportQueue {
         reserveNext(in: directory, active: active, servers: servers)
     }
 
+    /// The Hermes list is moving a Shortcut's text into `chat`, which shows it next: later texts
+    /// wait behind it.
+    mutating func beginReview(in chat: UUID) {
+        reviewing = chat
+    }
+
+    /// `chat` no longer shows its Shortcut's text (it closed, its Open Next, or the text never got
+    /// there), so the next waiting text opens. A chat that isn't the reviewing one changes nothing.
+    mutating func endReview(in chat: UUID, directory: URL?, active: URL?, servers: [ServerAccount]) {
+        guard reviewing == chat else { return }
+        reviewing = nil
+        reserveNext(in: directory, active: active, servers: servers)
+    }
+
+    /// The home that showed the reviewing chat went (a server switch or sign-out). Waiting texts
+    /// open on the next reservation, not at once, so the switch isn't undone for another server's.
+    mutating func endReview() {
+        reviewing = nil
+    }
+
+    /// The reviewing chat's Discard: the next waiting Shortcut text is deleted unopened.
+    mutating func discardNextShortcutText(in directory: URL?) {
+        guard let directory else { return }
+        if let next = try? HermesShareDraft.reserveNextPendingImport(from: directory, kinds: .shortcutTexts) {
+            try? HermesShareDraft.consume(next, from: directory)
+        }
+        refreshWaiting(in: directory)
+    }
+
     /// The pending reservation for `server`'s home: a share opens on any home, a Shortcut's text
     /// only on the server it named (#1402).
     func offered(to server: URL) -> SharedImportReservation? {
@@ -405,6 +456,26 @@ struct SharedImportQueue {
 
     private mutating func refreshWaiting(in directory: URL) {
         hasWaiting = (try? HermesShareDraft.hasPendingImport(in: directory)) ?? false
+        hasWaitingShortcutText = hasWaiting
+            && (try? HermesShareDraft.hasPendingImport(in: directory, kinds: .shortcutTexts)) == true
+    }
+}
+
+/// The Shortcut texts waiting behind the one a Hermes chat shows (#1402). The Sessions list
+/// begins a review as it moves a text into its chat and ends it when that chat closes; the chat
+/// offers Open Next and Discard while one waits. `ContentView` makes it from its queue.
+struct ShortcutTextReview {
+    /// The chat showing a Shortcut's text.
+    var chat: UUID?
+    var hasWaiting = false
+    var begin: (UUID) -> Void = { _ in }
+    var end: (UUID) -> Void = { _ in }
+    var discardNext: () -> Void = {}
+
+    /// What chat `id` offers: nil unless it is the reviewing chat and a text waits behind it.
+    func waiting(in id: UUID) -> WaitingShortcutText? {
+        guard chat == id, hasWaiting else { return nil }
+        return WaitingShortcutText(openNext: { end(id) }, discard: discardNext)
     }
 }
 
@@ -582,6 +653,7 @@ struct HermesServerHome: View {
     let didRouteShare: (SharedImportReservation) -> Void
     let didDeclineShare: (SharedImportReservation) -> Void
     let didAbandonShare: (SharedImportReservation) -> Void
+    let shortcutReview: ShortcutTextReview
     @SceneStorage("hermesHome.tab") private var tab = HermesHomeTab.sessions
     @State private var inbox: BotInbox
     /// The Sessions side's list on the saved Bot connection, read again each time a side shows,
@@ -596,6 +668,7 @@ struct HermesServerHome: View {
          didRouteShare: @escaping (SharedImportReservation) -> Void,
          didDeclineShare: @escaping (SharedImportReservation) -> Void,
          didAbandonShare: @escaping (SharedImportReservation) -> Void,
+         shortcutReview: ShortcutTextReview = ShortcutTextReview(),
          initiallyShowingSettings: Bool = false,
          loadConnection: @escaping @MainActor (URL) -> BotConnection? = { try? BotConnectionStore().load(server: $0) }) {
         self.authManager = authManager
@@ -610,6 +683,7 @@ struct HermesServerHome: View {
         self.didRouteShare = didRouteShare
         self.didDeclineShare = didDeclineShare
         self.didAbandonShare = didAbandonShare
+        self.shortcutReview = shortcutReview
         _inbox = State(initialValue: BotInbox(server: server))
         _sessions = State(initialValue: loadConnection(server).map { HermesSessionsSide(server: server, connection: $0) })
     }
@@ -689,7 +763,7 @@ struct HermesServerHome: View {
                                       pendingLink: $pendingSessionDestination, pendingNewChat: $pendingNewChat,
                                       pendingShare: pendingShare, claimShare: claimShare,
                                       didRouteShare: didRouteShare, didDeclineShare: didDeclineShare,
-                                      didAbandonShare: didAbandonShare)
+                                      didAbandonShare: didAbandonShare, shortcutReview: shortcutReview)
                     .id(sessions.entry.id)
             } else {
                 BotsInboxView(server: server, pendingDestination: $pendingBotDestination, home: home, inbox: inbox)

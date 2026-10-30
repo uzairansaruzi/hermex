@@ -719,7 +719,7 @@ final class ChatDraftStoreTests: XCTestCase {
         let relaunched = ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: directory), debounceDuration: .zero)
         let restored = await relaunched.draft(for: key)
         XCTAssertEqual(restored?.isFromShortcut, true)
-        relaunched.clearFromShortcut(for: key)
+        relaunched.setFromShortcut(false, for: key)
         try await relaunched.flush()
 
         let cleared = await ChatDraftFilePersistence(directoryURL: directory).load()[key]

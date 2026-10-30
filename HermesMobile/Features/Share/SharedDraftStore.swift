@@ -43,6 +43,14 @@ struct SharedShortcutDestination: Equatable {
     let profile: String?
 }
 
+/// Which waiting records a reservation may take: shares, Shortcut texts (#1402), or both.
+struct SharedImportKinds: OptionSet {
+    let rawValue: Int
+    static let shares = SharedImportKinds(rawValue: 1 << 0)
+    static let shortcutTexts = SharedImportKinds(rawValue: 1 << 1)
+    static let all: SharedImportKinds = [.shares, .shortcutTexts]
+}
+
 /// Why a Shortcut's text wasn't queued (#1402). Nothing was written.
 enum SharedShortcutTextError: Error, Equatable {
     case empty
@@ -233,7 +241,7 @@ enum HermesShareDraft {
         try cleanTemporaryItems(in: directory, fileManager: fileManager, now: now)
         let waiting = try (itemDirectoryURLs(at: pendingItemsURL(in: directory), fileManager: fileManager)
             + itemDirectoryURLs(at: reservedItemsURL(in: directory), fileManager: fileManager))
-            .filter { $0.lastPathComponent.hasPrefix(shortcutItemPrefix) }
+            .filter { kind(of: $0) == .shortcutTexts }
             .filter { url in
                 guard let createdAt = payloadCreatedAt(in: url) else { return false }
                 return now.timeIntervalSince(createdAt) < shortcutTextLifetime
@@ -255,7 +263,8 @@ enum HermesShareDraft {
         from directory: URL,
         fileManager: FileManager = .default,
         now: Date = Date(),
-        reservationTimeout: TimeInterval = reservationLifetime
+        reservationTimeout: TimeInterval = reservationLifetime,
+        kinds: SharedImportKinds = .all
     ) throws -> SharedImportReservation? {
         try prepareInbox(in: directory, fileManager: fileManager)
         try migrateLegacyPendingImportIfNeeded(in: directory, fileManager: fileManager, now: now)
@@ -267,7 +276,8 @@ enum HermesShareDraft {
         )
         try cleanTemporaryItems(in: directory, fileManager: fileManager, now: now)
 
-        for pendingURL in try sortedPendingItemURLs(in: directory, fileManager: fileManager) {
+        for pendingURL in try sortedPendingItemURLs(in: directory, fileManager: fileManager)
+            where kinds.contains(kind(of: pendingURL)) {
             let itemID = pendingURL.lastPathComponent
             let reservedURL = reservedItemURL(for: itemID, in: directory)
 
@@ -320,7 +330,8 @@ enum HermesShareDraft {
         in directory: URL,
         fileManager: FileManager = .default,
         now: Date = Date(),
-        reservationTimeout: TimeInterval = reservationLifetime
+        reservationTimeout: TimeInterval = reservationLifetime,
+        kinds: SharedImportKinds = .all
     ) throws -> Bool {
         try prepareInbox(in: directory, fileManager: fileManager)
         try migrateLegacyPendingImportIfNeeded(in: directory, fileManager: fileManager, now: now)
@@ -331,7 +342,12 @@ enum HermesShareDraft {
             reservationTimeout: reservationTimeout
         )
         try cleanTemporaryItems(in: directory, fileManager: fileManager, now: now)
-        return try !sortedPendingItemURLs(in: directory, fileManager: fileManager).isEmpty
+        return try sortedPendingItemURLs(in: directory, fileManager: fileManager).contains { kinds.contains(kind(of: $0)) }
+    }
+
+    /// A waiting record's kind, from its id: a Shortcut's text has its own prefix (`saveShortcutText`).
+    private static func kind(of itemURL: URL) -> SharedImportKinds {
+        itemURL.lastPathComponent.hasPrefix(shortcutItemPrefix) ? .shortcutTexts : .shares
     }
 
     static func consume(

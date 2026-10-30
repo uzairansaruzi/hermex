@@ -818,10 +818,11 @@ final class ChatDraftStore {
         }
     }
 
-    /// Turns the draft's Shortcuts review notice off once the user dismisses it or sends (#1402).
-    func clearFromShortcut(for key: ChatDraftKey) {
-        guard drafts[key]?.isFromShortcut == true else { return }
-        updateDraft(for: key) { $0.isFromShortcut = false }
+    /// Turns the draft's Shortcuts review notice off once the user dismisses it or sends, or back
+    /// on when Undo restores text a removal emptied (#1402). A draft with nothing else stays gone.
+    func setFromShortcut(_ isFromShortcut: Bool, for key: ChatDraftKey) {
+        guard (drafts[key]?.isFromShortcut ?? false) != isFromShortcut else { return }
+        updateDraft(for: key) { $0.isFromShortcut = isFromShortcut }
     }
 
     /// Replaces the draft's settings snapshot without disturbing its text or

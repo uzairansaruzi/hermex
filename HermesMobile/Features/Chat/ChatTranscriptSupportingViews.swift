@@ -1292,49 +1292,74 @@ enum HiddenPromptCharacters {
     }
 }
 
+/// Another Shortcut text waiting behind the one a chat shows (#1402): Open Next opens it in that
+/// chat's place, Discard deletes it unopened.
+struct WaitingShortcutText {
+    let openNext: () -> Void
+    let discard: () -> Void
+}
+
 /// The composer's note that its text came from Shortcuts (#1402), above it until the user
 /// dismisses it or sends. Hidden characters make it a warning with Remove Hidden Characters;
-/// after a removal it offers Undo until the next edit.
+/// after a removal it offers Undo until the next edit. While another Shortcut text waits, it
+/// offers Open Next and Discard, which stay after the note itself is dismissed or sent.
 struct ShortcutTextNotice: View {
+    let showsProvenance: Bool
     let hasHiddenCharacters: Bool
     let canUndoRemoval: Bool
     let removeHiddenCharacters: () -> Void
     let undoRemoval: () -> Void
+    let waiting: WaitingShortcutText?
     let dismiss: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: hasHiddenCharacters ? "exclamationmark.triangle.fill" : "info.circle.fill")
+            Image(systemName: showsProvenance && hasHiddenCharacters ? "exclamationmark.triangle.fill" : "info.circle.fill")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(hasHiddenCharacters ? Color.orange : Color.secondary)
+                .foregroundStyle(showsProvenance && hasHiddenCharacters ? Color.orange : Color.secondary)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(hasHiddenCharacters
-                     ? "Added from Shortcuts with hidden characters. They can change how the text reads to the agent. Review before sending."
-                     : "Added from Shortcuts. Review before sending.")
-                    .font(.footnote)
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if hasHiddenCharacters {
-                    Button("Remove Hidden Characters", action: removeHiddenCharacters)
-                        .font(.footnote.weight(.semibold))
-                } else if canUndoRemoval {
-                    Button("Undo", action: undoRemoval)
-                        .font(.footnote.weight(.semibold))
+                if showsProvenance {
+                    Text(hasHiddenCharacters
+                         ? "Added from Shortcuts with hidden characters. They can change how the text reads to the agent. Review before sending."
+                         : "Added from Shortcuts. Review before sending.")
+                        .font(.footnote)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if hasHiddenCharacters {
+                        Button("Remove Hidden Characters", action: removeHiddenCharacters)
+                            .font(.footnote.weight(.semibold))
+                    } else if canUndoRemoval {
+                        Button("Undo", action: undoRemoval)
+                            .font(.footnote.weight(.semibold))
+                    }
+                }
+                if let waiting {
+                    Text("Another text from Shortcuts is waiting.")
+                        .font(.footnote)
+                        .foregroundStyle(showsProvenance ? .secondary : .primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 16) {
+                        Button("Open Next", action: waiting.openNext)
+                        Button("Discard", role: .destructive, action: waiting.discard)
+                    }
+                    .font(.footnote.weight(.semibold))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button(action: dismiss) {
-                Image(systemName: "xmark")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 28, minHeight: 28)
-                    .contentShape(Rectangle())
+            if showsProvenance {
+                Button(action: dismiss) {
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 28, minHeight: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss")
         }
         .padding(12)
         .background(.ultraThinMaterial)

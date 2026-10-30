@@ -321,6 +321,8 @@ struct ChatView: View {
     /// Puts a new Hermes chat in this one's place: a Profile picked before anything was
     /// sent (#1015). Nil pushes it on top instead.
     let onReplaceHermesSession: ((HermesSessionChat) -> Void)?
+    /// Another Shortcut text waits behind the one this chat shows (#1402).
+    private let waitingShortcut: WaitingShortcutText?
     /// A Hermes session's dictation goes to its host for its Profile (#1071).
     private let hermesTranscriber: ComposerTranscriber?
     /// Matches a Hermes chat's `Session Open` signpost to the list push that began it.
@@ -477,7 +479,8 @@ struct ChatView: View {
         hermesSession: HermesSessionChat? = nil,
         onReplaceHermesSession: ((HermesSessionChat) -> Void)? = nil,
         onOpenHermesSessions: ((HermesSessionListEntry) -> Void)? = nil,
-        onHermesDraftKeyChange: ((ChatDraftKey) -> Void)? = nil
+        onHermesDraftKeyChange: ((ChatDraftKey) -> Void)? = nil,
+        waitingShortcut: WaitingShortcutText? = nil
     ) {
         self.session = session
         self.server = server
@@ -495,6 +498,7 @@ struct ChatView: View {
         self.onReplaceHermesSession = onReplaceHermesSession
         hermesTranscriber = hermesSession.map { HermesTranscription.transcriber(for: $0) }
         self.onOpenHermesSessions = onOpenHermesSessions
+        self.waitingShortcut = waitingShortcut
         _draftMessage = State(initialValue: initialDraft)
         _draftQuotes = State(initialValue: initialQuotes)
         _initialAttachments = State(initialValue: initialAttachments)
@@ -525,7 +529,7 @@ struct ChatView: View {
     /// `HermesUpdateSignInAction`. New Chat with Voice's chat (#1180) starts dictation.
     init(hermesSession: HermesSessionChat, onReplace: ((HermesSessionChat) -> Void)? = nil,
          onOpenSessions: ((HermesSessionListEntry) -> Void)? = nil,
-         onDraftKeyChange: ((ChatDraftKey) -> Void)? = nil) {
+         onDraftKeyChange: ((ChatDraftKey) -> Void)? = nil, waitingShortcut: WaitingShortcutText? = nil) {
         self.init(
             session: SessionSummary(profile: hermesSession.target.profile),
             server: hermesSession.server,
@@ -534,7 +538,8 @@ struct ChatView: View {
             hermesSession: hermesSession,
             onReplaceHermesSession: onReplace,
             onOpenHermesSessions: onOpenSessions,
-            onHermesDraftKeyChange: onDraftKeyChange
+            onHermesDraftKeyChange: onDraftKeyChange,
+            waitingShortcut: waitingShortcut
         )
     }
 
@@ -1988,10 +1993,17 @@ struct ChatView: View {
         }
     }
 
-    private var showsShortcutNotice: Bool { isFromShortcut && !draftMessage.isEmpty }
+    private var showsShortcutNotice: Bool { showsShortcutProvenance || waitingShortcut != nil }
+
+    /// The draft holds text from Shortcuts, or nothing once Remove Hidden Characters took all of
+    /// it, which keeps its Undo.
+    private var showsShortcutProvenance: Bool {
+        isFromShortcut && (!draftMessage.isEmpty || textBeforeHiddenRemoval != nil)
+    }
 
     private var shortcutNotice: some View {
         ShortcutTextNotice(
+            showsProvenance: showsShortcutProvenance,
             hasHiddenCharacters: HiddenPromptCharacters.contains(in: draftMessage),
             canUndoRemoval: textBeforeHiddenRemoval != nil,
             removeHiddenCharacters: {
@@ -2004,7 +2016,10 @@ struct ChatView: View {
                 guard let before = textBeforeHiddenRemoval else { return }
                 persistDraftEdit(before)
                 draftMessage = before
+                // A removal that emptied the draft dropped it, notice and all.
+                draftStore.setFromShortcut(true, for: draftKey)
             },
+            waiting: waitingShortcut,
             dismiss: dismissShortcutNotice
         )
     }
@@ -2013,7 +2028,7 @@ struct ChatView: View {
     private func dismissShortcutNotice() {
         isFromShortcut = false
         textBeforeHiddenRemoval = nil
-        draftStore.clearFromShortcut(for: draftKey)
+        draftStore.setFromShortcut(false, for: draftKey)
     }
 
     /// The bot's profile, from its pill (#1145). Closing it reads the roster again, so the pill

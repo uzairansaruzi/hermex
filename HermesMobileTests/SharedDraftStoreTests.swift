@@ -1014,16 +1014,18 @@ final class SharedDraftStoreTests: XCTestCase {
         try HermesShareDraft.savePendingDraft("Shared", in: inbox, now: Date(timeIntervalSince1970: 1_800_000_030))
         try HermesShareDraft.savePendingDraft("Shared", in: inbox, now: Date(timeIntervalSince1970: 1_800_000_040))
 
-        let first = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        let now = Date(timeIntervalSince1970: 1_800_000_050)
+
+        let first = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox, now: now))
         try HermesShareDraft.consume(first, from: inbox)
-        let second = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        let second = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox, now: now))
         try HermesShareDraft.consume(second, from: inbox)
         XCTAssertEqual([first.sharedImport.draft, second.sharedImport.draft], ["Same", "Same"])
         XCTAssertNotEqual(first.occurrenceID, second.occurrenceID, "Each run is added to the draft")
 
-        let share = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        let share = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox, now: now))
         try HermesShareDraft.consume(share, from: inbox)
-        XCTAssertNil(try HermesShareDraft.reserveNextPendingImport(from: inbox), "An identical share still dedupes")
+        XCTAssertNil(try HermesShareDraft.reserveNextPendingImport(from: inbox, now: now), "An identical share still dedupes")
     }
 
     func testShortcutTextsAreBoundedInSizeCountAndAge() throws {
@@ -1063,14 +1065,9 @@ final class SharedDraftStoreTests: XCTestCase {
                                                                shortcut: SharedShortcutDestination(server: server, profile: profile)))
         }
 
-        XCTAssertNil(shortcut(hermes, nil).hermesOpening(on: entry, listed: "default", hostProfiles: ["default"], isLive: true),
+        XCTAssertNil(shortcut(hermes, nil).hermesOpening(on: entry, listed: "default", isLive: true),
                      "Another server's list never opens it")
-        XCTAssertNil(shortcut(studio, "dev").hermesOpening(on: entry, listed: "default", isLive: true),
-                     "Waits until the host's Profiles are read")
-        XCTAssertEqual(shortcut(studio, "gone").hermesOpening(on: entry, listed: "default", hostProfiles: ["default"], isLive: true),
-                       .missingProfile("gone"), "A removed Profile is never swapped for another")
-        guard case .chat(let named)? = shortcut(studio, "dev")
-            .hermesOpening(on: entry, listed: "default", hostProfiles: ["default", "dev"], isLive: true) else {
+        guard case .chat(let named)? = shortcut(studio, "dev").hermesOpening(on: entry, listed: "default", isLive: true) else {
             return XCTFail("Its Profile opens")
         }
         XCTAssertEqual(named.target, .new(profile: "dev"))
@@ -1115,6 +1112,51 @@ final class SharedDraftStoreTests: XCTestCase {
         XCTAssertEqual(queue.shortcutRoute(state: .loggedIn(server: hermes), servers: servers), account(studio, .hermes))
         XCTAssertNil(queue.shortcutRoute(state: .loggedOut(server: studio), servers: servers), "Waits for its sign-in")
         XCTAssertEqual(queue.offered(to: studio)?.sharedImport.draft, "Hi")
+    }
+
+    /// Later Shortcut texts wait while the first one's chat shows it, never replacing it on their
+    /// own: Discard deletes the next unopened, and Open Next (or that chat closing) opens it.
+    func testALaterShortcutTextWaitsWhileTheFirstIsReviewed() throws {
+        let servers = [account(hermes, .hermes)]
+        let inbox = try temporaryDirectory()
+        let destination = SharedShortcutDestination(server: hermes, profile: nil)
+        let now = Date()
+        for (offset, text) in ["First", "Second", "Third"].enumerated() {
+            try HermesShareDraft.saveShortcutText(text, for: destination, in: inbox, now: now.addingTimeInterval(Double(offset - 3)))
+        }
+        var queue = SharedImportQueue()
+        queue.reserveNext(in: inbox, active: hermes, servers: servers)
+        let first = try XCTUnwrap(queue.pending)
+        let chat = UUID()
+        XCTAssertTrue(queue.claim(first))
+        queue.beginReview(in: chat)
+        queue.consume(first, in: inbox, active: hermes, servers: servers)
+        XCTAssertNil(queue.pending, "The second text waits for Open Next")
+        XCTAssertTrue(queue.hasWaitingShortcutText)
+
+        queue.discardNextShortcutText(in: inbox)
+        queue.endReview(in: UUID(), directory: inbox, active: hermes, servers: servers)
+        XCTAssertNil(queue.pending, "Another chat closing doesn't release it")
+        queue.endReview(in: chat, directory: inbox, active: hermes, servers: servers)
+        XCTAssertEqual(queue.pending?.sharedImport.draft, "Third", "Discard deleted the second")
+    }
+
+    /// A share a webui list routed holds later shares for its Open Next banner, never a Shortcut's
+    /// text, which opens on its own Hermes server.
+    @MainActor
+    func testAShortcutTextOpensAfterAWebuiShareWasRouted() throws {
+        let servers = [account(webui, .webui), account(hermes, .hermes)]
+        let inbox = try temporaryDirectory()
+        try HermesShareDraft.savePendingDraft("Shared", in: inbox)
+        var queue = SharedImportQueue()
+        queue.reserveNext(in: inbox, active: webui, servers: servers)
+        queue.consume(try XCTUnwrap(queue.pending), in: inbox, active: webui, servers: servers)
+
+        try HermesShareDraft.saveShortcutText("Hi", for: SharedShortcutDestination(server: hermes, profile: nil), in: inbox)
+        queue.reserveNext(in: inbox, active: webui, servers: servers)
+
+        XCTAssertEqual(queue.pending?.sharedImport.draft, "Hi")
+        XCTAssertEqual(queue.shortcutRoute(state: .loggedIn(server: webui), servers: servers), account(hermes, .hermes))
     }
 
     private func temporaryDirectory() throws -> URL {

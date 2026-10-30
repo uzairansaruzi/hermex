@@ -1540,6 +1540,14 @@ Session, and a Profile picked before sending carries the draft into the new Prof
 its Open Next banner; the Hermes home has none, so it opens each share as it arrives
 (`SharedImportGate`), and each adds to whatever the same Profile's draft already holds.
 
+New Chat with Content's text (#1402) rides the same inbox as a Shortcut record bound to one Hermes
+server and, optionally, one Profile; it opens only there, switching servers or waiting for sign-in
+(`SharedImportQueue.shortcutRoute`). A named Profile is checked with a fresh `profiles.list` before
+the move (`confirmingProfile`), since a chat over the list pauses its updates. While a Shortcut
+text's chat shows, later Shortcut texts wait behind it (`SharedImportQueue.reviewing`), whatever
+`SharedImportGate` says about shares, until that chat's notice offers Open Next or Discard or the
+chat closes.
+
 ## Bot lifecycle
 
 The inbox's `+` button and a row's context menu create, duplicate and delete
