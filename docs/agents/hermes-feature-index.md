@@ -46,7 +46,7 @@ The plan's gap table: webui features no core Hermes capability covered at 0.21.4
 ## Upstream RPC methods Hermex never calls
 
 At the pin (0.21.5, `ca678285`) the gateway contract has 237 methods and `HermesCall` sends
-61 of them, plus `gateway.ready` and `gateway.ping`. The rest, by family:
+63 of them, plus `gateway.ready` and `gateway.ping`. The rest, by family:
 
 | Family | Methods | Status | Note |
 | :--- | :--- | :---: | :--- |
@@ -65,7 +65,8 @@ At the pin (0.21.5, `ca678285`) the gateway contract has 237 methods and `Hermes
 | Host capabilities | `gateway.capabilities` | untriaged | What the build enforces; could replace some probes in `hermes-server.md`. |
 | Session extras | `session.usage`, `session.context_breakdown`, `session.status`, `session.set_hidden`, `session.save` | untriaged | Per-chat cost and context, `/status` text, hide/unhide, export to the host. |
 | Projects | `projects.list`, `projects.get`, `projects.archive`, `projects.add_folder`, `projects.remove_folder`, `projects.set_primary`, `projects.set_active`, `projects.for_cwd`, `projects.project_sessions`, `projects.discover_repos`, `projects.record_repos`, `project.facts` | untriaged | Hermex reads `projects.tree` and creates, renames and deletes. |
-| Subagents and processes | `subagent.steer`, `delegation.*`, `spawn_tree.*`, `agents.list`, `process.*` | untriaged | Hermex lists, tails and interrupts subagents. |
+| Subagents and processes | `process.list`, `process.kill` | shipped | Hermex lists, tails and stops a session's background commands (#1420). `process.stop` is never sent: its handler kills registry-wide, without an ownership filter. |
+| Subagents and processes | `subagent.steer`, `delegation.*`, `spawn_tree.*`, `agents.list`, `process.stop` | untriaged | Hermex lists, tails and interrupts subagents; `process.stop` stays uncalled. |
 | Checkpoints | `rollback.*` | untriaged | Restore a working tree to a checkpoint. |
 | Tools and MCP | `tools.*`, `toolsets.list`, `mcp.*` | untriaged | Toolset switches and MCP server setup, including OAuth. |
 | Connectors | `connectors.*` | untriaged | Hermex answers `connection.*` requests only. |
