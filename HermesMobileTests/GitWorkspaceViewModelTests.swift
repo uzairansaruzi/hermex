@@ -979,6 +979,73 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 2)
     }
 
+    /// A switch drops the previous branch's link once the host confirms it, while the reads after
+    /// it are still out, and shows the new branch's link once they answer.
+    @MainActor
+    func testASwitchDropsThePreviousPullRequestBeforeItsRereads() async throws {
+        nonisolated(unsafe) var branch = "main"
+        nonisolated(unsafe) var statusReadsOnDev = 0
+        let git = HermesGitHost.client { request in
+            switch request.url?.path {
+            case "/api/git/branch/switch":
+                branch = "dev"
+                return .json(200, .object(["branch": .string(branch)]))
+            case "/api/git/review/ship-info":
+                return Self.pullRequest(branch == "main" ? 42 : 43, "OPEN")
+            case "/api/git/status" where branch == "dev":
+                // The switch reads the status itself; the info read after it is the second.
+                statusReadsOnDev += 1
+                if statusReadsOnDev == 2 { return .park }
+                return Self.branchHost(request, branch: branch)
+            default:
+                return Self.branchHost(request, branch: branch)
+            }
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        await availability.load()
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(availability.pullRequest?.number, 42)
+
+        let parked = expectation(description: "info read after the switch in flight")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        let switching = Task { await availability.checkout(GitCheckoutTarget(ref: "dev", mode: .local)) }
+        await fulfillment(of: [parked], timeout: 2)
+
+        XCTAssertNil(availability.pullRequest)
+        let status = URLRequest(url: URL(string: "https://hermes.example/api/git/status")!)
+        HermesHostFixture.releaseParked(Self.branchHost(status, branch: "dev"))
+        let outcome = await switching.value
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(outcome, .success)
+        XCTAssertEqual(availability.pullRequest?.number, 43)
+    }
+
+    /// A read still out when the chat goes off screen never lands, and the menu reads again once
+    /// the chat is back.
+    @MainActor
+    func testLeavingTheChatCancelsThePullRequestRead() async throws {
+        nonisolated(unsafe) var parks = true
+        let git = HermesGitHost.client { request in
+            guard request.url?.path == "/api/git/review/ship-info" else { return Self.threeChanges(request) }
+            return parks ? .park : Self.pullRequest(43, "OPEN")
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        let parked = expectation(description: "pull request read in flight")
+        HermesHostFixture.onPark = { parked.fulfill() }
+        await availability.load()
+        await fulfillment(of: [parked], timeout: 2)
+        let read = availability.refreshPullRequest()
+
+        availability.cancelPullRequestRead()
+        HermesHostFixture.releaseParked(Self.pullRequest(42, "OPEN"))
+        await read?.value
+        XCTAssertNil(availability.pullRequest)
+
+        HermesHostFixture.script { parks = false }
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(availability.pullRequest?.number, 43)
+    }
+
     /// A read still out when the chat moves to another folder never shows its link there.
     @MainActor
     func testAPullRequestAnsweringAfterAFolderChangeShowsNothing() async throws {

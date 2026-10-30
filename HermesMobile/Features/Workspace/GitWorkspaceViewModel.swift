@@ -198,9 +198,7 @@ final class GitWorkspaceAvailabilityViewModel {
     /// nothing from this repository appears under the next.
     @MainActor func retire() {
         isRetired = true
-        pullRequestTask?.cancel()
-        pullRequestTask = nil
-        pullRequestGeneration += 1
+        cancelPullRequestRead()
     }
 
     /// Reads the latest turn's range since `base` at turn end (#1392); nil, for a turn without
@@ -364,6 +362,10 @@ final class GitWorkspaceAvailabilityViewModel {
             let response = try await git.checkout(target, stashingChanges: stashingChanges)
             guard !isRetired else { return .retired }
             apply(response)
+            // The previous branch's link goes now, not once the reads below answer (they can fail),
+            // and the new one belongs to the branch the host switched to.
+            pullRequestRead = nil
+            refreshPullRequest(force: true, on: response.currentBranch)
             async let turnRange: Void = reloadTurnReview()
             await refreshGitInfo()
             // Reload the branch list so the picker + composer pill reflect the new
@@ -371,7 +373,6 @@ final class GitWorkspaceAvailabilityViewModel {
             await loadBranches()
             await turnRange
             guard !isRetired else { return .retired }
-            refreshPullRequest(force: true)
             lastActionMessage = response.message
             if response.restoreFailed == true {
                 actionErrorMessage = response.restoreError ?? String(localized: "The branch changed, but the saved changes could not be restored.")
@@ -554,7 +555,7 @@ final class GitWorkspaceAvailabilityViewModel {
     private var pullRequestRead: (branch: String, pullRequest: GitPullRequest?)?
     private var pullRequestFreshUntil: Date?
     private var pullRequestTask: Task<Void, Never>?
-    /// Bumped by each read and by `retire()`, so only the latest read's answer lands.
+    /// Bumped by each read and by `cancelPullRequestRead()`, so only the latest read's answer lands.
     private var pullRequestGeneration = 0
 
     /// The current branch's pull request, for the Git menu's link; nil when there is none, its
@@ -568,9 +569,10 @@ final class GitWorkspaceAvailabilityViewModel {
     /// a slow `gh` on the host never holds them. Without `force` a read still running, or one from
     /// the last `pullRequestFreshness`, stands; `force` reads again after something that can
     /// change it: a branch switch, a push, or a turn. A failed or timed-out read shows no link.
+    /// The answer belongs to `branch`, by default the current one.
     /// Returns the read that will answer, if any, for a caller to wait on.
     @MainActor @discardableResult
-    func refreshPullRequest(force: Bool = false) -> Task<Void, Never>? {
+    func refreshPullRequest(force: Bool = false, on branch: String? = nil) -> Task<Void, Never>? {
         guard let git, hasRepository, !isRetired else { return nil }
         if !force {
             if let pullRequestTask { return pullRequestTask }
@@ -579,7 +581,7 @@ final class GitWorkspaceAvailabilityViewModel {
         pullRequestTask?.cancel()
         pullRequestGeneration += 1
         let generation = pullRequestGeneration
-        let branch = currentBranchName
+        let branch = branch ?? currentBranchName
         let task = Task { @MainActor [weak self] in
             let pullRequest = try? await git.pullRequest()
             guard let self, generation == pullRequestGeneration else { return }
@@ -589,6 +591,16 @@ final class GitWorkspaceAvailabilityViewModel {
         }
         pullRequestTask = task
         return task
+    }
+
+    /// Stops a read still out, so its answer never lands; the last answer stands, and the next
+    /// menu open reads again. Called when the chat goes off screen and by `retire()`.
+    @MainActor func cancelPullRequestRead() {
+        guard let pullRequestTask else { return }
+        pullRequestTask.cancel()
+        self.pullRequestTask = nil
+        pullRequestGeneration += 1
+        pullRequestFreshUntil = nil
     }
 
     private func apply(_ response: GitCheckoutResponse) {

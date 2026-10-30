@@ -1220,12 +1220,12 @@ enum HermesGitHost {
         .json(200, .object(["plugin_version": .string("0.6.0"), "routes": .array(routes.map(BotJSON.string))]))
     }
 
-    /// A request's route and query, as `/api/git/status path=/repo`.
     /// ship-info's answer with `gh` signed in and `pr` as the branch's pull request (#1391).
     static func shipInfo(_ pr: [String: BotJSON]) -> HermesHostFixture.Reply {
         .json(200, .object(["ghReady": .bool(true), "pr": .object(pr)]))
     }
 
+    /// A request's route and query, as `/api/git/status path=/repo`.
     static func describe(_ request: URLRequest) -> String {
         let items = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems ?? []
         return ([request.url?.path ?? ""] + items.map { "\($0.name)=\($0.value ?? "")" }).joined(separator: " ")

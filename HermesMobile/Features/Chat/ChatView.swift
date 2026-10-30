@@ -1066,6 +1066,7 @@ struct ChatView: View {
                 viewModel.stopListening()
                 viewModel.suspendStreamForNavigation()
                 viewModel.cleanupPollingTasks()
+                gitAvailabilityViewModel.cancelPullRequestRead()
             }
             .onAppear {
                 viewModel.protectDraftAttachments(for: draftKey)
