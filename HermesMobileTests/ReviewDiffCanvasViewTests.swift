@@ -179,6 +179,24 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertLessThan(try XCTUnwrap(deep.last), dirty.maxY)
     }
 
+    /// A jump to a file whose rows above are still loading is clamped at first; once
+    /// they load, the chosen file must still be on screen.
+    func testFileJumpSurvivesTheFilesAboveLoading() throws {
+        let notice = { (fileID: String) in ReviewDiffRow(id: "\(fileID):notice", fileID: fileID, kind: .notice("Loading…")) }
+        let view = ReviewDiffSurfaceView()
+        view.frame = CGRect(x: 0, y: 0, width: 390, height: 300)
+        view.layoutIfNeeded()
+        view.setRows([header("a"), notice("a"), header("b"), notice("b")])
+        view.scrollToFile("b", animated: false)
+        XCTAssertEqual(view.verticalOffset, 0, "Everything fits, so the jump is clamped.")
+
+        view.setRows([header("a")] + (0..<60).map { line("a", $0) } + [header("b"), notice("b")])
+
+        let headerB = try XCTUnwrap(view.frame(forRowID: "b:header"))
+        XCTAssertGreaterThanOrEqual(headerB.minY, view.verticalOffset)
+        XCTAssertLessThanOrEqual(headerB.minY + headerB.height, view.verticalOffset + 300)
+    }
+
     func testStickyHeaderReportsItsPinnedFrame() {
         let rows = [header("a")] + (0..<40).map { line("a", $0) } + [header("b")] + (0..<5).map { line("b", $0) }
         let canvas = makeCanvas(rows: rows)

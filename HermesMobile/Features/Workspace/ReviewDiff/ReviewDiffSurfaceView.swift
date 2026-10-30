@@ -10,6 +10,9 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
     private let refreshControl = UIRefreshControl()
     private var pendingScroll: ReviewDiffScrollTarget.Anchor?
     private var pendingScrollAnimated = false
+    /// A file jump that short content clamped (files above still loading). New rows
+    /// land it again until it reaches the top, the reader scrolls, or jumps elsewhere.
+    private var heldFileID: String?
     private var reportedVisibleRowRange: ClosedRange<Int>?
 
     var onPullToRefresh: (() -> Void)?
@@ -100,12 +103,17 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
 
     // MARK: - Inputs
 
-    /// Replaces the rows, keeping the file at the top of the viewport where it was.
+    /// Replaces the rows, keeping the file at the top of the viewport where it was,
+    /// or the held file jump.
     func setRows(_ rows: [ReviewDiffRow]) {
         let anchor = currentAnchor()
         canvas.setRows(rows)
-        restore(anchor)
-        applyPendingScrollIfNeeded()
+        if let heldFileID {
+            scroll(to: .fileHeader(heldFileID), animated: false)
+        } else {
+            restore(anchor)
+            applyPendingScrollIfNeeded()
+        }
     }
 
     /// Collapsing one file keeps its header where it is drawn (pinned at the top when
@@ -125,6 +133,7 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
     /// A file header lands at the top; a row lands 30 % down the viewport so the
     /// reader sees what leads into it. Applied once the layout can place it.
     func scroll(to anchor: ReviewDiffScrollTarget.Anchor, animated: Bool) {
+        heldFileID = nil
         pendingScroll = anchor
         pendingScrollAnimated = animated
         applyPendingScrollIfNeeded()
@@ -200,19 +209,26 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
             return
         }
         pendingScroll = nil
-        setVerticalOffset(target, animated: pendingScrollAnimated)
+        let landed = setVerticalOffset(target, animated: pendingScrollAnimated)
+        if case .fileHeader(let fileID) = anchor, abs(landed - target) > 0.5 {
+            heldFileID = fileID
+        }
     }
 
-    private func setVerticalOffset(_ target: CGFloat, animated: Bool) {
+    /// Returns the offset after clamping to the content.
+    @discardableResult
+    private func setVerticalOffset(_ target: CGFloat, animated: Bool) -> CGFloat {
         let maxOffset = max(scrollView.contentSize.height - scrollView.bounds.height, 0)
         let clamped = min(max(target, 0), maxOffset)
         let shouldAnimate = animated && abs(scrollView.contentOffset.y - clamped) > 0.5
         scrollView.setContentOffset(CGPoint(x: 0, y: clamped), animated: shouldAnimate)
         if !shouldAnimate { updateViewportFrame() }
+        return clamped
     }
 
     private func revealRow(at rowIndex: Int) {
         guard let frame = canvas.layout.frame(forRowAt: rowIndex) else { return }
+        heldFileID = nil
         scrollView.scrollRectToVisible(CGRect(x: 0, y: frame.minY, width: 1, height: frame.height), animated: false)
         updateViewportFrame()
     }
@@ -247,5 +263,9 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         updateViewportFrame()
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        heldFileID = nil
     }
 }
