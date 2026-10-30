@@ -47457,6 +47457,112 @@
         }
       }
     },
+    "Copy Contents" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "نسخ المحتوى"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Inhalt kopieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copiar contenido"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copier le contenu"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "העתק תוכן"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copia contenuto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "内容をコピー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "내용 복사"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Inhoud kopiëren"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kopiuj zawartość"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copiar conteúdo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Копировать содержимое"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "İçeriği kopyala"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "مواد کاپی کریں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "複製內容"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "拷贝内容"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "複製內容"
+          }
+        }
+      }
+    },
     "Copy Deeplink" : {
       "localizations" : {
         "ar" : {
@@ -47877,6 +47983,112 @@
           "stringUnit" : {
             "state" : "needs_review",
             "value" : "再次複製缺少的聊天…"
+          }
+        }
+      }
+    },
+    "Copy Path" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "نسخ المسار"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pfad kopieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copiar ruta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copier le chemin"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "העתק נתיב"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copia percorso"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "パスをコピー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "경로 복사"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Pad kopiëren"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kopiuj ścieżkę"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copiar caminho"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Копировать путь"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Yolu kopyala"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "پاتھ کاپی کریں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "複製路徑"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "拷贝路径"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "複製路徑"
           }
         }
       }
@@ -137979,6 +138191,112 @@
     "Something in front of Hermes, such as Cloudflare Access, blocked the request." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Etwas vor Hermes, etwa Cloudflare Access, hat die Anfrage blockiert." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Algo delante de Hermes, como Cloudflare Access, bloqueó la solicitud." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Un élément placé devant Hermes, comme Cloudflare Access, a bloqué la requête." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Qualcosa davanti a Hermes, come Cloudflare Access, ha bloccato la richiesta." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Coś przed Hermes, na przykład Cloudflare Access, zablokowało żądanie." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Algo na frente do Hermes, como o Cloudflare Access, bloqueou a solicitação." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Iets vóór Hermes, zoals Cloudflare Access, heeft het verzoek geblokkeerd." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes’in önündeki bir şey, örneğin Cloudflare Access, isteği engelledi." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Что-то перед Hermes, например Cloudflare Access, заблокировало запрос." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "Cloudflare Access など、Hermes の手前にあるものがリクエストをブロックしました。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 前面的某个服务（例如 Cloudflare Access）阻止了该请求。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "Cloudflare Access 등 Hermes 앞단의 무언가가 요청을 차단했습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "حظر شيء أمام Hermes، مثل Cloudflare Access، الطلب." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "משהו שנמצא לפני Hermes, כמו Cloudflare Access, חסם את הבקשה." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes کے آگے کسی چیز، جیسے Cloudflare Access، نے درخواست بلاک کر دی۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 前方的某項服務（例如 Cloudflare Access）封鎖了此要求。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 前方的某項服務（例如 Cloudflare Access）封鎖了此要求。" } } } },
     "Something in front of Hermes, such as Cloudflare Access, wants its own sign-in first. Add its service token under Connection Headers in the Hermes connection, or use an address that skips it, such as the dashboard's local network address." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Etwas vor Hermes, etwa Cloudflare Access, verlangt zuerst eine eigene Anmeldung. Füge sein Service-Token unter „Verbindungs-Header“ in der Hermes-Verbindung hinzu oder verwende eine Adresse, die es umgeht, etwa die Adresse des Dashboards im lokalen Netzwerk." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Algo delante de Hermes, como Cloudflare Access, pide primero su propio inicio de sesión. Añade su token de servicio en Encabezados de conexión, dentro de la conexión de Hermes, o usa una dirección que lo evite, como la dirección del panel en la red local." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Un élément placé devant Hermes, comme Cloudflare Access, demande d’abord sa propre connexion. Ajoutez son jeton de service dans En-têtes de connexion, dans la connexion Hermes, ou utilisez une adresse qui le contourne, comme l’adresse du tableau de bord sur le réseau local." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Qualcosa davanti a Hermes, come Cloudflare Access, richiede prima un proprio accesso. Aggiungi il suo token di servizio in Intestazioni di connessione nella connessione Hermes, oppure usa un indirizzo che lo aggiri, come l’indirizzo della dashboard nella rete locale." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Coś przed Hermes, na przykład Cloudflare Access, wymaga najpierw własnego logowania. Dodaj jego token usługi w sekcji Nagłówki połączenia w połączeniu Hermes albo użyj adresu, który to omija, na przykład adresu panelu w sieci lokalnej." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Algo na frente do Hermes, como o Cloudflare Access, exige primeiro um login próprio. Adicione o token de serviço dele em Cabeçalhos de conexão, na conexão do Hermes, ou use um endereço que o contorne, como o endereço do painel na rede local." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Iets vóór Hermes, zoals Cloudflare Access, wil eerst een eigen aanmelding. Voeg het servicetoken toe onder Verbindingskoptekst in de Hermes-verbinding, of gebruik een adres dat het omzeilt, zoals het adres van het dashboard op het lokale netwerk." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes’in önündeki bir şey, örneğin Cloudflare Access, önce kendi oturum açma işlemini istiyor. Hizmet belirtecini Hermes bağlantısındaki Bağlantı Başlıkları bölümüne ekleyin veya bunu atlayan bir adres kullanın, örneğin panonun yerel ağ adresi." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Что-то перед Hermes, например Cloudflare Access, сначала требует собственного входа. Добавьте его сервисный токен в разделе «Заголовки подключения» в подключении Hermes или используйте адрес в обход него, например адрес панели в локальной сети." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "Cloudflare Access など、Hermes の手前にあるものが先に独自のサインインを求めています。Hermes 接続の「接続ヘッダー」にそのサービストークンを追加するか、ダッシュボードのローカルネットワークアドレスなど、それを経由しないアドレスを使用してください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 前面的某个服务（例如 Cloudflare Access）要求先进行它自己的登录。请在 Hermes 连接的“连接请求头”中添加它的服务令牌，或使用绕过它的地址，例如仪表板的局域网地址。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "Cloudflare Access 등 Hermes 앞단의 무언가가 먼저 자체 로그인을 요구합니다. Hermes 연결의 연결 헤더에 해당 서비스 토큰을 추가하거나, 대시보드의 로컬 네트워크 주소처럼 이를 거치지 않는 주소를 사용하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "يطلب شيء أمام Hermes، مثل Cloudflare Access، تسجيل دخول خاصًا به أولًا. أضف رمز الخدمة الخاص به ضمن ترويسات الاتصال في اتصال Hermes، أو استخدم عنوانًا يتجاوزه، مثل عنوان لوحة التحكم على الشبكة المحلية." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "משהו שנמצא לפני Hermes, כמו Cloudflare Access, דורש קודם התחברות משלו. הוסף את אסימון השירות שלו בכותרות חיבור בחיבור Hermes, או השתמש בכתובת שעוקפת אותו, כמו כתובת לוח הבקרה ברשת המקומית." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes کے آگے کوئی چیز، جیسے Cloudflare Access، پہلے اپنا سائن اِن چاہتی ہے۔ Hermes کنکشن میں کنکشن ہیڈرز کے تحت اس کا سروس ٹوکن شامل کریں، یا ایسا پتہ استعمال کریں جو اسے بائی پاس کرے، جیسے ڈیش بورڈ کا لوکل نیٹ ورک پتہ۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 前方的某項服務（例如 Cloudflare Access）要求先進行它自己的登入。請在 Hermes 連線的「連線標頭」中加入它的服務權杖，或使用可略過它的位址，例如儀表板的區域網路位址。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "Hermes 前方的某項服務（例如 Cloudflare Access）要求先進行它自己的登入。請在 Hermes 連線的「連線請求標頭」中加入它的服務權杖，或使用可略過它的位址，例如儀表板的區域網路位址。" } } } },
     "Something went wrong reaching the server. Try again in a moment." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Beim Erreichen des Servers ist ein Fehler aufgetreten. Versuche es gleich noch einmal." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Algo salió mal al conectar con el servidor. Inténtalo de nuevo en un momento." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Un problème est survenu en contactant le serveur. Réessayez dans un moment." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Si è verificato un problema nel raggiungere il server. Riprova tra un momento." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Coś poszło nie tak podczas łączenia z serwerem. Spróbuj ponownie za chwilę." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Algo deu errado ao acessar o servidor. Tente novamente em um momento." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Er ging iets mis bij het bereiken van de server. Probeer het zo meteen opnieuw." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Sunucuya ulaşırken bir sorun oluştu. Biraz sonra tekrar deneyin." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Не удалось связаться с сервером. Повторите попытку чуть позже." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "サーバーへの接続中に問題が発生しました。しばらくしてから、もう一度お試しください。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "连接服务器时出错。请稍后重试。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "서버에 연결하는 중 문제가 발생했습니다. 잠시 후 다시 시도하세요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "حدث خطأ أثناء الوصول إلى الخادم. حاول مرة أخرى بعد لحظة." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "משהו השתבש בגישה לשרת. יש לנסות שוב בעוד רגע." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "سرور تک پہنچنے میں کچھ غلط ہو گیا۔ کچھ دیر بعد دوبارہ کوشش کریں۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "連線至伺服器時發生錯誤。請稍後再試。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "連線至伺服器時發生錯誤。請稍後再試。" } } } },
+    "Source" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "المصدر"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Quelltext"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Código fuente"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Source"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "מקור"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Sorgente"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ソース"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "소스"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Bron"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Źródło"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Código-fonte"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Исходный код"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kaynak"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "سورس"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "原始碼"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "源代码"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "原始碼"
+          }
+        }
+      }
+    },
     "Source: local session metadata fallback." : {
       "localizations" : {
         "ar" : {
@@ -165283,6 +165601,112 @@
       }
     },
     "Video" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Video" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Vídeo" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Vidéo" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Video" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Wideo" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Vídeo" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Video" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Video" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Видео" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "ビデオ" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "视频" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "동영상" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "فيديو" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "וידאו" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "ویڈیو" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "影片" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "影片" } } } },
+    "View" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "العرض"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ansicht"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vista"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Affichage"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "תצוגה"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vista"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "보기"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Weergave"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Widok"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Exibição"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Вид"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Görünüm"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "منظر"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "檢視"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "视图"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "檢視"
+          }
+        }
+      }
+    },
     "View all" : {
       "localizations" : {
         "ar" : { "stringUnit" : { "state" : "translated", "value" : "عرض الكل" } },
