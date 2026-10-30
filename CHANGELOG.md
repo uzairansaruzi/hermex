@@ -17,10 +17,11 @@ working and get fixes, and new features go to Hermes.
 ### Added
 - Chat in a Hermes session: stream replies; answer approvals, questions, sudo
   and secret prompts; attach images and documents, with thumbnails and previews
-  of sent files and replies' images, audio and files; and use /goal, /btw,
-  background, and slash commands with autocomplete. The agent can send images
-  and files into Hermes chats and bot chats. ([#1020], [#1022], [#1023],
-  [#1024], [#1039], [#1055], [#1154], [#1279])
+  of sent files and of replies' images, audio, files and documents; and use
+  /goal, /btw, background, and slash commands with autocomplete. The agent can
+  send images and files into Hermes chats and bot chats, and bot chat
+  attachments work on Windows hosts. ([#1020], [#1022], [#1023], [#1024],
+  [#1033], [#1039], [#1055], [#1154], [#1279], [#1323])
 - Pick the model, Profile, reasoning, personality and fast mode from the Hermes
   composer, and pause or resume a loop or heartbeat from the goal menu.
   ([#1034], [#1037], [#1150], [#1172])
@@ -29,8 +30,9 @@ working and get fixes, and new features go to Hermes.
   session; edit, regenerate, undo, retry, compress and clear inside one.
   Projects show as folder lanes, scheduled sessions have their own section,
   and sessions stay readable offline. Session edits and Move to Hermes work
-  with Hermes 0.22.3 and later. ([#1076], [#1094], [#1097], [#1098], [#1099],
-  [#1100], [#1101], [#1105], [#1106], [#1297], [#1301], [#1302])
+  with Hermes 0.22.3 and later, including hosts that run a separate gateway.
+  ([#1076], [#1094], [#1097], [#1098], [#1099], [#1100], [#1101], [#1105],
+  [#1106], [#1297], [#1301], [#1302], [#1336])
 - A Hermes server's home switches between Bots and Sessions from a bottom bar,
   with a Profile filter and a new-chat button that float over the list. On
   iPad, the home is a sidebar beside the open chat. ([#1108], [#1251],
@@ -44,16 +46,19 @@ working and get fixes, and new features go to Hermes.
   Pull and New branch. ([#1119], [#1120], [#1123], [#1130], [#1136], [#1137],
   [#1233], [#1243], [#1262])
 - Tasks on Hermes: create and manage them, Run Now with a running state the
-  server confirms, and read run history and output. ([#1057], [#1061], [#1064])
+  server confirms, and read run history and output, script-only Tasks
+  included. ([#1057], [#1061], [#1064], [#1348])
 - Kanban on Hermes: boards and Cards with live updates, and changes to both.
   ([#1056], [#1059], [#1063])
 - Skills, Memory and Usage on Hermes: browse and toggle skills and open their
   linked files, edit memory and soul, and read Insights. With the hermex-push
   plugin, Usage shows provider limits. ([#1077], [#1078], [#1080], [#1086],
   [#1242])
-- Listen to replies in the host's voice, and transcribe dictation with the
-  host's speech-to-text. ([#1082], [#1087], [#1246])
-- Update Hermes from Settings. ([#1083])
+- Listen to replies in the host's voice, or the phone's when the host can't
+  speak, with pause, scrub and speed in the app and on the Lock Screen.
+  Dictation uses the host's speech-to-text. ([#1082], [#1087], [#1246], [#1353])
+- Update Hermes, and add, replace or remove a Profile's API keys, from
+  Settings. ([#1083], [#1319])
 - Hermes sessions open from everywhere a webui session does: links that name
   their server, push taps that land on the exact session, Live Activities that
   tap through and stay current, New Chat Shortcuts, and the share extension.
@@ -74,8 +79,8 @@ working and get fixes, and new features go to Hermes.
 - Sign in to a Hermes dashboard that needs no password, with a warning that
   anyone who can reach its address can use the agent. ([#1315])
 - Bot Mode: a bot's chat opens in the regular chat from every entry point, with
-  its avatar pill, rules and @mentions, and stays readable offline. ([#1151],
-  [#1164], [#1166])
+  its avatar pill, rules and @mentions, stays readable offline, and follows a
+  Bot Chat the host replaces. ([#1151], [#1164], [#1166], [#1346])
 
 ### Changed
 - Settings opens on a short index: your servers, then Appearance, Composer,
@@ -96,6 +101,16 @@ working and get fixes, and new features go to Hermes.
 
 ### Fixed
 - Dictating into the composer no longer crashes the app. ([#1304])
+- Entering a saved Hermes server's address in onboarding opens that server
+  instead of saying it's already configured. ([#1332])
+- When iOS notifications are off, Response Complete Alerts offers Open
+  Settings. ([#1330])
+- Two dollar amounts on one line no longer turn the text between them into
+  math. ([#1337])
+- Retry on a failed Hermes turn no longer removes a turn another device sent
+  after it. ([#1324])
+- Connecting to a Hermes gateway's own listener says it isn't supported yet,
+  instead of failing every chat with unclear errors. ([#1347])
 - A compressed webui session that rejects a send opens its continuation, with
   the unsent message in the composer. ([#1284])
 - The chat's Files button is round again on iOS 26. ([#1251])
@@ -125,6 +140,7 @@ working and get fixes, and new features go to Hermes.
 [#1024]: https://github.com/uzairansaruzi/hermex/pull/1024
 [#1026]: https://github.com/uzairansaruzi/hermex/pull/1026
 [#1032]: https://github.com/uzairansaruzi/hermex/pull/1032
+[#1033]: https://github.com/uzairansaruzi/hermex/pull/1033
 [#1034]: https://github.com/uzairansaruzi/hermex/pull/1034
 [#1037]: https://github.com/uzairansaruzi/hermex/pull/1037
 [#1039]: https://github.com/uzairansaruzi/hermex/pull/1039
@@ -219,6 +235,17 @@ working and get fixes, and new features go to Hermes.
 [#1304]: https://github.com/uzairansaruzi/hermex/pull/1304
 [#1315]: https://github.com/uzairansaruzi/hermex/pull/1315
 [#1316]: https://github.com/uzairansaruzi/hermex/pull/1316
+[#1319]: https://github.com/uzairansaruzi/hermex/pull/1319
+[#1323]: https://github.com/uzairansaruzi/hermex/pull/1323
+[#1324]: https://github.com/uzairansaruzi/hermex/pull/1324
+[#1330]: https://github.com/uzairansaruzi/hermex/pull/1330
+[#1332]: https://github.com/uzairansaruzi/hermex/pull/1332
+[#1336]: https://github.com/uzairansaruzi/hermex/pull/1336
+[#1337]: https://github.com/uzairansaruzi/hermex/pull/1337
+[#1346]: https://github.com/uzairansaruzi/hermex/pull/1346
+[#1347]: https://github.com/uzairansaruzi/hermex/pull/1347
+[#1348]: https://github.com/uzairansaruzi/hermex/pull/1348
+[#1353]: https://github.com/uzairansaruzi/hermex/pull/1353
 
 ## [1.9.0] - 2026-10-04
 
