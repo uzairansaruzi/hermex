@@ -270,7 +270,9 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         line: UInt = #line
     ) async {
         let requested = ticks.expectRequest(number)
-        guard await XCTWaiter().fulfillment(of: [requested], timeout: 5) == .completed else {
+        // The bound only ends a broken pass: every tick queues on the main actor, which
+        // a loaded runner can hold well past 5 s (#1475).
+        guard await XCTWaiter().fulfillment(of: [requested], timeout: 30) == .completed else {
             return XCTFail("Reveal tick \(number) was never requested", file: file, line: line)
         }
     }
@@ -283,7 +285,7 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
         line: UInt = #line
     ) async {
         let returned = ticks.expectReturn(number)
-        guard await XCTWaiter().fulfillment(of: [returned], timeout: 5) == .completed else {
+        guard await XCTWaiter().fulfillment(of: [returned], timeout: 30) == .completed else {
             return XCTFail("Reveal tick \(number) never returned", file: file, line: line)
         }
     }
