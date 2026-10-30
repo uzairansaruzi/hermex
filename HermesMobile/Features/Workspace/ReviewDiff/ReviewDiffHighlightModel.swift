@@ -18,6 +18,13 @@ final class ReviewDiffHighlightModel {
     /// progressive loading moves it to another index meanwhile.
     typealias SideLine = (rowID: String, line: ReviewDiffLine)
 
+    /// The grammar each side of one file reads in; a rename's old side is the old path's.
+    /// Nil for a side whose path has no supported grammar.
+    private struct Languages {
+        var new: String?
+        var old: String?
+    }
+
     struct Appearance: Equatable {
         var isDark = false
         var increasedContrast = false
@@ -34,7 +41,7 @@ final class ReviewDiffHighlightModel {
 
     private let highlight: Highlight
     private var rows: [ReviewDiffRow] = []
-    private var languageByFileID: [String: String] = [:]
+    private var languagesByFileID: [String: Languages] = [:]
     private var collapsedFileIDs: Set<String> = []
     private var visibleRange: ClosedRange<Int>?
     private var requestedRange: ClosedRange<Int>?
@@ -55,11 +62,13 @@ final class ReviewDiffHighlightModel {
     /// The sheet's current rows. Colour already earned by an unchanged row id stays.
     func setRows(_ rows: [ReviewDiffRow]) {
         self.rows = rows
-        languageByFileID = [:]
+        languagesByFileID = [:]
         for row in rows {
-            guard let header = row.fileHeader,
-                  let language = SourceHighlightLanguage.resolve(path: header.path, serverLanguage: nil) else { continue }
-            languageByFileID[row.fileID] = language
+            guard let header = row.fileHeader else { continue }
+            let new = SourceHighlightLanguage.resolve(path: header.path, serverLanguage: nil)
+            let old = header.previousPath.map { SourceHighlightLanguage.resolve(path: $0, serverLanguage: nil) } ?? new
+            guard new != nil || old != nil else { continue }
+            languagesByFileID[row.fileID] = Languages(new: new, old: old)
         }
         requestHighlight()
     }
@@ -81,7 +90,7 @@ final class ReviewDiffHighlightModel {
     /// Before a refresh: the next rows may reuse ids for different text.
     func reset() {
         rows = []
-        languageByFileID = [:]
+        languagesByFileID = [:]
         invalidate()
     }
 
@@ -125,21 +134,27 @@ final class ReviewDiffHighlightModel {
         guard lower <= upper, let batch = nextBatch(in: lower...upper) else { return }
 
         let sides = Self.sides(of: batch.lines)
-        let language = batch.language
+        let languages = batch.languages
         let requestGeneration = generation
         let isDark = appearance.isDark
         let highlight = highlight
         highlightTask = Task {
             let signpost = reviewDiffSignposter.beginInterval("HighlightDiffRows")
-            let newRuns = sides.new.isEmpty ? [] : await highlight(sides.new.map(\.line.content), language, isDark)
-            let oldRuns = sides.old.isEmpty ? [] : await highlight(sides.old.map(\.line.content), language, isDark)
+            // A side without a usable grammar stays plain: an empty answer, not a failure.
+            func runs(_ side: [SideLine], _ language: String?) async -> [[SourceHighlightRun]]? {
+                guard let language, !side.isEmpty else { return [] }
+                return await highlight(side.map(\.line.content), language, isDark)
+            }
+            let newRuns = await runs(sides.new, languages.new)
+            let oldRuns = await runs(sides.old, languages.old)
             reviewDiffSignposter.endInterval("HighlightDiffRows", signpost, "rows=\(batch.lines.count)")
             finishHighlight(batch: batch, sides: sides, newRuns: newRuns, oldRuns: oldRuns, generation: requestGeneration)
         }
     }
 
     private struct Batch {
-        let language: String
+        /// Each side's grammar, nil where it is missing or failed.
+        let languages: Languages
         let lines: [SideLine]
     }
 
@@ -150,7 +165,8 @@ final class ReviewDiffHighlightModel {
     private func nextBatch(in window: ClosedRange<Int>) -> Batch? {
         guard let start = window.first(where: isEligible) else { return nil }
         let fileID = rows[start].fileID
-        guard let language = languageByFileID[fileID] else { return nil }
+        guard let file = languagesByFileID[fileID] else { return nil }
+        let languages = Languages(new: usable(file.new), old: usable(file.old))
         var lines: [SideLine] = []
         var index = start
         while index <= window.upperBound, lines.count < Self.maxLinesPerRequest,
@@ -159,16 +175,21 @@ final class ReviewDiffHighlightModel {
             lines.append((rows[index].id, line))
             index += 1
         }
-        return Batch(language: language, lines: lines)
+        return Batch(languages: languages, lines: lines)
     }
 
+    /// Whether the row still needs colour its own side's grammar can give.
     private func isEligible(_ index: Int) -> Bool {
         let row = rows[index]
         guard let line = row.line, !line.isNoNewlineMarker,
               !processedRowIDs.contains(row.id),
               !collapsedFileIDs.contains(row.fileID),
-              let language = languageByFileID[row.fileID] else { return false }
-        return !failedLanguages.contains(language)
+              let languages = languagesByFileID[row.fileID] else { return false }
+        return usable(line.change == .deletion ? languages.old : languages.new) != nil
+    }
+
+    private func usable(_ language: String?) -> String? {
+        language.flatMap { failedLanguages.contains($0) ? nil : $0 }
     }
 
     /// One hunk run split into the text each side of the diff saw. Context goes to
@@ -196,7 +217,8 @@ final class ReviewDiffHighlightModel {
         defer { requestHighlight() }
         guard generation == self.generation else { return }
         guard let newRuns, let oldRuns else {
-            failedLanguages.insert(batch.language)
+            if newRuns == nil, let language = batch.languages.new { failedLanguages.insert(language) }
+            if oldRuns == nil, let language = batch.languages.old { failedLanguages.insert(language) }
             return
         }
         processedRowIDs.formUnion(batch.lines.map(\.rowID))

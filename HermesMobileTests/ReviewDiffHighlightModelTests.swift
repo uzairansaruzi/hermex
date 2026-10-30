@@ -8,10 +8,12 @@ final class ReviewDiffHighlightModelTests: XCTestCase {
     /// request's index, so a test can tell which side coloured a row.
     private actor Recorder {
         private(set) var calls: [[String]] = []
+        private(set) var languages: [String] = []
 
-        func answer(_ lines: [String], color: UIColor) -> [[SourceHighlightRun]] {
+        func answer(_ lines: [String], language: String, color: UIColor) -> [[SourceHighlightRun]] {
             let location = calls.count
             calls.append(lines)
+            languages.append(language)
             return lines.map { _ in [SourceHighlightRun(range: NSRange(location: location, length: 1), color: color)] }
         }
     }
@@ -55,19 +57,21 @@ final class ReviewDiffHighlightModelTests: XCTestCase {
     }
 
     private func recordingModel(_ recorder: Recorder, color: UIColor = .black) -> ReviewDiffHighlightModel {
-        ReviewDiffHighlightModel { lines, _, _ in await recorder.answer(lines, color: color) }
+        ReviewDiffHighlightModel { lines, language, _ in await recorder.answer(lines, language: language, color: color) }
     }
 
     private func drain(_ model: ReviewDiffHighlightModel) async {
         while let task = model.highlightTask { await task.value }
     }
 
-    private func file(_ path: String, _ lines: [(String, DiffLine.Kind)], marker: Bool = false) -> [ReviewDiffRow] {
+    private func file(
+        _ path: String, _ lines: [(String, DiffLine.Kind)], marker: Bool = false, renamedFrom previousPath: String? = nil
+    ) -> [ReviewDiffRow] {
         var rows = [
             ReviewDiffRow(
                 id: "\(path):header",
                 fileID: path,
-                kind: .file(ReviewDiffFileHeader(path: path, previousPath: nil, changeKind: .modified, additions: 0, deletions: 0))
+                kind: .file(ReviewDiffFileHeader(path: path, previousPath: previousPath, changeKind: .modified, additions: 0, deletions: 0))
             ),
             ReviewDiffRow(id: "\(path):hunk:0", fileID: path, kind: .hunk("@@ -1 +1 @@"))
         ]
@@ -100,6 +104,18 @@ final class ReviewDiffHighlightModelTests: XCTestCase {
         XCTAssertNil(model.tokensByRowID["a.swift:line:0:3"], "The no-newline marker is not code.")
     }
 
+    /// A rename's deletions came from the old path, so they take that file's grammar.
+    func testRenamedFileReadsDeletionsInTheOldPathsLanguage() async {
+        let recorder = Recorder()
+        let model = recordingModel(recorder)
+        model.setRows(file("b.swift", [("x = 1", .context), ("y = 2", .deletion), ("let y = 2", .addition)], renamedFrom: "a.py"))
+        model.visibleRowRangeChanged(0...4)
+        await drain(model)
+
+        let languages = await recorder.languages
+        XCTAssertEqual(languages, ["swift", "python"])
+    }
+
     func testCollapsedAndUnsupportedFilesNeverRequestHighlighting() {
         let model = ReviewDiffHighlightModel { _, _, _ in XCTFail("No request expected"); return nil }
         model.setCollapsedFileIDs(["b.swift"])
@@ -110,8 +126,8 @@ final class ReviewDiffHighlightModelTests: XCTestCase {
 
     func testRequestsAreCappedAndAnsweredRowsAreNeverSentAgain() async {
         let recorder = Recorder()
-        let model = ReviewDiffHighlightModel { lines, _, _ in
-            _ = await recorder.answer(lines, color: .black)
+        let model = ReviewDiffHighlightModel { lines, language, _ in
+            _ = await recorder.answer(lines, language: language, color: .black)
             return lines.map { _ in [] }
         }
         model.setRows(file("a.swift", (0..<500).map { ("let v\($0) = \($0)", .addition) }))
