@@ -6,6 +6,7 @@ struct SettingsAboutPage: View {
     let server: ServerAccount?
 
     @State private var isShowingSupportDetails = false
+    @State private var diagnostics = DiagnosticsModel()
 
     static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? String(localized: "Unknown")
@@ -31,6 +32,17 @@ struct SettingsAboutPage: View {
                     SettingsLabel(title: String(localized: "Copy Support Details"), systemImage: "doc.on.doc")
                 }
                 .foregroundStyle(.primary)
+                NavigationLink {
+                    SettingsDiagnosticsPage(model: diagnostics)
+                } label: {
+                    LabeledContent {
+                        if let count = diagnostics.entries?.count, count > 0 {
+                            Text(count, format: .number)
+                        }
+                    } label: {
+                        SettingsLabel(title: String(localized: "Diagnostics"), systemImage: "stethoscope")
+                    }
+                }
                 SettingsExternalLink(
                     title: String(localized: "Report a Problem"),
                     systemImage: "ladybug",
@@ -77,6 +89,7 @@ struct SettingsAboutPage: View {
             }
         }
         .settingsPage(String(localized: "About Hermex"))
+        .task { await diagnostics.load() }
         .sheet(isPresented: $isShowingSupportDetails) {
             SupportDetailsSheet(text: report.text)
         }

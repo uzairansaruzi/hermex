@@ -212,6 +212,7 @@
 		E1036000000000000000A001 /* HermesSlashCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1036000000000000000A002 /* HermesSlashCommands.swift */; };
 		E1036000000000000000A003 /* HermesSlashCommandTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1036000000000000000A004 /* HermesSlashCommandTests.swift */; };
 		139600000000000000000003 /* SupportReportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139600000000000000000004 /* SupportReportTests.swift */; };
+		139700000000000000000005 /* DiagnosticsLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139700000000000000000006 /* DiagnosticsLogTests.swift */; };
 		E1015000000000000000A005 /* HermesChatSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1015000000000000000A006 /* HermesChatSettingsTests.swift */; };
 		E1014000000000000000A003 /* HermesChatLiveActivityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */; };
 		532000000000000000000003 /* RatingPromptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 532000000000000000000004 /* RatingPromptTests.swift */; };
@@ -328,6 +329,8 @@
 		125200000000000000000002 /* SettingsRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000001 /* SettingsRows.swift */; };
 		125200000000000000000004 /* SettingsAppPages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000003 /* SettingsAppPages.swift */; };
 		139600000000000000000001 /* SupportReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139600000000000000000002 /* SupportReport.swift */; };
+		139700000000000000000001 /* DiagnosticsLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139700000000000000000002 /* DiagnosticsLog.swift */; };
+		139700000000000000000003 /* SettingsDiagnosticsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 139700000000000000000004 /* SettingsDiagnosticsPage.swift */; };
 		125200000000000000000006 /* SettingsAboutPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000005 /* SettingsAboutPage.swift */; };
 		125200000000000000000008 /* SettingsNotificationsPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000007 /* SettingsNotificationsPage.swift */; };
 		12520000000000000000000A /* SettingsServerPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 125200000000000000000009 /* SettingsServerPage.swift */; };
@@ -905,6 +908,7 @@
 		E1036000000000000000A002 /* HermesSlashCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesSlashCommands.swift; sourceTree = "<group>"; };
 		E1036000000000000000A004 /* HermesSlashCommandTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesSlashCommandTests.swift; sourceTree = "<group>"; };
 		139600000000000000000004 /* SupportReportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportReportTests.swift; sourceTree = "<group>"; };
+		139700000000000000000006 /* DiagnosticsLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsLogTests.swift; sourceTree = "<group>"; };
 		E1015000000000000000A006 /* HermesChatSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatSettingsTests.swift; sourceTree = "<group>"; };
 		E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HermesChatLiveActivityTests.swift; sourceTree = "<group>"; };
 		532000000000000000000004 /* RatingPromptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingPromptTests.swift; sourceTree = "<group>"; };
@@ -1021,6 +1025,8 @@
 		125200000000000000000001 /* SettingsRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsRows.swift; sourceTree = "<group>"; };
 		125200000000000000000003 /* SettingsAppPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAppPages.swift; sourceTree = "<group>"; };
 		139600000000000000000002 /* SupportReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupportReport.swift; sourceTree = "<group>"; };
+		139700000000000000000002 /* DiagnosticsLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsLog.swift; sourceTree = "<group>"; };
+		139700000000000000000004 /* SettingsDiagnosticsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsDiagnosticsPage.swift; sourceTree = "<group>"; };
 		125200000000000000000005 /* SettingsAboutPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsAboutPage.swift; sourceTree = "<group>"; };
 		125200000000000000000007 /* SettingsNotificationsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsNotificationsPage.swift; sourceTree = "<group>"; };
 		125200000000000000000009 /* SettingsServerPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsServerPage.swift; sourceTree = "<group>"; };
@@ -1566,6 +1572,7 @@
 					E1036000000000000000A004 /* HermesSlashCommandTests.swift */,
 					E1015000000000000000A006 /* HermesChatSettingsTests.swift */,
 					139600000000000000000004 /* SupportReportTests.swift */,
+					139700000000000000000006 /* DiagnosticsLogTests.swift */,
 					E1014000000000000000A004 /* HermesChatLiveActivityTests.swift */,
 				532000000000000000000004 /* RatingPromptTests.swift */,
 				531000000000000000000202 /* TipJarPromptTests.swift */,
@@ -2155,6 +2162,8 @@
 				125200000000000000000003 /* SettingsAppPages.swift */,
 				125200000000000000000005 /* SettingsAboutPage.swift */,
 				139600000000000000000002 /* SupportReport.swift */,
+				139700000000000000000002 /* DiagnosticsLog.swift */,
+				139700000000000000000004 /* SettingsDiagnosticsPage.swift */,
 				125200000000000000000007 /* SettingsNotificationsPage.swift */,
 				125200000000000000000009 /* SettingsServerPage.swift */,
 				12520000000000000000000B /* WebuiServerSettings.swift */,
@@ -2748,6 +2757,8 @@
 				125200000000000000000004 /* SettingsAppPages.swift in Sources */,
 				125200000000000000000006 /* SettingsAboutPage.swift in Sources */,
 				139600000000000000000001 /* SupportReport.swift in Sources */,
+				139700000000000000000001 /* DiagnosticsLog.swift in Sources */,
+				139700000000000000000003 /* SettingsDiagnosticsPage.swift in Sources */,
 				125200000000000000000008 /* SettingsNotificationsPage.swift in Sources */,
 				12520000000000000000000A /* SettingsServerPage.swift in Sources */,
 				12520000000000000000000C /* WebuiServerSettings.swift in Sources */,
@@ -3056,6 +3067,7 @@
 					E1036000000000000000A003 /* HermesSlashCommandTests.swift in Sources */,
 					E1015000000000000000A005 /* HermesChatSettingsTests.swift in Sources */,
 					139600000000000000000003 /* SupportReportTests.swift in Sources */,
+					139700000000000000000005 /* DiagnosticsLogTests.swift in Sources */,
 					E1014000000000000000A003 /* HermesChatLiveActivityTests.swift in Sources */,
 				532000000000000000000003 /* RatingPromptTests.swift in Sources */,
 				531000000000000000000201 /* TipJarPromptTests.swift in Sources */,
