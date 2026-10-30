@@ -89353,6 +89353,120 @@
         }
       }
     },
+    "markdown.view.preview" : {
+      "comment" : "Markdown View choice: the rendered document, not preview features",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "معاينة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vorschau"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preview"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vista previa"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aperçu"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "תצוגה מקדימה"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Anteprima"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "プレビュー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "미리보기"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Voorvertoning"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Podgląd"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Prévia"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Предпросмотр"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Önizleme"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "پیش منظر"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "預覽"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "预览"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "預覽"
+          }
+        }
+      }
+    },
     "Master password" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Master-Passwort" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Contraseña maestra" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Mot de passe principal" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Password principale" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Hasło główne" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Senha mestra" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Hoofdwachtwoord" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Ana parola" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Мастер-пароль" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "マスターパスワード" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "主密码" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "마스터 비밀번호" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "كلمة المرور الرئيسية" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "סיסמה ראשית" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "ماسٹر پاس ورڈ" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "主密碼" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "主密碼" } } } },
     "Matched: %@" : {
       "localizations" : {

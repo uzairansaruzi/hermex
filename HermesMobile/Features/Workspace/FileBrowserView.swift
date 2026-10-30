@@ -50,6 +50,7 @@ struct FileBrowserView: View {
                 onAPIError: onAPIError,
                 onAddToPrompt: onAddToPrompt
             )
+            .id(node.id)
         }
         // A file opened from the old workspace reads through the old client: close it.
         .onChange(of: files?.scope) {

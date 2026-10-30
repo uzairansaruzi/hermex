@@ -48,8 +48,8 @@ final class FilePreviewViewModel {
     /// The workspace-relative path Copy Path puts on the pasteboard; nil for an empty,
     /// absolute, home-relative, or `..`-escaping path, so a host path is never copied.
     var copyablePath: String? {
-        let path = path.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !path.isEmpty, !path.hasPrefix("/"), !path.hasPrefix("~"),
+        guard !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !path.hasPrefix("/"), !path.hasPrefix("~"),
               !path.split(separator: "/").contains("..") else { return nil }
         return path
     }
@@ -311,16 +311,5 @@ enum FileExportError: LocalizedError {
         case .missingPath:
             String(localized: "File path is missing.")
         }
-    }
-}
-
-/// How a Markdown file shows: rendered, or raw on the source surface. It resets per
-/// file; a line link opens Source so the line can be placed.
-enum MarkdownViewMode: Hashable {
-    case preview
-    case source
-
-    init(targetLine: Int?) {
-        self = targetLine == nil ? .preview : .source
     }
 }

@@ -854,6 +854,7 @@ struct ChatView: View {
                 onAddToPrompt: reviewCommentHook,
                 onReturnToChat: { openedFileReference = nil }
             )
+            .id(reference)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { openedFileReference = nil }

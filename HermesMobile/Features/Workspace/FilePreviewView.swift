@@ -7,7 +7,14 @@ import UniformTypeIdentifiers
 /// syntax colour, and an optional starting line. Images keep their own preview;
 /// documents and media open in Quick Look, and archives and other binaries show
 /// No Preview with Export. Every file with a workspace-relative path offers Copy Path.
+/// Its state belongs to one file: callers key it with `.id` on the file they open.
 struct FilePreviewView: View {
+    /// How a Markdown file shows: rendered, or raw on the source surface.
+    private enum MarkdownViewMode: Hashable {
+        case preview
+        case source
+    }
+
     let onAPIError: (Error) -> Void
     /// Forwarded to the source surface's Comment…; nil outside a chat that can take a draft.
     let onAddToPrompt: ((String) -> Void)?
@@ -46,7 +53,7 @@ struct FilePreviewView: View {
         self.onAPIError = onAPIError
         self.onAddToPrompt = onAddToPrompt
         self.onReturnToChat = onReturnToChat
-        _markdownMode = State(initialValue: MarkdownViewMode(targetLine: initialLine))
+        _markdownMode = State(initialValue: initialLine == nil ? .preview : .source)
         _viewModel = State(initialValue: FilePreviewViewModel(
             files: files,
             path: entry.path ?? "",
@@ -177,7 +184,12 @@ struct FilePreviewView: View {
             Menu {
                 if content != nil, isMarkdownFile {
                     Picker("View", selection: $markdownMode) {
-                        Label("Preview", systemImage: "doc.richtext").tag(MarkdownViewMode.preview)
+                        Label(
+                            String(localized: "markdown.view.preview", defaultValue: "Preview",
+                                   comment: "Markdown View choice: the rendered document, not preview features"),
+                            systemImage: "doc.richtext"
+                        )
+                        .tag(MarkdownViewMode.preview)
                         Label("Source", systemImage: "chevron.left.forwardslash.chevron.right")
                             .tag(MarkdownViewMode.source)
                     }
