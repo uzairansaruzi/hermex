@@ -558,6 +558,7 @@ private struct ComposerTextView: UIViewRepresentable {
             text = textView.sourceText
             selection.range = textView.sourceSelection
             selection.publishGeneration = publishGeneration
+            setHasMarkedText(textView.markedTextRange != nil)
             reportHeight(for: textView)
         }
 
@@ -565,15 +566,27 @@ private struct ComposerTextView: UIViewRepresentable {
         /// Edits are left to `textViewDidChange`, which carries both halves, and
         /// a live IME composition is left alone entirely.
         func textViewDidChangeSelection(_ textView: UITextView) {
-            guard !isApplyingBoundValue, textView.markedTextRange == nil else { return }
-            guard let textView = textView as? ComposerChipTextView else { return }
+            guard !isApplyingBoundValue, let textView = textView as? ComposerChipTextView else { return }
+            guard textView.markedTextRange == nil else {
+                setHasMarkedText(true)
+                return
+            }
             textView.normalizeSelectionAroundQuoteMetadata()
             textView.restoreTypingAttributes()
+            setHasMarkedText(false)
 
             let range = textView.sourceSelection
             guard textView.sourceText == text, selection.range != range else { return }
 
             selection.range = range
+        }
+
+        /// Reports IME composition state on the selection binding, so a writer
+        /// outside the editor can refuse a write while a composition is live
+        /// without a second channel from the editor.
+        private func setHasMarkedText(_ marked: Bool) {
+            guard selection.hasMarkedText != marked else { return }
+            selection.hasMarkedText = marked
         }
 
         func textView(

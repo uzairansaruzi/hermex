@@ -1629,9 +1629,23 @@ struct MessageComposerView: View {
     private func toggleVoiceInput() {
         voiceInput.transcribe = hermesTranscriber ?? apiClient?.dictationTranscriber
         voiceInput.providerPreference = ComposerSTTProviderPreference.storedValue(sttProviderPreferenceRawValue)
-        voiceInput.scheduleToggle(currentDraft: draftMessage) { newDraft in
-            editDraft(newDraft)
-        }
+        voiceInput.scheduleToggle(
+            currentDraft: draftMessage,
+            selection: composerSelection,
+            snapshotProvider: { [weak voiceInput] in
+                // Read at commit time: a draft edited while dictation runs is
+                // visible here before anything is written back.
+                ComposerVoiceDraftSnapshot(
+                    owner: voiceInput,
+                    text: draftMessage,
+                    selection: composerSelection
+                )
+            },
+            updateDraft: { update in
+                editDraft(update.text)
+                composerSelection = composerSelection.moved(to: update.caret)
+            }
+        )
     }
 
     /// Hold recognized → start recording a voice note. Gated by the recording
