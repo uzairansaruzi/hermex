@@ -39354,6 +39354,112 @@
         }
       }
     },
+    "Changed files" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "الملفات المتغيرة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Geänderte Dateien"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Archivos modificados"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Fichiers modifiés"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "קבצים שהשתנו"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "File modificati"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "変更済みファイル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "변경된 파일"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Gewijzigde bestanden"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zmienione pliki"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Arquivos alterados"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Измененные файлы"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Değiştirilen Dosyalar"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تبدیل شدہ فائلیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已更改檔案"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已更改文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "已更改檔案"
+          }
+        }
+      }
+    },
     "Changes" : {
       "localizations" : {
         "de" : {
@@ -76989,6 +77095,112 @@
     },
     "Its sign-in, cached chats and drafts are removed from this iPhone. Conversations on the host stay." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Seine Anmeldung, zwischengespeicherten Chats und Entwürfe werden von diesem iPhone entfernt. Die Unterhaltungen auf dem Host bleiben erhalten." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Su inicio de sesión, sus chats en caché y sus borradores se eliminan de este iPhone. Las conversaciones en el host se conservan." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Sa connexion, ses discussions en cache et ses brouillons sont supprimés de cet iPhone. Les conversations sur l’hôte sont conservées." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Il suo accesso, le chat in cache e le bozze vengono rimossi da questo iPhone. Le conversazioni sull’host restano." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Jego logowanie, czaty w pamięci podręcznej i wersje robocze zostaną usunięte z tego iPhone’a. Rozmowy na hoście pozostaną." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "O login, as conversas em cache e os rascunhos dele são removidos deste iPhone. As conversas no host permanecem." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "De aanmelding, gecachete chats en concepten worden van deze iPhone verwijderd. Gesprekken op de host blijven bewaard." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Oturum açma bilgileri, önbellekteki sohbetleri ve taslakları bu iPhone’dan kaldırılır. Ana bilgisayardaki konuşmalar kalır." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Его данные для входа, кэшированные чаты и черновики удаляются с этого iPhone. Беседы на хосте сохранятся." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "サインイン情報、キャッシュされたチャット、下書きがこのiPhoneから削除されます。ホスト上の会話は残ります。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "其登录信息、缓存的聊天和草稿将从此 iPhone 中移除。主机上的对话会保留。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "로그인 정보, 캐시된 채팅, 임시 저장본이 이 iPhone에서 제거돼요. 호스트의 대화는 그대로 남아요." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تُزال بيانات تسجيل الدخول والدردشات المخزنة مؤقتًا والمسودات الخاصة به من جهاز iPhone هذا. تبقى المحادثات على المضيف." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "פרטי ההתחברות, הצ׳אטים השמורים במטמון והטיוטות שלו יוסרו מה-iPhone הזה. השיחות במארח יישארו." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اس کا سائن اِن، کیش شدہ چیٹس اور ڈرافٹس اس iPhone سے ہٹا دیے جاتے ہیں۔ ہوسٹ پر گفتگو برقرار رہتی ہے۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "其登入資訊、快取的聊天和草稿會從此 iPhone 移除。主機上的對話會保留。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "其登入資料、快取的聊天和草稿會從此 iPhone 移除。主機上的對話會保留。" } } } },
     "Join your private network" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Tritt deinem privaten Netzwerk bei" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Únete a tu red privada" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Rejoignez votre réseau privé" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Entra nella tua rete privata" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Dołącz do swojej sieci prywatnej" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Entre na sua rede privada" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Word lid van je privénetwerk" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Özel ağınıza katılın" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Подключитесь к частной сети" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "プライベートネットワークに参加" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "加入你的私有网络" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "사설 네트워크에 참여하기" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "انضم إلى شبكتك الخاصة" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "הצטרפות לרשת הפרטית שלך" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "اپنے نجی نیٹ ورک میں شامل ہوں" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "加入你的私人網路" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "加入你的私人網絡" } } } },
+    "Jump to File" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "الانتقال إلى ملف"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zu Datei springen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ir al archivo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aller au fichier"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "מעבר לקובץ"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Vai al file"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ファイルへ移動"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "파일로 이동"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Naar bestand gaan"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Przejdź do pliku"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Ir para o arquivo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Перейти к файлу"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Dosyaya git"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "فائل پر جائیں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "跳至檔案"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "跳转到文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "跳至檔案"
+          }
+        }
+      }
+    },
     "Just now" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Gerade eben" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Ahora mismo" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "À l’instant" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Adesso" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Przed chwilą" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Agora mesmo" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zojuist" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Az önce" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Только что" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "たった今" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "刚刚" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "방금" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "الآن" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "זה עתה" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "ابھی ابھی" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "剛剛" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "剛剛" } } } },
     "Kanban" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Канбан" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "カンバン" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "看板" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "칸반" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "كانبان" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "קנבן" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "کانبان" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "看板" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "看板" } } } },
     "Kanban could not reach the server." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban konnte den Server nicht erreichen." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban no pudo conectar con el servidor." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban n’a pas pu joindre le serveur." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban non è riuscito a raggiungere il server." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban nie może połączyć się z serwerem." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "O Kanban não conseguiu acessar o servidor." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban kan de server niet bereiken." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban sunucuya ulaşamadı." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Канбану не удалось связаться с сервером." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "カンバンがサーバーに接続できませんでした。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "看板无法连接到服务器。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "칸반이 서버에 연결할 수 없습니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "تعذّر على كانبان الوصول إلى الخادم." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "קנבן לא הצליח להגיע לשרת." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "کانبان سرور تک نہیں پہنچ سکا۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "看板無法連線至伺服器。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "看板無法連線至伺服器。" } } } },

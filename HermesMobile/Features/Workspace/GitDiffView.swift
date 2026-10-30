@@ -9,6 +9,7 @@ import SwiftUI
 /// except the file the user tapped or a single-file review. Folds and viewed marks last as long as
 /// the chat (`ReviewProgressStore`), so a reopened review picks up where it was left; a file whose
 /// patch changed since it was marked viewed reopens unviewed and unfolded.
+/// With more than one file, a toolbar list (`GitDiffFileJumpList`) jumps to any of them.
 struct GitDiffView: View {
     let onAPIError: (Error) -> Void
     /// Receives the selected lines as Markdown. Nil hides "Add to prompt", for hosts
@@ -32,6 +33,7 @@ struct GitDiffView: View {
     @State private var review: ReviewDiffProgress
     @State private var selection = ReviewDiffSelection()
     @State private var scrollTarget: ReviewDiffScrollTarget?
+    @State private var isShowingFileJump = false
     @State private var highlights = ReviewDiffHighlightModel()
     @AppStorage(SourceFileSurface.wrapsLinesKey) private var wrapsLines = false
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
@@ -81,6 +83,11 @@ struct GitDiffView: View {
                 .navigationTitle(title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    if files.count > 1 {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button("Changed files", systemImage: "list.bullet") { isShowingFileJump = true }
+                        }
+                    }
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         diffActionsMenu
                         Button("Done") { dismiss() }
@@ -94,6 +101,12 @@ struct GitDiffView: View {
                     guard !hasLoaded else { return }
                     hasLoaded = true
                     await load()
+                }
+                .sheet(isPresented: $isShowingFileJump) {
+                    GitDiffFileJumpList(files: files, viewedFileIDs: review.viewedFileIDs) { file in
+                        isShowingFileJump = false
+                        scrollTarget = Self.jump(to: file.id, review: &review)
+                    }
                 }
                 .onChange(of: highlightAppearance, initial: true) { highlights.setAppearance(highlightAppearance) }
                 .onChange(of: review.collapsedFileIDs, initial: true) { highlights.setCollapsedFileIDs(review.collapsedFileIDs) }

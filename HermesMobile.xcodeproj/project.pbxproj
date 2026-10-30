@@ -351,6 +351,7 @@
 		22AB000000000000000000B2 /* WorkspaceManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22AB000000000000000000F2 /* WorkspaceManagerView.swift */; };
 		C03120000000000000B004 /* GitWorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F004 /* GitWorkspaceView.swift */; };
 		C03120000000000000B005 /* GitDiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F005 /* GitDiffView.swift */; };
+		138500000000000000000B01 /* GitDiffFileJumpList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 138500000000000000000F01 /* GitDiffFileJumpList.swift */; };
 		C03180000000000000B001 /* GitActionsMenuButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03180000000000000F001 /* GitActionsMenuButton.swift */; };
 		C03180000000000000B002 /* GitActionToastOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03180000000000000F002 /* GitActionToastOverlay.swift */; };
 		C03180000000000000B003 /* GitInlineCommitButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03180000000000000F003 /* GitInlineCommitButton.swift */; };
@@ -378,6 +379,7 @@
 		138400000000000000000B01 /* ReviewProgressStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 138400000000000000000F01 /* ReviewProgressStoreTests.swift */; };
 		1D1FF0000000000000000B38 /* ReviewDiffHighlightModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F38 /* ReviewDiffHighlightModelTests.swift */; };
 		1D1FF0000000000000000B21 /* ReviewDiffCanvasViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F21 /* ReviewDiffCanvasViewTests.swift */; };
+		138500000000000000000B02 /* GitDiffFileJumpTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 138500000000000000000F02 /* GitDiffFileJumpTests.swift */; };
 		1D1FF0000000000000000B30 /* SourceHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F30 /* SourceHighlighter.swift */; };
 		1D1FF0000000000000000B31 /* SourceFileRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F31 /* SourceFileRows.swift */; };
 		1D1FF0000000000000000B32 /* SourceFileViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F32 /* SourceFileViewModel.swift */; };
@@ -1039,6 +1041,7 @@
 		22AB000000000000000000F2 /* WorkspaceManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceManagerView.swift; sourceTree = "<group>"; };
 		C03120000000000000F004 /* GitWorkspaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitWorkspaceView.swift; sourceTree = "<group>"; };
 		C03120000000000000F005 /* GitDiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitDiffView.swift; sourceTree = "<group>"; };
+		138500000000000000000F01 /* GitDiffFileJumpList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitDiffFileJumpList.swift; sourceTree = "<group>"; };
 		C03180000000000000F001 /* GitActionsMenuButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitActionsMenuButton.swift; sourceTree = "<group>"; };
 		C03180000000000000F002 /* GitActionToastOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitActionToastOverlay.swift; sourceTree = "<group>"; };
 		C03180000000000000F003 /* GitInlineCommitButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitInlineCommitButton.swift; sourceTree = "<group>"; };
@@ -1066,6 +1069,7 @@
 		138400000000000000000F01 /* ReviewProgressStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewProgressStoreTests.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F38 /* ReviewDiffHighlightModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffHighlightModelTests.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F21 /* ReviewDiffCanvasViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffCanvasViewTests.swift; sourceTree = "<group>"; };
+		138500000000000000000F02 /* GitDiffFileJumpTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitDiffFileJumpTests.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F30 /* SourceHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceHighlighter.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F31 /* SourceFileRows.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceFileRows.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F32 /* SourceFileViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceFileViewModel.swift; sourceTree = "<group>"; };
@@ -1619,6 +1623,7 @@
 				138400000000000000000F01 /* ReviewProgressStoreTests.swift */,
 				1D1FF0000000000000000F38 /* ReviewDiffHighlightModelTests.swift */,
 				1D1FF0000000000000000F21 /* ReviewDiffCanvasViewTests.swift */,
+				138500000000000000000F02 /* GitDiffFileJumpTests.swift */,
 				1D1FF0000000000000000F34 /* SourceFileRowsTests.swift */,
 				1F16000000000000000000F2 /* FileTreeTests.swift */,
 				1F16000000000000000000F6 /* FileReferenceTests.swift */,
@@ -2106,6 +2111,7 @@
 				C03120000000000000F003 /* GitWorkspaceViewModel.swift */,
 				C03120000000000000F004 /* GitWorkspaceView.swift */,
 				C03120000000000000F005 /* GitDiffView.swift */,
+				138500000000000000000F01 /* GitDiffFileJumpList.swift */,
 				C03180000000000000F001 /* GitActionsMenuButton.swift */,
 				C03180000000000000F002 /* GitActionToastOverlay.swift */,
 				C03180000000000000F003 /* GitInlineCommitButton.swift */,
@@ -2652,6 +2658,7 @@
 				22AB000000000000000000B2 /* WorkspaceManagerView.swift in Sources */,
 				C03120000000000000B004 /* GitWorkspaceView.swift in Sources */,
 				C03120000000000000B005 /* GitDiffView.swift in Sources */,
+				138500000000000000000B01 /* GitDiffFileJumpList.swift in Sources */,
 				C03180000000000000B001 /* GitActionsMenuButton.swift in Sources */,
 				C03180000000000000B002 /* GitActionToastOverlay.swift in Sources */,
 				C03180000000000000B003 /* GitInlineCommitButton.swift in Sources */,
@@ -3101,6 +3108,7 @@
 				138400000000000000000B01 /* ReviewProgressStoreTests.swift in Sources */,
 				1D1FF0000000000000000B38 /* ReviewDiffHighlightModelTests.swift in Sources */,
 				1D1FF0000000000000000B21 /* ReviewDiffCanvasViewTests.swift in Sources */,
+				138500000000000000000B02 /* GitDiffFileJumpTests.swift in Sources */,
 				1D1FF0000000000000000B34 /* SourceFileRowsTests.swift in Sources */,
 				1F16000000000000000000B2 /* FileTreeTests.swift in Sources */,
 				1F16000000000000000000B6 /* FileReferenceTests.swift in Sources */,

@@ -91,6 +91,15 @@ import Foundation
         store.update(fileID, in: scope) { $0.isCollapsed = isCollapsed }
     }
 
+    /// Opens a file the user jumped to. It counts as their choice, so no default refolds it, and
+    /// its viewed mark stays.
+    mutating func reveal(_ fileID: String) {
+        defaults.settle(fileID)
+        collapsedFileIDs.remove(fileID)
+        guard let scope else { return }
+        store.update(fileID, in: scope) { $0.isCollapsed = false }
+    }
+
     mutating func toggleViewed(_ fileID: String) {
         defaults.settle(fileID)
         let isViewed = viewedFileIDs.remove(fileID) == nil
