@@ -221,6 +221,14 @@ final class GitWorkspaceAvailabilityViewModel {
         turnReview = (base, review)
     }
 
+    /// Reads the latest turn's range again after a switch or pull here moved the tree it compares
+    /// with; nothing while no turn's range is held.
+    @MainActor
+    private func reloadTurnReview() async {
+        guard let base = turnReview?.base else { return }
+        await loadTurnReview(since: base)
+    }
+
     /// The rows the latest turn's card joins and the range they were read in (#1392): the range
     /// since `base` once read; the uncommitted status without a base or once that read failed; nil
     /// while it reads, so the card shows once, under the right label.
@@ -333,10 +341,10 @@ final class GitWorkspaceAvailabilityViewModel {
         isLoadingBranches = false
     }
 
-    /// Switches branches, then reads the status and branches again. A failed Hermes switch reads
-    /// them again too; one finishing after `retire()` has nothing to show (`.retired`). Refused,
-    /// quietly, while another write holds the repository's `GitWriteLock`, as the picker is
-    /// disabled then.
+    /// Switches branches, then reads the status, branches and the latest turn's range again. A
+    /// failed Hermes switch reads the status and branches again too; one finishing after
+    /// `retire()` has nothing to show (`.retired`). Refused, quietly, while another write holds
+    /// the repository's `GitWriteLock`, as the picker is disabled then.
     @MainActor
     func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool = false) async -> GitCheckoutOutcome {
         guard let git, !isSwitchingBranch, git.writeLock?.acquire() ?? true else { return .failure }
@@ -351,10 +359,12 @@ final class GitWorkspaceAvailabilityViewModel {
             let response = try await git.checkout(target, stashingChanges: stashingChanges)
             guard !isRetired else { return .retired }
             apply(response)
+            async let turnRange: Void = reloadTurnReview()
             await refreshGitInfo()
             // Reload the branch list so the picker + composer pill reflect the new
             // current branch (a freshly created branch isn't in the cached list yet).
             await loadBranches()
+            await turnRange
             guard !isRetired else { return .retired }
             lastActionMessage = response.message
             if response.restoreFailed == true {
@@ -386,8 +396,10 @@ final class GitWorkspaceAvailabilityViewModel {
             guard !isRetired else { return false }
             status = response.status ?? status
             lastActionMessage = response.message
+            async let turnRange: Void = action == .pull ? reloadTurnReview() : ()
             await loadBranches()
             await refreshGitInfo()
+            await turnRange
             return !isRetired && response.ok != false
         } catch {
             guard !isRetired else { return false }

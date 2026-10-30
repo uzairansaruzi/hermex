@@ -89,24 +89,25 @@ struct GitTurnChangesCard: View {
     private func rangeCaption(_ scope: GitReviewScope) -> some View {
         let isTurnRange = if case .since = scope { true } else { false }
         return HStack(spacing: 5) {
-            Text(isTurnRange ? "Since turn start" : "Uncommitted changes")
+            Text(isTurnRange ? String(localized: "Since turn start") : String(localized: "Uncommitted changes"))
                 .font(AppFont.caption())
                 .foregroundStyle(.secondary)
 
             Button {
                 showsRangeInfo = true
             } label: {
+                // A 44 pt hit area around the caption-sized glyph, without moving the row.
                 Image(systemName: "info.circle")
                     .font(AppFont.caption())
                     .foregroundStyle(.tint)
-                    .contentShape(Rectangle())
+                    .contentShape(Rectangle().inset(by: -16))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("About this range")
             .popover(isPresented: $showsRangeInfo) {
                 Text(isTurnRange
-                     ? "Compares the commit from before this turn with the files now. Edits that were already uncommitted are included."
-                     : "Shows uncommitted changes to the files this turn touched. Work the agent already committed is not shown.")
+                     ? String(localized: "Compares the commit from before this turn with the files now. Edits that were already uncommitted are included.")
+                     : String(localized: "Shows uncommitted changes to the files this turn touched. Work the agent already committed is not shown."))
                     .font(AppFont.subheadline())
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(idealWidth: 280)

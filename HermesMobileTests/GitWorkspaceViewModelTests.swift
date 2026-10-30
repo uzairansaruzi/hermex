@@ -862,6 +862,46 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(fallback.files.map(\.displayPath), ["Other.swift"])
     }
 
+    /// A branch switch or pull moves the tree the latest turn's range compares with, so the card's
+    /// counts are read again, once per action; a fetch moves nothing and reads nothing.
+    @MainActor
+    func testASwitchOrPullReadsTheTurnRangeAgain() async throws {
+        nonisolated(unsafe) var current = "main"
+        nonisolated(unsafe) var added = 1
+        let git = HermesGitHost.client { request in
+            switch request.url?.path {
+            case "/api/plugins/hermex-push/capabilities": return HermesGitHost.capabilities()
+            case "/api/plugins/hermex-push/git/pull":
+                added = 3
+                return .json(200, .object(["ok": .bool(true), "message": .string("")]))
+            case "/api/git/branch/switch":
+                current = HermesCronFixture.body(request)["branch"].text ?? current
+                added = 2
+                return .json(200, .object(["branch": .string(current)]))
+            case "/api/git/review/list" where HermesGitHost.query(request, "scope") == "lastTurn":
+                return Self.turnReply(base: "2222", files: [("App.swift", added, 0)])
+            default: return Self.branchHost(request, branch: current)
+            }
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        await availability.load()
+        let base = GitTurnBase(sha: "2222", workspace: HermesWorkspaceFileClientTests.context(cwd: HermesGitHost.repository),
+                               turn: 1)
+        let shownAdditions = { availability.turnChangeRows(since: base)?.files.map(\.additions) }
+        await availability.loadTurnReview(since: base)
+        let beforeSwitch = shownAdditions()
+
+        _ = await availability.checkout(GitCheckoutTarget(ref: "dev", mode: .local))
+        let afterSwitch = shownAdditions()
+        _ = await availability.performRemoteAction(.fetch)
+        _ = await availability.performRemoteAction(.pull)
+
+        XCTAssertEqual(beforeSwitch, [1])
+        XCTAssertEqual(afterSwitch, [2])
+        XCTAssertEqual(shownAdditions(), [3])
+        XCTAssertEqual(HermesGitHost.requests.filter { HermesGitHost.query($0, "scope") == "lastTurn" }.count, 3)
+    }
+
     /// A turn's range keeps its review progress under its own base: the working tree's status never
     /// prunes it, and another turn's base starts afresh.
     @MainActor
