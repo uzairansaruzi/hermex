@@ -774,11 +774,15 @@ final class SessionSplitViewIdentityTests: XCTestCase {
 final class HermesHomeSplitRoutingTests: XCTestCase {
     private let server = URL(string: "http://127.0.0.1:9")!
 
+    /// The edited sign-in replaces the Sessions side, so a chat reviewing a Shortcut's text (#1402)
+    /// goes with it and releases the texts waiting behind it.
     func testDismissingRegularSettingsReadsTheEditedConnection() async throws {
         let connection = BotConnection(id: UUID(), name: "Fixture", address: server,
                                        username: "fixture", password: "fixture-only")
         var saved = connection
         var readsAfterEditing = 0
+        let reviewing = UUID()
+        var endedReviews: [UUID] = []
         let reread = expectation(description: "Home reads the connection after Settings closes")
         let shown = expectation(description: "Settings sheet presented")
         let auth = AuthManager(keychain: InMemoryKeychainStore(), serverRegistry: .inMemory(),
@@ -787,6 +791,7 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
             pendingBotDestination: .constant(nil), pendingSessionDestination: .constant(nil),
             pendingNewChat: .constant(nil), pendingShare: nil, claimShare: { _ in false },
             didRouteShare: { _ in }, didDeclineShare: { _ in }, didAbandonShare: { _ in },
+            shortcutReview: ShortcutTextReview(chat: reviewing, end: { endedReviews.append($0) }),
             initiallyShowingSettings: true, loadConnection: { requested in
                 XCTAssertEqual(requested, self.server)
                 if saved.password != connection.password {
@@ -813,6 +818,7 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
         }
         await fulfillment(of: [reread], timeout: 2)
         XCTAssertGreaterThan(readsAfterEditing, 0)
+        XCTAssertEqual(endedReviews, [reviewing])
     }
 
     func testRegularHermesSessionsOwnsASplit() throws {

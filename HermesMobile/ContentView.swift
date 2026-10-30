@@ -773,9 +773,12 @@ struct HermesServerHome: View {
     }
 
     /// A new list only when the saved record changed: a sign-in changed in Settings keeps its UUID.
+    /// The old list's chats go with it, so one reviewing a Shortcut's text (#1402) lets the next open.
     private func readConnection() {
         let saved = loadConnection(server)
-        if saved != sessions?.entry.connection { sessions = saved.map { HermesSessionsSide(server: server, connection: $0) } }
+        guard saved != sessions?.entry.connection else { return }
+        if let reviewing = shortcutReview.chat { shortcutReview.end(reviewing) }
+        sessions = saved.map { HermesSessionsSide(server: server, connection: $0) }
     }
 
     private func avatar(_ identity: HermesServerIdentity) -> SessionsHeader.Avatar {
