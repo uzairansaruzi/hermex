@@ -17,6 +17,12 @@ enum ConversationTarget: Hashable, Sendable {
     /// any other starts on the Profile's defaults.
     case new(profile: String, cwd: String? = nil, model: HermesCall.Model? = nil)
 
+    /// The stored key of a `.session` target; nil for the other cases.
+    var sessionKey: String? {
+        if case .session(_, let key) = self { return key }
+        return nil
+    }
+
     var profile: String {
         switch self {
         case .canonicalChat(let profile), .session(let profile, _), .new(let profile, _, _): return profile

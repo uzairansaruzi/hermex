@@ -3003,6 +3003,19 @@ final class ChatViewModel {
     /// Whether this chat runs a Hermes session rather than a webui one (#1010).
     var isHermesSession: Bool { hermesTurn != nil }
 
+    /// Whether this Hermes chat's stored identity is a scheduled task's run (#1413),
+    /// which routes its stored prompt row to the compact card. The chat's
+    /// `SessionSummary` is a placeholder with no source markers, so the `cron_`
+    /// stored target key or root decides (`CronRunPrompt.isCronRun`).
+    var isHermesCronRun: Bool {
+        guard let turn = hermesTurn else { return false }
+        return CronRunPrompt.isCronRun(
+            target: turn.engine.target,
+            storedKey: turn.engine.storedKey,
+            root: turn.engine.root
+        )
+    }
+
     /// A Hermes prompt is on its way, from its uploads to the host's answer.
     @ObservationIgnored private var isSubmittingHermesPrompt = false
     /// #508: a Hermes prompt's answer was lost, so nothing sends until the next attach's
