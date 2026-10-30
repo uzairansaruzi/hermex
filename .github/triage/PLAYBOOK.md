@@ -44,7 +44,10 @@ A value nobody can tell you is unknown: say so, never guess.
 
 ## 3. Check the server
 
-You are on the server, so check it directly. Work from evidence, newest first.
+You are on the server, so check it directly. A quick `hermes status` while you wait
+for answers is fine; search the logs once you know the symptom and roughly when it
+happened, and look at that window. An error from another time or another feature is
+noise: leave it out of the conversation unless it matches.
 
 On a Hermes server:
 
