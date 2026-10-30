@@ -115,7 +115,7 @@ struct GitWorkspaceView: View {
 
     @ViewBuilder
     private var branchContent: some View {
-        if viewModel.branchErrorMessage != nil && viewModel.branchReview == nil {
+        if viewModel.branchErrorMessage != nil {
             unavailable("Could Not Load Changes", image: "exclamationmark.triangle", detail: viewModel.branchErrorMessage) {
                 retry()
             }

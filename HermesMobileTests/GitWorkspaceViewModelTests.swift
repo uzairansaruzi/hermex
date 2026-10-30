@@ -683,8 +683,9 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         })]))
     }
 
-    /// A failed read stays a retryable failure, never an empty range; an empty answer without a
-    /// base means no base branch was found, and one with a base that nothing was committed since.
+    /// A failed read, first or a refresh, stays a retryable failure, never an empty range; an empty
+    /// answer without a base means no base branch was found, and one with a base that nothing was
+    /// committed since.
     @MainActor
     func testThisBranchTellsAFailureFromNoBaseAndFromAnEmptyRange() async throws {
         var list: HermesHostFixture.Reply = .json(500, .object(["detail": .string("boom")]))
@@ -709,6 +710,11 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         await changes.load()
         XCTAssertEqual(changes.branchReview?.base, "1a2b3c")
         XCTAssertEqual(changes.branchReview?.files, [])
+
+        HermesHostFixture.script { list = .json(500, .object(["detail": .string("boom")])) }
+        await changes.load()
+        XCTAssertNil(changes.branchReview)
+        XCTAssertNotNil(changes.branchErrorMessage)
     }
 
     /// A refresh that answers first wins: the older read's late rows never replace it.

@@ -28,7 +28,8 @@ final class GitWorkspaceViewModel {
     private(set) var lastError: Error?
     private var hasLoaded = false
 
-    /// This Branch's last answer; nil until one lands, and after one from outside a repository.
+    /// This Branch's last answer; nil until one lands, after a failed read, and after one from
+    /// outside a repository.
     private(set) var branchReview: GitBranchReview?
     private(set) var isLoadingBranch = false
     private(set) var branchErrorMessage: String?
@@ -111,8 +112,9 @@ final class GitWorkspaceViewModel {
         }
     }
 
-    /// A failure is retryable and keeps the last answer; branch progress is pruned within its own
-    /// range (`GitDataClient.progressScope`), never by the working tree's status.
+    /// A failure drops the last answer, so the sheet shows a retryable failure rather than a stale
+    /// or empty range (a Hermes chat reports no `lastError`). Branch progress is pruned within its
+    /// own range (`GitDataClient.progressScope`), never by the working tree's status.
     @MainActor
     private func loadBranch() async {
         guard let git else { return }
@@ -132,6 +134,7 @@ final class GitWorkspaceViewModel {
         } catch {
             guard read == branchRead, !Task.isCancelled else { return }
             lastError = error
+            branchReview = nil
             branchErrorMessage = error.localizedDescription
         }
     }
