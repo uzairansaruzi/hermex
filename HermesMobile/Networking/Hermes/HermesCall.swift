@@ -597,7 +597,9 @@ enum HermesCall: Equatable, Sendable {
         case .completePath(let word, let sessionID, let profile, _):
             valid = !word.isEmpty && !word.contains(where: \.isWhitespace) && !sessionID.isEmpty && !profile.isEmpty
         case .completeWorkspacePath(let word, let cwd, let profile):
-            valid = !word.isEmpty && !word.contains(where: \.isWhitespace) && !Self.isBlank(cwd) && !profile.isEmpty
+            // The host's fuzzy search takes a spaced name (`@file:Git Diff`); only a line break
+            // is out, as `BotFilePathSearch.searchesEveryFolder` refuses.
+            valid = !word.isEmpty && !word.contains(where: \.isNewline) && !Self.isBlank(cwd) && !profile.isEmpty
         case .subagentTail(let sessionID, let subagentID), .subagentInterrupt(let sessionID, let subagentID):
             valid = !sessionID.isEmpty && !subagentID.isEmpty
         case .connectionRespond(let sessionID, let opID, let answer):

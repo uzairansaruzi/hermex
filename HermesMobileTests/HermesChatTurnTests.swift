@@ -646,8 +646,8 @@ import SwiftUI
 
     /// Files' workspace search (#1389) asks the `@` panel's whole-folder search over the chat's
     /// folder, only once it is on a `local` backend. Pushing Files detaches the chat (#902), so
-    /// the search runs without it and leaves it detached. A path with a space stays, since Files
-    /// opens rather than inserts it.
+    /// the search runs without it and leaves it detached. A query or path with a space stays,
+    /// since the host's fuzzy search takes one and Files opens rather than inserts the path.
     func testFilesSearchesTheWholeFolderAfterTheChatDetachesForIt() async throws {
         let chat = await openChat()
         chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("docker")]))
@@ -659,13 +659,13 @@ import SwiftUI
         chat.host.next("complete.path", .init(result: completions([
             "@file:Sources/Git Diff.swift": "Sources", "@file:Tools/GitDiff.yml": "Tools"
         ])))
-        let rows = try await search("GitDiff")
+        let rows = try await search("Git Diff")
 
         XCTAssertEqual(rows.map(\.path), ["Sources/Git Diff.swift", "Tools/GitDiff.yml"])
         let requests = chat.writes("complete.path")
         XCTAssertEqual(requests.count, 1)
         let request = try XCTUnwrap(requests.first)
-        XCTAssertEqual(request["word"], .string("@file:GitDiff"))
+        XCTAssertEqual(request["word"], .string("@file:Git Diff"))
         XCTAssertEqual(request["cwd"], .string("/work/app"))
         XCTAssertEqual(request["profile"], .string("default"))
         XCTAssertTrue(chat.turn.isConnectionSuspended, "the search reattached the chat")

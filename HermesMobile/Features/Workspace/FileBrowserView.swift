@@ -74,10 +74,12 @@ struct FileBrowserView: View {
             : viewModel.workspaceSearchState(for: searchText, in: files?.scope, hiding: visibleNodes)
         let showsWorkspaceSection = workspaceSearch.map { $0 != .found([]) } ?? false
 
-        if viewModel.isLoadingRoot && !viewModel.tree.isRootLoaded {
+        // A workspace search keeps the list up while the root loads or fails; the bar over
+        // it carries the root's progress, error and retry.
+        if viewModel.isLoadingRoot && !viewModel.tree.isRootLoaded && !showsWorkspaceSection {
             ProgressView("Loading files...")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let errorMessage = viewModel.errorMessage, !viewModel.tree.isRootLoaded {
+        } else if let errorMessage = viewModel.errorMessage, !viewModel.tree.isRootLoaded, !showsWorkspaceSection {
             ContentUnavailableView {
                 Label("Could Not Load Files", systemImage: "exclamationmark.triangle")
             } description: {

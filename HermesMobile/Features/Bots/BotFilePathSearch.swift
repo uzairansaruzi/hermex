@@ -29,9 +29,10 @@ enum BotFilePathSearch {
     }
 
     /// Whether `panelWord` asks the whole-folder search for `query`: a name of two or more
-    /// characters with no `/`. Files' workspace search (#1389) asks the host only then.
+    /// characters with no `/` or line break; spaces are fine. Files' workspace search (#1389)
+    /// asks the host only then.
     static func searchesEveryFolder(_ query: String) -> Bool {
-        !query.contains("/") && query.trimmingCharacters(in: .whitespaces).count >= 2
+        !query.contains("/") && !query.contains(where: \.isNewline) && query.trimmingCharacters(in: .whitespaces).count >= 2
     }
 
     /// A one-folder listing's word: the folder the query names, filtered to entries

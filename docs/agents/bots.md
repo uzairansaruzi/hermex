@@ -1234,7 +1234,9 @@ panel (#1113) and Git (#1114) read the same context.
   section above the loaded tree's matches ("Open Folders"), minus paths the tree already
   shows. Pushing Files detaches the chat (#902), so the search names the folder as `cwd`
   instead of the chat's runtime and runs on a client of its own that joins the shared socket
-  for one reply and leaves; it never reattaches the chat. One-character and path-shaped queries filter the loaded tree only. Opening a hit
+  for one reply and leaves; it never reattaches the chat. A spaced name searches like any
+  other; one-character and path-shaped queries filter the loaded tree only. The section stays
+  up while the root listing loads or fails, under its error bar and Try Again. Opening a hit
   opens its preview without listing or expanding a folder above it. A reply that lands after
   the `cwd` moved is stale; a failed search shows "Workspace search unavailable" with Try
   Again, never No Matches.
