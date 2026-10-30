@@ -13,6 +13,9 @@ struct SharedDraftPayload: Codable, Equatable {
     /// A Shortcut's bound destination: the Hermes server's URL and, optionally, its Profile.
     let server: String?
     let profile: String?
+    /// What the share left out (#1401); absent in payloads written before it.
+    let skippedItems: [SharedSkippedItem]?
+    let additionalSkippedCount: Int?
 
     init(
         version: Int? = nil,
@@ -20,7 +23,8 @@ struct SharedDraftPayload: Codable, Equatable {
         draft: String,
         createdAt: Date,
         attachments: [SharedAttachmentPayload] = [],
-        shortcut: SharedShortcutDestination? = nil
+        shortcut: SharedShortcutDestination? = nil,
+        skipped: SharedSkips = SharedSkips()
     ) {
         self.version = version
         self.id = id
@@ -30,6 +34,12 @@ struct SharedDraftPayload: Codable, Equatable {
         source = shortcut == nil ? nil : SharedShortcutDestination.source
         server = shortcut?.server.absoluteString
         profile = shortcut?.profile
+        skippedItems = skipped.items.isEmpty ? nil : skipped.items
+        additionalSkippedCount = skipped.additionalCount == 0 ? nil : skipped.additionalCount
+    }
+
+    var skipped: SharedSkips {
+        SharedSkips(skippedItems ?? [], additionalCount: max(0, additionalSkippedCount ?? 0))
     }
 }
 
@@ -78,12 +88,64 @@ struct SharedAttachmentImport: Equatable {
     let data: Data
 }
 
+/// A shared item the extension or inbox left out of a share (#1401), and why. A reason a later
+/// version adds decodes as nil, so its share still opens.
+struct SharedSkippedItem: Codable, Equatable {
+    enum Reason: String, Codable {
+        /// Over `HermesShareDraft.maximumSharedAttachmentBytes`.
+        case tooLarge
+        /// Its bytes couldn't be read, or were empty.
+        case unreadable
+        /// A file of a kind Hermex doesn't attach.
+        case unsupported
+        /// Past `HermesShareDraft.maximumSharedAttachmentCount`; such items carry no filename.
+        case overLimit
+    }
+
+    let filename: String?
+    let reason: Reason?
+
+    init(filename: String?, reason: Reason) {
+        self.filename = filename
+        self.reason = reason
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        filename = try? container.decodeIfPresent(String.self, forKey: .filename)
+        reason = (try? container.decodeIfPresent(String.self, forKey: .reason)).flatMap(Reason.init(rawValue:))
+    }
+}
+
+/// A share's left-out items: the first `maximumItems` in detail, the rest only counted, so a
+/// share of hundreds of files stays a small record.
+struct SharedSkips: Equatable {
+    static let maximumItems = 20
+
+    private(set) var items: [SharedSkippedItem] = []
+    private(set) var additionalCount = 0
+
+    init(_ items: [SharedSkippedItem] = [], additionalCount: Int = 0) {
+        self.items = Array(items.prefix(Self.maximumItems))
+        self.additionalCount = additionalCount + max(0, items.count - Self.maximumItems)
+    }
+
+    var count: Int { items.count + additionalCount }
+    var isEmpty: Bool { count == 0 }
+
+    func adding(_ more: [SharedSkippedItem]) -> SharedSkips {
+        SharedSkips(items + more, additionalCount: additionalCount)
+    }
+}
+
 struct SharedImport: Equatable {
     /// A share's text, trimmed; a Shortcut's exactly as it ran.
     let draft: String
     let attachments: [SharedAttachmentImport]
     /// Set for a Shortcut's text, which opens only here.
     var shortcut: SharedShortcutDestination?
+    /// Not part of the share's content: two shares that differ only here are the same share.
+    var skipped = SharedSkips()
 
     var isEmpty: Bool {
         draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachments.isEmpty
@@ -200,11 +262,12 @@ enum HermesShareDraft {
     static func savePendingImport(
         draft: String,
         attachments: [SharedAttachmentImport],
+        skipped: [SharedSkippedItem] = [],
         in directory: URL,
         fileManager: FileManager = .default,
         now: Date = Date()
     ) throws {
-        let normalizedImport = normalizedImport(draft: draft, attachments: attachments)
+        let normalizedImport = normalizedImport(draft: draft, attachments: attachments, skipped: SharedSkips(skipped))
         guard !normalizedImport.isEmpty else {
             return
         }
@@ -428,23 +491,32 @@ enum HermesShareDraft {
         case reservationNoLongerOwned
     }
 
+    /// The share as the inbox stores it, adding to `skipped` each attachment it drops: empty,
+    /// oversized, or past the count limit.
     private static func normalizedImport(
         draft: String,
-        attachments: [SharedAttachmentImport]
+        attachments: [SharedAttachmentImport],
+        skipped: SharedSkips = SharedSkips()
     ) -> SharedImport {
         let trimmedDraft = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let uploadableAttachments = attachments
-            .filter { !$0.data.isEmpty && $0.data.count <= maximumSharedAttachmentBytes }
-            .prefix(maximumSharedAttachmentCount)
-            .map {
-                SharedAttachmentImport(
-                    filename: sanitizedFilename($0.filename),
-                    typeIdentifier: $0.typeIdentifier,
-                    data: $0.data
+        var uploadableAttachments: [SharedAttachmentImport] = []
+        var dropped: [SharedSkippedItem] = []
+        for attachment in attachments {
+            let filename = sanitizedFilename(attachment.filename)
+            if attachment.data.isEmpty {
+                dropped.append(SharedSkippedItem(filename: filename, reason: .unreadable))
+            } else if attachment.data.count > maximumSharedAttachmentBytes {
+                dropped.append(SharedSkippedItem(filename: filename, reason: .tooLarge))
+            } else if uploadableAttachments.count == maximumSharedAttachmentCount {
+                dropped.append(SharedSkippedItem(filename: nil, reason: .overLimit))
+            } else {
+                uploadableAttachments.append(
+                    SharedAttachmentImport(filename: filename, typeIdentifier: attachment.typeIdentifier, data: attachment.data)
                 )
             }
+        }
 
-        return SharedImport(draft: trimmedDraft, attachments: uploadableAttachments)
+        return SharedImport(draft: trimmedDraft, attachments: uploadableAttachments, skipped: skipped.adding(dropped))
     }
 
     private static func prepareInbox(in directory: URL, fileManager: FileManager) throws {
@@ -511,7 +583,8 @@ enum HermesShareDraft {
             draft: sharedImport.draft,
             createdAt: createdAt,
             attachments: attachmentPayloads,
-            shortcut: sharedImport.shortcut
+            shortcut: sharedImport.shortcut,
+            skipped: sharedImport.skipped
         )
         let payloadURL = payloadURL(in: temporaryURL)
         try writeJSON(payload, to: payloadURL)
@@ -552,8 +625,8 @@ enum HermesShareDraft {
             return
         }
         let draft = (payload.draft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let attachments = loadLegacyAttachments(from: payload, in: directory)
-        let sharedImport = normalizedImport(draft: draft, attachments: attachments)
+        let loaded = loadAttachments(from: payload, in: pendingAttachmentsDirectoryURL(in: directory))
+        let sharedImport = normalizedImport(draft: draft, attachments: loaded.attachments, skipped: loaded.skipped)
 
         if !sharedImport.isEmpty {
             try enqueue(
@@ -647,10 +720,10 @@ enum HermesShareDraft {
         switch payload.source {
         case nil:
             let draft = (payload.draft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            let attachments = loadAttachments(from: payload, in: itemURL)
+            let loaded = loadAttachments(from: payload, in: attachmentsURL(in: itemURL))
             return LoadedSharedImport(
                 createdAt: createdAt,
-                sharedImport: SharedImport(draft: draft, attachments: attachments)
+                sharedImport: SharedImport(draft: draft, attachments: loaded.attachments, skipped: loaded.skipped)
             )
         case SharedShortcutDestination.source?:
             guard
@@ -674,17 +747,18 @@ enum HermesShareDraft {
         }
     }
 
-    /// Maps each staged attachment rather than reading it, so reserving an
-    /// import on the main actor stays cheap; pages fault in at upload time. The
-    /// mapping stays valid after the reservation is consumed and its files are
-    /// removed, and nothing rewrites a staged file in place.
+    /// Maps each staged attachment in `directory` rather than reading it, so reserving an
+    /// import on the main actor stays cheap; pages fault in at upload time. The mapping stays
+    /// valid after the reservation is consumed and its files are removed, and nothing rewrites
+    /// a staged file in place. A staged file that is gone or empty joins the payload's skips.
     private static func loadAttachments(
         from payload: SharedDraftPayload,
-        in itemURL: URL
-    ) -> [SharedAttachmentImport] {
-        let directory = attachmentsURL(in: itemURL)
-
-        return (payload.attachments ?? []).compactMap { attachment in
+        in directory: URL
+    ) -> (attachments: [SharedAttachmentImport], skipped: SharedSkips) {
+        var attachments: [SharedAttachmentImport] = []
+        var unreadable: [SharedSkippedItem] = []
+        for attachment in payload.attachments ?? [] {
+            let filename = sanitizedFilename(attachment.filename ?? "shared-file")
             guard
                 let storedFileName = attachment.storedFileName,
                 isSafeStoredFileName(storedFileName),
@@ -694,45 +768,14 @@ enum HermesShareDraft {
                 ),
                 !data.isEmpty
             else {
-                return nil
+                unreadable.append(SharedSkippedItem(filename: filename, reason: .unreadable))
+                continue
             }
 
-            return SharedAttachmentImport(
-                filename: sanitizedFilename(attachment.filename ?? "shared-file"),
-                typeIdentifier: attachment.typeIdentifier,
-                data: data
-            )
+            attachments.append(SharedAttachmentImport(filename: filename, typeIdentifier: attachment.typeIdentifier, data: data))
         }
-    }
 
-    private static func loadLegacyAttachments(
-        from payload: SharedDraftPayload,
-        in directory: URL
-    ) -> [SharedAttachmentImport] {
-        let attachmentsDirectory = pendingAttachmentsDirectoryURL(in: directory)
-
-        return (payload.attachments ?? []).compactMap { attachment in
-            guard
-                let storedFileName = attachment.storedFileName,
-                isSafeStoredFileName(storedFileName),
-                let data = try? Data(
-                    contentsOf: attachmentsDirectory.appendingPathComponent(
-                        storedFileName,
-                        isDirectory: false
-                    ),
-                    options: .alwaysMapped
-                ),
-                !data.isEmpty
-            else {
-                return nil
-            }
-
-            return SharedAttachmentImport(
-                filename: sanitizedFilename(attachment.filename ?? "shared-file"),
-                typeIdentifier: attachment.typeIdentifier,
-                data: data
-            )
-        }
+        return (attachments, payload.skipped.adding(unreadable))
     }
 
     private static func validateReservation(

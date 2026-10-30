@@ -944,8 +944,10 @@ extension SharedImportReservation {
     /// past its lifetime, as when its server couldn't be reached, opens nothing.
     @MainActor func hermesOpening(on entry: HermesSessionListEntry, listed: String?, isLive: Bool) -> HermesShareOpening? {
         guard let shortcut = sharedImport.shortcut else {
-            guard let chat = HermesNewChatDestination(server: entry.server, profile: nil)
+            guard var chat = HermesNewChatDestination(server: entry.server, profile: nil)
                 .chat(on: entry, listed: listed, isLive: isLive) else { return nil }
+            // Its composer says what the share left out, once the share is in its draft (#1401).
+            chat.shareSkips = sharedImport.skipped
             let isEmpty = HermesShareDraft.composerDraft(from: sharedImport.draft).isEmpty && sharedImport.attachments.isEmpty
             return isEmpty ? .nothing : .chat(chat)
         }
@@ -1254,13 +1256,15 @@ struct HermesSessionListCovers {
 
     /// `chat` for a view that builds it now. A New Session the host has named reopens by its key,
     /// so a rebuild (a size-class change, a side switch) shows that session instead of starting
-    /// another, and New Chat with Voice doesn't dictate again. A live chat's view keeps its model.
+    /// another, New Chat with Voice doesn't dictate again, and a share's notice isn't repeated. A live
+    /// chat's view keeps its model.
     func building(_ chat: HermesSessionChat) -> HermesSessionChat {
         guard chat.id == self.chat?.id, case .new(let profile, _, _) = chat.target,
               case .hermesSession(_, _, let key?)? = chatDraftKey?.context else { return chat }
         var named = chat
         named.target = .session(profile: profile, key: key)
         named.autoStartsVoiceInput = false
+        named.shareSkips = SharedSkips()
         return named
     }
 

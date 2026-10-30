@@ -462,6 +462,9 @@ struct ChatView: View {
     @State private var initialAttachments: [SharedAttachmentImport]
     @State private var didUploadInitialAttachments = false
     @State private var showsStopConfirmation = false
+    /// What the share this new chat opened for left out (#1401), shown once over the composer.
+    @State private var shareNotice: ActionToast?
+    @State private var shareNoticeToast = ActionToastState()
 
     init(
         session: SessionSummary,
@@ -470,6 +473,7 @@ struct ChatView: View {
         initialDraft: String = "",
         initialQuotes: [ComposerQuote] = [],
         initialAttachments: [SharedAttachmentImport] = [],
+        shareSkips: SharedSkips = SharedSkips(),
         loadsInitialMessages: Bool = true,
         autoStartsVoiceInput: Bool = false,
         draftStore: ChatDraftStore? = nil,
@@ -502,6 +506,7 @@ struct ChatView: View {
         _draftMessage = State(initialValue: initialDraft)
         _draftQuotes = State(initialValue: initialQuotes)
         _initialAttachments = State(initialValue: initialAttachments)
+        _shareNotice = State(initialValue: ActionToast(sharedSkips: shareSkips))
         let model = ChatViewModel(
             session: session,
             server: server,
@@ -534,6 +539,7 @@ struct ChatView: View {
             session: SessionSummary(profile: hermesSession.target.profile),
             server: hermesSession.server,
             onAPIError: { _ in },
+            shareSkips: hermesSession.shareSkips,
             autoStartsVoiceInput: hermesSession.autoStartsVoiceInput,
             hermesSession: hermesSession,
             onReplaceHermesSession: onReplace,
@@ -1006,6 +1012,12 @@ struct ChatView: View {
                 messageComposer
                     .frame(maxWidth: composerMaximumWidth)
 
+                ActionToastView(state: shareNoticeToast)
+                    .frame(maxWidth: 420)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, composerHeight + 8)
+                    .zIndex(9)
+
                 approvalOverlay
             }
         }
@@ -1026,6 +1038,11 @@ struct ChatView: View {
         chatScaffold
             .task(id: didCompleteInitialAppearance) {
                 await handleInitialAppearanceTask()
+            }
+            .task {
+                guard let shareNotice else { return }
+                self.shareNotice = nil
+                shareNoticeToast.show(shareNotice)
             }
             .onChange(of: scenePhase) {
                 handleScenePhaseChange(scenePhase)
@@ -1064,6 +1081,7 @@ struct ChatView: View {
             }
             .onDisappear {
                 isOnScreen = false
+                shareNoticeToast.dismiss()
                 composerFocusRevision += 1
                 completionScrollPolicy.readerDidInteract()
                 hydratedCompletionStreamID = nil

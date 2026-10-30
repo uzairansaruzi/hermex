@@ -4,6 +4,9 @@ import UIKit
 final class ShareViewController: UIViewController {
     private let statusLabel = UILabel()
     private var didStartOpening = false
+    /// An alert made before the view appeared, which can't present it until then.
+    private var alertAwaitingAppearance: UIAlertController?
+    private var didAppear = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -18,6 +21,15 @@ final class ShareViewController: UIViewController {
 
         Task {
             await saveDraftAndOpenHermes()
+        }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        didAppear = true
+        if let alertAwaitingAppearance {
+            self.alertAwaitingAppearance = nil
+            present(alertAwaitingAppearance, animated: true)
         }
     }
 
@@ -48,8 +60,7 @@ final class ShareViewController: UIViewController {
         let draft = HermesShareDraft.draftText(textSnippets: input.textSnippets, urls: input.urls)
 
         guard !draft.isEmpty || !input.attachments.isEmpty else {
-            showStatus("Hermex accepts text, URLs, images, PDFs, and files up to 20 MB.")
-            completeRequest(after: 0.8)
+            showNothingAdded(skipped: input.skipped)
             return
         }
 
@@ -60,7 +71,12 @@ final class ShareViewController: UIViewController {
         }
 
         do {
-            try HermesShareDraft.savePendingImport(draft: draft, attachments: input.attachments, in: directory)
+            try HermesShareDraft.savePendingImport(
+                draft: draft,
+                attachments: input.attachments,
+                skipped: input.skipped,
+                in: directory
+            )
         } catch {
             showStatus("Could not save shared content.")
             completeRequest(after: 0.8)
@@ -68,6 +84,35 @@ final class ShareViewController: UIViewController {
         }
 
         openHermes()
+    }
+
+    /// Nothing in the share can be added: says why, and waits for Done so the reason can be read,
+    /// with VoiceOver too (#1401). English only, like the rest of the extension.
+    private func showNothingAdded(skipped: [SharedSkippedItem]) {
+        let message = [Self.reason(for: skipped), "Hermex accepts text, URLs, images, PDFs, and files up to 20 MB."]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
+        let alert = UIAlertController(title: "Nothing was added", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Done", style: .default) { [weak self] _ in
+            self?.extensionContext?.completeRequest(returningItems: nil, completionHandler: nil)
+        })
+        if didAppear {
+            present(alert, animated: true)
+        } else {
+            alertAwaitingAppearance = alert
+        }
+    }
+
+    /// Why the share's items were left out, naming one item, or nil when it held none.
+    private static func reason(for skipped: [SharedSkippedItem]) -> String? {
+        guard let first = skipped.first else { return nil }
+        guard skipped.count == 1 else { return "\(skipped.count) items couldn’t be added." }
+        let name = first.filename ?? "The item"
+        switch first.reason {
+        case .tooLarge: return "\(name) is over 20 MB."
+        case .unsupported: return "Hermex can’t attach \(name)."
+        case .unreadable, .overLimit, nil: return "\(name) couldn’t be read."
+        }
     }
 
     private func showStatus(_ text: String) {

@@ -5,6 +5,8 @@ struct ShareInput {
     var textSnippets: [String] = []
     var urls: [URL] = []
     var attachments: [SharedAttachmentImport] = []
+    /// Items that look like attachments but weren't taken, in share order (#1401).
+    var skipped: [SharedSkippedItem] = []
 }
 
 enum ShareInputReader {
@@ -29,9 +31,18 @@ enum ShareInputReader {
                 input.textSnippets.append(text)
             }
 
-            if input.attachments.count < HermesShareDraft.maximumSharedAttachmentCount,
-               let attachment = await loadAttachment(from: provider) {
+            guard isAttachmentCandidate(provider) else { continue }
+            guard input.attachments.count < HermesShareDraft.maximumSharedAttachmentCount else {
+                // Counted from its advertised types alone; nothing past the limit is loaded.
+                input.skipped.append(SharedSkippedItem(filename: nil, reason: .overLimit))
+                continue
+            }
+
+            switch await loadAttachment(from: provider) {
+            case .loaded(let attachment):
                 input.attachments.append(attachment)
+            case .skipped(let item):
+                input.skipped.append(item)
             }
         }
 
@@ -104,55 +115,90 @@ enum ShareInputReader {
         return url
     }
 
-    private static func loadAttachment(from provider: NSItemProvider) async -> SharedAttachmentImport? {
-        if let fileAttachment = await loadFileAttachment(from: provider) {
-            return fileAttachment
-        }
-
-        return await loadDataAttachment(from: provider)
+    private enum AttachmentLoad {
+        case loaded(SharedAttachmentImport)
+        case skipped(SharedSkippedItem)
     }
 
-    private static func loadFileAttachment(from provider: NSItemProvider) async -> SharedAttachmentImport? {
+    /// Whether `provider` offers a file rather than only text or a link, so leaving it out
+    /// is worth saying.
+    private static func isAttachmentCandidate(_ provider: NSItemProvider) -> Bool {
+        provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+            || provider.registeredTypeIdentifiers.contains { identifier in
+                guard let type = UTType(identifier) else { return false }
+                return type.conforms(to: .data) && !type.conforms(to: .text) && !type.conforms(to: .url)
+            }
+    }
+
+    /// Tries the provider's file, then its image or PDF data, and reports one reason when
+    /// neither gives an attachment. An oversized file is never read (#734).
+    private static func loadAttachment(from provider: NSItemProvider) async -> AttachmentLoad {
+        var fileFailure: SharedSkippedItem?
+        switch await loadFileAttachment(from: provider) {
+        case .loaded(let attachment)?:
+            return .loaded(attachment)
+        case .skipped(let item)? where item.reason == .tooLarge:
+            return .skipped(item)
+        case .skipped(let item)?:
+            fileFailure = item
+        case nil:
+            break
+        }
+
+        if let dataLoad = await loadDataAttachment(from: provider) {
+            return dataLoad
+        }
+
+        let typeIdentifier = provider.registeredTypeIdentifiers.first
+        return .skipped(fileFailure ?? SharedSkippedItem(
+            filename: fallbackFilename(for: provider, typeIdentifier: typeIdentifier),
+            reason: .unsupported
+        ))
+    }
+
+    /// Nil when the provider offers no file URL.
+    private static func loadFileAttachment(from provider: NSItemProvider) async -> AttachmentLoad? {
         guard provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else {
             return nil
         }
 
         let item = await loadItem(from: provider, typeIdentifier: UTType.fileURL.identifier)
         guard let url = fileURL(from: item), url.isFileURL else {
-            return nil
+            return .skipped(SharedSkippedItem(filename: fallbackFilename(for: provider, typeIdentifier: nil), reason: .unreadable))
         }
 
-        return try? attachment(from: url, provider: provider)
+        return attachment(from: url, provider: provider)
     }
 
-    private static func loadDataAttachment(from provider: NSItemProvider) async -> SharedAttachmentImport? {
+    /// Nil when the provider offers no image or PDF data.
+    private static func loadDataAttachment(from provider: NSItemProvider) async -> AttachmentLoad? {
         guard let typeIdentifier = attachmentDataTypeIdentifier(from: provider) else {
             return nil
         }
 
+        let filename = fallbackFilename(for: provider, typeIdentifier: typeIdentifier)
         let data: Data?
         switch await loadMappedFile(from: provider, typeIdentifier: typeIdentifier) {
         case .loaded(let fileData):
             data = fileData
         case .oversized:
-            return nil
+            return .skipped(SharedSkippedItem(filename: filename, reason: .tooLarge))
         case .unavailable:
             // Providers that only vend in-memory data; these are usually small.
             data = await loadData(from: provider, typeIdentifier: typeIdentifier)
         }
 
-        guard let data, data.count <= HermesShareDraft.maximumSharedAttachmentBytes else {
-            return nil
+        guard let data, !data.isEmpty else {
+            return .skipped(SharedSkippedItem(filename: filename, reason: .unreadable))
+        }
+        guard data.count <= HermesShareDraft.maximumSharedAttachmentBytes else {
+            return .skipped(SharedSkippedItem(filename: filename, reason: .tooLarge))
         }
 
-        return SharedAttachmentImport(
-            filename: fallbackFilename(for: provider, typeIdentifier: typeIdentifier),
-            typeIdentifier: typeIdentifier,
-            data: data
-        )
+        return .loaded(SharedAttachmentImport(filename: filename, typeIdentifier: typeIdentifier, data: data))
     }
 
-    private static func attachment(from url: URL, provider: NSItemProvider) throws -> SharedAttachmentImport? {
+    private static func attachment(from url: URL, provider: NSItemProvider) -> AttachmentLoad {
         let didStartAccessing = url.startAccessingSecurityScopedResource()
         defer {
             if didStartAccessing {
@@ -160,16 +206,22 @@ enum ShareInputReader {
             }
         }
 
-        guard let data = try mappedAttachmentData(at: url) else {
-            return nil
-        }
-
         let typeIdentifier = attachmentTypeIdentifier(from: provider, fallbackURL: url)
         let filename = url.lastPathComponent.isEmpty
             ? fallbackFilename(for: provider, typeIdentifier: typeIdentifier)
             : url.lastPathComponent
 
-        return SharedAttachmentImport(filename: filename, typeIdentifier: typeIdentifier, data: data)
+        let data: Data?
+        do {
+            data = try mappedAttachmentData(at: url)
+        } catch {
+            return .skipped(SharedSkippedItem(filename: filename, reason: .unreadable))
+        }
+        guard let data else {
+            return .skipped(SharedSkippedItem(filename: filename, reason: .tooLarge))
+        }
+
+        return .loaded(SharedAttachmentImport(filename: filename, typeIdentifier: typeIdentifier, data: data))
     }
 
     /// Maps a shared file's bytes instead of copying them into the extension's
