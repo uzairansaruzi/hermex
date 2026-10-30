@@ -988,6 +988,135 @@ final class SharedDraftStoreTests: XCTestCase {
         XCTAssertEqual(queue.pending?.itemID, share.itemID, "The other server's home takes the released share")
     }
 
+    // MARK: - Shortcut text (#1402)
+
+    private let studio = URL(string: "https://other.example:9119")!
+
+    func testAShortcutTextKeepsEveryCharacterAndItsServerThroughARelease() throws {
+        let inbox = try temporaryDirectory()
+        let text = "  Summarize CI\n\n  - failed runs  \n"
+        try HermesShareDraft.saveShortcutText(text, for: SharedShortcutDestination(server: studio, profile: "dev"), in: inbox)
+
+        let first = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        XCTAssertEqual(first.sharedImport.draft, text)
+        XCTAssertEqual(first.sharedImport.shortcut, SharedShortcutDestination(server: studio, profile: "dev"))
+        try HermesShareDraft.release(first, in: inbox)
+
+        let again = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        XCTAssertEqual(again.sharedImport.draft, text, "A released record comes back exactly")
+    }
+
+    func testTheSameShortcutRunTwiceIsTwoTextsInOrder() throws {
+        let inbox = try temporaryDirectory()
+        let destination = SharedShortcutDestination(server: studio, profile: nil)
+        try HermesShareDraft.saveShortcutText("Same", for: destination, in: inbox, now: Date(timeIntervalSince1970: 1_800_000_010))
+        try HermesShareDraft.saveShortcutText("Same", for: destination, in: inbox, now: Date(timeIntervalSince1970: 1_800_000_020))
+        try HermesShareDraft.savePendingDraft("Shared", in: inbox, now: Date(timeIntervalSince1970: 1_800_000_030))
+        try HermesShareDraft.savePendingDraft("Shared", in: inbox, now: Date(timeIntervalSince1970: 1_800_000_040))
+
+        let first = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        try HermesShareDraft.consume(first, from: inbox)
+        let second = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        try HermesShareDraft.consume(second, from: inbox)
+        XCTAssertEqual([first.sharedImport.draft, second.sharedImport.draft], ["Same", "Same"])
+        XCTAssertNotEqual(first.occurrenceID, second.occurrenceID, "Each run is added to the draft")
+
+        let share = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        try HermesShareDraft.consume(share, from: inbox)
+        XCTAssertNil(try HermesShareDraft.reserveNextPendingImport(from: inbox), "An identical share still dedupes")
+    }
+
+    func testShortcutTextsAreBoundedInSizeCountAndAge() throws {
+        let inbox = try temporaryDirectory()
+        let destination = SharedShortcutDestination(server: studio, profile: nil)
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertThrowsError(try HermesShareDraft.saveShortcutText(" \n ", for: destination, in: inbox)) {
+            XCTAssertEqual($0 as? SharedShortcutTextError, .empty)
+        }
+        let oversized = String(repeating: "é", count: HermesShareDraft.maximumShortcutTextBytes / 2 + 1)
+        XCTAssertThrowsError(try HermesShareDraft.saveShortcutText(oversized, for: destination, in: inbox)) {
+            XCTAssertEqual($0 as? SharedShortcutTextError, .tooLong)
+        }
+        XCTAssertNil(try HermesShareDraft.reserveNextPendingImport(from: inbox), "Nothing was queued")
+
+        for index in 0..<HermesShareDraft.maximumWaitingShortcutTexts {
+            try HermesShareDraft.saveShortcutText("Run \(index)", for: destination, in: inbox,
+                                                  now: start.addingTimeInterval(TimeInterval(index)))
+        }
+        XCTAssertThrowsError(try HermesShareDraft.saveShortcutText("One more", for: destination, in: inbox, now: start)) {
+            XCTAssertEqual($0 as? SharedShortcutTextError, .tooManyWaiting)
+        }
+
+        let dayLater = start.addingTimeInterval(HermesShareDraft.shortcutTextLifetime + 60)
+        try HermesShareDraft.saveShortcutText("Fresh", for: destination, in: inbox, now: dayLater)
+        let next = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox, now: dayLater))
+        XCTAssertEqual(next.sharedImport.draft, "Fresh", "Texts left a day are dropped")
+    }
+
+    @MainActor
+    func testAShortcutTextOpensOnlyOnItsServerInItsProfile() throws {
+        let connection = BotConnection(id: UUID(), name: "Host", address: studio, username: "me", password: "secret")
+        let entry = HermesSessionListEntry(server: studio, connection: connection, profile: nil)
+        func shortcut(_ server: URL, _ profile: String?) -> SharedImportReservation {
+            SharedImportReservation(itemID: "shortcut-1", reservationID: UUID().uuidString, createdAt: Date(timeIntervalSince1970: 0),
+                                    sharedImport: SharedImport(draft: "Hi", attachments: [],
+                                                               shortcut: SharedShortcutDestination(server: server, profile: profile)))
+        }
+
+        XCTAssertNil(shortcut(hermes, nil).hermesOpening(on: entry, listed: "default", hostProfiles: ["default"], isLive: true),
+                     "Another server's list never opens it")
+        XCTAssertNil(shortcut(studio, "dev").hermesOpening(on: entry, listed: "default", isLive: true),
+                     "Waits until the host's Profiles are read")
+        XCTAssertEqual(shortcut(studio, "gone").hermesOpening(on: entry, listed: "default", hostProfiles: ["default"], isLive: true),
+                       .missingProfile("gone"), "A removed Profile is never swapped for another")
+        guard case .chat(let named)? = shortcut(studio, "dev")
+            .hermesOpening(on: entry, listed: "default", hostProfiles: ["default", "dev"], isLive: true) else {
+            return XCTFail("Its Profile opens")
+        }
+        XCTAssertEqual(named.target, .new(profile: "dev"))
+        guard case .chat(let listed)? = shortcut(studio, nil).hermesOpening(on: entry, listed: "default", isLive: true) else {
+            return XCTFail("No Profile opens in New Session's")
+        }
+        XCTAssertEqual(listed.target, .new(profile: "default"))
+    }
+
+    @MainActor
+    func testAShortcutTextJoinsTheUnsentDraftExactlyAndOnce() async throws {
+        let disk = BotMemoryDrafts()
+        let copies = BotAttachmentCopies()
+        let (chat, key) = newSession()
+        let store = drafts(disk, copies)
+        store.setDraft("Unsent\n", for: key)
+        let text = "  exact \u{202E}text\n"
+        let run = SharedImportReservation(
+            itemID: "shortcut-1", reservationID: UUID().uuidString, createdAt: Date(timeIntervalSince1970: 1),
+            sharedImport: SharedImport(draft: text, attachments: [], shortcut: SharedShortcutDestination(server: hermes, profile: nil))
+        )
+
+        try await run.moveIntoDraft(of: chat, drafts: store)
+        try await run.moveIntoDraft(of: chat, drafts: store)
+
+        let restored = await drafts(disk, copies).draft(for: key)
+        XCTAssertEqual(restored?.text, "Unsent\n\n\n" + text)
+        XCTAssertEqual(restored?.isFromShortcut, true, "The composer shows its review notice")
+    }
+
+    /// A Shortcut's text waits for its own server: no other home is offered it, and its server is
+    /// made active.
+    @MainActor
+    func testAShortcutTextIsOfferedOnlyToItsServerWhichItActivates() throws {
+        let servers = [account(hermes, .hermes), account(studio, .hermes)]
+        let inbox = try temporaryDirectory()
+        try HermesShareDraft.saveShortcutText("Hi", for: SharedShortcutDestination(server: studio, profile: nil), in: inbox)
+        var queue = SharedImportQueue()
+        queue.reserveNext(in: inbox, active: hermes, servers: servers)
+
+        XCTAssertNil(queue.offered(to: hermes))
+        XCTAssertEqual(queue.shortcutRoute(state: .loggedIn(server: hermes), servers: servers), account(studio, .hermes))
+        XCTAssertNil(queue.shortcutRoute(state: .loggedOut(server: studio), servers: servers), "Waits for its sign-in")
+        XCTAssertEqual(queue.offered(to: studio)?.sharedImport.draft, "Hi")
+    }
+
     private func temporaryDirectory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

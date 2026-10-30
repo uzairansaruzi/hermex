@@ -31,6 +31,18 @@ struct ContentView: View {
                 // changes what it can reach.
                 switchServer(pendingLinks.reroute(state: authManager.state, servers: authManager.servers,
                                                   isBotModeEnabled: isBotModeEnabled))
+                switchServer(shares.shortcutRoute(state: authManager.state, servers: authManager.servers))
+            }
+            // A Shortcut's text opens only on the server it named (#1402), which may not be active.
+            .onChange(of: shares.pending?.reservationID) {
+                switchServer(shares.shortcutRoute(state: authManager.state, servers: authManager.servers))
+            }
+            .alert("Shortcut Can’t Open", isPresented: Binding(get: { unopenableShortcut != nil }, set: { _ in }),
+                   presenting: unopenableShortcut) { shortcut in
+                Button("Discard", role: .destructive) { consumePendingSharedImport(shortcut.share) }
+                Button("Not Now", role: .cancel) { releasePendingSharedImport(shortcut.share) }
+            } message: { shortcut in
+                Text("\(shortcut.server) was removed from Hermex, so the text from Shortcuts can’t open there.")
             }
             .task {
                 // #246: on cold launch, end any Live Activity left "running" by a
@@ -101,7 +113,7 @@ struct ContentView: View {
             HermesServerHome(authManager: authManager, server: server, pendingBotDestination: $pendingLinks.bot,
                              pendingSessionDestination: $pendingLinks.hermesSession,
                              pendingNewChat: $pendingLinks.hermesNewChat,
-                             pendingShare: shares.pending, claimShare: { shares.claim($0) },
+                             pendingShare: shares.offered(to: server), claimShare: { shares.claim($0) },
                              didRouteShare: consumePendingSharedImport, didDeclineShare: releasePendingSharedImport,
                              didAbandonShare: { shares.abandon($0) })
                 .id(server)
@@ -111,7 +123,7 @@ struct ContentView: View {
             SessionListView(
                 authManager: authManager,
                 server: server,
-                pendingSharedImport: $shares.pending,
+                pendingSharedImport: Binding(get: { shares.offered(to: server) }, set: { shares.pending = $0 }),
                 didRoutePendingSharedImport: consumePendingSharedImport,
                 hasWaitingSharedImport: shares.hasWaiting,
                 openNextSharedImport: openNextSharedImport,
@@ -280,6 +292,15 @@ struct ContentView: View {
     private func openNextSharedImport() {
         shares.openNext(in: HermesShareDraft.containerURL(), active: authManager.state.server, servers: authManager.servers)
     }
+
+    /// The Shortcut text waiting for a server that is no longer configured (#1402), and that
+    /// server's host: it opens nowhere else unasked, so the user discards it or keeps it for later.
+    private var unopenableShortcut: (share: SharedImportReservation, server: String)? {
+        guard let share = shares.pending, let shortcut = share.sharedImport.shortcut,
+              HermesNewChatDestination(server: shortcut.server, profile: shortcut.profile)
+                .route(state: authManager.state, servers: authManager.servers) == .ignore else { return nil }
+        return (share, shortcut.server.host ?? shortcut.server.absoluteString)
+    }
 }
 
 /// The shares waiting in the app group, handed to the active server's home one at a time
@@ -360,6 +381,21 @@ struct SharedImportQueue {
         hasWaiting = false
         hasRouted = false
         reserveNext(in: directory, active: active, servers: servers)
+    }
+
+    /// The pending reservation for `server`'s home: a share opens on any home, a Shortcut's text
+    /// only on the server it named (#1402).
+    func offered(to server: URL) -> SharedImportReservation? {
+        guard let shortcut = pending?.sharedImport.shortcut else { return pending }
+        return shortcut.server == server ? pending : nil
+    }
+
+    /// The server to make active for the pending Shortcut text, when it names one that isn't (#1402).
+    @MainActor func shortcutRoute(state: AuthManager.State, servers: [ServerAccount]) -> ServerAccount? {
+        guard let shortcut = pending?.sharedImport.shortcut,
+              case .switchServer(let account) = HermesNewChatDestination(server: shortcut.server, profile: shortcut.profile)
+                .route(state: state, servers: servers) else { return nil }
+        return account
     }
 
     private mutating func settle(_ reservation: SharedImportReservation) {

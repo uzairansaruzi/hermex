@@ -275,16 +275,17 @@ struct HermesSessionListView: View {
         // Discard is the only action: kept, the same files would fail the same way. The share stays
         // claimed meanwhile; the alert closing any other way (a Cancel iOS adds, Escape, leaving)
         // queues it again instead.
-        .alert("Couldn’t Add Shared Files",
+        .alert(failedShare?.share.sharedImport.shortcut == nil ? Text("Couldn’t Add Shared Files") : Text("Shortcut Can’t Open"),
                isPresented: Binding(get: { failedShare != nil }, set: { if !$0 { queueFailedShareAgain() } }),
                presenting: failedShare) { failure in
-            Button("Discard Share", role: .destructive) {
+            Button(failure.share.sharedImport.shortcut == nil ? "Discard Share" : "Discard", role: .destructive) {
                 failedShare = nil
                 didRouteShare(failure.share)
             }
         } message: { failure in
-            Text(verbatim: failure.reason + "\n\n"
-                 + String(localized: "Nothing was added. Discard deletes this saved share from Hermex."))
+            Text(verbatim: failure.reason + "\n\n" + (failure.share.sharedImport.shortcut == nil
+                ? String(localized: "Nothing was added. Discard deletes this saved share from Hermex.")
+                : String(localized: "Nothing was sent. Discard deletes this text from Hermex.")))
         }
         .modifier(SessionActionConfirmations(
             viewModel: viewModel, sessionPendingDeletion: $navigation.covers.deleting, projectPendingDeletion: $navigation.covers.deletingProject,
@@ -300,7 +301,8 @@ struct HermesSessionListView: View {
         // list has read the host live, whichever Profile the request names. A share reserved while
         // another moves into its draft opens once that move ends.
         .onChange(of: NewChatReadiness(request: pendingNewChat, share: pendingShare?.reservationID, profile: profile,
-                                       isLive: viewModel.isHermesLive, isTransferringShare: shareTransfer != nil),
+                                       hostProfiles: viewModel.hermesProfiles, isLive: viewModel.isHermesLive,
+                                       isTransferringShare: shareTransfer != nil),
                   initial: true) {
             openPendingNewChat()
             openPendingShare()
@@ -773,10 +775,23 @@ struct HermesSessionListView: View {
     /// queued. One cut short by leaving hands it back for the next try.
     private func openPendingShare() {
         guard shareTransfer == nil, let share = pendingShare,
-              let opening = covers.open(share, on: entry, listed: profile, isLive: viewModel.isHermesLive) else {
+              let opening = covers.open(share, on: entry, listed: profile, hostProfiles: viewModel.hermesProfiles,
+                                        isLive: viewModel.isHermesLive) else {
             return
         }
-        guard case .chat(let chat) = opening else { return didRouteShare(share) }
+        let chat: HermesSessionChat
+        switch opening {
+        case .chat(let opened): chat = opened
+        case .nothing: return didRouteShare(share)
+        case .missingProfile(let name):
+            // A Shortcut's Profile the host no longer has: no other Profile takes its text unasked.
+            guard claimShare(share) else { return }
+            let server = home?.title ?? entry.server.host ?? entry.server.absoluteString
+            failedShare = HermesShareFailure(
+                share: share, reason: String(localized: "The Profile “\(name)” no longer exists on \(server).")
+            )
+            return
+        }
         guard claimShare(share) else { return }
         shareTransfer = Task {
             do {
@@ -875,23 +890,36 @@ struct HermesSessionListView: View {
     }
 }
 
-/// How the Hermes home's Sessions list takes a share (#1181).
+/// How the Hermes home's Sessions list takes a share (#1181) or a Shortcut's text (#1402).
 enum HermesShareOpening: Equatable {
-    /// A new session in New Session's Profile, which opens once its draft holds the share.
+    /// A new session in New Session's Profile, or the Shortcut's, which opens once its draft holds
+    /// the share.
     case chat(HermesSessionChat)
     /// Nothing in the share survived staging: it is consumed without a chat, as on webui.
     case nothing
+    /// The Shortcut named a Profile the host no longer lists.
+    case missingProfile(String)
 }
 
 extension SharedImportReservation {
     /// What `entry`'s Sessions list opens for this share, in `listed`, the Profile its New Session
     /// uses; nil until the list `isLive`, having read the host and showing no offline cache, as a
-    /// Shortcut's new session does.
-    @MainActor func hermesOpening(on entry: HermesSessionListEntry, listed: String?, isLive: Bool) -> HermesShareOpening? {
-        guard let chat = HermesNewChatDestination(server: entry.server, profile: nil)
-            .chat(on: entry, listed: listed, isLive: isLive) else { return nil }
-        let isEmpty = HermesShareDraft.composerDraft(from: sharedImport.draft).isEmpty && sharedImport.attachments.isEmpty
-        return isEmpty ? .nothing : .chat(chat)
+    /// Shortcut's new session does. A Shortcut's text opens only on its own server, in its
+    /// Profile when it named one, once `hostProfiles` (the host's `profiles.list`) can vouch for it.
+    @MainActor func hermesOpening(on entry: HermesSessionListEntry, listed: String?, hostProfiles: [String] = [],
+                                  isLive: Bool) -> HermesShareOpening? {
+        guard let shortcut = sharedImport.shortcut else {
+            guard let chat = HermesNewChatDestination(server: entry.server, profile: nil)
+                .chat(on: entry, listed: listed, isLive: isLive) else { return nil }
+            let isEmpty = HermesShareDraft.composerDraft(from: sharedImport.draft).isEmpty && sharedImport.attachments.isEmpty
+            return isEmpty ? .nothing : .chat(chat)
+        }
+        if let named = shortcut.profile, entry.server == shortcut.server, isLive {
+            guard !hostProfiles.isEmpty else { return nil }
+            guard hostProfiles.contains(named) else { return .missingProfile(named) }
+        }
+        return HermesNewChatDestination(server: shortcut.server, profile: shortcut.profile)
+            .chat(on: entry, listed: listed, isLive: isLive).map { .chat($0) }
     }
 
     /// Moves the share into `chat`'s draft, then lets it go with `route` (`ContentView` consumes
@@ -937,8 +965,11 @@ extension SharedImportReservation {
             }
             try Task.checkCancellation()
         }
-        try await drafts.appendShare(occurrenceID, text: HermesShareDraft.composerDraft(from: sharedImport.draft), files: files,
-                                     to: key, maximumFileBytes: BotAttachmentUpload.maximumFileBytes) { attachments in
+        // A Shortcut's text goes in exactly as it ran (#1402); a share's is trimmed for the composer.
+        let text = sharedImport.shortcut == nil ? HermesShareDraft.composerDraft(from: sharedImport.draft) : sharedImport.draft
+        try await drafts.appendShare(occurrenceID, text: text, files: files, to: key,
+                                     maximumFileBytes: BotAttachmentUpload.maximumFileBytes,
+                                     fromShortcut: sharedImport.shortcut != nil) { attachments in
             // A composer open on this draft may have added files since the check above.
             guard attachments.count <= HermexAttachmentPickerPolicy.maximumBotAttachments,
                   attachments.reduce(0, { $0 + ($1.size ?? BotAttachmentUpload.maximumFileBytes) })
@@ -953,6 +984,11 @@ extension SharedImportReservation {
 struct HermesShareFailure {
     let share: SharedImportReservation
     let reason: String
+
+    init(share: SharedImportReservation, reason: String) {
+        self.share = share
+        self.reason = reason
+    }
 
     init(share: SharedImportReservation, error: Error) {
         self.share = share
@@ -971,11 +1007,13 @@ struct HermesShareFailure {
 }
 
 /// What a Shortcut's new session and a share wait on: the request or share, New Session's
-/// Profile, the list's live read of the host, and the end of an earlier share's move.
+/// Profile, the host's Profiles a Shortcut's text may name, the list's live read of the host, and
+/// the end of an earlier share's move.
 private struct NewChatReadiness: Equatable {
     let request: HermesNewChatDestination?
     let share: String?
     let profile: String?
+    let hostProfiles: [String]
     let isLive: Bool
     let isTransferringShare: Bool
 }
@@ -1159,9 +1197,9 @@ struct HermesSessionListCovers {
     /// to the sharing app closes, and the list, appearing again, reads the host the share waits on
     /// (#1212). The chat's draft stays in the draft store. What the share opens, once it can.
     @MainActor mutating func open(_ share: SharedImportReservation, on entry: HermesSessionListEntry, listed: String?,
-                                  isLive: Bool) -> HermesShareOpening? {
+                                  hostProfiles: [String] = [], isLive: Bool) -> HermesShareOpening? {
         bringForward()
-        return share.hermesOpening(on: entry, listed: listed, isLive: isLive)
+        return share.hermesOpening(on: entry, listed: listed, hostProfiles: hostProfiles, isLive: isLive)
     }
 
     /// The accepted first prompt gives a New Session its durable identity without replacing

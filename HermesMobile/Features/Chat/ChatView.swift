@@ -411,6 +411,12 @@ struct ChatView: View {
     /// Measured height of a Hermes chat's Update sign-in pill (#942), which wraps at
     /// accessibility text sizes.
     @State private var updateSignInPillHeight: CGFloat = 36
+    /// The draft holds text from Shortcuts the user hasn't dismissed or sent (#1402).
+    @State private var isFromShortcut = false
+    /// The draft as it was before Remove Hidden Characters, until the next edit.
+    @State private var textBeforeHiddenRemoval: String?
+    /// Measured height of the Shortcuts notice, which wraps with Dynamic Type.
+    @State private var shortcutNoticeHeight: CGFloat = 0
     /// The delegated-work sheet a Hermes chat's workers button opens (#1140).
     @State private var showsDelegatedWork = false
     /// A bot's chat's pill opened the bot's profile (#1145).
@@ -1957,6 +1963,17 @@ struct ChatView: View {
                         }
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
+
+                // Nearest the composer: it is about the text in it (#1402).
+                if showsShortcutNotice {
+                    shortcutNotice
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.height
+                        } action: { height in
+                            shortcutNoticeHeight = height
+                        }
+                        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+                }
             }
             .padding(.horizontal)
             .frame(maxWidth: composerMaximumWidth)
@@ -1967,7 +1984,36 @@ struct ChatView: View {
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerLocalNotices)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsApprovalBypassStatus)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: pinnedPlan == nil)
+            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsShortcutNotice)
         }
+    }
+
+    private var showsShortcutNotice: Bool { isFromShortcut && !draftMessage.isEmpty }
+
+    private var shortcutNotice: some View {
+        ShortcutTextNotice(
+            hasHiddenCharacters: HiddenPromptCharacters.contains(in: draftMessage),
+            canUndoRemoval: textBeforeHiddenRemoval != nil,
+            removeHiddenCharacters: {
+                let before = draftMessage
+                persistDraftEdit(HiddenPromptCharacters.removing(from: before))
+                draftMessage = HiddenPromptCharacters.removing(from: before)
+                textBeforeHiddenRemoval = before
+            },
+            undoRemoval: {
+                guard let before = textBeforeHiddenRemoval else { return }
+                persistDraftEdit(before)
+                draftMessage = before
+            },
+            dismiss: dismissShortcutNotice
+        )
+    }
+
+    /// The user dismissed the Shortcuts notice or sent its text.
+    private func dismissShortcutNotice() {
+        isFromShortcut = false
+        textBeforeHiddenRemoval = nil
+        draftStore.clearFromShortcut(for: draftKey)
     }
 
     /// The bot's profile, from its pill (#1145). Closing it reads the roster again, so the pill
@@ -2338,6 +2384,9 @@ struct ChatView: View {
         if viewModel.hermesNeedsSignIn {
             height += updateSignInPillHeight
         }
+        if showsShortcutNotice {
+            height += shortcutNoticeHeight
+        }
 
         let visibleItemCount = composerAccessoryVisibleItemCount
         if visibleItemCount > 1 {
@@ -2361,6 +2410,9 @@ struct ChatView: View {
             count += 1
         }
         if viewModel.hermesNeedsSignIn {
+            count += 1
+        }
+        if showsShortcutNotice {
             count += 1
         }
         return count
@@ -2821,6 +2873,7 @@ struct ChatView: View {
         if didStart {
             onConversationStarted()
             draftAttachmentsPendingRetry = sendReconciliation.retained
+            if isFromShortcut { dismissShortcutNotice() }
         }
         let resolvedContent = draftStore.resolveSubmission(
             submitted: submittedContent,
@@ -2998,6 +3051,7 @@ struct ChatView: View {
     /// user's (clearing on send, restoring, hydrating) skip it.
     private func persistDraftEdit(_ text: String) {
         viewModel.clearSteerFailure()
+        textBeforeHiddenRemoval = nil
         draftRevision &+= 1
         draftStore.setContent(
             ComposerDraftContent(text: text, quotes: draftQuotes),
@@ -3047,6 +3101,7 @@ struct ChatView: View {
             draftStore.setQuotes(quotesBeforeHydration, for: draftKey)
         }
         didHydrateDraft = true
+        isFromShortcut = persistedDraft?.isFromShortcut == true
 
         restoredDraftSettings = persistedDraft?.settings
         lastSyncedDraftAttachments = persistedDraft?.attachments ?? []

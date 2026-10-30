@@ -707,6 +707,35 @@ final class ChatDraftStoreTests: XCTestCase {
         )
     }
 
+    /// The Shortcuts review notice (#1402) comes back after a relaunch until the user clears it.
+    func testShortcutNoticeSurvivesARelaunchUntilCleared() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let key = ChatDraftKey(serverID: "https://example.com", context: .newChat)
+        var draft = ChatDraft(text: "From Shortcuts")
+        draft.isFromShortcut = true
+        try await ChatDraftFilePersistence(directoryURL: directory).write([key: draft])
+
+        let relaunched = ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: directory), debounceDuration: .zero)
+        let restored = await relaunched.draft(for: key)
+        XCTAssertEqual(restored?.isFromShortcut, true)
+        relaunched.clearFromShortcut(for: key)
+        try await relaunched.flush()
+
+        let cleared = await ChatDraftFilePersistence(directoryURL: directory).load()[key]
+        XCTAssertEqual(cleared?.isFromShortcut, false)
+        XCTAssertEqual(cleared?.text, "From Shortcuts")
+    }
+
+    func testHiddenPromptCharactersAreRemovedWhileJoinersAndMarksStay() {
+        let kept = "👩‍💻 می\u{200C}خواهم \u{200F}שלום"
+        XCTAssertFalse(HiddenPromptCharacters.contains(in: kept), "Emoji ZWJ, Persian ZWNJ and Hebrew RLM read as written")
+
+        let hiding = "a\u{202E}b\u{2067}c\u{200B}d\u{2060}e\u{FEFF}f\u{E0041}"
+        XCTAssertTrue(HiddenPromptCharacters.contains(in: hiding + kept))
+        XCTAssertEqual(HiddenPromptCharacters.removing(from: hiding + kept), "abcdef" + kept)
+    }
+
     func testFilePersistenceUsesVersionedLossyDecoding() async throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
