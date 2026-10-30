@@ -1224,6 +1224,17 @@ struct ChatView: View {
             }
             .sheet(item: $activeGitSheet, content: gitSheet)
             .sheet(item: $turnDiffPresentation, content: turnDiffSheet)
+            // These sheets come from the chat, not the composer, so the composer reads their
+            // transition as a navigation one and keeps its focus intent. A focused composer
+            // would then take the keyboard back over a field on top, such as Comment…'s.
+            .onChange(of: presentsWorkspaceSheet) { _, isPresented in
+                if isPresented {
+                    shouldRestoreComposerFocusAfterPreview = composerIsFocused
+                    composerIsFocused = false
+                } else {
+                    restoreComposerFocusAfterPreviewIfNeeded()
+                }
+            }
             .alert(item: $gitAlert, content: gitAlertPresentation)
             .fullScreenCover(isPresented: $showsBtwFullScreen) { btwFullScreen }
             .onChange(of: viewModel.hermesSideTasks?.btw == nil) { _, isClosed in
@@ -1448,6 +1459,11 @@ struct ChatView: View {
             draftMessage = ReviewCommentComposer.appending(markdown, to: draftMessage)
             persistDraftEdit(draftMessage)
         }
+    }
+
+    /// A Git, turn diff, or file reference sheet is up over the chat.
+    private var presentsWorkspaceSheet: Bool {
+        activeGitSheet != nil || turnDiffPresentation != nil || openedFileReference != nil
     }
 
     /// Back to Chat from a Git sheet: closes the Changes sheet or turn diff and any diff on top.
