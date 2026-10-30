@@ -268,4 +268,10 @@ final class ReviewDiffSurfaceView: UIView, UIScrollViewDelegate {
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
         heldFileID = nil
     }
+
+    /// A status-bar tap is the reader leaving the jump, as a drag is.
+    func scrollViewShouldScrollToTop(_ scrollView: UIScrollView) -> Bool {
+        heldFileID = nil
+        return true
+    }
 }

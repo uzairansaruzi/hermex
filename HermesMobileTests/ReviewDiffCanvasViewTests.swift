@@ -197,6 +197,21 @@ final class ReviewDiffCanvasViewTests: XCTestCase {
         XCTAssertLessThanOrEqual(headerB.minY + headerB.height, view.verticalOffset + 300)
     }
 
+    /// A status-bar tap to the top ends a held jump, so the next load leaves the reader there.
+    func testScrollToTopReleasesAHeldFileJump() {
+        let notice = { (fileID: String) in ReviewDiffRow(id: "\(fileID):notice", fileID: fileID, kind: .notice("Loading…")) }
+        let view = ReviewDiffSurfaceView()
+        view.frame = CGRect(x: 0, y: 0, width: 390, height: 300)
+        view.layoutIfNeeded()
+        view.setRows([header("a"), notice("a"), header("b"), notice("b")])
+        view.scrollToFile("b", animated: false)
+
+        XCTAssertTrue(view.scrollViewShouldScrollToTop(UIScrollView()))
+        view.setRows([header("a")] + (0..<60).map { line("a", $0) } + [header("b"), notice("b")])
+
+        XCTAssertEqual(view.verticalOffset, 0)
+    }
+
     func testStickyHeaderReportsItsPinnedFrame() {
         let rows = [header("a")] + (0..<40).map { line("a", $0) } + [header("b")] + (0..<5).map { line("b", $0) }
         let canvas = makeCanvas(rows: rows)
