@@ -17,7 +17,7 @@ import Foundation
 /// (#1236) go through the host's hermex-push plugin, the only place they exist, and show only
 /// while it lists their routes (`supportsSync()`). This Branch (#1386) reads the branch's committed
 /// range through the same review routes, read-only, and so does a turn's range since the HEAD its
-/// send read (#1392).
+/// send read (#1392). The branch's pull request (#1391) comes from the host's `gh` through ship-info.
 ///
 /// Neither the root nor git's own output (a refusal's `detail`, which can name host paths) reaches
 /// the screen or a log. Checked at the `HERMES_AGENT_TESTED_SHA` pin (ca678285) in
@@ -518,6 +518,24 @@ import Foundation
         guard summary["changed"].integer == 0 else { throw HermesGitRefusal.uncommittedSwitch }
         try await write(.gitSwitchBranch(repository: root, branch: branch), dispatch, deadline: .provisioning)
         return Self.switched(to: branch, status: try? await status())
+    }
+
+    // MARK: - Pull request (#1391)
+
+    /// The checked-out branch's pull request from ship-info, which asks the host's `gh`; nil
+    /// without `gh`, without a pull request, or outside a repository. Read on the standard
+    /// deadline, so a slow `gh` fails the read rather than holding it.
+    func pullRequest() async throws -> GitPullRequest? {
+        guard let root = try await repositoryRoot() else { return nil }
+        return Self.pullRequest(try Self.json(try await send(.gitShipInfo(repository: root)))["pr"])
+    }
+
+    /// `pr` as a link, only with a positive number and a web page; a state `gh` adds later is nil.
+    private nonisolated static func pullRequest(_ pr: BotJSON) -> GitPullRequest? {
+        guard let number = pr["number"].integer, number > 0,
+              let url = Self.text(pr["url"]).flatMap(URL.init(string:)), InAppBrowserPolicy.opensInApp(url)
+        else { return nil }
+        return GitPullRequest(number: number, url: url, state: Self.text(pr["state"]).flatMap(GitPullRequest.State.init))
     }
 
     private nonisolated static func switched(to branch: String, status: GitStatus?) -> GitCheckoutResponse {

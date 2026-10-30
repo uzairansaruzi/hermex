@@ -150,7 +150,7 @@ final class GitWorkspaceViewModel {
 /// The toolbar stays hidden unless the server confirms `is_git == true`.
 ///
 /// Everything goes through `git` (#1114, #1115, #1116): reads, commits, pushes, branch switches,
-/// and fetch, pull and New Branch where `supportsSync` (#1236).
+/// fetch, pull and New Branch where `supportsSync` (#1236), and the branch's pull request (#1391).
 @Observable
 final class GitWorkspaceAvailabilityViewModel {
     /// What the menu, Changes sheet and diffs read; nil when the chat has no repository to read.
@@ -194,9 +194,13 @@ final class GitWorkspaceAvailabilityViewModel {
 
     /// Called when the chat leaves this repository, as a Hermes chat does when its folder changes:
     /// an action still running finishes without a result to show (`GitQuickCommitOutcome.retired`,
-    /// and no message for a remote action), so nothing from this repository appears under the next.
-    func retire() {
+    /// and no message for a remote action), and a pull-request read still out never lands, so
+    /// nothing from this repository appears under the next.
+    @MainActor func retire() {
         isRetired = true
+        pullRequestTask?.cancel()
+        pullRequestTask = nil
+        pullRequestGeneration += 1
     }
 
     /// Reads the latest turn's range since `base` at turn end (#1392); nil, for a turn without
@@ -275,6 +279,7 @@ final class GitWorkspaceAvailabilityViewModel {
             lastError = nil
 
             if hasRepository {
+                refreshPullRequest()
                 isStatusLoading = true
                 do {
                     status = try await git.status()
@@ -366,6 +371,7 @@ final class GitWorkspaceAvailabilityViewModel {
             await loadBranches()
             await turnRange
             guard !isRetired else { return .retired }
+            refreshPullRequest(force: true)
             lastActionMessage = response.message
             if response.restoreFailed == true {
                 actionErrorMessage = response.restoreError ?? String(localized: "The branch changed, but the saved changes could not be restored.")
@@ -400,6 +406,7 @@ final class GitWorkspaceAvailabilityViewModel {
             await loadBranches()
             await refreshGitInfo()
             await turnRange
+            if action == .push { refreshPullRequest(force: true) }
             return !isRetired && response.ok != false
         } catch {
             guard !isRetired else { return false }
@@ -491,6 +498,7 @@ final class GitWorkspaceAvailabilityViewModel {
             await loadBranches()
             await refreshGitInfo()
             guard !isRetired else { return .retired }
+            if didPush { refreshPullRequest(force: true) }
 
             return .success(GitQuickCommitResult(
                 shortSHA: commit.shortSHA,
@@ -513,9 +521,9 @@ final class GitWorkspaceAvailabilityViewModel {
         notify?(phase)
     }
 
-    /// Re-fetch info, status and branches after the advanced staging sheet mutates the
-    /// working tree, a turn ends, or a Hermes write here fails partway, so the toolbar badge and
-    /// Changes row stay in sync. A closed sync gate is asked again, so a host whose plugin read
+    /// Re-fetch info, status, branches and the pull request after the advanced staging sheet
+    /// mutates the working tree, a turn ends, or a Hermes write here fails partway, so the toolbar
+    /// badge, Changes row and pull-request link stay in sync. A closed sync gate is asked again, so a host whose plugin read
     /// failed, or that has loaded the plugin since, shows sync without reopening the chat; an open
     /// one isn't, and a route that has gone fails as any write does.
     @MainActor
@@ -525,6 +533,7 @@ final class GitWorkspaceAvailabilityViewModel {
         await refreshGitInfo()
         if let open = await sync { supportsSync = open }
         guard let git, hasRepository else { return }
+        refreshPullRequest(force: true)
         if let refreshed = try? await git.status() {
             status = refreshed
             statusError = nil
@@ -534,6 +543,52 @@ final class GitWorkspaceAvailabilityViewModel {
 
     func clearActionError() {
         actionErrorMessage = nil
+    }
+
+    // MARK: - Pull request (#1391)
+
+    /// How long a pull-request read stands before opening the menu reads it again.
+    static let pullRequestFreshness: TimeInterval = 60
+
+    /// The last pull-request answer and the branch it was read on.
+    private var pullRequestRead: (branch: String, pullRequest: GitPullRequest?)?
+    private var pullRequestFreshUntil: Date?
+    private var pullRequestTask: Task<Void, Never>?
+    /// Bumped by each read and by `retire()`, so only the latest read's answer lands.
+    private var pullRequestGeneration = 0
+
+    /// The current branch's pull request, for the Git menu's link; nil when there is none, its
+    /// read failed, or it was read on another branch, so a switch drops the link at once.
+    var pullRequest: GitPullRequest? {
+        guard let pullRequestRead, pullRequestRead.branch == currentBranchName else { return nil }
+        return pullRequestRead.pullRequest
+    }
+
+    /// Reads the branch's pull request in the background, apart from the status and branches, so
+    /// a slow `gh` on the host never holds them. Without `force` a read still running, or one from
+    /// the last `pullRequestFreshness`, stands; `force` reads again after something that can
+    /// change it: a branch switch, a push, or a turn. A failed or timed-out read shows no link.
+    /// Returns the read that will answer, if any, for a caller to wait on.
+    @MainActor @discardableResult
+    func refreshPullRequest(force: Bool = false) -> Task<Void, Never>? {
+        guard let git, hasRepository, !isRetired else { return nil }
+        if !force {
+            if let pullRequestTask { return pullRequestTask }
+            if let pullRequestFreshUntil, Date() < pullRequestFreshUntil { return nil }
+        }
+        pullRequestTask?.cancel()
+        pullRequestGeneration += 1
+        let generation = pullRequestGeneration
+        let branch = currentBranchName
+        let task = Task { @MainActor [weak self] in
+            let pullRequest = try? await git.pullRequest()
+            guard let self, generation == pullRequestGeneration else { return }
+            pullRequestTask = nil
+            pullRequestRead = (branch, pullRequest)
+            pullRequestFreshUntil = Date().addingTimeInterval(Self.pullRequestFreshness)
+        }
+        pullRequestTask = task
+        return task
     }
 
     private func apply(_ response: GitCheckoutResponse) {

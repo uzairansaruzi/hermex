@@ -60,6 +60,10 @@ protocol GitDataClient: Sendable {
     /// stashes uncommitted changes first; a Hermes host refuses a switch with any (#1116), but
     /// creates a branch carrying them (#1236).
     func checkout(_ target: GitCheckoutTarget, stashingChanges: Bool) async throws -> GitCheckoutResponse
+
+    /// The checked-out branch's pull request, for the Git menu's link (#1391); nil when there is
+    /// none or the server can't look one up. webui never can.
+    func pullRequest() async throws -> GitPullRequest?
 }
 
 extension GitDataClient {
@@ -90,6 +94,8 @@ extension GitDataClient {
         case .since(let base): "\(reviewScope)|since|\(base)"
         }
     }
+
+    func pullRequest() async throws -> GitPullRequest? { nil }
 }
 
 /// A review scope this repository's server can't read: webui has no branch or turn range.

@@ -396,3 +396,21 @@ struct GitDiff: Decodable, Equatable {
     /// Unified diff text. Empty for binary or too-large diffs.
     let diff: String?
 }
+
+// MARK: - Pull request (Hermes `git/review/ship-info`, #1391)
+
+/// The checked-out branch's pull request, as the host's `gh pr view` names it: only a number, a
+/// web link and a state, with no title or draft flag.
+struct GitPullRequest: Equatable, Sendable {
+    enum State: String, Sendable {
+        case open = "OPEN"
+        case merged = "MERGED"
+        case closed = "CLOSED"
+    }
+
+    let number: Int
+    /// Always a web page `InAppBrowserPolicy.opensInApp` accepts.
+    let url: URL
+    /// Nil for a state `gh` names that isn't one of these.
+    let state: State?
+}

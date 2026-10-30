@@ -1491,10 +1491,14 @@ struct ChatView: View {
             fetchDisabled: gitWriteAvailability.fetchDisabled,
             writesDisabled: gitWriteAvailability.writesDisabled,
             hidesSync: gitWriteAvailability.hidesSync,
+            pullRequest: gitAvailabilityViewModel.pullRequest,
             isRunningAction: gitAvailabilityViewModel.isRunningGitAction,
             onTap: {
                 HapticButtonHaptics.tap(isEnabled: isHapticsEnabled)
+                gitAvailabilityViewModel.refreshPullRequest()
             },
+            onOpenPullRequest: { SafariView.present($0) },
+            onCopyPullRequestLink: { UIPasteboard.general.string = $0.absoluteString },
             onChanges: {
                 activeGitSheet = .changes
             },

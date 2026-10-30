@@ -305,6 +305,9 @@ enum HermesREST: Equatable, Sendable {
     case gitFetch(repository: String)
     case gitPull(repository: String)
     case gitCreateBranch(repository: String, name: String)
+    /// `{ghReady, pr: {url, state, number} | null}`: the checked-out branch's pull request from the
+    /// host's `gh pr view` (#1391). `ghReady` is false, and `pr` null, without an authenticated `gh`.
+    case gitShipInfo(repository: String)
     /// Replaces or creates the file at a host path, atomically; `{ok, path, byteSize}`. It never
     /// creates folders: a missing parent is 400 "Parent directory does not exist".
     case fsWriteText(path: String, content: String)
@@ -645,6 +648,8 @@ enum HermesREST: Equatable, Sendable {
         case .gitCreateBranch(let repository, let name):
             guard Self.isBranchName(name) else { throw BotFailure.invalidAddress }
             return try Self.pluginGit(base, "branch", repository: repository, ["name": .string(name)])
+        case .gitShipInfo(let repository):
+            return try Self.pathQuery(base, "api/git/review/ship-info", [URLQueryItem(name: "path", value: repository)])
         case .fsWriteText(let path, let content):
             return try Self.send("POST", base.appendingPathComponent("api/fs/write-text"),
                                  ["path": .string(path), "content": .string(content)])

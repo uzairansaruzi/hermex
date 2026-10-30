@@ -8,8 +8,12 @@ struct GitActionsMenuButton: View {
     /// Shows the branch and its distance from upstream as a row and leaves out Fetch and Pull,
     /// for a repository without sync (`GitWriteAvailability.hidesSync`).
     var hidesSync = false
+    /// The branch's pull request (#1391), shown first with Copy Link; nil leaves the section out.
+    let pullRequest: GitPullRequest?
     let isRunningAction: Bool
     let onTap: () -> Void
+    let onOpenPullRequest: (URL) -> Void
+    let onCopyPullRequestLink: (URL) -> Void
     let onChanges: () -> Void
     let onStageEdit: () -> Void
     let onCommit: () -> Void
@@ -24,6 +28,21 @@ struct GitActionsMenuButton: View {
 
     var body: some View {
         Menu {
+            if let pullRequest {
+                Section {
+                    Button { onOpenPullRequest(pullRequest.url) } label: {
+                        Label("Pull Request #\(pullRequest.number)", systemImage: "arrow.triangle.pull")
+                        if let state = pullRequest.state {
+                            Text(state.title)
+                        }
+                    }
+
+                    HapticButton { onCopyPullRequestLink(pullRequest.url) } label: {
+                        Label("Copy Link", systemImage: "link")
+                    }
+                }
+            }
+
             if hidesSync, let branch = presentation.branchSummary {
                 Section {
                     Label(branch, systemImage: "arrow.triangle.branch")
@@ -102,6 +121,16 @@ struct GitActionsMenuButton: View {
             }
         } else {
             Label("No changes", systemImage: "checkmark.circle")
+        }
+    }
+}
+
+private extension GitPullRequest.State {
+    var title: String {
+        switch self {
+        case .open: String(localized: "Open", comment: "A pull request's state")
+        case .merged: String(localized: "Merged", comment: "A pull request's state")
+        case .closed: String(localized: "Closed", comment: "A pull request's state")
         }
     }
 }
