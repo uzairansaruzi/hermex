@@ -16,11 +16,17 @@ final class SkillsViewModel {
 
     let client: any SkillsDataClient
 
+    /// The newest `load()` initiation wins: an older response that lands after a
+    /// newer one never overwrites the list, as `InsightsViewModel`'s active load id.
+    private var loadGeneration = 0
+
     init(client: any SkillsDataClient) {
         self.client = client
     }
 
     func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
         errorMessage = nil
         lastError = nil
@@ -28,8 +34,10 @@ final class SkillsViewModel {
 
         do {
             let response = try await client.skills()
+            guard generation == loadGeneration else { return }
             skills = response.skills ?? []
         } catch {
+            guard generation == loadGeneration else { return }
             lastError = error
             errorMessage = error.localizedDescription
         }
@@ -66,13 +74,16 @@ final class SkillsViewModel {
         defer { togglingSkillNames.remove(name) }
 
         do {
+            // The server has applied the write once this returns; a failed list
+            // reload afterwards must not roll the confirmed state back.
             _ = try await client.toggleSkill(name: name, enabled: enabled)
-            await load()
         } catch {
             updateSkill(named: name, disabled: enabled)
             lastError = error
             toggleErrorMessage = error.localizedDescription
+            return
         }
+        await load()
     }
 
     func clearToggleError() {
