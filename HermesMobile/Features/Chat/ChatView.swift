@@ -850,7 +850,9 @@ struct ChatView: View {
                 files: workspaceFiles,
                 entry: WorkspaceEntry(name: reference.name, path: reference.path),
                 initialLine: reference.line,
-                onAPIError: onAPIError
+                onAPIError: onAPIError,
+                onAddToPrompt: reviewCommentHook,
+                onReturnToChat: { openedFileReference = nil }
             )
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1125,7 +1127,7 @@ struct ChatView: View {
                         if showsFilesButton, !isHermesSession || browsableHermesWorkspace != nil {
                             ChatToolbarActionSlot {
                                 NavigationLink {
-                                    FileBrowserView(files: workspaceFiles, onAPIError: onAPIError)
+                                    FileBrowserView(files: workspaceFiles, onAPIError: onAPIError, onAddToPrompt: reviewCommentHook)
                                 } label: {
                                     Label("Files", systemImage: "folder")
                                 }
@@ -1405,7 +1407,8 @@ struct ChatView: View {
                 git: gitAvailabilityViewModel.git,
                 progress: reviewProgress,
                 onAPIError: onAPIError,
-                onAddToPrompt: addDiffSelectionToDraft
+                onAddToPrompt: reviewCommentHook,
+                onReturnToChat: closeGitPresentation
             )
         case .commit:
             GitCommitView(
@@ -1430,16 +1433,25 @@ struct ChatView: View {
                 scope: scope,
                 progress: reviewProgress,
                 onAPIError: onAPIError,
-                onAddToPrompt: addDiffSelectionToDraft
+                onAddToPrompt: reviewCommentHook,
+                onReturnToChat: closeGitPresentation
             )
         }
     }
 
-    /// Drops a diff selection from a Git sheet into the composer and closes the sheet.
-    private func addDiffSelectionToDraft(_ snippet: String) {
-        let separator = draftMessage.isEmpty ? "" : (draftMessage.hasSuffix("\n") ? "\n" : "\n\n")
-        draftMessage += separator + snippet + "\n"
-        persistDraftEdit(draftMessage)
+    /// Where Comment… on a diff or source surface appends: the draft, persisted at once and
+    /// never sent, so the sheet stays open for the next comment. Nil, hiding Comment…, while
+    /// the session is read-only and its editor locked.
+    private var reviewCommentHook: ((String) -> Void)? {
+        guard !session.isSessionReadOnly else { return nil }
+        return { markdown in
+            draftMessage = ReviewCommentComposer.appending(markdown, to: draftMessage)
+            persistDraftEdit(draftMessage)
+        }
+    }
+
+    /// Back to Chat from a Git sheet: closes the Changes sheet or turn diff and any diff on top.
+    private func closeGitPresentation() {
         activeGitSheet = nil
         turnDiffPresentation = nil
     }

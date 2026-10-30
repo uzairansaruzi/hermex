@@ -8,6 +8,10 @@ import UniformTypeIdentifiers
 /// Quick Look, and archives and other binaries show No Preview with Export.
 struct FilePreviewView: View {
     let onAPIError: (Error) -> Void
+    /// Forwarded to the source surface's Comment…; nil outside a chat that can take a draft.
+    let onAddToPrompt: ((String) -> Void)?
+    /// Forwarded to the source surface's Back to Chat; nil when back navigation does it.
+    let onReturnToChat: (() -> Void)?
 
     private let entry: WorkspaceEntry
     private let initialLine: Int?
@@ -30,11 +34,15 @@ struct FilePreviewView: View {
         entry: WorkspaceEntry,
         initialLine: Int? = nil,
         prefetchedFile: Task<FileResponse, Error>? = nil,
-        onAPIError: @escaping (Error) -> Void
+        onAPIError: @escaping (Error) -> Void,
+        onAddToPrompt: ((String) -> Void)? = nil,
+        onReturnToChat: (() -> Void)? = nil
     ) {
         self.entry = entry
         self.initialLine = initialLine
         self.onAPIError = onAPIError
+        self.onAddToPrompt = onAddToPrompt
+        self.onReturnToChat = onReturnToChat
         _viewModel = State(initialValue: FilePreviewViewModel(
             files: files,
             path: entry.path ?? "",
@@ -223,7 +231,9 @@ struct FilePreviewView: View {
                 serverLanguage: file.language,
                 targetLine: initialLine,
                 isRefreshing: viewModel.isLoading,
-                onRefresh: { Task { await loadFile() } }
+                onRefresh: { Task { await loadFile() } },
+                onAddToPrompt: onAddToPrompt,
+                onReturnToChat: onReturnToChat
             )
         }
         .background(Color(.systemBackground))

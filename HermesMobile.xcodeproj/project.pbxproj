@@ -365,6 +365,7 @@
 		1D1FF0000000000000000B02 /* ReviewDiffLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F02 /* ReviewDiffLayout.swift */; };
 		1D1FF0000000000000000B03 /* ReviewDiffSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F03 /* ReviewDiffSelection.swift */; };
 		1D1FF0000000000000000B37 /* ReviewDiffHighlightModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F37 /* ReviewDiffHighlightModel.swift */; };
+		12CE8CA7513F3AE4E257DE83 /* ReviewCommentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B6A842559A77D0D17E2F75F /* ReviewCommentSheet.swift */; };
 		1D1FF0000000000000000B04 /* ReviewDiffStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F04 /* ReviewDiffStyle.swift */; };
 		1D1FF0000000000000000B05 /* ReviewDiffCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F05 /* ReviewDiffCanvasView.swift */; };
 		1D1FF0000000000000000B06 /* ReviewDiffCanvasView+Drawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1FF0000000000000000F06 /* ReviewDiffCanvasView+Drawing.swift */; };
@@ -1055,6 +1056,7 @@
 		1D1FF0000000000000000F02 /* ReviewDiffLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffLayout.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F03 /* ReviewDiffSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffSelection.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F37 /* ReviewDiffHighlightModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffHighlightModel.swift; sourceTree = "<group>"; };
+		3B6A842559A77D0D17E2F75F /* ReviewCommentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewCommentSheet.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F04 /* ReviewDiffStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffStyle.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F05 /* ReviewDiffCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewDiffCanvasView.swift; sourceTree = "<group>"; };
 		1D1FF0000000000000000F06 /* ReviewDiffCanvasView+Drawing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ReviewDiffCanvasView+Drawing.swift"; sourceTree = "<group>"; };
@@ -2087,6 +2089,7 @@
 				1D1FF0000000000000000F02 /* ReviewDiffLayout.swift */,
 				1D1FF0000000000000000F03 /* ReviewDiffSelection.swift */,
 				1D1FF0000000000000000F37 /* ReviewDiffHighlightModel.swift */,
+				3B6A842559A77D0D17E2F75F /* ReviewCommentSheet.swift */,
 				1D1FF0000000000000000F04 /* ReviewDiffStyle.swift */,
 				1D1FF0000000000000000F05 /* ReviewDiffCanvasView.swift */,
 				1D1FF0000000000000000F06 /* ReviewDiffCanvasView+Drawing.swift */,
@@ -2672,6 +2675,7 @@
 				1D1FF0000000000000000B02 /* ReviewDiffLayout.swift in Sources */,
 				1D1FF0000000000000000B03 /* ReviewDiffSelection.swift in Sources */,
 				1D1FF0000000000000000B37 /* ReviewDiffHighlightModel.swift in Sources */,
+				12CE8CA7513F3AE4E257DE83 /* ReviewCommentSheet.swift in Sources */,
 				1D1FF0000000000000000B04 /* ReviewDiffStyle.swift in Sources */,
 				1D1FF0000000000000000B05 /* ReviewDiffCanvasView.swift in Sources */,
 				1D1FF0000000000000000B06 /* ReviewDiffCanvasView+Drawing.swift in Sources */,

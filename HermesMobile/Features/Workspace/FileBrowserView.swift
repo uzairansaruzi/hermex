@@ -5,6 +5,8 @@ import SwiftUI
 /// folder moves, replaces the whole tree.
 struct FileBrowserView: View {
     let onAPIError: (Error) -> Void
+    /// Forwarded to each pushed preview's Comment…; nil outside a chat that can take a draft.
+    let onAddToPrompt: ((String) -> Void)?
 
     private let files: (any WorkspaceFileClient)?
     @State private var viewModel: FileBrowserViewModel
@@ -13,9 +15,14 @@ struct FileBrowserView: View {
     /// The warm fetch handed over when `openedFile` was tapped; consumed by that preview only.
     @State private var openedFilePrefetch: Task<FileResponse, Error>?
 
-    init(files: (any WorkspaceFileClient)?, onAPIError: @escaping (Error) -> Void) {
+    init(
+        files: (any WorkspaceFileClient)?,
+        onAPIError: @escaping (Error) -> Void,
+        onAddToPrompt: ((String) -> Void)? = nil
+    ) {
         self.files = files
         self.onAPIError = onAPIError
+        self.onAddToPrompt = onAddToPrompt
         _viewModel = State(initialValue: FileBrowserViewModel(files: files))
     }
 
@@ -33,7 +40,8 @@ struct FileBrowserView: View {
                 files: files,
                 entry: node.entry,
                 prefetchedFile: openedFilePrefetch,
-                onAPIError: onAPIError
+                onAPIError: onAPIError,
+                onAddToPrompt: onAddToPrompt
             )
         }
         // A file opened from the old workspace reads through the old client: close it.

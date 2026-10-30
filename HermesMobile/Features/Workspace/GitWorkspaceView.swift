@@ -5,8 +5,10 @@ import SwiftUI
 /// at the tapped one. It only reads: writes live in the commit sheet and the Git menu.
 struct GitWorkspaceView: View {
     let onAPIError: (Error) -> Void
-    /// Forwarded to the diff surface so a line selection can land in the composer.
+    /// Forwarded to the diff surface so a line comment can land in the composer.
     let onAddToPrompt: ((String) -> Void)?
+    /// Forwarded to the diff surface's Back to Chat.
+    let onReturnToChat: (() -> Void)?
 
     private let git: (any GitDataClient)?
     private let progress: ReviewProgressStore
@@ -32,11 +34,13 @@ struct GitWorkspaceView: View {
         git: (any GitDataClient)?,
         progress: ReviewProgressStore,
         onAPIError: @escaping (Error) -> Void,
-        onAddToPrompt: ((String) -> Void)? = nil
+        onAddToPrompt: ((String) -> Void)? = nil,
+        onReturnToChat: (() -> Void)? = nil
     ) {
         self.git = git
         self.onAPIError = onAPIError
         self.onAddToPrompt = onAddToPrompt
+        self.onReturnToChat = onReturnToChat
         self.progress = progress
         _viewModel = State(initialValue: GitWorkspaceViewModel(git: git, progress: progress))
     }
@@ -70,7 +74,8 @@ struct GitWorkspaceView: View {
                 base: opened.base,
                 progress: progress,
                 onAPIError: onAPIError,
-                onAddToPrompt: onAddToPrompt
+                onAddToPrompt: onAddToPrompt,
+                onReturnToChat: onReturnToChat
             )
         }
     }

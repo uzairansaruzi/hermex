@@ -55,31 +55,43 @@ struct ReviewDiffSelection: Equatable {
         Set(selectedRows(in: rows).map(\.id))
     }
 
-    /// Plain Markdown for the composer: path and line range, then the selected lines
-    /// as a fenced diff so the agent sees what was added, removed, or unchanged. The
-    /// fence is one backtick longer than any run inside the lines, so selecting a
-    /// Markdown code block cannot close it early.
-    func snippet(in rows: [ReviewDiffRow]) -> String? {
-        let selected = selectedRows(in: rows)
-        guard let fileID, !selected.isEmpty else { return nil }
+    /// The selected diff lines for Comment…: prefixed with `+`, `-`, or a space so the
+    /// agent sees what was added, removed, or unchanged, in a `diff` fence.
+    func commentContext(in rows: [ReviewDiffRow]) -> ReviewCommentContext? {
         let path = rows.first { $0.fileID == fileID && $0.isFileHeader }?.fileHeader?.path ?? fileID
-        let numbers = selected.compactMap { $0.line?.displayLineNumber }
-        var heading = path
-        if let first = numbers.first, let last = numbers.last {
-            heading += first == last ? " L\(first)" : " L\(first)-L\(last)"
-        }
-        let body = selected.compactMap { row -> String? in
-            guard let line = row.line else { return nil }
-            let prefix: String
+        return commentContext(in: rows, path: path, language: "diff") { line in
             switch line.change {
-            case .addition: prefix = "+"
-            case .deletion: prefix = "-"
-            case .context: prefix = " "
+            case .addition: "+" + line.content
+            case .deletion: "-" + line.content
+            case .context: " " + line.content
             }
-            return prefix + line.content
         }
+    }
+
+    /// The selected lines of a workspace file for Comment…: unprefixed, in a fence
+    /// named for the file's language, or a bare fence for plain text.
+    func sourceCommentContext(in rows: [ReviewDiffRow], path: String, language: String?) -> ReviewCommentContext? {
+        commentContext(in: rows, path: path, language: language ?? "") { $0.content }
+    }
+
+    private func commentContext(
+        in rows: [ReviewDiffRow],
+        path: String?,
+        language: String,
+        quote: (ReviewDiffLine) -> String
+    ) -> ReviewCommentContext? {
+        let lines = selectedRows(in: rows).compactMap(\.line)
+        guard let path, !lines.isEmpty else { return nil }
+        let numbers = lines.compactMap(\.displayLineNumber)
+        let body = lines.map(quote)
+        // One backtick longer than any run inside, so selecting a Markdown code
+        // block cannot close the fence early.
         let fence = String(repeating: "`", count: max(3, Self.longestBacktickRun(in: body) + 1))
-        return "\(heading)\n\(fence)diff\n\(body.joined(separator: "\n"))\n\(fence)"
+        return ReviewCommentContext(
+            path: path,
+            lines: numbers.first.flatMap { first in numbers.last.map { (first, $0) } },
+            fencedLines: "\(fence)\(language)\n\(body.joined(separator: "\n"))\n\(fence)"
+        )
     }
 
     private static func longestBacktickRun(in lines: [String]) -> Int {
@@ -92,5 +104,58 @@ struct ReviewDiffSelection: Equatable {
             }
         }
         return longest
+    }
+}
+
+
+/// Selected lines captured when Comment… opens, so the sheet names them and Add
+/// quotes them even if the surface's rows change underneath.
+struct ReviewCommentContext: Identifiable {
+    let id = UUID()
+    let path: String
+    /// First and last display line numbers, in row order; nil when no line has one. Not
+    /// a range: a diff can run from a higher old-side number to a lower new-side one.
+    let lines: (first: Int, last: Int)?
+    let fencedLines: String
+
+    /// What lands in the draft: `path L1-L9`, then `: comment` when there is one, then
+    /// the fenced lines. A blank comment gives exactly the old "Add to prompt" snippet.
+    func markdown(comment: String = "") -> String {
+        var heading = path
+        if let lines {
+            heading += lines.first == lines.last ? " L\(lines.first)" : " L\(lines.first)-L\(lines.last)"
+        }
+        let comment = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !comment.isEmpty { heading += ": " + comment }
+        return heading + "\n" + fencedLines
+    }
+}
+
+/// The Comment… flow on a review surface. `context` drives the comment sheet; Add
+/// turns it into draft Markdown once, and `addedCount` feeds the bar's "N comments
+/// added" for this surface's lifetime. The draft itself is the only queue.
+struct ReviewCommentComposer {
+    var context: ReviewCommentContext?
+    private(set) var addedCount = 0
+
+    /// The Markdown to append, or nil when the context is gone, as after a refresh.
+    mutating func add(comment: String) -> String? {
+        guard let context else { return nil }
+        self.context = nil
+        addedCount += 1
+        return context.markdown(comment: comment)
+    }
+
+    /// Closes the sheet without adding. Refreshes and content swaps call it so a
+    /// late Add cannot quote lines that are no longer on screen.
+    mutating func discard() {
+        context = nil
+    }
+
+    /// The draft with `markdown` appended as its own paragraph, ending in a newline
+    /// so the next comment or the user's typing starts on a fresh line.
+    static func appending(_ markdown: String, to draft: String) -> String {
+        let separator = draft.isEmpty ? "" : (draft.hasSuffix("\n") ? "\n" : "\n\n")
+        return draft + separator + markdown + "\n"
     }
 }

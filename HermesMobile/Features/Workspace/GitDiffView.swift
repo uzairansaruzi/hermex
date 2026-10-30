@@ -12,9 +12,11 @@ import SwiftUI
 /// With more than one file, a toolbar list (`GitDiffFileJumpList`) jumps to any of them.
 struct GitDiffView: View {
     let onAPIError: (Error) -> Void
-    /// Receives the selected lines as Markdown. Nil hides "Add to prompt", for hosts
-    /// with no composer to add to.
+    /// Appends a comment and its quoted lines to the chat draft, leaving this sheet
+    /// open for the next one. Nil hides Comment…, for hosts with no composer to add to.
     let onAddToPrompt: ((String) -> Void)?
+    /// Closes the Git presentation back to the chat; shown once a comment was added.
+    let onReturnToChat: (() -> Void)?
 
     /// Nil for a webui session without an ID.
     private let git: (any GitDataClient)?
@@ -32,6 +34,7 @@ struct GitDiffView: View {
     @State private var refreshTask: Task<Void, Never>?
     @State private var review: ReviewDiffProgress
     @State private var selection = ReviewDiffSelection()
+    @State private var commentComposer = ReviewCommentComposer()
     @State private var scrollTarget: ReviewDiffScrollTarget?
     @State private var isShowingFileJump = false
     @State private var highlights = ReviewDiffHighlightModel()
@@ -53,7 +56,8 @@ struct GitDiffView: View {
         base: String? = nil,
         progress: ReviewProgressStore,
         onAPIError: @escaping (Error) -> Void,
-        onAddToPrompt: ((String) -> Void)? = nil
+        onAddToPrompt: ((String) -> Void)? = nil,
+        onReturnToChat: (() -> Void)? = nil
     ) {
         self.git = git
         self.files = files
@@ -61,6 +65,7 @@ struct GitDiffView: View {
         self.scope = scope
         self.onAPIError = onAPIError
         self.onAddToPrompt = onAddToPrompt
+        self.onReturnToChat = onReturnToChat
         _scrollTarget = State(initialValue: initialFile.map { ReviewDiffScrollTarget(fileID: $0.id, token: UUID()) })
         let progressScope = git?.progressScope(scope, base: base)
         _review = State(initialValue: ReviewDiffProgress(files: files, initialFile: initialFile, store: progress, scope: progressScope))
@@ -95,7 +100,14 @@ struct GitDiffView: View {
                 }
                 .safeAreaInset(edge: .bottom) {
                     let selected = selectedRowIDs
-                    if !selected.isEmpty { selectionBar(count: selected.count) }
+                    if !selected.isEmpty {
+                        selectionBar(count: selected.count)
+                    } else if commentComposer.addedCount > 0 {
+                        ReviewCommentStatusBar(addedCount: commentComposer.addedCount, onReturnToChat: onReturnToChat)
+                    }
+                }
+                .sheet(item: $commentComposer.context) { context in
+                    ReviewCommentSheet(context: context, onAdd: addComment)
                 }
                 .task {
                     guard !hasLoaded else { return }
@@ -167,7 +179,7 @@ struct GitDiffView: View {
             Button("Clear") { selection.clear() }
                 .font(AppFont.footnote())
             if onAddToPrompt != nil {
-                Button("Add to prompt", action: addToPrompt)
+                Button("Comment…") { commentComposer.context = selection.commentContext(in: rows) }
                     .font(AppFont.footnote(weight: .semibold))
                     .buttonStyle(.borderedProminent)
             }
@@ -199,9 +211,9 @@ struct GitDiffView: View {
         ChatHaptics.diffLineSelected(isEnabled: isHapticsEnabled)
     }
 
-    private func addToPrompt() {
-        guard let snippet = selection.snippet(in: rows) else { return }
-        onAddToPrompt?(snippet)
+    private func addComment(_ comment: String) {
+        guard let markdown = commentComposer.add(comment: comment) else { return }
+        onAddToPrompt?(markdown)
         ChatHaptics.addedToPrompt(isEnabled: isHapticsEnabled)
         selection.clear()
     }
@@ -211,6 +223,7 @@ struct GitDiffView: View {
     private func refresh() async {
         isRefreshing = true
         selection.clear()
+        commentComposer.discard()
         await load()
         isRefreshing = false
     }
