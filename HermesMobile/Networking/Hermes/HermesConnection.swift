@@ -59,7 +59,7 @@ import OSLog
     /// in memory only; nil before any, and once retired.
     private(set) var lastAttempt: HermesAttemptRecord?
     /// Numbers attempts, so a stage reported for an older one never lands on a newer record.
-    private var attemptCount = 0
+    private(set) var attemptCount = 0
     /// Each Profile's `keepPlatformNote` check on this connection, by Profile: one that found the
     /// note current or wrote it, or one still running, which a later call waits for. A failed
     /// check is dropped, so each Profile is read once per sign-in unless a read fails.
@@ -516,9 +516,9 @@ import OSLog
     }
 
     /// The gateway's report that its socket's handshake finished, or failed with `error`, after
-    /// `gatewayUpgrade` gave it the upgrade.
-    func noteLiveHandshake(_ error: Error?) {
-        update(attemptCount) { $0[.liveHandshake] = error.map { .failed(.init($0)) } ?? .passed }
+    /// `gatewayUpgrade` gave it the upgrade during `attempt` (`attemptCount` then).
+    func noteLiveHandshake(_ error: Error?, attempt: Int) {
+        update(attempt) { $0[.liveHandshake] = error.map { .failed(.init($0)) } ?? .passed }
     }
 
     /// Starts a new attempt record, with nothing checked, and returns its number for `update`.

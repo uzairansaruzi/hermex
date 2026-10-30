@@ -499,6 +499,23 @@ import XCTest
                        [.passed, .passed, .passed, .passed, .failed(.http(403))])
     }
 
+    /// A socket lost after `gateway.ready` but before the `client.capabilities` reply failed
+    /// the handshake, though the teardown ended the opening before it reported (#1395).
+    func testASocketLostMidHandshakeFailsTheLiveHandshake() async throws {
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil },
+                                    gateway: .init { _ in
+                                        let socket = BotScriptedSocket()
+                                        socket.sendFailure = URLError(.networkConnectionLost)
+                                        return socket
+                                    })
+        let client = BotClient(http: http)
+        do { try await client.connect(); XCTFail("The socket dropped mid-handshake") } catch {}
+
+        let attempt = try XCTUnwrap(http.lastAttempt)
+        XCTAssertEqual(HermesAttemptRecord.Stage.allCases.map { attempt[$0] },
+                       [.passed, .passed, .passed, .passed, .failed(.unreachable)])
+    }
+
     /// A ticket refused with 401 signs in again; when that sign-in is refused, the attempt
     /// names the sign-in, not the ticket (#1395).
     func testATicketsRefusedReSignInIsASignInFailure() async throws {

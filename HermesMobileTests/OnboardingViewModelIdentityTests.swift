@@ -615,6 +615,25 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         }
     }
 
+    /// A refused sign-in's Details describe the credentials it sent, so editing the password
+    /// drops them (#1395).
+    func testEditingTheRefusedPasswordDropsItsDetails() async throws {
+        let (_, manager) = makeOpenWebui()
+        let form = makeHermesForm(entry: .addServer) {
+            $0.url?.path == "/auth/password-login" ? .json(401, .object(["error": .string("invalid_credentials")])) : nil
+        }
+        form.serverURLString = "hermes.example"
+        await form.connect(authManager: manager)
+        form.username = "me"
+        form.password = "wrong"
+        _ = await form.connect(authManager: manager)
+        XCTAssertEqual(try XCTUnwrap(form.failedAttempt)[.signIn], .failed(.http(401)))
+
+        form.password = "right"
+
+        XCTAssertNil(form.failedAttempt)
+    }
+
     /// An address that never answered keeps its failed status read as the error's Details, past
     /// the webui path's own failure, with nothing after it checked; an edit to the address drops
     /// them with the error (#1395).

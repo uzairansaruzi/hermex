@@ -79,9 +79,14 @@ final class OnboardingViewModel {
             dropReusedSignInIfMoved()
         }
     }
-    /// A Hermes dashboard's username; only a detected dashboard shows it.
-    var username = ""
-    var password = ""
+    /// A Hermes dashboard's username; only a detected dashboard shows it. An edit to it or the
+    /// password drops the failed attempt's Details, which describe the old credentials (#1395).
+    var username = "" {
+        didSet { if username != oldValue { lastAttempt = nil } }
+    }
+    var password = "" {
+        didSet { if password != oldValue { lastAttempt = nil } }
+    }
     var customHeaders: [CustomHeader] = [] {
         didSet { invalidateProbedAuthStatusIfNeeded() }
     }
@@ -113,7 +118,7 @@ final class OnboardingViewModel {
     var connectionMessage: String?
     var errorMessage: String?
     /// What the last failed Hermes status read or sign-in observed (#1395). Each Connect or Test
-    /// Connection starts without one, and an edit that drops the error drops it too.
+    /// Connection starts without one; a credential edit, or an edit that drops the error, drops it.
     private var lastAttempt: HermesAttemptRecord?
     /// The failed Hermes attempt behind `errorMessage`, shown as its Details: none once a webui
     /// answered at the address, since the error is then the webui's.
@@ -452,9 +457,9 @@ final class OnboardingViewModel {
             lastAttempt = attempt
             return
         case .notHermes(let attempt):
-            lastAttempt = attempt
             // A saved Hermes sign-in never goes down the webui path.
             dropReusedSignIn()
+            lastAttempt = attempt
             identityAtStart = currentConnectionIdentity()
         }
 
@@ -539,9 +544,9 @@ final class OnboardingViewModel {
                 lastAttempt = attempt
                 return nil
             case .notHermes(let attempt):
-                lastAttempt = attempt
                 // A saved Hermes sign-in never goes down the webui path.
                 dropReusedSignIn()
+                lastAttempt = attempt
             }
         }
 
