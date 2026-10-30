@@ -21,13 +21,20 @@ final class GitDiffFileJumpTests: XCTestCase {
     }
 
     /// A jump lands on the file's header with its diff open, and picking it again scrolls again.
-    /// A default-folded lockfile stays open through later loads and reopened reviews; a viewed
-    /// file keeps its mark.
+    /// A default-folded lockfile stays open through later loads and reopened reviews of the same
+    /// range, and a viewed file keeps its mark. A branch review's jump stays out of the
+    /// uncommitted review's progress, keyed as `GitDiffView` keys it (#1386).
     func testJumpOpensAFoldedFileForGoodKeepsItsViewedMarkAndScrollsAgainOnEveryPick() throws {
+        let git = HermesGitHost.client { HermesGitHost.repositoryReply($0) }
+        let branch = git.progressScope(.branch, base: "1a2b3c")
         let store = ReviewProgressStore()
         let source = file("App.swift"), lockfile = file("Cargo.lock")
-        var review = ReviewDiffProgress(files: [source, lockfile], initialFile: nil, store: store, scope: "repo")
-        try land(&review, [source, lockfile])
+        func open(in scope: String) throws -> ReviewDiffProgress {
+            var review = ReviewDiffProgress(files: [source, lockfile], initialFile: nil, store: store, scope: scope)
+            try land(&review, [source, lockfile])
+            return review
+        }
+        var review = try open(in: branch)
         review.toggleViewed(source.id)
         XCTAssertEqual(review.collapsedFileIDs, [source.id, lockfile.id])
 
@@ -40,10 +47,10 @@ final class GitDiffFileJumpTests: XCTestCase {
         XCTAssertEqual(review.viewedFileIDs, [source.id])
         XCTAssertEqual(first.anchor, .fileHeader(lockfile.id))
         XCTAssertNotEqual(first.token, second.token, "The same file picked twice scrolls again.")
-        var reopened = ReviewDiffProgress(files: [source, lockfile], initialFile: nil, store: store, scope: "repo")
-        try land(&reopened, [source, lockfile])
+        let reopened = try open(in: branch)
         XCTAssertEqual(reopened.collapsedFileIDs, [])
         XCTAssertEqual(reopened.viewedFileIDs, [source.id])
+        XCTAssertEqual(try open(in: git.progressScope(.uncommitted, base: nil)).collapsedFileIDs, [lockfile.id])
     }
 
     /// Search matches the folder as well as the name, in any case.
