@@ -1123,6 +1123,26 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 2)
     }
 
+    /// A read that fails takes the link away rather than leaving the last one up.
+    @MainActor
+    func testAFailedPullRequestReadDropsTheLink() async throws {
+        var fails = false
+        let git = HermesGitHost.client { request in
+            guard request.url?.path == "/api/git/review/ship-info" else { return Self.threeChanges(request) }
+            return fails ? .json(500, .null) : Self.pullRequest(42, "OPEN")
+        }
+        let availability = GitWorkspaceAvailabilityViewModel(git: git)
+        await availability.load()
+        await availability.refreshPullRequest()?.value
+        XCTAssertEqual(availability.pullRequest?.number, 42)
+
+        HermesHostFixture.script { fails = true }
+        await availability.refreshPullRequest(force: true)?.value
+
+        XCTAssertNil(availability.pullRequest)
+        XCTAssertEqual(HermesHostFixture.count("/api/git/review/ship-info"), 2)
+    }
+
     private static func pullRequest(_ number: Int, _ state: String) -> HermesHostFixture.Reply {
         HermesGitHost.shipInfo(["url": .string("https://github.com/o/r/pull/\(number)"), "state": .string(state),
                                 "number": .number(Double(number))])

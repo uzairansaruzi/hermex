@@ -31,7 +31,8 @@ struct GitActionsMenuButton: View {
             if let pullRequest {
                 Section {
                     Button { onOpenPullRequest(pullRequest.url) } label: {
-                        Label("Pull Request #\(pullRequest.number)", systemImage: "arrow.triangle.pull")
+                        // A string, so the number never takes a grouping separator ("#1,462").
+                        Label("Pull Request #\(String(pullRequest.number))", systemImage: "arrow.triangle.pull")
                         if let state = pullRequest.state {
                             Text(state.title)
                         }
