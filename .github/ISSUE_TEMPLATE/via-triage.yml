@@ -1,0 +1,52 @@
+name: Triaged by your Hermes agent
+description: Filed after a Hermes agent triaged the problem with .github/triage/PLAYBOOK.md
+labels: ["via-triage", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is for issues drafted by a Hermes agent following the
+        [triage playbook](https://github.com/uzairansaruzi/hermex/blob/master/.github/triage/PLAYBOOK.md).
+        Filing by hand? Use the bug report form instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The symptom in the user's words, and what they expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps from a fresh install or a known state.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnosis
+    attributes:
+      label: Diagnosis
+      description: What the agent found, with source paths and the tag it read.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: App version, build and channel; iOS version and device; server kind and release; how the phone reaches the server.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Short, redacted log excerpts with timestamps. Drag screenshots here.
+    validations:
+      required: false
+  - type: textarea
+    id: related
+    attributes:
+      label: Related issues
+      description: Duplicates, upstream tickets, and releases that touch this.
+    validations:
+      required: false

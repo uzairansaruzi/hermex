@@ -111,6 +111,14 @@ bug here, reproduce it in the hermes-webui **web UI** against the same server:
   upstream ticket (we track those with the `upstream-change` label).
 - **Only breaks in the app** → file it here with the bug-report form.
 
+Not sure which? Your Hermes agent can triage it for you: it checks the server's
+logs, reads the app's source at your version, looks for duplicates, and drafts
+the issue for your approval. Send it:
+
+> I'm having a problem with Hermex, the iPhone app I use to reach you. Fetch
+> https://raw.githubusercontent.com/uzairansaruzi/hermex/master/.github/triage/PLAYBOOK.md
+> and follow it to help me triage it.
+
 ## PR workflow
 
 1. **Start from an issue.** Every change should trace to a GitHub issue; open
