@@ -130,6 +130,17 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         XCTAssertNil(viewModel.errorMessage)
     }
 
+    /// A webui read that answers no `git` at all ends as a retryable failure, never a spinner.
+    @MainActor
+    func testAStatusReadWithoutAnAnswerOffersTryAgain() async throws {
+        let client = makeClient { request in apiTestJSONResponse(#"{"git": null}"#, for: request) }
+        let viewModel = GitWorkspaceViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: client)
+
+        await viewModel.load()
+
+        XCTAssertTrue(viewModel.showsStatusFailure)
+    }
+
     // MARK: - Toolbar availability
 
     @MainActor
@@ -681,6 +692,20 @@ final class GitWorkspaceViewModelTests: APIClientTestCase {
         .json(200, .object(["base": base.map(BotJSON.string) ?? .null, "files": .array(files.map {
             .object(["path": .string($0), "added": .number(1), "removed": .number(0), "status": .string("M"), "staged": .bool(false)])
         })]))
+    }
+
+    /// Only a Hermes repository offers This Branch: webui has no branch range.
+    @MainActor
+    func testOnlyAHermesRepositoryOffersThisBranch() async throws {
+        let hermes = GitWorkspaceViewModel(git: HermesGitHost.client { HermesGitHost.repositoryReply($0) })
+        let client = makeClient { request in apiTestJSONResponse(Self.statusWithIgnored, for: request) }
+        let webui = GitWorkspaceViewModel(session: try session(id: "s1"), server: URL(string: "https://example.test")!, apiClient: client)
+
+        await hermes.load()
+        await webui.load()
+
+        XCTAssertTrue(hermes.showsScopePicker)
+        XCTAssertFalse(webui.showsScopePicker)
     }
 
     /// A failed read, first or a refresh, stays a retryable failure, never an empty range; an empty

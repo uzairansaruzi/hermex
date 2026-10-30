@@ -59,6 +59,11 @@ final class GitWorkspaceViewModel {
         status?.isGit == true
     }
 
+    /// Whether Uncommitted shows its retryable failure: no status, and none on the way.
+    var showsStatusFailure: Bool {
+        status == nil && (errorMessage != nil || hasLoaded && !isLoading)
+    }
+
     /// Whether the sheet offers This Branch: a Hermes repository, since webui has no branch range.
     var showsScopePicker: Bool {
         git?.isHermes == true && hasRepository

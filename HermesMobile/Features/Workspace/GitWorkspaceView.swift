@@ -100,7 +100,7 @@ struct GitWorkspaceView: View {
 
     @ViewBuilder
     private var uncommittedContent: some View {
-        if viewModel.errorMessage != nil && viewModel.status == nil {
+        if viewModel.showsStatusFailure {
             unavailable("Could Not Load Changes", image: "exclamationmark.triangle", detail: viewModel.errorMessage) {
                 retry()
             }
