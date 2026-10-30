@@ -504,7 +504,11 @@ final class SharedDraftStoreTests: XCTestCase {
         guard case .chat(let partialChat)? = partial.hermesOpening(on: entry, listed: "default", isLive: true) else {
             return XCTFail("A share with files left out still opens a new session")
         }
-        XCTAssertEqual(partialChat.shareSkips, skipped)
+        var covers = HermesSessionListCovers()
+        covers.chat = partialChat
+        XCTAssertEqual(covers.building(partialChat).shareNotice?.take(), skipped, "Its composer shows the notice")
+        XCTAssertNil(covers.building(partialChat).shareNotice?.take(),
+                     "A composer rebuilt for the unsent chat (a size-class change) doesn't repeat it")
 
         XCTAssertEqual(reservation(" \n ").hermesOpening(on: entry, listed: "default", isLive: true), .nothing,
                        "An empty share is consumed without a chat")

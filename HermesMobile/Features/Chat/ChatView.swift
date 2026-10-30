@@ -463,7 +463,7 @@ struct ChatView: View {
     @State private var didUploadInitialAttachments = false
     @State private var showsStopConfirmation = false
     /// What the share this new chat opened for left out (#1401), shown once over the composer.
-    @State private var shareNotice: ActionToast?
+    private let shareNotice: SharedSkipsNotice?
     @State private var shareNoticeToast = ActionToastState()
 
     init(
@@ -473,7 +473,7 @@ struct ChatView: View {
         initialDraft: String = "",
         initialQuotes: [ComposerQuote] = [],
         initialAttachments: [SharedAttachmentImport] = [],
-        shareSkips: SharedSkips = SharedSkips(),
+        shareNotice: SharedSkipsNotice? = nil,
         loadsInitialMessages: Bool = true,
         autoStartsVoiceInput: Bool = false,
         draftStore: ChatDraftStore? = nil,
@@ -506,7 +506,7 @@ struct ChatView: View {
         _draftMessage = State(initialValue: initialDraft)
         _draftQuotes = State(initialValue: initialQuotes)
         _initialAttachments = State(initialValue: initialAttachments)
-        _shareNotice = State(initialValue: ActionToast(sharedSkips: shareSkips))
+        self.shareNotice = shareNotice
         let model = ChatViewModel(
             session: session,
             server: server,
@@ -539,7 +539,7 @@ struct ChatView: View {
             session: SessionSummary(profile: hermesSession.target.profile),
             server: hermesSession.server,
             onAPIError: { _ in },
-            shareSkips: hermesSession.shareSkips,
+            shareNotice: hermesSession.shareNotice,
             autoStartsVoiceInput: hermesSession.autoStartsVoiceInput,
             hermesSession: hermesSession,
             onReplaceHermesSession: onReplace,
@@ -1040,9 +1040,8 @@ struct ChatView: View {
                 await handleInitialAppearanceTask()
             }
             .task {
-                guard let shareNotice else { return }
-                self.shareNotice = nil
-                shareNoticeToast.show(shareNotice)
+                guard let skipped = shareNotice?.take(), let toast = ActionToast(sharedSkips: skipped) else { return }
+                shareNoticeToast.show(toast)
             }
             .onChange(of: scenePhase) {
                 handleScenePhaseChange(scenePhase)

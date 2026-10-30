@@ -220,6 +220,9 @@ enum ShareInputReader {
         guard let data else {
             return .skipped(SharedSkippedItem(filename: filename, reason: .tooLarge))
         }
+        guard !data.isEmpty else {
+            return .skipped(SharedSkippedItem(filename: filename, reason: .unreadable))
+        }
 
         return .loaded(SharedAttachmentImport(filename: filename, typeIdentifier: typeIdentifier, data: data))
     }

@@ -211,6 +211,25 @@ struct ActionToastView: View {
     }
 }
 
+/// What a share left out, for the new chat it opened (#1401). The route or chat that opened for
+/// the share holds it, and the first composer to present it takes it, so a composer rebuilt for
+/// that chat (a size-class change) doesn't say it again.
+@MainActor final class SharedSkipsNotice {
+    private var skipped: SharedSkips?
+
+    /// Nil when the share left nothing out.
+    init?(_ skipped: SharedSkips) {
+        guard !skipped.isEmpty else { return nil }
+        self.skipped = skipped
+    }
+
+    /// The skips the first time; nil after.
+    func take() -> SharedSkips? {
+        defer { skipped = nil }
+        return skipped
+    }
+}
+
 extension ActionToast {
     /// The notice a share's new chat shows once when the share left items out (#1401): the
     /// reason for one item, the first names and a count for several, the limit when the count

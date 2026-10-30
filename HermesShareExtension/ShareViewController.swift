@@ -103,16 +103,19 @@ final class ShareViewController: UIViewController {
         }
     }
 
-    /// Why the share's items were left out, naming one item, or nil when it held none.
+    /// Why the share's items were left out: the first item's reason, and how many more there
+    /// were. Nil when it held none.
     private static func reason(for skipped: [SharedSkippedItem]) -> String? {
         guard let first = skipped.first else { return nil }
-        guard skipped.count == 1 else { return "\(skipped.count) items couldn’t be added." }
         let name = first.filename ?? "The item"
-        switch first.reason {
-        case .tooLarge: return "\(name) is over 20 MB."
-        case .unsupported: return "Hermex can’t attach \(name)."
-        case .unreadable, .overLimit, nil: return "\(name) couldn’t be read."
+        let reason = switch first.reason {
+        case .tooLarge: "\(name) is over 20 MB."
+        case .unsupported: "Hermex can’t attach \(name)."
+        case .unreadable, .overLimit, nil: "\(name) couldn’t be read."
         }
+        let rest = skipped.count - 1
+        guard rest > 0 else { return reason }
+        return "\(reason) \(rest == 1 ? "1 more item" : "\(rest) more items") couldn’t be added."
     }
 
     private func showStatus(_ text: String) {

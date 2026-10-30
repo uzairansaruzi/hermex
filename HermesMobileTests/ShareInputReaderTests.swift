@@ -94,7 +94,7 @@ final class ShareInputReaderTests: XCTestCase {
 
     /// Each item a share leaves out is reported once, with why. Text, a link, and an item whose
     /// file failed but whose data loaded are not among them; the oversized file is judged by its
-    /// size alone (#734).
+    /// size alone (#734), and an empty file is unreadable rather than attached.
     func testSkippedAttachmentsAreReportedWithTheirReasons() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -108,6 +108,8 @@ final class ShareInputReaderTests: XCTestCase {
         let handle = try FileHandle(forWritingTo: movieURL)
         try handle.truncate(atOffset: UInt64(HermesShareDraft.maximumSharedAttachmentBytes + 1))
         try handle.close()
+        let emptyURL = directory.appendingPathComponent("empty.pdf")
+        try Data().write(to: emptyURL)
 
         let clip = NSItemProvider(item: Data([1]) as NSData, typeIdentifier: UTType.mpeg4Movie.identifier)
         clip.suggestedName = "clip"
@@ -118,6 +120,7 @@ final class ShareInputReaderTests: XCTestCase {
         let providers = [
             NSItemProvider(item: pdfURL as NSURL, typeIdentifier: UTType.fileURL.identifier),
             NSItemProvider(item: movieURL as NSURL, typeIdentifier: UTType.fileURL.identifier),
+            NSItemProvider(item: emptyURL as NSURL, typeIdentifier: UTType.fileURL.identifier),
             clip,
             fallback,
             NSItemProvider(item: "note" as NSString, typeIdentifier: UTType.plainText.identifier),
@@ -129,6 +132,7 @@ final class ShareInputReaderTests: XCTestCase {
         XCTAssertEqual(input.attachments.map(\.filename), ["notes.pdf", "shared-image.png"])
         XCTAssertEqual(input.skipped, [
             SharedSkippedItem(filename: "big.mov", reason: .tooLarge),
+            SharedSkippedItem(filename: "empty.pdf", reason: .unreadable),
             SharedSkippedItem(filename: "clip.mp4", reason: .unsupported)
         ])
     }

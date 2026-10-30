@@ -644,7 +644,7 @@ struct SessionListView: View {
             PendingNewChatView(
                 initialDraft: route.initialDraft,
                 initialAttachments: route.initialAttachments,
-                shareSkips: route.shareSkips,
+                shareNotice: route.shareNotice,
                 autoStartsVoiceInput: route.autoStartsVoiceInput,
                 profileName: route.profileName,
                 projectID: route.projectID,
@@ -1464,7 +1464,7 @@ struct SessionListView: View {
             PendingNewChatRoute(
                 initialDraft: draft,
                 initialAttachments: sharedImport.attachments,
-                shareSkips: sharedImport.skipped
+                shareNotice: SharedSkipsNotice(sharedImport.skipped)
             )
         )
         didRoutePendingSharedImport(reservation)
@@ -1772,7 +1772,7 @@ struct PendingNewChatRoute: Identifiable, Hashable {
     let initialDraft: String
     let initialAttachments: [SharedAttachmentImport]
     /// What the share this chat opened for left out, which its composer says once (#1401).
-    let shareSkips: SharedSkips
+    let shareNotice: SharedSkipsNotice?
     /// When true, the composer auto-starts voice dictation on appear (#338).
     let autoStartsVoiceInput: Bool
     /// When set, the new session is created pinned to this profile (#339).
@@ -1783,14 +1783,14 @@ struct PendingNewChatRoute: Identifiable, Hashable {
     init(
         initialDraft: String = "",
         initialAttachments: [SharedAttachmentImport] = [],
-        shareSkips: SharedSkips = SharedSkips(),
+        shareNotice: SharedSkipsNotice? = nil,
         autoStartsVoiceInput: Bool = false,
         profileName: String? = nil,
         projectID: String? = nil
     ) {
         self.initialDraft = initialDraft
         self.initialAttachments = initialAttachments
-        self.shareSkips = shareSkips
+        self.shareNotice = shareNotice
         self.autoStartsVoiceInput = autoStartsVoiceInput
         self.profileName = profileName
         self.projectID = projectID
@@ -1880,7 +1880,7 @@ private struct PendingNewChatView: View {
     let onAPIError: (Error) -> Void
     let onSessionCreated: (SessionSummary) -> Void
     let initialAttachments: [SharedAttachmentImport]
-    let shareSkips: SharedSkips
+    let shareNotice: SharedSkipsNotice?
     let autoStartsVoiceInput: Bool
     let profileName: String?
     let projectID: String?
@@ -1899,7 +1899,7 @@ private struct PendingNewChatView: View {
     init(
         initialDraft: String = "",
         initialAttachments: [SharedAttachmentImport] = [],
-        shareSkips: SharedSkips = SharedSkips(),
+        shareNotice: SharedSkipsNotice? = nil,
         autoStartsVoiceInput: Bool = false,
         profileName: String? = nil,
         projectID: String? = nil,
@@ -1914,7 +1914,7 @@ private struct PendingNewChatView: View {
         self.onAPIError = onAPIError
         self.onSessionCreated = onSessionCreated
         self.initialAttachments = initialAttachments
-        self.shareSkips = shareSkips
+        self.shareNotice = shareNotice
         self.autoStartsVoiceInput = autoStartsVoiceInput
         self.profileName = profileName
         self.projectID = projectID
@@ -1932,7 +1932,7 @@ private struct PendingNewChatView: View {
                     initialDraft: draftMessage,
                     initialQuotes: draftQuotes,
                     initialAttachments: initialAttachments,
-                    shareSkips: shareSkips,
+                    shareNotice: shareNotice,
                     loadsInitialMessages: false,
                     autoStartsVoiceInput: autoStartsVoiceInput,
                     draftStore: draftStore,
