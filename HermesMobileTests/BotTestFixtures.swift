@@ -25,6 +25,7 @@ final class BotSocketHost: @unchecked Sendable {
     ]
     private var queued: [String: [Reply]] = [:]
     private var withheld: Set<String> = []
+    private var stalledOpen: XCTestExpectation?
     private var log: [BotJSON] = []
     private var waiters: [(method: String, expectation: XCTestExpectation)] = []
 
@@ -38,6 +39,9 @@ final class BotSocketHost: @unchecked Sendable {
     /// Leaves every later `method` call unanswered, as a reply the socket lost; it is still
     /// logged.
     func withhold(_ method: String) { lock.withLock { _ = withheld.insert(method) } }
+    /// Opens the next socket without `gateway.ready`, as a host stalled mid-handshake, and
+    /// fulfills `opened` as it opens.
+    func stallReady(_ opened: XCTestExpectation) { lock.withLock { stalledOpen = opened } }
     /// Fulfills `expectation` when the next `method` call arrives.
     func expect(_ expectation: XCTestExpectation, onNext method: String) {
         lock.withLock { waiters.append((method, expectation)) }
@@ -54,7 +58,9 @@ final class BotSocketHost: @unchecked Sendable {
     @MainActor func connection(_ record: BotConnection, rpcDeadline: Duration = .seconds(30)) -> HermesConnection {
         HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil },
                          gateway: .init(rpcDeadline: rpcDeadline, socketFactory: { [self] _ in
-                             let socket = BotScriptedSocket()
+                             let stalled = lock.withLock { defer { stalledOpen = nil }; return stalledOpen }
+                             stalled?.fulfill()
+                             let socket = stalled == nil ? BotScriptedSocket() : BotScriptedSocket(ready: nil)
                              socket.reply = { [weak socket, self] request in answer(request, on: socket) }
                              socket.withholdReply = { [self] request in
                                  guard lock.withLock({ withheld.contains(request["method"].text ?? "") }) else { return false }

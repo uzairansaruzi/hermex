@@ -1023,9 +1023,9 @@ private final class BotHTTPFixture: URLProtocol {
 final class BotScriptedSocket: BotSocket, @unchecked Sendable {
     private let lock = NSLock()
     private var frames: [URLSessionWebSocketTask.Message]
-    /// `ready` is the `gateway.ready` payload the socket opens with.
-    init(ready: String = #"{"replay_epoch":"epoch"}"#) {
-        frames = [.string(#"{"method":"event","params":{"type":"gateway.ready","payload":\#(ready)}}"#)]
+    /// `ready` is the `gateway.ready` payload the socket opens with; nil never sends one.
+    init(ready: String? = #"{"replay_epoch":"epoch"}"#) {
+        frames = ready.map { [.string(#"{"method":"event","params":{"type":"gateway.ready","payload":\#($0)}}"#)] } ?? []
     }
     private var waiter: CheckedContinuation<URLSessionWebSocketTask.Message, Error>?
     private var closed = false

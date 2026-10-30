@@ -671,6 +671,27 @@ import SwiftUI
         XCTAssertTrue(chat.turn.isConnectionSuspended, "the search reattached the chat")
     }
 
+    /// A Files search cancelled while its socket waits for `gateway.ready` ends at once and
+    /// closes the socket only it wanted, rather than holding it until the read deadline.
+    func testAFilesSearchCancelledWhileTheSocketOpensEndsAtOnce() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
+        let search = try XCTUnwrap(chat.model.workspaceFileSearch)
+        chat.model.suspendStreamForNavigation()
+        let opened = expectation(description: "the search's socket opened")
+        chat.host.stallReady(opened)
+        let searching = Task { try await search("GitDiff") }
+        await fulfillment(of: [opened], timeout: 2)
+
+        searching.cancel()
+        do {
+            _ = try await searching.value
+            XCTFail("a cancelled search returned rows")
+        } catch {
+            XCTAssertEqual(error as? BotFailure, .stale, "the search waited out the stalled handshake")
+        }
+    }
+
     /// A Files search reply that lands after the chat's folder moved is stale, never rows for
     /// the new folder.
     func testAFilesSearchReplyAfterTheFolderMovedIsStale() async throws {
