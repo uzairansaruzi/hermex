@@ -79,7 +79,6 @@ private struct GitDiffFileJumpRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(file.fileName)
                     .font(AppFont.subheadline(weight: .semibold))
-                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 if let parent = file.parentDirectory {
@@ -101,6 +100,9 @@ private struct GitDiffFileJumpRow: View {
                 }
             }
         }
+        // A List button tints its label, and `.primary`/`.secondary` would resolve against
+        // that tint; a concrete label colour keeps the name primary and the folder secondary.
+        .foregroundStyle(Color.primary)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)
     }
