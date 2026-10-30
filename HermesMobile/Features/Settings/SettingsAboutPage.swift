@@ -87,6 +87,14 @@ struct SettingsAboutPage: View {
                     accessibilityLabel: String(localized: "Rate Hermex, opens the App Store")
                 )
             }
+
+            Section {
+                NavigationLink {
+                    SettingsAcknowledgementsPage()
+                } label: {
+                    SettingsLabel(title: String(localized: "Acknowledgements"), systemImage: "doc.text")
+                }
+            }
         }
         .settingsPage(String(localized: "About Hermex"))
         .task { await diagnostics.observe() }
