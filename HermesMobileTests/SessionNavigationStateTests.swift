@@ -1114,13 +1114,15 @@ final class HermesHomeSplitRoutingTests: XCTestCase {
     }
 }
 
+/// Reports the sheet SwiftUI presents. It presents without animation: an animated transition's
+/// completion waits on the simulator's render clock, which a busy CI host can stall for a minute.
 @MainActor
 private final class SettingsPresentationHost<Content: View>: UIHostingController<Content> {
     var didPresent: () -> Void = {}
 
     override func present(_ viewControllerToPresent: UIViewController, animated flag: Bool,
                           completion: (() -> Void)? = nil) {
-        super.present(viewControllerToPresent, animated: flag) {
+        super.present(viewControllerToPresent, animated: false) {
             completion?()
             self.didPresent()
         }
