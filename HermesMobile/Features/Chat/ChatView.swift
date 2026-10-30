@@ -24,6 +24,18 @@ private enum ActiveGitSheet: Identifiable {
     var id: Self { self }
 }
 
+/// `ChatView.turnReviewKey`: one range read per base and availability model.
+private struct TurnReviewKey: Hashable {
+    let git: GitWorkspaceAvailabilityViewModel
+    let base: GitTurnBase?
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.git === rhs.git && lhs.base == rhs.base }
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(ObjectIdentifier(git))
+        hasher.combine(base)
+    }
+}
+
 /// What the per-turn diff sheet shows (issue #316): every changed file in the turn,
 /// opened at one of them for a recap-card row tap, read in the range the card counted (#1392).
 private enum TurnDiffPresentation: Identifiable {
@@ -1514,6 +1526,13 @@ struct ChatView: View {
         return summary.hasChanges ? summary : nil
     }
 
+    /// What the latest turn's range read follows (#1392): the base an idle chat's latest turn holds,
+    /// on the repository the chat shows. Keyed on that, not on the stream ending, so a turn that
+    /// starts and ends within one update still reads, and a chat opened after its turn reads too.
+    private var turnReviewKey: TurnReviewKey {
+        TurnReviewKey(git: gitAvailabilityViewModel, base: viewModel.activeStreamID == nil ? viewModel.hermesTurnBase : nil)
+    }
+
     /// Present the per-turn diff sheet for every changed file the turn has a row for. No-op when
     /// there is nothing diffable yet (e.g. status still refreshing).
     private func presentTurnDiff(for summary: TurnFileChangeSummary?) {
@@ -2106,6 +2125,9 @@ struct ChatView: View {
         .task(id: session.sessionId) {
             await resolveForkOrigin()
         }
+        .task(id: turnReviewKey) { [turnReviewKey] in
+            await turnReviewKey.git.loadTurnReview(since: turnReviewKey.base)
+        }
         .onChange(of: viewModel.messages.isEmpty, initial: true) { _, isEmpty in
             if !isEmpty { endSessionOpenSignpost() }
         }
@@ -2467,11 +2489,7 @@ struct ChatView: View {
             GitWorkspaceAvailabilityViewModel(session: session, server: server)
         }
         gitAvailabilityViewModel = availabilityViewModel
-        // A chat opened after its turn, with a base still held for it (#1392), reads its range too.
-        let base = viewModel.activeStreamID == nil ? viewModel.hermesTurnBase : nil
-        async let turnReview: Void = availabilityViewModel.loadTurnReview(since: base)
         await availabilityViewModel.loadIfNeeded()
-        await turnReview
     }
 
     private var goalControlMenu: some View {
@@ -3636,10 +3654,7 @@ struct ChatView: View {
             // Changes row, and commit surfaces in sync without re-entering the chat.
             // Run unconditionally: refreshAfterExternalMutation re-checks /api/git-info first,
             // so it also detects a repo the agent just created (git init/clone) mid-turn.
-            // A Hermes turn whose send read HEAD first reads its range since then too (#1392).
-            let git = gitAvailabilityViewModel, base = viewModel.hermesTurnBase
-            Task { await git.refreshAfterExternalMutation() }
-            Task { await git.loadTurnReview(since: base) }
+            Task { await gitAvailabilityViewModel.refreshAfterExternalMutation() }
             return
         }
 

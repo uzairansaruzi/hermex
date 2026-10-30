@@ -180,7 +180,8 @@ struct HermesChatTranscript: Equatable {
     /// turn is still the latest and the chat is in the folder it was read in.
     var latestTurnBase: GitTurnBase? { turnBase?.workspace == workspace ? turnBase : nil }
     /// `latestTurnBase` as bound when its turn began (`beginTurn`). Any other turn starting, a
-    /// folder move, a rewind and an attach that can't tell whether another turn ran clear it.
+    /// send's reply that says it started none, a folder move, a rewind and an attach that can't
+    /// tell whether another turn ran clear it.
     private var turnBase: GitTurnBase?
     /// The HEAD the send in flight read, until its turn begins or it ends without one.
     @ObservationIgnored private var pendingBase: (sha: String, workspace: HermesWorkspaceContext)?
@@ -495,8 +496,14 @@ struct HermesChatTranscript: Equatable {
         }
         // A stop withdrawal while Stop & send is in flight is this phone's doing.
         if mode == .redirect { requests.isStoppingHere = true }
+        // A turn that began ahead of the reply took the base provisionally: only a reply that
+        // says this send started a turn confirms it.
+        var startedTurn = false
         defer {
-            if mode == .send { isSubmittingSend = false; pendingBase = nil }
+            if mode == .send {
+                isSubmittingSend = false; pendingBase = nil
+                if !startedTurn, let turnBase, turnBase.turn > startsBefore { self.turnBase = nil }
+            }
             if mode == .redirect { requests.isStoppingHere = false }
         }
         var dispatched = false
@@ -512,6 +519,7 @@ struct HermesChatTranscript: Equatable {
         let outcome = mode.outcome(reply)
         switch outcome {
         case .started:
+            startedTurn = true
             // The turn's own frames can land before this reply; start one only if none did.
             if turnsStarted == startsBefore, activeStreamID == nil {
                 beginTurn(startedAt: nil, prompt: nil)
@@ -1264,8 +1272,9 @@ struct HermesChatTranscript: Equatable {
             finish(pendingEnding ?? (failed ? .failed : stopRequested ? .cancelled : .completed))
         }
         let continuing = running && activeStreamID != nil
-        // Without the frames missed, another turn may have run since the one the base is for.
-        if lostFrames, !continuing { turnBase = nil }
+        // Without the frames missed, another turn may have run since the one the base is for:
+        // only the same start time proves the running turn is it.
+        if lostFrames, !continuing || followedStart == nil || startedAt == nil { turnBase = nil }
         if running, activeStreamID == nil { beginTurn(startedAt: startedAt, prompt: nil) }
         if running, let startedAt, turnStartedAt == nil { adoptStart(startedAt) }
         // The same turn after a reattach: adopt its activity again, which is current once more.

@@ -301,6 +301,48 @@ import SwiftUI
         XCTAssertNil(chat.model.hermesTurnBase)
     }
 
+    /// Another client's turn can start ahead of a send's reply: when that reply says the send
+    /// was queued behind it, neither that turn nor the queued one keeps the base.
+    func testATurnStartedAheadOfAQueuedSendsReplyKeepsNoBase() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
+        _ = HermesHostFixture.configuration { HermesGitHost.repositoryReply($0, root: "/work/app") }
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("queued")]),
+                                                before: [event(2, "message.start")]))
+
+        _ = await chat.model.sendMessage("Edit and commit")
+        XCTAssertNotNil(chat.model.activeStreamID)
+        XCTAssertNil(chat.model.hermesTurnBase, "the turn ahead of the queued send is not its own")
+
+        chat.receive(event(3, "message.complete", ["status": .string("complete")]))
+        chat.receive(event(4, "message.start"))
+        XCTAssertNil(chat.model.hermesTurnBase, "the queued turn began without its send alone")
+    }
+
+    /// A reattach that lost frames keeps the base only when the snapshot proves it is the same
+    /// turn: a turn followed from its send's reply, with no start time, could have ended and
+    /// another begun while the chat was away.
+    func testAReattachThatLostFramesDropsABaseItCannotMatchToTheRunningTurn() async throws {
+        let chat = await openChat()
+        chat.receive(event(1, "session.info", ["cwd": .string("/work/app"), "terminal_backend": .string("local")]))
+        _ = HermesHostFixture.configuration { request in
+            request.url?.path == "/api/sessions/tip/messages"
+                ? .json(200, .object(["session_id": .string("tip"), "messages": .array([])]))
+                : HermesGitHost.repositoryReply(request, root: "/work/app")
+        }
+        chat.host.always("prompt.submit", .init(result: .object(["status": .string("streaming")])))
+        _ = await chat.model.sendMessage("Edit and commit")
+        XCTAssertEqual(chat.model.hermesTurnBase?.sha, HermesGitHost.headSHA)
+
+        chat.model.suspendStreamForBackground()
+        chat.host.always("session.events.since", .init(result: BotFixtureWire.replay(latest: 40, truncated: true)))
+        chat.host.always("session.resume", .init(result: resume(running: true)))
+        await chat.model.reconnectStreamIfNeeded()
+
+        XCTAssertNotNil(chat.model.activeStreamID)
+        XCTAssertNil(chat.model.hermesTurnBase)
+    }
+
     /// Each mode reads only its own receipt: a steer is `queued`, an interrupt `redirected` or
     /// `queued`, a send `streaming` or `queued`, and the host's voice-stop acknowledgment
     /// clears a send without claiming a turn ran. Anything else is unknown, never success.
