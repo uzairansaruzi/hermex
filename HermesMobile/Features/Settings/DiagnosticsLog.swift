@@ -204,7 +204,7 @@ final class DiagnosticsStore: @unchecked Sendable {
         }
     }
 
-    /// The kept reports, newest first, after removing any past the limits.
+    /// The kept reports, newest diagnostic window first, after removing any past the limits.
     func entries() -> [Entry] {
         lock.withLock { prunedEntries() }
     }
@@ -252,7 +252,11 @@ final class DiagnosticsStore: @unchecked Sendable {
                 text: report == nil ? nil : data.flatMap { String(data: $0, encoding: .utf8) }
             ))
         }
-        return kept
+        // Retention goes by receipt, but one delivery can carry several windows, so the list
+        // orders by when each diagnostic happened; an unreadable file falls back to its receipt.
+        return kept.sorted {
+            ($0.report?.windowEnd ?? $0.received, $0.received, $0.id) > ($1.report?.windowEnd ?? $1.received, $1.received, $1.id)
+        }
     }
 
     private static let encoder: JSONEncoder = {

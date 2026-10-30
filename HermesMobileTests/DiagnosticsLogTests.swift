@@ -75,6 +75,18 @@ final class DiagnosticsLogTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path).count, 1)
     }
 
+    /// Reports delivered together list by when they happened, the newest window first.
+    func testReportsListNewestWindowFirst() {
+        let store = makeStore()
+        let day: TimeInterval = 86_400
+        let reports = [(-2, "1"), (0, "2"), (-1, "3")].map { offset, build in
+            report(build: build, windowEnd: clock.now.addingTimeInterval(Double(offset) * day))
+        }
+        store.save(reports, receivedAt: clock.now)
+
+        XCTAssertEqual(store.entries().map(\.report?.appBuildVersion), ["2", "3", "1"])
+    }
+
     /// A delivery received before Delete All, or before its own report was deleted, lands too
     /// late to bring the report back; one received after is kept.
     func testDeletesWinOverOlderPendingWrites() {
@@ -103,9 +115,9 @@ final class DiagnosticsLogTests: XCTestCase {
         return DiagnosticsStore(directory: directory, maxCount: maxCount, now: { clock.now })
     }
 
-    private func report(build: String) -> DiagnosticReport {
+    private func report(build: String, windowEnd: Date? = nil) -> DiagnosticReport {
         DiagnosticReport(
-            kind: .hang, windowStart: clock.now, windowEnd: clock.now, appVersion: "2.0.1",
+            kind: .hang, windowStart: windowEnd ?? clock.now, windowEnd: windowEnd ?? clock.now, appVersion: "2.0.1",
             appBuildVersion: build, signal: nil, exceptionType: nil, exceptionCode: nil,
             hangDuration: "8 sec", totalCPUTime: nil, writesCaused: nil, callStacks: []
         )
