@@ -531,6 +531,9 @@ final class ChatViewModel {
     var isUploadingAttachment: Bool { attachmentCoordinator.isUploadingAttachment || isSendingAttachments }
     /// A Hermes Send or Queue is uploading its files (#1012); `cancelAttachmentUpload()` stops it.
     var isSendingAttachments: Bool { hermesTurn?.isUploadingAttachments == true }
+    /// The send's per-file upload phases (#1419): which file of how many is uploading and
+    /// which failed. A webui session uploads on stage and has none — nil keeps its behavior.
+    var attachmentTransfer: HermesChatTurnCoordinator.AttachmentTransfer? { hermesTurn?.attachmentTransfer }
     var attachmentUploadCount: Int { attachmentCoordinator.uploadInFlightCount }
     var attachmentUploadGeneration: Int { attachmentCoordinator.uploadStartGeneration }
     var uploadAttachmentErrorMessage: String? { attachmentCoordinator.uploadAttachmentErrorMessage }
@@ -1761,6 +1764,8 @@ final class ChatViewModel {
 
     func removePendingAttachment(id: UUID) {
         attachmentCoordinator.removePendingAttachment(id: id)
+        // A failed file's mark goes with the file (#1419); an active upload is untouched.
+        hermesTurn?.discardAttachmentTransferFailures(among: [id])
     }
 
     /// Stages files after the composer's own, such as the files of queued
@@ -3189,7 +3194,8 @@ final class ChatViewModel {
             if let notSent = error as? HermesChatTurnCoordinator.NotSent {
                 if marked { drafts.setBotSubmissionUncertain(false, for: hermes.currentDraftKey) }
                 if notSent.duringUpload {
-                    sendErrorMessage = Self.uploadFailureMessage(notSent.underlying)
+                    sendErrorMessage = Self.uploadFailureMessage(notSent.underlying,
+                                                                 failedFilename: attachmentTransfer?.failedFilename)
                 } else if notSent.followedReplacedChat {
                     sendErrorMessage = Self.notSentToReplacedChat
                 } else {
@@ -3273,9 +3279,13 @@ final class ChatViewModel {
     }
 
     /// Why a Hermes send's files did not upload; the text and files stay in the composer.
-    private static func uploadFailureMessage(_ error: Error) -> String {
+    /// A known failed file is named, so the user can remove or retry it (#1419).
+    private static func uploadFailureMessage(_ error: Error, failedFilename: String?) -> String {
         if error is CancellationError || error as? BotFailure == .stale {
             return String(localized: "Upload cancelled. Your message and attachments are still here.")
+        }
+        if let failedFilename {
+            return String(localized: "Couldn't upload \(failedFilename). Remove it or try again.")
         }
         if let error = error as? BotAttachmentFailure { return error.localizedDescription }
         return String(localized: "Couldn't upload the attachments. Your message and attachments are still here.")

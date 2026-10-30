@@ -441,14 +441,68 @@ struct HermesChatTranscript: Equatable {
     /// A staged file a Send or Queue uploads ahead of its prompt (#1012). Its local copy is
     /// read only then.
     struct OutgoingAttachment {
+        let id: UUID
         let name: String
         let mime: String
         let isImage: Bool
         let data: () async throws -> Data
     }
 
+    /// A send's serial uploads, as the composer's tiles and status line show them (#1419):
+    /// the files in strip order, the one reading its local copy (`.preparing`) or uploading
+    /// (`.uploading`), the ones stored, and the one that failed. Phase boundaries only —
+    /// the transports expose no byte progress.
+    struct AttachmentTransfer: Equatable {
+        enum Phase: Equatable { case preparing, uploading }
+        /// One file's transfer mark. `.waiting` files are staged and not reached yet.
+        enum Mark: Equatable {
+            case waiting, preparing, uploading, done, failed
+
+            /// Static glyph only: nothing here animates, so Reduce Motion needs no branch.
+            var systemImage: String {
+                switch self {
+                case .waiting: return "circle"
+                case .preparing: return "circle.dashed"
+                case .uploading: return "arrow.up.circle.fill"
+                case .done: return "checkmark.circle.fill"
+                case .failed: return "exclamationmark.circle.fill"
+                }
+            }
+        }
+
+        let ids: [UUID]
+        let names: [UUID: String]
+        let currentID: UUID?
+        let phase: Phase?
+        let completedIDs: Set<UUID>
+        let failedID: UUID?
+
+        /// The failed file's name, for copy that names it.
+        var failedFilename: String? { failedID.flatMap { names[$0] } }
+
+        /// Per-file marks for the composer's tiles, keyed by `PendingAttachment.id`.
+        var marks: [UUID: Mark] {
+            var marks = Dictionary(uniqueKeysWithValues: ids.map { ($0, Mark.waiting) })
+            for id in completedIDs where marks[id] != nil { marks[id] = .done }
+            if let failed = failedID, marks[failed] != nil {
+                marks[failed] = .failed
+            } else if let current = currentID, let phase, marks[current] != nil {
+                marks[current] = phase == .preparing ? .preparing : .uploading
+            }
+            return marks
+        }
+    }
+
     /// A send is uploading its files; `cancelAttachmentUpload()` stops it.
     private(set) var isUploadingAttachments = false
+    /// The send's per-file upload phases (#1419): the current file and its phase, the files
+    /// stored, and the one that failed. A failure keeps its mark until the file is removed
+    /// or the next send; a cancel or stale attach clears it.
+    private(set) var attachmentTransfer: AttachmentTransfer?
+    /// The upload that owns `attachmentTransfer`: only this token's task may publish or
+    /// clear, so an upload that ends after a newer one began (reattach, a second send)
+    /// never repaints the newer one (#1419). A new send replaces the token unconditionally.
+    @ObservationIgnored private var attachmentTransferOwner: UUID?
     @ObservationIgnored private var attachmentUpload: Task<[String], Error>?
 
     /// Sends `text` in `mode` on the attached runtime, attaching first if the chat has not.
@@ -560,12 +614,30 @@ struct HermesChatTranscript: Equatable {
         guard let key = engine.storedKey else { throw BotFailure.stale }
         let context = BotArtifactContext(connectionID: engine.connection.id, profile: engine.target.profile,
                                          sessionID: key, generation: attempt)
+        // A new send resets the marks: the token changes hands unconditionally, so an
+        // older upload's publishes are discarded from here on (#1419).
+        let owner = UUID()
+        let ids = attachments.map(\.id)
+        let names = Dictionary(attachments.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        attachmentTransferOwner = owner
+        attachmentTransfer = AttachmentTransfer(ids: ids, names: names, currentID: ids.first, phase: .preparing,
+                                                completedIDs: [], failedID: nil)
         let task = Task { [engine] in
             var references: [String] = []
-            for attachment in attachments {
+            for (index, attachment) in attachments.enumerated() {
                 try engine.check(attempt)
+                // `.preparing` is reading this file's local copy; the failure catch names
+                // `currentID`, so it is published before the read that can fail.
+                guard attachmentTransferOwner == owner else { throw BotFailure.stale }
+                attachmentTransfer = AttachmentTransfer(ids: ids, names: names, currentID: attachment.id,
+                                                        phase: .preparing, completedIDs: Set(ids.prefix(index)),
+                                                        failedID: nil)
                 let data = try await attachment.data()
                 try engine.check(attempt)
+                guard attachmentTransferOwner == owner else { throw BotFailure.stale }
+                attachmentTransfer = AttachmentTransfer(ids: ids, names: names, currentID: attachment.id,
+                                                        phase: .uploading, completedIDs: Set(ids.prefix(index)),
+                                                        failedID: nil)
                 if attachment.isImage {
                     let path = try await engine.wire.uploadImage(data: data, filename: attachment.name, context: context)
                     references.append(BotAttachmentUpload.imageReference(path: try BotAttachmentUpload.verifiedPath(path)))
@@ -578,19 +650,60 @@ struct HermesChatTranscript: Equatable {
                     _ = try BotAttachmentUpload.verifiedPath(reply["path"].text)
                     references.append(ref)
                 }
+                // Past every await: a newer send owns the marks now, so this one's
+                // completion never repaints them.
+                guard attachmentTransferOwner == owner, attempt == engine.generation else { throw BotFailure.stale }
+                let completed = Set(ids.prefix(index + 1))
+                let next = attachments.index(after: index) < attachments.count
+                    ? attachments[attachments.index(after: index)].id : nil
+                attachmentTransfer = AttachmentTransfer(ids: ids, names: names, currentID: next,
+                                                        phase: next == nil ? nil : .preparing,
+                                                        completedIDs: completed, failedID: nil)
             }
             try engine.check(attempt)
             return references
         }
         attachmentUpload = task
         isUploadingAttachments = true
-        defer { attachmentUpload = nil; isUploadingAttachments = false }
+        defer {
+            // An upload a newer send displaced cleans up nothing: the newer send owns it all.
+            guard attachmentTransferOwner == owner else { return }
+            attachmentUpload = nil
+            isUploadingAttachments = false
+        }
         do {
-            return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+            let references = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+            // The prompt goes out with the files stored: the marks go with them, and the
+            // sent files leave the strip when the send is accepted.
+            if attachmentTransferOwner == owner { attachmentTransfer = nil }
+            return references
         } catch {
-            // However the cancelled request ended (a `URLError`, a stale check), it was a cancel.
+            if task.isCancelled || error as? BotFailure == .stale {
+                // However the cancelled request ended (a `URLError`, a stale check), it was
+                // a cancel: no failure mark, the cancelled outcome the caller shows.
+                if attachmentTransferOwner == owner { attachmentTransfer = nil }
+            } else {
+                // A genuine failure names its file and keeps its mark until the file is
+                // removed or the next send.
+                if attachmentTransferOwner == owner, let failed = attachmentTransfer?.currentID,
+                   let transfer = attachmentTransfer {
+                    attachmentTransfer = AttachmentTransfer(ids: transfer.ids, names: transfer.names,
+                                                            currentID: failed, phase: nil,
+                                                            completedIDs: transfer.completedIDs, failedID: failed)
+                }
+            }
             throw task.isCancelled ? CancellationError() : error
         }
+    }
+
+    /// The composer dropped files (#1419): a failed mark naming one of them goes. The active
+    /// upload's marks are never touched — a failure mark only exists once its upload ended.
+    func discardAttachmentTransferFailures(among removed: Set<UUID>) {
+        guard !isUploadingAttachments, let transfer = attachmentTransfer,
+              let failed = transfer.failedID, removed.contains(failed) else { return }
+        attachmentTransfer = AttachmentTransfer(ids: transfer.ids, names: transfer.names, currentID: transfer.currentID,
+                                                phase: transfer.phase, completedIDs: transfer.completedIDs,
+                                                failedID: nil)
     }
 
     /// Stops a send's uploads: its prompt is not submitted, and the draft keeps its files.

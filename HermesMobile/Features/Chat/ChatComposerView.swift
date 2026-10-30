@@ -307,6 +307,9 @@ struct MessageComposerView: View {
     /// A Hermes session (#1012): staged files upload when they are sent, under Bot Chat's
     /// rules. Up to eight, and Steer drops out while a response runs.
     var uploadsAttachmentsOnSend = false
+    /// The send's per-file upload phases (#1419): which file of how many is uploading and
+    /// which failed. Nil on a webui session, which uploads as files are staged.
+    var attachmentTransfer: HermesChatTurnCoordinator.AttachmentTransfer?
     /// Set while a send uploads its files, for the status line's Cancel.
     var onCancelAttachmentUpload: (() -> Void)?
     /// A Hermes session's dictation transcriber: the host's speech-to-text for the chat's
@@ -981,6 +984,7 @@ struct MessageComposerView: View {
             if isExpanded {
                 ComposerAttachmentStripView(
                     attachments: pendingAttachments,
+                    marks: attachmentTransfer?.marks ?? [:],
                     onRemove: onRemoveAttachment,
                     onPreview: onPreviewAttachment
                 )
@@ -1020,6 +1024,7 @@ struct MessageComposerView: View {
                 if !isExpanded {
                     ComposerAttachmentPillPreview(
                         attachments: pendingAttachments,
+                        marks: attachmentTransfer?.marks ?? [:],
                         onPreview: onPreviewAttachment
                     )
 
@@ -1370,6 +1375,14 @@ struct MessageComposerView: View {
         } else if isSendingVoiceNote {
             return (String(localized: "Sending voice note..."), false, false, nil, nil, nil)
         } else if isUploadingAttachment {
+            // #1419: the upload names its file and place in the set. A webui session has no
+            // transfer and keeps the plain line.
+            if let transfer = attachmentTransfer, let current = transfer.currentID, transfer.phase != nil,
+               let index = transfer.ids.firstIndex(of: current),
+               let name = transfer.names[current] {
+                return (String(localized: "Uploading \(index + 1) of \(transfer.ids.count) · \(name)"),
+                        false, false, nil, nil, onCancelAttachmentUpload)
+            }
             return (String(localized: "Uploading attachment..."), false, false, nil, nil, onCancelAttachmentUpload)
         } else if let steerFailure {
             return (steerFailure.message, true, false, steerFailure.onRetry, nil, nil)
