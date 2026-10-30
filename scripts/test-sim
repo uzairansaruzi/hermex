@@ -25,6 +25,14 @@ RUNNER_HANG = "The test runner hung before establishing connection"
 BUILD_DIR = ".build/DerivedData"
 # A terminate that outlasts this means the simulator itself is stuck.
 TERMINATE_TIMEOUT = 25
+# At or below this much RAM, two simulators building at once page the Mac until
+# sim-doctor reports MEMORY, so runs on different devices take turns.
+SMALL_HOST_BYTES = 16 * 1024 ** 3
+HOST_LOCK_WAIT = 3600
+
+
+def host_memory():
+    return int(subprocess.run(["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, check=True).stdout)
 
 
 class RunnerError(Exception):
@@ -259,6 +267,11 @@ def main():
             device = select_device(devices(run_dir, (work_fd,)), args.device)
             sim_fd = stack.enter_context(lock(locks_dir / (device["udid"] + ".lock"), owner))
             lock_fds = (work_fd, sim_fd)
+            if host_memory() <= SMALL_HOST_BYTES:
+                # Same lock as hermex-flow's run-sim.sh builds.
+                print("Waiting for the host build lock (16 GB Mac)…", flush=True)
+                lock_fds += (stack.enter_context(
+                    lock(locks_dir / "host-build.lock", owner, HOST_LOCK_WAIT)),)
             print("Simulator: {name} ({udid}); serial tests".format(**device), flush=True)
             # Swap at start, so a stalled run can be matched against memory
             # pressure later (scripts/sim-doctor).

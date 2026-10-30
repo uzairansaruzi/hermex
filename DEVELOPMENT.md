@@ -145,8 +145,11 @@ that device (an app left attached by a build-and-run makes the test runner hang
 before connecting, `0 tests executed`; set `HERMEX_BUNDLE_ID` if
 `Config/Local.xcconfig` changes the bundle ID), then holds locks on the simulator
 and checkout until testing finishes. A competing runner reports the current
-owner immediately; different checkout/device pairs run independently. These
-locks coordinate this runner only: keep other build/install tools on their
+owner immediately; different checkout/device pairs run independently, except
+on a Mac with 16 GB of RAM or less, where they wait their turn on one host build
+lock (up to an hour) because two simulators building at once page memory.
+hermex-flow's `run-sim.sh` takes the same lock. Otherwise these locks
+coordinate this runner only: keep other build/install tools on their
 session's assigned device, and do not run them during its test run.
 
 Before each test attempt, a bounded `get_app_container` check skips termination

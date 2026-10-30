@@ -310,6 +310,15 @@ class SimulatorRunnerTests(unittest.TestCase):
         with runner.lock(first, "next run"), runner.lock(second, "next run"):
             pass
 
+    def test_small_host_runs_one_build_at_a_time_across_devices(self):
+        held = self.home / "Library/Caches/HermexSimulatorLocks/host-build.lock"
+        with runner.lock(held, "another device's run"), patch.object(runner, "HOST_LOCK_WAIT", 0):
+            with patch.object(runner, "host_memory", return_value=16 * 1024 ** 3):
+                self.assertNotEqual(self.invoke(), 0)
+                self.assertEqual(self.xcodebuild_runs, 0)
+            with patch.object(runner, "host_memory", return_value=32 * 1024 ** 3):
+                self.assertEqual(self.invoke(), 0)
+
     def test_child_keeps_lock_until_it_exits(self):
         path = self.home / "SIM-A.lock"
         with runner.lock(path, "active child") as fd:
