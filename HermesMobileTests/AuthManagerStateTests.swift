@@ -411,7 +411,7 @@ final class AuthManagerStateTests: XCTestCase {
 
         let outcome = await manager.addServer(serverURLString: "https://a.test", password: "")
 
-        XCTAssertEqual(outcome, .failed)
+        XCTAssertEqual(outcome, .failed(serverAnswered: false))
         XCTAssertEqual(manager.lastErrorMessage, "This server is already configured.")
         XCTAssertEqual(manager.servers.map(\.id), ["https://a.test"])
         XCTAssertEqual(manager.state, .loggedIn(server: try XCTUnwrap(URL(string: "https://a.test"))))
@@ -464,7 +464,7 @@ final class AuthManagerStateTests: XCTestCase {
             customHeaders: [CustomHeader(name: "X-B", value: "b-token")]
         )
 
-        XCTAssertEqual(outcome, .failed)
+        XCTAssertEqual(outcome, .failed(serverAnswered: true))
         // The active server, its state, registry, and live headers are untouched.
         XCTAssertEqual(manager.state, .loggedIn(server: try XCTUnwrap(URL(string: "https://a.test"))))
         XCTAssertEqual(manager.servers.map(\.id), ["https://a.test"])

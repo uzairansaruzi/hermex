@@ -691,8 +691,10 @@ final class OnboardingViewModel {
             detectedKind = .webui
             probedConnectionIdentity = identityAtStart
             return nil
-        case .failed:
+        case .failed(let serverAnswered):
             errorMessage = authManager.lastErrorMessage
+            // A webui answered, so the error is its own, not the failed Hermes status read's.
+            if serverAnswered { lastAttempt = nil }
             return nil
         case .added(let url):
             return url

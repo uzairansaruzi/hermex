@@ -654,6 +654,31 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         XCTAssertNil(form.failedAttempt)
     }
 
+    /// Add Server keeps the failed status read as Details only while the webui path got no
+    /// answer either; once a webui answered, the error is its own and the Details go (#1395).
+    func testAddServerDropsTheStatusDetailsOnceAWebuiAnswered() async {
+        let rows: [(GatedProbeOutcome, Bool)] = [
+            (.succeed(AuthStatusResponse(authEnabled: true, loggedIn: false, passwordAuthEnabled: false)), false),
+            (.fail("Could not connect"), true)
+        ]
+        for (outcome, keepsDetails) in rows {
+            let gatekeeper = OnboardingGateKeeper()
+            gatekeeper.drainEverything()
+            let client = GatedAuthAPIClient(gatekeeper: gatekeeper, outcome: outcome)
+            let manager = AuthManager(keychain: InMemoryKeychainStore(), clientFactory: { _ in client },
+                                      probeClientFactory: { _, _ in client }, headerStore: CustomHeaderStore(),
+                                      serverRegistry: ServerRegistry.inMemory())
+            let form = makeHermesForm(entry: .addServer) { $0.url?.path == "/api/status" ? .json(404, .object([:])) : nil }
+            form.serverURLString = "b.test"
+
+            let added = await form.connect(authManager: manager)
+
+            XCTAssertNil(added)
+            XCTAssertNotNil(form.errorMessage)
+            XCTAssertEqual(form.failedAttempt != nil, keepsDetails, "\(outcome)")
+        }
+    }
+
     func testCloudflareModeOpensTheAccessHeadersAndLeavingDropsOnlyTheEmptyOnes() {
         let form = OnboardingViewModel()
         XCTAssertEqual(form.connectionMode, .privateNetwork)
