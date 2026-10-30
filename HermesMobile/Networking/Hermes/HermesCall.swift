@@ -150,6 +150,9 @@ enum HermesCall: Equatable, Sendable {
     /// `complete.path` for a host folder outside any session (#1052): `word` is a path from the
     /// host's root or home (`HermesFolderCompletion.completes`), so no session's folder resolves it.
     case completeFolder(word: String, profile: String)
+    /// `complete.path` against the folder `cwd` instead of a session's (#1389): Files' workspace
+    /// search, which runs while the chat it was opened from is detached.
+    case completeWorkspacePath(word: String, cwd: String, profile: String)
     /// `complete.slash` at a command's argument stage (#1036): `text` is one `/name …` line
     /// with a space. The command stage is ranked on the phone from `commands.catalog`.
     case completeSlash(text: String, sessionID: String)
@@ -325,7 +328,7 @@ enum HermesCall: Equatable, Sendable {
         case .sessionControl: return "session.control"
         case .commandsCatalog: return "commands.catalog"
         case .commandDispatch: return "command.dispatch"
-        case .completePath, .completeFolder: return "complete.path"
+        case .completePath, .completeFolder, .completeWorkspacePath: return "complete.path"
         case .completeSlash: return "complete.slash"
         case .slashExec: return "slash.exec"
         case .insightsGet: return "insights.get"
@@ -471,6 +474,8 @@ enum HermesCall: Equatable, Sendable {
         case .completePath(let word, let sessionID, let profile, _):
             return ["word": .string(word), "session_id": .string(sessionID), "profile": .string(profile)]
         case .completeFolder(let word, let profile): return ["word": .string(word), "profile": .string(profile)]
+        case .completeWorkspacePath(let word, let cwd, let profile):
+            return ["word": .string(word), "cwd": .string(cwd), "profile": .string(profile)]
         case .completeSlash(let text, let sessionID): return ["text": .string(text), "session_id": .string(sessionID)]
         case .slashExec(let sessionID, let command): return ["session_id": .string(sessionID), "command": .string(command)]
         case .insightsGet(let days, let profile): return ["days": .number(Double(days)), "profile": .string(profile)]
@@ -591,6 +596,8 @@ enum HermesCall: Equatable, Sendable {
             valid = !sessionID.isEmpty && Self.isSlashLine(command) && command.dropFirst().first?.isWhitespace == false
         case .completePath(let word, let sessionID, let profile, _):
             valid = !word.isEmpty && !word.contains(where: \.isWhitespace) && !sessionID.isEmpty && !profile.isEmpty
+        case .completeWorkspacePath(let word, let cwd, let profile):
+            valid = !word.isEmpty && !word.contains(where: \.isWhitespace) && !Self.isBlank(cwd) && !profile.isEmpty
         case .subagentTail(let sessionID, let subagentID), .subagentInterrupt(let sessionID, let subagentID):
             valid = !sessionID.isEmpty && !subagentID.isEmpty
         case .connectionRespond(let sessionID, let opID, let answer):

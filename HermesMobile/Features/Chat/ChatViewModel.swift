@@ -1806,13 +1806,14 @@ final class ChatViewModel {
     var hermesWorkspaceFiles: HermesWorkspaceFileClient? { hermesTurn?.workspaceFiles }
 
     /// Files' workspace search (#1389) while `hermesWorkspace` is on a `local` backend: the `@`
-    /// panel's whole-folder `complete.path` search, on the attached runtime. A reply that lands
-    /// after the folder moved throws `.stale`. Nil on webui and on any other backend.
+    /// panel's whole-folder `complete.path` search, which works while the chat is detached under
+    /// Files. A reply that lands after the folder moved throws `.stale`. Nil on webui and on any
+    /// other backend.
     var workspaceFileSearch: FileWorkspaceSearch? {
         guard let hermesTurn, let workspace = hermesTurn.workspace, workspace.isLocal else { return nil }
         return { [weak hermesTurn] query in
             guard let hermesTurn, hermesTurn.workspace == workspace else { throw BotFailure.stale }
-            let rows = try await hermesTurn.completeFilePaths(query, as: .panel, browsing: true)
+            let rows = try await hermesTurn.searchWorkspaceFiles(query, in: workspace)
             guard hermesTurn.workspace == workspace else { throw BotFailure.stale }
             return rows
         }

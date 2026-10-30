@@ -681,10 +681,8 @@ struct HermesChatTranscript: Equatable {
     /// (`.listing`) (#1113): `complete.path` on the attached runtime, which completes against
     /// the session's working folder and ranks and caps its own rows. Throws `.stale` while
     /// detached, and for a reply that lands after a reattach; an unanswered one fails only
-    /// itself, never the chat's connection. Files' workspace search (#1389) asks `.panel` while
-    /// `browsing` (`BotFilePathSearch.matches(from:browsing:)`).
-    func completeFilePaths(_ query: String, as word: BotFilePathSearch.Word,
-                           browsing: Bool = false) async throws -> [ComposerFilePathSearch.Match] {
+    /// itself, never the chat's connection.
+    func completeFilePaths(_ query: String, as word: BotFilePathSearch.Word) async throws -> [ComposerFilePathSearch.Match] {
         guard engine.connectionState == .connected, let runtime = engine.runtime else { throw BotFailure.stale }
         let spelled = switch word {
         case .panel: BotFilePathSearch.panelWord(for: query)
@@ -693,7 +691,21 @@ struct HermesChatTranscript: Equatable {
         let reply = try await engine.request(.completePath(word: spelled, sessionID: runtime,
                                                            profile: engine.target.profile, timesOutLocally: true),
                                              attempt: engine.generation)
-        return BotFilePathSearch.matches(from: reply, browsing: browsing)
+        return BotFilePathSearch.matches(from: reply)
+    }
+
+    /// Files' workspace search (#1389) over `workspace`'s folder: the `@` panel's whole-folder
+    /// `complete.path` word, named by its folder rather than this chat's runtime. Files is pushed
+    /// over the chat, which detaches as it goes (#902), so each search joins the connection's
+    /// shared socket on a client of its own and leaves when it answers; the chat stays detached.
+    func searchWorkspaceFiles(_ query: String, in workspace: HermesWorkspaceContext) async throws -> [ComposerFilePathSearch.Match] {
+        guard let http = (engine.wire as? BotClient)?.http else { throw BotFailure.stale }
+        let client = BotClient(http: http)
+        defer { client.close() }
+        try await client.connect()
+        let reply = try await client.call(.completeWorkspacePath(word: BotFilePathSearch.panelWord(for: query),
+                                                                 cwd: workspace.cwd, profile: workspace.profile))
+        return BotFilePathSearch.matches(from: reply, browsing: true)
     }
 
     // MARK: Working folder (#1117)

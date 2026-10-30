@@ -504,7 +504,7 @@ private extension HermesCall {
     /// because its outcome is unknown.
     var isCancellationSafe: Bool {
         switch self {
-        case .fileAttach, .completePath, .completeFolder, .completeSlash, .subagentList, .subagentTail,
+        case .fileAttach, .completePath, .completeFolder, .completeWorkspacePath, .completeSlash, .subagentList, .subagentTail,
              .sessionActiveList, .sessionMostRecent, .profilesList, .profileModelOptions, .projectsTree,
              .commitMessage, .approvalSummary: return true
         default: return false
@@ -518,7 +518,8 @@ private extension HermesCall {
     var timesOutLocally: Bool {
         switch self {
         case .subagentList, .subagentTail, .sessionActiveList, .sessionMostRecent, .completeSlash, .slashExec,
-             .profileModelOptions, .projectsTree, .completeFolder, .commitMessage, .approvalSummary: return true
+             .profileModelOptions, .projectsTree, .completeFolder, .completeWorkspacePath, .commitMessage,
+             .approvalSummary: return true
         case .completePath(_, _, _, let timesOutLocally): return timesOutLocally
         default: return false
         }
