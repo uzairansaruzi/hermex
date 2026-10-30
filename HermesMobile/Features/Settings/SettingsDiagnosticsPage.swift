@@ -23,6 +23,17 @@ import SwiftUI
         self.entries = entries
     }
 
+    /// Loads, then reloads each time the store keeps a new report, until the calling task is
+    /// cancelled. About and Diagnostics run it from `.task`, so a report MetricKit delivers while
+    /// either is on screen shows up without leaving the page.
+    func observe() async {
+        let saves = NotificationCenter.default.notifications(named: DiagnosticsStore.didSaveNotification, object: store)
+        await load()
+        for await _ in saves {
+            await load()
+        }
+    }
+
     func delete(id: String) async {
         let store = store
         await Task.detached { store.delete(id: id) }.value
@@ -87,7 +98,7 @@ struct SettingsDiagnosticsPage: View {
             }
         }
         .settingsPage(String(localized: "Diagnostics"))
-        .task { await model.load() }
+        .task { await model.observe() }
     }
 
     @ViewBuilder

@@ -89,7 +89,7 @@ struct SettingsAboutPage: View {
             }
         }
         .settingsPage(String(localized: "About Hermex"))
-        .task { await diagnostics.load() }
+        .task { await diagnostics.observe() }
         .sheet(isPresented: $isShowingSupportDetails) {
             SupportDetailsSheet(text: report.text)
         }

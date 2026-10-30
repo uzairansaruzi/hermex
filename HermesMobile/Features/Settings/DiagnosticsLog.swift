@@ -142,6 +142,8 @@ extension DiagnosticReport {
 /// total are kept; the rest are removed on every save and every read, so an idle install never
 /// shows an expired report. Every call holds one lock, and a report received before a delete
 /// that covers it is dropped, so a delivery still in flight can't bring a deleted report back.
+/// A save that keeps a new report posts `didSaveNotification`, from the caller's thread, with the
+/// store as its object.
 final class DiagnosticsStore: @unchecked Sendable {
     /// A kept file: its report and the exact text About previews and copies, or neither when the
     /// file can't be read.
@@ -151,6 +153,8 @@ final class DiagnosticsStore: @unchecked Sendable {
         let report: DiagnosticReport?
         let text: String?
     }
+
+    static let didSaveNotification = Notification.Name("DiagnosticsStore.didSave")
 
     static let shared = DiagnosticsStore(
         directory: URL.applicationSupportDirectory.appending(path: "Diagnostics", directoryHint: .isDirectory)
@@ -181,7 +185,8 @@ final class DiagnosticsStore: @unchecked Sendable {
 
     /// Writes each report not already kept, dated `receivedAt`: when MetricKit handed it over.
     func save(_ reports: [DiagnosticReport], receivedAt: Date) {
-        lock.withLock {
+        let didKeep = lock.withLock {
+            var didKeep = false
             var directory = directory
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             var values = URLResourceValues()
@@ -196,11 +201,16 @@ final class DiagnosticsStore: @unchecked Sendable {
                 do {
                     try data.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
                     try FileManager.default.setAttributes([.modificationDate: receivedAt], ofItemAtPath: file.path)
+                    didKeep = true
                 } catch {
                     try? FileManager.default.removeItem(at: file)
                 }
             }
             _ = prunedEntries()
+            return didKeep
+        }
+        if didKeep {
+            NotificationCenter.default.post(name: Self.didSaveNotification, object: self)
         }
     }
 

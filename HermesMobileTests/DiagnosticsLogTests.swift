@@ -110,6 +110,26 @@ final class DiagnosticsLogTests: XCTestCase {
         XCTAssertEqual(store.entries().count, 0)
     }
 
+    /// A report MetricKit delivers while About or Diagnostics is open shows up there without
+    /// leaving the page.
+    @MainActor
+    func testOpenPageListsAReportDeliveredWhileItIsShown() async {
+        let store = makeStore()
+        let model = DiagnosticsModel(store: store)
+        let loaded = expectation(description: "first load")
+        withObservationTracking { _ = model.entries } onChange: { loaded.fulfill() }
+        let observing = Task { await model.observe() }
+        defer { observing.cancel() }
+        await fulfillment(of: [loaded], timeout: 5)
+        XCTAssertEqual(model.entries?.count, 0)
+
+        let reloaded = expectation(description: "reload after delivery")
+        withObservationTracking { _ = model.entries } onChange: { reloaded.fulfill() }
+        store.save([report(build: "1")], receivedAt: clock.now)
+        await fulfillment(of: [reloaded], timeout: 5)
+        XCTAssertEqual(model.entries?.map(\.report?.appBuildVersion), ["1"])
+    }
+
     private func makeStore(maxCount: Int = 10) -> DiagnosticsStore {
         let clock = clock
         return DiagnosticsStore(directory: directory, maxCount: maxCount, now: { clock.now })
