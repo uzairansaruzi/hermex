@@ -54,6 +54,12 @@ import OSLog
     /// runtimes do; one the host has since reaped stays here and is never in
     /// `session.active_list` again.
     private(set) var attachedRuntimes: Set<String> = []
+    /// What the latest sign-in, browser token exchange or `status()` read here observed, with
+    /// the live stages its gateway reached since (#1395), for a connect form's Details. Kept
+    /// in memory only; nil before any, and once retired.
+    private(set) var lastAttempt: HermesAttemptRecord?
+    /// Numbers attempts, so a stage reported for an older one never lands on a newer record.
+    private var attemptCount = 0
     /// Each Profile's `keepPlatformNote` check on this connection, by Profile: one that found the
     /// note current or wrote it, or one still running, which a later call waits for. A failed
     /// check is dropped, so each Profile is read once per sign-in unless a read fails.
@@ -194,18 +200,23 @@ import OSLog
     }
 
     private func beginSignIn(on session: URLSession) -> Task<Void, Error> {
+        let record = beginAttempt()
         let attempt = Task {
             defer { signInTask = nil }
-            // The step a failure is logged at.
+            // The step a failure is logged at, and the stage it is recorded at.
             var step = "status"
+            var stage = HermesAttemptRecord.Stage.status
             do {
                 let status = try await publicStatus(on: session)
                 try checkCurrent()
                 serverVersion = status["version"].text
                 serverInstallID = BotConnection.installID(in: status)
+                update(record) { $0.reportedRelease = self.serverVersion }
                 if let version = serverVersion, !HermesCompatibility.isSupported(version) { throw BotFailure.outdated(version) }
                 try connection.requireSameInstall(serverInstallID)
                 guard let method = HermesSignInMethod(status) else { throw BotFailure.unsupported }
+                update(record) { $0[.status] = .passed }
+                stage = .signIn
                 if method == .open {
                     guard connection.hasNoCredentials else { throw BotFailure.signInChanged }
                     step = "page"
@@ -221,12 +232,15 @@ import OSLog
                     step = "token"
                     _ = try await decoded(.profilesActive, on: session)
                     try checkCurrent()
+                    update(record) { $0[.signIn] = .passed }
                 } else if let account = connection.oauth {
+                    // A credential here is the one `signIn(browserCode:verifier:)` just exchanged for.
                     if credential == nil {
                         step = "refresh"
                         try await refresh(on: session)
                     }
-                    step = "identity"
+                    update(record) { $0[.signIn] = .passed }
+                    step = "identity"; stage = .identity
                     let identity = try await decoded(.identity, on: session)
                     try checkCurrent()
                     guard identity["provider"].text == account.provider, identity["user_id"].text == account.userID else {
@@ -239,11 +253,13 @@ import OSLog
                     guard status["auth_providers"].list?.contains(.string("basic")) == true else { throw BotFailure.browserSignIn }
                     _ = try await decoded(.login(username: connection.username, password: connection.password), on: session)
                     try checkCurrent()
-                    step = "identity"
+                    update(record) { $0[.signIn] = .passed }
+                    step = "identity"; stage = .identity
                     let identity = try await decoded(.identity, on: session)
                     try checkCurrent()
                     guard identity["provider"].text == "basic" else { throw BotFailure.wrongIdentity }
                 }
+                if stage == .identity { update(record) { $0[.identity] = .passed } }
                 // Trust on first use, in memory only: a later sign-in here must reach the same install.
                 if connection.installID == nil { connection.installID = serverInstallID }
                 isSignedIn = true
@@ -252,6 +268,7 @@ import OSLog
                 HermesConnectionLog.logger.notice("c\(self.serial, privacy: .public): signed in, release \(release, privacy: .public)")
             } catch {
                 credential = nil
+                update(record) { $0[stage] = .failed(.init(error)) }
                 // A retired connection has already logged that it was retired.
                 if !isRetired {
                     let reason = HermesConnectionLog.reason(error), failedStep = step
@@ -275,26 +292,36 @@ import OSLog
     /// browser sign-in's connection (`connection.oauth`, with the host's user id as its
     /// username and no password), and signs in with the access token, which checks the
     /// release, the install and the identity. The caller saves `connection`. A refused
-    /// code (400) is `.browserSignInFailed`.
+    /// code (400) is `.browserSignInFailed`. A failed exchange is the attempt record's failed
+    /// sign-in, with no status read.
     func signIn(browserCode code: String, verifier: String) async throws {
         try checkCurrent()
-        let request = prepared(try HermesREST.nativeToken(code: code, verifier: verifier).request(base: connection.address))
-        let (data, response) = try await Self.exchange(request, on: session, redirectGuard: redirectGuard)
-        try checkCurrent()
-        switch response.statusCode {
-        case 200: break
-        case 400: throw BotFailure.browserSignInFailed
-        case let code: throw BotFailure.rejected(code)
+        let record = beginAttempt()
+        let access: String, account: HermesOAuth
+        do {
+            let request = prepared(try HermesREST.nativeToken(code: code, verifier: verifier).request(base: connection.address))
+            let (data, response) = try await Self.exchange(request, on: session, redirectGuard: redirectGuard)
+            try checkCurrent()
+            switch response.statusCode {
+            case 200: break
+            case 400: throw BotFailure.browserSignInFailed
+            case let code: throw BotFailure.rejected(code)
+            }
+            let tokens = try JSONDecoder().decode(BotJSON.self, from: data)
+            guard let token = tokens["access_token"].text, !token.isEmpty,
+                  let refresh = tokens["refresh_token"].text, !refresh.isEmpty,
+                  let provider = tokens["provider"].text, !provider.isEmpty,
+                  let user = tokens["user_id"].text, !user.isEmpty else { throw BotFailure.unsupported }
+            access = token
+            account = HermesOAuth(provider: provider, userID: user, refreshToken: refresh)
+        } catch {
+            update(record) { $0[.signIn] = .failed(.init(error)) }
+            throw error
         }
-        let tokens = try JSONDecoder().decode(BotJSON.self, from: data)
-        guard let access = tokens["access_token"].text, !access.isEmpty,
-              let refresh = tokens["refresh_token"].text, !refresh.isEmpty,
-              let provider = tokens["provider"].text, !provider.isEmpty,
-              let user = tokens["user_id"].text, !user.isEmpty else { throw BotFailure.unsupported }
         let old = connection
-        connection = BotConnection(id: old.id, name: old.name, address: old.address, username: user, password: "",
+        connection = BotConnection(id: old.id, name: old.name, address: old.address, username: account.userID, password: "",
                                    hermesVersion: old.hermesVersion, installID: old.installID, headers: old.headers,
-                                   oauth: HermesOAuth(provider: provider, userID: user, refreshToken: refresh))
+                                   oauth: account)
         isSignedIn = false
         credential = .accessToken(access)
         try await signIn()
@@ -344,9 +371,18 @@ import OSLog
     /// Its probe can reach a port the webui path never would, such as plain HTTP on a TLS
     /// port, so here only the dashboard's own Host-header refusal is `.rejected(400)`, and
     /// any other 400 is `.notDashboard`.
+    /// The read is this connection's attempt record, with only its status checked.
     func status() async throws -> BotJSON {
         try checkCurrent()
-        return try await publicStatus(on: session, onlyHostRefusalIs400: true)
+        let record = beginAttempt()
+        do {
+            let status = try await publicStatus(on: session, onlyHostRefusalIs400: true)
+            update(record) { $0[.status] = .passed; $0.reportedRelease = status["version"].text }
+            return status
+        } catch {
+            update(record) { $0[.status] = .failed(.init(error)) }
+            throw error
+        }
     }
 
     /// One public `/api/status` read, without signing in: whether the host answers at all, as
@@ -432,14 +468,15 @@ import OSLog
 
     /// Returns the gateway upgrade, presenting a single-use ticket minted for it or an open
     /// dashboard's page token.
+    /// The attempt record's live authorization passes once the pass is in hand.
     func gatewayUpgrade() async throws -> URLRequest {
-        try await upgrade { try HermesREST.gatewayUpgrade(base: connection.address, pass: $0) }
+        try await upgrade(recordsLiveStages: true) { try HermesREST.gatewayUpgrade(base: connection.address, pass: $0) }
     }
 
     /// Returns `board`'s Kanban event socket upgrade, with this connection's headers (#1045),
     /// presenting a single-use ticket, never the gateway's, or an open dashboard's page token.
     func kanbanEventsUpgrade(board: String, since: Int) async throws -> URLRequest {
-        try await upgrade {
+        try await upgrade(recordsLiveStages: false) {
             try HermesREST.kanbanEventsUpgrade(base: connection.address, board: board, since: since, pass: $0)
         }
     }
@@ -447,26 +484,56 @@ import OSLog
     /// Returns the upgrade `build` makes for a fresh pass, with this connection's headers. Either
     /// pass is preceded by a signed-in read, so a 401 signs in again first: minting the ticket,
     /// or for a page token a gated read, since a refused upgrade can't tell a token a host
-    /// restart replaced from any other refusal.
-    private func upgrade(_ build: (HermesREST.UpgradePass) throws -> URLRequest) async throws -> URLRequest {
+    /// restart replaced from any other refusal. `recordsLiveStages` starts the attempt record's
+    /// live stages afresh and records the pass: the gateway's, never a Kanban socket's.
+    private func upgrade(recordsLiveStages: Bool,
+                         _ build: (HermesREST.UpgradePass) throws -> URLRequest) async throws -> URLRequest {
         do {
             try await signIn()
-            if case .pageToken = credential {
-                _ = try await data(.profilesActive)
-                if case .pageToken(let token)? = credential { return prepared(try build(.pageToken(token))) }
+            if recordsLiveStages { update(attemptCount) { $0[.liveAuthorization] = .notChecked; $0[.liveHandshake] = .notChecked } }
+            func pass() async throws -> HermesREST.UpgradePass {
+                if case .pageToken = credential {
+                    _ = try await data(.profilesActive)
+                    if case .pageToken(let token)? = credential { return .pageToken(token) }
+                }
+                let ticket = try JSONDecoder().decode(BotJSON.self, from: try await data(.ticket))
+                guard let token = ticket["ticket"].text, !token.isEmpty else { throw BotFailure.unsupported }
+                return .ticket(token)
             }
-            let ticket = try JSONDecoder().decode(BotJSON.self, from: try await data(.ticket))
-            guard let token = ticket["ticket"].text, !token.isEmpty else { throw BotFailure.unsupported }
-            return prepared(try build(.ticket(token)))
+            let upgrade = prepared(try build(try await pass()))
+            if recordsLiveStages { update(attemptCount) { $0[.liveAuthorization] = .passed } }
+            return upgrade
         } catch {
             // A failed sign-in, including the one after the ticket's 401, leaves this
-            // connection signed out and has already logged its own step.
+            // connection signed out and has already logged and recorded its own step.
             if !isRetired, isSignedIn {
                 let reason = HermesConnectionLog.reason(error)
                 HermesConnectionLog.logger.error("c\(self.serial, privacy: .public): sign-in failed at ticket: \(reason, privacy: .public)")
+                if recordsLiveStages { update(attemptCount) { $0[.liveAuthorization] = .failed(.init(error)) } }
             }
             throw error
         }
+    }
+
+    /// The gateway's report that its socket's handshake finished, or failed with `error`, after
+    /// `gatewayUpgrade` gave it the upgrade.
+    func noteLiveHandshake(_ error: Error?) {
+        update(attemptCount) { $0[.liveHandshake] = error.map { .failed(.init($0)) } ?? .passed }
+    }
+
+    /// Starts a new attempt record, with nothing checked, and returns its number for `update`.
+    private func beginAttempt() -> Int {
+        attemptCount += 1
+        lastAttempt = HermesAttemptRecord()
+        return attemptCount
+    }
+
+    /// Applies `change` to the attempt record while `attempt` is still the latest one and this
+    /// connection is not retired.
+    private func update(_ attempt: Int, _ change: (inout HermesAttemptRecord) -> Void) {
+        guard attempt == attemptCount, !isRetired, var record = lastAttempt else { return }
+        change(&record)
+        lastAttempt = record
     }
 
     /// Whether `saved` is still this connection: the same UUID, address, account, password,
@@ -494,6 +561,7 @@ import OSLog
         isRetired = true
         isSignedIn = false
         credential = nil
+        lastAttempt = nil
         signInTask?.cancel()
         signInTask = nil
         liveGateway?.retire()

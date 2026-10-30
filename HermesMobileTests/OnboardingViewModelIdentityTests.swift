@@ -615,6 +615,26 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         }
     }
 
+    /// An address that never answered keeps its failed status read as the error's Details, past
+    /// the webui path's own failure, with nothing after it checked; an edit to the address drops
+    /// them with the error (#1395).
+    func testAFailedDetectionKeepsOnlyItsStatusCheckForTheCurrentAddress() async throws {
+        let gatekeeper = OnboardingGateKeeper()
+        gatekeeper.drainEverything()
+        let manager = makeGatedManager(GatedAuthAPIClient(gatekeeper: gatekeeper, outcome: .fail("Could not connect")))
+        let form = makeHermesForm { $0.url?.path == "/api/status" ? .fail(URLError(.timedOut)) : nil }
+        form.serverURLString = "hermes.example"
+
+        await form.connect(authManager: manager)
+
+        XCTAssertNotNil(form.errorMessage)
+        let attempt = try XCTUnwrap(form.failedAttempt)
+        XCTAssertEqual(HermesAttemptRecord.Stage.allCases.map { attempt[$0] },
+                       [.failed(.timedOut), .notChecked, .notChecked, .notChecked, .notChecked])
+        form.serverURLString = "other.example"
+        XCTAssertNil(form.failedAttempt)
+    }
+
     func testCloudflareModeOpensTheAccessHeadersAndLeavingDropsOnlyTheEmptyOnes() {
         let form = OnboardingViewModel()
         XCTAssertEqual(form.connectionMode, .privateNetwork)

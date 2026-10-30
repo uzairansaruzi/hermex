@@ -166,6 +166,123 @@ enum BotConnectionAdvice {
     }
 }
 
+/// What one Hermes connection attempt observed, stage by stage (#1395): the Details under a
+/// connect form's advice, and the text Copy Details exports. `HermesConnection` keeps the
+/// latest one in memory. A stage the attempt never ran stays `.notChecked`; an open
+/// dashboard's sign-in leaves `identity` unchecked, and a usable ticket passes only
+/// `liveAuthorization`, never the socket. A failure keeps only its typed category, never an
+/// error's description or user info, so the record holds no host, URL or credential.
+struct HermesAttemptRecord: Equatable, Sendable {
+    enum Stage: CaseIterable, Sendable {
+        /// The public `/api/status` read, with the release and install checks.
+        case status
+        /// The password login, an open dashboard's page token, or a browser sign-in's token
+        /// exchange or refresh.
+        case signIn
+        /// `/api/auth/me`'s account check.
+        case identity
+        /// The gateway ticket, or an open dashboard's page token, the live connection presents.
+        case liveAuthorization
+        /// The gateway socket's upgrade and handshake.
+        case liveHandshake
+    }
+
+    enum Failure: Equatable, Sendable {
+        case http(Int), timedOut, unreachable, certificate, other
+
+        init(_ error: Error) {
+            switch error {
+            case BotFailure.rejected(let code) where (100..<600).contains(code): self = .http(code)
+            case BotFailure.upgradeRefused(let code): self = .http(code)
+            case let error as URLError:
+                switch error.code {
+                case .timedOut: self = .timedOut
+                case .cannotFindHost, .dnsLookupFailed, .cannotConnectToHost, .networkConnectionLost,
+                     .notConnectedToInternet, .dataNotAllowed: self = .unreachable
+                case .secureConnectionFailed, .serverCertificateHasBadDate, .serverCertificateUntrusted,
+                     .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid: self = .certificate
+                default: self = .other
+                }
+            default: self = .other
+            }
+        }
+    }
+
+    enum Outcome: Equatable, Sendable {
+        case notChecked, passed, failed(Failure)
+    }
+
+    let started: Date
+    /// The release `/api/status` reported; nil until it answered with one.
+    var reportedRelease: String?
+    private var outcomes: [Stage: Outcome] = [:]
+
+    init(started: Date = .now) {
+        self.started = started
+    }
+
+    subscript(stage: Stage) -> Outcome {
+        get { outcomes[stage] ?? .notChecked }
+        set { outcomes[stage] = newValue }
+    }
+
+    /// The text Copy Details puts on the pasteboard, in English for a bug report: the app,
+    /// iOS and Hermes releases, when the attempt started, and each stage's outcome.
+    func report(app: String = Self.appVersion, system: String = Self.systemVersion) -> String {
+        let time = DateFormatter()
+        time.locale = Locale(identifier: "en_US_POSIX")
+        time.timeZone = TimeZone(identifier: "UTC")
+        time.dateFormat = "yyyy-MM-dd HH:mm:ss 'UTC'"
+        let lines = [
+            "Hermex connection details",
+            "App: \(app)",
+            "iOS: \(system)",
+            "Server kind: \(self[.status] == .passed ? "Hermes" : "unknown")",
+            "Reported release: \(reportedRelease ?? "unknown")",
+            "Tested release: \(HermesCompatibility.testedVersion)",
+            "Attempt: \(time.string(from: started))"
+        ] + Stage.allCases.map { "\($0.reportName): \(self[$0].reportText)" }
+        return lines.joined(separator: "\n")
+    }
+
+    static var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "unknown"
+        return "\(version) (\(info?["CFBundleVersion"] as? String ?? "unknown"))"
+    }
+
+    static var systemVersion: String {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        return "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
+    }
+}
+
+private extension HermesAttemptRecord.Stage {
+    var reportName: String {
+        switch self {
+        case .status: return "Status"
+        case .signIn: return "Sign-in"
+        case .identity: return "Identity"
+        case .liveAuthorization: return "Live authorization"
+        case .liveHandshake: return "Live handshake"
+        }
+    }
+}
+
+private extension HermesAttemptRecord.Outcome {
+    var reportText: String {
+        switch self {
+        case .notChecked: return "Not checked"
+        case .passed: return "Passed"
+        case .failed(.http(let code)): return "Failed (HTTP \(code))"
+        case .failed(.timedOut): return "Failed (timed out)"
+        case .failed(.unreachable): return "Failed (couldn't connect)"
+        case .failed(.certificate): return "Failed (certificate)"
+        case .failed(.other): return "Failed"
+        }
+    }
+}
+
 /// One screen's connection to the Bot gateway. `BotClient` is the real one: a handle on
 /// the socket every screen of the saved connection shares.
 @MainActor protocol BotTransport: AnyObject {
@@ -176,6 +293,9 @@ enum BotConnectionAdvice {
     /// Gateway methods the host answered -32601 (method not found) on this connection,
     /// shared by every screen on it; a new connection starts empty.
     var unavailableMethods: Set<String> { get }
+    /// What the connection's latest attempt observed (`HermesConnection.lastAttempt`), which a
+    /// connect form keeps before its client goes away; nil for doubles.
+    var lastAttempt: HermesAttemptRecord? { get }
     /// Sequenced event params or a complete string-id server-request envelope. The socket
     /// is shared, so this sees other screens' sessions too: admit only your own.
     var onEvent: ((BotJSON) -> Void)? { get set }
@@ -246,6 +366,7 @@ extension BotTransport {
     var serverVersion: String? { nil }
     var serverInstallID: String? { nil }
     var unavailableMethods: Set<String> { [] }
+    var lastAttempt: HermesAttemptRecord? { nil }
 
     func uploadImage(data: Data, filename: String, context: BotArtifactContext) async throws -> String {
         throw BotFailure.unsupported

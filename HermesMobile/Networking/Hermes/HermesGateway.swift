@@ -288,18 +288,25 @@ import OSLog
         entry.continuation.resume(throwing: error)
     }
 
+    /// Opens the socket, and reports its handshake to the connection's attempt record (#1395)
+    /// once the upgrade is in hand: a failed sign-in or ticket is the connection's to record.
     private func open() -> Task<Void, Error> {
         let owner = generation
         let attempt = Task {
+            var upgraded = false
             do {
-                try await handshake(generation: owner)
+                let upgrade = try await http.gatewayUpgrade()
+                upgraded = true
+                try await handshake(upgrade, generation: owner)
                 opening = nil
                 for index in consumers.indices { consumers[index].attached = true }
+                http.noteLiveHandshake(nil)
             } catch {
                 // An attempt a leave, fault or retirement already ended has nothing left to end.
                 if owner == generation {
                     let label = socketLabel(owner), reason = HermesConnectionLog.reason(error)
                     HermesConnectionLog.logger.error("\(label, privacy: .public) failed to open: \(reason, privacy: .public)")
+                    if upgraded { http.noteLiveHandshake(error) }
                     end(nil)
                 }
                 throw error
@@ -309,13 +316,12 @@ import OSLog
         return attempt
     }
 
-    /// Signs in unless the connection already is, mints a fresh ticket, opens the socket
-    /// and completes the handshake. No screen sends anything until it returns.
-    private func handshake(generation owner: Int) async throws {
+    /// Opens the socket with `upgrade`, the connection's fresh ticket or page token, and
+    /// completes the handshake. No screen sends anything until it returns.
+    private func handshake(_ upgrade: URLRequest, generation owner: Int) async throws {
         func check() throws {
             guard owner == generation else { throw BotFailure.stale }
         }
-        let upgrade = try await http.gatewayUpgrade()
         try check()
         let label = socketLabel(owner)
         let socket: any BotSocket
