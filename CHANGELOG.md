@@ -7,7 +7,7 @@ Security sections per release.
 
 ## [Unreleased]
 
-## [2.0.0] - Unreleased
+## [2.0.0] - 2026-10-30
 
 Hermex now talks to Hermes directly ([#713]). Add a Hermes host as a server and
 chats, Sessions, Tasks, Kanban, Skills, Memory, Usage, Files and Git all run
