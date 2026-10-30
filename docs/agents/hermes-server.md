@@ -50,7 +50,10 @@ webui's header (`SessionsHeader`): HERMEX, and one pill of search and the server
 search field; on Bots it opens the search sheet. The home keeps the inbox and the session
 list's view model across the switch, so a switch shows the last roster or rows at once. It
 reopens on the side last shown (`@SceneStorage`), Sessions at first, and a bot link turns it
-to Bots. The two sides keep their own read marks, live states and identities. Without a
+to Bots. ⌘K (and the avatar menu's Quick Switcher) opens the quick switcher (#1415), a
+navigation-only sheet over either tab that filters the loaded sessions, the roster and the
+home destinations for the active server and routes the pick through the same pending
+bindings a link uses. The two sides keep their own read marks, live states and identities. Without a
 record (after Sign Out, which deletes the record and Bot data but keeps the server) or
 after the host refuses its saved password at the login step, including the one silent
 re-login a signed-in 401 starts (`HermesConnections.onSignInRejected`), the server is

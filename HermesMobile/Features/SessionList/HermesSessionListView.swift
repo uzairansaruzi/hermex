@@ -63,6 +63,11 @@ struct HermesSessionListView: View {
     private let didRouteShare: (SharedImportReservation) -> Void
     private let didDeclineShare: (SharedImportReservation) -> Void
     private let didAbandonShare: (SharedImportReservation) -> Void
+    /// Opens the home's quick switcher (#1415); nil on a list that has none.
+    private let openQuickSwitcher: (() -> Void)?
+    /// The utility a quick switcher pick asked for while another tab showed; this
+    /// list consumes it as its own rows do, opening over whatever covers them.
+    private let pendingUtility: Binding<SessionListUtilityDestination?>
     /// Moving `pendingShare` into its new session's draft; leaving cancels it.
     @State private var shareTransfer: Task<Void, Never>?
     /// A share whose move failed, still claimed, until the user discards it or the alert closes (#1196).
@@ -89,7 +94,9 @@ struct HermesSessionListView: View {
          claimShare: @escaping (SharedImportReservation) -> Bool = { _ in false },
          didRouteShare: @escaping (SharedImportReservation) -> Void = { _ in },
          didDeclineShare: @escaping (SharedImportReservation) -> Void = { _ in },
-         didAbandonShare: @escaping (SharedImportReservation) -> Void = { _ in }) {
+         didAbandonShare: @escaping (SharedImportReservation) -> Void = { _ in },
+         openQuickSwitcher: (() -> Void)? = nil,
+         pendingUtility: Binding<SessionListUtilityDestination?> = .constant(nil)) {
         _navigation = State(initialValue: navigation ?? HermesSessionListNavigation(searchText: entry.query))
         self.entry = entry
         self.home = home
@@ -100,6 +107,8 @@ struct HermesSessionListView: View {
         self.didRouteShare = didRouteShare
         self.didDeclineShare = didDeclineShare
         self.didAbandonShare = didAbandonShare
+        self.openQuickSwitcher = openQuickSwitcher
+        self.pendingUtility = pendingUtility
         _viewModel = State(initialValue: model)
     }
 
@@ -296,6 +305,18 @@ struct HermesSessionListView: View {
         // what it opens or says shows here.
         .onChange(of: pendingLink, initial: true) { covers.accept(pendingLink, on: entry.server) }
         .task(id: pendingLink) { await openPendingLink() }
+        // A quick switcher utility pick (#1415) opens as this list's own row does,
+        // over whatever covers the rows. Archived is explicit: `open(_:)` never shows it.
+        .onChange(of: pendingUtility, initial: true) {
+            guard let destination = pendingUtility.wrappedValue else { return }
+            pendingUtility.wrappedValue = nil
+            if destination == .archived {
+                prepareRootSelection()
+                covers.showingArchived = true
+            } else {
+                open(destination)
+            }
+        }
         // A Shortcut's new session and a share bring the rows forward at once, and open once the
         // list has read the host live, whichever Profile the request names. A share reserved while
         // another moves into its draft opens once that move ends.
@@ -532,7 +553,8 @@ struct HermesSessionListView: View {
                 if let session = ChatShortcutNavigation.adjacentChat(offset: offset, from: selectedSessionID, in: keyboardShortcutSessions) {
                     actions.open(session)
                 }
-            }
+            },
+            openQuickSwitcher: openQuickSwitcher
         )
     }
 

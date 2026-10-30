@@ -387,7 +387,7 @@ final class SessionListViewModel {
         let localMatches = projectFilteredSessions.filter { session in
             guard !searchTerms.isEmpty else { return true }
             let searchableText = Self.searchableText(for: session)
-            return searchTerms.allSatisfy { searchableText.contains($0) }
+            return Self.matches(searchTerms: searchTerms, in: searchableText)
         }
         let sortedLocalMatches = Self.sortedSessions(localMatches)
 
@@ -1621,8 +1621,14 @@ final class SessionListViewModel {
         sessions = filtered
     }
 
-    private static func normalizedSearchQuery(_ value: String) -> String {
+    static func normalizedSearchQuery(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    /// The list's multi-word rule: every term appears somewhere in `text`, in
+    /// any order and field. The only `contains` matcher in the app.
+    static func matches(searchTerms: [String], in text: String) -> Bool {
+        searchTerms.allSatisfy { text.contains($0) }
     }
 
     static func activeStreamIDs(in sessions: [SessionSummary]) -> [String] {
@@ -1649,13 +1655,16 @@ final class SessionListViewModel {
         }
     }
 
-    private static func timestamp(for session: SessionSummary) -> Double {
+    /// Newest first, pinned rows first in the list; the quick switcher reads only
+    /// the timestamp for its recents. Shared, so the two never drift.
+    static func timestamp(for session: SessionSummary) -> Double {
         session.lastMessageAt ?? session.updatedAt ?? session.createdAt ?? 0
     }
 
     /// Lowercased fields joined by spaces. Search terms hold no spaces, so a
-    /// term found here always sits inside a single field.
-    private static func searchableText(for session: SessionSummary) -> String {
+    /// term found here always sits inside a single field. Shared with the quick
+    /// switcher (#1415), so the palette never grows a second matcher.
+    static func searchableText(for session: SessionSummary) -> String {
         [
             session.title,
             // An untitled Hermes row shows its first prompt, so that is what its words are.

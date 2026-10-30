@@ -5,6 +5,8 @@ struct HermexSceneActions {
     let canCreateNewChat: Bool
     let createNewChat: () -> Void
     let searchSessions: () -> Void
+    /// Opens the quick switcher (#1415); nil where the home offers none, as on webui.
+    var openQuickSwitcher: (() -> Void)? = nil
     /// Opens the chat at a 1-based position in the visible list.
     let openChat: (_ position: Int) -> Void
     /// Opens the chat `offset` rows from the selected one, wrapping at the ends.
@@ -46,6 +48,12 @@ struct HermexCommands: Commands {
             }
             .keyboardShortcut("f", modifiers: .command)
             .disabled(actions == nil)
+
+            Button("Quick Switcher") {
+                actions?.openQuickSwitcher?()
+            }
+            .keyboardShortcut("k", modifiers: .command)
+            .disabled(actions?.openQuickSwitcher == nil)
         }
 
         // View menu, beside Toggle Sidebar. ⌘⇧] and ⌘⇧[ back up ⌃Tab in case
