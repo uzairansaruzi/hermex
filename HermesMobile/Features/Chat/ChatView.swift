@@ -2079,6 +2079,7 @@ struct ChatView: View {
             isRegeneratingMessage: viewModel.isRegeneratingMessage,
             isEditingMessage: viewModel.isEditingMessage,
             isForkingMessage: viewModel.isForkingMessage,
+            isCronRun: viewModel.isHermesCronRun,
             loadAttachmentImage: { path in
                 await viewModel.attachmentImageData(path: path)
             },
@@ -2153,7 +2154,7 @@ struct ChatView: View {
             settledPlanAfterRenderID: settledPlanAfterRenderID,
             turnOutcome: hermesTurnOutcome,
             queuedPrompt: viewModel.queuedPromptMessage,
-            onCopyQueuedPrompt: { text in
+            onCopyPlainText: { text in
                 UIPasteboard.general.string = text
                 ChatHaptics.copied(isEnabled: isHapticsEnabled)
             }

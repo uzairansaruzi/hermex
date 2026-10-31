@@ -79,6 +79,9 @@ struct ChatTranscriptView: View {
     let isRegeneratingMessage: Bool
     let isEditingMessage: Bool
     let isForkingMessage: Bool
+    /// True when the chat's stored identity is a scheduled task's run (#1413);
+    /// gates the prompt row's card. False on every other server kind.
+    let isCronRun: Bool
     let loadAttachmentImage: (String) async -> Data?
     /// Where attachment rows get their inline audio; nil shows audio as file cells.
     let attachmentAudio: AttachmentAudioSource?
@@ -129,9 +132,9 @@ struct ChatTranscriptView: View {
     /// How a Hermes chat's last turn ended (#1139), under that turn.
     var turnOutcome: HermesTurnOutcomeRow? = nil
     /// A Hermes chat's queued prompt (`ChatViewModel.queuedPromptMessage`, #1379), drawn last
-    /// as a pending bubble whose only action is `onCopyQueuedPrompt`.
+    /// as a pending bubble whose only action is `onCopyPlainText`.
     var queuedPrompt: ChatMessage? = nil
-    var onCopyQueuedPrompt: (String) -> Void = { _ in }
+    var onCopyPlainText: (String) -> Void = { _ in }
 
     /// What stands in for a transcript with no rows. Nil draws the transcript, as for a Hermes
     /// turn that failed before the host saved any row, whose outcome row still shows (#1139),
@@ -407,6 +410,7 @@ struct ChatTranscriptView: View {
                     isRegeneratingMessage: isRegeneratingMessage,
                     isEditingMessage: isEditingMessage,
                     isForkingMessage: isForkingMessage,
+                    isCronRun: isCronRun,
                     loadAttachmentImage: loadAttachmentImage,
                     attachmentAudio: attachmentAudio,
                     loadTranscriptMediaImage: loadTranscriptMediaImage,
@@ -421,7 +425,8 @@ struct ChatTranscriptView: View {
                     onRegenerate: onRegenerate,
                     onEdit: onEdit,
                     onFork: onFork,
-                    onCopy: onCopy
+                    onCopy: onCopy,
+                    onCopyPlainText: onCopyPlainText
                 )
                 .equatable()
                 .transition(rowEntryTransition(for: transcriptMessage.message, now: now))
@@ -448,7 +453,7 @@ struct ChatTranscriptView: View {
             turnChangesCard
             inlineCommitButton
             if let queuedPrompt {
-                ChatQueuedPromptRow(message: queuedPrompt, onCopy: onCopyQueuedPrompt)
+                ChatQueuedPromptRow(message: queuedPrompt, onCopy: onCopyPlainText)
                     .id(queuedPrompt.id)
             }
 
@@ -696,6 +701,9 @@ struct ChatTranscriptMessageBlock: View, Equatable {
     let isRegeneratingMessage: Bool
     let isEditingMessage: Bool
     let isForkingMessage: Bool
+    /// True when the chat's stored identity is a scheduled task's run (#1413);
+    /// gates the prompt row's card. False on every other server kind.
+    let isCronRun: Bool
     let loadAttachmentImage: (String) async -> Data?
     let attachmentAudio: AttachmentAudioSource?
     let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
@@ -711,6 +719,9 @@ struct ChatTranscriptMessageBlock: View, Equatable {
     let onEdit: (MessageActionContext) -> Void
     let onFork: (MessageActionContext) -> Void
     let onCopy: (MessageActionContext) -> Void
+    /// Copies the given app-visible text as typed: the queued bubble's prompt
+    /// (#1379) and the scheduled-task card's input (#1413).
+    let onCopyPlainText: (String) -> Void
 
     // Equality over the value inputs only. The closures are pure functions of
     // these values (e.g. `actionContext` is determined by `transcriptMessage`,
@@ -742,6 +753,7 @@ struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.isRegeneratingMessage == rhs.isRegeneratingMessage &&
             lhs.isEditingMessage == rhs.isEditingMessage &&
             lhs.isForkingMessage == rhs.isForkingMessage &&
+            lhs.isCronRun == rhs.isCronRun &&
             lhs.attachmentAudio == rhs.attachmentAudio &&
             lhs.transcriptMediaCacheNamespace == rhs.transcriptMediaCacheNamespace
     }
@@ -847,6 +859,7 @@ struct ChatTranscriptMessageBlock: View, Equatable {
                     isRegeneratingMessage: isRegeneratingMessage,
                     isEditingMessage: isEditingMessage,
                     isForkingMessage: isForkingMessage,
+                    isCronRun: isCronRun,
                     loadAttachmentImage: loadAttachmentImage,
                     attachmentAudio: attachmentAudio,
                     loadTranscriptMediaImage: loadTranscriptMediaImage,
@@ -859,7 +872,8 @@ struct ChatTranscriptMessageBlock: View, Equatable {
                     onRegenerate: onRegenerate,
                     onEdit: onEdit,
                     onFork: onFork,
-                    onCopy: onCopy
+                    onCopy: onCopy,
+                    onCopyPlainText: onCopyPlainText
                 )
     }
 
@@ -956,6 +970,9 @@ private struct ChatTranscriptMessageRow: View {
     let isRegeneratingMessage: Bool
     let isEditingMessage: Bool
     let isForkingMessage: Bool
+    /// True when the chat's stored identity is a scheduled task's run (#1413);
+    /// gates the prompt row's card. False on every other server kind.
+    let isCronRun: Bool
     let loadAttachmentImage: (String) async -> Data?
     let attachmentAudio: AttachmentAudioSource?
     let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
@@ -969,6 +986,9 @@ private struct ChatTranscriptMessageRow: View {
     let onEdit: (MessageActionContext) -> Void
     let onFork: (MessageActionContext) -> Void
     let onCopy: (MessageActionContext) -> Void
+    /// Copies the given app-visible text as typed (the scheduled-task card's
+    /// input, #1413); the queued bubble takes the transcript-level closure.
+    let onCopyPlainText: (String) -> Void
 
     var body: some View {
         // Compaction marker messages render as collapsible cards (matching the
@@ -980,6 +1000,11 @@ private struct ChatTranscriptMessageRow: View {
             // A Hermes chat's async-delegation delivery (#1140): the host's turn, never a
             // user bubble, with the full report one tap away.
             HermesDelegationCompletionCard(completion: completion)
+        } else if let prompt = CronRunPrompt(message: message, isCronRun: isCronRun) {
+            // A scheduled task's stored runbook row (#1413): the host-authored hint the
+            // six-line fold would preview, never a user bubble. Copy keeps the exact
+            // app-visible input, hint and skill normalization included.
+            CronRunPromptCard(prompt: prompt, onCopy: onCopyPlainText)
         } else {
             VStack(alignment: isUserMessage ? .trailing : .leading, spacing: metaRowSpacing) {
                 bubble

@@ -500,13 +500,15 @@ import UIKit
                 isReplayingLiveToolCalls: false, toolCallAnchorMessageID: nil, streamingAssistantMessageID: nil,
                 liveTokensPerSecond: nil, localAttachmentPreviews: nil, listeningMessageID: nil,
                 isViewingCachedData: false, hasActiveStream: false, isRegeneratingMessage: false,
-                isEditingMessage: false, isForkingMessage: false, loadAttachmentImage: { _ in nil },
+                isEditingMessage: false, isForkingMessage: false, isCronRun: false,
+                loadAttachmentImage: { _ in nil },
                 attachmentAudio: AttachmentAudioSource(load: { _ in nil }, isHost: true, loadKey: loadKey),
                 loadTranscriptMediaImage: { _ in nil }, loadTranscriptMediaData: { _ in nil },
                 transcriptMediaCacheNamespace: "ns", actionContext: { _, _ in nil },
                 shouldRenderMessageRow: { _ in true }, onPreviewAttachment: { _, _ in },
                 onPreviewTranscriptMedia: { _ in }, onAskHermex: { _ in }, onToggleListening: { _ in },
-                onRegenerate: { _ in }, onEdit: { _ in }, onFork: { _ in }, onCopy: { _ in }
+                onRegenerate: { _ in }, onEdit: { _ in }, onFork: { _ in }, onCopy: { _ in },
+                onCopyPlainText: { _ in }
             )
         }
 
