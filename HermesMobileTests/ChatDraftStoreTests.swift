@@ -735,6 +735,29 @@ final class ChatDraftStoreTests: XCTestCase {
         XCTAssertEqual(cleared?.text, "From Troubleshooting")
     }
 
+    /// A Hermes Send waiting for the reconnect (#1407) is on disk apart from the typed text, so a
+    /// relaunch finds it, and returning it puts it ahead of what was typed since, once.
+    func testAWaitingSendSurvivesARelaunchAndReturnsAheadOfNewerText() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let key = ChatDraftKey.hermesSession(server: URL(string: "https://hermes.example")!, connectionID: UUID(),
+                                             profile: "default", key: "tip")
+        let store = ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: directory), debounceDuration: .zero)
+        _ = await store.draft(for: key)
+        store.setDraft("Ship it", for: key)
+        store.holdWaitingSend(ChatDraft.WaitingSend(text: "Ship it", createdAt: Date(timeIntervalSince1970: 1_790_000_000)),
+                              replacing: "Ship it", for: key)
+        store.setDraft("And this", for: key)
+        try await store.flush()
+
+        let relaunched = ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: directory), debounceDuration: .zero)
+        let restored = await relaunched.draft(for: key)
+        XCTAssertEqual(restored?.waitingSend?.text, "Ship it")
+        XCTAssertEqual(restored?.text, "And this")
+        XCTAssertEqual(relaunched.returnWaitingSend(for: key)?.text, "Ship it\n\nAnd this")
+        XCTAssertEqual(relaunched.returnWaitingSend(for: key)?.text, "Ship it\n\nAnd this")
+    }
+
     func testHiddenPromptCharactersAreRemovedWhileJoinersAndMarksStay() {
         let kept = "👩‍💻 می\u{200C}خواهم \u{200F}שלום"
         XCTAssertFalse(HiddenPromptCharacters.contains(in: kept), "Emoji ZWJ, Persian ZWNJ and Hebrew RLM read as written")

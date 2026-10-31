@@ -459,6 +459,19 @@ cancels recovery. Foreground/recovery reloads canonical identity, history and
 current state before enabling commands. Authentication, identity and unsupported
 host errors still surface actionable messages; commands are never retried.
 
+One composer Send may wait for the reconnect (#1407), because `prompt.submit` has no
+idempotency key: only plain text (no quotes, files, `/` command, Steer, Queue or Stop & send),
+sent while the chat shows its offline cache or failing with `NotSent` for lack of a connection
+(`.transport`, a `URLError`) before it reached the socket. It shows as a dimmed bubble with
+"Waiting for connection" and Cancel, outside `messages`, and is kept in the draft
+(`ChatDraft.waitingSend`). The first attach after it, once the host's rows replace the cache,
+sends it once, with no files, under the draft key it was held in; the #508 mark is on disk
+before it goes. The host's answer removes it; a lost answer puts the text back with the #508
+hold; another missing connection waits for a distinct attach; anything else puts it back.
+Cancel, ten minutes (checked again on reconnect), leaving the chat and a replaced Bot Chat put
+the text back ahead of anything typed since. A relaunch puts it back too and never sends it.
+Backgrounding only pauses it: iOS gives no delivery while suspended.
+
 The inbox, the Hermes session list and a room on screen reconnect after a lost socket
 through `BotReconnectSchedule`: the same delays on backoff while online, no attempts
 while the network path is unsatisfied, and one immediate attempt from the first step

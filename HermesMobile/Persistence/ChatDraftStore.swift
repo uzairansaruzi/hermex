@@ -86,9 +86,18 @@ struct ChatDraft: Equatable, Sendable {
     /// composer shows its review notice until the user dismisses it or sends. Rides along with the
     /// content; never keeps a draft alive on its own.
     var textOrigin: ImportedTextOrigin?
+    /// A Hermes chat's plain-text Send waiting for the chat to reconnect (#1407), kept on disk until
+    /// the host answers it. A reopen or relaunch puts it back in `text`; it never sends on its own.
+    var waitingSend: WaitingSend?
+
+    struct WaitingSend: Equatable, Sendable {
+        var text: String
+        var createdAt: Date
+    }
 
     var isEmpty: Bool {
         text.isEmpty && quotes.isEmpty && attachments.isEmpty && (settings?.isEmpty ?? true) && !botSubmissionUncertain
+            && waitingSend == nil
     }
 }
 
@@ -409,6 +418,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         /// Written before #1476, which records `textOrigin` instead; true reads as a Shortcut's.
         var fromShortcut: Bool?
         var textOrigin: String?
+        var waitingSendText: String?
+        var waitingSendCreatedAt: Date?
 
         let lastUsedAt: Date?
 
@@ -420,6 +431,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case quotes
             case attachments
             case settings, connectionID, profile, botSubmissionUncertain, lastUsedAt, sharedImportIDs, fromShortcut, textOrigin
+            case waitingSendText, waitingSendCreatedAt
         }
 
         init(key: ChatDraftKey, draft: ChatDraft) {
@@ -450,6 +462,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             settings = draft.settings.map { SettingsRecord($0) }
             sharedImportIDs = draft.sharedImportIDs.isEmpty ? nil : draft.sharedImportIDs.sorted()
             textOrigin = draft.textOrigin?.rawValue
+            waitingSendText = draft.waitingSend?.text
+            waitingSendCreatedAt = draft.waitingSend?.createdAt
         }
 
         init(from decoder: Decoder) throws {
@@ -472,6 +486,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             sharedImportIDs = (try? container.decodeIfPresent([String].self, forKey: .sharedImportIDs)) ?? nil
             fromShortcut = (try? container.decodeIfPresent(Bool.self, forKey: .fromShortcut)) ?? nil
             textOrigin = (try? container.decodeIfPresent(String.self, forKey: .textOrigin)) ?? nil
+            waitingSendText = (try? container.decodeIfPresent(String.self, forKey: .waitingSendText)) ?? nil
+            waitingSendCreatedAt = (try? container.decodeIfPresent(Date.self, forKey: .waitingSendCreatedAt)) ?? nil
         }
 
         var draft: (key: ChatDraftKey, draft: ChatDraft)? {
@@ -515,7 +531,9 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 botSubmissionUncertain: ["bot", "hermesSession"].contains(context) && (botSubmissionUncertain ?? false),
                 lastUsedAt: lastUsedAt,
                 sharedImportIDs: Set(sharedImportIDs ?? []),
-                textOrigin: textOrigin.flatMap(ImportedTextOrigin.init(rawValue:)) ?? (fromShortcut == true ? .shortcut : nil)
+                textOrigin: textOrigin.flatMap(ImportedTextOrigin.init(rawValue:)) ?? (fromShortcut == true ? .shortcut : nil),
+                // Without its time it reads as expired, which only returns it to the composer.
+                waitingSend: waitingSendText.flatMap { $0.isEmpty ? nil : .init(text: $0, createdAt: waitingSendCreatedAt ?? .distantPast) }
             )
             guard !draft.isEmpty else { return nil }
             return (key, draft)
@@ -664,6 +682,35 @@ final class ChatDraftStore {
         }
         markChangedBeforeLoad(key)
         updateDraft(for: key) { $0.botSubmissionUncertain = uncertain }
+    }
+
+    /// Holds `send` as the draft's waiting send (#1407), and takes `submitted`, the composer text it
+    /// came from, out of the draft's text in the same write, so the text is never in both or neither.
+    func holdWaitingSend(_ send: ChatDraft.WaitingSend, replacing submitted: String, for key: ChatDraftKey) {
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { draft in
+            draft.waitingSend = send
+            if draft.text == submitted { draft.text = "" }
+        }
+    }
+
+    /// The host took the draft's waiting send (#1407): only it goes.
+    func removeWaitingSend(for key: ChatDraftKey) {
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { $0.waitingSend = nil }
+    }
+
+    /// Puts the draft's waiting send (#1407) back in its text, ahead of anything typed since, and
+    /// returns the draft. Nothing is sent.
+    @discardableResult
+    func returnWaitingSend(for key: ChatDraftKey) -> ChatDraft? {
+        guard let waiting = drafts[key]?.waitingSend else { return drafts[key] }
+        markChangedBeforeLoad(key)
+        updateDraft(for: key) { draft in
+            draft.text = [waiting.text, draft.text].filter { !$0.isEmpty }.joined(separator: "\n\n")
+            draft.waitingSend = nil
+        }
+        return drafts[key]
     }
 
     /// Drops Bot Chat and Hermes session drafts for a server, one connection, or one
