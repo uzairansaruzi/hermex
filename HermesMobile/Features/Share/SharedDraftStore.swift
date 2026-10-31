@@ -165,6 +165,32 @@ struct SharedSkips: Equatable {
         )
         return String(localized: "\(count) items weren’t added: \(list).")
     }
+
+    /// A reason-bearing summary for the extension's terminal alert, where there is no
+    /// destination composer to provide context for the list of filenames.
+    var localizedRejectionSummary: String {
+        let named = items.filter { $0.reason != .overLimit }
+        guard !named.isEmpty else {
+            return String(localized: "\(count) items weren’t added. A message holds up to 10 attachments.")
+        }
+
+        let detailed = named.prefix(2).map { item -> String in
+            let name = item.filename ?? String(localized: "File")
+            switch item.reason {
+            case .tooLarge:
+                return String(localized: "1 item wasn’t added: \(name) is over 20 MB.")
+            case .unreadable:
+                return String(localized: "1 item wasn’t added: \(name) couldn’t be read.")
+            case .unsupported:
+                return String(localized: "1 item wasn’t added: Hermex can’t attach \(name).")
+            case .overLimit, nil:
+                return String(localized: "1 item wasn’t added: \(name) couldn’t be read.")
+            }
+        }
+        let remaining = count - detailed.count
+        let rest = remaining > 0 ? String(localized: "\(remaining) more") : nil
+        return (detailed + [rest].compactMap { $0 }).joined(separator: " ")
+    }
 }
 
 struct SharedImport: Equatable {

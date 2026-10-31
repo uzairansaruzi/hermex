@@ -191,6 +191,17 @@ def validate_document_pair(source: dict[str, Any], returned: dict[str, Any]) -> 
                 errors.append(f"{context}: plural cases must be {cases}")
                 continue
             strings = list(target.values())
+            for unit in source_entry["units"]:
+                case = unit["case"]
+                expected = _expected_placeholders(
+                    {"units": [unit], "placeholders": source_entry.get("placeholders") or []}
+                )
+                actual = placeholder_counts(target[case])
+                if expected != actual:
+                    errors.append(
+                        f"{context}: branch {case} placeholder mismatch "
+                        f"expected={dict(expected)} actual={dict(actual)}"
+                    )
         else:
             if not isinstance(target, str):
                 errors.append(f"{context}: target must be a string")
@@ -202,14 +213,15 @@ def validate_document_pair(source: dict[str, Any], returned: dict[str, Any]) -> 
             continue
         if any(SWIFT_INTERPOLATION_RE.search(value) for value in strings):
             errors.append(f"{context}: Swift interpolation remains in target")
-        expected = _expected_placeholders(source_entry)
-        actual: Counter[str] = Counter()
-        for value in strings:
-            actual.update(placeholder_counts(value))
-        if expected != actual:
-            errors.append(
-                f"{context}: placeholder mismatch expected={dict(expected)} actual={dict(actual)}"
-            )
+        if not structured:
+            expected = _expected_placeholders(source_entry)
+            actual: Counter[str] = Counter()
+            for value in strings:
+                actual.update(placeholder_counts(value))
+            if expected != actual:
+                errors.append(
+                    f"{context}: placeholder mismatch expected={dict(expected)} actual={dict(actual)}"
+                )
     return errors
 
 
@@ -237,11 +249,11 @@ def validate_package(
         actual_revision = subprocess.check_output(
             ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
         ).strip()
-        if actual_revision != manifest.get("sourceRevision"):
-            raise PackageError(
-                f"Stale package: expected {manifest.get('sourceRevision')}, found {actual_revision}"
-            )
         if check_source_hashes:
+            if actual_revision != manifest.get("sourceRevision"):
+                raise PackageError(
+                    f"Stale package: expected {manifest.get('sourceRevision')}, found {actual_revision}"
+                )
             for item in manifest.get("sourceFiles", []):
                 path = repo / item["path"]
                 digest = hashlib.sha256(path.read_bytes()).hexdigest()

@@ -94,6 +94,20 @@ class CatalanLocalizationTests(unittest.TestCase):
         )
         self.assertTrue(any("plural cases" in error for error in errors))
 
+    def test_plural_placeholders_are_checked_per_branch(self):
+        source_item = entry(key="%lld cats", source="%lld cats", target=None)
+        source_item["units"] = [
+            {"variation": "plural", "case": "one", "source": "%lld cat"},
+            {"variation": "plural", "case": "other", "source": "%lld cats"},
+        ]
+        source_item["sourceStructure"] = {"variations": {"plural": ["one", "other"]}}
+        returned_item = copy.deepcopy(source_item)
+        returned_item["target"] = {"one": "TARGET", "other": "TARGET %lld %lld"}
+        errors = localization.validate_document_pair(
+            document([source_item]), document([returned_item])
+        )
+        self.assertTrue(any("branch one placeholder mismatch" in error for error in errors))
+
     def test_malformed_json_rejects_package(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -159,6 +173,27 @@ class CatalanLocalizationTests(unittest.TestCase):
                         localization.import_package(package, repo)
             atomic_write.assert_not_called()
             self.assertEqual(catalog.read_text(), "sentinel")
+
+    def test_validation_allows_package_based_on_an_earlier_commit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package = root / "package"
+            repo = root / "repo"
+            (package / "source").mkdir(parents=True)
+            (package / "returned").mkdir(parents=True)
+            repo.mkdir()
+            source = document([entry(target=None)])
+            returned = document([entry(target="TARGET")])
+            (package / "source" / "Localizable-001.json").write_text(json.dumps(source))
+            (package / "returned" / "Localizable-001.json").write_text(json.dumps(returned))
+            (package / "manifest.json").write_text(json.dumps({
+                "sourceRevision": "base",
+                "batches": [{"file": "Localizable-001.json"}],
+                "catalogs": {"Localizable": {"entryCount": 1}},
+            }))
+            with mock.patch.object(localization.subprocess, "check_output", return_value="package-commit\n"):
+                manifest = localization.validate_package(package, repo)
+            self.assertEqual(manifest["sourceRevision"], "base")
 
     def test_import_preserves_existing_language_bytes_and_semantics(self):
         catalog_text = json.dumps({

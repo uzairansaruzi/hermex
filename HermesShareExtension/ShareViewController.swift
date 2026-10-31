@@ -90,9 +90,9 @@ final class ShareViewController: UIViewController {
     /// with VoiceOver too (#1401).
     private func showNothingAdded(skipped: [SharedSkippedItem]) {
         let message = [
-            SharedSkips(skipped).localizedSummary,
+            skipped.isEmpty ? nil : SharedSkips(skipped).localizedRejectionSummary,
             Self.localized("Hermex accepts text, URLs, images, PDFs, and files up to 20 MB."),
-        ].joined(separator: "\n\n")
+        ].compactMap { $0 }.joined(separator: "\n\n")
         let alert = UIAlertController(
             title: String(localized: "Couldn’t Add Shared Files"),
             message: message,
