@@ -28,9 +28,9 @@ enum RenderProbe {
 
     /// Records one evaluation of the named body.
     static func hit(_ name: StaticString, renderID: String? = nil) {
-        counts[String(name), default: 0] += 1
+        counts[String(describing: name), default: 0] += 1
         if let renderID {
-            renderIDCounts[Key(name: String(name), renderID: renderID), default: 0] += 1
+            renderIDCounts[Key(name: String(describing: name), renderID: renderID), default: 0] += 1
         }
     }
 
