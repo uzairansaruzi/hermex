@@ -936,7 +936,7 @@ import XCTest
 /// A Hermes chat's plain-text Send that waits for the reconnect (#1407), on the scripted host
 /// above: offline it waits as a pending bubble kept on disk, and goes out once, on the next attach,
 /// with nothing resent after a lost answer. Cancel, expiry and leaving put its text back ahead of
-/// what was typed since, and send nothing.
+/// what was typed since, and send nothing; backgrounding only pauses it.
 @MainActor final class HermesWaitingSendTests: XCTestCase {
     private let server = URL(string: "https://hermes.example")!
     private let connection = BotConnection(id: UUID(), name: "Mac", address: URL(string: "https://hermes.example")!,
@@ -1069,16 +1069,101 @@ import XCTest
         XCTAssertEqual(draft?.text, "Ship it")
     }
 
+    /// The app going to the background after a delivery is claimed but before it starts stops it
+    /// before it reattaches or writes: nothing goes out from the background, and the foreground's
+    /// reattach sends it once.
+    func testBackgroundingAClaimedDeliveryWaitsForTheForeground() async throws {
+        let disk = HookedDrafts()
+        let wire = HermesOfflineWire(rows: [row(1, "user", "Hi")])
+        let chat = makeChat(wire, persistence: disk)
+        await chat.model.loadMessages(modelContext: try makeContext())
+        wire.onDisconnect?(BotFailure.transport)
+        // The socket comes back while the held send is written, so holding it claims its delivery.
+        await disk.setBeforeNextWrite { [unowned self] in
+            chat.reconnect.open()
+            await waitUntil("reattached") { chat.engine.connectionState == .connected }
+        }
+
+        let outcome = await chat.model.send("Ship it", isPlainText: true)
+        XCTAssertEqual(outcome, .waiting)
+        XCTAssertEqual(chat.model.waitingSend?.delivery, .sending)
+        chat.model.suspendStreamForBackground()
+        await waitUntil("it waits again") { chat.model.waitingSend?.delivery == nil }
+
+        XCTAssertEqual(wire.prompts, [])
+        XCTAssertEqual(chat.model.waitingSendMessage?.content, "Ship it")
+        await chat.model.reconnectStreamIfNeeded()
+        await waitUntil("the host took it") { chat.model.waitingSend == nil }
+        XCTAssertEqual(wire.prompts, ["Ship it"])
+    }
+
+    /// Leaving while a Send still waits on the attach it needs never makes it a waiting send, so
+    /// nothing sends it on its own: it stays the composer's.
+    func testLeavingBeforeASendFindsNoConnectionKeepsItInTheComposer() async throws {
+        let wire = HermesOfflineWire(rows: [row(1, "user", "Hi")])
+        let chat = makeChat(wire)
+        await chat.model.loadMessages(modelContext: try makeContext())
+        let connect = Gate()
+        wire.connectGate = connect
+        wire.connectFailure = URLError(.notConnectedToInternet)
+        chat.model.suspendStreamForBackground()
+        let reattach = Task { await chat.model.reconnectStreamIfNeeded() }
+        let sending = Task { await chat.model.send("Ship it", isPlainText: true) }
+        await waitUntil("it waits on the attach") { chat.model.messages.last?.content == "Ship it" }
+
+        chat.model.leaveWaitingSend()
+        connect.open()
+        let outcome = await sending.value
+        await reattach.value
+
+        XCTAssertEqual(outcome, .kept)
+        XCTAssertNil(chat.model.waitingSend)
+    }
+
+    /// A delivery whose ten minutes run out before its socket write never goes out: it comes back
+    /// to the composer as expired.
+    func testADeliveryThatExpiresBeforeItsWriteComesBack() async throws {
+        let disk = HookedDrafts()
+        let (chat, wire, _) = try await offlineChat(persistence: disk)
+        _ = await chat.model.send("Ship it", isPlainText: true)
+        // The #508 write just before the prompt goes out outlasts the rest of its ten minutes.
+        await disk.setBeforeNextWrite { [unowned self] in now += HermesWaitingSend.lifetime }
+
+        wire.connectFailure = nil
+        chat.reconnect.open()
+        await waitUntil("it came back") { chat.model.waitingSend == nil }
+
+        XCTAssertEqual(returned.last?.reason, .expired)
+        XCTAssertEqual(wire.prompts, [])
+    }
+
+    /// A send whose hold can't be written to disk stays in the composer instead of waiting, so a
+    /// relaunch can't lose it.
+    func testASendThatCannotBeSavedStaysInTheComposer() async throws {
+        let (chat, _, drafts) = try await offlineChat(persistence: HookedDrafts(failsWrites: true))
+        let key = try XCTUnwrap(chat.model.hermesDraftKey)
+        drafts.setDraft("Ship it", for: key)
+
+        let outcome = await chat.model.send("Ship it", isPlainText: true)
+
+        XCTAssertEqual(outcome, .kept)
+        XCTAssertNil(chat.model.waitingSend)
+        let draft = await drafts.draft(for: key)
+        XCTAssertEqual(draft?.text, "Ship it")
+        XCTAssertNil(draft?.waitingSend)
+    }
+
     // MARK: Helpers
 
     /// A session chat showing its cached transcript because its host can't be reached.
-    private func offlineChat() async throws -> (Chat, HermesOfflineWire, ChatDraftStore) {
+    private func offlineChat(persistence: any ChatDraftPersisting = BotMemoryDrafts()) async throws
+        -> (Chat, HermesOfflineWire, ChatDraftStore) {
         let context = try makeContext()
         let visit = makeChat(HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]))
         await visit.model.loadMessages(modelContext: context)
         let wire = HermesOfflineWire(rows: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")])
         wire.connectFailure = URLError(.notConnectedToInternet)
-        let chat = makeChat(wire)
+        let chat = makeChat(wire, persistence: persistence)
         await chat.model.loadMessages(modelContext: context)
         XCTAssertTrue(chat.model.showsOfflineCache)
         return (chat, wire, chat.drafts)
@@ -1086,16 +1171,17 @@ import XCTest
 
     private struct Chat {
         let model: ChatViewModel
+        let engine: HermesConversation
         let drafts: ChatDraftStore
         /// Holds the engine's reconnect until opened.
         let reconnect: Gate
     }
 
-    private func makeChat(_ wire: HermesOfflineWire) -> Chat {
+    private func makeChat(_ wire: HermesOfflineWire, persistence: any ChatDraftPersisting = BotMemoryDrafts()) -> Chat {
         let gate = Gate()
         let engine = HermesConversation(server: server, connection: connection, target: .session(profile: "default", key: "tip"),
                                         wire: wire, reconnectDelay: { _ in await gate.wait() })
-        let drafts = ChatDraftStore(persistence: BotMemoryDrafts(), debounceDuration: .seconds(60))
+        let drafts = ChatDraftStore(persistence: persistence, debounceDuration: .seconds(60))
         let model = ChatViewModel(
             session: SessionSummary(profile: "default"), server: server, streamingScrollCoalescingDelayNanoseconds: 0,
             draftStore: drafts, backend: .hermes(HermesChatTurnCoordinator(engine: engine, isNetworkAvailable: { true })),
@@ -1104,7 +1190,7 @@ import XCTest
             })
         )
         model.onWaitingSendReturned = { [unowned self] text, reason in returned.append((text, reason)) }
-        return Chat(model: model, drafts: drafts, reconnect: gate)
+        return Chat(model: model, engine: engine, drafts: drafts, reconnect: gate)
     }
 
     private func makeContext() throws -> ModelContext {
@@ -1116,6 +1202,28 @@ import XCTest
         .object(["id": .number(Double(id)), "session_id": .string("tip"), "role": .string(role), "content": .string(content),
                  "timestamp": .number(1_790_000_000 + Double(id)), "active": .number(1), "compacted": .number(0),
                  "tool_call_id": .null, "tool_calls": .null, "display_kind": .null, "display_metadata": .null])
+    }
+}
+
+/// Draft storage whose writes fail (`failsWrites`), or run a hook first, once, standing for a slow disk.
+private actor HookedDrafts: ChatDraftPersisting {
+    private let failsWrites: Bool
+    private var values: [ChatDraftKey: ChatDraft] = [:]
+    private var beforeNextWrite: (@MainActor @Sendable () async -> Void)?
+
+    init(failsWrites: Bool = false) { self.failsWrites = failsWrites }
+
+    func setBeforeNextWrite(_ hook: @escaping @MainActor @Sendable () async -> Void) { beforeNextWrite = hook }
+
+    func load() -> [ChatDraftKey: ChatDraft] { values }
+
+    func write(_ drafts: [ChatDraftKey: ChatDraft]) async throws {
+        if let hook = beforeNextWrite {
+            beforeNextWrite = nil
+            await hook()
+        }
+        if failsWrites { throw CocoaError(.fileWriteOutOfSpace) }
+        values = drafts
     }
 }
 

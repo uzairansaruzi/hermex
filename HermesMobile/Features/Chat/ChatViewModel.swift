@@ -203,9 +203,9 @@ struct ChatPollingIntervals {
 /// A Hermes chat's one plain-text Send held until the chat reconnects (#1407). `ChatViewModel`
 /// holds it when Send meets the offline cache, or a prompt that found no connection before it went
 /// out. The draft keeps it on disk (`ChatDraft.waitingSend`) until the host answers. It goes out
-/// once, on a later attach under the same draft key, with no files, and never after it expires.
-/// Cancel, expiry, leaving the chat and every failure but another missing connection put its
-/// text back in the composer.
+/// once, on a later attach under the same draft key, with no files, and never after it expires
+/// or from the background. Cancel, expiry, leaving the chat and every failure but another
+/// missing connection put its text back in the composer.
 struct HermesWaitingSend: Equatable {
     /// How long it waits before going back to the composer.
     static let lifetime: TimeInterval = 10 * 60
@@ -215,8 +215,15 @@ struct HermesWaitingSend: Equatable {
     let key: ChatDraftKey
     /// The attach its last delivery tried, so only a distinct reconnect tries again.
     var triedAttach: Int?
-    /// Claimed by a delivery: the prompt's own row shows in its place, and Cancel waits for the answer.
-    var isDelivering = false
+    /// Set while a delivery holds it: the prompt's own row shows in its place, and Cancel waits for the answer.
+    var delivery: Delivery?
+
+    /// A delivery in flight: going out, or stopped before its socket write because the app went to
+    /// the background (`paused`: it waits again unless the host took it) or the chat left (`left`:
+    /// it goes back to the composer).
+    enum Delivery: Equatable {
+        case sending, paused, left
+    }
 
     func hasExpired(at now: Date) -> Bool {
         now.timeIntervalSince(send.createdAt) >= Self.lifetime
@@ -2961,10 +2968,11 @@ final class ChatViewModel {
     /// A composer Send. `isPlainText` (no quotes, files or `/` command) lets a Hermes chat hold it
     /// until it reconnects (#1407): offline, or when its prompt finds no connection before it goes out.
     func send(_ draft: String, isPlainText: Bool = false, modelContext: ModelContext? = nil) async -> ChatSendOutcome {
+        // A Send that waits does so only while the chat it began in is still here.
+        let waitingOwner = isPlainText ? waitingSendGeneration : nil
         guard !isViewingCachedData else {
-            if isPlainText, offersWaitingSend, let hermesTurn {
-                await holdForConnection(draft, on: hermesTurn)
-                return .waiting
+            if let waitingOwner, offersWaitingSend, let hermesTurn {
+                return await holdForConnection(draft, on: hermesTurn, owner: waitingOwner)
             }
             // A cached copy shown while the chat connects holds the draft without a word.
             if !isCachedCopyProvisional { sendErrorMessage = String(localized: "Reconnect to the server to send a message.") }
@@ -2977,7 +2985,7 @@ final class ChatViewModel {
         }
 
         if let hermesTurn {
-            return await submitHermesPrompt(draft, mode: .send, to: hermesTurn, waitsForConnection: isPlainText)
+            return await submitHermesPrompt(draft, mode: .send, to: hermesTurn, waitingOwner: waitingOwner)
         }
 
         guard !isCompressionRotated else {
@@ -3208,15 +3216,18 @@ final class ChatViewModel {
     /// accepted; a queued prompt shows as `queuedPromptMessage` until the host runs it.
     /// `.kept` keeps the draft: the host refused it, did not confirm it, or it was not sent.
     /// `shown` is the prompt's row when it differs from what is sent, as for a goal's message;
-    /// such a prompt leaves the staged files where they are. A Send that `waitsForConnection`
-    /// and found none before it went out is held as the waiting send instead (`.waiting`, #1407);
-    /// `delivering` is that send's generation going out, with no files, while it is still current.
+    /// such a prompt leaves the staged files where they are. A plain-text Send passes
+    /// `waitingOwner`, the waiting-send generation it began in: one that found no connection
+    /// before it went out is held as the waiting send instead (`.waiting`, #1407), unless the chat
+    /// left meanwhile. `delivering` is that send's generation going out, with no files, while it is
+    /// still current and unexpired; `.waiting` then means it did not go out and is the waiting send's
+    /// to settle.
     private func submitHermesPrompt(
         _ draft: String,
         mode: BotPromptMode,
         to hermes: HermesChatTurnCoordinator,
         shown: String? = nil,
-        waitsForConnection: Bool = false,
+        waitingOwner: Int? = nil,
         delivering: Int? = nil
     ) async -> ChatSendOutcome {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3261,18 +3272,20 @@ final class ChatViewModel {
                 marked = true
                 try await drafts.flush()
             } stillCurrent: { [weak self] in
-                // A waiting send whose chat left, or that went back to the composer, stays unsent.
+                // A waiting send that paused, left, expired or went back to the composer stays unsent.
                 guard let delivering else { return }
-                guard self?.waitingSendGeneration == delivering else { throw BotFailure.stale }
+                guard self?.waitingSendGoes(delivering) == true else { throw BotFailure.stale }
             }
         } catch {
             rollbackOptimisticMessage(id: promptID)
             if let notSent = error as? HermesChatTurnCoordinator.NotSent {
                 if marked { drafts.setBotSubmissionUncertain(false, for: hermes.currentDraftKey) }
-                if mode == .send, files.isEmpty, HermesWaitingSend.waitsForConnection(notSent),
-                   delivering != nil || waitsForConnection && waitingSend == nil && !hermes.needsSignIn {
-                    if delivering == nil { await holdForConnection(draft, on: hermes) }
+                if let delivering, HermesWaitingSend.waitsForConnection(notSent) || !waitingSendGoes(delivering) {
                     return .waiting
+                }
+                if mode == .send, files.isEmpty, HermesWaitingSend.waitsForConnection(notSent),
+                   let waitingOwner, !hermes.needsSignIn {
+                    return await holdForConnection(draft, on: hermes, owner: waitingOwner)
                 }
                 if notSent.duringUpload {
                     sendErrorMessage = Self.uploadFailureMessage(notSent.underlying)
@@ -3372,48 +3385,78 @@ final class ChatViewModel {
     /// The waiting send as the transcript's pending bubble shows it, outside `messages`. Hidden
     /// while it goes out, when the prompt's own row shows.
     var waitingSendMessage: ChatMessage? {
-        guard let waitingSend, !waitingSend.isDelivering else { return nil }
+        guard let waitingSend, waitingSend.delivery == nil else { return nil }
         return ChatMessage(role: "user", content: waitingSend.send.text, timestamp: nil, messageId: "hermes-waiting-send")
     }
 
-    /// Holds `draft` as the waiting send: on disk, out of the draft's text in the same write, with
-    /// one deadline.
-    private func holdForConnection(_ draft: String, on hermes: HermesChatTurnCoordinator) async {
+    /// Holds `draft` as the waiting send once it is on disk, out of the draft's text in the same
+    /// write, with one deadline. `.kept` when that write failed or the chat left since `owner`:
+    /// the text goes back to the draft and the composer, and nothing sends it.
+    private func holdForConnection(_ draft: String, on hermes: HermesChatTurnCoordinator, owner: Int) async -> ChatSendOutcome {
+        let notHeld = String(localized: "Reconnect to the server to send a message.")
+        guard waitingSendGeneration == owner, waitingSend == nil else {
+            sendErrorMessage = notHeld
+            return .kept
+        }
         let send = ChatDraft.WaitingSend(text: draft.trimmingCharacters(in: .whitespacesAndNewlines),
                                          createdAt: waitingSendClock.now())
         let key = hermes.currentDraftKey
         drafts.holdWaitingSend(send, replacing: draft, for: key)
+        let isSaved = (try? await drafts.flush()) != nil
+        guard isSaved, waitingSendGeneration == owner else {
+            onWaitingSendReturned?(drafts.returnWaitingSend(for: key)?.text ?? send.text, .notSent)
+            sendErrorMessage = notHeld
+            return .kept
+        }
         waitingSendGeneration += 1
         waitingSend = HermesWaitingSend(send: send, key: key)
         sendErrorMessage = nil
-        let generation = waitingSendGeneration
         let remaining = HermesWaitingSend.lifetime - waitingSendClock.now().timeIntervalSince(send.createdAt)
         waitingSendDeadline?.cancel()
         waitingSendDeadline = Task { [weak self, sleep = waitingSendClock.sleep] in
             do { try await sleep(remaining) } catch { return }
-            guard let self, self.waitingSendGeneration == generation, self.waitingSend?.isDelivering == false else { return }
+            // One going out is checked at its socket write instead.
+            guard let self, self.waitingSend?.send == send, self.waitingSend?.delivery == nil else { return }
             self.returnWaitingSend(.expired)
         }
-        try? await drafts.flush()
         // A reattach while the prompt failed to go out is a reconnect already.
         deliverWaitingSendIfReady()
+        return .waiting
+    }
+
+    /// Whether the delivery claimed at `generation` may still go out: nothing paused, left or
+    /// returned it since, and it has not expired.
+    private func waitingSendGoes(_ generation: Int) -> Bool {
+        waitingSendGeneration == generation && waitingSend?.hasExpired(at: waitingSendClock.now()) == false
     }
 
     /// Cancel on the waiting bubble: its text goes back to the composer. Not once it is going out.
     func cancelWaitingSend() {
-        guard waitingSend?.isDelivering == false else { return }
+        guard let waitingSend, waitingSend.delivery == nil else { return }
         returnWaitingSend(.cancelled)
     }
 
-    /// The chat left the screen: its waiting send goes back to the draft and never sends from here.
-    /// One already going out finishes, and goes back unless the host took it.
+    /// The chat left the screen: its waiting send goes back to the draft and never sends from here,
+    /// and a Send still looking for its connection never becomes one. One already going out
+    /// finishes, and goes back unless the host took it.
     func leaveWaitingSend() {
-        guard let waitingSend else { return }
-        if waitingSend.isDelivering {
-            waitingSendGeneration += 1
-        } else {
+        waitingSendGeneration += 1
+        guard var waiting = waitingSend else { return }
+        if waiting.delivery == nil {
             returnWaitingSend(.left)
+        } else {
+            waiting.delivery = .left
+            waitingSend = waiting
         }
+    }
+
+    /// The app went to the background, where the socket closes: a delivery not out yet stops before
+    /// it reattaches or writes, and waits for the foreground's reattach.
+    private func pauseWaitingSend() {
+        guard var waiting = waitingSend, waiting.delivery == .sending else { return }
+        waitingSendGeneration += 1
+        waiting.delivery = .paused
+        waitingSend = waiting
     }
 
     /// Puts the waiting send back in the draft and the composer, and ends its deadline.
@@ -3429,28 +3472,29 @@ final class ChatViewModel {
     /// Sends the waiting send once its chat is attached and live again: under the draft key it was
     /// held in, before it expires, and once per attach, claimed before anything awaits.
     private func deliverWaitingSendIfReady() {
-        guard var waiting = waitingSend, !waiting.isDelivering, let hermes = hermesTurn,
+        guard var waiting = waitingSend, waiting.delivery == nil, let hermes = hermesTurn,
               hermes.engine.connectionState == .connected, !isViewingCachedData, !isHermesSubmissionUncertain,
               waiting.triedAttach != hermes.engine.generation else { return }
         guard !waiting.hasExpired(at: waitingSendClock.now()) else { return returnWaitingSend(.expired) }
         guard waiting.key == hermes.currentDraftKey else { return returnWaitingSend(.notSent) }
         let generation = waitingSendGeneration
-        waiting.isDelivering = true
+        waiting.delivery = .sending
         waiting.triedAttach = hermes.engine.generation
         waitingSend = waiting
         Task { [weak self] in
             guard let self else { return }
-            let outcome = self.waitingSendGeneration == generation
+            // Checked as it starts, since a submit would reattach a socket the background closed.
+            let outcome = self.waitingSendGoes(generation)
                 ? await self.submitHermesPrompt(waiting.send.text, mode: .send, to: hermes, delivering: generation)
-                : .kept
-            self.finishWaitingSend(outcome, generation: generation)
+                : .waiting
+            self.finishWaitingSend(outcome)
         }
     }
 
-    /// The host took the waiting send, and only it leaves the draft. One that again found no
-    /// connection waits for a distinct reconnect; anything else goes back to the composer, a lost
-    /// answer with its #508 hold.
-    private func finishWaitingSend(_ outcome: ChatSendOutcome, generation: Int) {
+    /// The host took the waiting send, and only it leaves the draft. One that did not go out waits
+    /// for a distinct reconnect, unless it expired or its chat left; anything else goes back to the
+    /// composer, a lost answer with its #508 hold.
+    private func finishWaitingSend(_ outcome: ChatSendOutcome) {
         guard var waiting = waitingSend else { return }
         switch outcome {
         case .started:
@@ -3458,12 +3502,14 @@ final class ChatViewModel {
             waitingSendGeneration += 1
             waitingSendDeadline?.cancel(); waitingSendDeadline = nil
             drafts.removeWaitingSend(for: hermesDraftKey ?? waiting.key)
-        case .waiting where generation == waitingSendGeneration && !waiting.hasExpired(at: waitingSendClock.now()):
-            waiting.isDelivering = false
+        case .waiting where waiting.hasExpired(at: waitingSendClock.now()):
+            returnWaitingSend(.expired)
+        case .waiting where waiting.delivery == .left:
+            returnWaitingSend(.left)
+        case .waiting:
+            waiting.delivery = nil
             waitingSend = waiting
             deliverWaitingSendIfReady()
-        case .waiting:
-            returnWaitingSend(waiting.hasExpired(at: waitingSendClock.now()) ? .expired : .notSent)
         case .kept:
             returnWaitingSend(.notSent)
         }
@@ -6516,6 +6562,7 @@ final class ChatViewModel {
     }
 
     func suspendStreamForBackground() {
+        pauseWaitingSend()
         suspendActiveStreamConnection()
     }
 

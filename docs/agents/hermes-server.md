@@ -464,13 +464,16 @@ idempotency key: only plain text (no quotes, files, `/` command, Steer, Queue or
 sent while the chat shows its offline cache or failing with `NotSent` for lack of a connection
 (`.transport`, a `URLError`) before it reached the socket. It shows as a dimmed bubble with
 "Waiting for connection" and Cancel, outside `messages`, and is kept in the draft
-(`ChatDraft.waitingSend`). The first attach after it, once the host's rows replace the cache,
+(`ChatDraft.waitingSend`); it waits only once that write succeeds and the chat it was typed
+in is still on screen. The first attach after it, once the host's rows replace the cache,
 sends it once, with no files, under the draft key it was held in; the #508 mark is on disk
-before it goes. The host's answer removes it; a lost answer puts the text back with the #508
+before it goes, and the socket write checks the chat, the foreground and the deadline again.
+The host's answer removes it; a lost answer puts the text back with the #508
 hold; another missing connection waits for a distinct attach; anything else puts it back.
-Cancel, ten minutes (checked again on reconnect), leaving the chat and a replaced Bot Chat put
-the text back ahead of anything typed since. A relaunch puts it back too and never sends it.
-Backgrounding only pauses it: iOS gives no delivery while suspended.
+Cancel, ten minutes (checked again on reconnect and at the write), leaving the chat and a
+replaced Bot Chat put the text back ahead of anything typed since. A relaunch puts it back too
+and never sends it. Backgrounding only pauses it, even mid-delivery: iOS gives no delivery
+while suspended, and the foreground's reattach sends it.
 
 The inbox, the Hermes session list and a room on screen reconnect after a lost socket
 through `BotReconnectSchedule`: the same delays on backoff while online, no attempts
