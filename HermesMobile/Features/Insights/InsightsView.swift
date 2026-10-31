@@ -114,7 +114,8 @@ struct InsightsView: View {
                 if viewModel.showsLimits {
                     ProviderLimitsSection(
                         cards: viewModel.limitCards,
-                        isLoading: viewModel.isLoadingLimits
+                        isLoading: viewModel.isLoadingLimits,
+                        refreshFailed: !viewModel.staleLimitIDs.isEmpty
                     )
                 }
 
