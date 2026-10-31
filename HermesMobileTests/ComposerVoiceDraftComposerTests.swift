@@ -118,8 +118,11 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         guard case .applied(let first) = session.apply(transcript: "for nested lists", current: current) else {
             return XCTFail("First partial must apply")
         }
-        current.text = first.text
-        current.selection = selection.moved(to: first.caret)
+        current = ComposerVoiceDraftSnapshot(
+            owner: owner,
+            text: first.text,
+            selection: selection.moved(to: first.caret)
+        )
         session.commit(first)
 
         guard case .applied(let second) = session.apply(transcript: "for nested lists and chips", current: current) else {
