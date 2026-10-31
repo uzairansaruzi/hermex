@@ -58,6 +58,8 @@ final class AuthManager {
         // The shared Bot connection signs in with the active server's saved credentials.
         didSet {
             if let old = oldValue.server, old != state.server { hermesConnections.retire(server: old) }
+            // The Limits widget shows only the signed-in active server's Usage (#1409).
+            if case .loggedIn = oldValue, oldValue != state { limitsPublisher.invalidate() }
             dropStaleMoveSheets()
         }
     }
@@ -99,6 +101,8 @@ final class AuthManager {
     private let preferences: UserDefaults
     /// Tears down a server's push pairing when it is signed out of or removed.
     private let forgetPush: @MainActor (URL) async -> Void
+    /// The Limits widget's snapshot, emptied when its server or connection stops being in use.
+    private let limitsPublisher: ProviderLimitsPublisher
 
     init(
         keychain: any KeychainStoring = KeychainStore(),
@@ -111,7 +115,8 @@ final class AuthManager {
         serverRegistry: ServerRegistry = .shared,
         hermesConnections: HermesConnections? = nil,
         preferences: UserDefaults = .standard,
-        forgetPush: @escaping @MainActor (URL) async -> Void = { await PushRegistrar.shared?.forget(for: $0) }
+        forgetPush: @escaping @MainActor (URL) async -> Void = { await PushRegistrar.shared?.forget(for: $0) },
+        limitsPublisher: ProviderLimitsPublisher? = nil
     ) {
         self.keychain = keychain
         self.clientFactory = clientFactory
@@ -122,6 +127,7 @@ final class AuthManager {
         self.hermesConnections = hermesConnections ?? .shared
         self.preferences = preferences
         self.forgetPush = forgetPush
+        self.limitsPublisher = limitsPublisher ?? .shared
         restoreSavedServer()
         refreshServers()
         self.hermesConnections.onSignInRejected = { [weak self] server, failure in
@@ -452,6 +458,8 @@ final class AuthManager {
     func hermesSignInSaved(server: URL, offersMove: Bool = true) {
         guard var account = servers.first(where: { $0.id == server.absoluteString }), account.kind == .hermes,
               let saved = try? BotConnectionStore(keychain: keychain).load(server: server) else { return }
+        // A sign-in on another connection replaced the one the widget's limits were read through.
+        limitsPublisher.invalidate(server: server, unlessConnection: saved.id)
         if account.serverVersion != saved.hermesVersion {
             account.serverVersion = saved.hermesVersion
             serverRegistry.update(account)
@@ -546,6 +554,7 @@ final class AuthManager {
         guard let serverURL = URL(string: account.urlString) else { return }
         removingServerIDs.insert(account.id)
         defer { removingServerIDs.remove(account.id) }
+        limitsPublisher.invalidate(server: serverURL)
         dropStaleMoveSheets()
         // A move committed during the awaits below leaves an orphan journal, which `MoveToHermesPending.all` deletes.
         let movedSources = (servers.first { $0.id == account.id } ?? account).movedWebuiServers.map(\.sourceServerID)

@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D14090000000000000000014 /* ProviderLimitsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14090000000000000000003 /* ProviderLimitsWidget.swift */; };
+		D14090000000000000000011 /* ProviderLimitsSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14090000000000000000001 /* ProviderLimitsSnapshot.swift */; };
+		D14090000000000000000012 /* ProviderLimitsSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14090000000000000000001 /* ProviderLimitsSnapshot.swift */; };
+		D14090000000000000000013 /* ProviderLimitsPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14090000000000000000002 /* ProviderLimitsPublisher.swift */; };
+		D14090000000000000000015 /* ProviderLimitsSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14090000000000000000004 /* ProviderLimitsSnapshotTests.swift */; };
 		E1318000000000000000A009 /* APIKeyEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A010 /* APIKeyEditor.swift */; };
 		E1318000000000000000A007 /* APIKeysView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A008 /* APIKeysView.swift */; };
 		E1318000000000000000A005 /* APIKeysModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1318000000000000000A006 /* APIKeysModel.swift */; };
@@ -717,6 +722,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		D14090000000000000000003 /* ProviderLimitsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderLimitsWidget.swift; sourceTree = "<group>"; };
+		D14090000000000000000001 /* ProviderLimitsSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderLimitsSnapshot.swift; sourceTree = "<group>"; };
+		D14090000000000000000002 /* ProviderLimitsPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderLimitsPublisher.swift; sourceTree = "<group>"; };
+		D14090000000000000000004 /* ProviderLimitsSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderLimitsSnapshotTests.swift; sourceTree = "<group>"; };
 		E1318000000000000000A010 /* APIKeyEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeyEditor.swift; sourceTree = "<group>"; };
 		E1318000000000000000A008 /* APIKeysView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeysView.swift; sourceTree = "<group>"; };
 		E1318000000000000000A006 /* APIKeysModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeysModel.swift; sourceTree = "<group>"; };
@@ -1422,6 +1431,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		D14090000000000000000010 /* Widgets */ = {
+			isa = PBXGroup;
+			children = (
+				D14090000000000000000001 /* ProviderLimitsSnapshot.swift */,
+				D14090000000000000000002 /* ProviderLimitsPublisher.swift */,
+			);
+			path = Widgets;
+			sourceTree = "<group>";
+		};
 		1A2B3C4D5E6F700000000030 = {
 			isa = PBXGroup;
 			children = (
@@ -1443,6 +1461,7 @@
 				1A2B3C4D5E6F7000000000FA /* Config */,
 				1A2B3C4D5E6F700000000339 /* AppIntents */,
 				A04500000000000000000020 /* LiveActivities */,
+				D14090000000000000000010 /* Widgets */,
 				1A2B3C4D5E6F7000000000C0 /* Auth */,
 				1A2B3C4D5E6F7000000000C1 /* Networking */,
 				A4790000000000000000F000 /* Push */,
@@ -1688,6 +1707,7 @@
 				A710739233F64F4FA4C2B711 /* ComposerVoiceDraftComposerTests.swift */,
 				C5A0D8F5502048B6B9258B00 /* InsightsViewModelTests.swift */,
 				C0415A0000000000000004 /* ProviderLimitCardTests.swift */,
+				D14090000000000000000004 /* ProviderLimitsSnapshotTests.swift */,
 				C0415A0000000000000003 /* APIClientProviderQuotaTests.swift */,
 				2BE8F2B38F094C4C9EB18300 /* SkillsViewModelTests.swift */,
 				26AB000000000000000000F3 /* APIClientProvidersTests.swift */,
@@ -2279,6 +2299,7 @@
 			isa = PBXGroup;
 			children = (
 				A04500000000000000000013 /* AgentRunLiveActivityWidget.swift */,
+				D14090000000000000000003 /* ProviderLimitsWidget.swift */,
 				A04500000000000000000022 /* Resources */,
 			);
 			path = HermesLiveActivityWidget;
@@ -2669,6 +2690,8 @@
 				1A2B3C4D5E6F700000000300 /* ServerAccount.swift in Sources */,
 				A04500000000000000000001 /* AgentRunActivityAttributes.swift in Sources */,
 				A04500000000000000000002 /* HermesDeepLink.swift in Sources */,
+				D14090000000000000000011 /* ProviderLimitsSnapshot.swift in Sources */,
+				D14090000000000000000013 /* ProviderLimitsPublisher.swift in Sources */,
 				A04500000000000000000003 /* AgentLiveActivityManager.swift in Sources */,
 				1A2B3C4D5E6F7000000000A2 /* APIClient.swift in Sources */,
 				C04000000000000000000001 /* APIClient+Sessions.swift in Sources */,
@@ -3186,6 +3209,7 @@
 				A710739233F64F4FA4C2B701 /* ComposerVoiceDraftComposerTests.swift in Sources */,
 				C5A0D8F5502048B6B9258B01 /* InsightsViewModelTests.swift in Sources */,
 				C0415B0000000000000004 /* ProviderLimitCardTests.swift in Sources */,
+				D14090000000000000000015 /* ProviderLimitsSnapshotTests.swift in Sources */,
 				C0415B0000000000000003 /* APIClientProviderQuotaTests.swift in Sources */,
 				2BE8F2B38F094C4C9EB18301 /* SkillsViewModelTests.swift in Sources */,
 				26AB000000000000000000B3 /* APIClientProvidersTests.swift in Sources */,
@@ -3240,7 +3264,9 @@
 			files = (
 				A04500000000000000000004 /* AgentRunActivityAttributes.swift in Sources */,
 				A04500000000000000000005 /* HermesDeepLink.swift in Sources */,
+				D14090000000000000000012 /* ProviderLimitsSnapshot.swift in Sources */,
 				A04500000000000000000006 /* AgentRunLiveActivityWidget.swift in Sources */,
+				D14090000000000000000014 /* ProviderLimitsWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

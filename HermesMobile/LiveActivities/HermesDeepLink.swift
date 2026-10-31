@@ -19,6 +19,10 @@ enum HermesDeepLink {
     /// which is main-app only; this file is shared with the Live Activity widget.
     static let botHost = "bot"
 
+    /// Host for a Limits widget's tap (#1409): `hermes-agent://usage?server=…&connection=…&profile=…`,
+    /// built and parsed by `HermesUsageDestination`.
+    static let usageHost = "usage"
+
     /// Host for the parameter-less "open the New Chat composer" deep link used by the
     /// New Chat App Intent (issue #337). Mirrors the share extension's host-based routing
     /// so the intent can reuse `ContentView.handleOpenURL` rather than inventing a new path.

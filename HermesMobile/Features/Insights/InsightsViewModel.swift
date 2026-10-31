@@ -170,9 +170,15 @@ final class InsightsViewModel {
     private var limitsGeneration = 0
 
     private let client: any InsightsDataClient
+    /// The Hermes Usage screen whose cards the Limits widget shows (#1409); nil publishes nothing.
+    private let limitsScope: ProviderLimitsPublisher.Scope?
+    private let limitsPublisher: ProviderLimitsPublisher?
 
-    init(client: any InsightsDataClient) {
+    init(client: any InsightsDataClient, publishesLimits limitsScope: ProviderLimitsPublisher.Scope? = nil,
+         publisher: ProviderLimitsPublisher? = nil) {
         self.client = client
+        self.limitsScope = limitsScope
+        limitsPublisher = limitsScope == nil ? nil : publisher ?? .shared
     }
 
     func load() async {
@@ -248,9 +254,14 @@ final class InsightsViewModel {
     ///
     /// `refresh` bypasses the server's 45 s probe cache and belongs only to the
     /// toolbar button and pull-to-refresh.
+    ///
+    /// Each load that settles the cards hands them to the Limits widget, with a ticket taken
+    /// before the first read so a server switch meanwhile drops them (#1409). A failed providers
+    /// read publishes nothing.
     func loadLimits(refresh: Bool = false) async {
         limitsGeneration += 1
         let generation = limitsGeneration
+        let ticket = limitsScope.flatMap { limitsPublisher?.ticket(for: $0) }
         // The newest generation owns `isLoadingLimits`, and clears it on every
         // way out — including the silent failures below. A superseded load
         // leaves it alone so it cannot cancel the placeholder of the load that
@@ -275,6 +286,7 @@ final class InsightsViewModel {
         guard !selection.isEmpty else {
             limitCards = []
             staleLimitIDs = []
+            publishLimits(with: ticket)
             return
         }
 
@@ -320,6 +332,12 @@ final class InsightsViewModel {
         }
         limitCards = cards
         staleLimitIDs = stale
+        publishLimits(with: ticket)
+    }
+
+    private func publishLimits(with ticket: ProviderLimitsPublisher.Ticket?) {
+        guard let ticket else { return }
+        limitsPublisher?.publish(limitCards, stale: staleLimitIDs, with: ticket)
     }
 
     /// What this server's insights report.

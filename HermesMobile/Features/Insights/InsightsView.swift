@@ -14,11 +14,13 @@ struct InsightsView: View {
         self.init(client: APIClient(baseURL: server), onAPIError: onAPIError)
     }
 
-    /// The usage `client` reads: on a Hermes host, `profile`'s.
-    init(client: any InsightsDataClient, profile: String? = nil, onAPIError: @escaping (Error) -> Void) {
+    /// The usage `client` reads: on a Hermes host, `profile`'s, whose limits also go to the Limits
+    /// widget under `limitsScope` (#1409).
+    init(client: any InsightsDataClient, profile: String? = nil, limitsScope: ProviderLimitsPublisher.Scope? = nil,
+         onAPIError: @escaping (Error) -> Void) {
         self.onAPIError = onAPIError
         self.profile = profile
-        _viewModel = State(initialValue: InsightsViewModel(client: client))
+        _viewModel = State(initialValue: InsightsViewModel(client: client, publishesLimits: limitsScope))
     }
 
     var body: some View {
