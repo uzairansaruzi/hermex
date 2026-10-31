@@ -361,6 +361,22 @@ it over the existing TestFlight or App Store install on the owner's iPhone.
 Record the tested build and outcome in the release's GitHub issue. A failed RC
 is fixed on `master` and replaced by a new upload; never promote it.
 
+### Diagnostics (MetricKit)
+
+About → Diagnostics keeps the crash, hang, CPU and disk-write reports MetricKit
+hands the main app (#1397), sanitized, at most 10 for 14 days, on the device
+only. iOS decides when and whether to deliver one, so an empty list does not
+mean the app never crashed; the share extension, widget and notification
+service are not covered. Nothing is uploaded: a tester copies a report into a
+bug report, and its frame UUIDs and offsets are symbolicated off the device
+against the build's dSYMs.
+
+Simulators never receive payloads. To check the page, or to capture a real
+payload as a test fixture, run a signed Debug build on a physical iPhone from
+Xcode, choose Debug → Simulate MetricKit Payloads, then open About →
+Diagnostics. A captured payload can replace the documented-format sample in
+`DiagnosticsLogTests` once its real device values are swapped for placeholders.
+
 ## Review information and privacy
 
 In App Store Connect, verify the beta description, What to Test, feedback email,
