@@ -2970,11 +2970,6 @@ final class ChatViewModel {
     func send(_ draft: String, isPlainText: Bool = false, modelContext: ModelContext? = nil) async -> ChatSendOutcome {
         // A Send that waits does so only while the chat it began in is still here.
         let waitingOwner = isPlainText ? waitingSendGeneration : nil
-        // Nothing else goes while a Send is written as the waiting send, even once reconnected.
-        guard !isHoldingWaitingSend else {
-            sendErrorMessage = String(localized: "Reconnect to the server to send a message.")
-            return .kept
-        }
         guard !isViewingCachedData else {
             if let waitingOwner, offersWaitingSend, let hermesTurn {
                 return await holdForConnection(draft, on: hermesTurn, owner: waitingOwner)
@@ -3238,6 +3233,11 @@ final class ChatViewModel {
         waitingOwner: Int? = nil,
         delivering: Int? = nil
     ) async -> ChatSendOutcome {
+        // Nothing but the waiting send goes while a Send is written as it, even once reconnected.
+        guard delivering != nil || !isHoldingWaitingSend else {
+            sendErrorMessage = String(localized: "Reconnect to the server to send a message.")
+            return .kept
+        }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         // Only Send and Queue carry the staged files (#1012); Steer and Stop & send stay text-only,
         // and so does a waiting send, which never takes files staged since.

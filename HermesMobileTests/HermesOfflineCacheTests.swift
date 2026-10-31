@@ -1005,7 +1005,13 @@ import XCTest
 
         wire.connectFailure = nil
         wire.submitFailure = URLError(.networkConnectionLost)
+        let reply = Gate()
+        wire.submitGate = reply
         chat.reconnect.open()
+        await waitUntil("it goes out") { chat.model.messages.last?.content == "Ship it" }
+        // The reattach after the lost answer would clear the mark; it stays out of reach here.
+        wire.connectGate = Gate()
+        reply.open()
         await waitUntil("it came back") { chat.model.waitingSend == nil }
 
         XCTAssertEqual(returned.map(\.text), ["Ship it"])
@@ -1130,7 +1136,8 @@ import XCTest
     }
 
     /// A second Send while the first is still being written stays the composer's, even once the
-    /// chat reconnected meanwhile: only the first goes out, and the second stays in the draft.
+    /// chat reconnected meanwhile onto another client's reply and it is a Queue: only the first
+    /// goes out, and the second stays in the draft.
     func testASecondSendWhileTheFirstIsWrittenLeavesTheFirstWaiting() async throws {
         let disk = HookedDrafts()
         let (chat, wire, drafts) = try await offlineChat(persistence: disk)
@@ -1138,11 +1145,12 @@ import XCTest
         drafts.setDraft("Ship it", for: key)
         await disk.setBeforeNextWrite { [unowned self] in
             wire.connectFailure = nil
+            wire.running = true
             chat.reconnect.open()
-            await waitUntil("reconnected") { !chat.model.isViewingCachedData }
+            await waitUntil("reconnected onto the reply") { chat.model.activeStreamID != nil }
             drafts.setDraft("And this", for: key)
             // Not awaited: a second write would wait on this one.
-            Task { _ = await chat.model.send("And this", isPlainText: true) }
+            Task { _ = await chat.model.submitStreamingMessage("And this", behavior: .queue) }
             await waitUntil("the second Send is refused") { chat.model.sendErrorMessage != nil }
         }
 
