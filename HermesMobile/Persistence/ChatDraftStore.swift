@@ -197,6 +197,23 @@ struct ChatDraftKey: Hashable, Sendable {
 protocol ChatDraftPersisting: Sendable {
     func load() async -> [ChatDraftKey: ChatDraft]
     func write(_ drafts: [ChatDraftKey: ChatDraft]) async throws
+    /// Whether the most recent `load` found an existing file it could not read.
+    /// Default false: reads are assumed to succeed.
+    func unreadableFileDetected() async -> Bool
+}
+
+extension ChatDraftPersisting {
+    func unreadableFileDetected() async -> Bool { false }
+}
+
+/// A refused write: the on-disk drafts file exists but could not be read this
+/// session, and writing the in-memory (possibly empty) state could destroy
+/// drafts a later read would recover. The debounced retry picks the write back
+/// up once a read succeeds.
+private struct UnreadableDraftsFileError: LocalizedError {
+    var errorDescription: String? {
+        String(localized: "The saved drafts could not be read, so nothing was written yet.")
+    }
 }
 
 actor ChatDraftFilePersistence: ChatDraftPersisting {
@@ -522,6 +539,9 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
 
     private let fileManager: FileManager
     private let fileURL: URL
+    /// Set while the drafts file exists but the last read could not open it. A file
+    /// that reads but fails to decode does not count: that one is treated as empty.
+    private var didFailLastRead = false
 
     init(
         fileManager: FileManager = .default,
@@ -536,10 +556,26 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
     }
 
     func load() async -> [ChatDraftKey: ChatDraft] {
-        guard fileManager.fileExists(atPath: fileURL.path) else { return [:] }
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            didFailLastRead = false
+            return [:]
+        }
+
+        // A read failure is recoverable (the device was locked, transient I/O):
+        // the file may be intact, so the store refuses writes until a read
+        // succeeds. A file that reads but does not decode is treated as empty,
+        // as before.
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            didFailLastRead = true
+            Self.logger.warning("Could not read persisted chat drafts: \(error.localizedDescription, privacy: .public)")
+            return [:]
+        }
+        didFailLastRead = false
 
         do {
-            let data = try Data(contentsOf: fileURL)
             let document = try JSONDecoder().decode(Document.self, from: data)
             guard document.version.map(Self.readableVersions.contains) == true else { return [:] }
 
@@ -552,6 +588,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             return [:]
         }
     }
+
+    func unreadableFileDetected() -> Bool { didFailLastRead }
 
     func write(_ drafts: [ChatDraftKey: ChatDraft]) async throws {
         let nonEmptyDrafts = drafts.filter { !$0.value.isEmpty }
@@ -607,6 +645,10 @@ final class ChatDraftStore {
     /// the discard; that must not bring back a draft nobody can open.
     private var deletedSessionKeys: Set<ChatDraftKey> = []
     private var loadTask: Task<[ChatDraftKey: ChatDraft], Never>?
+    /// The last load found the drafts file present but unreadable: `loadIfNeeded`
+    /// stays unloaded to retry, and `persistNow` refuses writes so the intact
+    /// on-disk file can never be replaced by the empty in-memory state.
+    private var lastLoadFailed = false
     private var persistTask: Task<Void, Never>?
     private var isLoaded = false
     private let retainedByteLimit: Int
@@ -1190,6 +1232,9 @@ final class ChatDraftStore {
 
     private func persistNow() async throws {
         await loadIfNeeded()
+        if lastLoadFailed {
+            throw UnreadableDraftsFileError()
+        }
         await lockStorage()
         defer { unlockStorage() }
         try await persistence.write(drafts)
@@ -1245,6 +1290,17 @@ final class ChatDraftStore {
         guard let loadTask else { return }
         let persistedDrafts = await loadTask.value
         guard !isLoaded else { return }
+
+        if await persistence.unreadableFileDetected() {
+            // The drafts file exists but could not be read (the device was locked,
+            // transient I/O): stay unloaded so the next access retries, and keep
+            // `lastLoadFailed` up so writes cannot clobber the intact file with
+            // the empty in-memory state.
+            lastLoadFailed = true
+            self.loadTask = nil
+            return
+        }
+        lastLoadFailed = false
 
         for (key, draft) in persistedDrafts where !keysChangedBeforeLoad.contains(key) {
             drafts[key] = draft
