@@ -2018,7 +2018,7 @@ final class SessionListMutationTests: XCTestCase {
     }
 
     @MainActor
-    func testRemoteSessionSearchAppendsLoadedContentMatchesAfterLocalMatchesAndPreservesProjectScope() async throws {
+    func testRemoteSessionSearchAppendsLoadedContentAndArchivedMatchesAfterLocalMatchesAndPreservesProjectScope() async throws {
         let viewModel = try makeViewModel { request in
             switch request.url?.path {
             case "/api/sessions":
@@ -2069,11 +2069,13 @@ final class SessionListMutationTests: XCTestCase {
                     {"session_id": "content-other-project", "title": "Roadmap", "match_type": "content"},
                     {"session_id": "local-title", "title": "Needle planning", "match_type": "content"},
                     {"session_id": "unknown-session", "title": "Unknown", "match_type": "content"},
-                    {"session_id": "archived-session", "title": "Archived", "match_type": "content"},
+                    {"session_id": "archived-session", "title": "Archived", "project_id": "project-1", "last_message_at": 50, "match_type": "content", "archived": true},
+                    {"session_id": "archived-title", "title": "Needle old", "project_id": "project-2", "last_message_at": 5, "match_type": "title", "archived": true},
+                    {"session_id": "cron_archived", "title": "Needle cron", "last_message_at": 60, "match_type": "title", "archived": true},
                     {"session_id": "title-only", "title": "Needle remote", "match_type": "title"}
                   ],
                   "query": "needle",
-                  "count": 6
+                  "count": 8
                 }
                 """, for: request)
             default:
@@ -2087,15 +2089,23 @@ final class SessionListMutationTests: XCTestCase {
 
         XCTAssertEqual(
             viewModel.visibleSessions(searchText: "needle", selectedProjectID: "project-1").compactMap(\.sessionId),
-            ["local-title", "content-project"]
+            ["local-title", "archived-session", "content-project"]
         )
         XCTAssertEqual(
             viewModel.visibleSessions(searchText: "needle", selectedProjectID: "project-2").compactMap(\.sessionId),
-            ["content-other-project"]
+            ["content-other-project", "archived-title"]
         )
         XCTAssertEqual(
             viewModel.visibleSessions(searchText: "needle", selectedProjectID: nil).compactMap(\.sessionId),
-            ["local-title", "content-other-project", "content-project"]
+            ["local-title", "cron_archived", "archived-session", "content-other-project", "content-project", "archived-title"]
+        )
+        XCTAssertEqual(
+            viewModel.visibleSessions(
+                searchText: "needle",
+                selectedProjectID: nil,
+                automatedVisibility: AutomatedSessionVisibility(showsCron: false, showsCli: true)
+            ).compactMap(\.sessionId),
+            ["local-title", "archived-session", "content-other-project", "content-project", "archived-title"]
         )
     }
 
