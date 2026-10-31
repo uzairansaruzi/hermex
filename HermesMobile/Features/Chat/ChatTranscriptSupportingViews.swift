@@ -1321,12 +1321,16 @@ struct ShortcutTextNotice: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 if showsProvenance {
-                    Text(hasHiddenCharacters
-                         ? "Added from Shortcuts with hidden characters. They can change how the text reads to the agent. Review before sending."
-                         : "Added from Shortcuts. Review before sending.")
-                        .font(.footnote)
-                        .foregroundStyle(.primary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Group {
+                        if hasHiddenCharacters {
+                            Text("Added from Shortcuts with hidden characters. They can change how the text reads to the agent. Review before sending.")
+                        } else {
+                            Text("Added from Shortcuts. Review before sending.")
+                        }
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
                     if hasHiddenCharacters {
                         Button("Remove Hidden Characters", action: removeHiddenCharacters)
                             .font(.footnote.weight(.semibold))

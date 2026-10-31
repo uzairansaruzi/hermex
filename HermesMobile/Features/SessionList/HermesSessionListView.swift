@@ -376,7 +376,7 @@ struct HermesSessionListView: View {
         .navigationDestination(item: $navigation.covers.chat) { chat in
             // `/sessions` and `/resume` in the chat come back here, in the chat's Profile, searching
             // what they name.
-            ChatView(hermesSession: covers.building(chat), onReplace: { self.covers.chat = $0 }, onOpenSessions: { opened in
+            ChatView(hermesSession: covers.building(chat), onReplace: { replace(chat, with: $0) }, onOpenSessions: { opened in
                 self.covers.chat = nil
                 if let listed = opened.profile, listed != profile || viewModel.hermesShowsAllProfiles {
                     Task { await viewModel.selectHermesProfile(listed) }
@@ -420,7 +420,7 @@ struct HermesSessionListView: View {
 
     @ViewBuilder private var regularWidthDetail: some View {
         if let chat = covers.chat {
-            ChatView(hermesSession: covers.building(chat), onReplace: { covers.chat = $0 }, onOpenSessions: { opened in
+            ChatView(hermesSession: covers.building(chat), onReplace: { replace(chat, with: $0) }, onOpenSessions: { opened in
                 covers.chat = nil
                 if let listed = opened.profile, listed != profile || viewModel.hermesShowsAllProfiles {
                     Task { await viewModel.selectHermesProfile(listed) }
@@ -773,6 +773,13 @@ struct HermesSessionListView: View {
     /// Opens the new session a Shortcut asked for (#1180) over whatever covers the rows.
     private func openPendingNewChat() {
         if covers.open(pendingNewChat, on: entry, listed: profile, isLive: viewModel.isHermesLive) { pendingNewChat = nil }
+    }
+
+    /// Shows `replacement` in `chat`'s place (a Profile picked in an empty chat, `/clear`). A
+    /// Shortcut text's review goes with it (#1402), so the next waiting text doesn't open over it.
+    private func replace(_ chat: HermesSessionChat, with replacement: HermesSessionChat) {
+        shortcutReview.replace(chat.id, replacement.id)
+        covers.chat = replacement
     }
 
     /// Opens a share (#1181) as a new session over whatever covers the rows (#1212), once `transfer`

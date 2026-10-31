@@ -307,6 +307,7 @@ struct ContentView: View {
         ShortcutTextReview(
             chat: shares.reviewing, hasWaiting: shares.hasWaitingShortcutText,
             begin: { shares.beginReview(in: $0) },
+            replace: { shares.moveReview(from: $0, to: $1) },
             end: { shares.endReview(in: $0, directory: HermesShareDraft.containerURL(), active: authManager.state.server,
                                     servers: authManager.servers) },
             discardNext: { shares.discardNextShortcutText(in: HermesShareDraft.containerURL()) }
@@ -425,6 +426,14 @@ struct SharedImportQueue {
         reserveNext(in: directory, active: active, servers: servers)
     }
 
+    /// The reviewing `chat` gave way to `replacement` in its place, as a Profile change in an
+    /// empty chat does with its draft: the review goes with it. A chat that isn't the reviewing
+    /// one changes nothing.
+    mutating func moveReview(from chat: UUID, to replacement: UUID) {
+        guard reviewing == chat else { return }
+        reviewing = replacement
+    }
+
     /// The home that showed the reviewing chat went (a server switch or sign-out). Waiting texts
     /// open on the next reservation, not at once, so the switch isn't undone for another server's.
     mutating func endReview() {
@@ -468,13 +477,15 @@ struct SharedImportQueue {
 }
 
 /// The Shortcut texts waiting behind the one a Hermes chat shows (#1402). The Sessions list
-/// begins a review as it moves a text into its chat and ends it when that chat closes; the chat
-/// offers Open Next and Discard while one waits. `ContentView` makes it from its queue.
+/// begins a review as it moves a text into its chat, moves it to a chat that replaces that one
+/// in place, and ends it when the chat closes; the chat offers Open Next and Discard while one
+/// waits. `ContentView` makes it from its queue.
 struct ShortcutTextReview {
     /// The chat showing a Shortcut's text.
     var chat: UUID?
     var hasWaiting = false
     var begin: (UUID) -> Void = { _ in }
+    var replace: (UUID, UUID) -> Void = { _, _ in }
     var end: (UUID) -> Void = { _ in }
     var discardNext: () -> Void = {}
 

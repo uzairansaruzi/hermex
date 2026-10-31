@@ -1115,7 +1115,8 @@ final class SharedDraftStoreTests: XCTestCase {
     }
 
     /// Later Shortcut texts wait while the first one's chat shows it, never replacing it on their
-    /// own: Discard deletes the next unopened, and Open Next (or that chat closing) opens it.
+    /// own, also once a Profile change moves it into a new chat: Discard deletes the next
+    /// unopened, and Open Next (or that chat closing) opens it.
     func testALaterShortcutTextWaitsWhileTheFirstIsReviewed() throws {
         let servers = [account(hermes, .hermes)]
         let inbox = try temporaryDirectory()
@@ -1135,9 +1136,11 @@ final class SharedDraftStoreTests: XCTestCase {
         XCTAssertTrue(queue.hasWaitingShortcutText)
 
         queue.discardNextShortcutText(in: inbox)
-        queue.endReview(in: UUID(), directory: inbox, active: hermes, servers: servers)
-        XCTAssertNil(queue.pending, "Another chat closing doesn't release it")
+        let replacement = UUID()
+        queue.moveReview(from: chat, to: replacement)
         queue.endReview(in: chat, directory: inbox, active: hermes, servers: servers)
+        XCTAssertNil(queue.pending, "The chat it moved to still shows the first")
+        queue.endReview(in: replacement, directory: inbox, active: hermes, servers: servers)
         XCTAssertEqual(queue.pending?.sharedImport.draft, "Third", "Discard deleted the second")
     }
 
