@@ -294,7 +294,7 @@ final class ChatAttachmentCoordinator {
     func outgoingAttachments(_ attachments: [PendingAttachment]) -> [HermesChatTurnCoordinator.OutgoingAttachment] {
         attachments.map { attachment in
             HermesChatTurnCoordinator.OutgoingAttachment(
-                name: attachment.name, mime: attachment.mime, isImage: attachment.isImage
+                id: attachment.id, name: attachment.name, mime: attachment.mime, isImage: attachment.isImage
             ) { [draftAttachmentStore] in
                 guard let file = attachment.draftFileName else { throw BotAttachmentFailure.unreadable }
                 let data = try await draftAttachmentStore.data(named: file)
