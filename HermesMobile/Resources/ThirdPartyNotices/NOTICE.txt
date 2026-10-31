@@ -3,7 +3,7 @@ Hermex third-party notices
 This folder contains license notices for third-party code and assets bundled
 with the iOS app.
 
-- LDSwiftEventSource / swift-eventsource 3.3.0
+- LDSwiftEventSource / swift-eventsource 3.4.0
   See LDSwiftEventSource-LICENSE.txt.
 - MarkdownUI / swift-markdown-ui 2.4.1
   See MarkdownUI-LICENSE.txt.
@@ -17,7 +17,7 @@ with the iOS app.
   See KeychainAccess-LICENSE.txt.
 - NetworkImage 6.0.1
   See NetworkImage-LICENSE.txt.
-- swift-cmark / cmark-gfm 0.7.1
+- swift-cmark / cmark-gfm 0.9.0
   See swift-cmark-COPYING.txt.
 - Lucide icons
   See LucideIcons-LICENSE.txt.
