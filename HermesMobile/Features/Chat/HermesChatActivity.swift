@@ -90,7 +90,7 @@ struct HermesPlanState: Equatable {
 /// `HermesChatTurnCoordinator` owns it and only forwards its frames and snapshots here;
 /// `ChatView` draws the plan pinned above the composer while its turn runs (`pinnedPlan`),
 /// then at the top of that turn (`settledPlan`), the outcome row under the failed or warned
-/// turn, and the workers button while `delegatedWork` counts any. Never cached.
+/// turn, and a worker preview and toolbar button while `delegatedWork` counts any. Never cached.
 @MainActor @Observable final class HermesChatActivity {
     /// A plan out of the strip, at the top of its turn: after that turn's prompt.
     struct SettledPlan: Equatable {

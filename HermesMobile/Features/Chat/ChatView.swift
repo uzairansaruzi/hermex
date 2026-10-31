@@ -1989,11 +1989,16 @@ struct ChatView: View {
             if #available(iOS 26, *) { ToolbarSpacer(.fixed, placement: .topBarTrailing) }
             ToolbarItem(placement: .topBarTrailing) {
                 HermesDelegatedWorkButton(count: work.activeCount) {
-                    showsDelegatedWork = true
-                    Task { await work.refresh() }
+                    openDelegatedWork()
                 }
             }
         }
+    }
+
+    private func openDelegatedWork() {
+        guard !viewModel.isViewingCachedData, let work = viewModel.hermesActivity?.delegatedWork else { return }
+        showsDelegatedWork = true
+        Task { await work.refresh() }
     }
 
     /// A Hermes chat's running plan, pinned above the composer while it has an open step
@@ -2156,7 +2161,9 @@ struct ChatView: View {
             onCopyQueuedPrompt: { text in
                 UIPasteboard.general.string = text
                 ChatHaptics.copied(isEnabled: isHapticsEnabled)
-            }
+            },
+            delegatedWork: viewModel.hermesActivity?.delegatedWork,
+            onOpenDelegatedWork: openDelegatedWork
         )
         // Off the main body chain, which is at the type-checker's limit.
         .onChange(of: viewModel.latestRunOutcome) {
