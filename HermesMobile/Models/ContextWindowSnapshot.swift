@@ -112,22 +112,18 @@ enum ContextWindowFormatter {
         return cost.formattedCost()
     }
 
+    /// Compact, locale-aware counts ("12.3K" in English, "1,2 Mio." in German, "1.2万" in
+    /// Japanese); each locale's compact data decides where abbreviations start, so a value
+    /// is never wrong, only longer.
     static func formatTokens(_ count: Int) -> String {
-        if count >= 1_000_000 {
-            return String(format: "%.1fM", Double(count) / 1_000_000)
-        } else if count >= 1_000 {
-            return String(format: "%.1fK", Double(count) / 1_000)
-        } else {
-            return "\(count)"
-        }
+        count.formatted(.number.notation(.compactName).precision(.fractionLength(0...1)))
     }
 }
 
 extension Double {
-    func formattedCost(collapsingZeroCents: Bool = false) -> String {
-        if collapsingZeroCents && self == 0 {
-            return "$0.00"
-        }
-        return String(format: "$%.4f", self)
+    /// The app's USD presentation (`usageFormattedCost`): the code is fixed whatever the
+    /// locale, the presentation localizes, and sub-cent amounts keep four digits.
+    func formattedCost() -> String {
+        usageFormattedCost(self)
     }
 }
