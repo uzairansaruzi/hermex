@@ -1054,8 +1054,10 @@ final class ChatViewModel {
     /// One reveal tick: shows buffered assistant text through `StreamingRevealGate`
     /// and all buffered reasoning, then reschedules only while a fragment is held.
     /// Completion paths (done/cancel/error/interim/snapshot) skip the gate via
-    /// `flushPendingStreamingContent()`, which cancels any scheduled tick.
+    /// `flushPendingStreamingContent()`, which cancels any scheduled tick. Each tick is a
+    /// `Stream Batch Apply` interval with `forced=0`; a forced flush reports `forced=1`.
     private func revealStreamingContentTick() {
+        let signpost = performanceSignposter.beginInterval("Stream Batch Apply")
         var didMutate = false
         if flushAssistantTokens(throughRevealGate: true) {
             didMutate = true
@@ -1071,6 +1073,10 @@ final class ChatViewModel {
         if heldStreamingFragmentLastTick {
             scheduleStreamingContentFlush()
         }
+        performanceSignposter.endInterval(
+            "Stream Batch Apply", signpost,
+            "mutated=\(didMutate ? 1 : 0, privacy: .public) forced=0"
+        )
     }
 
     private func cancelPendingStreamingContentFlush() {
@@ -1106,7 +1112,10 @@ final class ChatViewModel {
         if didMutate {
             scheduleStreamingScrollTrigger()
         }
-        performanceSignposter.endInterval("Stream Batch Apply", signpost, "mutated=\(didMutate ? 1 : 0, privacy: .public)")
+        performanceSignposter.endInterval(
+            "Stream Batch Apply", signpost,
+            "mutated=\(didMutate ? 1 : 0, privacy: .public) forced=1"
+        )
     }
 
     private var requestProfileName: String? {

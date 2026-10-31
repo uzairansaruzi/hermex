@@ -763,6 +763,7 @@ struct ChatTranscriptMessageBlock: View, Equatable {
     }
 
     var body: some View {
+        let _ = RenderProbe.hit(.transcriptMessageBlock, renderID: transcriptMessage.renderID)
         let foldedQuestions = Self.foldedQuestionLines(
             in: toolCallGroups,
             foldState: foldState,
