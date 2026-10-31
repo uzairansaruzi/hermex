@@ -297,35 +297,25 @@ enum AgentRunActivityStatus: String, Codable, Hashable, CaseIterable {
             String(localized: "Cancelled")
         }
     }
+}
 
-    var compactTitle: String {
-        switch self {
-        case .starting:
-            String(localized: "Start")
-        case .thinking:
-            String(localized: "Think")
-        case .usingTool:
-            String(localized: "Tool")
-        case .searchingFiles:
-            String(localized: "Search")
-        case .readingFiles:
-            String(localized: "Files")
-        case .runningCommand:
-            String(localized: "Cmd")
-        case .responding:
-            String(localized: "Reply")
-        case .waiting:
-            "…"
-        case .waitingForApproval:
-            String(localized: "Approve")
-        case .waitingForClarification:
-            String(localized: "Clarify")
-        case .complete:
-            String(localized: "Done")
-        case .failed:
-            String(localized: "Fail")
-        case .cancelled:
-            String(localized: "Stop")
+/// What the Dynamic Island's compact trailing side shows (#1398). Working says
+/// nothing: the leading glyph already names the phase. Asks and outcomes are
+/// decided before staleness, so a stale approval still asks; only stale work
+/// reads as the latest status.
+enum AgentRunCompactPresentation: Equatable {
+    case working, approval, clarification, waiting, complete, failed, cancelled, staleWork
+
+    init(state: AgentRunActivityAttributes.ContentState) {
+        switch state.status {
+        case .waitingForApproval: self = .approval
+        case .waitingForClarification: self = .clarification
+        case .waiting: self = .waiting
+        case .complete: self = .complete
+        case .failed: self = .failed
+        case .cancelled: self = .cancelled
+        case .starting, .thinking, .usingTool, .searchingFiles, .readingFiles, .runningCommand, .responding:
+            self = state.isStale ? .staleWork : .working
         }
     }
 }
