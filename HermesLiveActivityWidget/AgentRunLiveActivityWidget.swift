@@ -12,7 +12,7 @@ struct HermesLiveActivityWidgetBundle: WidgetBundle {
 struct AgentRunLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: AgentRunActivityAttributes.self) { context in
-            AgentRunLockScreenView(context: context)
+            AgentRunActivityContent(context: context)
                 .agentRunPalette(on: .lockScreen)
                 .activityBackgroundTint(AgentRunPalette.Surface.lockScreen.backgroundTint)
                 .activitySystemActionForegroundColor(AgentRunPalette.Surface.lockScreen.actionForeground)
@@ -49,6 +49,81 @@ struct AgentRunLiveActivityWidget: Widget {
             .widgetURL(AgentRunTapTarget.url(attributes: context.attributes, sessionID: context.presentedState.sessionID, activityID: context.activityID))
             // The keyline only rings the iPhone's black Island, so it keeps the dark hues.
             .keylineTint(AgentRunPalette.dark.status(context.presentedState.status, isStale: context.presentedState.isStale))
+        }
+        .supplementalActivityFamilies([.small])
+    }
+}
+
+/// The activity's content view for every family: the two-line small layout on the
+/// Apple Watch Smart Stack and CarPlay (#1400), the Lock Screen card everywhere else.
+/// The family is read here because ActivityConfiguration's builder closures get no
+/// environment.
+private struct AgentRunActivityContent: View {
+    let context: ActivityViewContext<AgentRunActivityAttributes>
+    @Environment(\.activityFamily) private var family
+
+    var body: some View {
+        if family == .small {
+            AgentRunSmallView(state: context.presentedState, isBot: context.attributes.bot != nil)
+        } else {
+            AgentRunLockScreenView(context: context)
+        }
+    }
+}
+
+/// Title first, then state (#1400): the full ask or outcome title, the elapsed timer
+/// while working, or the latest-status wording for stale work. Stale asks stay asks.
+/// No excerpt, chips or pill: the card has to make sense at a glance without a tap.
+private struct AgentRunSmallView: View {
+    let state: AgentRunActivityAttributes.ContentState
+    let isBot: Bool
+    @Environment(\.agentRunPalette) private var palette
+
+    private var presentation: AgentRunCompactPresentation { AgentRunCompactPresentation(state: state) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Image(systemName: AgentRunStatusStyle.symbolName(for: state.status))
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(palette.status(state.status, isStale: state.isStale))
+                    .widgetAccentable()
+                    // Working has no status words on the second line, so the glyph names the phase.
+                    .accessibilityLabel(state.status.title)
+                    .accessibilityHidden(presentation != .working)
+
+                Text(state.sessionTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(palette.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+
+            statusLine
+                .font(.subheadline)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .minimumScaleFactor(0.82)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var statusLine: some View {
+        switch presentation {
+        case .working:
+            AgentRunElapsedTimerText(startedAt: state.startedAt, alignment: .leading)
+                .foregroundStyle(palette.secondaryText)
+        case .staleWork:
+            Text(AgentRunStaleBotPresentation.presentation(state: state, isBot: isBot)?.lead
+                 ?? String(localized: "Latest status shown"))
+                .foregroundStyle(palette.secondaryText)
+        case .approval, .clarification, .waiting, .complete, .failed, .cancelled:
+            Text(state.status.title)
+                .foregroundStyle(state.isStale ? palette.secondaryText : palette.status(state.status, isStale: false))
         }
     }
 }
