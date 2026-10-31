@@ -1,0 +1,31 @@
+{
+  "_note" : "Synthetic shape reference for HermesBackgroundProcessesTests (#1420). Not captured from a server: it follows the process.list result shape at the HERMES_AGENT_TESTED_SHA pin (ProcessEntry requires only session_id; command, cwd, status, uptime, pid, output_tail, output_preview, exit_code, completion_reason and termination_source are optional) and includes fields a future host might add, which the model must ignore.",
+  "processes" : [
+    {
+      "session_id" : "bg-synthetic-running",
+      "command" : "python3 -m http.server 8000",
+      "cwd" : "/tmp/hermex-fixture-demo",
+      "status" : "running",
+      "uptime" : "0:01:23",
+      "pid" : 4242,
+      "output_tail" : "\u001b[32mServing HTTP on 0.0.0.0 port 8000\u001b[0m (http://0.0.0.0:8000/) ..."
+    },
+    {
+      "session_id" : "bg-synthetic-exited",
+      "command" : "sleep 600",
+      "status" : "exited",
+      "exit_code" : 0,
+      "completion_reason" : "completed",
+      "termination_source" : "self",
+      "output_tail" : "done\n"
+    },
+    {
+      "session_id" : "bg-synthetic-minimal",
+      "pid" : 99,
+      "owner_task_id" : "task-9",
+      "started_at" : "2026-10-30T00:00:00Z",
+      "session_scoped" : true,
+      "output_preview" : "waiting for input"
+    }
+  ]
+}

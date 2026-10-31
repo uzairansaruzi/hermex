@@ -86,7 +86,8 @@ struct HermesPlanState: Equatable {
     }
 }
 
-/// A Hermes chat's plan, how its last turn ended (#1139), and its delegated workers (#1140).
+/// A Hermes chat's plan, how its last turn ended (#1139), its delegated workers (#1140),
+/// and its background processes (#1420).
 /// `HermesChatTurnCoordinator` owns it and only forwards its frames and snapshots here;
 /// `ChatView` draws the plan pinned above the composer while its turn runs (`pinnedPlan`),
 /// then at the top of that turn (`settledPlan`), the outcome row under the failed or warned
@@ -132,9 +133,12 @@ struct HermesPlanState: Equatable {
 
     /// The session's live workers, listed over the chat's own socket.
     let delegatedWork: HermesDelegatedWork
+    /// The session's background commands (#1420), listed over the same socket.
+    let backgroundProcesses: HermesBackgroundProcesses
 
     init(wire: any BotTransport) {
         delegatedWork = HermesDelegatedWork(wire: wire)
+        backgroundProcesses = HermesBackgroundProcesses(wire: wire)
     }
 
     private var planState = HermesPlanState()
@@ -206,9 +210,11 @@ struct HermesPlanState: Equatable {
         failedPrompt = nil; failedPromptRowID = nil; failedTurnStartedAt = nil
     }
 
-    /// The running turn ended, however it ended: an open plan settles into it.
+    /// The running turn ended, however it ended: an open plan settles into it, and the
+    /// background processes the turn may have started are re-listed (#1420).
     func turnDidEnd() {
         isTurnRunning = false
+        Task { [backgroundProcesses] in await backgroundProcesses.refresh() }
     }
 
     /// The running turn's `todo.updated`: the plan at that revision is this turn's, including

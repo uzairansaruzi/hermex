@@ -182,6 +182,17 @@ enum HermesCall: Equatable, Sendable {
     case subagentTail(sessionID: String, subagentID: String)
     case subagentInterrupt(sessionID: String, subagentID: String)
 
+    // Background processes (#1420): the session's own commands only. Both are
+    // `live_session=True` upstream, so `sessionID` is the attached runtime id, and
+    // `process.list`'s entries name themselves by `session_id`.
+    /// The session's running and recently finished background commands, each entry's
+    /// `output_tail` the last 4,000 characters of its buffer.
+    case processList(sessionID: String)
+    /// Stops one background command: `{session_id, process_id}`. The host answers
+    /// `killed|already_exited|not_found|error`; without `process_id` it answers 4012,
+    /// a process that is not this session's is 4044, and other refusals use 5010.
+    case processKill(sessionID: String, processID: String)
+
     // Rooms: reads, participation and lifecycle; never peer administration.
     case groupsCapabilities
     case groupsList(offset: Int)
@@ -336,6 +347,8 @@ enum HermesCall: Equatable, Sendable {
         case .subagentList: return "subagent.list"
         case .subagentTail: return "subagent.tail"
         case .subagentInterrupt: return "subagent.interrupt"
+        case .processList: return "process.list"
+        case .processKill: return "process.kill"
         case .groupsCapabilities: return "groups.capabilities"
         case .groupsList: return "groups.list"
         case .groupsState: return "groups.state"
@@ -425,7 +438,8 @@ enum HermesCall: Equatable, Sendable {
         case .sessionSteer(let sessionID, let text), .sessionRedirect(let sessionID, let text),
              .promptBtw(let sessionID, let text), .promptBackground(let sessionID, let text):
             return ["session_id": .string(sessionID), "text": .string(text)]
-        case .sessionInterrupt(let sessionID), .commandsCatalog(let sessionID), .subagentList(let sessionID):
+        case .sessionInterrupt(let sessionID), .commandsCatalog(let sessionID), .subagentList(let sessionID),
+             .processList(let sessionID):
             return ["session_id": .string(sessionID)]
         case .fileAttach(let sessionID, let name, let dataURL):
             return ["session_id": .string(sessionID), "name": .string(name), "data_url": .string(dataURL)]
@@ -504,6 +518,8 @@ enum HermesCall: Equatable, Sendable {
             return params
         case .subagentTail(let sessionID, let subagentID), .subagentInterrupt(let sessionID, let subagentID):
             return ["session_id": .string(sessionID), "subagent_id": .string(subagentID)]
+        case .processKill(let sessionID, let processID):
+            return ["session_id": .string(sessionID), "process_id": .string(processID)]
         case .groupsList(let offset):
             return ["limit": .number(Double(Self.roomPageSize)), "offset": .number(Double(offset))]
         case .groupsState(let roomID), .groupsDisband(let roomID): return ["room_id": .string(roomID)]
@@ -559,6 +575,7 @@ enum HermesCall: Equatable, Sendable {
         case .sessionCompress(let runtime, let focus, let profile):
             valid = !runtime.isEmpty && !profile.isEmpty && focus?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != true
         case .sessionTitle(let sessionID), .commandsCatalog(let sessionID), .subagentList(let sessionID),
+             .processList(let sessionID),
              .sessionClose(let sessionID), .sessionUndo(let sessionID):
             valid = !sessionID.isEmpty
         case .sessionRename(let runtime, let title):
@@ -602,6 +619,8 @@ enum HermesCall: Equatable, Sendable {
             valid = !word.isEmpty && !word.contains(where: \.isNewline) && !Self.isBlank(cwd) && !profile.isEmpty
         case .subagentTail(let sessionID, let subagentID), .subagentInterrupt(let sessionID, let subagentID):
             valid = !sessionID.isEmpty && !subagentID.isEmpty
+        case .processKill(let sessionID, let processID):
+            valid = !sessionID.isEmpty && !processID.isEmpty
         case .connectionRespond(let sessionID, let opID, let answer):
             let answerIsValid: Bool
             switch answer {

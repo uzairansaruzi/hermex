@@ -251,6 +251,20 @@ cache's copy) that opens `HermesDelegatedWorkView`. A history row with
 `display_kind: "async_delegation_complete"` draws as `HermesDelegationCompletionCard`; live, it
 arrives with the newest rows the delivery's turn re-reads when it ends.
 
+Its background commands are `HermesChatActivity.backgroundProcesses` (#1420), a
+`HermesBackgroundProcesses` on the same socket and attach generation: listed on connect, at a
+turn's end, when the sheet opens, or on an explicit pull, never polled; a reset or leaving
+drops it. While any process runs, `ChatView` shows its own glass toolbar button (`cpu` and the
+running count; hidden on the offline cache's copy) that opens `HermesBackgroundProcessesView`.
+Each row shows the command, the host's status and uptime, and — on request — an ANSI-free tail
+bounded to 16 KB on top of the host's own 4,000-character `output_tail`. Stop asks first,
+re-lists before dispatch, and sends `process.kill({session_id, process_id})` for that one
+process only; `not_found` and RPC 4044 refresh, `error` and unknown statuses keep the row and
+report the failure, and a lost reply is never retried. `process.stop` is never called: its
+handler kills every process in the host's registry without an ownership filter, across
+sessions. A host that answers `-32601` for `process.list` hides the feature through the
+connection's missing-method cache.
+
 Its host requests are `HermesChatRequests` (#1011, #1141), on the Bot request model below and
 the engine's `answer`. An approval takes the Sessions overlay with only the host's choices
 (`ApprovalScope.Host.hermes`); a question, a sudo or secret prompt, a Desktop task and a
