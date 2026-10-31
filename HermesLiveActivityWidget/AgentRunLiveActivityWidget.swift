@@ -279,10 +279,10 @@ private struct AgentRunLockScreenView: View {
         }
 
         if context.presentedState.isFinal {
-            return "Response is ready to review."
+            return String(localized: "Response is ready to review.", table: "Auxiliary")
         }
 
-        return "Waiting for the next agent update."
+        return String(localized: "Waiting for the next agent update.", table: "Auxiliary")
     }
 }
 

@@ -1,0 +1,91 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Completed in %@s": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completed in %@s"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Completat en %@s"
+          }
+        }
+      },
+      "comment": "Visible tool-call completion status and its accessibility label; %@ is a one-decimal duration."
+    },
+    "Lines %lld-%lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lines %lld-%lld"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Línies %lld-%lld"
+          }
+        }
+      },
+      "comment": "Git diff hunk range with inclusive first and last line numbers."
+    },
+    "Patch %lld of %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Patch %lld of %lld"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Fragment %lld de %lld"
+          }
+        }
+      },
+      "comment": "Synthetic git diff hunk label: one-based patch number and total patch count."
+    },
+    "Response is ready to review.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Response is ready to review."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "La resposta ja es pot revisar."
+          }
+        }
+      },
+      "comment": "Live Activity transcript fallback after a final response has no excerpt."
+    },
+    "Waiting for the next agent update.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for the next agent update."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "S'està esperant la següent actualització de l'agent."
+          }
+        }
+      },
+      "comment": "Live Activity transcript fallback while a response is still running without an excerpt."
+    }
+  },
+  "version": "1.0"
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fail when a UI string the compiler extracted is missing from Localizable.xcstrings.
 
-The app, Live Activity widget, and Notification Service Extension build with
+The app, Live Activity widget, Notification Service Extension, and share extension build with
 SWIFT_EMIT_LOC_STRINGS=YES, so every Swift compile already writes a `.stringsdata`
 file listing the localizable keys that source file uses. This reads those files
 from an existing build (no extra build) and checks each `Localizable` key against
@@ -23,9 +23,13 @@ import sys
 REPO = Path(__file__).resolve().parent.parent
 CATALOG = REPO / "HermesMobile" / "Resources" / "Localizable.xcstrings"
 TABLE = "Localizable"
-# Targets that bundle Localizable.xcstrings. The share extension bundles no catalog
-# and uses English literals (docs/agents/i18n.md), so its keys are not checked.
-TARGETS = ("HermesMobile", "HermesLiveActivityWidget", "HermesNotificationService")
+# Targets that bundle Localizable.xcstrings.
+TARGETS = (
+    "HermesMobile",
+    "HermesLiveActivityWidget",
+    "HermesNotificationService",
+    "HermesShareExtension",
+)
 
 
 def extracted_keys(derived_data, configuration):

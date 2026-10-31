@@ -16,7 +16,7 @@ final class LocalizationCatalogTests: XCTestCase {
 
     /// Non-English languages compiled into the app. Keep in sync with `knownRegions` in the
     /// project file and the languages present in `Localizable.xcstrings`.
-    private static let shippedLanguages = ["de", "es", "fr", "it", "pl", "pt-BR", "nl", "tr", "ru", "ja", "zh-Hans", "ko", "ar", "he", "ur", "zh-Hant", "zh-HK"]
+    private static let shippedLanguages = ["ca", "de", "es", "fr", "it", "pl", "pt-BR", "nl", "tr", "ru", "ja", "zh-Hans", "ko", "ar", "he", "ur", "zh-Hant", "zh-HK"]
 
     private func resourceURL(_ relativePath: String) -> URL {
         URL(fileURLWithPath: #filePath)
@@ -34,16 +34,38 @@ final class LocalizationCatalogTests: XCTestCase {
     /// True iff the language entry holds a non-empty value — either a plain `stringUnit` or
     /// a `plural` variation where every category is filled.
     private func hasNonEmptyValue(_ localization: [String: Any]) -> Bool {
-        if let value = (localization["stringUnit"] as? [String: Any])?["value"] as? String {
-            return !value.isEmpty
+        var foundValue = false
+        if let unit = localization["stringUnit"] as? [String: Any],
+           let value = unit["value"] as? String,
+           !value.isEmpty {
+            foundValue = true
         }
         if let plural = ((localization["variations"] as? [String: Any])?["plural"] as? [String: Any]), !plural.isEmpty {
-            return plural.values.allSatisfy { cat in
+            let complete = plural.values.allSatisfy { cat in
                 let value = ((cat as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String
                 return !(value ?? "").isEmpty
             }
+            return foundValue || complete
         }
-        return false
+        if let substitutions = localization["substitutions"] as? [String: Any] {
+            let complete = substitutions.values.allSatisfy { rawSubstitution in
+                guard let substitution = rawSubstitution as? [String: Any],
+                      let variations = substitution["variations"] as? [String: Any] else {
+                    return false
+                }
+                return variations.values.allSatisfy { rawCases in
+                    guard let cases = rawCases as? [String: Any], !cases.isEmpty else {
+                        return false
+                    }
+                    return cases.values.allSatisfy { rawCase in
+                        let value = (((rawCase as? [String: Any])?["stringUnit"] as? [String: Any])?["value"]) as? String
+                        return !(value ?? "").isEmpty
+                    }
+                }
+            }
+            return foundValue && complete
+        }
+        return foundValue
     }
 
     func testShippedLanguageTranslationsHaveNoEmptyValues() throws {
@@ -84,7 +106,7 @@ final class LocalizationCatalogTests: XCTestCase {
         let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertEqual(root["sourceLanguage"] as? String, "en")
         let strings = try XCTUnwrap(root["strings"] as? [String: Any])
-        XCTAssertFalse(strings.isEmpty)
+        XCTAssertEqual(strings.count, 11)
         for phrase in strings.keys {
             let entry = try XCTUnwrap(strings[phrase] as? [String: Any], phrase)
             let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], phrase)
@@ -92,7 +114,9 @@ final class LocalizationCatalogTests: XCTestCase {
                 let localization = try XCTUnwrap(localizations[language] as? [String: Any], "[\(language)] \(phrase)")
                 XCTAssertTrue(hasNonEmptyValue(localization), "[\(language)] \(phrase) is empty")
             }
+            XCTAssertTrue(phrase.contains("${applicationName}"), phrase)
         }
+        XCTAssertEqual(strings.keys.filter { $0.contains("${profile}") }.count, 3)
     }
 
     /// #887: the notification service titles relay banners "<bot name> · <label>". Every
@@ -135,5 +159,87 @@ final class LocalizationCatalogTests: XCTestCase {
                 XCTAssertNotEqual(translatedValue, key, "[\(language)] \(key) still uses English")
             }
         }
+    }
+
+    func testCatalanPluralBranchesCoverEveryEnglishCase() throws {
+        let data = try Data(contentsOf: catalogURL())
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let strings = try XCTUnwrap(root["strings"] as? [String: Any])
+
+        for (key, rawEntry) in strings {
+            guard let entry = rawEntry as? [String: Any],
+                  entry["shouldTranslate"] as? Bool != false,
+                  let localizations = entry["localizations"] as? [String: Any],
+                  let english = localizations["en"] as? [String: Any],
+                  let catalan = localizations["ca"] as? [String: Any] else {
+                continue
+            }
+
+            if let englishPlural = ((english["variations"] as? [String: Any])?["plural"] as? [String: Any]) {
+                let catalanPlural = try XCTUnwrap(
+                    (catalan["variations"] as? [String: Any])?["plural"] as? [String: Any],
+                    "\(key) is missing Catalan plural variations"
+                )
+                XCTAssertEqual(Set(catalanPlural.keys), Set(englishPlural.keys), key)
+                for (category, rawValue) in catalanPlural {
+                    let value = ((rawValue as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String
+                    XCTAssertFalse((value ?? "").isEmpty, "\(key) [\(category)] is empty")
+                }
+            }
+
+            let englishSubstitutions = english["substitutions"] as? [String: Any] ?? [:]
+            let catalanSubstitutions = catalan["substitutions"] as? [String: Any] ?? [:]
+            XCTAssertEqual(Set(catalanSubstitutions.keys), Set(englishSubstitutions.keys), key)
+            for (name, rawEnglish) in englishSubstitutions {
+                let englishVariations = (rawEnglish as? [String: Any])?["variations"] as? [String: Any] ?? [:]
+                let catalanVariations = (catalanSubstitutions[name] as? [String: Any])?["variations"] as? [String: Any] ?? [:]
+                XCTAssertEqual(Set(catalanVariations.keys), Set(englishVariations.keys), "\(key) [\(name)]")
+                for (kind, rawEnglishCases) in englishVariations {
+                    let englishCases = rawEnglishCases as? [String: Any] ?? [:]
+                    let catalanCases = catalanVariations[kind] as? [String: Any] ?? [:]
+                    XCTAssertEqual(Set(catalanCases.keys), Set(englishCases.keys), "\(key) [\(name).\(kind)]")
+                    for (category, rawCase) in catalanCases {
+                        let value = ((rawCase as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String
+                        XCTAssertFalse((value ?? "").isEmpty, "\(key) [\(name).\(kind).\(category)] is empty")
+                    }
+                }
+            }
+        }
+    }
+
+    func testCatalanAuxiliaryAndShareExtensionCatalogsAreComplete() throws {
+        for path in [
+            "HermesMobile/Resources/Auxiliary.xcstrings",
+            "HermesShareExtension/Resources/ShareExtension.xcstrings"
+        ] {
+            let data = try Data(contentsOf: resourceURL(path))
+            let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any], path)
+            XCTAssertEqual(root["sourceLanguage"] as? String, "en", path)
+            let strings = try XCTUnwrap(root["strings"] as? [String: Any], path)
+            XCTAssertFalse(strings.isEmpty, path)
+            for (key, rawEntry) in strings {
+                let localizations = try XCTUnwrap((rawEntry as? [String: Any])?["localizations"] as? [String: Any], "\(path) \(key)")
+                for language in ["en", "ca"] {
+                    let localization = try XCTUnwrap(localizations[language] as? [String: Any], "\(path) [\(language)] \(key)")
+                    XCTAssertTrue(hasNonEmptyValue(localization), "\(path) [\(language)] \(key) is empty")
+                }
+            }
+        }
+    }
+
+    func testCatalanInfoPlistStringsCoverEveryPermissionDescription() throws {
+        let url = resourceURL("HermesMobile/Resources/ca.lproj/InfoPlist.strings")
+        let values = try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String], url.path)
+        let expected = Set([
+            "NSLocalNetworkUsageDescription",
+            "NSMicrophoneUsageDescription",
+            "NSCameraUsageDescription",
+            "NSFaceIDUsageDescription",
+            "NSPhotoLibraryUsageDescription",
+            "NSPhotoLibraryAddUsageDescription",
+            "NSSpeechRecognitionUsageDescription"
+        ])
+        XCTAssertEqual(Set(values.keys), expected)
+        XCTAssertTrue(values.values.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
     }
 }
