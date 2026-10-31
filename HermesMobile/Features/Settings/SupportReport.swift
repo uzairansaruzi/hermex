@@ -48,6 +48,19 @@ struct SupportReport {
         return lines.joined(separator: "\n")
     }
 
+    /// The chat text Troubleshoot with Hermes queues (#1476): the triage playbook's starter
+    /// prompt, then this report. English like the report; the agent fetches the playbook only
+    /// once the user sends it.
+    var troubleshootingPrompt: String {
+        """
+        I'm having a problem with Hermex, the iPhone app I use to reach you. Fetch
+        \(AppConfig.triagePlaybookURL.absoluteString)
+        and follow it to help me triage it.
+
+        \(text)
+        """
+    }
+
     /// The bug report form with its app, iOS and server version inputs filled in from the
     /// report; an uncached server release is left for the user. Without the install's version and
     /// build it is the template chooser instead. Only these versions leave the phone, and only

@@ -39,7 +39,8 @@ struct ContentView: View {
             .onChange(of: shares.pending?.reservationID) {
                 switchServer(shares.shortcutRoute(state: authManager.state, servers: authManager.servers))
             }
-            .alert("Shortcut Can’t Open", isPresented: Binding(get: { unopenableShortcut != nil }, set: { isPresented in
+            .alert((unopenableShortcut?.share.sharedImport.shortcut?.origin ?? .shortcut).cantOpenTitle,
+                   isPresented: Binding(get: { unopenableShortcut != nil }, set: { isPresented in
                 // Dismissed without a button (Escape, VoiceOver's escape) is Not Now. A button's
                 // action may run after this, so the release waits a turn and skips a settled text.
                 guard !isPresented, let share = unopenableShortcut?.share else { return }
@@ -50,7 +51,10 @@ struct ContentView: View {
                 Button("Discard", role: .destructive) { consumePendingSharedImport(shortcut.share) }
                 Button("Not Now", role: .cancel) { releasePendingSharedImport(shortcut.share) }
             } message: { shortcut in
-                Text("\(shortcut.server) was removed from Hermex, so the text from Shortcuts can’t open there.")
+                switch shortcut.share.sharedImport.shortcut?.origin ?? .shortcut {
+                case .shortcut: Text("\(shortcut.server) was removed from Hermex, so the text from Shortcuts can’t open there.")
+                case .troubleshooting: Text("\(shortcut.server) was removed from Hermex, so the troubleshooting text can’t open there.")
+                }
             }
             .task {
                 // #246: on cold launch, end any Live Activity left "running" by a
