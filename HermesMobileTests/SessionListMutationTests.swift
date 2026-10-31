@@ -2659,7 +2659,9 @@ final class SessionListMutationTests: XCTestCase {
         let staleOpen = Task { @MainActor in
             await viewModel.sessionForOpening(staleSession)
         }
-        await fulfillment(of: [detailRequestStarted], timeout: 1)
+        // The bound only ends a broken pass: the throw, the fallback request and its
+        // handler all queue on a loaded runner's main actor (#1475).
+        await fulfillment(of: [detailRequestStarted], timeout: 10)
 
         let openedNewerDestination = await viewModel.sessionForOpening(newerDestination)
         releaseDetailRequest.signal()

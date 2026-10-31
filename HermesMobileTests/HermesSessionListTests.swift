@@ -507,7 +507,9 @@ import Observation
         wire.active = [live("a", "working")]
         let list = makeList(wire)
         await list.openHermes()
-        await waitUntil("states read") { !list.attentionStatesBySessionID.isEmpty }
+        // The bounds only end broken passes: every step rides the main actor, which a
+        // loaded runner can hold well past 5 s (#1475).
+        await waitUntil("states read", timeout: 30) { !list.attentionStatesBySessionID.isEmpty }
 
         wire.onDisconnect?(BotFailure.transport)
         XCTAssertTrue(list.isHermesReconnecting)
@@ -517,10 +519,10 @@ import Observation
         wire.holdsActive = true
         wire.active = [live("a", "waiting")]
         list.reconnectNow()
-        await waitUntil("rows read") { wire.connects == 2 && !list.isHermesReconnecting }
+        await waitUntil("rows read", timeout: 30) { wire.connects == 2 && !list.isHermesReconnecting }
         XCTAssertTrue(list.attentionStatesAreStale, "rows vouch for no run")
         wire.release()
-        await waitUntil("states read") { !list.attentionStatesAreStale }
+        await waitUntil("states read", timeout: 30) { !list.attentionStatesAreStale }
         XCTAssertEqual(list.attentionStatesBySessionID, ["a": .input])
 
         wire.onDisconnect?(BotFailure.outdated("0.20.0"))

@@ -9841,21 +9841,25 @@ private final class SpyListenRemoteControlCenter: ListenRemoteControlControlling
 private actor ManualAsyncDelay {
     private var waiters: [UnsafeContinuation<Void, Never>] = []
     private var registrationCount = 0
-    private var registrationObservers: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+    private var registrationWaiters: [(count: Int, fulfill: () -> Void)] = []
 
     func wait() async {
         await withUnsafeContinuation { continuation in
             waiters.append(continuation)
             registrationCount += 1
-            resumeSatisfiedRegistrationObservers()
+            resumeSatisfiedRegistrationWaiters()
         }
     }
 
     func waitForRegistrationCount(_ expectedCount: Int) async {
         guard registrationCount < expectedCount else { return }
 
-        await withCheckedContinuation { continuation in
-            registrationObservers.append((expectedCount, continuation))
+        // The bound only ends a broken pass: a client that never registers this many
+        // delays would otherwise hold the test, and the runner, forever (#1475's CI hang).
+        let registered = XCTestExpectation(description: "\(expectedCount) delays registered")
+        registrationWaiters.append((expectedCount, registered.fulfill))
+        guard await XCTWaiter().fulfillment(of: [registered], timeout: 30) == .completed else {
+            return XCTFail("the client never registered \(expectedCount) delays")
         }
     }
 
@@ -9864,11 +9868,11 @@ private actor ManualAsyncDelay {
         waiters.removeFirst().resume()
     }
 
-    private func resumeSatisfiedRegistrationObservers() {
-        let satisfied = registrationObservers.filter { $0.count <= registrationCount }
-        registrationObservers.removeAll { $0.count <= registrationCount }
-        for observer in satisfied {
-            observer.continuation.resume()
+    private func resumeSatisfiedRegistrationWaiters() {
+        let satisfied = registrationWaiters.filter { $0.count <= registrationCount }
+        registrationWaiters.removeAll { $0.count <= registrationCount }
+        for waiter in satisfied {
+            waiter.fulfill()
         }
     }
 }
