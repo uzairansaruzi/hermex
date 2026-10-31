@@ -69,7 +69,10 @@ struct HermesBackgroundProcess: Identifiable, Equatable, Sendable {
 
     /// Only a process the host reports as running — or reports no status for — may be
     /// stopped; an unrecognized status stays displayable but never stoppable.
-    var isStoppable: Bool { status == nil || !isFinished && status.lowercased() == "running" }
+    var isStoppable: Bool {
+        guard let status else { return true }
+        return !isFinished && status.lowercased() == "running"
+    }
 
     static let finishedStatuses: Set<String> = [
         "exited", "finished", "completed", "done", "failed", "killed", "cancelled", "canceled", "dead"
