@@ -1518,7 +1518,7 @@ import SwiftUI
         }
 
         func sessionMessages(_ key: String, profile: String, offset: Int?) async throws -> [BotJSON]? {
-            try await standard.sessionMessages(key: key, profile: profile, offset: offset)
+            try await standard.sessionMessages(key, profile: profile, offset: offset)
         }
 
         func speech(text: String, profile: String) async throws -> Data {
