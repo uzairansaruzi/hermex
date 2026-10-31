@@ -5692,12 +5692,12 @@ final class ChatViewModel {
 
     /// Edit a user message: truncate to just before the selected message, then send the edited text.
     /// A Hermes session cuts and resends in one call (#1049), and an edit that fails there waits in
-    /// `takeUnsentHermesEdit()` for the composer.
+    /// `takeUnsentEdit()` for the composer.
     func editMessage(_ context: MessageActionContext, newText: String, modelContext: ModelContext? = nil) async -> Bool {
         var edited = false
         defer {
             let text = newText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if hermesTurn != nil, !edited, !text.isEmpty { unsentHermesEdit = text }
+            if hermesTurn != nil, !edited, !text.isEmpty { unsentEdit = text }
         }
 
         guard context.role == .user else {
@@ -5736,12 +5736,16 @@ final class ChatViewModel {
         lastError = nil
         defer { isEditingMessage = false }
 
+        // Truncation already deleted rows on the server, so a later failure must reload the
+        // transcript and keep the edited text available (`recoverFailedTranscriptRewrite`).
+        var truncated = false
         do {
             // Truncate to remove the selected user message and everything after it
             let truncateResponse = try await client.truncateSession(
                 id: sessionID,
                 keepCount: context.fullHistoryIndex
             )
+            truncated = true
 
             // Update local state from the truncated response
             if let session = truncateResponse.session {
@@ -5781,7 +5785,11 @@ final class ChatViewModel {
             )
 
             guard let streamID = chatResponse.streamId else {
-                messageActionErrorMessage = chatResponse.error ?? String(localized: "The server did not return a stream ID after editing.")
+                unsentEdit = editedText
+                await recoverFailedTranscriptRewrite(
+                    modelContext: modelContext,
+                    message: String(localized: "The server removed the original message when the edit failed. Your text is back in the draft.")
+                )
                 return false
             }
 
@@ -5805,7 +5813,15 @@ final class ChatViewModel {
             return true
         } catch {
             lastError = error
-            messageActionErrorMessage = error.localizedDescription
+            if truncated {
+                unsentEdit = editedText
+                await recoverFailedTranscriptRewrite(
+                    modelContext: modelContext,
+                    message: String(localized: "The server removed the original message when the edit failed. Your text is back in the draft.")
+                )
+            } else {
+                messageActionErrorMessage = error.localizedDescription
+            }
             return false
         }
     }
@@ -5847,11 +5863,15 @@ final class ChatViewModel {
         stopListening()
         defer { isRegeneratingMessage = false }
 
+        // Truncation already deleted rows on the server, so a later failure must reload the
+        // transcript (`recoverFailedTranscriptRewrite`).
+        var truncated = false
         do {
             let truncateResponse = try await client.truncateSession(
                 id: sessionID,
                 keepCount: context.fullHistoryIndex
             )
+            truncated = true
 
             if let session = truncateResponse.session {
                 messages = session.messages ?? []
@@ -5889,7 +5909,10 @@ final class ChatViewModel {
             )
 
             guard let streamID = chatResponse.streamId else {
-                messageActionErrorMessage = chatResponse.error ?? String(localized: "The server did not return a stream ID after regenerating.")
+                await recoverFailedTranscriptRewrite(
+                    modelContext: modelContext,
+                    message: String(localized: "The server removed the original reply when regenerating failed. Send a follow-up to continue.")
+                )
                 return false
             }
 
@@ -5903,7 +5926,14 @@ final class ChatViewModel {
             return true
         } catch {
             lastError = error
-            messageActionErrorMessage = error.localizedDescription
+            if truncated {
+                await recoverFailedTranscriptRewrite(
+                    modelContext: modelContext,
+                    message: String(localized: "The server removed the original reply when regenerating failed. Send a follow-up to continue.")
+                )
+            } else {
+                messageActionErrorMessage = error.localizedDescription
+            }
             return false
         }
     }
@@ -5951,13 +5981,23 @@ final class ChatViewModel {
 
     // MARK: Hermes history rewinds (#1049)
 
-    /// A Hermes edit that did not go through, until `ChatView` puts it back in the composer.
-    @ObservationIgnored private var unsentHermesEdit: String?
+    /// An edit that did not go through, until `ChatView` puts it back in the composer. A webui
+    /// edit sets this after its truncate already removed rows, so the text survives to re-send.
+    @ObservationIgnored private var unsentEdit: String?
 
-    /// Takes the text of a Hermes edit that did not go through, so the composer keeps it.
-    func takeUnsentHermesEdit() -> String? {
-        defer { unsentHermesEdit = nil }
-        return unsentHermesEdit
+    /// Takes the text of an edit that did not go through, so the composer keeps it.
+    func takeUnsentEdit() -> String? {
+        defer { unsentEdit = nil }
+        return unsentEdit
+    }
+
+    /// A webui rewrite (edit or regenerate) already deleted rows on the server before its
+    /// replacement send failed. Reload what the server still has so the transcript shows the
+    /// truth, then explain what happened; the caller decides what text, if any, the composer
+    /// keeps for re-sending.
+    private func recoverFailedTranscriptRewrite(modelContext: ModelContext?, message: String) async {
+        await loadMessages(modelContext: modelContext)
+        messageActionErrorMessage = message
     }
 
     private func editHermesMessage(_ context: MessageActionContext, newText: String,

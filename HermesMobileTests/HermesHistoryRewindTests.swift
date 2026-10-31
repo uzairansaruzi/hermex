@@ -150,8 +150,8 @@ import Observation
             XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 3, 4, 5, 6], "\(code)")
             XCTAssertNil(chat.model.activeStreamID, "\(code)")
             XCTAssertEqual(chat.writes("prompt.submit").count, attempt + 1, "\(code)")
-            XCTAssertEqual(chat.model.takeUnsentHermesEdit(), "Second, edited", "\(code)")
-            XCTAssertNil(chat.model.takeUnsentHermesEdit(), "taken once")
+            XCTAssertEqual(chat.model.takeUnsentEdit(), "Second, edited", "\(code)")
+            XCTAssertNil(chat.model.takeUnsentEdit(), "taken once")
             chat.model.clearMessageActionError()
         }
     }
@@ -168,7 +168,7 @@ import Observation
 
         XCTAssertFalse(edited)
         XCTAssertEqual(chat.model.messageActionErrorMessage, "The server did not confirm the change.")
-        XCTAssertEqual(chat.model.takeUnsentHermesEdit(), "Second, edited")
+        XCTAssertEqual(chat.model.takeUnsentEdit(), "Second, edited")
         await waitUntil("reattached") { !chat.model.isHermesSubmissionUncertain }
         XCTAssertEqual(chat.model.messages.compactMap(\.rowID), [1, 2, 7])
         XCTAssertEqual(chat.writes("prompt.submit").count, 1)
