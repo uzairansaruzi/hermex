@@ -161,6 +161,7 @@ final class SharedDraftStoreTests: XCTestCase {
         XCTAssertEqual(sharedImport.attachments.count, HermesShareDraft.maximumSharedAttachmentCount)
         XCTAssertEqual(sharedImport.attachments.first?.filename, "file-0.txt")
         XCTAssertEqual(sharedImport.attachments.last?.filename, "file-9.txt")
+        XCTAssertEqual(sharedImport.skipped.items, [SharedSkippedItem(filename: nil, reason: .overLimit)])
     }
 
     func testInboxKeepsTwoSharesAndReservesThemOldestFirst() throws {
@@ -199,8 +200,11 @@ final class SharedDraftStoreTests: XCTestCase {
             in: directory,
             now: Date(timeIntervalSince1970: 1_800_000_030)
         )
-        try HermesShareDraft.savePendingDraft(
-            "Repeated share",
+        // What was left out isn't the share's content: the same content is still one share.
+        try HermesShareDraft.savePendingImport(
+            draft: "Repeated share",
+            attachments: [],
+            skipped: [SharedSkippedItem(filename: "big.mov", reason: .tooLarge)],
             in: directory,
             now: Date(timeIntervalSince1970: 1_800_000_040)
         )
@@ -318,6 +322,49 @@ final class SharedDraftStoreTests: XCTestCase {
         XCTAssertEqual(reservation.sharedImport.draft, "Review what remains")
         XCTAssertEqual(reservation.sharedImport.attachments.count, 1)
         try HermesShareDraft.consume(reservation, from: directory)
+    }
+
+    /// What the extension left out, and what the inbox drops itself (an empty file, a staged file
+    /// gone missing), reach the reservation; past `SharedSkips.maximumItems` they are only counted.
+    func testSkippedItemsReachTheReservation() throws {
+        let directory = try temporaryDirectory()
+        let extensionSkips = (1...19).map { SharedSkippedItem(filename: "big-\($0).mov", reason: .tooLarge) }
+        try HermesShareDraft.savePendingImport(
+            draft: "Look",
+            attachments: [
+                SharedAttachmentImport(filename: "empty.txt", typeIdentifier: "public.plain-text", data: Data()),
+                SharedAttachmentImport(filename: "kept.txt", typeIdentifier: "public.plain-text", data: Data("kept".utf8)),
+                SharedAttachmentImport(filename: "lost.txt", typeIdentifier: "public.plain-text", data: Data("lost".utf8))
+            ],
+            skipped: extensionSkips,
+            in: directory
+        )
+        let lost = try attachmentFileURLs(in: directory).first { (try? Data(contentsOf: $0)) == Data("lost".utf8) }
+        try FileManager.default.removeItem(at: XCTUnwrap(lost))
+
+        let reservation = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: directory))
+
+        XCTAssertEqual(reservation.sharedImport.attachments.map(\.filename), ["kept.txt"])
+        XCTAssertEqual(reservation.sharedImport.skipped.items,
+                       extensionSkips + [SharedSkippedItem(filename: "empty.txt", reason: .unreadable)])
+        XCTAssertEqual(reservation.sharedImport.skipped.additionalCount, 1, "lost.txt, past the first 20")
+    }
+
+    func testASkipReasonFromALaterVersionStillOpensTheShare() throws {
+        let directory = try temporaryDirectory()
+        try HermesShareDraft.savePendingImport(
+            draft: "Look", attachments: [], skipped: [SharedSkippedItem(filename: "big.mov", reason: .tooLarge)], in: directory
+        )
+        let payloadURL = try XCTUnwrap(FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil)?
+            .compactMap { $0 as? URL }.first { $0.lastPathComponent == "payload.json" })
+        let payload = try String(contentsOf: payloadURL, encoding: .utf8)
+        try payload.replacingOccurrences(of: "tooLarge", with: "tooSpicy").write(to: payloadURL, atomically: true, encoding: .utf8)
+
+        let reservation = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: directory))
+
+        XCTAssertEqual(reservation.sharedImport.draft, "Look")
+        XCTAssertEqual(reservation.sharedImport.skipped.items.map(\.filename), ["big.mov"])
+        XCTAssertNil(reservation.sharedImport.skipped.items.first?.reason)
     }
 
     func testFailedInboxPreparationDoesNotOverwriteExistingFile() throws {
@@ -449,6 +496,19 @@ final class SharedDraftStoreTests: XCTestCase {
             return XCTFail("A file alone opens a new session")
         }
         XCTAssertEqual(filesOnly.target, .new(profile: "dev"))
+
+        // Its new session's composer says what the share left out (#1401).
+        let skipped = SharedSkips([SharedSkippedItem(filename: "big.mov", reason: .tooLarge)])
+        let partial = SharedImportReservation(itemID: "x", reservationID: "y", createdAt: Date(timeIntervalSince1970: 0),
+                                              sharedImport: SharedImport(draft: "", attachments: [pdf], skipped: skipped))
+        guard case .chat(let partialChat)? = partial.hermesOpening(on: entry, listed: "default", isLive: true) else {
+            return XCTFail("A share with files left out still opens a new session")
+        }
+        var covers = HermesSessionListCovers()
+        covers.chat = partialChat
+        XCTAssertEqual(covers.building(partialChat).shareNotice?.take(), skipped, "Its composer shows the notice")
+        XCTAssertNil(covers.building(partialChat).shareNotice?.take(),
+                     "A composer rebuilt for the unsent chat (a size-class change) doesn't repeat it")
 
         XCTAssertEqual(reservation(" \n ").hermesOpening(on: entry, listed: "default", isLive: true), .nothing,
                        "An empty share is consumed without a chat")

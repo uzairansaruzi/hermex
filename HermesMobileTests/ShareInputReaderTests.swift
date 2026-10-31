@@ -82,14 +82,59 @@ final class ShareInputReaderTests: XCTestCase {
     }
 
     func testAttachmentsCappedAtSharedLimit() async {
-        let providers = (0...HermesShareDraft.maximumSharedAttachmentCount).map { index in
+        let providers = (0..<12).map { index in
             NSItemProvider(item: Data([UInt8(index)]) as NSData, typeIdentifier: UTType.png.identifier)
         }
-        XCTAssertEqual(providers.count, HermesShareDraft.maximumSharedAttachmentCount + 1)
 
         let input = await ShareInputReader.input(from: providers)
 
         XCTAssertEqual(input.attachments.count, HermesShareDraft.maximumSharedAttachmentCount)
+        XCTAssertEqual(input.skipped, Array(repeating: SharedSkippedItem(filename: nil, reason: .overLimit), count: 2))
+    }
+
+    /// Each item a share leaves out is reported once, with why. Text, a link, and an item whose
+    /// file failed but whose data loaded are not among them; the oversized file is judged by its
+    /// size alone (#734), and an empty file is unreadable rather than attached.
+    func testSkippedAttachmentsAreReportedWithTheirReasons() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let pdfURL = directory.appendingPathComponent("notes.pdf")
+        try Data("%PDF".utf8).write(to: pdfURL)
+        let movieURL = directory.appendingPathComponent("big.mov")
+        XCTAssertTrue(FileManager.default.createFile(atPath: movieURL.path, contents: nil))
+        let handle = try FileHandle(forWritingTo: movieURL)
+        try handle.truncate(atOffset: UInt64(HermesShareDraft.maximumSharedAttachmentBytes + 1))
+        try handle.close()
+        let emptyURL = directory.appendingPathComponent("empty.pdf")
+        try Data().write(to: emptyURL)
+
+        let clip = NSItemProvider(item: Data([1]) as NSData, typeIdentifier: UTType.mpeg4Movie.identifier)
+        clip.suggestedName = "clip"
+        let fallback = NSItemProvider(item: Data([2]) as NSData, typeIdentifier: UTType.png.identifier)
+        fallback.registerItem(forTypeIdentifier: UTType.fileURL.identifier) { completion, _, _ in
+            completion?(directory.appendingPathComponent("gone.png") as NSURL, nil)
+        }
+        let providers = [
+            NSItemProvider(item: pdfURL as NSURL, typeIdentifier: UTType.fileURL.identifier),
+            NSItemProvider(item: movieURL as NSURL, typeIdentifier: UTType.fileURL.identifier),
+            NSItemProvider(item: emptyURL as NSURL, typeIdentifier: UTType.fileURL.identifier),
+            clip,
+            fallback,
+            NSItemProvider(item: "note" as NSString, typeIdentifier: UTType.plainText.identifier),
+            NSItemProvider(item: URL(string: "https://example.com")! as NSURL, typeIdentifier: UTType.url.identifier)
+        ]
+
+        let input = await ShareInputReader.input(from: providers)
+
+        XCTAssertEqual(input.attachments.map(\.filename), ["notes.pdf", "shared-image.png"])
+        XCTAssertEqual(input.skipped, [
+            SharedSkippedItem(filename: "big.mov", reason: .tooLarge),
+            SharedSkippedItem(filename: "empty.pdf", reason: .unreadable),
+            SharedSkippedItem(filename: "clip.mp4", reason: .unsupported)
+        ])
     }
 
     // Exercises the security-scoped file path (loadFileAttachment → attachment(from:provider:)),

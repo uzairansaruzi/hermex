@@ -944,8 +944,10 @@ extension SharedImportReservation {
     /// past its lifetime, as when its server couldn't be reached, opens nothing.
     @MainActor func hermesOpening(on entry: HermesSessionListEntry, listed: String?, isLive: Bool) -> HermesShareOpening? {
         guard let shortcut = sharedImport.shortcut else {
-            guard let chat = HermesNewChatDestination(server: entry.server, profile: nil)
+            guard var chat = HermesNewChatDestination(server: entry.server, profile: nil)
                 .chat(on: entry, listed: listed, isLive: isLive) else { return nil }
+            // Its composer says what the share left out, once the share is in its draft (#1401).
+            chat.shareNotice = SharedSkipsNotice(sharedImport.skipped)
             let isEmpty = HermesShareDraft.composerDraft(from: sharedImport.draft).isEmpty && sharedImport.attachments.isEmpty
             return isEmpty ? .nothing : .chat(chat)
         }
