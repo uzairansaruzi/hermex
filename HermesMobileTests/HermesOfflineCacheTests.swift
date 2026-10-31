@@ -1129,14 +1129,17 @@ import XCTest
         XCTAssertEqual(wire.prompts, [])
     }
 
-    /// A second Send while the first is still being written stays the composer's, so the first
-    /// keeps its saved copy: a relaunch finds it, and Cancel puts it back ahead of the second.
+    /// A second Send while the first is still being written stays the composer's, even once the
+    /// chat reconnected meanwhile: only the first goes out, and the second stays in the draft.
     func testASecondSendWhileTheFirstIsWrittenLeavesTheFirstWaiting() async throws {
         let disk = HookedDrafts()
-        let (chat, _, drafts) = try await offlineChat(persistence: disk)
+        let (chat, wire, drafts) = try await offlineChat(persistence: disk)
         let key = try XCTUnwrap(chat.model.hermesDraftKey)
         drafts.setDraft("Ship it", for: key)
         await disk.setBeforeNextWrite { [unowned self] in
+            wire.connectFailure = nil
+            chat.reconnect.open()
+            await waitUntil("reconnected") { !chat.model.isViewingCachedData }
             drafts.setDraft("And this", for: key)
             // Not awaited: a second write would wait on this one.
             Task { _ = await chat.model.send("And this", isPlainText: true) }
@@ -1144,12 +1147,12 @@ import XCTest
         }
 
         let first = await chat.model.send("Ship it", isPlainText: true)
+        await waitUntil("the host took the first") { chat.model.waitingSend == nil }
 
         XCTAssertEqual(first, .waiting)
-        let saved = await disk.load()[key]
-        XCTAssertEqual(saved?.waitingSend?.text, "Ship it")
-        chat.model.cancelWaitingSend()
-        XCTAssertEqual(returned.last?.text, "Ship it\n\nAnd this")
+        XCTAssertEqual(wire.prompts, ["Ship it"])
+        let draft = await drafts.draft(for: key)
+        XCTAssertEqual(draft?.text, "And this")
     }
 
     /// A delivery whose ten minutes run out before its socket write never goes out: it comes back
