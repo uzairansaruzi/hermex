@@ -667,9 +667,10 @@ struct HermesChatTranscript: Equatable {
         isUploadingAttachments = true
         defer {
             // An upload a newer send displaced cleans up nothing: the newer send owns it all.
-            guard attachmentTransferOwner == owner else { return }
-            attachmentUpload = nil
-            isUploadingAttachments = false
+            if attachmentTransferOwner == owner {
+                attachmentUpload = nil
+                isUploadingAttachments = false
+            }
         }
         do {
             let references = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
