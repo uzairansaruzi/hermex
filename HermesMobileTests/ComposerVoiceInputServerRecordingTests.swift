@@ -15,7 +15,13 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             XCTFail("A gone composer must not upload")
             throw URLError(.cancelled)
         }.dictationTranscriber
-        let tap = controller.scheduleToggle(currentDraft: "Original") { _ in XCTFail("Stale draft update") }
+        let box = DraftBox(text: "Original")
+        let tap = controller.scheduleToggle(
+            currentDraft: "Original",
+            selection: box.selection,
+            snapshotProvider: { [weak controller] in box.snapshot(owner: controller) },
+            updateDraft: { _ in XCTFail("Stale draft update") }
+        )
         controller.stopBeforeSubmittingDraft()
         await tap.value
         XCTAssertEqual(recorder.starts, 0)
@@ -42,8 +48,8 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             XCTAssertTrue(body.contains(recorder.url.lastPathComponent))
             return apiTestJSONResponse(#"{"ok":true,"transcript":"retained words"}"#, for: request)
         }.dictationTranscriber
-        await controller.toggle(currentDraft: "Please") {
-            drafts.append($0)
+        let box = await startDictation(controller, currentDraft: "Please") {
+            drafts.append($0.text)
             updated.fulfill()
         }
         XCTAssertEqual(controller.state, .serverListening)
@@ -79,14 +85,13 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             XCTFail("A discarded clip must never upload")
             throw URLError(.cancelled)
         }.dictationTranscriber
-        var draft = "Original"
-        await controller.toggle(currentDraft: draft) { draft = $0 }
+        let box = await startDictation(controller, currentDraft: "Original") { _ in XCTFail("Stale draft update") }
         controller.suspend()
         XCTAssertTrue(FileManager.default.fileExists(atPath: recorder.url.path))
         controller.stopBeforeSubmittingDraft()
         controller.resume()
         XCTAssertEqual(controller.state, .idle)
-        XCTAssertEqual(draft, "Original")
+        XCTAssertEqual(box.text, "Original")
         XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
     }
 
@@ -108,10 +113,10 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             }, serverRecorder: recorder, mayRecord: { true }
         )
         controller.transcribe = makeClient { _ in throw URLError(.cancelled) }.dictationTranscriber
-        let first = Task { await controller.toggle(currentDraft: "Old") { _ in XCTFail("Stale update") } }
+        let first = Task { await startDictation(controller, currentDraft: "Old") { _ in XCTFail("Stale update") } }
         await fulfillment(of: [firstAsked], timeout: 2)
         controller.suspend()
-        let second = Task { await controller.toggle(currentDraft: "New") { _ in XCTFail("Not transcribed") } }
+        let second = Task { await startDictation(controller, currentDraft: "New") { _ in XCTFail("Not transcribed") } }
         await fulfillment(of: [secondAsked], timeout: 2)
         XCTAssertEqual(controller.state, .requestingPermission)
         XCTAssertFalse(UIApplication.shared.isIdleTimerDisabled, "Permission must not hold an awake lease")
@@ -142,9 +147,9 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         }
         old.transcribe = client.dictationTranscriber
         replacement.transcribe = client.dictationTranscriber
-        await old.toggle(currentDraft: "Old") { _ in XCTFail("Old composer must not update") }
+        await startDictation(old, currentDraft: "Old") { _ in XCTFail("Old composer must not update") }
         old.suspend()
-        await replacement.toggle(currentDraft: "New") { _ in XCTFail("Not transcribed") }
+        await startDictation(replacement, currentDraft: "New") { _ in XCTFail("Not transcribed") }
         old.resume()
         XCTAssertEqual(old.state, .idle)
         XCTAssertFalse(FileManager.default.fileExists(atPath: oldRecorder.url.path))
@@ -167,7 +172,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         }.dictationTranscriber
         let updated = expectation(description: "One final transcript")
         var drafts: [String] = []
-        await controller.toggle(currentDraft: "") { drafts.append($0); updated.fulfill() }
+        await startDictation(controller, currentDraft: "") { drafts.append($0.text); updated.fulfill() }
         let finish = recorder.onFinish
         finish?()
         finish?()
@@ -184,7 +189,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         let controller = ComposerVoiceInputController(
             speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
             serverRecorder: recorder, mayRecord: { true })
-        await controller.toggle(currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
+        await startDictation(controller, currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
         XCTAssertEqual(recorder.starts, 0)
         XCTAssertEqual(controller.errorMessage, "Speech-to-text is not available right now.")
     }
@@ -201,7 +206,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             return TranscribeResponse(ok: true, transcript: "", error: nil)
         }
         var drafts: [String] = []
-        await controller.toggle(currentDraft: "Keep this") { drafts.append($0) }
+        await startDictation(controller, currentDraft: "Keep this") { drafts.append($0.text) }
         await finishRecording(controller)
         XCTAssertEqual(uploads.map(\.0), [Data("interrupted-clip".utf8)])
         XCTAssertEqual(uploads.map(\.1), [recorder.url.lastPathComponent])
@@ -220,7 +225,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         controller.transcribe = makeClient { request in
             apiTestJSONResponse(#"{"ok":true,"transcript":"  "}"#, for: request)
         }.dictationTranscriber
-        await controller.toggle(currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
+        await startDictation(controller, currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
         await finishRecording(controller)
         XCTAssertEqual(controller.errorMessage, "Transcription returned no text.")
     }
@@ -233,7 +238,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             speechAuthorization: { XCTFail("No on-device fallback"); return .denied },
             serverRecorder: recorder, mayRecord: { true })
         controller.transcribe = { _, _ in TranscribeResponse(ok: false, transcript: nil, error: "STT is disabled") }
-        await controller.toggle(currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
+        await startDictation(controller, currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
         await finishRecording(controller)
         XCTAssertEqual(controller.errorMessage, "STT is disabled")
         XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.url.path))
@@ -251,7 +256,7 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
             serverRecorder: recorder, mayRecord: { true })
         controller.providerPreference = .serverFirst
         controller.transcribe = { _, _ in TranscribeResponse(ok: false, transcript: nil, error: "STT is disabled") }
-        await controller.toggle(currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
+        await startDictation(controller, currentDraft: "Draft") { _ in XCTFail("Nothing transcribed") }
         XCTAssertEqual(controller.state, .serverListening)
         await finishRecording(controller)
         XCTAssertEqual(authorizations, 1)
@@ -267,6 +272,52 @@ final class ComposerVoiceInputServerRecordingTests: APIClientTestCase {
         withObservationTracking { _ = controller.state } onChange: { settled.fulfill() }
         await fulfillment(of: [settled], timeout: 2)
         XCTAssertEqual(controller.state, .idle)
+    }
+
+    /// A server transcript that arrives after the draft changed is rejected: the
+    /// user's text and caret stay as edited and the explanation is surfaced.
+    func testServerTranscriptAfterADraftEditLeavesTheEditIntact() async {
+        let recorder = DictationTestRecorder()
+        let controller = ComposerVoiceInputController(
+            speechRecognizerFactory: { _ in nil }, microphonePermission: { true },
+            serverRecorder: recorder, mayRecord: { true })
+        controller.transcribe = makeClient { request in
+            apiTestJSONResponse(#"{"ok":true,"transcript":"late words"}"#, for: request)
+        }.dictationTranscriber
+        let box = await startDictation(controller, currentDraft: "Please") { _ in
+            XCTFail("A transcript over a changed draft must not write")
+        }
+        XCTAssertEqual(controller.state, .serverListening)
+        box.text = "Please edited"
+        await finishRecording(controller)
+        XCTAssertEqual(box.text, "Please edited")
+        XCTAssertEqual(
+            controller.errorMessage,
+            "Dictation stopped because the draft changed while recording."
+        )
+        controller.stopBeforeSubmittingDraft()
+    }
+
+    /// Starts a server dictation the way the composer does: the snapshot provider
+    /// reads the box live at commit time, so a test can move the draft between the
+    /// start and a result, and an accepted write moves the caret back into it.
+    @discardableResult
+    private func startDictation(
+        _ controller: ComposerVoiceInputController,
+        currentDraft: String,
+        onDraft: @escaping (ComposerVoiceDraftUpdate) -> Void = { _ in }
+    ) async -> DraftBox {
+        let box = DraftBox(text: currentDraft)
+        await controller.toggle(
+            currentDraft: currentDraft,
+            selection: box.selection,
+            snapshotProvider: { [weak controller] in box.snapshot(owner: controller) },
+            updateDraft: { update in
+                box.apply(update)
+                onDraft(update)
+            }
+        )
+        return box
     }
 
     func testRecordingLeaseRestoresExistingPolicyAndIgnoresDuplicateExits() {
@@ -355,6 +406,25 @@ private final class OnDeviceTestRecognizer: ComposerSpeechRecognizing {
         resultHandler: @escaping (SFSpeechRecognitionResult?, (any Error)?) -> Void
     ) -> SFSpeechRecognitionTask {
         preconditionFailure("Recognition starts only after speech authorization is granted")
+    }
+}
+
+/// Mimics the composer: live values read through a box the test can mutate to
+/// simulate edits made while dictation runs, and an accepted write moves the
+/// caret back into it the way `composerSelection.moved(to:)` does.
+@MainActor
+private final class DraftBox {
+    var text: String
+    var selection = ComposerSelection()
+    init(text: String) { self.text = text }
+
+    func snapshot(owner: AnyObject?) -> ComposerVoiceDraftSnapshot {
+        ComposerVoiceDraftSnapshot(owner: owner, text: text, selection: selection)
+    }
+
+    func apply(_ update: ComposerVoiceDraftUpdate) {
+        text = update.text
+        selection = selection.moved(to: update.caret)
     }
 }
 

@@ -43,7 +43,11 @@ final class ComposerVoiceInputController {
     private let serverRecorder: any ComposerServerRecording
     private var recordingURL: URL?
     private var draftUpdateSession = ComposerVoiceDraftUpdateSession()
-    private var updateDraft: ((String) -> Void)?
+    private var updateDraft: ((ComposerVoiceDraftUpdate) -> Void)?
+    /// Builds the live editor snapshot a dictation write is validated against.
+    /// The composer owns the draft, so only it can read the values at the
+    /// moment a recognition result lands.
+    private var draftSnapshot: (() -> ComposerVoiceDraftSnapshot)?
     private var suppressNextRecognitionError = false
     private var activatedAudioSessionForRecording = false
     private var audioTapInstalled = false
@@ -119,22 +123,42 @@ final class ComposerVoiceInputController {
     /// Queue UI input under the same ownership as capture, so teardown can cancel
     /// even a microphone tap whose task has not started executing yet.
     @discardableResult
-    func scheduleToggle(currentDraft: String, updateDraft: @escaping (String) -> Void) -> Task<Void, Never> {
+    func scheduleToggle(
+        currentDraft: String,
+        selection: ComposerSelection,
+        snapshotProvider: @escaping () -> ComposerVoiceDraftSnapshot,
+        updateDraft: @escaping (ComposerVoiceDraftUpdate) -> Void
+    ) -> Task<Void, Never> {
         toggleTask?.cancel()
         let task = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
-            await self.toggle(currentDraft: currentDraft, updateDraft: updateDraft)
+            await self.toggle(
+                currentDraft: currentDraft,
+                selection: selection,
+                snapshotProvider: snapshotProvider,
+                updateDraft: updateDraft
+            )
         }
         toggleTask = task
         return task
     }
 
-    func toggle(currentDraft: String, updateDraft: @escaping (String) -> Void) async {
+    func toggle(
+        currentDraft: String,
+        selection: ComposerSelection,
+        snapshotProvider: @escaping () -> ComposerVoiceDraftSnapshot,
+        updateDraft: @escaping (ComposerVoiceDraftUpdate) -> Void
+    ) async {
         guard !Task.isCancelled else { return }
         if isListening {
             stopKeepingTranscript()
         } else {
-            await start(currentDraft: currentDraft, updateDraft: updateDraft)
+            await start(
+                currentDraft: currentDraft,
+                selection: selection,
+                snapshotProvider: snapshotProvider,
+                updateDraft: updateDraft
+            )
         }
     }
 
@@ -204,7 +228,12 @@ final class ComposerVoiceInputController {
         state = .idle
     }
 
-    private func start(currentDraft: String, updateDraft: @escaping (String) -> Void) async {
+    private func start(
+        currentDraft: String,
+        selection: ComposerSelection,
+        snapshotProvider: @escaping () -> ComposerVoiceDraftSnapshot,
+        updateDraft: @escaping (ComposerVoiceDraftUpdate) -> Void
+    ) async {
         guard state == .idle, mayRecord(), !Task.isCancelled else { return }
         if let owner = Self.captureOwner, owner !== self { owner.stopBeforeSubmittingDraft() }
         Self.captureOwner = self
@@ -218,8 +247,9 @@ final class ComposerVoiceInputController {
         suppressNextRecognitionError = false
         cancelServerTranscription()
         discardServerRecording()
-        draftUpdateSession.begin(baseDraft: currentDraft)
+        draftUpdateSession.begin(baseDraft: currentDraft, selection: selection, owner: self)
         self.updateDraft = updateDraft
+        draftSnapshot = snapshotProvider
         state = .requestingPermission
 
         let canUseServer = transcribe != nil
@@ -532,9 +562,7 @@ final class ComposerVoiceInputController {
             }
             if !transcript.isEmpty {
                 liveTranscript = transcript
-                if let composedDraft = draftUpdateSession.composedDraft(for: transcript) {
-                    updateDraft?(composedDraft)
-                }
+                applyDraftUpdate(transcript)
             }
             stopAcceptingDraftUpdates()
             cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
@@ -606,9 +634,7 @@ final class ComposerVoiceInputController {
                 )
                 return
             }
-            if let composedDraft = draftUpdateSession.composedDraft(for: transcript) {
-                updateDraft?(composedDraft)
-            }
+            applyDraftUpdate(transcript)
             stopAcceptingDraftUpdates()
             cleanupRecordingFile(recordingURL, transcriptionID: transcriptionID)
             state = .idle
@@ -743,9 +769,7 @@ final class ComposerVoiceInputController {
     private func handleRecognition(result: SFSpeechRecognitionResult?, error: Error?) {
         if let result {
             liveTranscript = result.bestTranscription.formattedString
-            if let composedDraft = draftUpdateSession.composedDraft(for: liveTranscript) {
-                updateDraft?(composedDraft)
-            }
+            applyDraftUpdate(liveTranscript)
         }
 
         if let error {
@@ -765,9 +789,30 @@ final class ComposerVoiceInputController {
         }
     }
 
+    /// Writes one recognition result into the draft, or stops accepting updates
+    /// when the composer reports the draft moved under dictation.
+    private func applyDraftUpdate(_ transcript: String) {
+        guard let updateDraft, let draftSnapshot else { return }
+        switch draftUpdateSession.apply(transcript: transcript, current: draftSnapshot()) {
+        case .applied(let update):
+            updateDraft(update)
+            draftUpdateSession.commit(update)
+        case .skipped:
+            break
+        case .rejected:
+            stopAcceptingDraftUpdates()
+            if errorMessage == nil {
+                errorMessage = String(
+                    localized: "Dictation stopped because the draft changed while recording."
+                )
+            }
+        }
+    }
+
     private func stopAcceptingDraftUpdates() {
         draftUpdateSession.stopAcceptingUpdates()
         updateDraft = nil
+        draftSnapshot = nil
     }
 
     private func stopAudio(cancelTask: Bool) {
@@ -1098,28 +1143,182 @@ enum ComposerVoiceInputPreflight {
     }
 }
 
+/// The editor state a dictation write is validated against at commit time.
+/// The composer builds it from its live values the moment a result lands, so a
+/// draft that moved after capture is visible before anything is written.
+struct ComposerVoiceDraftSnapshot {
+    /// The capture that owns this draft-update session, checked by identity.
+    weak var owner: AnyObject?
+    let text: String
+    let selection: ComposerSelection
+}
+
+/// One accepted dictation write: the new draft text, the span dictation now
+/// owns inside it, and the caret right after the dictated text.
+struct ComposerVoiceDraftUpdate: Equatable {
+    let text: String
+    let ownedRange: NSRange
+    let caret: NSRange
+}
+
+enum ComposerVoiceDraftOutcome: Equatable {
+    case applied(ComposerVoiceDraftUpdate)
+    /// Nothing to write, such as a blank transcript; dictation keeps going.
+    case skipped
+    /// The draft moved under dictation; updates stop.
+    case rejected
+}
+
 enum ComposerVoiceDraftComposer {
-    static func composedDraft(baseDraft: String, transcript: String) -> String {
-        let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTranscript.isEmpty else {
-            return baseDraft
-        }
+    /// Replaces the dictation-owned span with `transcript`, leaving everything
+    /// outside it — including its surrounding whitespace and punctuation —
+    /// untouched. Boundary spaces go in only for separated-word scripts, and
+    /// never against existing whitespace or punctuation, so an owned range
+    /// that meets a sentence end or a CJK run keeps its own spacing.
+    static func replacement(
+        transcript: String,
+        ownedRange: NSRange,
+        in text: String
+    ) -> ComposerVoiceDraftUpdate? {
+        let ns = text as NSString
+        guard ownedRange.location >= 0,
+              ownedRange.length >= 0,
+              ownedRange.upperBound <= ns.length,
+              !isTrailingSurrogate(at: ownedRange.location, in: ns),
+              !isTrailingSurrogate(at: ownedRange.upperBound, in: ns)
+        else { return nil }
 
-        let trimmedTrailingDraft = baseDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTrailingDraft.isEmpty else {
-            return trimmedTranscript
-        }
+        let spaced = addsSeparatorSpaces(for: transcript)
+        let prefix = spaced ? separator(before: ownedRange.location, in: ns, transcriptStart: transcript.first) : ""
+        let suffix = spaced ? separator(after: ownedRange.upperBound, in: ns, transcriptEnd: transcript.last) : ""
+        let inserted = prefix + transcript + suffix
+        let newText = ns.replacingCharacters(in: ownedRange, with: inserted)
+        let spanLength = (inserted as NSString).length
+        return ComposerVoiceDraftUpdate(
+            text: newText,
+            ownedRange: NSRange(location: ownedRange.location, length: spanLength),
+            caret: NSRange(location: ownedRange.location + spanLength, length: 0)
+        )
+    }
 
-        return "\(trimmedTrailingDraft) \(trimmedTranscript)"
+    /// Ordinary separated-word scripts take boundary spaces; Han, kana and
+    /// fullwidth/CJK punctuation run words together. A bounded read, not
+    /// script detection: the first CJK or fullwidth character makes the
+    /// transcript unspaced, while a leading alphanumeric from a spaced script
+    /// keeps it spaced.
+    static func addsSeparatorSpaces(for transcript: String) -> Bool {
+        for scalar in transcript.unicodeScalars {
+            if isUnspacedScript(scalar) { return false }
+            if CharacterSet.alphanumerics.contains(scalar) { return true }
+        }
+        return false
+    }
+
+    private static func isUnspacedScript(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x2E80...0x303F,   // Han radicals, CJK punctuation
+             0x3040...0x30FF,   // Hiragana, Katakana
+             0x3400...0x4DBF,   // CJK extension A
+             0x4E00...0x9FFF,   // CJK unified ideographs
+             0xF900...0xFAFF,   // CJK compatibility ideographs
+             0xFF00...0xFF60:   // fullwidth forms
+            return true
+        default:
+            return false
+        }
+    }
+
+    private static func separator(
+        before location: Int,
+        in ns: NSString,
+        transcriptStart: Character?
+    ) -> String {
+        guard let before = character(endingBefore: location, in: ns),
+              let start = transcriptStart,
+              isSeparator(excluding: String(before)) == nil,
+              isSeparator(excluding: String(start)) == nil
+        else { return "" }
+        return " "
+    }
+
+    /// A space between the transcript and the text after the span, unless the
+    /// following text is whitespace or punctuation — never a stray space
+    /// before a sentence end — or the transcript closes with punctuation.
+    private static func separator(
+        after location: Int,
+        in ns: NSString,
+        transcriptEnd: Character?
+    ) -> String {
+        guard let after = character(startingAt: location, in: ns),
+              let end = transcriptEnd,
+              isSeparator(excluding: String(after)) == nil,
+              isSeparator(excluding: String(end)) == nil
+        else { return "" }
+        return " "
+    }
+
+    /// The matched character set when the single character carries any of it,
+    /// so whitespace and punctuation on either side suppress a boundary space.
+    private static func isSeparator(excluding character: String) -> CharacterSet? {
+        let separators: [CharacterSet] = [.whitespacesAndNewlines, .punctuationCharacters]
+        return separators.first { character.rangeOfCharacter(from: $0) != nil }
+    }
+
+    private static func character(endingBefore location: Int, in ns: NSString) -> Character? {
+        guard location > 0 else { return nil }
+        var start = location - 1
+        if UTF16.isTrailSurrogate(ns.character(at: start)),
+           start > 0, UTF16.isLeadSurrogate(ns.character(at: start - 1)) {
+            start -= 1
+        }
+        return Character(ns.substring(with: NSRange(location: start, length: location - start)))
+    }
+
+    private static func character(startingAt location: Int, in ns: NSString) -> Character? {
+        guard location < ns.length else { return nil }
+        var end = location + 1
+        if UTF16.isLeadSurrogate(ns.character(at: location)),
+           end < ns.length, UTF16.isTrailSurrogate(ns.character(at: end)) {
+            end += 1
+        }
+        return Character(ns.substring(with: NSRange(location: location, length: end - location)))
+    }
+
+    private static func isTrailingSurrogate(at index: Int, in ns: NSString) -> Bool {
+        index > 0 && index < ns.length && UTF16.isTrailSurrogate(ns.character(at: index))
     }
 }
 
+/// Owns the span of the draft dictation writes into.
+///
+/// A session replaces its owned range on every result instead of rebuilding
+/// the draft from a base string, so typing done meanwhile survives. A write is
+/// only accepted when the owner, the user-edit revision pair and the text the
+/// composer reports all still match what the session expects: `revision`
+/// alone cannot tell a voice write from a user edit — a voice write bumps it
+/// through `moved(to:)` — and `publishGeneration` alone misses deliberate
+/// caret moves, so both have to hold. Edit-then-undo lands too, because the
+/// undo replays through the editor and dates a new publish generation.
 struct ComposerVoiceDraftUpdateSession {
-    private var baseDraft = ""
+    private struct Expectation: Equatable {
+        var text: String
+        var revision: Int
+        var publishGeneration: Int
+    }
+
+    private weak var owner: AnyObject?
+    private var expectation: Expectation?
+    private var ownedRange = NSRange(location: 0, length: 0)
     private var acceptsUpdates = false
 
-    mutating func begin(baseDraft: String) {
-        self.baseDraft = baseDraft
+    mutating func begin(baseDraft: String, selection: ComposerSelection, owner: AnyObject) {
+        self.owner = owner
+        expectation = Expectation(
+            text: baseDraft,
+            revision: selection.revision,
+            publishGeneration: selection.publishGeneration
+        )
+        ownedRange = selection.range
         acceptsUpdates = true
     }
 
@@ -1127,15 +1326,34 @@ struct ComposerVoiceDraftUpdateSession {
         acceptsUpdates = false
     }
 
-    func composedDraft(for transcript: String) -> String? {
-        guard acceptsUpdates else {
-            return nil
-        }
+    /// Advances the expectation after the composer applied a write: the text
+    /// is now the written one, the caret moved with `moved(to:)` and the span
+    /// grew to cover the dictated text.
+    mutating func commit(_ update: ComposerVoiceDraftUpdate) {
+        guard var current = expectation else { return }
+        current.text = update.text
+        current.revision = current.revision &+ 1
+        expectation = current
+        ownedRange = update.ownedRange
+    }
 
-        return ComposerVoiceDraftComposer.composedDraft(
-            baseDraft: baseDraft,
-            transcript: transcript
-        )
+    func apply(transcript: String, current: ComposerVoiceDraftSnapshot) -> ComposerVoiceDraftOutcome {
+        guard acceptsUpdates, let expectation else { return .rejected }
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .skipped }
+
+        guard current.owner === owner,
+              current.selection.publishGeneration == expectation.publishGeneration,
+              current.selection.revision == expectation.revision,
+              current.text == expectation.text,
+              !current.selection.hasMarkedText,
+              let update = ComposerVoiceDraftComposer.replacement(
+                  transcript: trimmed,
+                  ownedRange: ownedRange,
+                  in: current.text
+              )
+        else { return .rejected }
+        return .applied(update)
     }
 }
 

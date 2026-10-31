@@ -59039,6 +59039,118 @@
         }
       }
     },
+    "Dictation stopped because the draft changed while recording." : {
+        "localizations": {
+            "en": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "Dictation stopped because the draft changed while recording."
+                }
+            },
+            "de": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "Diktat gestoppt, weil sich der Entwurf während der Aufnahme geändert hat."
+                }
+            },
+            "es": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "El dictado se detuvo porque el borrador cambió mientras se grababa."
+                }
+            },
+            "fr": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "La dictée s'est arrêtée car le brouillon a changé pendant l'enregistrement."
+                }
+            },
+            "it": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "Dettatura interrotta perché la bozza è cambiata durante la registrazione."
+                }
+            },
+            "pl": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "Dyktowanie zostało zatrzymane, ponieważ szkic zmienił się podczas nagrywania."
+                }
+            },
+            "pt-BR": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "O ditado foi interrompido porque o rascunho mudou durante a gravação."
+                }
+            },
+            "nl": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "Dictatie gestopt omdat het concept tijdens het opnemen is gewijzigd."
+                }
+            },
+            "tr": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "Kayıt sırasında taslak değiştiği için dikte durduruldu."
+                }
+            },
+            "ru": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "Диктовка остановлена, так как черновик изменился во время записи."
+                }
+            },
+            "ja": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "録音中に下書きが変更されたため、音声入力を停止しました。"
+                }
+            },
+            "zh-Hans": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "录音期间草稿发生了更改，听写已停止。"
+                }
+            },
+            "ko": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "녹음 중 초안이 변경되어 받아쓰기가 중지되었습니다."
+                }
+            },
+            "ar": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "توقّف الإملاء لأن المسودة تغيّرت أثناء التسجيل."
+                }
+            },
+            "he": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "ההכתבה הופסקה מכיוון שהטיוטה השתנתה בזמן ההקלטה."
+                }
+            },
+            "ur": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "ریکارڈنگ کے دوران مسودہ تبدیل ہو گیا تھا، اس لیے املا بند کر دیا گیا۔"
+                }
+            },
+            "zh-Hant": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "錄音期間草稿發生變更，聽寫已停止。"
+                }
+            },
+            "zh-HK": {
+                "stringUnit": {
+                    "state": "needs_review",
+                    "value": "錄音期間草稿發生變更，聽寫已停止。"
+                }
+            }
+        }
+    },
     "Dictation Provider" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Diktieranbieter" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Proveedor de dictado" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Service de dictée" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Provider di dettatura" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Dostawca dyktowania" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Provedor de ditado" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Dicteerprovider" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Dikte Sağlayıcısı" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Провайдер диктовки" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "音声入力のプロバイダ" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "听写提供方" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "받아쓰기 제공업체" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "مزوّد الإملاء" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "ספק הכתבה" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "ڈکٹیشن فراہم کنندہ" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "聽寫提供者" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "聽寫提供者" } } } },
     "Diff Too Large" : {
       "localizations" : {

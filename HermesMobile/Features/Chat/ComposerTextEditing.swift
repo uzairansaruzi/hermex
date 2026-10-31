@@ -16,6 +16,10 @@ struct ComposerSelection: Equatable {
     /// bridge tell a binding that has caught up from one still carrying the
     /// draft from before the user's last keystroke.
     var publishGeneration = 0
+    /// Whether a live IME composition is marked in the editor. A writer that
+    /// replaces text while one is active would commit it half-formed, so the
+    /// editor publishes this alongside every edit and caret move.
+    var hasMarkedText = false
 
     /// A caret the composer is moving on purpose.
     func moved(to range: NSRange) -> ComposerSelection {

@@ -9,44 +9,282 @@ final class ComposerVoiceDraftComposerTests: XCTestCase {
         XCTAssertTrue(ComposerVoiceInputStartPolicy.canStart(appIsActive: true, appIsLocked: false))
     }
 
-    func testComposedDraftUsesTranscriptWhenDraftIsEmpty() {
-        XCTAssertEqual(
-            ComposerVoiceDraftComposer.composedDraft(baseDraft: "", transcript: "Open the workspace"),
-            "Open the workspace"
+    func testReplacementInsertsAtTheCaretWithSurroundingTextKept() {
+        let update = ComposerVoiceDraftComposer.replacement(
+            transcript: "for nested lists",
+            ownedRange: NSRange(location: 14, length: 0),
+            in: "Fix the parser and add tests"
+        )
+
+        XCTAssertEqual(update?.text, "Fix the parser for nested lists and add tests")
+        XCTAssertEqual(update?.caret.location, 14 + " for nested lists".utf16.count)
+    }
+
+    func testReplacementReplacesTheSelectedSpanAndPutsTheCaretAfterIt() {
+        let update = ComposerVoiceDraftComposer.replacement(
+            transcript: "the crash",
+            ownedRange: NSRange(location: 7, length: 7),
+            in: "Select the bug and run"
+        )
+
+        XCTAssertEqual(update?.text, "Select the crash and run")
+        XCTAssertEqual(update?.caret.location, 7 + " the crash".utf16.count)
+        XCTAssertEqual(update?.ownedRange, NSRange(location: 7, length: " the crash".utf16.count))
+    }
+
+    func testReplacementUsesTheBareTranscriptOnAnEmptyDraftWithNoStraySpaces() {
+        let update = ComposerVoiceDraftComposer.replacement(
+            transcript: "  Open the workspace \n",
+            ownedRange: NSRange(location: 0, length: 0),
+            in: ""
+        )
+
+        XCTAssertEqual(update?.text, "Open the workspace")
+        XCTAssertEqual(update?.caret.location, "Open the workspace".utf16.count)
+    }
+
+    func testReplacementAddsNoSpacesAroundCJKText() {
+        let update = ComposerVoiceDraftComposer.replacement(
+            transcript: "ネストしたリスト",
+            ownedRange: NSRange(location: 3, length: 0),
+            in: "設計を直す"
+        )
+
+        XCTAssertEqual(update?.text, "設計をネストしたリスト直す")
+    }
+
+    func testReplacementAddsNoSpaceBeforeExistingPunctuation() {
+        let update = ComposerVoiceDraftComposer.replacement(
+            transcript: "fig",
+            ownedRange: NSRange(location: 4, length: 0),
+            in: "See ."
+        )
+
+        XCTAssertEqual(update?.text, "See fig.")
+    }
+
+    func testReplacementAddsOneSpaceAgainstUnseparatedNeighbors() {
+        let update = ComposerVoiceDraftComposer.replacement(
+            transcript: "then run tests",
+            ownedRange: NSRange(location: 12, length: 0),
+            in: "Fix the bug."
+        )
+
+        XCTAssertEqual(update?.text, "Fix the bug. then run tests")
+    }
+
+    func testReplacementRejectsARangeThatSplitsASurrogatePair() {
+        XCTAssertNil(
+            ComposerVoiceDraftComposer.replacement(
+                transcript: "hello",
+                ownedRange: NSRange(location: 2, length: 0),
+                in: "a😀b"
+            )
+        )
+        XCTAssertNil(
+            ComposerVoiceDraftComposer.replacement(
+                transcript: "hello",
+                ownedRange: NSRange(location: 0, length: 2),
+                in: "a😀b"
+            )
         )
     }
 
-    func testComposedDraftAppendsTranscriptToExistingDraft() {
-        XCTAssertEqual(
-            ComposerVoiceDraftComposer.composedDraft(baseDraft: "Please", transcript: "summarize this file"),
-            "Please summarize this file"
-        )
+    func testBoundarySpacesFollowTheSeparatedWordScriptOfTheTranscript() {
+        XCTAssertFalse(ComposerVoiceDraftComposer.addsSeparatorSpaces(for: "こんにちは"))
+        XCTAssertFalse(ComposerVoiceDraftComposer.addsSeparatorSpaces(for: "설계를 검토해"))
+        XCTAssertFalse(ComposerVoiceDraftComposer.addsSeparatorSpaces(for: "。"))
+        XCTAssertTrue(ComposerVoiceDraftComposer.addsSeparatorSpaces(for: "hello"))
+        XCTAssertTrue(ComposerVoiceDraftComposer.addsSeparatorSpaces(for: "привет"))
+        XCTAssertTrue(ComposerVoiceDraftComposer.addsSeparatorSpaces(for: "123"))
+        XCTAssertFalse(ComposerVoiceDraftComposer.addsSeparatorSpaces(for: "…"))
     }
 
-    func testComposedDraftPreservesBaseDraftWhenTranscriptIsBlank() {
-        XCTAssertEqual(
-            ComposerVoiceDraftComposer.composedDraft(baseDraft: "Keep this", transcript: "   \n"),
-            "Keep this"
-        )
-    }
-
-    func testDraftUpdateSessionIgnoresLateTranscriptAfterStop() {
+    func testDraftUpdateSessionAppliesPartialsToTheOwnedRangeOnly() {
         var session = ComposerVoiceDraftUpdateSession()
+        let owner = NSObject()
+        let selection = ComposerSelection(
+            range: NSRange(location: 14, length: 0),
+            revision: 3,
+            publishGeneration: 7
+        )
+        session.begin(baseDraft: "Fix the parser and add tests", selection: selection, owner: owner)
+        var current = ComposerVoiceDraftSnapshot(
+            owner: owner,
+            text: "Fix the parser and add tests",
+            selection: selection
+        )
 
-        session.begin(baseDraft: "Send this")
+        guard case .applied(let first) = session.apply(transcript: "for nested lists", current: current) else {
+            return XCTFail("First partial must apply")
+        }
+        current = ComposerVoiceDraftSnapshot(
+            owner: owner,
+            text: first.text,
+            selection: selection.moved(to: first.caret)
+        )
+        session.commit(first)
+
+        guard case .applied(let second) = session.apply(transcript: "for nested lists and chips", current: current) else {
+            return XCTFail("A partial that replaces the owned span must apply")
+        }
+        XCTAssertEqual(second.text, "Fix the parser for nested lists and chips and add tests")
+    }
+
+    func testDraftUpdateSessionIgnoresTranscriptAfterStop() {
+        var session = ComposerVoiceDraftUpdateSession()
+        let owner = NSObject()
+        session.begin(baseDraft: "Send this", selection: ComposerSelection(), owner: owner)
         session.stopAcceptingUpdates()
 
-        XCTAssertNil(session.composedDraft(for: "late final transcript"))
+        XCTAssertEqual(
+            session.apply(
+                transcript: "late final transcript",
+                current: ComposerVoiceDraftSnapshot(owner: owner, text: "Send this", selection: ComposerSelection())
+            ),
+            .rejected
+        )
     }
 
-    func testDraftUpdateSessionUsesNewBaseDraftAfterRestart() {
+    func testDraftUpdateSessionUsesNewSnapshotAfterRestart() {
         var session = ComposerVoiceDraftUpdateSession()
-
-        session.begin(baseDraft: "Old")
+        let owner = NSObject()
+        session.begin(baseDraft: "Old", selection: ComposerSelection(), owner: owner)
         session.stopAcceptingUpdates()
-        session.begin(baseDraft: "New")
+        session.begin(baseDraft: "New", selection: ComposerSelection(), owner: owner)
 
-        XCTAssertEqual(session.composedDraft(for: "transcript"), "New transcript")
+        XCTAssertEqual(
+            session.apply(
+                transcript: "transcript",
+                current: ComposerVoiceDraftSnapshot(owner: owner, text: "New", selection: ComposerSelection())
+            ),
+            .applied(ComposerVoiceDraftUpdate(
+                text: "New transcript",
+                ownedRange: NSRange(location: 3, length: " transcript".utf16.count),
+                caret: NSRange(location: 3 + " transcript".utf16.count, length: 0)
+            ))
+        )
+    }
+
+    func testDraftUpdateSessionRejectsAnEditMadeAfterStart() {
+        var session = ComposerVoiceDraftUpdateSession()
+        let owner = NSObject()
+        let selection = ComposerSelection(
+            range: NSRange(location: 6, length: 0),
+            revision: 2,
+            publishGeneration: 5
+        )
+        session.begin(baseDraft: "Please", selection: selection, owner: owner)
+
+        // An edit dates a new publish generation, even when undone back to the
+        // same text, so every snapshot that carries one is stale.
+        XCTAssertEqual(
+            session.apply(
+                transcript: "more words",
+                current: ComposerVoiceDraftSnapshot(
+                    owner: owner,
+                    text: "Please",
+                    selection: ComposerSelection(
+                        range: selection.range, revision: selection.revision,
+                        publishGeneration: selection.publishGeneration + 1
+                    )
+                )
+            ),
+            .rejected
+        )
+
+        // Changed text is stale even at the captured revision pair.
+        XCTAssertEqual(
+            session.apply(
+                transcript: "more words",
+                current: ComposerVoiceDraftSnapshot(owner: owner, text: "Please edited", selection: selection)
+            ),
+            .rejected
+        )
+
+        // A different owner — a replacement capture — must not write here.
+        XCTAssertEqual(
+            session.apply(
+                transcript: "more words",
+                current: ComposerVoiceDraftSnapshot(owner: NSObject(), text: "Please", selection: selection)
+            ),
+            .rejected
+        )
+
+        // A live IME composition must not be committed by a voice write.
+        XCTAssertEqual(
+            session.apply(
+                transcript: "more words",
+                current: ComposerVoiceDraftSnapshot(
+                    owner: owner,
+                    text: "Please",
+                    selection: ComposerSelection(
+                        range: selection.range, revision: selection.revision,
+                        publishGeneration: selection.publishGeneration, hasMarkedText: true
+                    )
+                )
+            ),
+            .rejected
+        )
+    }
+
+    /// A plain caret move — a tap, an arrow key — does not edit the draft, so
+    /// the owned span is still written and the caret lands after the dictated
+    /// text, never on the newly selected position.
+    func testDraftUpdateSessionWritesTheOwnedSpanPastACaretMove() {
+        var session = ComposerVoiceDraftUpdateSession()
+        let owner = NSObject()
+        let selection = ComposerSelection(
+            range: NSRange(location: 6, length: 0),
+            revision: 2,
+            publishGeneration: 5
+        )
+        session.begin(baseDraft: "Please", selection: selection, owner: owner)
+
+        XCTAssertEqual(
+            session.apply(
+                transcript: "hold the line",
+                current: ComposerVoiceDraftSnapshot(
+                    owner: owner,
+                    text: "Please",
+                    selection: ComposerSelection(
+                        range: NSRange(location: 0, length: 0),
+                        revision: selection.revision,
+                        publishGeneration: selection.publishGeneration
+                    )
+                )
+            ),
+            .applied(ComposerVoiceDraftUpdate(
+                text: "Please hold the line",
+                ownedRange: NSRange(location: 6, length: " hold the line".utf16.count),
+                caret: NSRange(location: 6 + " hold the line".utf16.count, length: 0)
+            ))
+        )
+    }
+
+    func testDraftUpdateSessionSkipsABlankTranscriptWithoutStopping() {
+        var session = ComposerVoiceDraftUpdateSession()
+        let owner = NSObject()
+        session.begin(baseDraft: "Please", selection: ComposerSelection(), owner: owner)
+
+        XCTAssertEqual(
+            session.apply(
+                transcript: "   \n",
+                current: ComposerVoiceDraftSnapshot(owner: owner, text: "Please", selection: ComposerSelection())
+            ),
+            .skipped
+        )
+        XCTAssertEqual(
+            session.apply(
+                transcript: "words",
+                current: ComposerVoiceDraftSnapshot(owner: owner, text: "Please", selection: ComposerSelection())
+            ),
+            .applied(ComposerVoiceDraftUpdate(
+                text: "Please words",
+                ownedRange: NSRange(location: 6, length: " words".utf16.count),
+                caret: NSRange(location: 6 + " words".utf16.count, length: 0)
+            ))
+        )
     }
 
     func testVoiceInputPreflightAcceptsValidInputFormatValues() {
