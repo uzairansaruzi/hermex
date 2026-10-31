@@ -547,12 +547,25 @@ struct HermesServerHome: View {
     let didDeclineShare: (SharedImportReservation) -> Void
     let didAbandonShare: (SharedImportReservation) -> Void
     @SceneStorage("hermesHome.tab") private var tab = HermesHomeTab.sessions
+    @AppStorage(SectionVisibilitySettings.tasksKey) private var showsTasks = true
+    @AppStorage(SectionVisibilitySettings.kanbanKey) private var showsKanban = true
+    @AppStorage(SectionVisibilitySettings.skillsKey) private var showsSkills = true
+    @AppStorage(SectionVisibilitySettings.memoryKey) private var showsMemory = true
+    @AppStorage(SectionVisibilitySettings.insightsKey) private var showsInsights = true
     @State private var inbox: BotInbox
     /// The Sessions side's list on the saved Bot connection, read again each time a side shows,
     /// so a sign-in changed in Settings or the inbox gets a fresh list.
     @State private var sessions: HermesSessionsSide?
     @State private var isShowingSettings = false
     @State private var isPresentingAddServer = false
+    /// The quick switcher (#1415) and the pick it leaves behind: the sheet dismisses
+    /// first, and `onDismiss` routes the pick after rechecking the server and the lock.
+    @State private var isShowingQuickSwitcher = false
+    @State private var quickSwitcherSnapshot: QuickSwitcherSnapshot?
+    @State private var pendingQuickSwitcherPick: QuickSwitcherItem?
+    /// The utility a quick switcher pick asked for, which the Sessions side's list
+    /// consumes as its own rows do.
+    @State private var pendingSessionsUtility: SessionListUtilityDestination?
 
     init(authManager: AuthManager, server: URL, pendingBotDestination: Binding<BotDestination?>,
          pendingSessionDestination: Binding<HermesSessionDestination?>, pendingNewChat: Binding<HermesNewChatDestination?>,
@@ -606,6 +619,14 @@ struct HermesServerHome: View {
         // A Hermes chat's Update sign-in (#942) signs the server out to its sign-in form, which
         // keeps the saved values and focuses the password; saving signs it back in.
         .modifier(HermesUpdateSignInModifier { authManager.hermesSignInRejected(server: server) })
+        .sheet(isPresented: $isShowingQuickSwitcher, onDismiss: routeQuickSwitcherPick) {
+            if let quickSwitcherSnapshot {
+                QuickSwitcherSheet(snapshot: quickSwitcherSnapshot) { pick in
+                    pendingQuickSwitcherPick = pick
+                    isShowingQuickSwitcher = false
+                }
+            }
+        }
         // A connection the inbox's sheet saved or changed closes no screen, so the switch reads too.
         // At compact width a route turning the home leaves the side it left on its root, so a
         // later return doesn't push that side's old chat again.
@@ -653,10 +674,13 @@ struct HermesServerHome: View {
                                       pendingLink: $pendingSessionDestination, pendingNewChat: $pendingNewChat,
                                       pendingShare: pendingShare, claimShare: claimShare,
                                       didRouteShare: didRouteShare, didDeclineShare: didDeclineShare,
-                                      didAbandonShare: didAbandonShare)
+                                      didAbandonShare: didAbandonShare,
+                                      openQuickSwitcher: { openQuickSwitcher() },
+                                      pendingUtility: $pendingSessionsUtility)
                     .id(sessions.entry.id)
             } else {
-                BotsInboxView(server: server, pendingDestination: $pendingBotDestination, home: home, inbox: inbox)
+                BotsInboxView(server: server, pendingDestination: $pendingBotDestination, home: home, inbox: inbox,
+                              openQuickSwitcher: { openQuickSwitcher() })
             }
         }
         .onAppear(perform: readConnection)
@@ -668,6 +692,68 @@ struct HermesServerHome: View {
         if saved != sessions?.entry.connection { sessions = saved.map { HermesSessionsSide(server: server, connection: $0) } }
     }
 
+    /// Snapshots the active server's loaded rows and roster for the quick switcher
+    /// (#1415). Rows come from the Sessions list the way ⌘1–9 walk them — Needs you
+    /// and the ordinary rows of every lane, no search — and bots from the live
+    /// roster's unhidden profiles; without a saved connection the palette offers
+    /// only Settings, the one screen that needs neither.
+    private func openQuickSwitcher() {
+        guard !AppLock.shared.isLocked else { return }
+        let side = sessions
+        let groups = side?.model.scheduledSessionGroups(searchText: "", selectedProjectID: nil)
+        let hasList = side != nil
+        // Archived follows the list's own availability: a live list of one Profile.
+        let showsArchived = hasList && side?.model.isViewingCachedData == false
+            && side?.model.hermesShowsAllProfiles == false
+        quickSwitcherSnapshot = QuickSwitcherSnapshot(
+            server: server,
+            connectionID: side?.entry.connection.id,
+            sessions: groups.map { $0.needsYou + $0.ordinary } ?? [],
+            bots: inbox.connection == nil ? [] : inbox.profiles.filter { !$0.hidden },
+            destinations: QuickSwitcherModel.destinations(
+                showsTasks: hasList && showsTasks, showsKanban: hasList && showsKanban,
+                showsSkills: hasList && showsSkills, showsMemory: hasList && showsMemory,
+                showsInsights: hasList && showsInsights, showsArchived: showsArchived
+            ),
+            openSessionKey: openSessionKey
+        )
+        pendingQuickSwitcherPick = nil
+        isShowingQuickSwitcher = true
+    }
+
+    /// The open chat's session key, so its row lists last in the recents. A bot's
+    /// chat or a New Session has none.
+    private var openSessionKey: String? {
+        guard let chat = sessions?.navigation.covers.chat, case .session(_, let key)? = chat.target else { return nil }
+        return key
+    }
+
+    /// Routes the pick the sheet left behind, after it is gone: the app lock may
+    /// have come up, or the user may have switched servers while the dismissal ran,
+    /// and then the pick is dropped rather than opening under the wrong server.
+    private func routeQuickSwitcherPick() {
+        guard let pick = pendingQuickSwitcherPick else { return }
+        pendingQuickSwitcherPick = nil
+        guard QuickSwitcherModel.canRoute(pickServerID: server.absoluteString,
+                                          activeServerID: authManager.activeServer?.id,
+                                          isLocked: AppLock.shared.isLocked),
+              let routing = QuickSwitcherModel.pick(pick, on: server, connectionID: quickSwitcherSnapshot?.connectionID)
+        else { return }
+        switch routing {
+        case .session(let destination):
+            pendingSessionDestination = destination
+        case .bot(let destination):
+            pendingBotDestination = destination
+        case .settings:
+            isShowingSettings = true
+        case .sessionsUtility(let destination):
+            tab = .sessions
+            isShowingSettings = false
+            isPresentingAddServer = false
+            pendingSessionsUtility = destination
+        }
+    }
+
     private func avatar(_ identity: HermesServerIdentity) -> SessionsHeader.Avatar {
         SessionsHeader.Avatar(
             initials: identity.initials,
@@ -677,7 +763,8 @@ struct HermesServerHome: View {
             openSettings: { isShowingSettings = true },
             switchToServer: { authManager.switchActiveServer(to: $0) },
             addServer: { isPresentingAddServer = true },
-            manageServers: { isShowingSettings = true }
+            manageServers: { isShowingSettings = true },
+            openQuickSwitcher: { openQuickSwitcher() }
         )
     }
 }

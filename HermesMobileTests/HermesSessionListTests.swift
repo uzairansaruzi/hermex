@@ -870,6 +870,43 @@ import Observation
                  "last_active": .number(100), "started_at": .number(90), "message_count": .number(2),
                  "model": .string("m"), "preview": .string(""), "title": .string(""), "current": .bool(false)])
     }
+
+    // MARK: Quick switcher picks (#1415)
+
+    /// A session pick carries the identity a session link (#1176) names, so it opens
+    /// through the same live lookup a link does.
+    func testAQuickSwitcherSessionPickNamesTheDestinationALinkNames() {
+        let pick = QuickSwitcherModel.pick(.session(key: "root-1", profile: "default", title: "Fix"),
+                                           on: server, connectionID: connection.id)
+        XCTAssertEqual(pick, .session(HermesSessionDestination(server: server, profile: "default", key: "root-1")))
+        XCTAssertNil(QuickSwitcherModel.pick(.session(key: "", profile: nil, title: "Untitled"),
+                                             on: server, connectionID: connection.id))
+    }
+
+    /// A bot pick carries the bot route's identity, and routes nowhere without the
+    /// connection the route keys by. A utility pick always lands on the Sessions
+    /// side's list, which owns Tasks, Kanban, Skills, Memory, Usage and Archived;
+    /// Settings is the home's own.
+    func testAQuickSwitcherBotOrUtilityPickRoutesByItsKind() {
+        XCTAssertEqual(
+            QuickSwitcherModel.pick(.bot(profile: "triage", title: "Triage"), on: server, connectionID: connection.id),
+            .bot(BotDestination(server: server, connectionID: connection.id, profile: "triage", conversation: nil))
+        )
+        XCTAssertNil(QuickSwitcherModel.pick(.bot(profile: "triage", title: "Triage"), on: server, connectionID: nil))
+        XCTAssertEqual(QuickSwitcherModel.pick(.utility(.tasks), on: server, connectionID: connection.id), .sessionsUtility(.tasks))
+        XCTAssertEqual(QuickSwitcherModel.pick(.utility(.archived), on: server, connectionID: connection.id), .sessionsUtility(.archived))
+        XCTAssertEqual(QuickSwitcherModel.pick(.utility(.settings), on: server, connectionID: connection.id), .settings)
+    }
+
+    /// A pick taken before the sheet finished dismissing routes only while the
+    /// active server is still the pick's and the app lock is down.
+    func testAQuickSwitcherPickIsDroppedAfterAServerSwitchOrWhileLocked() {
+        let serverID = server.absoluteString
+        XCTAssertTrue(QuickSwitcherModel.canRoute(pickServerID: serverID, activeServerID: serverID, isLocked: false))
+        XCTAssertFalse(QuickSwitcherModel.canRoute(pickServerID: serverID, activeServerID: "https://other.example", isLocked: false))
+        XCTAssertFalse(QuickSwitcherModel.canRoute(pickServerID: serverID, activeServerID: serverID, isLocked: true))
+        XCTAssertFalse(QuickSwitcherModel.canRoute(pickServerID: serverID, activeServerID: nil, isLocked: false))
+    }
 }
 
 /// A Hermes server's Sessions list search (#1053): the host's matches merged into the loaded

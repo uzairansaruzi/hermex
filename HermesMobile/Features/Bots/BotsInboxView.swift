@@ -15,6 +15,8 @@ import SwiftUI
     /// The bot a deep link named, resolved here because this is where the live roster
     /// is. Cleared once this inbox has settled, whether or not it matched (#554).
     @Binding private var pendingDestination: BotDestination?
+    /// Opens the home's quick switcher (#1415); nil on an inbox that has none.
+    private let openQuickSwitcher: (() -> Void)?
     @State private var inbox: BotInbox
     @State private var showingSearch = false
     @State private var searchedProfile: (connectionID: UUID, profileID: String)?
@@ -54,10 +56,12 @@ import SwiftUI
 
     /// A Hermes server's home, which keeps `inbox` across its switch, so a switch back shows the
     /// roster at once (#709). Its sign-in form is reached through Settings there.
-    init(server: URL, pendingDestination: Binding<BotDestination?>, home: HermesHome?, inbox: BotInbox) {
+    init(server: URL, pendingDestination: Binding<BotDestination?>, home: HermesHome?, inbox: BotInbox,
+         openQuickSwitcher: (() -> Void)? = nil) {
         self.server = server
         self.home = home
         _pendingDestination = pendingDestination
+        self.openQuickSwitcher = openQuickSwitcher
         _inbox = State(initialValue: inbox)
     }
 
@@ -474,7 +478,8 @@ import SwiftUI
                 if let chat = ChatShortcutNavigation.adjacentChat(offset: offset, from: selectedChatID, in: keyboardShortcutChats) {
                     open(chat)
                 }
-            }
+            },
+            openQuickSwitcher: openQuickSwitcher
         )
     }
 

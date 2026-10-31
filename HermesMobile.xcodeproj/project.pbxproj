@@ -107,6 +107,9 @@
 		C0FF000000000000000000C1 /* CustomHeaderInjectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0FF000000000000000000C2 /* CustomHeaderInjectionTests.swift */; };
 		C03910000000000000000001 /* APIClientSessionListTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000001 /* APIClientSessionListTests.swift */; };
 		B23000000000000000000003 /* SessionSearchExcerptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B23000000000000000000004 /* SessionSearchExcerptTests.swift */; };
+		B23014150000000000000001 /* QuickSwitcherModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B23014150000000000000002 /* QuickSwitcherModel.swift */; };
+		B23014150000000000000003 /* QuickSwitcherSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B23014150000000000000004 /* QuickSwitcherSheet.swift */; };
+		B23014150000000000000005 /* QuickSwitcherModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B23014150000000000000006 /* QuickSwitcherModelTests.swift */; };
 		C03910000000000000000002 /* APIClientInsightsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000002 /* APIClientInsightsTests.swift */; };
 		C03910000000000000000017 /* APIClientUpdatesCheckTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000017 /* APIClientUpdatesCheckTests.swift */; };
 		C03910000000000000000018 /* APIClientUpdatesApplyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000018 /* APIClientUpdatesApplyTests.swift */; };
@@ -798,6 +801,9 @@
 		C0FF000000000000000000C2 /* CustomHeaderInjectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomHeaderInjectionTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000001 /* APIClientSessionListTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientSessionListTests.swift; sourceTree = "<group>"; };
 		B23000000000000000000004 /* SessionSearchExcerptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSearchExcerptTests.swift; sourceTree = "<group>"; };
+		B23014150000000000000002 /* QuickSwitcherModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSwitcherModel.swift; sourceTree = "<group>"; };
+		B23014150000000000000004 /* QuickSwitcherSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSwitcherSheet.swift; sourceTree = "<group>"; };
+		B23014150000000000000006 /* QuickSwitcherModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickSwitcherModelTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000002 /* APIClientInsightsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientInsightsTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000017 /* APIClientUpdatesCheckTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientUpdatesCheckTests.swift; sourceTree = "<group>"; };
 		C03900000000000000000018 /* APIClientUpdatesApplyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClientUpdatesApplyTests.swift; sourceTree = "<group>"; };
@@ -1529,6 +1535,7 @@
 				C0FF000000000000000000C2 /* CustomHeaderInjectionTests.swift */,
 				C03900000000000000000001 /* APIClientSessionListTests.swift */,
 				B23000000000000000000004 /* SessionSearchExcerptTests.swift */,
+				B23014150000000000000006 /* QuickSwitcherModelTests.swift */,
 				C03900000000000000000002 /* APIClientInsightsTests.swift */,
 				C03900000000000000000017 /* APIClientUpdatesCheckTests.swift */,
 				C03900000000000000000018 /* APIClientUpdatesApplyTests.swift */,
@@ -1936,6 +1943,8 @@
 				531000000000000000000102 /* TipJarCard.swift */,
 				1A2B3C4D5E6F7000000000D2 /* SessionRowView.swift */,
 				B23000000000000000000002 /* SessionSearchExcerpt.swift */,
+				B23014150000000000000002 /* QuickSwitcherModel.swift */,
+				B23014150000000000000004 /* QuickSwitcherSheet.swift */,
 				1A2B3C4D5E6F7000000000D3 /* SessionListViewModel.swift */,
 				A04300000000000000000011 /* SessionListComponents.swift */,
 				A10900000000000000000011 /* SessionNavigationState.swift */,
@@ -2885,6 +2894,8 @@
 				C0FF000000000000000000A1 /* CustomHeader.swift in Sources */,
 				1A2B3C4D5E6F7000000000D0 /* SessionRowView.swift in Sources */,
 				B23000000000000000000001 /* SessionSearchExcerpt.swift in Sources */,
+				B23014150000000000000001 /* QuickSwitcherModel.swift in Sources */,
+				B23014150000000000000003 /* QuickSwitcherSheet.swift in Sources */,
 				1A2B3C4D5E6F7000000000D1 /* SessionListViewModel.swift in Sources */,
 				A04300000000000000000001 /* SessionListComponents.swift in Sources */,
 				A10900000000000000000001 /* SessionNavigationState.swift in Sources */,
@@ -3016,6 +3027,7 @@
 				C0FF000000000000000000C1 /* CustomHeaderInjectionTests.swift in Sources */,
 				C03910000000000000000001 /* APIClientSessionListTests.swift in Sources */,
 				B23000000000000000000003 /* SessionSearchExcerptTests.swift in Sources */,
+				B23014150000000000000005 /* QuickSwitcherModelTests.swift in Sources */,
 				C03910000000000000000002 /* APIClientInsightsTests.swift in Sources */,
 				C03910000000000000000017 /* APIClientUpdatesCheckTests.swift in Sources */,
 				C03910000000000000000018 /* APIClientUpdatesApplyTests.swift in Sources */,

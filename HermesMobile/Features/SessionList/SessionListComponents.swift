@@ -229,6 +229,9 @@ struct SessionsHeader: View {
         let switchToServer: (ServerAccount) -> Void
         let addServer: () -> Void
         let manageServers: () -> Void
+        /// Opens the home's quick switcher (#1415); nil where the home has none,
+        /// and the header then shows no menu item for it.
+        var openQuickSwitcher: (() -> Void)? = nil
     }
 
     private static let iconVisualSize: CGFloat = 36
@@ -394,6 +397,13 @@ struct SessionsHeader: View {
         // preserved — `contextMenu` adds long-press without stealing the tap.
         .contextMenu {
             if !isExpanded {
+                if let openQuickSwitcher = avatar.openQuickSwitcher {
+                    Button {
+                        openQuickSwitcher()
+                    } label: {
+                        Label("Quick Switcher", systemImage: "command.square")
+                    }
+                }
                 AvatarServerSwitcherMenu(
                     model: avatar.servers,
                     switchToServer: avatar.switchToServer,
