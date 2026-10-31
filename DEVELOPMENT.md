@@ -340,9 +340,20 @@ The `HERMEX_DEV_*` environment variables (`HERMEX_DEV_SERVER_URL`, `HERMEX_DEV_P
 | `Load Earlier` | Load earlier (button or pull) to the layout of the prepended rows | `messages` |
 | `Transcript Apply` | Painting the cached transcript, or applying a reloaded one | `messages` |
 | `Markdown Parse` | Parsing one markdown block | `chars` |
-| `Stream Batch Apply` | Applying one batch of streamed tokens | `mutated` (0 or 1) |
+| `Stream Batch Apply` | Applying one batch of streamed tokens: a scheduled reveal tick (`forced=0`) or a forced flush on completion, cancel, error, interim or snapshot (`forced=1`) | `mutated` (0 or 1), `forced` (0 or 1) |
 | `Cache Read` | A SwiftData read of cached sessions or messages | `rows` |
 | `Cache Write` | A SwiftData write of cached sessions or messages | `rows` |
+
+Debug builds also count SwiftUI body evaluations through `RenderProbe`
+(`Config/RenderProbe.swift`): `ChatTranscriptMessageBlock`, `MessageBubbleView`,
+`MarkdownRenderer`, `ToolActivityGroupView`, `ReasoningBlockView`, and
+`ResponseTextSelection` host updates, per transcript `renderID` where one exists.
+Inspect a snapshot with `po RenderProbe.allCounts()` (or a breakpoint after a
+stream); `RenderProbe.reset()` zeroes it. Counts stay in memory and are compiled
+out of Release. The budget to watch: during a stream, only the active reply's
+bodies re-evaluate per tick — settled rows must stay put, which is the promise
+the transcript's `.equatable()` rows make (`ChatTranscriptRenderBudgetTests`
+holds it).
 
 In Xcode: Product → Profile (a Release build), choose the Animation Hitches or Time Profiler template, add the `os_signpost` instrument from the library, and filter it by the subsystem and category `Performance`.
 

@@ -37,10 +37,12 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     @State private var contentHeight: CGFloat = 0
 
     func makeUIViewController(context: Context) -> ResponseSelectionController {
-        ResponseSelectionController()
+        let _ = RenderProbe.hit("ResponseTextSelection", renderID: identity)
+        return ResponseSelectionController()
     }
 
     func updateUIViewController(_ controller: ResponseSelectionController, context: Context) {
+        let _ = RenderProbe.hit("ResponseTextSelection", renderID: identity)
         controller.scope.collectsGlyphs = collectsGlyphs
         controller.input.onAskHermex = onAskHermex
         controller.openURL = openURL

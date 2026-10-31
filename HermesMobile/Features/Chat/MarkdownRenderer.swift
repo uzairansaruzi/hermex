@@ -17,6 +17,7 @@ struct MarkdownRenderer: View {
     }
 
     var body: some View {
+        let _ = RenderProbe.hit("MarkdownRenderer")
         if isStreaming {
             StreamingMarkdownRenderer(content: content)
         } else if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

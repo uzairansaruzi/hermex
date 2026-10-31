@@ -27,6 +27,7 @@ struct ReasoningBlockView: View {
     }
 
     var body: some View {
+        let _ = RenderProbe.hit("ReasoningBlockView")
         if let displayText = ReasoningBlockContent.displayText(from: text) {
             let isLive = liveStreamID != nil
             let detail = isLive

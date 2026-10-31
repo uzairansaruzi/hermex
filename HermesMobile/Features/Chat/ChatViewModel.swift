@@ -998,7 +998,18 @@ final class ChatViewModel {
     /// Completion paths (done/cancel/error/interim/snapshot) skip the gate via
     /// `flushPendingStreamingContent()`, which cancels any scheduled tick.
     private func revealStreamingContentTick() {
+        // The scheduled reveal path runs a `Stream Batch Apply` interval like the
+        // forced flush does, so a trace measures the whole stream, not just its end.
+        let signpost = performanceSignposter.beginInterval("Stream Batch Apply")
         var didMutate = false
+        defer {
+            performanceSignposter.endInterval(
+                "Stream Batch Apply",
+                signpost,
+                "mutated=\(didMutate ? 1 : 0, privacy: .public) forced=\(0, privacy: .public)"
+            )
+        }
+
         if flushAssistantTokens(throughRevealGate: true) {
             didMutate = true
         }
@@ -1048,7 +1059,7 @@ final class ChatViewModel {
         if didMutate {
             scheduleStreamingScrollTrigger()
         }
-        performanceSignposter.endInterval("Stream Batch Apply", signpost, "mutated=\(didMutate ? 1 : 0, privacy: .public)")
+        performanceSignposter.endInterval("Stream Batch Apply", signpost, "mutated=\(didMutate ? 1 : 0, privacy: .public) forced=\(1, privacy: .public)")
     }
 
     private var requestProfileName: String? {
