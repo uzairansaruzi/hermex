@@ -6,6 +6,8 @@ struct SettingsAboutPage: View {
     let server: ServerAccount?
 
     @State private var isShowingSupportDetails = false
+    /// Why Troubleshoot with Hermes couldn't queue its chat text; nothing was queued.
+    @State private var troubleshootingFailure: NewChatWithContentError?
     @State private var diagnostics = DiagnosticsModel()
 
     static var appVersion: String {
@@ -26,6 +28,15 @@ struct SettingsAboutPage: View {
             }
 
             Section {
+                if server?.kind == .hermes {
+                    Button {
+                        troubleshoot()
+                    } label: {
+                        SettingsLabel(title: String(localized: "Troubleshoot with Hermes"), systemImage: "bubble.left.and.text.bubble.right")
+                    }
+                    .foregroundStyle(.primary)
+                    .accessibilityHint(String(localized: "Opens a new chat with your support details for you to review before sending."))
+                }
                 Button {
                     isShowingSupportDetails = true
                 } label: {
@@ -51,8 +62,6 @@ struct SettingsAboutPage: View {
                 )
             } header: {
                 Text("Troubleshooting")
-            } footer: {
-                Text("Report a Problem opens GitHub with your app, iOS and server versions filled in.")
             }
 
             Section {
@@ -100,6 +109,30 @@ struct SettingsAboutPage: View {
         .task { await diagnostics.observe() }
         .sheet(isPresented: $isShowingSupportDetails) {
             SupportDetailsSheet(text: report.text)
+        }
+        .alert(String(localized: "Troubleshooting Can’t Open"), isPresented: Binding(
+            get: { troubleshootingFailure != nil }, set: { if !$0 { troubleshootingFailure = nil } }
+        )) {
+            Button(String(localized: "OK"), role: .cancel) {}
+        } message: {
+            if troubleshootingFailure == .tooManyWaiting {
+                Text("10 texts are already waiting to open. Open or discard them in Sessions, then try again.")
+            } else {
+                Text("Hermex couldn’t save the text. Try again.")
+            }
+        }
+    }
+
+    /// Queues the triage prompt and a report built now, so it carries the latest connection
+    /// attempt, as a new chat on the active Hermes server, in the Profile its New Session uses
+    /// (#1476). The chat opens for review once Sessions can show it; nothing is sent.
+    private func troubleshoot() {
+        guard let server, let url = URL(string: server.id) else { return }
+        do {
+            try AppIntentRouter.shared.openNewChat(prefilling: SupportReport(server: server).troubleshootingPrompt,
+                                                   server: url, profile: nil, origin: .troubleshooting)
+        } catch {
+            troubleshootingFailure = error as? NewChatWithContentError ?? .storage
         }
     }
 }

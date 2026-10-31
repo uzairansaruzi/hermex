@@ -413,10 +413,11 @@ struct ChatView: View {
     /// Measured height of a Hermes chat's Update sign-in pill (#942), which wraps at
     /// accessibility text sizes.
     @State private var updateSignInPillHeight: CGFloat = 36
-    /// The draft holds text from Shortcuts the user hasn't dismissed or sent (#1402).
-    @State private var isFromShortcut = false
-    /// The draft as it was before Remove Hidden Characters, until the next edit.
-    @State private var textBeforeHiddenRemoval: String?
+    /// Where the draft's added text came from, until the user dismisses its notice or sends it
+    /// (#1402, #1476).
+    @State private var textOrigin: ImportedTextOrigin?
+    /// The draft as it was before Remove Hidden Characters, and its origin, until the next edit.
+    @State private var textBeforeHiddenRemoval: (text: String, origin: ImportedTextOrigin)?
     /// Measured height of the Shortcuts notice, which wraps with Dynamic Type.
     @State private var shortcutNoticeHeight: CGFloat = 0
     /// The delegated-work sheet a Hermes chat's workers button opens (#1140).
@@ -2012,41 +2013,44 @@ struct ChatView: View {
 
     private var showsShortcutNotice: Bool { showsShortcutProvenance || waitingShortcut != nil }
 
-    /// The draft holds text from Shortcuts, or a removal of its hidden characters can still be
-    /// undone, even one that took all of it.
-    private var showsShortcutProvenance: Bool {
-        (isFromShortcut && !draftMessage.isEmpty) || textBeforeHiddenRemoval != nil
+    /// Where the draft's added text came from while its notice shows: the draft holds that text,
+    /// or a removal of its hidden characters can still be undone, even one that took all of it.
+    private var shownTextOrigin: ImportedTextOrigin? {
+        textBeforeHiddenRemoval?.origin ?? (draftMessage.isEmpty ? nil : textOrigin)
     }
+
+    private var showsShortcutProvenance: Bool { shownTextOrigin != nil }
 
     private var shortcutNotice: some View {
         ShortcutTextNotice(
-            showsProvenance: showsShortcutProvenance,
+            origin: shownTextOrigin,
             hasHiddenCharacters: HiddenPromptCharacters.contains(in: draftMessage),
             canUndoRemoval: textBeforeHiddenRemoval != nil,
             removeHiddenCharacters: {
+                guard let origin = shownTextOrigin else { return }
                 let before = draftMessage
                 persistDraftEdit(HiddenPromptCharacters.removing(from: before))
                 draftMessage = HiddenPromptCharacters.removing(from: before)
-                textBeforeHiddenRemoval = before
+                textBeforeHiddenRemoval = (before, origin)
             },
             undoRemoval: {
                 guard let before = textBeforeHiddenRemoval else { return }
-                persistDraftEdit(before)
-                draftMessage = before
+                persistDraftEdit(before.text)
+                draftMessage = before.text
                 // A removal that emptied the draft ended its provenance.
-                isFromShortcut = true
-                draftStore.setFromShortcut(true, for: draftKey)
+                textOrigin = before.origin
+                draftStore.setTextOrigin(before.origin, for: draftKey)
             },
             waiting: waitingShortcut,
             dismiss: dismissShortcutNotice
         )
     }
 
-    /// The user dismissed the Shortcuts notice, deleted its text, or sent it.
+    /// The user dismissed the added text's notice, deleted its text, or sent it.
     private func dismissShortcutNotice() {
-        isFromShortcut = false
+        textOrigin = nil
         textBeforeHiddenRemoval = nil
-        draftStore.setFromShortcut(false, for: draftKey)
+        draftStore.setTextOrigin(nil, for: draftKey)
     }
 
     /// The bot's profile, from its pill (#1145). Closing it reads the roster again, so the pill
@@ -2906,7 +2910,7 @@ struct ChatView: View {
         if didStart {
             onConversationStarted()
             draftAttachmentsPendingRetry = sendReconciliation.retained
-            if isFromShortcut { dismissShortcutNotice() }
+            if textOrigin != nil { dismissShortcutNotice() }
         }
         let resolvedContent = draftStore.resolveSubmission(
             submitted: submittedContent,
@@ -2943,7 +2947,7 @@ struct ChatView: View {
         ) {
             // The destination owns the retained work now; don't show a second
             // unsent copy when the user returns to the sealed parent.
-            if isFromShortcut { dismissShortcutNotice() }
+            if textOrigin != nil { dismissShortcutNotice() }
             draftMessage = ""
             draftQuotes = []
             draftAttachmentsPendingRetry = []
@@ -3086,7 +3090,7 @@ struct ChatView: View {
     private func persistDraftEdit(_ text: String) {
         viewModel.clearSteerFailure()
         textBeforeHiddenRemoval = nil
-        if text.isEmpty, isFromShortcut { dismissShortcutNotice() }
+        if text.isEmpty, textOrigin != nil { dismissShortcutNotice() }
         draftRevision &+= 1
         draftStore.setContent(
             ComposerDraftContent(text: text, quotes: draftQuotes),
@@ -3136,7 +3140,7 @@ struct ChatView: View {
             draftStore.setQuotes(quotesBeforeHydration, for: draftKey)
         }
         didHydrateDraft = true
-        isFromShortcut = persistedDraft?.isFromShortcut == true
+        textOrigin = persistedDraft?.textOrigin
 
         restoredDraftSettings = persistedDraft?.settings
         lastSyncedDraftAttachments = persistedDraft?.attachments ?? []
@@ -3300,7 +3304,7 @@ struct ChatView: View {
         submittedDraftRevision: Int,
         preserveRejectedSubmission: Bool = false
     ) {
-        if isFromShortcut { dismissShortcutNotice() }
+        if textOrigin != nil { dismissShortcutNotice() }
         let resolvedContent = draftStore.resolveConsumedInput(
             submitted: submittedContent,
             current: ComposerDraftContent(text: draftMessage, quotes: draftQuotes),

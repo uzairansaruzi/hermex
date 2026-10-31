@@ -1155,7 +1155,7 @@ final class SharedDraftStoreTests: XCTestCase {
 
         let restored = await drafts(disk, copies).draft(for: key)
         XCTAssertEqual(restored?.text, "Unsent\n\n\n" + text)
-        XCTAssertEqual(restored?.isFromShortcut, true, "The composer shows its review notice")
+        XCTAssertEqual(restored?.textOrigin, .shortcut, "The composer shows its review notice")
     }
 
     /// A Shortcut's text waits for its own server: no other home is offered it, and its server is

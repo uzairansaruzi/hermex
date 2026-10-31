@@ -31,13 +31,15 @@ final class AppIntentRouter {
     /// wait in the app group's share inbox first, so a cold launch, a server switch or a sign-in
     /// can't lose them, and only the bare share link travels as the deep link. Each call is its
     /// own chat text, even for the same text. The Hermes home adds it to that Profile's new
-    /// session draft, after any unsent text, then opens it with a review notice.
-    func openNewChat(prefilling text: String, server: URL, profile: String?,
+    /// session draft, after any unsent text, then opens it with a review notice naming `origin`.
+    /// Callers: the New Chat with Content intent, and About's Troubleshoot with Hermes (#1476).
+    func openNewChat(prefilling text: String, server: URL, profile: String?, origin: ImportedTextOrigin = .shortcut,
                      inbox: URL? = HermesShareDraft.containerURL(), now: Date = Date()) throws {
         guard let inbox else { throw NewChatWithContentError.storage }
         do {
-            try HermesShareDraft.saveShortcutText(text, for: SharedShortcutDestination(server: server, profile: profile),
-                                                  in: inbox, now: now)
+            try HermesShareDraft.saveShortcutText(
+                text, for: SharedShortcutDestination(server: server, profile: profile, origin: origin), in: inbox, now: now
+            )
         } catch let error as SharedShortcutTextError {
             switch error {
             case .empty: throw NewChatWithContentError.empty

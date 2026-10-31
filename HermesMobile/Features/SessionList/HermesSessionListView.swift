@@ -279,7 +279,7 @@ struct HermesSessionListView: View {
         // Discard is the only action: kept, the same files would fail the same way. The share stays
         // claimed meanwhile; the alert closing any other way (a Cancel iOS adds, Escape, leaving)
         // queues it again instead.
-        .alert(failedShare?.share.sharedImport.shortcut == nil ? Text("Couldn’t Add Shared Files") : Text("Shortcut Can’t Open"),
+        .alert(failedShare?.share.sharedImport.shortcut.map(\.origin.cantOpenTitle) ?? Text("Couldn’t Add Shared Files"),
                isPresented: Binding(get: { failedShare != nil }, set: { if !$0 { queueFailedShareAgain() } }),
                presenting: failedShare) { failure in
             Button(failure.share.sharedImport.shortcut == nil ? "Discard Share" : "Discard", role: .destructive) {
@@ -1014,7 +1014,7 @@ extension SharedImportReservation {
         let text = sharedImport.shortcut == nil ? HermesShareDraft.composerDraft(from: sharedImport.draft) : sharedImport.draft
         try await drafts.appendShare(occurrenceID, text: text, files: files, to: key,
                                      maximumFileBytes: BotAttachmentUpload.maximumFileBytes,
-                                     fromShortcut: sharedImport.shortcut != nil) { attachments in
+                                     origin: sharedImport.shortcut?.origin) { attachments in
             // A composer open on this draft may have added files since the check above.
             guard attachments.count <= HermexAttachmentPickerPolicy.maximumBotAttachments,
                   attachments.reduce(0, { $0 + ($1.size ?? BotAttachmentUpload.maximumFileBytes) })

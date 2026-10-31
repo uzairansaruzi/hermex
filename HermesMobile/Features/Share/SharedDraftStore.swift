@@ -7,8 +7,8 @@ struct SharedDraftPayload: Codable, Equatable {
     let draft: String?
     let createdAt: Date?
     let attachments: [SharedAttachmentPayload]?
-    /// Where the record came from: nil for a share, `shortcut` for a Shortcut's text (#1402).
-    /// A value this build doesn't know never opens anywhere.
+    /// Where the record came from: nil for a share, else the `ImportedTextOrigin` of a queued
+    /// chat text (#1402, #1476). A value this build doesn't know never opens anywhere.
     let source: String?
     /// A Shortcut's bound destination: the Hermes server's URL and, optionally, its Profile.
     let server: String?
@@ -31,7 +31,7 @@ struct SharedDraftPayload: Codable, Equatable {
         self.draft = draft
         self.createdAt = createdAt
         self.attachments = attachments.isEmpty ? nil : attachments
-        source = shortcut == nil ? nil : SharedShortcutDestination.source
+        source = shortcut?.origin.rawValue
         server = shortcut?.server.absoluteString
         profile = shortcut?.profile
         skippedItems = skipped.items.isEmpty ? nil : skipped.items
@@ -43,14 +43,21 @@ struct SharedDraftPayload: Codable, Equatable {
     }
 }
 
-/// The server, and optionally the Profile, a Shortcut's text opens on (#1402). Fixed when the
-/// Shortcut runs, so no later server switch can send the text anywhere else.
-struct SharedShortcutDestination: Equatable {
-    static let source = "shortcut"
+/// Where a queued chat text came from: a Shortcut (#1402) or About's Troubleshoot with Hermes
+/// (#1476). Stored as the record's `source` and on the draft it joins, it picks the review
+/// notice's wording; the text opens the same way either way.
+enum ImportedTextOrigin: String, Codable {
+    case shortcut
+    case troubleshooting
+}
 
+/// The server, and optionally the Profile, a queued chat text opens on (#1402). Fixed when the
+/// text is queued, so no later server switch can send it anywhere else.
+struct SharedShortcutDestination: Equatable {
     let server: URL
     /// Nil opens in the Profile the server's New Session uses.
     let profile: String?
+    var origin: ImportedTextOrigin = .shortcut
 }
 
 /// Which waiting records a reservation may take: shares, Shortcut texts (#1402), or both.
@@ -283,9 +290,9 @@ enum HermesShareDraft {
         )
     }
 
-    /// Queues a Shortcut's text for `destination` exactly as given (#1402): each run is its own
-    /// record, so the same text run twice opens twice, in order. Throws, writing nothing, for
-    /// blank or oversized text, or when too many wait already.
+    /// Queues a chat text for `destination` exactly as given, from a Shortcut (#1402) or About
+    /// (#1476): each run is its own record, so the same text run twice opens twice, in order.
+    /// Throws, writing nothing, for blank or oversized text, or when too many wait already.
     static func saveShortcutText(
         _ text: String,
         for destination: SharedShortcutDestination,
@@ -725,8 +732,9 @@ enum HermesShareDraft {
                 createdAt: createdAt,
                 sharedImport: SharedImport(draft: draft, attachments: loaded.attachments, skipped: loaded.skipped)
             )
-        case SharedShortcutDestination.source?:
+        case let source?:
             guard
+                let origin = ImportedTextOrigin(rawValue: source),
                 let server = payload.server.flatMap(URL.init(string:)),
                 ["http", "https"].contains(server.scheme?.lowercased() ?? ""),
                 server.host?.isEmpty == false
@@ -739,11 +747,9 @@ enum HermesShareDraft {
                 sharedImport: SharedImport(
                     draft: payload.draft ?? "",
                     attachments: [],
-                    shortcut: SharedShortcutDestination(server: server, profile: profile)
+                    shortcut: SharedShortcutDestination(server: server, profile: profile, origin: origin)
                 )
             )
-        default:
-            throw CocoaError(.fileReadCorruptFile)
         }
     }
 
