@@ -22,7 +22,8 @@ final class ChatDraftStoreRecoveryTests: XCTestCase {
 
         // The locked-device window: the file is there but reads fail.
         try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: fileURL.path)
-        XCTAssertNil(await store.draft(for: savedKey), "the unreadable file reads as nothing")
+        let duringLock = await store.draft(for: savedKey)
+        XCTAssertNil(duringLock, "the unreadable file reads as nothing")
         store.setDraft("typed while locked", for: typedKey)
         do {
             try await store.flush()
