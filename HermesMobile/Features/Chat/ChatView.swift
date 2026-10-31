@@ -321,6 +321,8 @@ struct ChatView: View {
     /// Puts a new Hermes chat in this one's place: a Profile picked before anything was
     /// sent (#1015). Nil pushes it on top instead.
     let onReplaceHermesSession: ((HermesSessionChat) -> Void)?
+    /// Another Shortcut text waits behind the one this chat shows (#1402).
+    private let waitingShortcut: WaitingShortcutText?
     /// A Hermes session's dictation goes to its host for its Profile (#1071).
     private let hermesTranscriber: ComposerTranscriber?
     /// Matches a Hermes chat's `Session Open` signpost to the list push that began it.
@@ -411,6 +413,12 @@ struct ChatView: View {
     /// Measured height of a Hermes chat's Update sign-in pill (#942), which wraps at
     /// accessibility text sizes.
     @State private var updateSignInPillHeight: CGFloat = 36
+    /// The draft holds text from Shortcuts the user hasn't dismissed or sent (#1402).
+    @State private var isFromShortcut = false
+    /// The draft as it was before Remove Hidden Characters, until the next edit.
+    @State private var textBeforeHiddenRemoval: String?
+    /// Measured height of the Shortcuts notice, which wraps with Dynamic Type.
+    @State private var shortcutNoticeHeight: CGFloat = 0
     /// The delegated-work sheet a Hermes chat's workers button opens (#1140).
     @State private var showsDelegatedWork = false
     /// A bot's chat's pill opened the bot's profile (#1145).
@@ -471,7 +479,8 @@ struct ChatView: View {
         hermesSession: HermesSessionChat? = nil,
         onReplaceHermesSession: ((HermesSessionChat) -> Void)? = nil,
         onOpenHermesSessions: ((HermesSessionListEntry) -> Void)? = nil,
-        onHermesDraftKeyChange: ((ChatDraftKey) -> Void)? = nil
+        onHermesDraftKeyChange: ((ChatDraftKey) -> Void)? = nil,
+        waitingShortcut: WaitingShortcutText? = nil
     ) {
         self.session = session
         self.server = server
@@ -489,6 +498,7 @@ struct ChatView: View {
         self.onReplaceHermesSession = onReplaceHermesSession
         hermesTranscriber = hermesSession.map { HermesTranscription.transcriber(for: $0) }
         self.onOpenHermesSessions = onOpenHermesSessions
+        self.waitingShortcut = waitingShortcut
         _draftMessage = State(initialValue: initialDraft)
         _draftQuotes = State(initialValue: initialQuotes)
         _initialAttachments = State(initialValue: initialAttachments)
@@ -519,7 +529,7 @@ struct ChatView: View {
     /// `HermesUpdateSignInAction`. New Chat with Voice's chat (#1180) starts dictation.
     init(hermesSession: HermesSessionChat, onReplace: ((HermesSessionChat) -> Void)? = nil,
          onOpenSessions: ((HermesSessionListEntry) -> Void)? = nil,
-         onDraftKeyChange: ((ChatDraftKey) -> Void)? = nil) {
+         onDraftKeyChange: ((ChatDraftKey) -> Void)? = nil, waitingShortcut: WaitingShortcutText? = nil) {
         self.init(
             session: SessionSummary(profile: hermesSession.target.profile),
             server: hermesSession.server,
@@ -528,7 +538,8 @@ struct ChatView: View {
             hermesSession: hermesSession,
             onReplaceHermesSession: onReplace,
             onOpenHermesSessions: onOpenSessions,
-            onHermesDraftKeyChange: onDraftKeyChange
+            onHermesDraftKeyChange: onDraftKeyChange,
+            waitingShortcut: waitingShortcut
         )
     }
 
@@ -1957,6 +1968,17 @@ struct ChatView: View {
                         }
                         .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
                 }
+
+                // Nearest the composer: it is about the text in it (#1402).
+                if showsShortcutNotice {
+                    shortcutNotice
+                        .onGeometryChange(for: CGFloat.self) { proxy in
+                            proxy.size.height
+                        } action: { height in
+                            shortcutNoticeHeight = height
+                        }
+                        .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+                }
             }
             .padding(.horizontal)
             .frame(maxWidth: composerMaximumWidth)
@@ -1967,7 +1989,47 @@ struct ChatView: View {
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: composerLocalNotices)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsApprovalBypassStatus)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: pinnedPlan == nil)
+            .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsShortcutNotice)
         }
+    }
+
+    private var showsShortcutNotice: Bool { showsShortcutProvenance || waitingShortcut != nil }
+
+    /// The draft holds text from Shortcuts, or a removal of its hidden characters can still be
+    /// undone, even one that took all of it.
+    private var showsShortcutProvenance: Bool {
+        (isFromShortcut && !draftMessage.isEmpty) || textBeforeHiddenRemoval != nil
+    }
+
+    private var shortcutNotice: some View {
+        ShortcutTextNotice(
+            showsProvenance: showsShortcutProvenance,
+            hasHiddenCharacters: HiddenPromptCharacters.contains(in: draftMessage),
+            canUndoRemoval: textBeforeHiddenRemoval != nil,
+            removeHiddenCharacters: {
+                let before = draftMessage
+                persistDraftEdit(HiddenPromptCharacters.removing(from: before))
+                draftMessage = HiddenPromptCharacters.removing(from: before)
+                textBeforeHiddenRemoval = before
+            },
+            undoRemoval: {
+                guard let before = textBeforeHiddenRemoval else { return }
+                persistDraftEdit(before)
+                draftMessage = before
+                // A removal that emptied the draft ended its provenance.
+                isFromShortcut = true
+                draftStore.setFromShortcut(true, for: draftKey)
+            },
+            waiting: waitingShortcut,
+            dismiss: dismissShortcutNotice
+        )
+    }
+
+    /// The user dismissed the Shortcuts notice, deleted its text, or sent it.
+    private func dismissShortcutNotice() {
+        isFromShortcut = false
+        textBeforeHiddenRemoval = nil
+        draftStore.setFromShortcut(false, for: draftKey)
     }
 
     /// The bot's profile, from its pill (#1145). Closing it reads the roster again, so the pill
@@ -2338,6 +2400,9 @@ struct ChatView: View {
         if viewModel.hermesNeedsSignIn {
             height += updateSignInPillHeight
         }
+        if showsShortcutNotice {
+            height += shortcutNoticeHeight
+        }
 
         let visibleItemCount = composerAccessoryVisibleItemCount
         if visibleItemCount > 1 {
@@ -2361,6 +2426,9 @@ struct ChatView: View {
             count += 1
         }
         if viewModel.hermesNeedsSignIn {
+            count += 1
+        }
+        if showsShortcutNotice {
             count += 1
         }
         return count
@@ -2821,6 +2889,7 @@ struct ChatView: View {
         if didStart {
             onConversationStarted()
             draftAttachmentsPendingRetry = sendReconciliation.retained
+            if isFromShortcut { dismissShortcutNotice() }
         }
         let resolvedContent = draftStore.resolveSubmission(
             submitted: submittedContent,
@@ -2857,6 +2926,7 @@ struct ChatView: View {
         ) {
             // The destination owns the retained work now; don't show a second
             // unsent copy when the user returns to the sealed parent.
+            if isFromShortcut { dismissShortcutNotice() }
             draftMessage = ""
             draftQuotes = []
             draftAttachmentsPendingRetry = []
@@ -2998,6 +3068,8 @@ struct ChatView: View {
     /// user's (clearing on send, restoring, hydrating) skip it.
     private func persistDraftEdit(_ text: String) {
         viewModel.clearSteerFailure()
+        textBeforeHiddenRemoval = nil
+        if text.isEmpty, isFromShortcut { dismissShortcutNotice() }
         draftRevision &+= 1
         draftStore.setContent(
             ComposerDraftContent(text: text, quotes: draftQuotes),
@@ -3047,6 +3119,7 @@ struct ChatView: View {
             draftStore.setQuotes(quotesBeforeHydration, for: draftKey)
         }
         didHydrateDraft = true
+        isFromShortcut = persistedDraft?.isFromShortcut == true
 
         restoredDraftSettings = persistedDraft?.settings
         lastSyncedDraftAttachments = persistedDraft?.attachments ?? []
@@ -3210,6 +3283,7 @@ struct ChatView: View {
         submittedDraftRevision: Int,
         preserveRejectedSubmission: Bool = false
     ) {
+        if isFromShortcut { dismissShortcutNotice() }
         let resolvedContent = draftStore.resolveConsumedInput(
             submitted: submittedContent,
             current: ComposerDraftContent(text: draftMessage, quotes: draftQuotes),

@@ -2247,9 +2247,18 @@ final class SessionListViewModel {
         return true
     }
 
-    private func readHermesProfiles(_ wire: any BotTransport) async {
+    /// The host's Profiles, read now on the list's socket, for a Shortcut's text that names one
+    /// (#1402): `hermesProfiles` keeps its last read while a chat pauses the list. Nil when the
+    /// list has no socket or the host didn't answer.
+    func readHostProfiles() async -> [String]? {
+        guard let wire = hermesWire else { return nil }
+        return await readHermesProfiles(wire)
+    }
+
+    @discardableResult
+    private func readHermesProfiles(_ wire: any BotTransport) async -> [String]? {
         guard let reply = try? await wire.call(.profilesList(includeSessions: false)), hermesWire === wire,
-              let rows = reply["profiles"].list else { return }
+              let rows = reply["profiles"].list else { return nil }
         let names = rows.compactMap { $0["name"].text }.filter { !$0.isEmpty }
         if names != hermesProfiles { hermesProfiles = names }
         // A list of every Profile names only those the host still has, so a pick removed elsewhere
@@ -2257,6 +2266,7 @@ final class SessionListViewModel {
         if hermesShowsAllProfiles, let pick = hermesProfile, !names.isEmpty, !names.contains(pick) {
             await resolveHermesProfile(wire)
         }
+        return names
     }
 
     /// The device's network path changed (#1372): a reconnect waiting on its backoff runs now if

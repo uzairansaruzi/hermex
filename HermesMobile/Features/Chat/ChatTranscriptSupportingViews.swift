@@ -1267,3 +1267,112 @@ struct PinnedLocalNoticeStack: View {
             .joined(separator: "\n")
     }
 }
+
+/// Characters that can hide or reorder what a prompt says to the agent without showing in the
+/// composer (#1402): bidi embeddings, overrides and isolates, zero-width space, word joiner,
+/// byte-order mark and Unicode tags. Joiners and marks text needs to read right (emoji ZWJ,
+/// ZWNJ, LRM/RLM) are not among them.
+enum HiddenPromptCharacters {
+    static func isHidden(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x202A...0x202E, 0x2066...0x2069, 0x200B, 0x2060, 0xFEFF, 0xE0000...0xE007F: true
+        default: false
+        }
+    }
+
+    static func contains(in text: String) -> Bool {
+        text.unicodeScalars.contains(where: isHidden)
+    }
+
+    /// `text` without them, every other character as it was.
+    static func removing(from text: String) -> String {
+        var kept = String.UnicodeScalarView()
+        kept.append(contentsOf: text.unicodeScalars.lazy.filter { !isHidden($0) })
+        return String(kept)
+    }
+}
+
+/// Another Shortcut text waiting behind the one a chat shows (#1402): Open Next opens it in that
+/// chat's place, Discard deletes it unopened.
+struct WaitingShortcutText {
+    let openNext: () -> Void
+    let discard: () -> Void
+}
+
+/// The composer's note that its text came from Shortcuts (#1402), above it until the user
+/// dismisses it or sends. Hidden characters make it a warning with Remove Hidden Characters;
+/// after a removal it offers Undo until the next edit. While another Shortcut text waits, it
+/// offers Open Next and Discard, which stay after the note itself is dismissed or sent.
+struct ShortcutTextNotice: View {
+    let showsProvenance: Bool
+    let hasHiddenCharacters: Bool
+    let canUndoRemoval: Bool
+    let removeHiddenCharacters: () -> Void
+    let undoRemoval: () -> Void
+    let waiting: WaitingShortcutText?
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: showsProvenance && hasHiddenCharacters ? "exclamationmark.triangle.fill" : "info.circle.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(showsProvenance && hasHiddenCharacters ? Color.orange : Color.secondary)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                if showsProvenance {
+                    Group {
+                        if hasHiddenCharacters {
+                            Text("Added from Shortcuts with hidden characters. They can change how the text reads to the agent. Review before sending.")
+                        } else {
+                            Text("Added from Shortcuts. Review before sending.")
+                        }
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    if hasHiddenCharacters {
+                        Button("Remove Hidden Characters", action: removeHiddenCharacters)
+                            .font(.footnote.weight(.semibold))
+                    } else if canUndoRemoval {
+                        Button("Undo", action: undoRemoval)
+                            .font(.footnote.weight(.semibold))
+                    }
+                }
+                if let waiting {
+                    Text("Another text from Shortcuts is waiting.")
+                        .font(.footnote)
+                        .foregroundStyle(showsProvenance ? .secondary : .primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 16) {
+                        Button("Open Next", action: waiting.openNext)
+                        Button("Discard", role: .destructive, action: waiting.discard)
+                    }
+                    .font(.footnote.weight(.semibold))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if showsProvenance {
+                Button(action: dismiss) {
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 28, minHeight: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss")
+            }
+        }
+        .padding(12)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: ChatComposerMetrics.cardCornerRadius, style: .continuous)
+                .stroke(Color(.separator).opacity(0.45), lineWidth: 0.5)
+        )
+        .shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
+        .accessibilityElement(children: .contain)
+    }
+}

@@ -121,6 +121,38 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertNil(links.hermesNewChat, "Its server was removed")
     }
 
+    // MARK: - New Chat with Content (#1402)
+
+    @MainActor
+    func testNewChatWithContentQueuesTheTextBeforeOpeningTheShareLink() throws {
+        let inbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: inbox) }
+        let router = AppIntentRouter.shared
+
+        try router.openNewChat(prefilling: " secret prompt ", server: studio, profile: "dev", inbox: inbox)
+
+        let link = try XCTUnwrap(router.pendingDeepLink)
+        XCTAssertEqual(link, HermesShareDraft.openURL, "Only the bare share link travels")
+        let queued = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        XCTAssertEqual(queued.sharedImport.draft, " secret prompt ")
+        XCTAssertEqual(queued.sharedImport.shortcut, SharedShortcutDestination(server: studio, profile: "dev"))
+    }
+
+    @MainActor
+    func testNewChatWithContentOpensOnAHermesProfileOrTheActiveHermesServer() throws {
+        let chosen = ProfileEntity(hermesServer: studio, profile: "dev", title: nil)
+        let picked = try NewChatWithContentIntent.destination(profile: chosen, active: webui, servers: servers)
+        XCTAssertEqual(picked.server, studio)
+        XCTAssertEqual(picked.profile, "dev")
+        let active = try NewChatWithContentIntent.destination(profile: nil, active: hermes, servers: servers)
+        XCTAssertEqual(active.server, hermes)
+        XCTAssertNil(active.profile)
+
+        let webuiProfile = ProfileEntity(id: "dev", name: "Dev", subtitle: nil)
+        XCTAssertThrowsError(try NewChatWithContentIntent.destination(profile: webuiProfile, active: hermes, servers: servers))
+        XCTAssertThrowsError(try NewChatWithContentIntent.destination(profile: nil, active: webui, servers: servers))
+    }
+
     @MainActor
     func testTheSessionsListOpensTheNewChatInItsProfileOnceItCan() {
         let connection = BotConnection(id: UUID(), name: "Host", address: studio, username: "me", password: "secret")

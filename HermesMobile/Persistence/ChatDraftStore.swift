@@ -82,6 +82,9 @@ struct ChatDraft: Equatable, Sendable {
     /// so a retried or replayed share isn't added twice (#1181, #1197). Rides along with the content; never
     /// keeps a draft alive on its own.
     var sharedImportIDs: Set<String> = []
+    /// Text from Shortcuts was added (#1402): the composer shows its review notice until the user
+    /// dismisses it or sends. Rides along with the content; never keeps a draft alive on its own.
+    var isFromShortcut = false
 
     var isEmpty: Bool {
         text.isEmpty && quotes.isEmpty && attachments.isEmpty && (settings?.isEmpty ?? true) && !botSubmissionUncertain
@@ -402,6 +405,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
         var profile: String?
         var botSubmissionUncertain: Bool?
         var sharedImportIDs: [String]?
+        var fromShortcut: Bool?
 
         let lastUsedAt: Date?
 
@@ -412,7 +416,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             case text
             case quotes
             case attachments
-            case settings, connectionID, profile, botSubmissionUncertain, lastUsedAt, sharedImportIDs
+            case settings, connectionID, profile, botSubmissionUncertain, lastUsedAt, sharedImportIDs, fromShortcut
         }
 
         init(key: ChatDraftKey, draft: ChatDraft) {
@@ -442,6 +446,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             attachments = draft.attachments.map { FailableAttachment(value: AttachmentRecord($0)) }
             settings = draft.settings.map { SettingsRecord($0) }
             sharedImportIDs = draft.sharedImportIDs.isEmpty ? nil : draft.sharedImportIDs.sorted()
+            fromShortcut = draft.isFromShortcut ? true : nil
         }
 
         init(from decoder: Decoder) throws {
@@ -462,6 +467,7 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
             attachments = (try? container.decodeIfPresent([FailableAttachment].self, forKey: .attachments)) ?? nil
             settings = (try? container.decodeIfPresent(SettingsRecord.self, forKey: .settings)) ?? nil
             sharedImportIDs = (try? container.decodeIfPresent([String].self, forKey: .sharedImportIDs)) ?? nil
+            fromShortcut = (try? container.decodeIfPresent(Bool.self, forKey: .fromShortcut)) ?? nil
         }
 
         var draft: (key: ChatDraftKey, draft: ChatDraft)? {
@@ -504,7 +510,8 @@ actor ChatDraftFilePersistence: ChatDraftPersisting {
                 settings: settings?.settings,
                 botSubmissionUncertain: ["bot", "hermesSession"].contains(context) && (botSubmissionUncertain ?? false),
                 lastUsedAt: lastUsedAt,
-                sharedImportIDs: Set(sharedImportIDs ?? [])
+                sharedImportIDs: Set(sharedImportIDs ?? []),
+                isFromShortcut: fromShortcut ?? false
             )
             guard !draft.isEmpty else { return nil }
             return (key, draft)
@@ -736,9 +743,12 @@ final class ChatDraftStore {
     /// them, and throws if they don't fit. A throw (cancellation, storage, a limit,
     /// a record or the text dropped meanwhile) takes back only what this share
     /// added, on disk before its copies go, so the share can be moved again.
+    /// Text `fromShortcut` (#1402) leaves the unsent text exactly as it is and
+    /// turns on the draft's review notice.
     func appendShare(
         _ shareID: String, text: String, files: [(data: Data, name: String, mime: String, image: Bool)],
-        to key: ChatDraftKey, maximumFileBytes: Int, admitting fits: ([ChatDraftAttachment]) throws -> Void = { _ in }
+        to key: ChatDraftKey, maximumFileBytes: Int, fromShortcut: Bool = false,
+        admitting fits: ([ChatDraftAttachment]) throws -> Void = { _ in }
     ) async throws {
         await loadIfNeeded()
         func isHere() -> Bool { drafts[key]?.sharedImportIDs.contains(shareID) == true }
@@ -778,11 +788,13 @@ final class ChatDraftStore {
             }
         }
         let unsent = drafts[key]?.text ?? ""
+        let wasFromShortcut = drafts[key]?.isFromShortcut ?? false
         updateDraft(for: key) { draft in
-            let trimmed = draft.text.trimmingCharacters(in: .newlines)
-            if !text.isEmpty { draft.text = trimmed.isEmpty ? text : trimmed + "\n\n" + text }
+            let earlier = fromShortcut ? draft.text : draft.text.trimmingCharacters(in: .newlines)
+            if !text.isEmpty { draft.text = earlier.isEmpty ? text : earlier + "\n\n" + text }
             draft.attachments += records
             draft.sharedImportIDs.insert(shareID)
+            if fromShortcut { draft.isFromShortcut = true }
         }
         let merged = drafts[key]?.text
         let ids = Set(records.map(\.id))
@@ -798,11 +810,19 @@ final class ChatDraftStore {
                 draft.sharedImportIDs.remove(shareID)
                 draft.attachments.removeAll { ids.contains($0.id) }
                 if draft.text == merged { draft.text = unsent }
+                if fromShortcut { draft.isFromShortcut = wasFromShortcut }
             }
             // A replay after a quit must not find the share here. Unsaved, the copies stay.
             if (try? await flush()) != nil { await deleteCopies() }
             throw error
         }
+    }
+
+    /// Turns the draft's Shortcuts review notice off once the user dismisses it or sends, or back
+    /// on when Undo restores text a removal emptied (#1402). A draft with nothing else stays gone.
+    func setFromShortcut(_ isFromShortcut: Bool, for key: ChatDraftKey) {
+        guard (drafts[key]?.isFromShortcut ?? false) != isFromShortcut else { return }
+        updateDraft(for: key) { $0.isFromShortcut = isFromShortcut }
     }
 
     /// Replaces the draft's settings snapshot without disturbing its text or
