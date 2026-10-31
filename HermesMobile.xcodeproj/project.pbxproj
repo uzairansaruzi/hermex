@@ -64,6 +64,11 @@
 		10CA110C0DE000000000B001 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 10CA110C0DE000000000B002 /* Localizable.xcstrings */; };
 		10CA110C0DE000000000B003 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 10CA110C0DE000000000B002 /* Localizable.xcstrings */; };
 		10CA110C0DE000000000B004 /* AppShortcuts.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 10CA110C0DE000000000B005 /* AppShortcuts.xcstrings */; };
+		CA1505000000000000000001 /* Auxiliary.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CA1505000000000000000101 /* Auxiliary.xcstrings */; };
+		CA1505000000000000000002 /* Auxiliary.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CA1505000000000000000101 /* Auxiliary.xcstrings */; };
+		CA1505000000000000000003 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 10CA110C0DE000000000B002 /* Localizable.xcstrings */; };
+		CA1505000000000000000004 /* ShareExtension.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CA1505000000000000000102 /* ShareExtension.xcstrings */; };
+		CA1505000000000000000005 /* ca.lproj in Resources */ = {isa = PBXBuildFile; fileRef = CA1505000000000000000103 /* ca.lproj */; };
 		10CA110C0DE000000000C001 /* LocalizationCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10CA110C0DE000000000C002 /* LocalizationCatalogTests.swift */; };
 		1A2B3C4D5E6F700000000004 /* LDSwiftEventSource in Frameworks */ = {isa = PBXBuildFile; productRef = 1A2B3C4D5E6F700000000094 /* LDSwiftEventSource */; };
 		1A2B3C4D5E6F700000000005 /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 1A2B3C4D5E6F700000000095 /* MarkdownUI */; };
@@ -761,6 +766,9 @@
 		1A2B3C4D5E6F700000000014 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		10CA110C0DE000000000B002 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		10CA110C0DE000000000B005 /* AppShortcuts.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = AppShortcuts.xcstrings; sourceTree = "<group>"; };
+		CA1505000000000000000101 /* Auxiliary.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Auxiliary.xcstrings; sourceTree = "<group>"; };
+		CA1505000000000000000102 /* ShareExtension.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = ShareExtension.xcstrings; sourceTree = "<group>"; };
+		CA1505000000000000000103 /* ca.lproj */ = {isa = PBXFileReference; lastKnownFileType = folder; path = ca.lproj; sourceTree = "<group>"; };
 		10CA110C0DE000000000C002 /* LocalizationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationCatalogTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000015 /* HermesMobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HermesMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A2B3C4D5E6F7000000000B0 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -1473,6 +1481,8 @@
 				C040F000000000000000004 /* ProviderLogos.bundle */,
 				10CA110C0DE000000000B002 /* Localizable.xcstrings */,
 				10CA110C0DE000000000B005 /* AppShortcuts.xcstrings */,
+				CA1505000000000000000101 /* Auxiliary.xcstrings */,
+				CA1505000000000000000103 /* ca.lproj */,
 				1A2B3C4D5E6F700000000013 /* Info.plist */,
 				B5A100000000000000000015 /* HermesMobile.entitlements */,
 				1A2B3C4D5E6F70000000301 /* PrivacyInfo.xcprivacy */,
@@ -2234,6 +2244,7 @@
 				B5A100000000000000000012 /* Info.plist */,
 				B5A100000000000000000013 /* HermesShareExtension.entitlements */,
 				B5A100000000000000000014 /* PrivacyInfo.xcprivacy */,
+				CA1505000000000000000102 /* ShareExtension.xcstrings */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -2487,6 +2498,7 @@
 			knownRegions = (
 				en,
 				Base,
+				ca,
 				de,
 				es,
 				fr,
@@ -2536,6 +2548,8 @@
 				C040F000000000000000003 /* ProviderLogos.bundle in Resources */,
 				10CA110C0DE000000000B001 /* Localizable.xcstrings in Resources */,
 				10CA110C0DE000000000B004 /* AppShortcuts.xcstrings in Resources */,
+				CA1505000000000000000001 /* Auxiliary.xcstrings in Resources */,
+				CA1505000000000000000005 /* ca.lproj in Resources */,
 				1A2B3C4D5E6F70000000300 /* PrivacyInfo.xcprivacy in Resources */,
 				9E2A653D968A4ACDA19A8142 /* ThirdPartyNotices in Resources */,
 			);
@@ -2546,6 +2560,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				B5A100000000000000000004 /* PrivacyInfo.xcprivacy in Resources */,
+				CA1505000000000000000003 /* Localizable.xcstrings in Resources */,
+				CA1505000000000000000004 /* ShareExtension.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -2562,6 +2578,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				10CA110C0DE000000000B003 /* Localizable.xcstrings in Resources */,
+				CA1505000000000000000002 /* Auxiliary.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

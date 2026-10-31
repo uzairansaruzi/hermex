@@ -1,0 +1,489 @@
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "en",
+  "targetLanguage": "ca",
+  "localizationAuthority": "external-human-translator-only",
+  "sourceRevision": "f35a52cba986b0299b490092d936bb83d89a93aa",
+  "sourceRevisionSubject": "feat(settings): show the bundled open-source notices under About (#1490)",
+  "sourceFiles": [
+    {
+      "path": "HermesMobile/Resources/Localizable.xcstrings",
+      "sha256": "e296dc915bf4b34a60651194706679037a77d1d83f34b738a65afea328191e58"
+    },
+    {
+      "path": "HermesMobile/Resources/AppShortcuts.xcstrings",
+      "sha256": "e309adafd5c6011d4bdff007b96228aa2d5b7c482871a8525a3125320c2bec2b"
+    },
+    {
+      "path": "HermesMobile/Resources/Info.plist",
+      "sha256": "17d0460dcfd62126fa547e1ea166a3ad6a6051189e97310dc38c957a9db38474"
+    },
+    {
+      "path": "HermesMobile/Features/Workspace/GitDiffView.swift",
+      "sha256": "4b79e86fdb7a3cf4c2fdc16802874d8fe60b6e806d3484e5f50de60fdf5c7369"
+    },
+    {
+      "path": "HermesMobile/Features/Chat/ToolCallLogRowView.swift",
+      "sha256": "162311986f41b16d5b94f6526f5df7ef27e5d0775f67760201e44cc04c62632b"
+    },
+    {
+      "path": "HermesShareExtension/ShareViewController.swift",
+      "sha256": "f26e822aecb1e76d7a2b3c58c02c94fc41d97f721ed476e162045550923fe281"
+    },
+    {
+      "path": "HermesShareExtension/ShareInputReader.swift",
+      "sha256": "1b2b2ac339e32c02672febca7d05e4356f99d3272ecf956ecc4524ebf8d00137"
+    },
+    {
+      "path": "HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift",
+      "sha256": "6aaa47a6685d67062500d4d6fa3b6b2e684cbc15c2aad373afb868bac5db3924"
+    }
+  ],
+  "totalEntries": 2813,
+  "catalogs": {
+    "Localizable": {
+      "entryCount": 2785,
+      "batchCount": 56
+    },
+    "AppShortcuts": {
+      "entryCount": 11,
+      "batchCount": 1
+    },
+    "InfoPlist": {
+      "entryCount": 7,
+      "batchCount": 1
+    },
+    "Auxiliary": {
+      "entryCount": 5,
+      "batchCount": 1
+    },
+    "ShareExtension": {
+      "entryCount": 5,
+      "batchCount": 1
+    }
+  },
+  "batches": [
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-001.json",
+      "count": 50,
+      "firstId": "Localizable::%@ was removed from Hermex, so the text from Shortcuts can’t open there.",
+      "lastId": "Localizable::Pull Request #%@"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-002.json",
+      "count": 50,
+      "firstId": "Localizable::Copy Link",
+      "lastId": "Localizable::%@ in / %@ out"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-003.json",
+      "count": 50,
+      "firstId": "Localizable::%@ in / %@ out (~%@)",
+      "lastId": "Localizable::%lld changes"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-004.json",
+      "count": 50,
+      "firstId": "Localizable::%lld changes couldn’t be confirmed",
+      "lastId": "Localizable::%lld removed"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-005.json",
+      "count": 50,
+      "firstId": "Localizable::%lld saved attachments are no longer available and were removed from this draft.",
+      "lastId": "Localizable::A Hermes update on your server didn't finish. Check it, restart Hermes WebUI, then try again."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-006.json",
+      "count": 50,
+      "firstId": "Localizable::A bot keeps one chat, so /%@ can’t open another.",
+      "lastId": "Localizable::Add a reply, or start from a suggestion."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-007.json",
+      "count": 50,
+      "firstId": "Localizable::Add a workspace to make it available when starting sessions.",
+      "lastId": "Localizable::Allow session covers this security finding in this session; Always allow covers it on this server from now on."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-008.json",
+      "count": 50,
+      "firstId": "Localizable::Allow session covers writes to SSH config in this chat; Always allow covers them for this Profile from now on.",
+      "lastId": "Localizable::Archived"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-009.json",
+      "count": 50,
+      "firstId": "Localizable::Archived Cards",
+      "lastId": "Localizable::Bot Chat · %@"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-010.json",
+      "count": 50,
+      "firstId": "Localizable::Bot Mode (beta)",
+      "lastId": "Localizable::Camera"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-011.json",
+      "count": 50,
+      "firstId": "Localizable::Camera access is off",
+      "lastId": "Localizable::Choose a valid Prerequisite."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-012.json",
+      "count": 50,
+      "firstId": "Localizable::Choose another Status or refresh the Board.",
+      "lastId": "Localizable::Collapses a finished turn behind one row."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-013.json",
+      "count": 50,
+      "firstId": "Localizable::Collapses a finished turn's thinking, tool calls, and interim replies behind one row that shows how long it took. Tap the row to expand it.",
+      "lastId": "Localizable::Connection ok. Password not required."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-014.json",
+      "count": 50,
+      "firstId": "Localizable::Connection ok. Password required.",
+      "lastId": "Localizable::Could Not Load Skill"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-015.json",
+      "count": 50,
+      "firstId": "Localizable::Could Not Load Skills",
+      "lastId": "Localizable::Could not update the reaction."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-016.json",
+      "count": 50,
+      "firstId": "Localizable::Couldn't Load Keys",
+      "lastId": "Localizable::Custom model ID"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-017.json",
+      "count": 50,
+      "firstId": "Localizable::Cyan",
+      "lastId": "Localizable::Discard"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-018.json",
+      "count": 50,
+      "firstId": "Localizable::Discard & Edit",
+      "lastId": "Localizable::Email or username"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-019.json",
+      "count": 50,
+      "firstId": "Localizable::Empty Output",
+      "lastId": "Localizable::Export media"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-020.json",
+      "count": 50,
+      "firstId": "Localizable::Expression",
+      "lastId": "Localizable::Get Started"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-021.json",
+      "count": 50,
+      "firstId": "Localizable::Get Tailscale on the App Store",
+      "lastId": "Localizable::Hermes did not accept this message. Your draft is still here."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-022.json",
+      "count": 50,
+      "firstId": "Localizable::Hermes did not accept this side question.",
+      "lastId": "Localizable::Hermex sets this Hermes host up for push and pairs this iPhone with its relay. Your host encrypts every notification’s text: the relay only ever sees ciphertext."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-023.json",
+      "count": 50,
+      "firstId": "Localizable::Hermex test notification",
+      "lastId": "Localizable::Join your private network"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-024.json",
+      "count": 50,
+      "firstId": "Localizable::Jump to File",
+      "lastId": "Localizable::Or tap wrap in any code block."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-025.json",
+      "count": 50,
+      "firstId": "Localizable::Other",
+      "lastId": "Localizable::Live updates delayed"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-026.json",
+      "count": 50,
+      "firstId": "Localizable::Live updates stopped",
+      "lastId": "Localizable::Max"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-027.json",
+      "count": 50,
+      "firstId": "Localizable::MCP server",
+      "lastId": "Localizable::Microphone access is disabled. Enable it in Settings to record a voice note."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-028.json",
+      "count": 50,
+      "firstId": "Localizable::Microphone access is disabled. Enable it in Settings to use voice input.",
+      "lastId": "Localizable::New Chat"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-029.json",
+      "count": 50,
+      "firstId": "Localizable::New Chat in Profile",
+      "lastId": "Localizable::No commit message could be generated."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-030.json",
+      "count": 50,
+      "firstId": "Localizable::No committed changes against the branch base.",
+      "lastId": "Localizable::Notifications are off for Hermex, so this server’s notifications can’t show on this iPhone."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-031.json",
+      "count": 50,
+      "firstId": "Localizable::Notifications checked",
+      "lastId": "Localizable::Open to answer"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-032.json",
+      "count": 50,
+      "firstId": "Localizable::Open to read the reply",
+      "lastId": "Localizable::Paused %lld"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-033.json",
+      "count": 50,
+      "firstId": "Localizable::Peak Day",
+      "lastId": "Localizable::Previous Chat"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-034.json",
+      "count": 50,
+      "firstId": "Localizable::Priority",
+      "lastId": "Localizable::Question withdrawn."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-035.json",
+      "count": 50,
+      "firstId": "Localizable::Question",
+      "lastId": "Localizable::Reconnect to the server to run /%@."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-036.json",
+      "count": 50,
+      "firstId": "Localizable::Reconnect to the server to send a message.",
+      "lastId": "Localizable::Remove Quote"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-037.json",
+      "count": 50,
+      "firstId": "Localizable::Remove Reaction",
+      "lastId": "Localizable::Require Touch ID"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-038.json",
+      "count": 50,
+      "firstId": "Localizable::Required",
+      "lastId": "Localizable::Run Now?"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-039.json",
+      "count": 50,
+      "firstId": "Localizable::Run Output",
+      "lastId": "Localizable::Saved sign-in details, this connection’s drafts and its notification keys will be deleted. This iPhone stops receiving this host’s notifications. Bots and their work remain on the host."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-040.json",
+      "count": 50,
+      "firstId": "Localizable::Saving",
+      "lastId": "Localizable::Selected, %@"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-041.json",
+      "count": 50,
+      "firstId": "Localizable::Selected, number %lld",
+      "lastId": "Localizable::Sessions per hour, %@"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-042.json",
+      "count": 50,
+      "firstId": "Localizable::Set",
+      "lastId": "Localizable::Shy"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-043.json",
+      "count": 50,
+      "firstId": "Localizable::Side answer ready",
+      "lastId": "Localizable::Source: local session metadata."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-044.json",
+      "count": 50,
+      "firstId": "Localizable::Source: server insights from the last %lld days.",
+      "lastId": "Localizable::Stop the response and send a new message"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-045.json",
+      "count": 50,
+      "firstId": "Localizable::Stop this bot’s current work?",
+      "lastId": "Localizable::That clarification prompt already expired, so the agent has moved on."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-046.json",
+      "count": 50,
+      "firstId": "Localizable::That chat is in more than one Profile. Open it from Sessions.",
+      "lastId": "Localizable::The record of what was sent can’t be trusted, so nothing more will be sent from it. Copy Missing Chats Again checks %@ again and copies what %@ still lacks. It can’t finish titles, pins, folders or drafts for chats already in %@."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-047.json",
+      "count": 50,
+      "firstId": "Localizable::The relay couldn’t deliver (HTTP %lld).",
+      "lastId": "Localizable::The server refused this Dispatcher request. Hermex did not retry it."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-048.json",
+      "count": 50,
+      "firstId": "Localizable::The server refused to change this session. If an earlier Hermex 2.0 build created it, duplicate it and change the copy.",
+      "lastId": "Localizable::This also resumes the Task."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-049.json",
+      "count": 50,
+      "firstId": "Localizable::This host doesn't offer a model named %@.",
+      "lastId": "Localizable::This iPhone is paired with this server’s Hermes host. Its keys are stored in the Keychain for this server alone."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-050.json",
+      "count": 50,
+      "firstId": "Localizable::This iPhone is removed from the relay, the plugin is disabled on your Hermes host, and the keys stored on this iPhone are deleted.",
+      "lastId": "Localizable::To Do"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-051.json",
+      "count": 50,
+      "firstId": "Localizable::To:",
+      "lastId": "Localizable::Unassigned"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-052.json",
+      "count": 50,
+      "firstId": "Localizable::Unavailable",
+      "lastId": "Localizable::Updated"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-053.json",
+      "count": 50,
+      "firstId": "Localizable::Updated %@ ago",
+      "lastId": "Localizable::Voice commands are not available in the mobile app."
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-054.json",
+      "count": 50,
+      "firstId": "Localizable::Voice input",
+      "lastId": "Localizable::Will connect to %@"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-055.json",
+      "count": 50,
+      "firstId": "Localizable::Window",
+      "lastId": "Localizable::Your tunnel’s HTTPS address"
+    },
+    {
+      "catalog": "Localizable",
+      "file": "Localizable-056.json",
+      "count": 35,
+      "firstId": "Localizable::Your working tree is clean.",
+      "lastId": "Localizable::“%@” will be removed from the Hermes server."
+    },
+    {
+      "catalog": "AppShortcuts",
+      "file": "AppShortcuts.json",
+      "count": 11,
+      "firstId": "AppShortcuts::New ${applicationName} chat",
+      "lastId": "AppShortcuts::Start a voice chat in ${applicationName}"
+    },
+    {
+      "catalog": "InfoPlist",
+      "file": "InfoPlist.json",
+      "count": 7,
+      "firstId": "InfoPlist::NSLocalNetworkUsageDescription",
+      "lastId": "InfoPlist::NSSpeechRecognitionUsageDescription"
+    },
+    {
+      "catalog": "Auxiliary",
+      "file": "Auxiliary.json",
+      "count": 5,
+      "firstId": "Localizable::Completed in %@s",
+      "lastId": "Localizable::Waiting for the next agent update."
+    },
+    {
+      "catalog": "ShareExtension",
+      "file": "ShareExtension.json",
+      "count": 5,
+      "firstId": "ShareExtension::Opening Hermex...",
+      "lastId": "ShareExtension::Shared content saved. Open Hermex manually."
+    }
+  ],
+  "translationState": "needs_review",
+  "importPolicy": "Validate every source and returned file, stable ID, placeholder, plural branch, and source field before modifying any production resource."
+}

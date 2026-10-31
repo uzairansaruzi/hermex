@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "en",
+  "targetLanguage": "ca",
+  "catalog": "InfoPlist",
+  "entries": [
+    {
+      "id": "InfoPlist::NSLocalNetworkUsageDescription",
+      "key": "NSLocalNetworkUsageDescription",
+      "units": [
+        {
+          "source": "Hermex connects to your Hermes backend on your local network to load bots and chat."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex",
+        "Hermes"
+      ],
+      "comment": "System permission explanation shown in the iOS permission prompt.",
+      "surface": "main-app-system-permission",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Resources/Info.plist",
+          "line": 112
+        }
+      ],
+      "target": "Hermex es connecta al backend Hermes de la teva xarxa local per carregar els bots i xatejar."
+    },
+    {
+      "id": "InfoPlist::NSMicrophoneUsageDescription",
+      "key": "NSMicrophoneUsageDescription",
+      "units": [
+        {
+          "source": "Hermex needs microphone access to dictate text into the message composer."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": "System permission explanation shown in the iOS permission prompt.",
+      "surface": "main-app-system-permission",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Resources/Info.plist",
+          "line": 114
+        }
+      ],
+      "target": "Hermex necessita accés al micròfon per dictar text al camp de redacció de missatges."
+    },
+    {
+      "id": "InfoPlist::NSCameraUsageDescription",
+      "key": "NSCameraUsageDescription",
+      "units": [
+        {
+          "source": "Hermex needs camera access to capture and attach photos directly in chat."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": "System permission explanation shown in the iOS permission prompt.",
+      "surface": "main-app-system-permission",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Resources/Info.plist",
+          "line": 116
+        }
+      ],
+      "target": "Hermex necessita accés a la càmera per fer i adjuntar fotos directament al xat."
+    },
+    {
+      "id": "InfoPlist::NSFaceIDUsageDescription",
+      "key": "NSFaceIDUsageDescription",
+      "units": [
+        {
+          "source": "Hermex uses Face ID to unlock the app when the lock is on."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": "System permission explanation shown in the iOS permission prompt.",
+      "surface": "main-app-system-permission",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Resources/Info.plist",
+          "line": 118
+        }
+      ],
+      "target": "Hermex utilitza Face ID per desbloquejar l'app quan el bloqueig està activat."
+    },
+    {
+      "id": "InfoPlist::NSPhotoLibraryUsageDescription",
+      "key": "NSPhotoLibraryUsageDescription",
+      "units": [
+        {
+          "source": "Hermex needs photo library access to attach images to chat messages."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": "System permission explanation shown in the iOS permission prompt.",
+      "surface": "main-app-system-permission",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Resources/Info.plist",
+          "line": 120
+        }
+      ],
+      "target": "Hermex necessita accés a la fototeca per adjuntar imatges als missatges del xat."
+    },
+    {
+      "id": "InfoPlist::NSPhotoLibraryAddUsageDescription",
+      "key": "NSPhotoLibraryAddUsageDescription",
+      "units": [
+        {
+          "source": "Hermex needs permission to save exported workspace images to Photos."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": "System permission explanation shown in the iOS permission prompt.",
+      "surface": "main-app-system-permission",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Resources/Info.plist",
+          "line": 122
+        }
+      ],
+      "target": "Hermex necessita permís per desar a Fotos les imatges exportades de l'espai de treball."
+    },
+    {
+      "id": "InfoPlist::NSSpeechRecognitionUsageDescription",
+      "key": "NSSpeechRecognitionUsageDescription",
+      "units": [
+        {
+          "source": "Hermex uses speech recognition to turn dictated audio into editable draft text."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": "System permission explanation shown in the iOS permission prompt.",
+      "surface": "main-app-system-permission",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Resources/Info.plist",
+          "line": 128
+        }
+      ],
+      "target": "Hermex utilitza el reconeixement de la parla per convertir l'àudio dictat en text d'esborrany editable."
+    }
+  ]
+}

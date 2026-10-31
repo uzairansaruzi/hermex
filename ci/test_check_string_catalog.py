@@ -6,7 +6,12 @@ from pathlib import Path
 import unittest
 
 SCRIPT = Path(__file__).resolve().parent / "check_string_catalog.py"
-TARGETS = ("HermesMobile", "HermesLiveActivityWidget", "HermesNotificationService")
+TARGETS = (
+    "HermesMobile",
+    "HermesLiveActivityWidget",
+    "HermesNotificationService",
+    "HermesShareExtension",
+)
 
 
 class CheckStringCatalogTests(unittest.TestCase):
@@ -57,7 +62,10 @@ class CheckStringCatalogTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn('"Retry %@"', result.stdout)
         self.assertIn("View.swift:9", result.stdout)
-        self.assertIn("HermesLiveActivityWidget, HermesMobile, HermesNotificationService", result.stdout)
+        self.assertIn(
+            "HermesLiveActivityWidget, HermesMobile, HermesNotificationService, HermesShareExtension",
+            result.stdout,
+        )
 
     def test_ignores_other_tables_and_sources_deleted_since_the_build(self):
         self.every_target([("Send", 3)])

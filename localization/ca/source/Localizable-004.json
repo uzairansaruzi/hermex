@@ -1,0 +1,1856 @@
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "en",
+  "targetLanguage": "ca",
+  "catalog": "Localizable",
+  "entries": [
+    {
+      "id": "Localizable::%lld changes couldn’t be confirmed",
+      "catalog": "Localizable",
+      "key": "%lld changes couldn’t be confirmed",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld change couldn’t be confirmed"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld changes couldn’t be confirmed"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 596
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld chats in %@",
+      "catalog": "Localizable",
+      "key": "%lld chats in %@",
+      "units": [
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "one",
+          "source": "%arg chat in %2$@"
+        },
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "other",
+          "source": "%arg chats in %2$@"
+        }
+      ],
+      "sourceStructure": {
+        "template": "%1$#@arg1@",
+        "substitutions": {
+          "arg1": {
+            "argument": 1,
+            "formatSpecifier": "lld",
+            "variations": {
+              "plural": [
+                "one",
+                "other"
+              ]
+            }
+          }
+        }
+      },
+      "placeholders": [
+        "%2$@",
+        "%2$@",
+        "%@",
+        "%arg",
+        "%arg",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 575
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld chats it couldn’t copy stay on %@.",
+      "catalog": "Localizable",
+      "key": "%lld chats it couldn’t copy stay on %@.",
+      "units": [
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "one",
+          "source": "%arg chat it couldn’t copy stays on %2$@."
+        },
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "other",
+          "source": "%arg chats it couldn’t copy stay on %2$@."
+        }
+      ],
+      "sourceStructure": {
+        "template": "%1$#@arg1@",
+        "substitutions": {
+          "arg1": {
+            "argument": 1,
+            "formatSpecifier": "lld",
+            "variations": {
+              "plural": [
+                "one",
+                "other"
+              ]
+            }
+          }
+        }
+      },
+      "placeholders": [
+        "%2$@",
+        "%2$@",
+        "%@",
+        "%arg",
+        "%arg",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 466
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld chats may exist only on %@: %@.",
+      "catalog": "Localizable",
+      "key": "%lld chats may exist only on %@: %@.",
+      "units": [
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "one",
+          "source": "%arg chat may exist only on %2$@: %3$@."
+        },
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "other",
+          "source": "%arg chats may exist only on %2$@: %3$@."
+        }
+      ],
+      "sourceStructure": {
+        "template": "%1$#@arg1@",
+        "substitutions": {
+          "arg1": {
+            "argument": 1,
+            "formatSpecifier": "lld",
+            "variations": {
+              "plural": [
+                "one",
+                "other"
+              ]
+            }
+          }
+        }
+      },
+      "placeholders": [
+        "%2$@",
+        "%2$@",
+        "%3$@",
+        "%3$@",
+        "%@",
+        "%@",
+        "%arg",
+        "%arg",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld chats on %@ are still running. Move once they finish, so no reply is lost.",
+      "catalog": "Localizable",
+      "key": "%lld chats on %@ are still running. Move once they finish, so no reply is lost.",
+      "units": [
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "one",
+          "source": "%arg chat on %2$@ is still running. Move once it finishes, so no reply is lost."
+        },
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "other",
+          "source": "%arg chats on %2$@ are still running. Move once they finish, so no reply is lost."
+        }
+      ],
+      "sourceStructure": {
+        "template": "%1$#@arg1@",
+        "substitutions": {
+          "arg1": {
+            "argument": 1,
+            "formatSpecifier": "lld",
+            "variations": {
+              "plural": [
+                "one",
+                "other"
+              ]
+            }
+          }
+        }
+      },
+      "placeholders": [
+        "%2$@",
+        "%2$@",
+        "%@",
+        "%arg",
+        "%arg",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 213
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld chats open without a folder",
+      "catalog": "Localizable",
+      "key": "%lld chats open without a folder",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld chat opens without a folder"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld chats open without a folder"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 600
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld chats stay on %@",
+      "catalog": "Localizable",
+      "key": "%lld chats stay on %@",
+      "units": [
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "one",
+          "source": "%arg chat stays on %2$@"
+        },
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "other",
+          "source": "%arg chats stay on %2$@"
+        }
+      ],
+      "sourceStructure": {
+        "template": "%1$#@arg1@",
+        "substitutions": {
+          "arg1": {
+            "argument": 1,
+            "formatSpecifier": "lld",
+            "variations": {
+              "plural": [
+                "one",
+                "other"
+              ]
+            }
+          }
+        }
+      },
+      "placeholders": [
+        "%2$@",
+        "%2$@",
+        "%@",
+        "%arg",
+        "%arg",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 580
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld chats still to check.",
+      "catalog": "Localizable",
+      "key": "%lld chats still to check.",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld chat still to check."
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld chats still to check."
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 404
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld chats unchecked",
+      "catalog": "Localizable",
+      "key": "%lld chats unchecked",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld chat unchecked"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld chats unchecked"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 583
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld chats were sent without a reply, so they may or may not be in %@. They’re listed for you to check.",
+      "catalog": "Localizable",
+      "key": "%lld chats were sent without a reply, so they may or may not be in %@. They’re listed for you to check.",
+      "units": [
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "one",
+          "source": "%arg chat was sent without a reply, so it may or may not be in %2$@. It’s listed for you to check."
+        },
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "other",
+          "source": "%arg chats were sent without a reply, so they may or may not be in %2$@. They’re listed for you to check."
+        }
+      ],
+      "sourceStructure": {
+        "template": "%1$#@arg1@",
+        "substitutions": {
+          "arg1": {
+            "argument": 1,
+            "formatSpecifier": "lld",
+            "variations": {
+              "plural": [
+                "one",
+                "other"
+              ]
+            }
+          }
+        }
+      },
+      "placeholders": [
+        "%2$@",
+        "%2$@",
+        "%@",
+        "%arg",
+        "%arg",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 476
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld chats weren’t checked for titles, pins, folders or drafts.",
+      "catalog": "Localizable",
+      "key": "%lld chats weren’t checked for titles, pins, folders or drafts.",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld chat wasn’t checked for titles, pins, folders or drafts."
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld chats weren’t checked for titles, pins, folders or drafts."
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 473
+        },
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 593
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld chats · no Profile with this name",
+      "catalog": "Localizable",
+      "key": "%lld chats · no Profile with this name",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld chat · no Profile with this name"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld chats · no Profile with this name"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 304
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld chats · same name",
+      "catalog": "Localizable",
+      "key": "%lld chats · same name",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld chat · same name"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld chats · same name"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 303
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld chats",
+      "catalog": "Localizable",
+      "key": "%lld chats",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld chat"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld chats"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 179
+        },
+        {
+          "file": "HermesMobile/Features/Settings/SettingsServerPage.swift",
+          "line": 400
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld comments",
+      "catalog": "Localizable",
+      "key": "%lld comments",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld comment"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld comments"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 2489
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld commits behind.",
+      "catalog": "Localizable",
+      "key": "%lld commits behind.",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld commit behind."
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld commits behind."
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/HermesUpdateCallout.swift",
+          "line": 103
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld copied, %lld already there",
+      "catalog": "Localizable",
+      "key": "%lld copied, %lld already there",
+      "units": [
+        {
+          "source": "%lld copied, %lld already there"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 577
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld copied, %lld already there, %lld there but the copy wasn’t confirmed",
+      "catalog": "Localizable",
+      "key": "%lld copied, %lld already there, %lld there but the copy wasn’t confirmed",
+      "units": [
+        {
+          "source": "%lld copied, %lld already there, %lld there but the copy wasn’t confirmed"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 578
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld couldn’t be checked and weren’t copied.",
+      "catalog": "Localizable",
+      "key": "%lld couldn’t be checked and weren’t copied.",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld couldn’t be checked and wasn’t copied."
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld couldn’t be checked and weren’t copied."
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 668
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld couldn’t be checked",
+      "catalog": "Localizable",
+      "key": "%lld couldn’t be checked",
+      "units": [
+        {
+          "source": "%lld couldn’t be checked"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 254
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld couldn’t be copied",
+      "catalog": "Localizable",
+      "key": "%lld couldn’t be copied",
+      "units": [
+        {
+          "source": "%lld couldn’t be copied"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 655
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld drafts stay on this iPhone under %@",
+      "catalog": "Localizable",
+      "key": "%lld drafts stay on this iPhone under %@",
+      "units": [
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "one",
+          "source": "%arg draft stays on this iPhone under %2$@"
+        },
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "other",
+          "source": "%arg drafts stay on this iPhone under %2$@"
+        }
+      ],
+      "sourceStructure": {
+        "template": "%1$#@arg1@",
+        "substitutions": {
+          "arg1": {
+            "argument": 1,
+            "formatSpecifier": "lld",
+            "variations": {
+              "plural": [
+                "one",
+                "other"
+              ]
+            }
+          }
+        }
+      },
+      "placeholders": [
+        "%2$@",
+        "%2$@",
+        "%@",
+        "%arg",
+        "%arg",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 604
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld drafts stay on this iPhone under %@.",
+      "catalog": "Localizable",
+      "key": "%lld drafts stay on this iPhone under %@.",
+      "units": [
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "one",
+          "source": "%arg draft stays on this iPhone under %2$@."
+        },
+        {
+          "substitution": "arg1",
+          "argument": 1,
+          "formatSpecifier": "lld",
+          "variation": "plural",
+          "case": "other",
+          "source": "%arg drafts stay on this iPhone under %2$@."
+        }
+      ],
+      "sourceStructure": {
+        "template": "%1$#@arg1@",
+        "substitutions": {
+          "arg1": {
+            "argument": 1,
+            "formatSpecifier": "lld",
+            "variations": {
+              "plural": [
+                "one",
+                "other"
+              ]
+            }
+          }
+        }
+      },
+      "placeholders": [
+        "%2$@",
+        "%2$@",
+        "%@",
+        "%arg",
+        "%arg",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 468
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld failed",
+      "catalog": "Localizable",
+      "key": "%lld failed",
+      "units": [
+        {
+          "source": "%lld failed"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesDelegatedWorkView.swift",
+          "line": 298
+        },
+        {
+          "file": "HermesMobile/Features/Chat/HermesDelegatedWorkView.swift",
+          "line": 385
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld files changed",
+      "catalog": "Localizable",
+      "key": "%lld files changed",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld file changed"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld files changed"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitDiffFileJumpList.swift",
+          "line": 48
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/GitDiffView.swift",
+          "line": 76
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/GitWorkspaceView.swift",
+          "line": 238
+        },
+        {
+          "file": "HermesMobile/Models/TurnFileChangeSummary.swift",
+          "line": 87
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld headers",
+      "catalog": "Localizable",
+      "key": "%lld headers",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld header"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld headers"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/AddServerView.swift",
+          "line": 209
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld in %@",
+      "catalog": "Localizable",
+      "key": "%lld in %@",
+      "units": [
+        {
+          "source": "%lld in %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 660
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld in %@, which you kept there",
+      "catalog": "Localizable",
+      "key": "%lld in %@, which you kept there",
+      "units": [
+        {
+          "source": "%lld in %@, which you kept there"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld in conflict (both kept)",
+      "catalog": "Localizable",
+      "key": "%lld in conflict (both kept)",
+      "units": [
+        {
+          "source": "%lld in conflict (both kept)"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 680
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld kept there",
+      "catalog": "Localizable",
+      "key": "%lld kept there",
+      "units": [
+        {
+          "source": "%lld kept there"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 659
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld lines",
+      "catalog": "Localizable",
+      "key": "%lld lines",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld line"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld lines"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatAttachmentPreviewView.swift",
+          "line": 244
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/FilePreviewView.swift",
+          "line": 417
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld lines selected",
+      "catalog": "Localizable",
+      "key": "%lld lines selected",
+      "units": [
+        {
+          "source": "%lld lines selected"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitDiffView.swift",
+          "line": 175
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/SourceViewer/SourceFileSurface.swift",
+          "line": 113
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld messages",
+      "catalog": "Localizable",
+      "key": "%lld messages",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld message"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld messages"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionRowView.swift",
+          "line": 153
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld more attachments",
+      "catalog": "Localizable",
+      "key": "%lld more attachments",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld more attachment"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld more attachments"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatComposerAttachmentStripView.swift",
+          "line": 69
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld more couldn’t be checked.",
+      "catalog": "Localizable",
+      "key": "%lld more couldn’t be checked.",
+      "units": [
+        {
+          "source": "%lld more couldn’t be checked."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesModel.swift",
+          "line": 787
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld more weren’t checked, so this move didn’t copy them.",
+      "catalog": "Localizable",
+      "key": "%lld more weren’t checked, so this move didn’t copy them.",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld more wasn’t checked, so this move didn’t copy it."
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld more weren’t checked, so this move didn’t copy them."
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 467
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld moved. %lld still to move.",
+      "catalog": "Localizable",
+      "key": "%lld moved. %lld still to move.",
+      "units": [
+        {
+          "source": "%lld moved. %lld still to move."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 409
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld moved.",
+      "catalog": "Localizable",
+      "key": "%lld moved.",
+      "units": [
+        {
+          "source": "%lld moved."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 410
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld not copied",
+      "catalog": "Localizable",
+      "key": "%lld not copied",
+      "units": [
+        {
+          "source": "%lld not copied"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesModel.swift",
+          "line": 802
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld not moved",
+      "catalog": "Localizable",
+      "key": "%lld not moved",
+      "units": [
+        {
+          "source": "%lld not moved"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 679
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld of %lld",
+      "catalog": "Localizable",
+      "key": "%lld of %lld",
+      "units": [
+        {
+          "source": "%1$lld of %2$lld"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%1$lld",
+        "%2$lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesChatActivity.swift",
+          "line": 39
+        },
+        {
+          "file": "HermesMobile/Features/Chat/HermesPlanViews.swift",
+          "line": 149
+        },
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 334
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld of %lld chats are in %@. Some work isn’t finished.",
+      "catalog": "Localizable",
+      "key": "%lld of %lld chats are in %@. Some work isn’t finished.",
+      "units": [
+        {
+          "source": "%lld of %lld chats are in %@. Some work isn’t finished."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 899
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld of %lld connected",
+      "catalog": "Localizable",
+      "key": "%lld of %lld connected",
+      "units": [
+        {
+          "source": "%lld of %lld connected"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 238
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld of %lld in %@",
+      "catalog": "Localizable",
+      "key": "%lld of %lld in %@",
+      "units": [
+        {
+          "source": "%lld of %lld in %@"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsServerPage.swift",
+          "line": 379
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld of %lld in %@. %lld still to try.",
+      "catalog": "Localizable",
+      "key": "%lld of %lld in %@. %lld still to try.",
+      "units": [
+        {
+          "source": "%lld of %lld in %@. %lld still to try."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 396
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld of %lld in %@.",
+      "catalog": "Localizable",
+      "key": "%lld of %lld in %@.",
+      "units": [
+        {
+          "source": "%lld of %lld in %@."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 397
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld over 10,000 messages",
+      "catalog": "Localizable",
+      "key": "%lld over 10,000 messages",
+      "units": [
+        {
+          "source": "%lld over 10,000 messages"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 253
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld over the import limit",
+      "catalog": "Localizable",
+      "key": "%lld over the import limit",
+      "units": [
+        {
+          "source": "%lld over the import limit"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 656
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld questions",
+      "catalog": "Localizable",
+      "key": "%lld questions",
+      "units": [
+        {
+          "variation": "plural",
+          "case": "one",
+          "source": "%lld question"
+        },
+        {
+          "variation": "plural",
+          "case": "other",
+          "source": "%lld questions"
+        }
+      ],
+      "sourceStructure": {
+        "variations": {
+          "plural": [
+            "one",
+            "other"
+          ]
+        }
+      },
+      "placeholders": [
+        "%lld",
+        "%lld",
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotPendingRequestCard.swift",
+          "line": 244
+        }
+      ],
+      "target": null
+    },
+    {
+      "id": "Localizable::%lld removed",
+      "catalog": "Localizable",
+      "key": "%lld removed",
+      "units": [
+        {
+          "source": "%lld removed"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%lld"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitWorkspaceView.swift",
+          "line": 342
+        },
+        {
+          "file": "HermesMobile/Features/Workspace/ReviewDiff/ReviewDiffCanvasView+Accessibility.swift",
+          "line": 50
+        }
+      ],
+      "target": null
+    }
+  ]
+}

@@ -1,0 +1,1276 @@
+{
+  "schemaVersion": 1,
+  "sourceLanguage": "en",
+  "targetLanguage": "ca",
+  "catalog": "Localizable",
+  "entries": [
+    {
+      "id": "Localizable::No committed changes against the branch base.",
+      "catalog": "Localizable",
+      "key": "No committed changes against the branch base.",
+      "units": [
+        {
+          "source": "No committed changes against the branch base."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitWorkspaceView.swift",
+          "line": 200
+        }
+      ],
+      "target": "No hi ha canvis comesos respecte a la base de la branca."
+    },
+    {
+      "id": "Localizable::No key",
+      "catalog": "Localizable",
+      "key": "No key",
+      "units": [
+        {
+          "source": "No key"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/ProvidersView.swift",
+          "line": 237
+        }
+      ],
+      "target": "Sense clau"
+    },
+    {
+      "id": "Localizable::No matches for \"%@\"",
+      "catalog": "Localizable",
+      "key": "No matches for \"%@\"",
+      "units": [
+        {
+          "source": "No matches for \"%@\""
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Cap coincidència per a \"%@\""
+    },
+    {
+      "id": "Localizable::No matching Cards",
+      "catalog": "Localizable",
+      "key": "No matching Cards",
+      "units": [
+        {
+          "source": "No matching Cards"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanLabView.swift",
+          "line": 1372
+        }
+      ],
+      "target": "Cap targeta coincident"
+    },
+    {
+      "id": "Localizable::No matching files or folders.",
+      "catalog": "Localizable",
+      "key": "No matching files or folders.",
+      "units": [
+        {
+          "source": "No matching files or folders."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/FilePathAutocompleteView.swift",
+          "line": 70
+        }
+      ],
+      "target": "Cap fitxer o carpeta coincident."
+    },
+    {
+      "id": "Localizable::No matching sessions",
+      "catalog": "Localizable",
+      "key": "No matching sessions",
+      "units": [
+        {
+          "source": "No matching sessions"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/HermesSessionListView.swift",
+          "line": 570
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
+          "line": 1204
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListView.swift",
+          "line": 969
+        }
+      ],
+      "target": "Cap sessió coincident"
+    },
+    {
+      "id": "Localizable::No microphone input is available. Check the Simulator or device microphone settings.",
+      "catalog": "Localizable",
+      "key": "No microphone input is available. Check the Simulator or device microphone settings.",
+      "units": [
+        {
+          "source": "No microphone input is available. Check the Simulator or device microphone settings."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ComposerVoiceInputController.swift",
+          "line": 959
+        }
+      ],
+      "target": "No hi ha entrada de micròfon disponible. Comprova la configuració del micròfon del simulador o del dispositiu."
+    },
+    {
+      "id": "Localizable::No model is set for this bot yet. Pick one in Edit or in Hermes Desktop before chatting.",
+      "catalog": "Localizable",
+      "key": "No model is set for this bot yet. Pick one in Edit or in Hermes Desktop before chatting.",
+      "units": [
+        {
+          "source": "No model is set for this bot yet. Pick one in Edit or in Hermes Desktop before chatting."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermes"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotCreator.swift",
+          "line": 253
+        }
+      ],
+      "target": "Aquest bot encara no té cap model definit. Tria'n un a Edita o a Hermes Desktop abans de xatejar."
+    },
+    {
+      "id": "Localizable::No notes yet.",
+      "catalog": "Localizable",
+      "key": "No notes yet.",
+      "units": [
+        {
+          "source": "No notes yet."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Memory/MemoryView.swift",
+          "line": 434
+        }
+      ],
+      "target": "Encara no hi ha notes."
+    },
+    {
+      "id": "Localizable::No output for this run.",
+      "catalog": "Localizable",
+      "key": "No output for this run.",
+      "units": [
+        {
+          "source": "No output for this run."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Tasks/TaskRunOutputSheet.swift",
+          "line": 52
+        }
+      ],
+      "target": "No hi ha sortida per a aquesta execució."
+    },
+    {
+      "id": "Localizable::No output yet.",
+      "catalog": "Localizable",
+      "key": "No output yet.",
+      "units": [
+        {
+          "source": "No output yet."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesDelegatedWorkView.swift",
+          "line": 187
+        }
+      ],
+      "target": "Encara no hi ha sortida."
+    },
+    {
+      "id": "Localizable::No personalities are configured on the server.",
+      "catalog": "Localizable",
+      "key": "No personalities are configured on the server.",
+      "units": [
+        {
+          "source": "No personalities are configured on the server."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 4560
+        }
+      ],
+      "target": "No hi ha personalitats configurades al servidor."
+    },
+    {
+      "id": "Localizable::No photos are available.",
+      "catalog": "Localizable",
+      "key": "No photos are available.",
+      "units": [
+        {
+          "source": "No photos are available."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/CustomAttachmentPicker.swift",
+          "line": 730
+        }
+      ],
+      "target": "No hi ha fotos disponibles."
+    },
+    {
+      "id": "Localizable::No profile yet.",
+      "catalog": "Localizable",
+      "key": "No profile yet.",
+      "units": [
+        {
+          "source": "No profile yet."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Memory/MemoryView.swift",
+          "line": 436
+        }
+      ],
+      "target": "Encara no hi ha perfil."
+    },
+    {
+      "id": "Localizable::No profiles",
+      "catalog": "Localizable",
+      "key": "No profiles",
+      "units": [
+        {
+          "source": "No profiles"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
+          "line": 586
+        }
+      ],
+      "target": "No hi ha perfils"
+    },
+    {
+      "id": "Localizable::No profiles available",
+      "catalog": "Localizable",
+      "key": "No profiles available",
+      "units": [
+        {
+          "source": "No profiles available"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatComposerSelectorControls.swift",
+          "line": 104
+        },
+        {
+          "file": "HermesMobile/Features/Settings/DefaultProfilePickerView.swift",
+          "line": 116
+        },
+        {
+          "file": "HermesMobile/Features/Tasks/CronJobConfigurationPickers.swift",
+          "line": 254
+        }
+      ],
+      "target": "No hi ha perfils disponibles"
+    },
+    {
+      "id": "Localizable::No project",
+      "catalog": "Localizable",
+      "key": "No project",
+      "units": [
+        {
+          "source": "No project"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
+          "line": 129
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
+          "line": 1425
+        },
+        {
+          "file": "HermesMobile/Networking/Hermes/HermesProjects.swift",
+          "line": 7
+        }
+      ],
+      "target": "Sense projecte"
+    },
+    {
+      "id": "Localizable::No projects",
+      "catalog": "Localizable",
+      "key": "No projects",
+      "units": [
+        {
+          "source": "No projects"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
+          "line": 686
+        }
+      ],
+      "target": "No hi ha projectes"
+    },
+    {
+      "id": "Localizable::No providers reported by this server.",
+      "catalog": "Localizable",
+      "key": "No providers reported by this server.",
+      "units": [
+        {
+          "source": "No providers reported by this server."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/ProvidersView.swift",
+          "line": 98
+        }
+      ],
+      "target": "Aquest servidor no ha informat de cap proveïdor."
+    },
+    {
+      "id": "Localizable::No report",
+      "catalog": "Localizable",
+      "key": "No report",
+      "units": [
+        {
+          "source": "No report"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesDelegatedWorkView.swift",
+          "line": 341
+        }
+      ],
+      "target": "Sense informe"
+    },
+    {
+      "id": "Localizable::No saved messages found.",
+      "catalog": "Localizable",
+      "key": "No saved messages found.",
+      "units": [
+        {
+          "source": "No saved messages found."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotSearchView.swift",
+          "line": 134
+        }
+      ],
+      "target": "No s'han trobat missatges desats."
+    },
+    {
+      "id": "Localizable::No sessions in this project",
+      "catalog": "Localizable",
+      "key": "No sessions in this project",
+      "units": [
+        {
+          "source": "No sessions in this project"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/HermesSessionListView.swift",
+          "line": 571
+        }
+      ],
+      "target": "No hi ha sessions en aquest projecte"
+    },
+    {
+      "id": "Localizable::No sessions yet",
+      "catalog": "Localizable",
+      "key": "No sessions yet",
+      "units": [
+        {
+          "source": "No sessions yet"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/HermesSessionListView.swift",
+          "line": 571
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListComponents.swift",
+          "line": 1203
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListView.swift",
+          "line": 972
+        }
+      ],
+      "target": "Encara no hi ha sessions"
+    },
+    {
+      "id": "Localizable::No skills are configured on the server.",
+      "catalog": "Localizable",
+      "key": "No skills are configured on the server.",
+      "units": [
+        {
+          "source": "No skills are configured on the server."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/SlashCommandAutocompleteView.swift",
+          "line": 367
+        },
+        {
+          "file": "HermesMobile/Models/Skills.swift",
+          "line": 193
+        }
+      ],
+      "target": "No hi ha habilitats configurades al servidor."
+    },
+    {
+      "id": "Localizable::No skills available",
+      "catalog": "Localizable",
+      "key": "No skills available",
+      "units": [
+        {
+          "source": "No skills available"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Tasks/CronJobSkillsPicker.swift",
+          "line": 152
+        }
+      ],
+      "target": "No hi ha habilitats disponibles"
+    },
+    {
+      "id": "Localizable::No skills match \"%@\".",
+      "catalog": "Localizable",
+      "key": "No skills match \"%@\".",
+      "units": [
+        {
+          "source": "No skills match \"%@\"."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Cap habilitat coincideix amb \"%@\"."
+    },
+    {
+      "id": "Localizable::No skills match `%@`.",
+      "catalog": "Localizable",
+      "key": "No skills match `%@`.",
+      "units": [
+        {
+          "source": "No skills match `%@`."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Models/Skills.swift",
+          "line": 199
+        }
+      ],
+      "target": "Cap habilitat coincideix amb `%@`."
+    },
+    {
+      "id": "Localizable::No soul defined yet.",
+      "catalog": "Localizable",
+      "key": "No soul defined yet.",
+      "units": [
+        {
+          "source": "No soul defined yet."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Memory/MemoryView.swift",
+          "line": 438
+        }
+      ],
+      "target": "Encara no s'ha definit cap ànima."
+    },
+    {
+      "id": "Localizable::No tasks match this filter.",
+      "catalog": "Localizable",
+      "key": "No tasks match this filter.",
+      "units": [
+        {
+          "source": "No tasks match this filter."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Tasks/TasksView.swift",
+          "line": 191
+        }
+      ],
+      "target": "Cap tasca coincideix amb aquest filtre."
+    },
+    {
+      "id": "Localizable::No token usage available",
+      "catalog": "Localizable",
+      "key": "No token usage available",
+      "units": [
+        {
+          "source": "No token usage available"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatViewModel.swift",
+          "line": 7534
+        }
+      ],
+      "target": "No hi ha ús de tokens disponible"
+    },
+    {
+      "id": "Localizable::No tools",
+      "catalog": "Localizable",
+      "key": "No tools",
+      "units": [
+        {
+          "source": "No tools"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "No hi ha eines"
+    },
+    {
+      "id": "Localizable::None",
+      "catalog": "Localizable",
+      "key": "None",
+      "units": [
+        {
+          "source": "None"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 195
+        },
+        {
+          "file": "HermesMobile/Features/Chat/ChatComposerSelectorControls.swift",
+          "line": 384
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanCardEditorView.swift",
+          "line": 116
+        },
+        {
+          "file": "HermesMobile/Features/Kanban/KanbanCardEditorView.swift",
+          "line": 168
+        },
+        {
+          "file": "HermesMobile/Features/Tasks/CronJobSkillsPicker.swift",
+          "line": 58
+        },
+        {
+          "file": "HermesMobile/Features/Tasks/CronJobSkillsPicker.swift",
+          "line": 165
+        }
+      ],
+      "target": "Cap"
+    },
+    {
+      "id": "Localizable::Normal",
+      "catalog": "Localizable",
+      "key": "Normal",
+      "units": [
+        {
+          "source": "Normal"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/ChatComposerSelectorControls.swift",
+          "line": 41
+        }
+      ],
+      "target": "Normal"
+    },
+    {
+      "id": "Localizable::Not a Git Repository",
+      "catalog": "Localizable",
+      "key": "Not a Git Repository",
+      "units": [
+        {
+          "source": "Not a Git Repository"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Workspace/GitWorkspaceView.swift",
+          "line": 142
+        }
+      ],
+      "target": "No és un repositori Git"
+    },
+    {
+      "id": "Localizable::Not available",
+      "catalog": "Localizable",
+      "key": "Not available",
+      "units": [
+        {
+          "source": "Not available"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Tasks/CronJobRowView.swift",
+          "line": 91
+        },
+        {
+          "file": "HermesMobile/Features/Tasks/CronJobRowView.swift",
+          "line": 95
+        },
+        {
+          "file": "HermesMobile/Features/Tasks/TaskConfigurationFields.swift",
+          "line": 36
+        },
+        {
+          "file": "HermesMobile/Features/Tasks/TaskDetailHeaderCard.swift",
+          "line": 201
+        }
+      ],
+      "target": "No disponible"
+    },
+    {
+      "id": "Localizable::Not connected",
+      "catalog": "Localizable",
+      "key": "Not connected",
+      "units": [
+        {
+          "source": "Not connected"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/HermesRequestCards.swift",
+          "line": 174
+        },
+        {
+          "file": "HermesMobile/LiveActivities/AgentLiveActivityManager.swift",
+          "line": 491
+        },
+        {
+          "file": "HermesMobile/LiveActivities/AgentRunActivityAttributes.swift",
+          "line": 654
+        }
+      ],
+      "target": "No connectat"
+    },
+    {
+      "id": "Localizable::Not counted",
+      "catalog": "Localizable",
+      "key": "Not counted",
+      "units": [
+        {
+          "source": "Not counted"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/SettingsServerPage.swift",
+          "line": 399
+        }
+      ],
+      "target": "No comptat"
+    },
+    {
+      "id": "Localizable::Not now",
+      "catalog": "Localizable",
+      "key": "Not now",
+      "units": [
+        {
+          "source": "Not now"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Config/AppTheme.swift",
+          "line": 11
+        },
+        {
+          "file": "HermesMobile/Config/NotificationOffer.swift",
+          "line": 71
+        },
+        {
+          "file": "HermesMobile/Config/NotificationOffer.swift",
+          "line": 96
+        },
+        {
+          "file": "HermesMobile/Config/TipJarPromptState.swift",
+          "line": 4
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/SessionListView.swift",
+          "line": 475
+        },
+        {
+          "file": "HermesMobile/Features/SessionList/TipJarCard.swift",
+          "line": 122
+        }
+      ],
+      "target": "Ara no"
+    },
+    {
+      "id": "Localizable::Not responding",
+      "catalog": "Localizable",
+      "key": "Not responding",
+      "units": [
+        {
+          "source": "Not responding"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 302
+        }
+      ],
+      "target": "No respon"
+    },
+    {
+      "id": "Localizable::Not scheduled",
+      "catalog": "Localizable",
+      "key": "Not scheduled",
+      "units": [
+        {
+          "source": "Not scheduled"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Tasks/TaskDetailHeaderCard.swift",
+          "line": 87
+        }
+      ],
+      "target": "No programat"
+    },
+    {
+      "id": "Localizable::Not selected",
+      "catalog": "Localizable",
+      "key": "Not selected",
+      "units": [
+        {
+          "source": "Not selected"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Chat/CustomAttachmentPicker.swift",
+          "line": 772
+        }
+      ],
+      "target": "No seleccionat"
+    },
+    {
+      "id": "Localizable::Not set",
+      "catalog": "Localizable",
+      "key": "Not set",
+      "units": [
+        {
+          "source": "Not set"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Settings/WebuiServerSettings.swift",
+          "line": 250
+        },
+        {
+          "file": "HermesMobile/Features/Settings/WebuiServerSettings.swift",
+          "line": 266
+        }
+      ],
+      "target": "No definit"
+    },
+    {
+      "id": "Localizable::Not started",
+      "catalog": "Localizable",
+      "key": "Not started",
+      "units": [
+        {
+          "source": "Not started"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 751
+        }
+      ],
+      "target": "No iniciat"
+    },
+    {
+      "id": "Localizable::Nothing has been changed yet. Cancel leaves both servers as they are.",
+      "catalog": "Localizable",
+      "key": "Nothing has been changed yet. Cancel leaves both servers as they are.",
+      "units": [
+        {
+          "source": "Nothing has been changed yet. Cancel leaves both servers as they are."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 184
+        }
+      ],
+      "target": "Encara no s'ha canviat res. Cancel·lar deixa els dos servidors com estan."
+    },
+    {
+      "id": "Localizable::Nothing in %@ is undone. Copy Missing Chats Again can later copy chats %@ still lacks, with their titles, pins and drafts. It can’t finish the titles, pins, folders or drafts left undone for chats already in %@.",
+      "catalog": "Localizable",
+      "key": "Nothing in %@ is undone. Copy Missing Chats Again can later copy chats %@ still lacks, with their titles, pins and drafts. It can’t finish the titles, pins, folders or drafts left undone for chats already in %@.",
+      "units": [
+        {
+          "source": "Nothing in %@ is undone. Copy Missing Chats Again can later copy chats %@ still lacks, with their titles, pins and drafts. It can’t finish the titles, pins, folders or drafts left undone for chats already in %@."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [
+        "%@",
+        "%@",
+        "%@"
+      ],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 478
+        }
+      ],
+      "target": "No s'ha desfet res a %@. «Torna a copiar els xats que falten» pot copiar més tard els xats que encara falten a %@, amb els seus títols, fixacions i esborranys. No pot acabar els títols, les fixacions, les carpetes o els esborranys pendents dels xats que ja són a %@."
+    },
+    {
+      "id": "Localizable::Nothing was added. Discard deletes this saved share from Hermex.",
+      "catalog": "Localizable",
+      "key": "Nothing was added. Discard deletes this saved share from Hermex.",
+      "units": [
+        {
+          "source": "Nothing was added. Discard deletes this saved share from Hermex."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/SessionList/HermesSessionListView.swift",
+          "line": 291
+        }
+      ],
+      "target": "No s'ha afegit res. Descartar suprimeix aquesta compartició desada de Hermex."
+    },
+    {
+      "id": "Localizable::Nothing was changed.",
+      "catalog": "Localizable",
+      "key": "Nothing was changed.",
+      "units": [
+        {
+          "source": "Nothing was changed."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 495
+        }
+      ],
+      "target": "No s'ha canviat res."
+    },
+    {
+      "id": "Localizable::Notifications",
+      "catalog": "Localizable",
+      "key": "Notifications",
+      "units": [
+        {
+          "source": "Notifications"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/BotConnectionView.swift",
+          "line": 241
+        },
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushSettingsPage.swift",
+          "line": 33
+        },
+        {
+          "file": "HermesMobile/Features/MoveToHermes/MoveToHermesView.swift",
+          "line": 283
+        },
+        {
+          "file": "HermesMobile/Features/Settings/SettingsView.swift",
+          "line": 83
+        },
+        {
+          "file": "HermesMobile/Features/Tasks/TaskConfigurationFields.swift",
+          "line": 78
+        },
+        {
+          "file": "HermesMobile/Features/Tasks/TaskDetailView.swift",
+          "line": 189
+        }
+      ],
+      "target": "Notificacions"
+    },
+    {
+      "id": "Localizable::Notifications are off for Hermex",
+      "catalog": "Localizable",
+      "key": "Notifications are off for Hermex",
+      "units": [
+        {
+          "source": "Notifications are off for Hermex"
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "main-app",
+      "sourceReferences": [
+        {
+          "file": "HermesMobile/Features/Bots/HermexPushSettingsPage.swift",
+          "line": 119
+        }
+      ],
+      "target": "Les notificacions de Hermex estan desactivades"
+    },
+    {
+      "id": "Localizable::Notifications are off for Hermex, so this server’s notifications can’t show on this iPhone.",
+      "catalog": "Localizable",
+      "key": "Notifications are off for Hermex, so this server’s notifications can’t show on this iPhone.",
+      "units": [
+        {
+          "source": "Notifications are off for Hermex, so this server’s notifications can’t show on this iPhone."
+        }
+      ],
+      "sourceStructure": null,
+      "placeholders": [],
+      "protectedTerms": [
+        "Hermex"
+      ],
+      "comment": null,
+      "extractionState": null,
+      "surface": "shared-catalog",
+      "sourceReferences": [],
+      "target": "Les notificacions de Hermex estan desactivades, per això les notificacions d'aquest servidor no es poden mostrar en aquest iPhone."
+    }
+  ]
+}
