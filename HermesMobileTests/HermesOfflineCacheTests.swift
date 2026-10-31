@@ -1098,26 +1098,58 @@ import XCTest
     }
 
     /// Leaving while a Send still waits on the attach it needs never makes it a waiting send, so
-    /// nothing sends it on its own: it stays the composer's.
+    /// nothing sends it on its own: it goes back to the composer ahead of what was typed since.
     func testLeavingBeforeASendFindsNoConnectionKeepsItInTheComposer() async throws {
         let wire = HermesOfflineWire(rows: [row(1, "user", "Hi")])
         let chat = makeChat(wire)
         await chat.model.loadMessages(modelContext: try makeContext())
+        let key = try XCTUnwrap(chat.model.hermesDraftKey)
         let connect = Gate()
         wire.connectGate = connect
         wire.connectFailure = URLError(.notConnectedToInternet)
         chat.model.suspendStreamForBackground()
         let reattach = Task { await chat.model.reconnectStreamIfNeeded() }
+        chat.drafts.setDraft("Ship it", for: key)
         let sending = Task { await chat.model.send("Ship it", isPlainText: true) }
         await waitUntil("it waits on the attach") { chat.model.messages.last?.content == "Ship it" }
 
+        chat.drafts.setDraft("And this", for: key)
         chat.model.leaveWaitingSend()
         connect.open()
         let outcome = await sending.value
         await reattach.value
 
         XCTAssertEqual(outcome, .kept)
-        XCTAssertNil(chat.model.waitingSend)
+        XCTAssertEqual(returned.last?.text, "Ship it\n\nAnd this")
+        let draft = await chat.drafts.draft(for: key)
+        XCTAssertEqual(draft?.text, "Ship it\n\nAnd this")
+        wire.connectFailure = nil
+        chat.reconnect.open()
+        await waitUntil("reattached") { chat.engine.connectionState == .connected }
+        XCTAssertEqual(wire.prompts, [])
+    }
+
+    /// A second Send while the first is still being written stays the composer's, so the first
+    /// keeps its saved copy: a relaunch finds it, and Cancel puts it back ahead of the second.
+    func testASecondSendWhileTheFirstIsWrittenLeavesTheFirstWaiting() async throws {
+        let disk = HookedDrafts()
+        let (chat, _, drafts) = try await offlineChat(persistence: disk)
+        let key = try XCTUnwrap(chat.model.hermesDraftKey)
+        drafts.setDraft("Ship it", for: key)
+        await disk.setBeforeNextWrite { [unowned self] in
+            drafts.setDraft("And this", for: key)
+            // Not awaited: a second write would wait on this one.
+            Task { _ = await chat.model.send("And this", isPlainText: true) }
+            await waitUntil("the second Send is refused") { chat.model.sendErrorMessage != nil }
+        }
+
+        let first = await chat.model.send("Ship it", isPlainText: true)
+
+        XCTAssertEqual(first, .waiting)
+        let saved = await disk.load()[key]
+        XCTAssertEqual(saved?.waitingSend?.text, "Ship it")
+        chat.model.cancelWaitingSend()
+        XCTAssertEqual(returned.last?.text, "Ship it\n\nAnd this")
     }
 
     /// A delivery whose ten minutes run out before its socket write never goes out: it comes back

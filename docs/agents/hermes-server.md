@@ -464,8 +464,8 @@ idempotency key: only plain text (no quotes, files, `/` command, Steer, Queue or
 sent while the chat shows its offline cache or failing with `NotSent` for lack of a connection
 (`.transport`, a `URLError`) before it reached the socket. It shows as a dimmed bubble with
 "Waiting for connection" and Cancel, outside `messages`, and is kept in the draft
-(`ChatDraft.waitingSend`); it waits only once that write succeeds and the chat it was typed
-in is still on screen. The first attach after it, once the host's rows replace the cache,
+(`ChatDraft.waitingSend`), one at a time; it waits only once that write succeeds and the chat
+it was typed in is still on screen, and otherwise goes back ahead of anything typed since. The first attach after it, once the host's rows replace the cache,
 sends it once, with no files, under the draft key it was held in; the #508 mark is on disk
 before it goes, and the socket write checks the chat, the foreground and the deadline again.
 The host's answer removes it; a lost answer puts the text back with the #508

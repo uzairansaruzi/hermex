@@ -3085,6 +3085,8 @@ final class ChatViewModel {
     /// Bumped whenever the waiting send is held, goes, or its chat leaves, so a deadline or
     /// delivery begun for an earlier one does nothing.
     @ObservationIgnored private var waitingSendGeneration = 0
+    /// A Send is being written as the waiting send, so no second one takes its draft record.
+    @ObservationIgnored private var isHoldingWaitingSend = false
     @ObservationIgnored private var waitingSendDeadline: Task<Void, Never>?
     @ObservationIgnored private let waitingSendClock: HermesWaitingSendClock
     /// A waiting send went back: `ChatView` shows the draft's text, which now leads with it, in its
@@ -3390,14 +3392,17 @@ final class ChatViewModel {
     }
 
     /// Holds `draft` as the waiting send once it is on disk, out of the draft's text in the same
-    /// write, with one deadline. `.kept` when that write failed or the chat left since `owner`:
-    /// the text goes back to the draft and the composer, and nothing sends it.
+    /// write, with one deadline. `.kept` when another is waiting or being written, that write failed,
+    /// or the chat left since `owner`: in the last two the text goes back to the draft, ahead of
+    /// anything typed since, and to the composer, and nothing sends it.
     private func holdForConnection(_ draft: String, on hermes: HermesChatTurnCoordinator, owner: Int) async -> ChatSendOutcome {
         let notHeld = String(localized: "Reconnect to the server to send a message.")
-        guard waitingSendGeneration == owner, waitingSend == nil else {
+        guard waitingSend == nil, !isHoldingWaitingSend else {
             sendErrorMessage = notHeld
             return .kept
         }
+        isHoldingWaitingSend = true
+        defer { isHoldingWaitingSend = false }
         let send = ChatDraft.WaitingSend(text: draft.trimmingCharacters(in: .whitespacesAndNewlines),
                                          createdAt: waitingSendClock.now())
         let key = hermes.currentDraftKey
