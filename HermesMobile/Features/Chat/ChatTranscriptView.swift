@@ -335,6 +335,8 @@ struct ChatTranscriptView: View {
     /// expressed through SwiftUI.
     private let transcriptContentID = "chat-transcript-content"
 
+    private static let contentCoordinateSpace = "chat-transcript-content-space"
+
     /// A tapped row is about to grow or shrink below the reader. Pin the offset
     /// so a default anchor SwiftUI re-applies on the size change (seen at the
     /// exact top after a status-bar scroll) cannot move them. If the pin had to
@@ -360,6 +362,8 @@ struct ChatTranscriptView: View {
     ) -> some View {
         // One clock read per body pass; each row compares its timestamp to it.
         let now = Date()
+        let layout = ChatScrollPositionController.Layout(contentWidth: contentWidth, dynamicTypeSize: dynamicTypeSize)
+        let isFollowing = isFollowingLatestContent
 
         return VStack(spacing: transcriptSpacing) {
             if let forkOrigin {
@@ -433,6 +437,20 @@ struct ChatTranscriptView: View {
                     isCronRun: isCronRun
                 )
                 .equatable()
+                // Frames in the content's space change on a rewrap or a row's own
+                // growth, never on a scroll; the controller keeps the reader's
+                // place through a rewrap with them (#1414).
+                .onGeometryChange(for: CGRect.self) { geometry in
+                    geometry.frame(in: .named(Self.contentCoordinateSpace))
+                } action: { frame in
+                    scrollPositionController.rowFrameChanged(
+                        renderID: transcriptMessage.renderID,
+                        frame: frame,
+                        layout: layout,
+                        isFollowing: isFollowing
+                    )
+                }
+                .onDisappear { scrollPositionController.forgetRow(renderID: transcriptMessage.renderID) }
                 .transition(rowEntryTransition(for: transcriptMessage.message, now: now))
                 .id(transcriptMessage.renderID)
 
@@ -491,6 +509,9 @@ struct ChatTranscriptView: View {
             )
         }
         .id(transcriptContentID)
+        // Row frames are measured here; `ChatScrollObserver`, in this view's
+        // background, gives the controller the same origin in UIKit.
+        .coordinateSpace(.named(Self.contentCoordinateSpace))
         .background {
             ZStack {
                 ChatScrollObserver(

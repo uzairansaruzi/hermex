@@ -236,6 +236,27 @@ final class ChatScrollPolicyTests: XCTestCase {
         )
     }
 
+    // MARK: - Reflow (#1414)
+
+    func testReflowKeepsTheReadingLineAtTheSameShareOfItsRow() throws {
+        let frames = [
+            "prompt": CGRect(x: 0, y: 0, width: 358, height: 100),
+            "reply": CGRect(x: 0, y: 108, width: 358, height: 200)
+        ]
+        let anchor = try XCTUnwrap(ChatScrollPolicy.reflowAnchor(readingLineY: 188, isAtTop: false, rowFrames: frames))
+        XCTAssertEqual(anchor.renderID, "reply")
+
+        // The reply doubles in height and moves down; the line stays 40% into it.
+        let rewrapped = CGRect(x: 0, y: 300, width: 300, height: 400)
+        XCTAssertEqual(ChatScrollPolicy.reflowReadingLineY(anchor: anchor, newFrame: rewrapped), 460, accuracy: 0.001)
+    }
+
+    func testReflowAnchorIsNilAtTheTopAndAboveTheFirstRow() {
+        let frames = ["reply": CGRect(x: 0, y: 16, width: 358, height: 200)]
+        XCTAssertNil(ChatScrollPolicy.reflowAnchor(readingLineY: 40, isAtTop: true, rowFrames: frames))
+        XCTAssertNil(ChatScrollPolicy.reflowAnchor(readingLineY: 10, isAtTop: false, rowFrames: frames))
+    }
+
     // MARK: - Transcript links
 
     func testTheScreensOwnResultWinsEvenForAWebLink() {
