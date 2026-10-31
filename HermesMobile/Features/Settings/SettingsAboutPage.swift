@@ -30,7 +30,7 @@ struct SettingsAboutPage: View {
             Section {
                 if server?.kind == .hermes {
                     Button {
-                        troubleshoot(with: report)
+                        troubleshoot()
                     } label: {
                         SettingsLabel(title: String(localized: "Troubleshoot with Hermes"), systemImage: "bubble.left.and.text.bubble.right")
                     }
@@ -123,14 +123,14 @@ struct SettingsAboutPage: View {
         }
     }
 
-    /// Queues the triage prompt and `report` as a new chat on the active Hermes server, in the
-    /// Profile its New Session uses (#1476). The chat opens for review once Sessions can show it;
-    /// nothing is sent.
-    private func troubleshoot(with report: SupportReport) {
+    /// Queues the triage prompt and a report built now, so it carries the latest connection
+    /// attempt, as a new chat on the active Hermes server, in the Profile its New Session uses
+    /// (#1476). The chat opens for review once Sessions can show it; nothing is sent.
+    private func troubleshoot() {
         guard let server, let url = URL(string: server.id) else { return }
         do {
-            try AppIntentRouter.shared.openNewChat(prefilling: report.troubleshootingPrompt, server: url, profile: nil,
-                                                   origin: .troubleshooting)
+            try AppIntentRouter.shared.openNewChat(prefilling: SupportReport(server: server).troubleshootingPrompt,
+                                                   server: url, profile: nil, origin: .troubleshooting)
         } catch {
             troubleshootingFailure = error as? NewChatWithContentError ?? .storage
         }
