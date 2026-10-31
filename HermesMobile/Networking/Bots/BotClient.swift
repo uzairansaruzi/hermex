@@ -21,6 +21,7 @@ import Foundation
     /// `install_id` from the same read; nil when omitted.
     var serverInstallID: String? { http.serverInstallID }
     var unavailableMethods: Set<String> { http.unavailableMethods }
+    var lastAttempt: HermesAttemptRecord? { http.lastAttempt }
     var onEvent: ((BotJSON) -> Void)?
     var onDisconnect: ((Error) -> Void)?
 

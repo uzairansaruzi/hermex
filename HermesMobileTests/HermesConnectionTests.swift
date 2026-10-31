@@ -817,6 +817,31 @@ import XCTest
         XCTAssertEqual(HermesHostFixture.count("/auth/password-login"), 0)
     }
 
+    /// A refused password leaves the attempt at what ran (#1395): the status read passed, the
+    /// sign-in failed with its HTTP status, and no later stage claims a check.
+    func testARefusedLoginRecordsOnlyTheStagesItReached() async throws {
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { request in
+            request.url?.path == "/auth/password-login" ? .json(401, .object(["error": .string("invalid_credentials")])) : nil
+        })
+        do { try await http.signIn(); XCTFail("The login was refused") } catch {}
+
+        let attempt = try XCTUnwrap(http.lastAttempt)
+        XCTAssertEqual(HermesAttemptRecord.Stage.allCases.map { attempt[$0] },
+                       [.passed, .failed(.http(401)), .notChecked, .notChecked, .notChecked])
+        XCTAssertEqual(attempt.reportedRelease, "0.21.5")
+    }
+
+    /// An open dashboard proves its page token with a gated read, not `/api/auth/me`, so its
+    /// identity stays unchecked (#1395).
+    func testAnOpenDashboardsSignInLeavesItsIdentityUnchecked() async throws {
+        let http = HermesConnection(connection: openRecord, configuration: openHost { "token-1" })
+        try await http.signIn()
+
+        let attempt = try XCTUnwrap(http.lastAttempt)
+        XCTAssertEqual(HermesAttemptRecord.Stage.allCases.map { attempt[$0] },
+                       [.passed, .passed, .notChecked, .notChecked, .notChecked])
+    }
+
     /// A gateway's own listener (#1340) serves an open dashboard's page without its token. Its
     /// bootstrap tells it apart from a page that isn't a dashboard's.
     func testAnOpenGatewayListenerIsNamedAtSignIn() async {

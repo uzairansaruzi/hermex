@@ -258,11 +258,13 @@ final class AuthManager {
     }
 
     /// Outcome of `addServer`, so the in-app add-server flow can reveal the
-    /// password field only when the server actually needs one (#17).
+    /// password field only when the server actually needs one (#17). `serverAnswered`
+    /// says the webui answered its status read before the add failed, so the failure
+    /// is the webui's own (#1395).
     enum AddServerOutcome: Equatable {
         case added(URL)
         case needsPassword
-        case failed
+        case failed(serverAnswered: Bool)
     }
 
     /// Adds (and switches to) another server from the in-app add-server flow.
@@ -289,25 +291,27 @@ final class AuthManager {
             serverURL = try Self.normalizedServerURL(from: serverURLString)
         } catch {
             lastErrorMessage = error.localizedDescription
-            return .failed
+            return .failed(serverAnswered: false)
         }
 
         guard !serverRegistry.servers.contains(where: { $0.id == serverURL.absoluteString }) else {
             lastErrorMessage = String(localized: "This server is already configured.")
-            return .failed
+            return .failed(serverAnswered: false)
         }
 
         let newHeaders = customHeaders.sanitizedForStorage()
         // Probe with a client scoped to the NEW server's headers, leaving the live
         // header store (and the active server's in-flight/SSE requests) untouched.
         let client = probeClientFactory(serverURL, newHeaders)
+        var serverAnswered = false
 
         do {
             let authStatus = try await testConnection(client: client)
+            serverAnswered = true
 
             if let message = Self.unsupportedSignInMessage(for: authStatus) {
                 lastErrorMessage = message
-                return .failed
+                return .failed(serverAnswered: true)
             }
 
             if authStatus.authEnabled == true, !authStatus.isAlreadySignedIn {
@@ -319,7 +323,7 @@ final class AuthManager {
                 let loginResponse = try await client.login(password: password)
                 guard loginResponse.ok == true else {
                     lastErrorMessage = APIError.unauthorized.localizedDescription
-                    return .failed
+                    return .failed(serverAnswered: true)
                 }
             }
 
@@ -339,7 +343,7 @@ final class AuthManager {
             return .added(serverURL)
         } catch {
             lastErrorMessage = error.localizedDescription
-            return .failed
+            return .failed(serverAnswered: serverAnswered)
         }
     }
 

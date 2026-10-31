@@ -48,6 +48,9 @@ import OSLog
     private var socket: (any BotSocket)?
     /// The open attempt every connecting screen waits on; nil once the socket is open.
     private var opening: Task<Void, Error>?
+    /// The connection's attempt record the opening socket's handshake reports to, once its
+    /// upgrade is in hand (#1395); nil otherwise.
+    private var handshakeAttempt: Int?
     private var reader: Task<Void, Never>?
     private var heartbeat: Task<Void, Never>?
     /// The socket the probe in flight checks, its deadline, and every `probe()` waiting on it.
@@ -288,18 +291,26 @@ import OSLog
         entry.continuation.resume(throwing: error)
     }
 
+    /// Opens the socket, and reports its handshake to the connection's attempt record (#1395)
+    /// once the upgrade is in hand: a failed sign-in or ticket is the connection's to record.
+    /// A socket lost mid-handshake reports from `end`, which ends this attempt first.
     private func open() -> Task<Void, Error> {
         let owner = generation
         let attempt = Task {
             do {
-                try await handshake(generation: owner)
+                let upgrade = try await http.gatewayUpgrade()
+                if owner == generation { handshakeAttempt = http.attemptCount }
+                try await handshake(upgrade, generation: owner)
                 opening = nil
                 for index in consumers.indices { consumers[index].attached = true }
+                if let record = handshakeAttempt { http.noteLiveHandshake(nil, attempt: record) }
+                handshakeAttempt = nil
             } catch {
                 // An attempt a leave, fault or retirement already ended has nothing left to end.
                 if owner == generation {
                     let label = socketLabel(owner), reason = HermesConnectionLog.reason(error)
                     HermesConnectionLog.logger.error("\(label, privacy: .public) failed to open: \(reason, privacy: .public)")
+                    if let record = handshakeAttempt { http.noteLiveHandshake(error, attempt: record) }
                     end(nil)
                 }
                 throw error
@@ -309,13 +320,12 @@ import OSLog
         return attempt
     }
 
-    /// Signs in unless the connection already is, mints a fresh ticket, opens the socket
-    /// and completes the handshake. No screen sends anything until it returns.
-    private func handshake(generation owner: Int) async throws {
+    /// Opens the socket with `upgrade`, the connection's fresh ticket or page token, and
+    /// completes the handshake. No screen sends anything until it returns.
+    private func handshake(_ upgrade: URLRequest, generation owner: Int) async throws {
         func check() throws {
             guard owner == generation else { throw BotFailure.stale }
         }
-        let upgrade = try await http.gatewayUpgrade()
         try check()
         let label = socketLabel(owner)
         let socket: any BotSocket
@@ -467,6 +477,11 @@ import OSLog
     /// waiters get the error from `join`), and the caller logs why.
     private func end(_ error: Error?) {
         let label = socketLabel(generation), wasLive = socket != nil || opening != nil
+        // A socket lost or timed out mid-handshake failed it; a silent close or retirement didn't.
+        if let record = handshakeAttempt, let error, (error as? BotFailure) != .stale {
+            http.noteLiveHandshake(error, attempt: record)
+        }
+        handshakeAttempt = nil
         settleProbe(alive: true, generation: generation)
         generation += 1
         opening = nil

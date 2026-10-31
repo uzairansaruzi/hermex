@@ -310,6 +310,27 @@ install id. Events, deltas and keepalive pongs are never logged. `HermesConversa
 through the same logger, counts and codes only: each reattach (automatic retries before
 it, and frames held, applied and dropped) and each `session.resume` refusal it retries.
 
+### Connection attempt details (#1395)
+
+Each `HermesConnection` keeps one in-memory `HermesAttemptRecord`, its `lastAttempt`:
+Status (with the release and install checks), Sign-in (login, page token, browser token
+exchange or refresh), Identity, Live authorization (a usable gateway ticket or page token)
+and Live handshake (only once `HermesGateway` finished its handshake). A sign-in,
+a browser token exchange or `status()` starts a new one; a stage that never ran stays Not
+checked, so an open dashboard's Identity and a form's live stages stay unchecked. A ticket's
+401 whose sign-in is refused is a Sign-in failure. Retiring the connection drops the record.
+Saved setup (`BotConnectionSetup`, through `BotTransport.lastAttempt`), onboarding and Add
+Server keep a failed attempt's record beside their error and show it as a collapsed Details
+under the advice (`ConnectionAttemptDetails`); a new message, an edit to what Connect sends,
+or a webui answering at the address drops it. Copy Details exports `report()`: app build,
+iOS, server kind, reported and tested release, the attempt's UTC time and each stage, with a
+failure's typed category (HTTP status, timed out, couldn't connect, certificate) and never
+an error description, host, username, header, token or install id. Nothing is persisted
+and no raw log lines are copied. About's support details (#1396) add the record of the
+active server's current shared connection (`HermesConnections.lastAttempt(server:)`): its
+time and each stage, never in Report a Problem's link. The lookup never makes a connection,
+and setup's own connections never reach it.
+
 ## Typed requests
 
 Requests are typed in `Networking/Hermes/`: every HTTP request (method, path, query, JSON body) is a

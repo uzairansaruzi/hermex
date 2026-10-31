@@ -248,6 +248,11 @@ struct AddServerView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
 
+        if let attempt = form.failedAttempt {
+            ConnectionAttemptDetails(attempt: attempt)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+
         if form.offersWebuiReplace {
             SettingsButton(String(localized: "Replace…")) { isConfirmingReplace = true }
                 .disabled(form.isConnectionLocked)

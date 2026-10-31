@@ -77,6 +77,7 @@ import Observation
                         .foregroundStyle(.red)
                         .accessibilityIdentifier("hermes-connection-error")
                     }
+                    if let attempt = setup.failedAttempt { ConnectionAttemptDetails(attempt: attempt) }
                     if setup.offersStatusRetry {
                         // A signed-out server's status says whether it signs in through the
                         // browser; there is no status section to check it again from.
@@ -333,14 +334,17 @@ extension BotHostStatus {
     /// with the server in Settings → Servers.
     let isServerSignIn: Bool
     var name = ""
-    var address = ""
-    var username = ""
-    var password = ""
+    var address = "" { didSet { failedAttempt = nil } }
+    var username = "" { didSet { failedAttempt = nil } }
+    var password = "" { didSet { failedAttempt = nil } }
     /// The Connection Headers being edited. Saved with the connection by `connect()`,
     /// without blank rows.
-    var headers: [CustomHeader] = []
+    var headers: [CustomHeader] = [] { didSet { failedAttempt = nil } }
     private(set) var saved: BotConnection?
-    private(set) var errorMessage: String?
+    private(set) var errorMessage: String? { didSet { failedAttempt = nil } }
+    /// What the failed Connect behind `errorMessage` observed, shown as its Details (#1395). Set
+    /// after the message it explains; a new message or an edit to what Connect sends drops it.
+    private(set) var failedAttempt: HermesAttemptRecord?
     private(set) var isConnecting = false
     /// The address whose host reported a different `install_id` on the last attempt.
     private(set) var differentHostAddress: URL?
@@ -531,6 +535,7 @@ extension BotHostStatus {
             // with a `HermesHeaders.Rejection` or a `BotAddressError`.
             errorMessage = attempted.map { BotConnectionAdvice.message(for: error, address: $0) }
                 ?? error.localizedDescription
+            failedAttempt = client?.lastAttempt
             return false
         }
     }
@@ -542,6 +547,7 @@ extension BotHostStatus {
     private func connectThroughBrowser(_ browser: HermesBrowserSignIn.Presenter, replacingHost: Bool) async -> Bool {
         let id = UUID(); attempt = id; isConnecting = true; errorMessage = nil; differentHostAddress = nil
         defer { if attempt == id { isConnecting = false; attempt = nil } }
+        var browserConnection: HermesConnection?
         do {
             let admitted = try HermesHeaders(headers.sanitizedForStorage(), signsInWithBrowser: true).values
             let label = name.isEmpty ? (server.host ?? "Hermes") : name
@@ -549,6 +555,7 @@ extension BotHostStatus {
             let http = HermesConnection(connection: BotConnection(
                 id: UUID(), name: label, address: server, username: "", password: "",
                 installID: expected, headers: admitted.isEmpty ? nil : admitted), configuration: hermesConfiguration())
+            browserConnection = http
             try await HermesBrowserSignIn.signIn(http, presenter: browser)
             guard attempt == id, !Task.isCancelled else { return false }
             let signedIn = http.connection
@@ -564,6 +571,7 @@ extension BotHostStatus {
             guard attempt == id, !Task.isCancelled, !(error is CancellationError) else { return false }
             if error as? BotFailure == .differentHost { differentHostAddress = server }
             errorMessage = BotConnectionAdvice.message(for: error, address: server)
+            failedAttempt = browserConnection?.lastAttempt
             return false
         }
     }
@@ -683,5 +691,103 @@ struct OpenDashboardWarning: View {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
         }
         .accessibilityIdentifier("hermes-open-dashboard-warning")
+    }
+}
+
+/// The collapsed Details under a connect form's advice (#1395): each stage of the failed
+/// attempt, then Copy Details (`HermesAttemptRecord.report`). Saved setup, onboarding and Add
+/// Server show it under their error; its text takes the surrounding foreground style.
+struct ConnectionAttemptDetails: View {
+    let attempt: HermesAttemptRecord
+    @State private var isExpanded = false
+    @State private var copied = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                isExpanded.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    Text("Details")
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down").imageScale(.small)
+                }
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(Text("Connection details"))
+            .accessibilityValue(isExpanded ? Text("Expanded") : Text("Collapsed"))
+            .accessibilityIdentifier("hermes-connection-details")
+            if isExpanded {
+                ForEach(HermesAttemptRecord.Stage.allCases, id: \.self) { stage in
+                    row(stage)
+                }
+                Button(copied ? String(localized: "Copied") : String(localized: "Copy Details"), systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = attempt.report()
+                    copied = true
+                }
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("hermes-connection-copy-details")
+            }
+        }
+        .font(.footnote)
+        // A newer attempt's record starts collapsed and uncopied.
+        .onChange(of: attempt) { isExpanded = false; copied = false }
+    }
+
+    private func row(_ stage: HermesAttemptRecord.Stage) -> some View {
+        let outcome = attempt[stage]
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2)) : AnyLayout(HStackLayout(spacing: 8))
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: outcome.symbol).foregroundStyle(outcome.tint).accessibilityHidden(true)
+            layout {
+                Text(stage.title)
+                if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
+                Text(outcome.title).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private extension HermesAttemptRecord.Stage {
+    var title: String {
+        switch self {
+        case .status: return String(localized: "Status")
+        case .signIn: return String(localized: "Sign-in")
+        case .identity: return String(localized: "Identity")
+        case .liveAuthorization: return String(localized: "Live authorization")
+        case .liveHandshake: return String(localized: "Live handshake")
+        }
+    }
+}
+
+private extension HermesAttemptRecord.Outcome {
+    var title: String {
+        switch self {
+        case .notChecked: return String(localized: "Not checked")
+        case .passed: return String(localized: "Passed")
+        case .failed(.http(let code)): return String(localized: "Failed · HTTP \(code)")
+        case .failed(.timedOut): return String(localized: "Failed · timed out")
+        case .failed(.unreachable): return String(localized: "Failed · couldn’t connect")
+        case .failed(.certificate): return String(localized: "Failed · certificate")
+        case .failed(.other): return String(localized: "Failed")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .notChecked: return "minus.circle"
+        case .passed: return "checkmark.circle.fill"
+        case .failed: return "xmark.circle.fill"
+        }
+    }
+
+    var tint: AnyShapeStyle {
+        switch self {
+        case .notChecked: return AnyShapeStyle(.tertiary)
+        case .passed: return AnyShapeStyle(.green)
+        case .failed: return AnyShapeStyle(.red)
+        }
     }
 }

@@ -196,6 +196,13 @@ struct OnboardingConnectPage: View {
             )
         }
 
+        if let attempt = viewModel.failedAttempt {
+            ConnectionAttemptDetails(attempt: attempt)
+                .foregroundStyle(.white)
+                .tint(accent)
+                .padding(.horizontal, 12)
+        }
+
         if viewModel.offersWebuiReplace {
             Button {
                 isConfirmingReplace = true

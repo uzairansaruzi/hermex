@@ -615,6 +615,70 @@ final class OnboardingViewModelIdentityTests: XCTestCase {
         }
     }
 
+    /// A refused sign-in's Details describe the credentials it sent, so editing the password
+    /// drops them (#1395).
+    func testEditingTheRefusedPasswordDropsItsDetails() async throws {
+        let (_, manager) = makeOpenWebui()
+        let form = makeHermesForm(entry: .addServer) {
+            $0.url?.path == "/auth/password-login" ? .json(401, .object(["error": .string("invalid_credentials")])) : nil
+        }
+        form.serverURLString = "hermes.example"
+        await form.connect(authManager: manager)
+        form.username = "me"
+        form.password = "wrong"
+        _ = await form.connect(authManager: manager)
+        XCTAssertEqual(try XCTUnwrap(form.failedAttempt)[.signIn], .failed(.http(401)))
+
+        form.password = "right"
+
+        XCTAssertNil(form.failedAttempt)
+    }
+
+    /// An address that never answered keeps its failed status read as the error's Details, past
+    /// the webui path's own failure, with nothing after it checked; an edit to the address drops
+    /// them with the error (#1395).
+    func testAFailedDetectionKeepsOnlyItsStatusCheckForTheCurrentAddress() async throws {
+        let gatekeeper = OnboardingGateKeeper()
+        gatekeeper.drainEverything()
+        let manager = makeGatedManager(GatedAuthAPIClient(gatekeeper: gatekeeper, outcome: .fail("Could not connect")))
+        let form = makeHermesForm { $0.url?.path == "/api/status" ? .fail(URLError(.timedOut)) : nil }
+        form.serverURLString = "hermes.example"
+
+        await form.connect(authManager: manager)
+
+        XCTAssertNotNil(form.errorMessage)
+        let attempt = try XCTUnwrap(form.failedAttempt)
+        XCTAssertEqual(HermesAttemptRecord.Stage.allCases.map { attempt[$0] },
+                       [.failed(.timedOut), .notChecked, .notChecked, .notChecked, .notChecked])
+        form.serverURLString = "other.example"
+        XCTAssertNil(form.failedAttempt)
+    }
+
+    /// Add Server keeps the failed status read as Details only while the webui path got no
+    /// answer either; once a webui answered, the error is its own and the Details go (#1395).
+    func testAddServerDropsTheStatusDetailsOnceAWebuiAnswered() async {
+        let rows: [(GatedProbeOutcome, Bool)] = [
+            (.succeed(AuthStatusResponse(authEnabled: true, loggedIn: false, passwordAuthEnabled: false)), false),
+            (.fail("Could not connect"), true)
+        ]
+        for (outcome, keepsDetails) in rows {
+            let gatekeeper = OnboardingGateKeeper()
+            gatekeeper.drainEverything()
+            let client = GatedAuthAPIClient(gatekeeper: gatekeeper, outcome: outcome)
+            let manager = AuthManager(keychain: InMemoryKeychainStore(), clientFactory: { _ in client },
+                                      probeClientFactory: { _, _ in client }, headerStore: CustomHeaderStore(),
+                                      serverRegistry: ServerRegistry.inMemory())
+            let form = makeHermesForm(entry: .addServer) { $0.url?.path == "/api/status" ? .json(404, .object([:])) : nil }
+            form.serverURLString = "b.test"
+
+            let added = await form.connect(authManager: manager)
+
+            XCTAssertNil(added)
+            XCTAssertNotNil(form.errorMessage)
+            XCTAssertEqual(form.failedAttempt != nil, keepsDetails, "\(outcome)")
+        }
+    }
+
     func testCloudflareModeOpensTheAccessHeadersAndLeavingDropsOnlyTheEmptyOnes() {
         let form = OnboardingViewModel()
         XCTAssertEqual(form.connectionMode, .privateNetwork)

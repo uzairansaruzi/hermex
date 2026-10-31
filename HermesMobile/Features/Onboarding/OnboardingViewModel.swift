@@ -79,9 +79,14 @@ final class OnboardingViewModel {
             dropReusedSignInIfMoved()
         }
     }
-    /// A Hermes dashboard's username; only a detected dashboard shows it.
-    var username = ""
-    var password = ""
+    /// A Hermes dashboard's username; only a detected dashboard shows it. An edit to it or the
+    /// password drops the failed attempt's Details, which describe the old credentials (#1395).
+    var username = "" {
+        didSet { if username != oldValue { lastAttempt = nil } }
+    }
+    var password = "" {
+        didSet { if password != oldValue { lastAttempt = nil } }
+    }
     var customHeaders: [CustomHeader] = [] {
         didSet { invalidateProbedAuthStatusIfNeeded() }
     }
@@ -112,6 +117,14 @@ final class OnboardingViewModel {
     private(set) var usedMoveSourceHeaders = false
     var connectionMessage: String?
     var errorMessage: String?
+    /// What the last failed Hermes status read or sign-in observed (#1395). Each Connect or Test
+    /// Connection starts without one; a credential edit, or an edit that drops the error, drops it.
+    private var lastAttempt: HermesAttemptRecord?
+    /// The failed Hermes attempt behind `errorMessage`, shown as its Details: none once a webui
+    /// answered at the address, since the error is then the webui's.
+    var failedAttempt: HermesAttemptRecord? {
+        errorMessage == nil || detectedKind == .webui ? nil : lastAttempt
+    }
     var isWorking = false
     /// True while an operation owns the form: views disable the URL/password
     /// fields, header editor, and Return-key submission so a side effect that
@@ -365,11 +378,12 @@ final class OnboardingViewModel {
 
     // MARK: - Server kind (#900)
 
+    /// `notHermes` and `refused` carry a failed status read's attempt record, for the error's Details.
     private enum Detection {
         case hermes(URL, HermesSignInMethod)
-        case notHermes
+        case notHermes(HermesAttemptRecord?)
         /// A Host-header 400 or an access proxy's own sign-in, with its advice.
-        case refused(String)
+        case refused(String, HermesAttemptRecord?)
     }
 
     /// Reads the public `/api/status` at the typed address with the form's headers, on a
@@ -379,17 +393,18 @@ final class OnboardingViewModel {
     /// only the webui path accepts, is left to the webui path (#900, Decision 1).
     private func detectHermes() async -> Detection {
         guard let address = try? BotConnection.address(serverURLString),
-              let headers = try? HermesHeaders(sentHeaders) else { return .notHermes }
+              let headers = try? HermesHeaders(sentHeaders) else { return .notHermes(nil) }
         let probe = BotConnection(id: UUID(), name: "", address: address, username: "", password: "",
                                   headers: headers.values.isEmpty ? nil : headers.values)
+        let http = HermesConnection(connection: probe, configuration: hermesConfiguration())
         do {
-            let status = try await HermesConnection(connection: probe, configuration: hermesConfiguration()).status()
-            guard let method = HermesSignInMethod(status) else { return .notHermes }
+            let status = try await http.status()
+            guard let method = HermesSignInMethod(status) else { return .notHermes(nil) }
             return .hermes(address, method)
         } catch let failure as BotFailure where failure == .blocked || failure == .rejected(400) {
-            return .refused(BotConnectionAdvice.message(for: failure, address: address))
+            return .refused(BotConnectionAdvice.message(for: failure, address: address), http.lastAttempt)
         } catch {
-            return .notHermes
+            return .notHermes(http.lastAttempt)
         }
     }
 
@@ -417,6 +432,7 @@ final class OnboardingViewModel {
         guard !isConnectionLocked else { return }
         errorMessage = nil
         connectionMessage = nil
+        lastAttempt = nil
         if opensSavedHermesServer(authManager: authManager) { return }
         isWorking = true
         isConnectionLocked = true
@@ -435,13 +451,15 @@ final class OnboardingViewModel {
         case .hermes(let address, let method):
             foundHermes(at: address, signInMethod: method, authManager: authManager)
             return
-        case .refused(let advice):
+        case .refused(let advice, let attempt):
             forgetProbe()
             errorMessage = advice
+            lastAttempt = attempt
             return
-        case .notHermes:
+        case .notHermes(let attempt):
             // A saved Hermes sign-in never goes down the webui path.
             dropReusedSignIn()
+            lastAttempt = attempt
             identityAtStart = currentConnectionIdentity()
         }
 
@@ -488,6 +506,7 @@ final class OnboardingViewModel {
         errorMessage = nil
         connectionMessage = nil
         offersWebuiReplace = false
+        lastAttempt = nil
 
         if opensSavedHermesServer(authManager: authManager) { return nil }
 
@@ -519,13 +538,15 @@ final class OnboardingViewModel {
             case .hermes(let address, let method):
                 foundHermes(at: address, signInMethod: method, authManager: authManager)
                 return nil
-            case .refused(let advice):
+            case .refused(let advice, let attempt):
                 forgetProbe()
                 errorMessage = advice
+                lastAttempt = attempt
                 return nil
-            case .notHermes:
+            case .notHermes(let attempt):
                 // A saved Hermes sign-in never goes down the webui path.
                 dropReusedSignIn()
+                lastAttempt = attempt
             }
         }
 
@@ -592,6 +613,7 @@ final class OnboardingViewModel {
             guard token == operationGeneration, identity == currentConnectionIdentity(),
                   !(error is CancellationError) else { return nil }
             errorMessage = BotConnectionAdvice.message(for: error, address: address)
+            lastAttempt = http.lastAttempt
             return nil
         }
         // A sheet closed while it signed in adds nothing.
@@ -669,8 +691,10 @@ final class OnboardingViewModel {
             detectedKind = .webui
             probedConnectionIdentity = identityAtStart
             return nil
-        case .failed:
+        case .failed(let serverAnswered):
             errorMessage = authManager.lastErrorMessage
+            // A webui answered, so the error is its own, not the failed Hermes status read's.
+            if serverAnswered { lastAttempt = nil }
             return nil
         case .added(let url):
             return url

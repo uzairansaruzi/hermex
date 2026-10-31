@@ -481,6 +481,61 @@ import XCTest
         XCTAssertEqual(reasons.count, 2)
     }
 
+    /// A ticket the host minted proves the live authorization, never the socket: a refused
+    /// upgrade fails only the handshake (#1395).
+    func testAUsableTicketNeverClaimsTheRefusedSocketConnected() async throws {
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil },
+                                    gateway: .init { _ in
+                                        let socket = BotScriptedSocket()
+                                        socket.receiveFailure = BotFailure.upgradeRefused(403)
+                                        return socket
+                                    })
+        let client = BotClient(http: http)
+        do { try await client.connect(); XCTFail("The upgrade was refused") }
+        catch { XCTAssertEqual(error as? BotFailure, .upgradeRefused(403)) }
+
+        let attempt = try XCTUnwrap(http.lastAttempt)
+        XCTAssertEqual(HermesAttemptRecord.Stage.allCases.map { attempt[$0] },
+                       [.passed, .passed, .passed, .passed, .failed(.http(403))])
+    }
+
+    /// A socket lost after `gateway.ready` but before the `client.capabilities` reply failed
+    /// the handshake, though the teardown ended the opening before it reported (#1395).
+    func testASocketLostMidHandshakeFailsTheLiveHandshake() async throws {
+        let http = HermesConnection(connection: record, configuration: HermesHostFixture.configuration { _ in nil },
+                                    gateway: .init { _ in
+                                        let socket = BotScriptedSocket()
+                                        socket.sendFailure = URLError(.networkConnectionLost)
+                                        return socket
+                                    })
+        let client = BotClient(http: http)
+        do { try await client.connect(); XCTFail("The socket dropped mid-handshake") } catch {}
+
+        let attempt = try XCTUnwrap(http.lastAttempt)
+        XCTAssertEqual(HermesAttemptRecord.Stage.allCases.map { attempt[$0] },
+                       [.passed, .passed, .passed, .passed, .failed(.unreachable)])
+    }
+
+    /// A ticket refused with 401 signs in again; when that sign-in is refused, the attempt
+    /// names the sign-in, not the ticket (#1395).
+    func testATicketsRefusedReSignInIsASignInFailure() async throws {
+        var logins = 0
+        let client = BotClient(http: connection { request in
+            switch request.url?.path {
+            case "/api/auth/ws-ticket": return .json(401, .object(["detail": .string("Unauthorized")]))
+            case "/auth/password-login":
+                logins += 1
+                return logins == 1 ? nil : .json(401, .object(["error": .string("invalid_credentials")]))
+            default: return nil
+            }
+        })
+        do { try await client.connect(); XCTFail("The second sign-in was refused") } catch {}
+
+        let attempt = try XCTUnwrap(client.lastAttempt)
+        XCTAssertEqual(HermesAttemptRecord.Stage.allCases.map { attempt[$0] },
+                       [.passed, .failed(.http(401)), .notChecked, .notChecked, .notChecked])
+    }
+
     /// A saved connection whose gateway opens scripted sockets, kept in `sockets`.
     private func connection(rpcDeadline: Duration = .seconds(30), probeDeadline: Duration = .seconds(30),
                             _ answer: @escaping (URLRequest) -> HermesHostFixture.Reply? = { _ in nil }) -> HermesConnection {
