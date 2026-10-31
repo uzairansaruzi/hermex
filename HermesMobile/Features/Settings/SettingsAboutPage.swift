@@ -1,7 +1,12 @@
 import SwiftUI
 
-/// The app's version and its outside links: policy, support, and the ways to back it.
+/// The app's version, its troubleshooting tools, and its outside links: policy, support, and
+/// the ways to back it. `server` is the active server, which the support details describe.
 struct SettingsAboutPage: View {
+    let server: ServerAccount?
+
+    @State private var isShowingSupportDetails = false
+
     static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? String(localized: "Unknown")
     }
@@ -11,6 +16,8 @@ struct SettingsAboutPage: View {
     }
 
     var body: some View {
+        // Rebuilt with the page, so it always describes the server that is active now.
+        let report = SupportReport(server: server)
         List {
             Section {
                 LabeledContent(String(localized: "Version"), value: Self.appVersion)
@@ -18,14 +25,27 @@ struct SettingsAboutPage: View {
             }
 
             Section {
-                SettingsExternalLink(title: String(localized: "Privacy Policy"), systemImage: "hand.raised", destination: AppConfig.privacyPolicyURL)
-                SettingsExternalLink(title: String(localized: "Support"), systemImage: "questionmark.circle", destination: AppConfig.supportURL)
+                Button {
+                    isShowingSupportDetails = true
+                } label: {
+                    SettingsLabel(title: String(localized: "Copy Support Details"), systemImage: "doc.on.doc")
+                }
+                .foregroundStyle(.primary)
                 SettingsExternalLink(
                     title: String(localized: "Report a Problem"),
                     systemImage: "ladybug",
-                    destination: AppConfig.reportProblemURL,
+                    destination: report.issueURL,
                     accessibilityLabel: String(localized: "Report a Problem, opens in browser")
                 )
+            } header: {
+                Text("Troubleshooting")
+            } footer: {
+                Text("Report a Problem opens GitHub with your app, iOS and server versions filled in.")
+            }
+
+            Section {
+                SettingsExternalLink(title: String(localized: "Privacy Policy"), systemImage: "hand.raised", destination: AppConfig.privacyPolicyURL)
+                SettingsExternalLink(title: String(localized: "Support"), systemImage: "questionmark.circle", destination: AppConfig.supportURL)
             }
 
             Section {
@@ -57,6 +77,50 @@ struct SettingsAboutPage: View {
             }
         }
         .settingsPage(String(localized: "About Hermex"))
+        .sheet(isPresented: $isShowingSupportDetails) {
+            SupportDetailsSheet(text: report.text)
+        }
+    }
+}
+
+/// The exact text Copy puts on the pasteboard, selectable, to read before sharing (#1396).
+private struct SupportDetailsSheet: View {
+    let text: String
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var isCopied = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(verbatim: text)
+                        .font(AppFont.footnote().monospaced())
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Read this before you share it. It has no server address, name or credentials.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+            }
+            .navigationTitle(String(localized: "Support Details"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "Done")) { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button(isCopied ? String(localized: "Copied") : String(localized: "Copy")) {
+                        UIPasteboard.general.string = text
+                        isCopied = true
+                        AccessibilityNotification.Announcement(String(localized: "Copied")).post()
+                    }
+                }
+            }
+            // A server switch while open rebuilds the text; Copied then no longer describes it.
+            .onChange(of: text) { isCopied = false }
+        }
     }
 }
 
