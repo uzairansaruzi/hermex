@@ -23,6 +23,8 @@ final class ChatTranscriptRenderBudgetTests: XCTestCase {
         let settledRenderIDs = viewModel.displayedTranscriptMessages.map(\.renderID)
         XCTAssertEqual(settledRenderIDs.count, 40, "Each settled turn must show its prompt and reply")
 
+        // Start with nothing focused: a text view an earlier test left focused keeps the keyboard up.
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         let window = host(BudgetTranscriptHost(viewModel: viewModel))
         defer { window.isHidden = true; window.rootViewController = nil }
 
@@ -42,7 +44,15 @@ final class ChatTranscriptRenderBudgetTests: XCTestCase {
 
         XCTAssertGreaterThan(RenderProbe.count(renderID: streamingRenderID), 0, "The streaming row must render, or the budget proves nothing")
         let settledEvaluations = settledRenderIDs.reduce(0) { $0 + RenderProbe.count(renderID: $1) }
-        XCTAssertEqual(settledEvaluations, 0, "Text-only ticks re-rendered settled rows")
+        let settledRowsRendered = settledRenderIDs.filter { RenderProbe.count(renderID: $0) > 0 }.count
+        // The streaming row adds about one unequal comparison per tick. Beyond that, a
+        // count near the settled evaluations means a row input changed per tick; near
+        // zero, SwiftUI re-ran rows whose inputs were equal.
+        XCTAssertEqual(
+            settledEvaluations, 0,
+            "Text-only ticks re-rendered \(settledRowsRendered) of \(settledRenderIDs.count) settled rows; "
+                + "unequal row comparisons: \(RenderProbe.count(.transcriptMessageBlockUnequal))"
+        )
     }
 
     // MARK: - Helpers
@@ -73,8 +83,11 @@ final class ChatTranscriptRenderBudgetTests: XCTestCase {
         window.layoutIfNeeded()
     }
 
+    /// Hosts `view` in a window on the test host's scene, like the app's own windows.
     private func host(_ view: some View) -> UIWindow {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
+            .map { UIWindow(windowScene: $0) } ?? UIWindow()
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         window.rootViewController = UIHostingController(rootView: view)
         window.makeKeyAndVisible()
         window.layoutIfNeeded()

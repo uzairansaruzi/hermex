@@ -1,7 +1,8 @@
 /// Counts SwiftUI body evaluations of the transcript's heavy views, so a test can
 /// check that a stream tick re-renders only the row it changed
 /// (`ChatTranscriptRenderBudgetTests`). Each probed view calls `hit` once at the
-/// top of its `body` (or, for `ResponseTextSelection`, its host update).
+/// top of its `body` (or, for `ResponseTextSelection`, its host update), and
+/// `ChatTranscriptMessageBlock.==` counts each comparison that finds a change.
 ///
 /// Debug builds keep the counts in memory only, by name and by transcript row
 /// `renderID`; nothing is logged or sent anywhere. Release builds compile `hit` to an
@@ -12,6 +13,9 @@ enum RenderProbe {
     /// The probed bodies. Static names only: a row's identity is a separate key.
     enum Name: String {
         case transcriptMessageBlock = "ChatTranscriptMessageBlock"
+        /// A `ChatTranscriptMessageBlock.==` that returned false: a row whose inputs
+        /// changed, as opposed to an equal row SwiftUI re-ran anyway.
+        case transcriptMessageBlockUnequal = "ChatTranscriptMessageBlock.unequal"
         case messageBubble = "MessageBubbleView"
         case markdownRenderer = "MarkdownRenderer"
         case toolActivityGroup = "ToolActivityGroupView"
