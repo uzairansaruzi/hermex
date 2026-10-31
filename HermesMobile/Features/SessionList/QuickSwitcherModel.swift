@@ -77,6 +77,9 @@ enum QuickSwitcherPick: Equatable {
     case sessionsUtility(SessionListUtilityDestination)
 }
 
+/// Pure routing decisions for the quick switcher (#1415). MainActor because the
+/// shared search helpers it composes live on `SessionListViewModel`.
+@MainActor
 enum QuickSwitcherModel {
     /// The rows the palette shows for `query`. An empty query lists recents —
     /// newest first, the open chat last — then the roster, then the destinations.
@@ -92,9 +95,9 @@ enum QuickSwitcherModel {
         let ordered = recents.filter { $0.hermesSessionKey != openSessionKey }
             + recents.filter { $0.hermesSessionKey == openSessionKey }
 
-        let terms = SessionListViewModel.normalizedSearchQuery(query).split(whereSeparator: \.isWhitespace)
+        let terms = SessionListViewModel.normalizedSearchQuery(query).split(whereSeparator: \.isWhitespace).map(String.init)
         if terms.isEmpty {
-            return ordered.map(\.item) + bots.map(\.item) + destinations.map(\.item)
+            return ordered.map(\.item) + bots.map(\.item) + destinations.map { QuickSwitcherItem.utility($0) }
         }
 
         let sessionItems = ordered.filter { session in

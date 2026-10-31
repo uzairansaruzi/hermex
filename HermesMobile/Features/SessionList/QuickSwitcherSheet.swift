@@ -36,8 +36,9 @@ struct QuickSwitcherSheet: View {
         }
         .onChange(of: query) {
             let current = items
-            guard !current.contains(selection) else { return }
-            selection = current.first
+            if let selection, !current.contains(selection) {
+                self.selection = current.first
+            }
         }
     }
 
@@ -149,10 +150,10 @@ struct QuickSwitcherSheet: View {
     /// first row and ↑ the last.
     private func moveSelection(_ offset: Int) {
         let current = items
-        guard !current.isEmpty else { return }
+        guard !current.isEmpty, let selection else { return }
         let index = current.firstIndex(of: selection).map { $0 + offset }
             ?? (offset > 0 ? current.startIndex : current.index(before: current.endIndex))
-        selection = current[min(max(index, current.startIndex), current.index(before: current.endIndex))]
+        self.selection = current[min(max(index, current.startIndex), current.index(before: current.endIndex))]
     }
 
     /// Return opens the selection, or the first row when none has been taken yet.
