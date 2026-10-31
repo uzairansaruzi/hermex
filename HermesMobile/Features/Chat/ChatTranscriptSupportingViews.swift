@@ -722,15 +722,18 @@ final class ChatScrollPositionController {
     }
 
     /// User movement releases the preservation. In hold and reflow modes an
-    /// offset change riding on a size change is SwiftUI re-anchoring and is put
-    /// back; any other offset change is a deliberate scroll and releases it.
+    /// offset change UIKit makes inside the content-size setter is put back. A
+    /// hold also puts back one riding on a size change in the same turn: SwiftUI
+    /// re-applying a default anchor. Reflow runs only where no size-change
+    /// anchor applies, so there that change is the reader's. Any other offset
+    /// change is a deliberate scroll and releases it.
     private func handleOffsetChange(_ scrollView: UIScrollView) {
         guard !isApplyingCompensation, scrollView === self.scrollView else { return }
 
         if scrollView.isDragging || scrollView.isTracking || scrollView.isDecelerating {
             cancelPreservation()
         } else if mode != .prepend {
-            let sizeIsChanging = contentSizeChangedThisTurn
+            let sizeIsChanging = (mode == .hold && contentSizeChangedThisTurn)
                 || scrollView.contentSize.height != lastObservedContentHeight
             if sizeIsChanging {
                 applyCompensation()

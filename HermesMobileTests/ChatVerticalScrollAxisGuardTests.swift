@@ -304,7 +304,9 @@ final class ChatScrollPositionControllerTests: XCTestCase {
         controller.rowFrameChanged(renderID: "reply", frame: CGRect(x: 0, y: 208, width: 768, height: 300), layout: wide, isFollowing: false)
         XCTAssertEqual(scrollView.contentOffset.y, 328, accuracy: 0.001)
 
-        // VoiceOver or a keyboard scroll ends it: later settling must not snap back.
+        // VoiceOver or a keyboard scroll ends it, even in the same turn as a size
+        // change: later settling must not snap back.
+        scrollView.contentSize.height += 100
         scrollView.contentOffset.y = 100
         controller.rowFrameChanged(renderID: "reply", frame: CGRect(x: 0, y: 208, width: 768, height: 340), layout: wide, isFollowing: false)
         XCTAssertEqual(scrollView.contentOffset.y, 100, accuracy: 0.001)
