@@ -279,6 +279,8 @@ final class ChatViewModel {
 
     private(set) var messages: [ChatMessage] = [] {
         didSet {
+            // A text-only reveal tick patches its one transcript row instead (`replaceStreamingReply`).
+            guard !patchesStreamingReplyInPlace else { return }
             recomputeDisplayedTranscriptMessages()
             if hermesTurn != nil, !Self.onlyRepliesChanged(from: oldValue, to: messages) { updateHermesRewindableMessageIDs() }
         }
@@ -293,6 +295,12 @@ final class ChatViewModel {
     /// `messagesOffset` changes. Views read this single cached value instead of
     /// re-running the full classification pass on every body evaluation.
     private(set) var displayedTranscriptMessages: [TranscriptMessage] = []
+    /// Bumped by every full transcript derivation and never by a text-only reveal tick, so a
+    /// view can reuse its own history-wide derivations (turn folds, end-of-turn rows) until
+    /// the transcript's structure changes (#1417).
+    private(set) var transcriptStructureRevision = 0
+    /// True only inside `replaceStreamingReply`, while `messages` changes without a re-derivation.
+    @ObservationIgnored private var patchesStreamingReplyInPlace = false
     private(set) var isLoading = false
     private(set) var isLoadingOlderMessages = false
     private(set) var isStartingChat = false
@@ -416,6 +424,7 @@ final class ChatViewModel {
     }
 
     private func recomputeDisplayedTranscriptMessages() {
+        transcriptStructureRevision &+= 1
         let reasoningGroups = Self.reasoningDisplayGroups(
             messages: messages,
             messageOffset: messagesOffset,
@@ -7377,7 +7386,7 @@ final class ChatViewModel {
 
         if let index = messages.firstIndex(where: { $0.messageId == messageID }) {
             let existing = messages[index]
-            messages[index] = ChatMessage(
+            replaceStreamingReply(at: index, with: ChatMessage(
                 role: existing.role,
                 content: (existing.content ?? "") + appendedContent,
                 timestamp: existing.timestamp,
@@ -7390,7 +7399,7 @@ final class ChatViewModel {
                 reasoning: existing.reasoning,
                 attachments: existing.attachments,
                 turnTps: existing.turnTps
-            )
+            ))
             return true
         }
 
@@ -7403,6 +7412,46 @@ final class ChatViewModel {
             )
         )
         return true
+    }
+
+    /// Puts the streaming reply at `index`, its text grown by a flush, back into `messages`.
+    /// When the extra text can't change the transcript's structure, only that reply's row is
+    /// patched; any other change re-derives the whole transcript through the `messages`
+    /// observer (#1417).
+    private func replaceStreamingReply(at index: Int, with reply: ChatMessage) {
+        guard let row = textOnlyTranscriptRow(replacing: messages[index], at: index, with: reply) else {
+            messages[index] = reply
+            return
+        }
+
+        patchesStreamingReplyInPlace = true
+        defer { patchesStreamingReplyInPlace = false }
+        messages[index] = reply
+        let patched = displayedTranscriptMessages[row]
+        displayedTranscriptMessages[row] = TranscriptMessage(
+            loadedIndex: patched.loadedIndex,
+            renderID: patched.renderID,
+            anchorID: patched.anchorID,
+            message: reply
+        )
+        // The compaction card's placement matches anchors by message text.
+        recomputeCompressionReferenceCard()
+    }
+
+    /// The transcript row a grown reply can be patched into, or nil when its new text could
+    /// change structure. A shown assistant row with text keeps its turn, row and bubble; only
+    /// reasoning reads reply text (in-text `<think>` blocks, and echo removal for the cards
+    /// anchored to it), so a reply with any reasoning takes the full path.
+    private func textOnlyTranscriptRow(replacing old: ChatMessage, at index: Int, with new: ChatMessage) -> Int? {
+        guard old.role == "assistant", new.role == "assistant", old.messageId == new.messageId,
+              Self.hasTranscriptMessageRowContent(old),
+              Self.reasoningTexts(from: new).isEmpty,
+              let row = displayedTranscriptMessages.lastIndex(where: { $0.loadedIndex == index })
+        else { return nil }
+
+        let anchorID = displayedTranscriptMessages[row].anchorID
+        guard !completedReasoningGroups.contains(where: { $0.anchorMessageID == anchorID }) else { return nil }
+        return row
     }
 
     private func deduplicatedReplayToken(_ token: String, existingContent: String) -> String {

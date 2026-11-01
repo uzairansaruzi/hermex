@@ -371,6 +371,7 @@ struct ChatView: View {
     /// Settled turns the user has opened, plus failed or stopped turns, which
     /// start open. Keyed by turn so paging older messages in does not shift them.
     @State private var expandedTurnKeys: Set<String> = []
+    @State private var transcriptStructureMemo = TranscriptStructureMemo()
     /// While set and in the future, auto-follow scrolls snap instead of animating, so
     /// the cache-first → network reconcile re-pins to the bottom without a jump (#289).
     @State private var cacheFirstSnapUntil: Date?
@@ -2183,6 +2184,7 @@ struct ChatView: View {
 
     @ViewBuilder
     private var messageContent: some View {
+        let structure = transcriptStructure
         ChatTranscriptView(
             isLoading: viewModel.isLoading,
             errorMessage: viewModel.errorMessage,
@@ -2255,8 +2257,8 @@ struct ChatView: View {
             onUpdateScrollMetrics: updateScrollMetrics,
             onFollowEvent: handleFollowEvent,
             onDisclosureToggle: handleDisclosureToggle,
-            turnFolds: turnFolds(reasoningGroups: viewModel.displayedReasoningGroups),
-            terminalReplyRenderIDs: terminalReplyRenderIDs,
+            turnFolds: structure.folds,
+            terminalReplyRenderIDs: structure.terminalReplyRenderIDs,
             expandedTurnKeys: expandedTurnKeys,
             onToggleTurnFold: toggleTurnFold,
             onDismissKeyboard: dismissKeyboard,
@@ -2548,39 +2550,45 @@ struct ChatView: View {
         transcriptMessages
     }
 
-    /// Settled-turn folds for the current transcript. Activity anchors count
-    /// only while thinking and tool cards are shown, so a turn with nothing
-    /// visible to hide gets no row.
-    private func turnFolds(reasoningGroups: [ReasoningGroup]) -> TranscriptTurnFolds {
-        guard foldsSettledTurns else { return .none }
-
+    /// Settled-turn folds and the replies that close settled turns, derived again only when
+    /// the transcript's structure or an input below changes, so a text-only reveal tick reuses
+    /// them (#1417). Activity anchors count only while thinking and tool cards are shown, so
+    /// a turn with nothing visible to hide gets no fold.
+    private var transcriptStructure: TranscriptStructureMemo.Structure {
         let activityAnchorIDs: Set<String> = thinkingAndToolCards.showsCards
-            ? Set(reasoningGroups.compactMap(\.anchorMessageID))
+            ? Set(viewModel.displayedReasoningGroups.compactMap(\.anchorMessageID))
                 .union(viewModel.completedToolCallGroups.compactMap(\.anchorMessageID))
             : []
-
-        return TranscriptTurnFolds.derive(
-            transcriptMessages: transcriptMessages,
-            messages: viewModel.messages,
-            messageOffset: viewModel.messagesOffset,
+        let inputs = TranscriptStructureMemo.Inputs(
+            structureRevision: viewModel.transcriptStructureRevision,
             activityAnchorIDs: activityAnchorIDs,
-            rendersBubble: shouldRenderMessageRow,
+            foldsSettledTurns: foldsSettledTurns,
             isStreamActive: viewModel.activeStreamID != nil,
             streamingAssistantMessageID: viewModel.streamingAssistantMessageID,
             latestRunOutcome: viewModel.latestRunOutcome
         )
-    }
-
-    /// Rows that get the time + copy row as the reply closing a settled turn.
-    private var terminalReplyRenderIDs: Set<String> {
-        TranscriptMessageMetaPolicy.terminalReplyRenderIDs(
-            transcriptMessages: transcriptMessages,
-            messages: viewModel.messages,
-            messageOffset: viewModel.messagesOffset,
-            rendersBubble: shouldRenderMessageRow,
-            isStreamActive: viewModel.activeStreamID != nil,
-            streamingAssistantMessageID: viewModel.streamingAssistantMessageID
-        )
+        return transcriptStructureMemo.structure(for: inputs) {
+            TranscriptStructureMemo.Structure(
+                folds: foldsSettledTurns ? TranscriptTurnFolds.derive(
+                    transcriptMessages: transcriptMessages,
+                    messages: viewModel.messages,
+                    messageOffset: viewModel.messagesOffset,
+                    activityAnchorIDs: activityAnchorIDs,
+                    rendersBubble: shouldRenderMessageRow,
+                    isStreamActive: inputs.isStreamActive,
+                    streamingAssistantMessageID: inputs.streamingAssistantMessageID,
+                    latestRunOutcome: inputs.latestRunOutcome
+                ) : .none,
+                terminalReplyRenderIDs: TranscriptMessageMetaPolicy.terminalReplyRenderIDs(
+                    transcriptMessages: transcriptMessages,
+                    messages: viewModel.messages,
+                    messageOffset: viewModel.messagesOffset,
+                    rendersBubble: shouldRenderMessageRow,
+                    isStreamActive: inputs.isStreamActive,
+                    streamingAssistantMessageID: inputs.streamingAssistantMessageID
+                )
+            )
+        }
     }
 
     private func toggleTurnFold(_ turnKey: String) {
@@ -3960,7 +3968,7 @@ struct ChatView: View {
               let streamID = hydratedCompletionStreamID,
               viewModel.successfulResponseCompletion?.streamID == streamID,
               let finalRenderID = ChatCompletionScrollPolicy.finalResponseRenderID(
-                  in: displayedTranscriptMessages, terminalReplyRenderIDs: terminalReplyRenderIDs
+                  in: displayedTranscriptMessages, terminalReplyRenderIDs: transcriptStructure.terminalReplyRenderIDs
               ),
               completionScrollPolicy.consumeCompletion(
                   streamID: streamID,
