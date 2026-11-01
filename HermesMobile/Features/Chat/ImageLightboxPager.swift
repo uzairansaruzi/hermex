@@ -55,7 +55,9 @@ struct ImageLightboxPager<Item: Identifiable, Page: View>: View {
     private let startAnchor: UnitPoint
 
     @State private var selectedID: Item.ID?
-    @State private var zoomedID: Item.ID?
+    /// Every live page that is zoomed: both neighbours keep their hosts, so VoiceOver can
+    /// step between zoomed images.
+    @State private var zoomedIDs: Set<Item.ID> = []
     @State private var showsChrome = true
 
     init(
@@ -117,14 +119,14 @@ struct ImageLightboxPager<Item: Identifiable, Page: View>: View {
             .scrollPosition(id: $selectedID)
             .defaultScrollAnchor(startAnchor, for: .initialOffset)
             .scrollIndicators(.hidden)
-            .scrollDisabled(zoomedID != nil && zoomedID == selectedID)
+            .scrollDisabled(selectedID.map(zoomedIDs.contains) ?? false)
             // VoiceOver can step away from a zoomed image; once its page is dropped, it comes
             // back at fit scale.
             .onChange(of: selectedIndex) { _, selectedIndex in
-                guard let zoomedIndex = items.firstIndex(where: { $0.id == zoomedID }),
-                      !ImageLightboxAdmission.admits(index: zoomedIndex, selectedIndex: selectedIndex)
-                else { return }
-                zoomedID = nil
+                let admitted = items.indices
+                    .filter { ImageLightboxAdmission.admits(index: $0, selectedIndex: selectedIndex) }
+                    .map { items[$0].id }
+                zoomedIDs.formIntersection(admitted)
             }
             .ignoresSafeArea()
         }
@@ -137,9 +139,9 @@ struct ImageLightboxPager<Item: Identifiable, Page: View>: View {
             showsChrome: $showsChrome,
             onZoomChange: { isZoomed in
                 if isZoomed {
-                    zoomedID = id
-                } else if zoomedID == id {
-                    zoomedID = nil
+                    zoomedIDs.insert(id)
+                } else {
+                    zoomedIDs.remove(id)
                 }
             },
             onStep: { step in

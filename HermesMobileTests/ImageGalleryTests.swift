@@ -56,7 +56,8 @@ final class ImageGalleryTests: XCTestCase {
     }
 
     /// Zooming a loaded image redraws the pager; the zoom must survive that, and a sideways
-    /// drag must pan the image instead of turning the page.
+    /// drag must pan the image instead of turning the page. Both neighbours stay live, so
+    /// VoiceOver can step from one zoomed image back to another that is still zoomed.
     func testZoomingALoadedImageKeepsTheZoomAndStopsPaging() async throws {
         let session = SessionSummary(title: "Screenshots")
         let server = try XCTUnwrap(URL(string: "https://example.test"))
@@ -67,20 +68,26 @@ final class ImageGalleryTests: XCTestCase {
             )
         }
         let gallery = ImageLightboxGallery(tapped: items[0], siblings: items, isImage: \.inferredIsImage)
+        var pages: [ChatAttachmentPreviewItem.ID: ImageLightboxPage] = [:]
         let pager = try await host(ImageLightboxPager(gallery: gallery) { item, page in
+            let _ = (pages[item.id] = page)
             ChatAttachmentImageLightbox(session: session, server: server, item: item, page: page, onAPIError: { _ in })
         })
-        let image = try XCTUnwrap(visibleZoomableImage())
 
-        image.setZoomScale(2, animated: false)
-        image.delegate?.scrollViewDidEndZooming?(image, with: nil, atScale: 2)
+        let first = try XCTUnwrap(visibleZoomableImage())
+        try await zoom(first, to: 2)
+        XCTAssertEqual(try XCTUnwrap(visibleZoomableImage()).zoomScale, 2, accuracy: 0.01)
+        XCTAssertFalse(pager.isScrollEnabled)
+
+        try XCTUnwrap(pages[items[0].id]?.onStep)(1)
+        await settle()
+        try await zoom(XCTUnwrap(visibleZoomableImage()), to: 2)
+        try XCTUnwrap(pages[items[1].id]?.onStep)(-1)
         await settle()
         XCTAssertEqual(try XCTUnwrap(visibleZoomableImage()).zoomScale, 2, accuracy: 0.01)
         XCTAssertFalse(pager.isScrollEnabled)
 
-        image.setZoomScale(1, animated: false)
-        image.delegate?.scrollViewDidEndZooming?(image, with: nil, atScale: 1)
-        await settle()
+        try await zoom(first, to: 1)
         XCTAssertTrue(pager.isScrollEnabled)
     }
 
@@ -137,6 +144,13 @@ final class ImageGalleryTests: XCTestCase {
         await settle()
 
         return try XCTUnwrap(Self.scrollViews(in: window).first)
+    }
+
+    /// Zooms `image` the way a pinch ends.
+    private func zoom(_ image: ZoomableScrollView, to scale: CGFloat) async throws {
+        image.setZoomScale(scale, animated: false)
+        image.delegate?.scrollViewDidEndZooming?(image, with: nil, atScale: scale)
+        await settle()
     }
 
     /// The zooming scroll view of the image on screen.
