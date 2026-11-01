@@ -156,9 +156,11 @@ enum BotAddressError: LocalizedError, Equatable {
 /// account mints a new identity even when Profile names happen to match, unless the
 /// host reports the record's stored `install_id` (`BotConnectionSetup.connect`).
 /// Saving other credentials or headers, or removing them, retires the server's shared
-/// `HermesConnection` at once; a rename or an install id backfill keeps it.
+/// `HermesConnection` at once; a rename or an install id backfill keeps it. Saving another
+/// connection, or removing it, also empties a Limits widget read through the old one (#1409).
 @MainActor struct BotConnectionStore {
     var keychain: any KeychainStoring = KeychainStore()
+    var limitsPublisher: ProviderLimitsPublisher = .shared
     func load(server: URL) throws -> BotConnection? {
         guard let value = try keychain.load(.botConnection, scope: server.absoluteString) else { return nil }
         return try JSONDecoder().decode(BotConnection.self, from: Data(value.utf8))
@@ -167,6 +169,7 @@ enum BotAddressError: LocalizedError, Equatable {
         let value = String(decoding: try JSONEncoder().encode(connection), as: UTF8.self)
         try keychain.save(value, forKey: .botConnection, scope: server.absoluteString)
         HermesConnections.shared.retire(server: server, unlessStill: connection)
+        limitsPublisher.invalidate(server: server, unlessConnection: connection.id)
     }
     /// Writes the refresh token the host just rotated into, only while `server`'s record is
     /// still connection `id` holding `sent`, the token that connection last saw saved: a
@@ -181,6 +184,7 @@ enum BotAddressError: LocalizedError, Equatable {
     func remove(server: URL) throws {
         try keychain.delete(.botConnection, scope: server.absoluteString)
         HermesConnections.shared.retire(server: server)
+        limitsPublisher.invalidate(server: server)
     }
 }
 

@@ -458,8 +458,6 @@ final class AuthManager {
     func hermesSignInSaved(server: URL, offersMove: Bool = true) {
         guard var account = servers.first(where: { $0.id == server.absoluteString }), account.kind == .hermes,
               let saved = try? BotConnectionStore(keychain: keychain).load(server: server) else { return }
-        // A sign-in on another connection replaced the one the widget's limits were read through.
-        limitsPublisher.invalidate(server: server, unlessConnection: saved.id)
         if account.serverVersion != saved.hermesVersion {
             account.serverVersion = saved.hermesVersion
             serverRegistry.update(account)

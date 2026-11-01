@@ -359,7 +359,10 @@ struct HermesSessionListView: View {
         covers.selectedSessionID
     }
 
+    /// Clears the way for a root selection, which also supersedes a Limits widget's Usage link
+    /// still waiting on the host (#1409).
     private func prepareRootSelection() {
+        pendingUsage = nil
         if usesSplit { covers.bringForward() }
     }
 

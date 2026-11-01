@@ -36,6 +36,9 @@ import XCTest
                                                                  ("Weekly", 54, measuredAt + 3 * 86_400)])
         publisher.publish([codex, card("claude", updatedAt: nil, rows: [("5h", 38, nil)])], stale: [],
                           with: ticket, now: measuredAt)
+        let undated = try XCTUnwrap(file.read()?.providers.first { $0.id == "claude" })
+        XCTAssertNil(undated.remainingPercent(of: undated.windows[0], at: measuredAt),
+                     "A provider with no measurement time never shows a percentage")
         // The failed refresh 50 minutes later keeps the card: its measurement stays the old one.
         publisher.publish([codex], stale: ["codex"], with: ticket, now: measuredAt + 50 * 60)
 
@@ -48,27 +51,38 @@ import XCTest
         XCTAssertNil(provider.remainingPercent(of: weekly, at: measuredAt + 60 * 60), "An hour after measurement")
         XCTAssertTrue(provider.isStale)
         XCTAssertEqual(snapshot.deadlines(after: measuredAt), [measuredAt + 30 * 60, measuredAt + 60 * 60])
-        // A provider with no measurement time never shows a percentage.
-        XCTAssertEqual(snapshot.providers.count, 1)
 
         try Data("{not json".utf8).write(to: file.url)
         XCTAssertNil(file.read(), "A corrupt file reads as no snapshot")
     }
 
-    func testALoadThatStartedBeforeAServerSwitchCannotWriteItsResultBack() async throws {
+    func testALoadCannotWriteOverANewerProfileOrAfterAServerSwitch() async throws {
         let publisher = ProviderLimitsPublisher(file: file, reloadWidget: {})
-        let client = HeldQuotaClient()
-        let viewModel = InsightsViewModel(client: client, publishesLimits: scope(), publisher: publisher)
-        let load = Task { await viewModel.loadLimits() }
-        await fulfillment(of: [client.quotaHeld], timeout: 5)
+        let connectionID = UUID()
+        func heldLoad(_ profile: String) async -> (InsightsViewModel, HeldQuotaClient, Task<Void, Never>) {
+            let client = HeldQuotaClient()
+            let viewModel = InsightsViewModel(client: client, publishesLimits: scope(connectionID: connectionID, profile: profile),
+                                              publisher: publisher)
+            let load = Task { await viewModel.loadLimits(refresh: true) }
+            await fulfillment(of: [client.quotaHeld], timeout: 5)
+            return (viewModel, client, load)
+        }
 
+        // Usage for "work" closes mid-refresh, and Usage for "home" opens and loads.
+        let (_, closed, closedLoad) = await heldLoad("work")
+        let (_, newer, newerLoad) = await heldLoad("home")
+        newer.answer(40)
+        await newerLoad.value
+        closed.answer(12)
+        await closedLoad.value
+        XCTAssertEqual(file.read()?.profile, "home", "A closed Profile's late refresh")
+
+        let (viewModel, client, load) = await heldLoad("home")
         publisher.invalidate()
-        client.answer(ProviderQuotaResponse(status: "available", accountLimits: ProviderAccountLimits(
-            fetchedAt: "2027-01-15T08:00:00Z", windows: [ProviderQuotaWindow(label: "5h", remainingPercent: 40)])))
+        client.answer(40)
         await load.value
-
         XCTAssertEqual(viewModel.limitCards.count, 1, "The screen still shows what it loaded")
-        XCTAssertNil(file.read())
+        XCTAssertNil(file.read(), "A load that started before a server switch")
     }
 
     func testTheWidgetEmptiesWhenItsServerOrConnectionStopsBeingTheOneInUse() async throws {
@@ -82,7 +96,7 @@ import XCTest
         await manager.configure(serverURLString: webuiServer.absoluteString, password: "")
         let record = BotConnection(id: UUID(), name: "Studio", address: hermesServer, username: "me", password: "secret")
         XCTAssertTrue(manager.addHermesServer(record))
-        let store = BotConnectionStore(keychain: keychain)
+        let store = BotConnectionStore(keychain: keychain, limitsPublisher: publisher)
         func publish(_ connectionID: UUID) {
             publisher.publish([card("codex", updatedAt: measuredAt, rows: [("5h", 12, nil)])], stale: [],
                               with: publisher.ticket(for: scope(connectionID: connectionID)), now: measuredAt)
@@ -95,13 +109,13 @@ import XCTest
         manager.switchActiveServer(to: try XCTUnwrap(manager.servers.first { $0.kind == .hermes }))
         publish(record.id)
         await manager.removeServer(try XCTUnwrap(manager.servers.first { $0.kind == .webui }))
-        manager.hermesSignInSaved(server: hermesServer, offersMove: false)
-        XCTAssertNotNil(file.read(), "Removing another server, or signing in again on the same connection")
+        try store.save(record, server: hermesServer)
+        XCTAssertNotNil(file.read(), "Removing another server, or saving the same connection again")
 
+        // Every way to replace it (sign-in, the Bots editor) saves it through the store.
         let replacement = BotConnection(id: UUID(), name: "Studio", address: hermesServer, username: "you",
                                         password: "secret")
         try store.save(replacement, server: hermesServer)
-        manager.hermesSignInSaved(server: hermesServer, offersMove: false)
         XCTAssertNil(file.read(), "Replacing the connection")
 
         publish(replacement.id)
@@ -152,8 +166,10 @@ import XCTest
         }
     }
 
-    func answer(_ response: ProviderQuotaResponse) {
-        pending?.resume(returning: response)
+    /// Answers the held read with one 5 h window at `remainingPercent`.
+    func answer(_ remainingPercent: Double) {
+        pending?.resume(returning: ProviderQuotaResponse(status: "available", accountLimits: ProviderAccountLimits(
+            fetchedAt: "2027-01-15T08:00:00Z", windows: [ProviderQuotaWindow(label: "5h", remainingPercent: remainingPercent)])))
         pending = nil
     }
 

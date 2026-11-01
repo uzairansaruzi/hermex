@@ -5,10 +5,11 @@ import WidgetKit
 /// clears it when its server or connection stops being the one in use. Usage is the only refresh:
 /// nothing here polls or reads the host.
 ///
-/// A load takes a `Ticket` before it awaits the host and hands it back with the cards. Every
-/// invalidation (a server switch, sign-out, the server's removal, its connection replaced) bumps
-/// the generation before clearing the file, so a load that started earlier can never write its old
-/// result back. Main-actor, so publications and invalidations are serialized.
+/// A load takes a `Ticket` before it awaits the host and hands it back with the cards. Only the
+/// newest ticket writes, so a closed Usage screen's late load can't replace the Profile opened
+/// after it. Every invalidation (a server switch, sign-out, the server's removal, its connection
+/// replaced) also ends the newest ticket before clearing the file, so a load that started earlier
+/// can never write its old result back. Main-actor, so publications and invalidations are serialized.
 @MainActor final class ProviderLimitsPublisher {
     static let shared = ProviderLimitsPublisher(file: ProviderLimitsSnapshotFile.shared)
 
@@ -27,8 +28,8 @@ import WidgetKit
     private let file: ProviderLimitsSnapshotFile?
     private let reloadWidget: () -> Void
     private var generation = 0
-    /// The scopes of the tickets taken since the last invalidation, which a load may still write.
-    private var ticketScopes: [Scope] = []
+    /// The newest ticket's scope, while a load may still write it.
+    private var ticketScope: Scope?
 
     init(file: ProviderLimitsSnapshotFile?,
          reloadWidget: @escaping () -> Void = {
@@ -38,9 +39,10 @@ import WidgetKit
         self.reloadWidget = reloadWidget
     }
 
-    /// Taken by a Usage load before it reads the host.
+    /// Taken by a Usage load before it reads the host; it supersedes every earlier ticket.
     func ticket(for scope: Scope) -> Ticket {
-        if !ticketScopes.contains(scope) { ticketScopes.append(scope) }
+        generation += 1
+        ticketScope = scope
         return Ticket(scope: scope, generation: generation)
     }
 
@@ -70,7 +72,7 @@ import WidgetKit
     /// Ends every load in flight, then empties the widget.
     func invalidate() {
         generation += 1
-        ticketScopes = []
+        ticketScope = nil
         if file?.remove() == true { reloadWidget() }
     }
 
@@ -80,8 +82,8 @@ import WidgetKit
     func invalidate(server: URL, unlessConnection connectionID: UUID? = nil) {
         let key = BotHistoryCache.Scope.key(server)
         let written = file?.read().map { [($0.serverKey, $0.connectionID)] } ?? []
-        let held = written + ticketScopes.map { (BotHistoryCache.Scope.key($0.server), $0.connectionID) }
-        guard held.contains(where: { $0.0 == key && $0.1 != connectionID }) else { return }
+        let loading = ticketScope.map { [(BotHistoryCache.Scope.key($0.server), $0.connectionID)] } ?? []
+        guard (written + loading).contains(where: { $0.0 == key && $0.1 != connectionID }) else { return }
         invalidate()
     }
 }
