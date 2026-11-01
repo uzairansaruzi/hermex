@@ -8,6 +8,8 @@ struct SkillsView: View {
     @State private var viewModel: SkillsViewModel
     @State private var selectedSkill: SkillSummary?
     @State private var searchText = ""
+    /// A failed toggle's notice (#1410).
+    @State private var toast = ActionToastState()
 
     init(server: URL, onAPIError: @escaping (Error) -> Void) {
         self.init(client: APIClient(baseURL: server), onAPIError: onAPIError)
@@ -42,14 +44,18 @@ struct SkillsView: View {
                 await loadSkills()
             }
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search skills...")
-            .alert("Could Not Update Skill", isPresented: Binding(
-                get: { viewModel.toggleErrorMessage != nil },
-                set: { if !$0 { viewModel.clearToggleError() } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(viewModel.toggleErrorMessage ?? "")
+            .overlay(alignment: .bottom) {
+                ActionToastView(state: toast)
+                    .frame(maxWidth: 420)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 22)
             }
+            .onChange(of: viewModel.toggleErrorMessage) { _, message in
+                guard let message else { return }
+                toast.show(.failure(message))
+                viewModel.clearToggleError()
+            }
+            .onDisappear { toast.dismiss() }
     }
 
     private var filteredGroups: [(category: String, skills: [SkillSummary])] {

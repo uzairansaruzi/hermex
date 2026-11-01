@@ -114,7 +114,6 @@ struct SessionListView: View {
     @State private var sessionPendingRename: SessionSummary?
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingProjectCreation: SessionSummary?
-    @State private var sessionOpenErrorMessage: String?
     @State private var sessionOpenTask: Task<Void, Never>?
     @State private var sessionExportShareItem: SessionExportShareItem?
     @State private var isPresentingProjectCreation = false
@@ -282,11 +281,6 @@ struct SessionListView: View {
                     }
                 }
                 .presentationDetents([.height(180), .medium])
-            }
-            .alert("Session Action Failed", isPresented: sessionOpenErrorIsPresented) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(sessionOpenErrorMessage ?? "")
             }
             .sheet(item: $sessionPendingProjectCreation) { session in
                 ProjectCreationSheet(
@@ -457,6 +451,7 @@ struct SessionListView: View {
             .modifier(
                 SessionActionConfirmations(
                     viewModel: viewModel,
+                    actionToast: actionToast,
                     sessionPendingDeletion: $sessionPendingDeletion,
                     projectPendingDeletion: $projectPendingDeletion,
                     deleteSession: { session in
@@ -491,7 +486,7 @@ struct SessionListView: View {
             && sessionPendingProjectCreation == nil && sessionPendingDeletion == nil
             && projectPendingRename == nil && projectPendingDeletion == nil
             && !isPresentingProjectCreation && !isPresentingAddServer
-            && sessionOpenErrorMessage == nil && !viewModel.isCreatingSession
+            && !viewModel.isCreatingSession
     }
 
     private var waitingSharedImportBanner: some View {
@@ -1356,7 +1351,7 @@ struct SessionListView: View {
     }
 
     /// Restores the session in place. It does not reopen a chat the archive
-    /// closed; a failure shows the "Session Action Failed" alert.
+    /// closed; a failure shows as a failure toast.
     private func undoArchive(_ session: SessionSummary) async {
         let didUnarchive = await viewModel.unarchive(
             session,
@@ -1581,11 +1576,8 @@ struct SessionListView: View {
 
     private func openSession(_ session: SessionSummary) async {
         let sessionToOpen = await viewModel.sessionForOpening(session, modelContext: modelContext)
+        // A failed open leaves `actionErrorMessage` set, which shows as a failure toast.
         guard !Task.isCancelled else { return }
-
-        if let message = viewModel.actionErrorMessage {
-            sessionOpenErrorMessage = message
-        }
 
         if let sessionToOpen {
             selectSession(sessionToOpen)
@@ -1594,15 +1586,6 @@ struct SessionListView: View {
             // the newer `begin` instead.
             SessionOpenSignpost.end(sessionID: session.sessionId, messages: nil)
         }
-    }
-
-    private var sessionOpenErrorIsPresented: Binding<Bool> {
-        Binding(
-            get: { sessionOpenErrorMessage != nil },
-            set: { isPresented in
-                if !isPresented { sessionOpenErrorMessage = nil }
-            }
-        )
     }
 
     private func rememberCreatedSession(_ session: SessionSummary) {

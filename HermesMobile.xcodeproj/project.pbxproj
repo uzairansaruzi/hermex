@@ -365,7 +365,6 @@
 		C03120000000000000B005 /* GitDiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03120000000000000F005 /* GitDiffView.swift */; };
 		138500000000000000000B01 /* GitDiffFileJumpList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 138500000000000000000F01 /* GitDiffFileJumpList.swift */; };
 		C03180000000000000B001 /* GitActionsMenuButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03180000000000000F001 /* GitActionsMenuButton.swift */; };
-		C03180000000000000B002 /* GitActionToastOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03180000000000000F002 /* GitActionToastOverlay.swift */; };
 		C03180000000000000B003 /* GitInlineCommitButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03180000000000000F003 /* GitInlineCommitButton.swift */; };
 		C03180000000000000B004 /* GitCommitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03180000000000000F004 /* GitCommitView.swift */; };
 		C03180000000000000B005 /* TurnFileChangeSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03180000000000000F005 /* TurnFileChangeSummary.swift */; };
@@ -1067,7 +1066,6 @@
 		C03120000000000000F005 /* GitDiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitDiffView.swift; sourceTree = "<group>"; };
 		138500000000000000000F01 /* GitDiffFileJumpList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitDiffFileJumpList.swift; sourceTree = "<group>"; };
 		C03180000000000000F001 /* GitActionsMenuButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitActionsMenuButton.swift; sourceTree = "<group>"; };
-		C03180000000000000F002 /* GitActionToastOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitActionToastOverlay.swift; sourceTree = "<group>"; };
 		C03180000000000000F003 /* GitInlineCommitButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitInlineCommitButton.swift; sourceTree = "<group>"; };
 		C03180000000000000F004 /* GitCommitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitCommitView.swift; sourceTree = "<group>"; };
 		C03180000000000000F005 /* TurnFileChangeSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnFileChangeSummary.swift; sourceTree = "<group>"; };
@@ -2153,7 +2151,6 @@
 				C03120000000000000F005 /* GitDiffView.swift */,
 				138500000000000000000F01 /* GitDiffFileJumpList.swift */,
 				C03180000000000000F001 /* GitActionsMenuButton.swift */,
-				C03180000000000000F002 /* GitActionToastOverlay.swift */,
 				C03180000000000000F003 /* GitInlineCommitButton.swift */,
 				C03180000000000000F004 /* GitCommitView.swift */,
 				C03180000000000000F007 /* GitTurnChangesCard.swift */,
@@ -2707,7 +2704,6 @@
 				C03120000000000000B005 /* GitDiffView.swift in Sources */,
 				138500000000000000000B01 /* GitDiffFileJumpList.swift in Sources */,
 				C03180000000000000B001 /* GitActionsMenuButton.swift in Sources */,
-				C03180000000000000B002 /* GitActionToastOverlay.swift in Sources */,
 				C03180000000000000B003 /* GitInlineCommitButton.swift in Sources */,
 				C03180000000000000B004 /* GitCommitView.swift in Sources */,
 				C03180000000000000B005 /* TurnFileChangeSummary.swift in Sources */,

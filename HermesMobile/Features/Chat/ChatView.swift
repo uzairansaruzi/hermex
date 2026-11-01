@@ -17,6 +17,22 @@ private enum GitChatAlert: Identifiable {
     }
 }
 
+/// The Git toasts at the top of the chat (#1410): a busy toast names the branch under the
+/// operation's static glyph, and its result adds the commit and any partial-failure detail.
+private extension ActionToast {
+    static func gitProgress(_ title: String, systemImage: String, branch: String?) -> ActionToast {
+        ActionToast(message: title, systemImage: systemImage, accessibilityLabel: title, tone: .busy,
+                    detailLines: [branch].compactMap { $0 }.filter { !$0.isEmpty })
+    }
+
+    static func gitResult(_ title: String, succeeded: Bool, branch: String?, detailLines: [String]) -> ActionToast {
+        ActionToast(message: title,
+                    systemImage: succeeded ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                    accessibilityLabel: title, tone: succeeded ? .success : .failure,
+                    detailLines: [branch].compactMap { $0 }.filter { !$0.isEmpty } + detailLines)
+    }
+}
+
 private enum ActiveGitSheet: Identifiable {
     case changes
     case commit
@@ -394,7 +410,8 @@ struct ChatView: View {
     @State private var reviewProgress = ReviewProgressStore()
     @State private var viewModel: ChatViewModel
     @State private var gitAvailabilityViewModel: GitWorkspaceAvailabilityViewModel
-    @State private var gitToastState = GitActionToastState()
+    /// Git actions' progress and results, at the top of the chat near the Git controls (#1410).
+    @State private var gitToast = ActionToastState()
     @State private var gitAlert: GitChatAlert?
     @State private var composerHeight: CGFloat = 52
     /// Measured height of the collapsed clarification bar, the request's only
@@ -1027,7 +1044,9 @@ struct ChatView: View {
             }
         }
         .overlay(alignment: .top) {
-            GitActionToastOverlay(state: gitToastState)
+            ActionToastView(state: gitToast, edge: .top)
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
         }
         .navigationTitle(viewModel.hermesBotChat?.botProfile?.name ?? displayTitle)
         .navigationBarTitleDisplayMode(.inline)
@@ -1086,6 +1105,7 @@ struct ChatView: View {
             .onDisappear {
                 isOnScreen = false
                 noticeToast.dismiss()
+                gitToast.dismiss()
                 composerFocusRevision += 1
                 completionScrollPolicy.readerDidInteract()
                 hydratedCompletionStreamID = nil
@@ -1268,8 +1288,7 @@ struct ChatView: View {
                 activeGitSheet = nil
                 turnDiffPresentation = nil
                 gitAvailabilityViewModel.retire()
-                gitToastState.dismissProgress()
-                gitToastState.dismissSuccess()
+                gitToast.dismiss()
                 gitAlert = nil
                 Task { await loadInitialGitAvailability() }
             }
@@ -1630,17 +1649,15 @@ struct ChatView: View {
         let git = gitAvailabilityViewModel
         guard !git.isCommitting, !git.isWriteLocked else { return }
 
-        let branch = git.currentBranchName
-        gitToastState.showProgress(GitActionProgress(
-            title: GitCommitPhase.generatingMessage.progressTitle,
-            subtitle: branch
-        ))
+        // Every path below resolves only this toast, so a commit that ends after a newer toast,
+        // a swipe, or the chat closing leaves that state alone.
+        let toastID = gitToast.show(.gitProgress(GitCommitPhase.generatingMessage.progressTitle,
+                                                 systemImage: GitCommitPhase.generatingMessage.systemImage,
+                                                 branch: git.currentBranchName))
 
         let outcome = await git.quickCommit(push: push) { phase in
-            gitToastState.showProgress(GitActionProgress(
-                title: phase.progressTitle,
-                subtitle: git.currentBranchName
-            ))
+            gitToast.update(toastID, to: .gitProgress(phase.progressTitle, systemImage: phase.systemImage,
+                                                      branch: git.currentBranchName))
         }
 
         switch outcome {
@@ -1653,16 +1670,17 @@ struct ChatView: View {
                 // so the user knows the local commit is safe and only the push needs retrying.
                 detailLines.append(String(localized: "Push failed: \(pushError)"))
             }
-            gitToastState.showSuccess(GitActionSuccess(
-                title: result.pushFailureMessage != nil
+            gitToast.update(toastID, to: .gitResult(
+                result.pushFailureMessage != nil
                     ? String(localized: "Committed — push failed")
                     : (result.didPush ? String(localized: "Commit & push complete") : String(localized: "Commit complete")),
-                subtitle: result.branch,
+                succeeded: result.pushFailureMessage == nil,
+                branch: result.branch,
                 detailLines: detailLines
             ))
             ChatHaptics.gitActionFinished(succeeded: result.pushFailureMessage == nil, isEnabled: isHapticsEnabled)
         case .nothingToCommit:
-            gitToastState.dismissProgress()
+            gitToast.dismiss(toastID)
             ChatHaptics.gitActionFinished(succeeded: false, isEnabled: isHapticsEnabled)
             gitAlert = .error(String(localized: "There are no changes to commit."))
         case .tooManyChanges:
@@ -1672,18 +1690,18 @@ struct ChatView: View {
             // blocked commit with no feedback would be the very silent failure this guards
             // against. (Kept separate from .failure, which intentionally stays quiet when its
             // busy/no-session guard returns with no message.) No success toast/SHA.
-            gitToastState.dismissProgress()
+            gitToast.dismiss(toastID)
             ChatHaptics.gitActionFinished(succeeded: false, isEnabled: isHapticsEnabled)
             gitAlert = .error(git.actionErrorMessage
                 ?? String(localized: "Too many changes to quick-commit. Commit in smaller batches, or use git directly."))
         case .failure:
-            gitToastState.dismissProgress()
+            gitToast.dismiss(toastID)
             ChatHaptics.gitActionFinished(succeeded: false, isEnabled: isHapticsEnabled)
             if let message = git.actionErrorMessage {
                 gitAlert = .error(message)
             }
         case .retired:
-            break
+            gitToast.dismiss(toastID)
         }
     }
 
@@ -1711,24 +1729,26 @@ struct ChatView: View {
     @MainActor
     private func performGitRemoteAction(_ action: GitRemoteAction) async {
         let git = gitAvailabilityViewModel
-        gitToastState.showProgress(GitActionProgress(
-            title: action.progressTitle,
-            subtitle: git.currentBranchName
-        ))
+        let toastID = gitToast.show(.gitProgress(action.progressTitle, systemImage: action.systemImage,
+                                                 branch: git.currentBranchName))
 
         let succeeded = await git.performRemoteAction(action)
-        guard !git.isRetired else { return }
+        guard !git.isRetired else {
+            gitToast.dismiss(toastID)
+            return
+        }
         if succeeded {
-            gitToastState.showSuccess(GitActionSuccess(
-                title: action.successTitle,
-                subtitle: git.currentBranchName,
+            gitToast.update(toastID, to: .gitResult(
+                action.successTitle,
+                succeeded: true,
+                branch: git.currentBranchName,
                 detailLines: [git.lastActionMessage]
                     .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
             ))
             ChatHaptics.gitActionFinished(succeeded: true, isEnabled: isHapticsEnabled)
         } else {
-            gitToastState.dismissProgress()
+            gitToast.dismiss(toastID)
             ChatHaptics.gitActionFinished(succeeded: false, isEnabled: isHapticsEnabled)
             if let message = git.actionErrorMessage {
                 gitAlert = .error(message)
