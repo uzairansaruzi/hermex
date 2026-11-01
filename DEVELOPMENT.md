@@ -184,8 +184,10 @@ It retries in one case only. Xcode sometimes fails with `The test runner hung
 before establishing connection` before any test runs: the app launches, but
 XCTest inside it never hears that the simulator's `testmanagerd` is ready, and
 xcodebuild gives up after several minutes. The runner doesn't wait for that:
-once the log has been silent for 150 seconds before any suite started, it stops
-the attempt and treats it as the same hang. On that failure, and only when no
+once the build is done and the log has then been silent for 150 seconds before
+any suite started, it stops the attempt and treats it as the same hang. It
+tells the build is done from the `IDESchemeActionSDKRecord` line xcodebuild
+logs as the test action starts; without that line it waits for xcodebuild. On that failure, and only when no
 test passed, the runner reboots that simulator (its own UDID only), stops the app,
 and reruns once within the same test time limit, printing `RETRY:`. The retry
 writes `test-retry.log`, `summary-retry.json`, and `Tests-retry.xcresult` next

@@ -32,6 +32,10 @@ HOST_LOCK_WAIT = 3600
 # A hung runner handshake leaves the log silent for minutes before xcodebuild
 # gives up (378 s observed); a healthy run reaches its first suite in seconds.
 HANDSHAKE_SILENCE = 150
+# xcodebuild logs this once the build is done and the test action starts. The
+# silence check arms only after it, so a quiet compile is never taken for a
+# hang; if a future Xcode stops logging it, attempts wait for xcodebuild again.
+TEST_ACTION_MARKER = "IDESchemeActionSDKRecord"
 # Per-test cap, so a deadlocked test fails in minutes instead of spending the
 # whole --test-timeout. XCTest rounds allowances up to whole minutes.
 TEST_ALLOWANCE = 180
@@ -222,17 +226,19 @@ def runner_hung(summary):
 
 
 def handshake_watch():
-    """A `run` stall check for one xcodebuild test attempt: true once its log
-    has been silent for HANDSHAKE_SILENCE seconds and no suite has started,
-    so a hung handshake retries without waiting for xcodebuild's own timeout."""
+    """A `run` stall check for one xcodebuild test attempt: true once the test
+    action has started and its log has been silent for HANDSHAKE_SILENCE
+    seconds with no suite started, so a hung handshake retries without waiting
+    for xcodebuild's own timeout."""
     started = False
 
     def stalled(log):
         nonlocal started
         if started or time.time() - log.stat().st_mtime < HANDSHAKE_SILENCE:
             return False
-        started = "Test Suite '" in log.read_text(errors="replace")
-        return not started
+        text = log.read_text(errors="replace")
+        started = "Test Suite '" in text
+        return not started and TEST_ACTION_MARKER in text
     return stalled
 
 

@@ -309,12 +309,14 @@ class SimulatorRunnerTests(unittest.TestCase):
         self.assertEqual(self.invoke(), 0)
         self.assertEqual(sum(c[0] == "xcodebuild" for c in self.commands), 2)
 
-    def test_handshake_watch_fires_only_on_silence_before_any_suite(self):
+    def test_handshake_watch_fires_only_on_a_silent_test_launch(self):
         log = self.home / "test.log"
         old = runner.time.time() - runner.HANDSHAKE_SILENCE - 1
-        for text, mtime, expected in (("building\n", old, True),
-                                      ("Test Suite 'Selected tests' started\n", old, False),
-                                      ("building\n", None, False)):
+        launched = "built\n" + runner.TEST_ACTION_MARKER + "\n"
+        for text, mtime, expected in ((launched, old, True),
+                                      ("quiet compile step\n", old, False),
+                                      (launched + "Test Suite 'Selected tests' started\n", old, False),
+                                      (launched, None, False)):
             with self.subTest(text=text, silent=mtime is not None):
                 log.write_text(text)
                 if mtime is not None:
