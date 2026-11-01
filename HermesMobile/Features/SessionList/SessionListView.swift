@@ -271,10 +271,11 @@ struct SessionListView: View {
                         )
                     }
             }
-            .sheet(item: $sessionPendingRename) { session in
+            .sheet(item: $sessionPendingRename, onDismiss: { viewModel.clearRenameError() }) { session in
                 SessionRenameSheet(
                     initialTitle: SessionRowView.displayTitle(for: session),
-                    isSaving: viewModel.isRenamingSession
+                    isSaving: viewModel.isRenamingSession,
+                    errorMessage: viewModel.renameErrorMessage
                 ) {
                     sessionPendingRename = nil
                 } onSave: { title in
@@ -289,10 +290,11 @@ struct SessionListView: View {
                 }
                 .presentationDetents([.height(180), .medium])
             }
-            .sheet(item: $sessionPendingProjectCreation) { session in
+            .sheet(item: $sessionPendingProjectCreation, onDismiss: { viewModel.clearProjectSheetError() }) { session in
                 ProjectCreationSheet(
                     existingProjectCount: viewModel.projects.count,
-                    isSaving: viewModel.isCreatingProject || viewModel.isMovingSession
+                    isSaving: viewModel.isCreatingProject || viewModel.isMovingSession,
+                    errorMessage: viewModel.projectSheetErrorMessage
                 ) {
                     sessionPendingProjectCreation = nil
                 } onSave: { name, color, _ in
@@ -312,10 +314,11 @@ struct SessionListView: View {
                 }
                 .presentationDetents([.medium])
             }
-            .sheet(isPresented: $isPresentingProjectCreation) {
+            .sheet(isPresented: $isPresentingProjectCreation, onDismiss: { viewModel.clearProjectSheetError() }) {
                 ProjectCreationSheet(
                     existingProjectCount: viewModel.projects.count,
-                    isSaving: viewModel.isCreatingProject
+                    isSaving: viewModel.isCreatingProject,
+                    errorMessage: viewModel.projectSheetErrorMessage
                 ) {
                     isPresentingProjectCreation = false
                 } onSave: { name, color, _ in
@@ -334,10 +337,11 @@ struct SessionListView: View {
                 }
                 .presentationDetents([.medium])
             }
-            .sheet(item: $projectPendingRename) { project in
+            .sheet(item: $projectPendingRename, onDismiss: { viewModel.clearProjectSheetError() }) { project in
                 ProjectRenameSheet(
                     project: project,
-                    isSaving: viewModel.isRenamingProject
+                    isSaving: viewModel.isRenamingProject,
+                    errorMessage: viewModel.projectSheetErrorMessage
                 ) {
                     projectPendingRename = nil
                 } onSave: { name, color in

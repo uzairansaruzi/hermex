@@ -202,7 +202,7 @@ final class SessionListViewModel {
     /// A Hermes session started now reaches the host: the list has read it and isn't showing the
     /// offline cache. A Shortcut's new chat waits for it (#1180).
     var isHermesLive: Bool { hasReadHermes && !isViewingCachedData }
-    /// The host's reason for refusing the last Hermes rename, shown in the rename sheet (#1048).
+    /// Why the last session rename failed, shown in the rename sheet (#1048).
     private(set) var renameErrorMessage: String?
     /// More of the Profile's sessions wait on the host.
     private(set) var hasMoreSessions = false
@@ -243,7 +243,7 @@ final class SessionListViewModel {
     @ObservationIgnored private var hermesProjectOwners: [String: String] = [:]
     /// The Profile's lanes were read once, so a read shows "Loading projects..." only before that.
     @ObservationIgnored private var hermesProjectsRead = false
-    /// The host's reason for refusing the open project sheet's create or rename (#1052).
+    /// Why the open project sheet's create or rename failed, shown in that sheet (#1052).
     private(set) var projectSheetErrorMessage: String?
     /// The host's matches for the active search on a Hermes list (#1053), in its order, as it
     /// answered but for the deletes, archives, restores and renames this phone made since, each
@@ -1196,7 +1196,11 @@ final class SessionListViewModel {
         return mutatingSessionIDs.contains(sessionId)
     }
 
+    /// Renames a session from the rename sheet; a failure's reason stays in the sheet as
+    /// `renameErrorMessage`.
     func rename(_ session: SessionSummary, to rawTitle: String, modelContext: ModelContext? = nil) async -> Bool {
+        renameErrorMessage = nil
+        defer { keepActionError(in: \.renameErrorMessage) }
         guard !isViewingCachedData else {
             actionErrorMessage = String(localized: "Reconnect to the server to rename a session.")
             return false
@@ -1382,6 +1386,8 @@ final class SessionListViewModel {
         moving session: SessionSummary,
         modelContext: ModelContext? = nil
     ) async -> Bool {
+        projectSheetErrorMessage = nil
+        defer { keepActionError(in: \.projectSheetErrorMessage) }
         actionErrorMessage = nil
         lastError = nil
 
@@ -1438,6 +1444,8 @@ final class SessionListViewModel {
         color: String,
         modelContext: ModelContext? = nil
     ) async -> Bool {
+        projectSheetErrorMessage = nil
+        defer { keepActionError(in: \.projectSheetErrorMessage) }
         actionErrorMessage = nil
         lastError = nil
 
@@ -1500,7 +1508,11 @@ final class SessionListViewModel {
         }
     }
 
+    /// Renames a project from the rename sheet; a failure's reason stays in the sheet as
+    /// `projectSheetErrorMessage`.
     func rename(_ project: ProjectSummary, named rawName: String, color: String?) async -> Bool {
+        projectSheetErrorMessage = nil
+        defer { keepActionError(in: \.projectSheetErrorMessage) }
         actionErrorMessage = nil
         lastError = nil
 
@@ -1609,6 +1621,14 @@ final class SessionListViewModel {
     }
 
     func clearActionError() {
+        actionErrorMessage = nil
+    }
+
+    /// Moves a failed save's reason from the list's failure toast into the sheet it came from,
+    /// `sheetError`: the toast would show behind the open sheet and could expire unseen (#1410).
+    private func keepActionError(in sheetError: ReferenceWritableKeyPath<SessionListViewModel, String?>) {
+        guard let message = actionErrorMessage else { return }
+        self[keyPath: sheetError] = message
         actionErrorMessage = nil
     }
 
@@ -2557,12 +2577,7 @@ final class SessionListViewModel {
     /// whose answer came after the list's client closed (`.stale`) may have landed, so the sheet
     /// stays without a message.
     private func renameHermesSession(_ session: SessionSummary, to title: String) async -> Bool {
-        guard let target = hermesTarget(session) else {
-            // The sheet is up, so the reason goes there rather than to the list's alert.
-            renameErrorMessage = actionErrorMessage
-            actionErrorMessage = nil
-            return false
-        }
+        guard let target = hermesTarget(session) else { return false }
         let (wire, key, profile) = target
         isRenamingSession = true
         renameErrorMessage = nil
