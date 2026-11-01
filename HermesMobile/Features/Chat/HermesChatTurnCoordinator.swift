@@ -83,6 +83,15 @@ struct HermesSessionChat: Hashable, Identifiable {
     /// What the chat lets the user do (#1145): a bot's Bot Chat keeps Bot Chat's rules.
     var policy: HermesChatPolicy { HermesChatPolicy(target: target, botChatRoot: botChatRoot) }
 
+    /// Whether this is a scheduled task's run, which the host stores as `cron_<job>_<time>`, so
+    /// its prompt row can show as a `CronRunPromptCard` (#1413). A compressed run opened by its
+    /// tip has an ordinary key under a `cron_` root. The chat's `SessionSummary` is a placeholder
+    /// that cannot say so.
+    var isCronRun: Bool {
+        guard case .session(_, let key) = target else { return false }
+        return key.hasPrefix("cron_") || lineageRoot?.hasPrefix("cron_") == true
+    }
+
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }

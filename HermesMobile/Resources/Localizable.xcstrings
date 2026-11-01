@@ -126060,6 +126060,218 @@
       }
     },
     "Scheduled" : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Geplant" } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Programado" } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Planifié" } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Pianificato" } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Zaplanowane" } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "Agendado" } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Gepland" } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Zamanlandı" } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Запланировано" } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "予定済み" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "已计划" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "예약됨" } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "مجدول" } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "מתוזמן" } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "شیڈول شدہ" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "已排程" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "已排程" } } } },
+    "Copy task prompt" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "نسخ موجّه المهمة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aufgaben-Prompt kopieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copiar la instrucción de la tarea"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copier l’instruction de la tâche"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "העתק את הנחיית המשימה"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copia il prompt dell’attività"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "タスクのプロンプトをコピー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "작업 프롬프트 복사"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Taakprompt kopiëren"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Kopiuj polecenie zadania"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Copiar o prompt da tarefa"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Копировать запрос задачи"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Görev istemini kopyala"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ٹاسک پرامپٹ کاپی کریں"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "複製工作提示"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "拷贝任务提示词"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "複製工作提示"
+          }
+        }
+      }
+    },
+    "Scheduled task" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "مهمة مجدوَلة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Geplante Aufgabe"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tarea programada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tâche planifiée"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "משימה מתוזמנת"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Attività pianificata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "スケジュールされたタスク"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "예약된 작업"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Geplande taak"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zaplanowane zadanie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tarefa agendada"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Запланированная задача"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zamanlanmış görev"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "شیڈول شدہ ٹاسک"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "排程工作"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "计划任务"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "排程工作"
+          }
+        }
+      }
+    },
     "Scheduled Jobs" : {
       "localizations" : {
         "ar" : {
