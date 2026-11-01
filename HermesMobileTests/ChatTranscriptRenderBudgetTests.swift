@@ -221,7 +221,7 @@ private struct BudgetTranscriptHost: View {
             onScrollToLatestTranscriptMessage: { _ in },
             onScrollToLatestContent: { _, _ in },
             onPreviewAttachment: { _, _ in },
-            onPreviewTranscriptMedia: { _ in },
+            onPreviewTranscriptMedia: { _, _ in },
             onAskHermex: { _ in },
             onToggleListening: { _ in },
             onRegenerate: { _ in },
