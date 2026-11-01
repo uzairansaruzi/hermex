@@ -143,6 +143,17 @@ final class ChatTranscriptRenderBudgetTests: XCTestCase {
     }
 }
 
+/// What a test changes on a hosted transcript after it is on screen, and the
+/// transcript's scroll proxy once `ChatTranscriptReflowTests.captureProxy` asks for it.
+@Observable
+@MainActor
+private final class TranscriptHostControls {
+    var dynamicTypeSize = DynamicTypeSize.large
+    var proxy: ScrollViewProxy?
+    var settledPlan: HermesPlan?
+    var settledPlanAfterRenderID: String?
+}
+
 /// Hosts the real `ChatTranscriptView` with `ChatView`'s view-model wiring for every
 /// input that changes as a reply streams. Follow, scroll, fold and action inputs are
 /// fixed, so only the stream can move a row's inputs.
@@ -151,6 +162,7 @@ private struct BudgetTranscriptHost: View {
     static var passes = 0
 
     let viewModel: ChatViewModel
+    var controls = TranscriptHostControls()
 
     var body: some View {
         let _ = Self.passes += 1
@@ -221,7 +233,7 @@ private struct BudgetTranscriptHost: View {
             expandedTurnKeys: [],
             onToggleTurnFold: { _ in },
             onDismissKeyboard: {},
-            onScrollToBottom: { _ in },
+            onScrollToBottom: { controls.proxy = $0 },
             onScrollToLatestTranscriptMessage: { _ in },
             onScrollToLatestContent: { _, _ in },
             onPreviewAttachment: { _, _ in },
@@ -231,7 +243,125 @@ private struct BudgetTranscriptHost: View {
             onRegenerate: { _ in },
             onEdit: { _ in },
             onFork: { _ in },
-            onCopy: { _ in }
+            onCopy: { _ in },
+            settledPlan: controls.settledPlan,
+            settledPlanAfterRenderID: controls.settledPlanAfterRenderID
+        )
+        .environment(\.dynamicTypeSize, controls.dynamicTypeSize)
+    }
+}
+
+/// A reader parked inside a long reply keeps their place when the column rewraps
+/// (#1414): rotation and a text-size change move every row above them, and a raw
+/// offset would land them screens away. A reader on a block between rows (a plan)
+/// keeps that block. Frames are measured independently of the controller, by
+/// scrolling each block to the top through the transcript's proxy.
+@MainActor
+final class ChatTranscriptReflowTests: XCTestCase {
+    override func tearDown() {
+        MockURLProtocol.requestHandler = nil
+        super.tearDown()
+    }
+
+    func testRewrapKeepsTheReaderAtTheSameShareOfTheirRow() async throws {
+        let viewModel = try makeViewModel(turns: 20)
+        await viewModel.loadMessages()
+        let rows = viewModel.displayedTranscriptMessages.map(\.renderID)
+        XCTAssertEqual(rows.count, 40)
+        let controls = TranscriptHostControls()
+        controls.settledPlan = HermesPlan(.object(["todos": .array([
+            .object(["id": .string("a"), "content": .string("Read the replies"), "status": .string("in_progress")])
+        ])]))
+        controls.settledPlanAfterRenderID = rows[25]
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = UIHostingController(rootView: BudgetTranscriptHost(viewModel: viewModel, controls: controls))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        await layOut(window)
+
+        // The transcript hands its proxy to onScrollToBottom when the keyboard shows.
+        NotificationCenter.default.post(name: UIResponder.keyboardWillShowNotification, object: nil)
+        await layOut(window)
+        let proxy = try XCTUnwrap(controls.proxy)
+        let scrollView = try XCTUnwrap(transcriptScrollView(in: window))
+        /// The span of the block `id`, bounded by the top of the row after it.
+        func span(of id: String, before next: String) async -> (top: CGFloat, height: CGFloat) {
+            proxy.scrollTo(next, anchor: .top)
+            await layOut(window)
+            let nextTop = scrollView.contentOffset.y + scrollView.adjustedContentInset.top
+            proxy.scrollTo(id, anchor: .top)
+            await layOut(window)
+            let top = scrollView.contentOffset.y + scrollView.adjustedContentInset.top
+            return (top, nextTop - top - 8)
+        }
+        /// Parks the reading line 40% into the block `id`, applies `rewrap`, and
+        /// returns the share of the rewrapped block above the line.
+        func shareAfter(in id: String, before next: String, _ rewrap: () -> Void) async -> CGFloat {
+            let parked = await span(of: id, before: next)
+            scrollView.setContentOffset(
+                CGPoint(x: 0, y: parked.top + 0.4 * parked.height - scrollView.adjustedContentInset.top),
+                animated: false
+            )
+            await layOut(window)
+            rewrap()
+            await layOut(window)
+            let readingLine = scrollView.contentOffset.y + scrollView.adjustedContentInset.top
+            let rewrapped = await span(of: id, before: next)
+            return (readingLine - rewrapped.top) / rewrapped.height
+        }
+
+        // A long reply halfway up, bounded by the row after it.
+        let rotated = await shareAfter(in: rows[21], before: rows[22]) { window.frame = CGRect(x: 0, y: 0, width: 844, height: 390) }
+        XCTAssertEqual(rotated, 0.4, accuracy: 0.02, "Rotation moved the reader off their passage")
+        let largerText = await shareAfter(in: rows[21], before: rows[22]) { controls.dynamicTypeSize = .xxxLarge }
+        XCTAssertEqual(largerText, 0.4, accuracy: 0.02, "A text-size change moved the reader off their passage")
+        let onPlan = await shareAfter(in: "hermes-plan", before: rows[26]) { window.frame = CGRect(x: 0, y: 0, width: 390, height: 844) }
+        XCTAssertEqual(onPlan, 0.4, accuracy: 0.02, "Rotation moved the reader off the plan they were reading")
+    }
+
+    // MARK: - Helpers
+
+    /// Lets SwiftUI apply pending updates, then lays the window out.
+    private func layOut(_ window: UIWindow) async {
+        for _ in 0..<3 {
+            await Task.yield()
+            window.rootViewController?.view.setNeedsLayout()
+            window.layoutIfNeeded()
+        }
+    }
+
+    /// The tallest scroll view in the window: the transcript, not a row's own.
+    private func transcriptScrollView(in window: UIWindow) -> UIScrollView? {
+        func scrollViews(in view: UIView) -> [UIScrollView] {
+            [view as? UIScrollView].compactMap { $0 } + view.subviews.flatMap(scrollViews(in:))
+        }
+        return scrollViews(in: window).max { $0.contentSize.height < $1.contentSize.height }
+    }
+
+    /// A webui session of `turns` short prompts, each answered by a five-paragraph
+    /// reply that wraps very differently at phone width and at the capped column.
+    private func makeViewModel(turns count: Int) throws -> ChatViewModel {
+        let paragraph = "This settled reply wraps across many lines at phone width and far fewer at the capped reading width, so a rewrap changes every row height above the reader."
+        let reply = (0..<5).map { "Paragraph \($0). " + paragraph }.joined(separator: "\\n\\n")
+        let turns = (0..<count).map { index in
+            """
+            {"role": "user", "content": "Question \(index)", "timestamp": \(1_770_000_000 + index * 10), "message_id": "user-\(index)"},
+            {"role": "assistant", "content": "Answer \(index). \(reply)", "timestamp": \(1_770_000_005 + index * 10), "message_id": "assistant-\(index)"}
+            """
+        }
+        let session = #"{"session": {"session_id": "session-abc", "title": "Reflow", "messages": ["#
+            + turns.joined(separator: ",") + "]}}"
+        MockURLProtocol.requestHandler = { request in apiTestJSONResponse(session, for: request) }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        return ChatViewModel(
+            session: SessionSummary(sessionId: "session-abc", title: "Reflow", workspace: "/tmp/workspace"),
+            server: server,
+            client: APIClient(baseURL: server, session: URLSession(configuration: configuration)),
+            streamClient: PacingSpySSEStreamingClient(),
+            approvalStreamClient: PacingSpySSEStreamingClient(),
+            clarifyStreamClient: PacingSpySSEStreamingClient()
         )
     }
 }

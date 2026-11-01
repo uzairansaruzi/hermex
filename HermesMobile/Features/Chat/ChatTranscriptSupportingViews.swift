@@ -110,6 +110,9 @@ struct ChatScrollObserver: UIViewRepresentable {
         var onFollowEvent: @MainActor (ChatScrollPolicy.FollowEvent) -> Void
 
         private weak var scrollView: UIScrollView?
+        /// The observer view itself: it backs the transcript content, so its
+        /// origin is the content's origin in the scroll view.
+        private weak var contentView: UIView?
         private weak var observedPanGesture: UIPanGestureRecognizer?
         private var observations: [NSKeyValueObservation] = []
         private var metricContext: MetricContext
@@ -131,7 +134,7 @@ struct ChatScrollObserver: UIViewRepresentable {
                 guard oldValue !== scrollPositionController else { return }
                 oldValue?.detach()
                 if let scrollView {
-                    scrollPositionController?.attach(to: scrollView)
+                    scrollPositionController?.attach(to: scrollView, contentView: contentView)
                 }
             }
         }
@@ -157,9 +160,10 @@ struct ChatScrollObserver: UIViewRepresentable {
 
         func attachIfNeeded(from view: UIView, delivery: MetricDelivery) {
             guard let scrollView = enclosingScrollView(for: view) else { return }
+            contentView = view
 
             guard scrollView !== self.scrollView else {
-                scrollPositionController?.attach(to: scrollView)
+                scrollPositionController?.attach(to: scrollView, contentView: view)
                 reportMetrics(delivery: delivery)
                 return
             }
@@ -169,7 +173,7 @@ struct ChatScrollObserver: UIViewRepresentable {
             deliveredGeometry = nil
             endUserScrollSessionSilently()
             self.scrollView = scrollView
-            scrollPositionController?.attach(to: scrollView)
+            scrollPositionController?.attach(to: scrollView, contentView: view)
 
             observedPanGesture?.removeTarget(self, action: nil)
             scrollView.panGestureRecognizer.addTarget(self, action: #selector(handlePanGesture(_:)))
@@ -384,6 +388,14 @@ struct ChatScrollObserver: UIViewRepresentable {
 ///   shows up as an offset change in the same run-loop turn as a size change
 ///   and is put back. Any other offset change is someone scrolling on purpose
 ///   (VoiceOver, a hardware keyboard, a follow scroll) and releases the hold.
+/// - **Reflow.** The column width or text size changed, so every row rewraps
+///   and the raw offset lands on another passage (#1414). Rows, and the plan
+///   and compression card between them, report their frames
+///   (`rowFrameChanged`) under the layout they were measured in; the
+///   first frame of a new layout captures the reader's place from the old
+///   layout's frames, and the anchor row's new frames put it back. A reader
+///   following the live edge or at the top is left alone, as is any prepend
+///   or hold already in flight. Ends like a hold, without its resync.
 ///
 /// The controller snapshots the UIKit scroll geometry, then corrects during
 /// the following layout passes for a bounded window. Corrections are
@@ -396,9 +408,21 @@ final class ChatScrollPositionController {
         case prepend
         /// Offset stays put; SwiftUI-driven offset changes are reverted.
         case hold
+        /// Offset keeps `reflowAnchor` at the reading line; otherwise like `hold`.
+        case reflow
+    }
+
+    /// What a row's wrapping depends on: the capped column width and the text
+    /// size. A change to either is a reflow.
+    struct Layout: Equatable {
+        let contentWidth: CGFloat
+        let dynamicTypeSize: DynamicTypeSize
     }
 
     private weak var scrollView: UIScrollView?
+    /// The transcript content's view, for converting row frames (measured in the
+    /// content's coordinate space) to UIKit scroll content coordinates.
+    private weak var contentView: UIView?
     private var mode = Mode.prepend
     /// Set by `capture()`, cleared by anything that replaces the baseline, so
     /// a hold armed while the older-message request is in flight cannot be
@@ -423,15 +447,76 @@ final class ChatScrollPositionController {
     /// makes from inside the content-size setter, before that callback runs.
     private var contentSizeChangedThisTurn = false
     private var lastObservedContentHeight: CGFloat?
+    /// Row frames in the content's coordinate space, under `rowFramesLayout`.
+    /// Plain storage, written only when a row's frame changes; never per scroll.
+    private var rowFrames: [String: CGRect] = [:]
+    private var rowFramesLayout: Layout?
+    private var reflowAnchor: ChatScrollPolicy.ReflowAnchor?
 
     var isHoldingPosition: Bool {
         mode == .hold && baselineOffsetY != nil
     }
 
-    func attach(to scrollView: UIScrollView) {
+    func attach(to scrollView: UIScrollView, contentView: UIView? = nil) {
+        self.contentView = contentView ?? self.contentView
         guard scrollView !== self.scrollView else { return }
         cancelPreservation()
         self.scrollView = scrollView
+    }
+
+    /// A row's frame changed; `id` is its `renderID`, or a stable key for a
+    /// block drawn between rows (a plan, a compression card). The first frame
+    /// under a new `layout` arms a reflow from the frames still stored for the
+    /// old one; a reflow already running keeps its anchor through further
+    /// layouts (a second rotation).
+    func rowFrameChanged(id: String, frame: CGRect, layout: Layout, isFollowing: Bool) {
+        if let previous = rowFramesLayout, previous != layout {
+            if mode == .reflow, reflowAnchor != nil {
+                scheduleQuietRelease()
+            } else {
+                armReflow(isFollowing: isFollowing)
+            }
+        }
+        rowFramesLayout = layout
+        rowFrames[id] = frame
+        if mode == .reflow, reflowAnchor?.id == id {
+            applyCompensation()
+            scheduleQuietRelease()
+        }
+    }
+
+    /// A row left the transcript.
+    func forgetRow(id: String) {
+        rowFrames[id] = nil
+    }
+
+    private func armReflow(isFollowing: Bool) {
+        guard !isFollowing,
+              baselineOffsetY == nil,
+              let scrollView,
+              !scrollView.isDragging,
+              !scrollView.isTracking,
+              !scrollView.isDecelerating
+        else { return }
+
+        let topInset = scrollView.adjustedContentInset.top
+        let readingLineY = scrollView.contentOffset.y + topInset - contentOriginY(in: scrollView)
+        guard let anchor = ChatScrollPolicy.reflowAnchor(
+            readingLineY: readingLineY,
+            isAtTop: scrollView.contentOffset.y <= -topInset + 0.5,
+            rowFrames: rowFrames
+        ) else { return }
+
+        reflowAnchor = anchor
+        baselineContentHeight = scrollView.contentSize.height
+        baselineOffsetY = scrollView.contentOffset.y
+        lastObservedContentHeight = scrollView.contentSize.height
+        beginPreservation(mode: .reflow, scrollView: scrollView, window: ChatScrollPolicy.disclosureHoldMaximum)
+        scheduleQuietRelease()
+    }
+
+    private func contentOriginY(in scrollView: UIScrollView) -> CGFloat {
+        contentView.map { $0.convert(CGPoint.zero, to: scrollView).y } ?? 0
     }
 
     func detach() {
@@ -498,8 +583,8 @@ final class ChatScrollPositionController {
         scheduleQuietRelease()
     }
 
-    /// Hold ran to completion (quiet or capped): let go, then resync SwiftUI
-    /// if the hold had to fight it. A hold ended by a gesture or a deliberate
+    /// Hold or reflow ran to completion (quiet or capped): let go, then resync
+    /// SwiftUI if a hold had to fight it. A hold ended by a gesture or a deliberate
     /// scroll needs no resync; that scroll does it.
     private func finishHold() {
         applyCompensation()
@@ -525,11 +610,11 @@ final class ChatScrollPositionController {
         return heldOffsetY <= minimumOffsetY + 0.5
     }
 
-    /// Ends a disclosure pin early: the transcript is about to scroll on
-    /// purpose (follow, scroll-to-bottom, keyboard). A prepend preservation is
-    /// left alone.
+    /// Ends a disclosure pin or reflow early: the transcript is about to scroll
+    /// on purpose (follow, scroll-to-bottom, keyboard). A prepend preservation
+    /// is left alone.
     func releaseHold() {
-        guard mode == .hold else { return }
+        guard mode != .prepend else { return }
         cancelPreservation()
     }
 
@@ -556,7 +641,7 @@ final class ChatScrollPositionController {
         completionTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(window))
             guard !Task.isCancelled, let self else { return }
-            if mode == .hold {
+            if mode != .prepend {
                 self.finishHold()
             } else {
                 self.applyCompensation()
@@ -580,6 +665,7 @@ final class ChatScrollPositionController {
         lastObservedContentHeight = nil
         baselineContentHeight = nil
         baselineOffsetY = nil
+        reflowAnchor = nil
         isApplyingCompensation = false
     }
 
@@ -607,7 +693,7 @@ final class ChatScrollPositionController {
         guard scrollView === self.scrollView else { return }
 
         applyCompensation()
-        if mode == .hold {
+        if mode != .prepend {
             contentSizeChangedThisTurn = true
             lastObservedContentHeight = scrollView.contentSize.height
             DispatchQueue.main.async { [weak self] in
@@ -638,16 +724,19 @@ final class ChatScrollPositionController {
         }
     }
 
-    /// User movement releases the preservation. In hold mode an offset change
-    /// riding on a size change is SwiftUI re-anchoring and is put back; any
-    /// other offset change is a deliberate scroll and releases the hold.
+    /// User movement releases the preservation. In hold and reflow modes an
+    /// offset change UIKit makes inside the content-size setter is put back. A
+    /// hold also puts back one riding on a size change in the same turn: SwiftUI
+    /// re-applying a default anchor. Reflow runs only where no size-change
+    /// anchor applies, so there that change is the reader's. Any other offset
+    /// change is a deliberate scroll and releases it.
     private func handleOffsetChange(_ scrollView: UIScrollView) {
         guard !isApplyingCompensation, scrollView === self.scrollView else { return }
 
         if scrollView.isDragging || scrollView.isTracking || scrollView.isDecelerating {
             cancelPreservation()
-        } else if mode == .hold {
-            let sizeIsChanging = contentSizeChangedThisTurn
+        } else if mode != .prepend {
+            let sizeIsChanging = (mode == .hold && contentSizeChangedThisTurn)
                 || scrollView.contentSize.height != lastObservedContentHeight
             if sizeIsChanging {
                 applyCompensation()
@@ -659,8 +748,13 @@ final class ChatScrollPositionController {
     }
 
     private func compensatedOffsetY(in scrollView: UIScrollView) -> CGFloat? {
-        guard let baselineContentHeight, let baselineOffsetY else { return nil }
+        guard let baselineContentHeight, var baselineOffsetY else { return nil }
 
+        if mode == .reflow {
+            guard let reflowAnchor, let frame = rowFrames[reflowAnchor.id] else { return nil }
+            baselineOffsetY = ChatScrollPolicy.reflowReadingLineY(anchor: reflowAnchor, newFrame: frame)
+                + contentOriginY(in: scrollView) - scrollView.adjustedContentInset.top
+        }
         return Self.compensatedOffsetY(
             baselineOffsetY: baselineOffsetY,
             contentHeightDelta: mode == .prepend ? scrollView.contentSize.height - baselineContentHeight : 0,

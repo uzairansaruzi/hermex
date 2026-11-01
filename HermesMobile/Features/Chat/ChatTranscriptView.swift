@@ -335,6 +335,11 @@ struct ChatTranscriptView: View {
     /// expressed through SwiftUI.
     private let transcriptContentID = "chat-transcript-content"
 
+    fileprivate static let contentCoordinateSpace = "chat-transcript-content-space"
+    /// Frame keys for the blocks drawn between rows, distinct from any `renderID`.
+    private static let planRowID = "hermes-plan"
+    private static let compressionCardFrameID = "compression-reference-card"
+
     /// A tapped row is about to grow or shrink below the reader. Pin the offset
     /// so a default anchor SwiftUI re-applies on the size change (seen at the
     /// exact top after a status-bar scroll) cannot move them. If the pin had to
@@ -360,6 +365,8 @@ struct ChatTranscriptView: View {
     ) -> some View {
         // One clock read per body pass; each row compares its timestamp to it.
         let now = Date()
+        let layout = ChatScrollPositionController.Layout(contentWidth: contentWidth, dynamicTypeSize: dynamicTypeSize)
+        let isFollowing = isFollowingLatestContent
 
         return VStack(spacing: transcriptSpacing) {
             if let forkOrigin {
@@ -370,6 +377,7 @@ struct ChatTranscriptView: View {
 
             if let compressionReferenceCard, compressionReferenceCard.afterRenderID == nil {
                 compressionReferenceCardView(compressionReferenceCard)
+                    .reportsReflowFrame(Self.compressionCardFrameID, to: scrollPositionController, layout: layout, isFollowing: isFollowing)
             }
 
             ForEach(displayedTranscriptMessages) { transcriptMessage in
@@ -433,17 +441,20 @@ struct ChatTranscriptView: View {
                     isCronRun: isCronRun
                 )
                 .equatable()
+                .reportsReflowFrame(transcriptMessage.renderID, to: scrollPositionController, layout: layout, isFollowing: isFollowing)
                 .transition(rowEntryTransition(for: transcriptMessage.message, now: now))
                 .id(transcriptMessage.renderID)
 
                 if let compressionReferenceCard,
                    compressionReferenceCard.afterRenderID == transcriptMessage.renderID {
                     compressionReferenceCardView(compressionReferenceCard)
+                        .reportsReflowFrame(Self.compressionCardFrameID, to: scrollPositionController, layout: layout, isFollowing: isFollowing)
                 }
 
                 if let settledPlan, settledPlanAfterRenderID == transcriptMessage.renderID {
                     HermesPlanRowView(plan: settledPlan)
-                        .id("hermes-plan")
+                        .reportsReflowFrame(Self.planRowID, to: scrollPositionController, layout: layout, isFollowing: isFollowing)
+                        .id(Self.planRowID)
                 }
             }
 
@@ -458,10 +469,12 @@ struct ChatTranscriptView: View {
             inlineCommitButton
             if let queuedPrompt {
                 ChatQueuedPromptRow(message: queuedPrompt, onCopy: onCopyQueuedPrompt)
+                    .reportsReflowFrame(queuedPrompt.id, to: scrollPositionController, layout: layout, isFollowing: isFollowing)
                     .id(queuedPrompt.id)
             }
             if let waitingSend {
                 ChatWaitingSendRow(message: waitingSend, onCancel: onCancelWaitingSend)
+                    .reportsReflowFrame(waitingSend.id, to: scrollPositionController, layout: layout, isFollowing: isFollowing)
                     .id(waitingSend.id)
             }
 
@@ -491,6 +504,9 @@ struct ChatTranscriptView: View {
             )
         }
         .id(transcriptContentID)
+        // Row frames are measured here; `ChatScrollObserver`, in this view's
+        // background, gives the controller the same origin in UIKit.
+        .coordinateSpace(.named(Self.contentCoordinateSpace))
         .background {
             ZStack {
                 ChatScrollObserver(
@@ -1209,5 +1225,24 @@ enum ChatTranscriptRowFreshness {
     static func isFresh(timestamp: Double?, now: Date) -> Bool {
         guard let timestamp, timestamp.isFinite else { return false }
         return abs(now.timeIntervalSince1970 - timestamp) < window
+    }
+}
+
+private extension View {
+    /// Reports a transcript block's frame under `id` so the controller keeps the
+    /// reader's place in it through a rewrap (#1414). Frames in the content's
+    /// space change on a rewrap or the block's own growth, never on a scroll.
+    func reportsReflowFrame(
+        _ id: String,
+        to controller: ChatScrollPositionController,
+        layout: ChatScrollPositionController.Layout,
+        isFollowing: Bool
+    ) -> some View {
+        onGeometryChange(for: CGRect.self) { geometry in
+            geometry.frame(in: .named(ChatTranscriptView.contentCoordinateSpace))
+        } action: { frame in
+            controller.rowFrameChanged(id: id, frame: frame, layout: layout, isFollowing: isFollowing)
+        }
+        .onDisappear { controller.forgetRow(id: id) }
     }
 }
