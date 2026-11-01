@@ -68,6 +68,28 @@ final class MarkdownMathRendererTests: XCTestCase {
         )
     }
 
+    func testPriceAndPathWithoutMathOpenerStayPlain() {
+        let input = String(repeating: "Plain prose line.\n", count: 50) + #"It costs $5 and saves to C:\Users\me."#
+        XCTAssertEqual(MarkdownMathLayoutCache.uncachedLayout(for: input), .plain(input))
+    }
+
+    func testShellVariablesInProseStayLiteral() {
+        for input in ["Use $HOME/foo:$PATH.", "Set $FOO_BAR/$BAZ before running.", "The shell prints $$ and $$."] {
+            XCTAssertEqual(MarkdownMathLayoutCache.uncachedLayout(for: input), .plain(input))
+        }
+    }
+
+    func testRealInlineMathStillRendersAlongsideShellVariableRules() {
+        for expression in [#"$n$th"#, "$x^2$", #"$\alpha$"#, "$(4,-2)$", "$M_S$"] {
+            let input = "Take " + expression + " here."
+            guard case .plain(let rendered) = MarkdownMathLayoutCache.uncachedLayout(for: input) else {
+                return XCTFail("Expected inline math only in \(input)")
+            }
+            XCTAssertTrue(rendered.contains("hermex-math:///"), input)
+            XCTAssertFalse(rendered.contains("$"), input)
+        }
+    }
+
     func testLetterLedInlineMathStillRendersAfterBoundaryGuards() {
         let output = MarkdownMathFormatter.replacingInlineMath(in: #"The value $x^2 + y_1$ renders."#)
         XCTAssertNotEqual(output, #"The value $x^2 + y_1$ renders."#)

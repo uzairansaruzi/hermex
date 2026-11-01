@@ -20,7 +20,7 @@ enum MarkdownMathLayout: Equatable {
 struct MarkdownMathSegmenter {
     static func segments(in content: String) -> [MarkdownMathSegment] {
         // Skip Markdown protection and delimiter scans when no math opener is possible.
-        guard content.utf8.contains(0x24) || content.utf8.contains(0x5C) else {
+        guard MarkdownMathFormatter.mayContainMath(content) else {
             return [.markdown(content)]
         }
         let characters = Array(content)
@@ -45,9 +45,14 @@ struct MarkdownMathSegmenter {
                 index += 1
                 continue
             }
+            let latex = String(characters[(index + delimiter.openLength)..<closeIndex])
+            // `$$` is also the shell's PID, so `$$ and $$` must carry a math signal.
+            if delimiter == .dollars, !MarkdownMathFormatter.looksLikeMath(latex) {
+                index += 1
+                continue
+            }
 
             appendMarkdown(String(characters[cursor..<index]), to: &segments)
-            let latex = String(characters[(index + delimiter.openLength)..<closeIndex])
             appendDisplayMath(latex, to: &segments)
             index = closeIndex + delimiter.closeLength
             cursor = index
@@ -371,8 +376,8 @@ enum MarkdownMathLayoutCache {
             // second full-string walk for an identical result.
             //
             // One exception: the segmenter *recognises* a display-math span but
-            // drops it when the body is empty or whitespace-only (`$$ $$`,
-            // `\[ \]`). Those produce no `.displayMath` segment, so
+            // drops it when the body is empty or whitespace-only (`\[ \]`).
+            // Those produce no `.displayMath` segment, so
             // `containsMath` is false, yet the surrounding markdown segments no
             // longer contain the delimiters — joining them would silently
             // swallow literal text the old single-pass renderer preserved.
