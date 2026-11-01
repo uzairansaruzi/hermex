@@ -6,7 +6,7 @@ read the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Local setup
 
-- **Xcode 27** (CI pins 27.0; the deployment target is iOS 18).
+- **Xcode 27** (CI pins 27.1; the deployment target is iOS 18).
 - Clone the repo and open `HermesMobile.xcodeproj`. Dependencies resolve
   automatically via Swift Package Manager — the dependency list is locked in
   `AGENTS.md`; do not add new ones without maintainer approval. Their versions
