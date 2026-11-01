@@ -280,7 +280,9 @@ final class BotConnectionVersionTests: XCTestCase {
     }
 
     /// On a host offering both, a saved browser sign-in opens on Browser; switching it to
-    /// Password saves no `oauth`, and back to Browser saves no password (#1539).
+    /// Password saves no `oauth`, and back to Browser saves no password (#1539). Neither switch
+    /// is another account, even with no `install_id` to compare: the UUID, and with it drafts,
+    /// cache and push pairing, stays.
     func testSwitchingASavedServerBetweenBrowserAndPasswordKeepsOnlyOneCredential() async throws {
         defer { HermesHostFixture.reset() }
         let hermes = URL(string: "https://hermes.example")!
@@ -289,7 +291,8 @@ final class BotConnectionVersionTests: XCTestCase {
         browserSignIn.oauth = HermesOAuth(provider: "nous", userID: "u1", refreshToken: "refresh-0")
         try store.save(browserSignIn, server: hermes)
         let model = BotConnectionSetup(
-            server: hermes, isServerSignIn: true, store: store, makeWire: { _ in ConnectionSetupWire() }, discard: { _ in },
+            server: hermes, isServerSignIn: true, store: store, makeWire: { _ in ConnectionSetupWire() },
+            discard: { _ in XCTFail("Switching the sign-in method keeps the connection's data") },
             probe: { _, _ in .success(BotHostStatus(HermesBrowserSignInTests.bothStatus)) },
             hermesConfiguration: { HermesHostFixture.configuration { request in
                 switch request.url?.path {
@@ -309,6 +312,7 @@ final class BotConnectionVersionTests: XCTestCase {
         let savedPassword = await model.connect()
         XCTAssertTrue(savedPassword)
         let passwordRecord = try XCTUnwrap(store.load(server: hermes))
+        XCTAssertEqual(passwordRecord.id, browserSignIn.id)
         XCTAssertNil(passwordRecord.oauth)
         XCTAssertEqual(passwordRecord.password, "secret")
 
@@ -317,6 +321,7 @@ final class BotConnectionVersionTests: XCTestCase {
         let savedBrowser = await model.connect(browser: presenter)
         XCTAssertTrue(savedBrowser)
         let browserRecord = try XCTUnwrap(store.load(server: hermes))
+        XCTAssertEqual(browserRecord.id, browserSignIn.id)
         XCTAssertEqual(browserRecord.oauth?.refreshToken, "refresh-1")
         XCTAssertEqual(browserRecord.password, "")
     }

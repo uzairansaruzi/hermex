@@ -536,8 +536,9 @@ extension BotHostStatus {
 
     /// Signs in with the form's headers and saves the connection with them. The UUID, and
     /// with it drafts, cache and push pairing, is kept when the host reports the saved
-    /// `install_id` or when address and username are unchanged, whatever the headers;
-    /// otherwise the old connection's data is discarded. An unchanged address must still
+    /// `install_id`, when address and username are unchanged, or when a saved browser sign-in
+    /// switches to this one at its address, whatever the headers; otherwise the old
+    /// connection's data is discarded. An unchanged address must still
     /// reach the saved install before the password is sent. `replacingHost` is the user's
     /// answer to `.differentHost`: it drops that expectation and always starts a new connection.
     /// A server that signs in through the browser shows its host's page with `browser` instead,
@@ -565,7 +566,9 @@ extension BotHostStatus {
             guard attempt == id, !Task.isCancelled else { return false }
             let live = wire.serverInstallID
             let sameInstall = live != nil && live == saved?.installID
-            let sameAccount = saved?.address == url && saved?.username == account
+            // A switch from the saved browser sign-in is the same connection: `wire.connect()`
+            // has already refused a host whose `install_id` contradicts the saved one.
+            let sameAccount = saved?.address == url && (saved?.oauth != nil || saved?.username == account)
             let kept = replacingHost ? nil : (sameInstall || sameAccount ? saved : nil)
             let candidate = BotConnection(id: kept?.id ?? UUID(), name: label, address: url, username: account,
                 password: secret, hermesVersion: wire.serverVersion, installID: live ?? kept?.installID, headers: sent)
@@ -587,8 +590,9 @@ extension BotHostStatus {
 
     /// A Hermes server's sign-in through its host's browser page (#708), shown by `browser`.
     /// The UUID, and with it drafts, cache and push pairing, is kept when the host reports
-    /// the saved `install_id` or the same account signs in again; otherwise the old
-    /// connection's data is discarded, as in `connect`. Closing the sheet shows no error.
+    /// the saved `install_id`, the same account signs in again, or a saved sign-in without the
+    /// browser switches to it at its address; otherwise the old connection's data is
+    /// discarded, as in `connect`. Closing the sheet shows no error.
     private func connectThroughBrowser(_ browser: HermesBrowserSignIn.Presenter, replacingHost: Bool) async -> Bool {
         let id = UUID(); attempt = id; isConnecting = true; errorMessage = nil; differentHostAddress = nil
         defer { if attempt == id { isConnecting = false; attempt = nil } }
@@ -605,8 +609,11 @@ extension BotHostStatus {
             guard attempt == id, !Task.isCancelled else { return false }
             let signedIn = http.connection
             let sameInstall = http.serverInstallID != nil && http.serverInstallID == saved?.installID
-            let sameAccount = saved?.address == server && saved?.oauth?.provider == signedIn.oauth?.provider
-                && saved?.oauth?.userID == signedIn.oauth?.userID
+            // A switch to the browser is the same connection: the sign-in has already refused
+            // a host whose `install_id` contradicts the saved one.
+            let sameAccount = saved?.address == server && (saved?.oauth.map {
+                $0.provider == signedIn.oauth?.provider && $0.userID == signedIn.oauth?.userID
+            } ?? true)
             let kept = replacingHost ? nil : (sameInstall || sameAccount ? saved : nil)
             return await commit(BotConnection(
                 id: kept?.id ?? signedIn.id, name: label, address: server, username: signedIn.username, password: "",
