@@ -469,10 +469,12 @@ struct ChatTranscriptView: View {
             inlineCommitButton
             if let queuedPrompt {
                 ChatQueuedPromptRow(message: queuedPrompt, onCopy: onCopyQueuedPrompt)
+                    .reportsReflowFrame(queuedPrompt.id, to: scrollPositionController, layout: layout, isFollowing: isFollowing)
                     .id(queuedPrompt.id)
             }
             if let waitingSend {
                 ChatWaitingSendRow(message: waitingSend, onCancel: onCancelWaitingSend)
+                    .reportsReflowFrame(waitingSend.id, to: scrollPositionController, layout: layout, isFollowing: isFollowing)
                     .id(waitingSend.id)
             }
 
