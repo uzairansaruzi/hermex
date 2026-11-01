@@ -191,7 +191,9 @@ jobs:
         run: python3 ci/check_string_catalog.py --derived-data "${DERIVED_DATA_PATH}"
 
       - name: Report results
-        if: always()
+        # Not on a cancel: a newer push superseded the run, and its report held the
+        # runner for minutes. A test step timeout is a failure and still reports.
+        if: ${{ !cancelled() }}
         continue-on-error: true
         env:
           TOOLCHAIN_OUTCOME: ${{ steps.toolchain.outcome }}
