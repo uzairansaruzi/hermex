@@ -296,7 +296,7 @@ struct HermesSessionListView: View {
                 : String(localized: "Nothing was sent. Discard deletes this text from Hermex.")))
         }
         .modifier(SessionActionConfirmations(
-            viewModel: viewModel, sessionPendingDeletion: $navigation.covers.deleting, projectPendingDeletion: $navigation.covers.deletingProject,
+            viewModel: viewModel, showFailure: { actionToast.show(.failure($0)) }, sessionPendingDeletion: $navigation.covers.deleting, projectPendingDeletion: $navigation.covers.deletingProject,
             deleteSession: { session in Task { await delete(session) } },
             deleteProject: { project in Task { _ = await viewModel.delete(project) } }
         ))

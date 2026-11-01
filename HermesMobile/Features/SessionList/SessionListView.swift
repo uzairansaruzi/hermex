@@ -77,6 +77,13 @@ struct SessionListArchiveToastRoute: Equatable {
         host = chosen
         return chosen
     }
+
+    /// Moves the toast to the session screen in front for a toast that isn't an
+    /// archive's, such as a failed action (#1410): Scheduled while it shows,
+    /// otherwise the list. An earlier archive's host may no longer be on screen.
+    mutating func noticeShown(destination: SessionNavigationDestination?) {
+        host = destination == .utility(.scheduled) ? .scheduled : .list
+    }
 }
 
 @MainActor
@@ -114,7 +121,6 @@ struct SessionListView: View {
     @State private var sessionPendingRename: SessionSummary?
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingProjectCreation: SessionSummary?
-    @State private var sessionOpenErrorMessage: String?
     @State private var sessionOpenTask: Task<Void, Never>?
     @State private var sessionExportShareItem: SessionExportShareItem?
     @State private var isPresentingProjectCreation = false
@@ -265,10 +271,11 @@ struct SessionListView: View {
                         )
                     }
             }
-            .sheet(item: $sessionPendingRename) { session in
+            .sheet(item: $sessionPendingRename, onDismiss: { viewModel.clearRenameError() }) { session in
                 SessionRenameSheet(
                     initialTitle: SessionRowView.displayTitle(for: session),
-                    isSaving: viewModel.isRenamingSession
+                    isSaving: viewModel.isRenamingSession,
+                    errorMessage: viewModel.renameErrorMessage
                 ) {
                     sessionPendingRename = nil
                 } onSave: { title in
@@ -283,15 +290,11 @@ struct SessionListView: View {
                 }
                 .presentationDetents([.height(180), .medium])
             }
-            .alert("Session Action Failed", isPresented: sessionOpenErrorIsPresented) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(sessionOpenErrorMessage ?? "")
-            }
-            .sheet(item: $sessionPendingProjectCreation) { session in
+            .sheet(item: $sessionPendingProjectCreation, onDismiss: { viewModel.clearProjectSheetError() }) { session in
                 ProjectCreationSheet(
                     existingProjectCount: viewModel.projects.count,
-                    isSaving: viewModel.isCreatingProject || viewModel.isMovingSession
+                    isSaving: viewModel.isCreatingProject || viewModel.isMovingSession,
+                    errorMessage: viewModel.projectSheetErrorMessage
                 ) {
                     sessionPendingProjectCreation = nil
                 } onSave: { name, color, _ in
@@ -311,10 +314,11 @@ struct SessionListView: View {
                 }
                 .presentationDetents([.medium])
             }
-            .sheet(isPresented: $isPresentingProjectCreation) {
+            .sheet(isPresented: $isPresentingProjectCreation, onDismiss: { viewModel.clearProjectSheetError() }) {
                 ProjectCreationSheet(
                     existingProjectCount: viewModel.projects.count,
-                    isSaving: viewModel.isCreatingProject
+                    isSaving: viewModel.isCreatingProject,
+                    errorMessage: viewModel.projectSheetErrorMessage
                 ) {
                     isPresentingProjectCreation = false
                 } onSave: { name, color, _ in
@@ -333,10 +337,11 @@ struct SessionListView: View {
                 }
                 .presentationDetents([.medium])
             }
-            .sheet(item: $projectPendingRename) { project in
+            .sheet(item: $projectPendingRename, onDismiss: { viewModel.clearProjectSheetError() }) { project in
                 ProjectRenameSheet(
                     project: project,
-                    isSaving: viewModel.isRenamingProject
+                    isSaving: viewModel.isRenamingProject,
+                    errorMessage: viewModel.projectSheetErrorMessage
                 ) {
                     projectPendingRename = nil
                 } onSave: { name, color in
@@ -457,6 +462,10 @@ struct SessionListView: View {
             .modifier(
                 SessionActionConfirmations(
                     viewModel: viewModel,
+                    showFailure: { message in
+                        archiveToastRoute.noticeShown(destination: navigationState.destination)
+                        actionToast.show(.failure(message))
+                    },
                     sessionPendingDeletion: $sessionPendingDeletion,
                     projectPendingDeletion: $projectPendingDeletion,
                     deleteSession: { session in
@@ -491,7 +500,7 @@ struct SessionListView: View {
             && sessionPendingProjectCreation == nil && sessionPendingDeletion == nil
             && projectPendingRename == nil && projectPendingDeletion == nil
             && !isPresentingProjectCreation && !isPresentingAddServer
-            && sessionOpenErrorMessage == nil && !viewModel.isCreatingSession
+            && !viewModel.isCreatingSession
     }
 
     private var waitingSharedImportBanner: some View {
@@ -1356,7 +1365,7 @@ struct SessionListView: View {
     }
 
     /// Restores the session in place. It does not reopen a chat the archive
-    /// closed; a failure shows the "Session Action Failed" alert.
+    /// closed; a failure shows as a failure toast.
     private func undoArchive(_ session: SessionSummary) async {
         let didUnarchive = await viewModel.unarchive(
             session,
@@ -1581,11 +1590,8 @@ struct SessionListView: View {
 
     private func openSession(_ session: SessionSummary) async {
         let sessionToOpen = await viewModel.sessionForOpening(session, modelContext: modelContext)
+        // A failed open leaves `actionErrorMessage` set, which shows as a failure toast.
         guard !Task.isCancelled else { return }
-
-        if let message = viewModel.actionErrorMessage {
-            sessionOpenErrorMessage = message
-        }
 
         if let sessionToOpen {
             selectSession(sessionToOpen)
@@ -1594,15 +1600,6 @@ struct SessionListView: View {
             // the newer `begin` instead.
             SessionOpenSignpost.end(sessionID: session.sessionId, messages: nil)
         }
-    }
-
-    private var sessionOpenErrorIsPresented: Binding<Bool> {
-        Binding(
-            get: { sessionOpenErrorMessage != nil },
-            set: { isPresented in
-                if !isPresented { sessionOpenErrorMessage = nil }
-            }
-        )
     }
 
     private func rememberCreatedSession(_ session: SessionSummary) {
