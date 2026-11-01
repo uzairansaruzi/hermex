@@ -165,9 +165,9 @@ Hermex is funded by its members. Thank you.
 
 **Patrons:** Robin Edwards
 
-**Members:** Aaron Kaufer
+**Members:** Aaron Kaufer · @smkelly · @theseanmckenna · Lindsay Leeds · Adam Hilliker
 
-**Founding members:** James Cross · Alexey
+**Founding members:** Alexey
 
 <sub>Updated monthly from [Buy Me a Coffee](https://buymeacoffee.com/callmeuzi/membership). Members who join anonymously aren't listed. Email [uzairansar@gmail.com](mailto:uzairansar@gmail.com) to be added or removed.</sub>
 
