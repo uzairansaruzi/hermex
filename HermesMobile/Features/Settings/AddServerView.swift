@@ -3,8 +3,8 @@ import SwiftUI
 
 /// Add Server: onboarding's connect form (`OnboardingViewModel`, #900) in a sheet, plus
 /// the new server's identity. A webui address goes through `AuthManager.addServer`, which
-/// never disturbs the active server on failure (#17); a Hermes dashboard gets username
-/// and password and becomes a Hermes server. Presented from Settings and from the
+/// never disturbs the active server on failure (#17); a Hermes dashboard gets its sign-in
+/// (username and password, its browser page, or a pick of the two) and becomes a Hermes server. Presented from Settings and from the
 /// avatar's long-press switcher on every home (#283, #899), and as "Sign In to Hermes" from
 /// Move to Hermes's host choice (#1266), which adds the server without switching to it.
 struct AddServerView: View {
@@ -122,6 +122,19 @@ struct AddServerView: View {
                 .font(AppFont.caption())
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+
+        if form.offersSignInChoice {
+            SettingsDivider()
+
+            HermesSignInMethodPicker(selection: $form.signInMethod)
+        }
+
+        if let rejection = form.browserHeaderRejection {
+            Label(rejection, systemImage: "exclamationmark.triangle.fill")
+                .font(AppFont.footnote())
+                .foregroundStyle(.orange)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
 
         if form.showsHermesCredentials {

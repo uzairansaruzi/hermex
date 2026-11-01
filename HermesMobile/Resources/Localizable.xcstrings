@@ -35978,6 +35978,112 @@
         }
       }
     },
+    "Browser" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "المتصفح"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Browser"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Navegador"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Navigateur"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "דפדפן"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Browser"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "ブラウザ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "브라우저"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Browser"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Przeglądarka"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Navegador"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Браузер"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Tarayıcı"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "براؤزر"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "瀏覽器"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "浏览器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "瀏覽器"
+          }
+        }
+      }
+    },
     "Browsing" : {
       "localizations" : {
         "ar" : { "stringUnit" : { "state" : "translated", "value" : "قيد التصفح" } },
@@ -135660,6 +135766,112 @@
     "Sign in is required for Kanban." : { "localizations" : { "de" : { "stringUnit" : { "state" : "needs_review", "value" : "Für Kanban ist eine Anmeldung erforderlich." } }, "es" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban requiere iniciar sesión." } }, "fr" : { "stringUnit" : { "state" : "needs_review", "value" : "Une connexion est requise pour Kanban." } }, "it" : { "stringUnit" : { "state" : "needs_review", "value" : "Per usare Kanban è necessario accedere." } }, "pl" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban wymaga zalogowania." } }, "pt-BR" : { "stringUnit" : { "state" : "needs_review", "value" : "É necessário entrar para usar o Kanban." } }, "nl" : { "stringUnit" : { "state" : "needs_review", "value" : "Inloggen is vereist voor Kanban." } }, "tr" : { "stringUnit" : { "state" : "needs_review", "value" : "Kanban için oturum açmak gerekiyor." } }, "ru" : { "stringUnit" : { "state" : "needs_review", "value" : "Для Канбана требуется вход." } }, "ja" : { "stringUnit" : { "state" : "needs_review", "value" : "カンバンにはサインインが必要です。" } }, "zh-Hans" : { "stringUnit" : { "state" : "needs_review", "value" : "需要登录才能使用看板。" } }, "ko" : { "stringUnit" : { "state" : "needs_review", "value" : "칸반을 사용하려면 로그인이 필요합니다." } }, "ar" : { "stringUnit" : { "state" : "needs_review", "value" : "يلزم تسجيل الدخول لاستخدام كانبان." } }, "he" : { "stringUnit" : { "state" : "needs_review", "value" : "נדרשת כניסה כדי להשתמש בקנבן." } }, "ur" : { "stringUnit" : { "state" : "needs_review", "value" : "کانبان کے لیے سائن اِن ضروری ہے۔" } }, "zh-Hant" : { "stringUnit" : { "state" : "needs_review", "value" : "需要登入才能使用看板。" } }, "zh-HK" : { "stringUnit" : { "state" : "needs_review", "value" : "需要登入才能使用看板。" } } } },
     "Sign in to Hermes" : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Bei Hermes anmelden"}},"es":{"stringUnit":{"state":"needs_review","value":"Iniciar sesión en Hermes"}},"fr":{"stringUnit":{"state":"needs_review","value":"Se connecter à Hermes"}},"it":{"stringUnit":{"state":"needs_review","value":"Accedi a Hermes"}},"pl":{"stringUnit":{"state":"needs_review","value":"Zaloguj się do Hermes"}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Entrar no Hermes"}},"nl":{"stringUnit":{"state":"needs_review","value":"Inloggen bij Hermes"}},"tr":{"stringUnit":{"state":"needs_review","value":"Hermes’te oturum aç"}},"ru":{"stringUnit":{"state":"needs_review","value":"Войти в Hermes"}},"ja":{"stringUnit":{"state":"needs_review","value":"Hermes にサインイン"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"登录 Hermes"}},"ko":{"stringUnit":{"state":"needs_review","value":"Hermes에 로그인"}},"ar":{"stringUnit":{"state":"needs_review","value":"تسجيل الدخول إلى Hermes"}},"he":{"stringUnit":{"state":"needs_review","value":"כניסה ל‑Hermes"}},"ur":{"stringUnit":{"state":"needs_review","value":"Hermes میں سائن اِن کریں"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"登入 Hermes"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"登入 Hermes"}}}},
     "Sign in to this server’s Hermes backend to turn on notifications for it, and to use Bots." : {"localizations":{"de":{"stringUnit":{"state":"needs_review","value":"Melde dich beim Hermes-Backend dieses Servers an, um Mitteilungen dafür zu aktivieren und Bots zu nutzen."}},"es":{"stringUnit":{"state":"needs_review","value":"Inicia sesión en el backend de Hermes de este servidor para activar sus notificaciones y usar los Bots."}},"fr":{"stringUnit":{"state":"needs_review","value":"Connectez-vous au backend Hermes de ce serveur pour activer ses notifications et utiliser les Bots."}},"it":{"stringUnit":{"state":"needs_review","value":"Accedi al backend Hermes di questo server per attivarne le notifiche e usare i Bot."}},"pl":{"stringUnit":{"state":"needs_review","value":"Zaloguj się do backendu Hermes tego serwera, aby włączyć dla niego powiadomienia i korzystać z Botów."}},"pt-BR":{"stringUnit":{"state":"needs_review","value":"Entre no backend do Hermes deste servidor para ativar as notificações dele e usar os Bots."}},"nl":{"stringUnit":{"state":"needs_review","value":"Log in op de Hermes-backend van deze server om er meldingen voor in te schakelen en Bots te gebruiken."}},"tr":{"stringUnit":{"state":"needs_review","value":"Bu sunucunun bildirimlerini açmak ve Bot’ları kullanmak için Hermes arka ucunda oturum açın."}},"ru":{"stringUnit":{"state":"needs_review","value":"Войдите в бэкенд Hermes этого сервера, чтобы включить для него уведомления и пользоваться ботами."}},"ja":{"stringUnit":{"state":"needs_review","value":"このサーバの通知をオンにし、Bots を使うには、そのサーバの Hermes バックエンドにサインインしてください。"}},"zh-Hans":{"stringUnit":{"state":"needs_review","value":"登录此服务器的 Hermes 后端，即可为其开启通知并使用 Bots。"}},"ko":{"stringUnit":{"state":"needs_review","value":"이 서버의 알림을 켜고 Bots를 사용하려면 해당 서버의 Hermes 백엔드에 로그인하세요."}},"ar":{"stringUnit":{"state":"needs_review","value":"سجّل الدخول إلى خلفية Hermes لهذا الخادم لتشغيل إشعاراته واستخدام Bots."}},"he":{"stringUnit":{"state":"needs_review","value":"יש להתחבר לשרת ה‑Hermes של שרת זה כדי להפעיל עבורו התראות ולהשתמש ב‑Bots."}},"ur":{"stringUnit":{"state":"needs_review","value":"اس سرور کے لیے اطلاعات آن کرنے اور Bots استعمال کرنے کے لیے اس کے Hermes بیک اینڈ میں سائن اِن کریں۔"}},"zh-Hant":{"stringUnit":{"state":"needs_review","value":"登入此伺服器的 Hermes 後端，即可為其開啟通知並使用 Bots。"}},"zh-HK":{"stringUnit":{"state":"needs_review","value":"登入此伺服器的 Hermes 後端，即可為其開啟通知並使用 Bots。"}}}},
+    "Sign in with" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "تسجيل الدخول باستخدام"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Anmelden mit"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Iniciar sesión con"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Se connecter avec"
+          }
+        },
+        "he" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "התחברות באמצעות"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Accedi con"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "サインイン方法"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "로그인 방법"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Aanmelden met"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Zaloguj się przez"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Entrar com"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Способ входа"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "Oturum açma yöntemi"
+          }
+        },
+        "ur" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "سائن اِن کا طریقہ"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "登入方式"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "登录方式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "needs_review",
+            "value" : "登入方式"
+          }
+        }
+      }
+    },
     "Sign in with the same account you used on your server." : {
       "localizations" : {
         "ar" : {

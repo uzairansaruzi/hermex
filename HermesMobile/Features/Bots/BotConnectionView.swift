@@ -54,6 +54,18 @@ import Observation
                         .keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .accessibilityIdentifier("hermes-connection-address")
                 }
+                if setup.offersSignInChoice {
+                    HermesSignInMethodPicker(selection: $setup.signInMethod)
+                }
+                if let rejection = setup.browserHeaderRejection {
+                    Label {
+                        Text(rejection)
+                    } icon: {
+                        Image(systemName: "exclamationmark.circle.fill")
+                    }
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("hermes-connection-headers-rejection")
+                }
                 switch setup.signInMethod {
                 case .browser:
                     Text("This server signs in through your browser.").foregroundStyle(.secondary)
@@ -197,7 +209,7 @@ import Observation
             .accessibilityIdentifier("hermes-connection-headers")
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
-                if let rejection = setup.headerRejection {
+                if let rejection = setup.headerRejection, setup.browserHeaderRejection == nil {
                     Label {
                         Text(rejection)
                     } icon: {
@@ -411,21 +423,54 @@ extension BotHostStatus {
             && !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !password.isEmpty
     }
 
-    /// How this Hermes server signs in: as its host's status says, or, until the status answers,
-    /// as its saved sign-in did, through the browser (#708) or without credentials (#1314). Only a
-    /// Hermes server's own sign-in; a webui server's Bots connection keeps the password form.
-    var signInMethod: HermesSignInMethod {
-        guard isServerSignIn else { return .password }
-        if case .reachable(let status) = hostStatus { return status.signInMethod }
-        if saved?.oauth != nil { return .browser }
-        return saved?.hasNoCredentials == true ? .open : .password
+    /// How this Hermes server's host offers to sign in, the default first: as its status says,
+    /// or, until the status answers, as its saved sign-in did, through the browser (#708) or
+    /// without credentials (#1314). Only a Hermes server's own sign-in; a webui server's Bots
+    /// connection keeps the password form.
+    var offeredSignInMethods: [HermesSignInMethod] {
+        guard isServerSignIn else { return [.password] }
+        if case .reachable(let status) = hostStatus { return status.signInMethods }
+        if saved?.oauth != nil { return [.browser] }
+        return saved?.hasNoCredentials == true ? [.open] : [.password]
     }
+
+    /// The Password | Browser picker's choice, while the host offers it.
+    private var pickedSignInMethod: HermesSignInMethod?
+
+    /// How Connect signs in: the picked method, else the browser for a saved browser sign-in
+    /// on a host that offers both, else the host's default. Each saves only its own
+    /// credential, so switching leaves no stale one.
+    var signInMethod: HermesSignInMethod {
+        get {
+            let offered = offeredSignInMethods
+            if let picked = pickedSignInMethod, offered.contains(picked) { return picked }
+            if saved?.oauth != nil, offered.contains(.browser) { return .browser }
+            return offered.first ?? .password
+        }
+        set {
+            guard newValue != signInMethod else { return }
+            pickedSignInMethod = newValue
+            errorMessage = nil
+        }
+    }
+
+    /// The Password | Browser picker, for a host that offers both.
+    var offersSignInChoice: Bool { offeredSignInMethods.count > 1 }
 
     /// Why the edited headers can't be sent to Hermes (`HermesHeaders`), shown under the
     /// Connection Headers row; Connect stays off until it is fixed. Nil when they can.
     var headerRejection: String? {
         do { _ = try HermesHeaders(headers.sanitizedForStorage(), signsInWithBrowser: signInMethod == .browser); return nil }
         catch { return error.localizedDescription }
+    }
+
+    /// The `headerRejection` that only a browser sign-in makes, an `Authorization` row,
+    /// which the form shows under the sign-in method instead.
+    var browserHeaderRejection: String? {
+        guard signInMethod == .browser else { return nil }
+        do { _ = try HermesHeaders(headers.sanitizedForStorage(), signsInWithBrowser: true); return nil }
+        catch HermesHeaders.Rejection.authorization { return HermesHeaders.Rejection.authorization.localizedDescription }
+        catch { return nil }
     }
 
     /// Shown under the Connection Headers row when only one of Cloudflare Access's two
@@ -679,6 +724,20 @@ struct BotConnectionWelcomeView: View {
         } else {
             BotAnimatedFaceView(name: name, appearance: appearance, size: size, motion: .still)
         }
+    }
+}
+
+/// The Password | Browser segment of a sign-in form whose host offers both (#1539).
+struct HermesSignInMethodPicker: View {
+    @Binding var selection: HermesSignInMethod
+
+    var body: some View {
+        Picker("Sign in with", selection: $selection) {
+            Text("Password").tag(HermesSignInMethod.password)
+            Text("Browser").tag(HermesSignInMethod.browser)
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("hermes-sign-in-method")
     }
 }
 

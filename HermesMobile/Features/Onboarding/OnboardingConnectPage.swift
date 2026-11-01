@@ -84,6 +84,16 @@ struct OnboardingConnectPage: View {
 
                     statusMessages
 
+                    if viewModel.offersSignInChoice {
+                        HermesSignInMethodPicker(selection: $viewModel.signInMethod)
+                            .disabled(viewModel.isConnectionLocked)
+                    }
+
+                    if let rejection = viewModel.browserHeaderRejection {
+                        OnboardingStatusBanner(text: rejection, systemImage: "exclamationmark.triangle.fill",
+                                               tint: Color(red: 1.0, green: 0.47, blue: 0.34))
+                    }
+
                     if viewModel.showsHermesCredentials {
                         savedSignInRows
 
