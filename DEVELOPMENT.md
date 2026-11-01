@@ -89,13 +89,13 @@ launchctl kickstart -k gui/$(id -u)/com.hermes.webui
 
 ## Xcode version
 
-Local work, PR CI, and release builds all use **Xcode 27.0 (27A266a)**, so a
+Local work, PR CI, and release builds all use **Xcode 27.1 (27A9275)**, so a
 change that compiles on this Mac compiles on CI. CI and release builds run on
 GitHub's `xcode-27` runner image with `DEVELOPER_DIR` pinned in
 `.github/workflows/pr-ci.yml` and `.github/workflows/release-candidate-testflight.yml`.
 Check yours with `xcodebuild -version`. With several Xcodes installed, select
-27.0 for one shell with `export DEVELOPER_DIR=<path to Xcode 27.0>.app/Contents/Developer`,
-or for the whole Mac with `sudo xcode-select -s <path to Xcode 27.0>.app`.
+27.1 for one shell with `export DEVELOPER_DIR=<path to Xcode 27.1>.app/Contents/Developer`,
+or for the whole Mac with `sudo xcode-select -s <path to Xcode 27.1>.app`.
 Move the local Xcode and both workflow pins together.
 
 ## Local XCTest

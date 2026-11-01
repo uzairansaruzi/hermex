@@ -107,7 +107,7 @@ The webui contract is pinned to the commit in [`UPSTREAM_TESTED_SHA`](UPSTREAM_T
 
 ## Build from source
 
-Use the [App Store build](https://apps.apple.com/app/hermex/id6767006319) unless you're developing Hermex. To build it yourself, you need Xcode 27 and an iPhone, iPad, or simulator on iOS 18 or later. CI pins Xcode 27.0.
+Use the [App Store build](https://apps.apple.com/app/hermex/id6767006319) unless you're developing Hermex. To build it yourself, you need Xcode 27 and an iPhone, iPad, or simulator on iOS 18 or later. CI pins Xcode 27.1.
 
 Open `HermesMobile.xcodeproj` and run the `HermesMobile` scheme. The Xcode target is `HermesMobile`, and the app's display name is Hermex. Xcode resolves the dependencies through Swift Package Manager.
 
