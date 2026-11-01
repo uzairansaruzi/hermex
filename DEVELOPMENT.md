@@ -143,6 +143,12 @@ and PR CI, which runs every retained test with one simulator worker, is the
 full-suite gate. `--only` limits execution, but still builds the app and test
 target.
 
+The build dominates a focused run: 191 affected tests execute in seconds inside a
+two-minute command. Order a slice's runs to need few builds: the new regression
+test alone on the old code (red), then the fix and one run of every affected
+class. Pass `--keep-booted` while more runs or a simulator proof follow, and shut
+the device down once the slice is done.
+
 The runner waits for simulator readiness, terminates any running Hermex app on
 that device (an app left attached by a build-and-run makes the test runner hang
 before connecting, `0 tests executed`; set `HERMEX_BUNDLE_ID` if
