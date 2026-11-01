@@ -441,6 +441,24 @@ import Observation
         XCTAssertEqual(chat.model.completedReasoningGroups.map(\.anchorMessageID), ["tip/row-6"])
     }
 
+    /// A rebuilt turn stopped mid-tool saves no row after its tool, so its re-read would leave the
+    /// cards with nothing to anchor to and is not taken (#1531). The next turn's end re-reads
+    /// again, without a full receipt either, and the stopped turn's cards settle above its prompt.
+    func testARebuiltTurnStoppedMidToolSettlesAtTheNextTurnsEnd() async {
+        let chat = await openChat(pages: [0: [row(1, "user", "Hi"), row(2, "assistant", "Hello.")]])
+        await rebuildMidTool(chat)
+        chat.receive(event(7, "message.complete", ["status": .string("interrupted")]))
+        chat.receive(event(8, "session.info", ["running": .bool(false)]))
+
+        chat.receive(event(9, "session.info", ["running": .bool(true), "turn_started_at": .number(1_790_000_006)]))
+        chat.receive(event(10, "message.start"))
+        chat.pages.set(0, midToolRows + [row(6, "user", "Again"), row(7, "assistant", "Done.")])
+        chat.receive(event(11, "message.complete", ["status": .string("complete"), "text": .string("Done.")]))
+        chat.receive(event(12, "session.info", ["running": .bool(false)]))
+        await waitUntil("saved rows") { chat.model.messages.last?.rowID == 7 }
+        XCTAssertEqual(chat.model.completedToolCallGroups.map(\.anchorMessageID), ["tip/row-6"])
+    }
+
     /// The running turn's saved rows when a hole reattaches it mid-tool: its prompt, an
     /// assistant row with reasoning and a call but no text, and the call's tool row.
     private var midToolRows: [BotJSON] {
