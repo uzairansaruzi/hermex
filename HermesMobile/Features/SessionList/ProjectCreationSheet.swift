@@ -196,6 +196,7 @@ private struct ProjectFormSheet: View {
                     .disabled(trimmedProjectName.isEmpty || (folder != nil && trimmedFolderPath.isEmpty) || isSaving)
                 }
             }
+            .interactiveDismissDisabled(isSaving)
             .onAppear {
                 nameIsFocused = true
             }

@@ -1131,6 +1131,49 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertFalse(viewModel.isRenamingSession)
     }
 
+    /// An archive that fails while a rename is saving keeps its toast; the rename that then
+    /// succeeds closes its sheet and must not take the archive's reason with it.
+    @MainActor
+    func testRowFailureDuringASuccessfulRenameStaysInTheListError() async throws {
+        let renameStarted = expectation(description: "rename request started")
+        let releaseRename = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+            case "/api/session/rename":
+                renameStarted.fulfill()
+                _ = releaseRename.wait(timeout: .now() + 5)
+                return apiTestJSONResponse(#"{"ok": true}"#, for: request)
+            case "/api/session/archive":
+                let response = HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 500,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+                return (try XCTUnwrap(response), Data(#"{"error":"archive failed"}"#.utf8))
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        let session = try XCTUnwrap(viewModel.sessions.first)
+        let rename = Task { @MainActor in await viewModel.rename(session, to: "Launch Notes") }
+        await fulfillment(of: [renameStarted], timeout: 1)
+        let didArchive = await viewModel.archive(session)
+        let archiveFailure = try XCTUnwrap(viewModel.actionErrorMessage)
+        releaseRename.signal()
+        let didRename = await rename.value
+
+        XCTAssertFalse(didArchive)
+        XCTAssertTrue(didRename)
+        XCTAssertEqual(viewModel.actionErrorMessage, archiveFailure)
+        XCTAssertNil(viewModel.renameErrorMessage)
+    }
+
     @MainActor
     func testRenameSessionIsBlockedForCachedOfflineData() async throws {
         var requestedPaths: [String] = []

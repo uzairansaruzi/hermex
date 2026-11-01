@@ -1200,32 +1200,30 @@ final class SessionListViewModel {
     /// `renameErrorMessage`.
     func rename(_ session: SessionSummary, to rawTitle: String, modelContext: ModelContext? = nil) async -> Bool {
         renameErrorMessage = nil
-        defer { keepActionError(in: \.renameErrorMessage) }
         guard !isViewingCachedData else {
-            actionErrorMessage = String(localized: "Reconnect to the server to rename a session.")
+            renameErrorMessage = String(localized: "Reconnect to the server to rename a session.")
             return false
         }
 
         guard let sessionId = Self.nonEmpty(session.sessionId) else {
-            actionErrorMessage = String(localized: "The server did not provide a session ID.")
+            renameErrorMessage = String(localized: "The server did not provide a session ID.")
             return false
         }
 
         guard let title = Self.nonEmpty(rawTitle) else {
-            actionErrorMessage = String(localized: "Enter a session title.")
+            renameErrorMessage = String(localized: "Enter a session title.")
             return false
         }
 
         if session.hermes != nil { return await renameHermesSession(session, to: title) }
         isRenamingSession = true
-        actionErrorMessage = nil
         lastError = nil
         defer { isRenamingSession = false }
 
         do {
             let response = try await sessionMutator.rename(sessionID: sessionId, title: title)
             if let error = Self.nonEmpty(response.error) {
-                actionErrorMessage = error
+                renameErrorMessage = error
                 return false
             }
 
@@ -1249,7 +1247,7 @@ final class SessionListViewModel {
             guard !isCancellationError(error) else { return false }
 
             lastError = error
-            actionErrorMessage = error.localizedDescription
+            renameErrorMessage = error.localizedDescription
             return false
         }
     }
@@ -1387,18 +1385,16 @@ final class SessionListViewModel {
         modelContext: ModelContext? = nil
     ) async -> Bool {
         projectSheetErrorMessage = nil
-        defer { keepActionError(in: \.projectSheetErrorMessage) }
-        actionErrorMessage = nil
         lastError = nil
 
         guard let sessionId = session.sessionId else {
-            actionErrorMessage = String(localized: "The server did not provide a session ID.")
+            projectSheetErrorMessage = String(localized: "The server did not provide a session ID.")
             return false
         }
 
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
-            actionErrorMessage = String(localized: "Enter a project name.")
+            projectSheetErrorMessage = String(localized: "Enter a project name.")
             return false
         }
 
@@ -1412,12 +1408,12 @@ final class SessionListViewModel {
         do {
             let createResponse = try await client.createProject(name: name, color: color)
             guard let project = createResponse.project else {
-                actionErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project.")
+                projectSheetErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project.")
                 return false
             }
 
             guard let projectID = project.projectId, !projectID.isEmpty else {
-                actionErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project ID.")
+                projectSheetErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project ID.")
                 return false
             }
 
@@ -1429,7 +1425,7 @@ final class SessionListViewModel {
             guard !isCancellationError(error) else { return false }
 
             lastError = error
-            actionErrorMessage = error.localizedDescription
+            projectSheetErrorMessage = error.localizedDescription
             return false
         }
     }
@@ -1445,13 +1441,11 @@ final class SessionListViewModel {
         modelContext: ModelContext? = nil
     ) async -> Bool {
         projectSheetErrorMessage = nil
-        defer { keepActionError(in: \.projectSheetErrorMessage) }
-        actionErrorMessage = nil
         lastError = nil
 
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
-            actionErrorMessage = String(localized: "Enter a project name.")
+            projectSheetErrorMessage = String(localized: "Enter a project name.")
             return false
         }
 
@@ -1461,12 +1455,12 @@ final class SessionListViewModel {
         do {
             let createResponse = try await client.createProject(name: name, color: color)
             guard let project = createResponse.project else {
-                actionErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project.")
+                projectSheetErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project.")
                 return false
             }
 
             guard let projectID = project.projectId, !projectID.isEmpty else {
-                actionErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project ID.")
+                projectSheetErrorMessage = createResponse.error ?? String(localized: "The server did not return the new project ID.")
                 return false
             }
 
@@ -1477,7 +1471,7 @@ final class SessionListViewModel {
             guard !isCancellationError(error) else { return false }
 
             lastError = error
-            actionErrorMessage = error.localizedDescription
+            projectSheetErrorMessage = error.localizedDescription
             return false
         }
     }
@@ -1512,18 +1506,16 @@ final class SessionListViewModel {
     /// `projectSheetErrorMessage`.
     func rename(_ project: ProjectSummary, named rawName: String, color: String?) async -> Bool {
         projectSheetErrorMessage = nil
-        defer { keepActionError(in: \.projectSheetErrorMessage) }
-        actionErrorMessage = nil
         lastError = nil
 
         guard let projectID = project.projectId, !projectID.isEmpty else {
-            actionErrorMessage = String(localized: "The server did not provide a project ID.")
+            projectSheetErrorMessage = String(localized: "The server did not provide a project ID.")
             return false
         }
 
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
-            actionErrorMessage = String(localized: "Enter a project name.")
+            projectSheetErrorMessage = String(localized: "Enter a project name.")
             return false
         }
         if project.hermes != nil { return await renameHermesProject(projectID, named: name, color: color) }
@@ -1534,12 +1526,12 @@ final class SessionListViewModel {
         do {
             let response = try await client.renameProject(id: projectID, name: name, color: color)
             guard let renamedProject = response.project else {
-                actionErrorMessage = response.error ?? String(localized: "The server did not return the renamed project.")
+                projectSheetErrorMessage = response.error ?? String(localized: "The server did not return the renamed project.")
                 return false
             }
 
             guard renamedProject.projectId?.isEmpty == false else {
-                actionErrorMessage = response.error ?? String(localized: "The server did not return the renamed project ID.")
+                projectSheetErrorMessage = response.error ?? String(localized: "The server did not return the renamed project ID.")
                 return false
             }
 
@@ -1549,7 +1541,7 @@ final class SessionListViewModel {
             guard !isCancellationError(error) else { return false }
 
             lastError = error
-            actionErrorMessage = error.localizedDescription
+            projectSheetErrorMessage = error.localizedDescription
             return false
         }
     }
@@ -1621,14 +1613,6 @@ final class SessionListViewModel {
     }
 
     func clearActionError() {
-        actionErrorMessage = nil
-    }
-
-    /// Moves a failed save's reason from the list's failure toast into the sheet it came from,
-    /// `sheetError`: the toast would show behind the open sheet and could expire unseen (#1410).
-    private func keepActionError(in sheetError: ReferenceWritableKeyPath<SessionListViewModel, String?>) {
-        guard let message = actionErrorMessage else { return }
-        self[keyPath: sheetError] = message
         actionErrorMessage = nil
     }
 
@@ -2577,11 +2561,15 @@ final class SessionListViewModel {
     /// whose answer came after the list's client closed (`.stale`) may have landed, so the sheet
     /// stays without a message.
     private func renameHermesSession(_ session: SessionSummary, to title: String) async -> Bool {
-        guard let target = hermesTarget(session) else { return false }
+        guard let target = hermesTarget(session) else {
+            // The sheet is up, so the reason goes there rather than to the list's toast.
+            renameErrorMessage = actionErrorMessage
+            actionErrorMessage = nil
+            return false
+        }
         let (wire, key, profile) = target
         isRenamingSession = true
         renameErrorMessage = nil
-        actionErrorMessage = nil
         defer { isRenamingSession = false }
         do {
             let kept = try await wire.updateSession(.title(title), key: key, profile: profile)
