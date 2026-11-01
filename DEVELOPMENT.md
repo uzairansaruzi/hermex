@@ -115,7 +115,10 @@ or fail, so a session's device doesn't keep holding gigabytes of memory after
 the session ends. A simulator that was already booted stays booted. Pass
 `--keep-booted` to leave a device the run booted running, for manual testing or
 a quick fix-and-rerun loop. After a timeout, a setup failure, or a test runner
-that hung twice, the device stays up for `scripts/sim-doctor`.
+that hung twice, the device stays up for `scripts/sim-doctor`. On a 16 GB Mac
+the run always shuts its simulator down unless `--keep-booted` is passed, even
+one that was already booted or that timed out: one leftover simulator pages the
+host enough to break every other runner's boots.
 
 The tests run inside the installed app, so a test can change its real Keychain,
 cookies and defaults. `HermesMobileTests/TestHostStateGuard.swift` snapshots
@@ -171,15 +174,21 @@ startup and test counts/failures at completion; `command.json`, `test.log`,
 
 Wait on the runner using the longest supported tool wait; avoid separate log
 polls or status commands. It checks readiness with bounded commands (120 seconds
-for boot operations) and allows 30 minutes for build and tests.
+for boot operations) and allows 30 minutes for build and tests. Each test gets
+three minutes (`-default-test-execution-time-allowance`), so a deadlocked test
+fails on its own instead of spending the whole run.
 `--boot-timeout` and `--test-timeout` override those limits in seconds when a
 known workload requires it.
 
 It retries in one case only. Xcode sometimes fails with `The test runner hung
 before establishing connection` before any test runs: the app launches, but
 XCTest inside it never hears that the simulator's `testmanagerd` is ready, and
-xcodebuild gives up after 300 seconds. On that failure, and only when no test
-passed, the runner reboots that simulator (its own UDID only), stops the app,
+xcodebuild gives up after several minutes. The runner doesn't wait for that:
+once the build is done and the log has then been silent for 150 seconds before
+any suite started, it stops the attempt and treats it as the same hang. It
+tells the build is done from the `IDESchemeActionSDKRecord` line xcodebuild
+logs as the test action starts; without that line it waits for xcodebuild. On that failure, and only when no
+test passed, the runner reboots that simulator (its own UDID only), stops the app,
 and reruns once within the same test time limit, printing `RETRY:`. The retry
 writes `test-retry.log`, `summary-retry.json`, and `Tests-retry.xcresult` next
 to the first attempt's files. Every other failure is reported without a retry.
