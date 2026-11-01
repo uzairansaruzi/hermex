@@ -273,19 +273,23 @@ struct ChatAttachmentPreviewView: View {
 /// An attachment that is already known to be an image opens in the full-bleed lightbox.
 /// Text, audio, Quick Look documents, and anything without a preview keep
 /// `ChatAttachmentPreviewView`, which only learns what it has once the server answers.
+/// `page` ties it to its gallery's pager.
 struct ChatAttachmentImageLightbox: View {
     let onAPIError: (Error) -> Void
 
     private let item: ChatAttachmentPreviewItem
+    private let page: ImageLightboxPage
     @State private var viewModel: ChatAttachmentPreviewViewModel
 
     init(
         session: SessionSummary,
         server: URL,
         item: ChatAttachmentPreviewItem,
+        page: ImageLightboxPage,
         onAPIError: @escaping (Error) -> Void
     ) {
         self.item = item
+        self.page = page
         self.onAPIError = onAPIError
         _viewModel = State(
             initialValue: ChatAttachmentPreviewViewModel(session: session, server: server, item: item)
@@ -298,6 +302,7 @@ struct ChatAttachmentImageLightbox: View {
             title: item.displayName,
             path: item.displayPath,
             imageAccessibilityLabel: item.displayName,
+            page: page,
             onRetry: { Task { await loadAttachment(force: true) } }
         )
         .task {
@@ -308,7 +313,7 @@ struct ChatAttachmentImageLightbox: View {
     private var content: ImageLightboxContent {
         switch viewModel.preview {
         case let .image(file):
-            if let image = UIImage(data: file.data) {
+            if let image = viewModel.previewImage {
                 return .image(
                     image,
                     detail: ByteCountFormatter.string(
@@ -349,7 +354,14 @@ final class ChatAttachmentPreviewViewModel {
     private let apiClient: APIClient
     private var didLoad = false
 
-    private(set) var preview: FilePreviewContent?
+    private(set) var preview: FilePreviewContent? {
+        didSet {
+            previewImage = if case let .image(file) = preview { UIImage(data: file.data) } else { nil }
+        }
+    }
+    /// An image preview decoded once, so a redraw hands the lightbox the same image and
+    /// keeps its zoom.
+    private(set) var previewImage: UIImage?
     private(set) var isLoading = false
     private(set) var errorMessage: String?
     private(set) var lastError: Error?

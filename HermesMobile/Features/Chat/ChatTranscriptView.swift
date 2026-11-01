@@ -102,8 +102,8 @@ struct ChatTranscriptView: View {
     let onScrollToBottom: (ScrollViewProxy) -> Void
     let onScrollToLatestTranscriptMessage: (ScrollViewProxy) -> Void
     let onScrollToLatestContent: (ScrollViewProxy, Bool) -> Void
-    let onPreviewAttachment: (MessageAttachment, Data?) -> Void
-    let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
+    let onPreviewAttachment: (MessageAttachmentPreview, [MessageAttachmentPreview]) -> Void
+    let onPreviewTranscriptMedia: (TranscriptMediaReference, [TranscriptMediaReference]) -> Void
     let onAskHermex: (String) -> Void
     let onToggleListening: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
@@ -713,8 +713,8 @@ struct ChatTranscriptMessageBlock: View, Equatable {
     let transcriptMediaCacheNamespace: String
     let actionContext: (ChatMessage, Int) -> MessageActionContext?
     let shouldRenderMessageRow: (ChatMessage) -> Bool
-    let onPreviewAttachment: (MessageAttachment, Data?) -> Void
-    let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
+    let onPreviewAttachment: (MessageAttachmentPreview, [MessageAttachmentPreview]) -> Void
+    let onPreviewTranscriptMedia: (TranscriptMediaReference, [TranscriptMediaReference]) -> Void
     let onAskHermex: (String) -> Void
     let onToggleListening: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
@@ -998,8 +998,8 @@ private struct ChatTranscriptMessageRow: View {
     let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
     let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let transcriptMediaCacheNamespace: String
-    let onPreviewAttachment: (MessageAttachment, Data?) -> Void
-    let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
+    let onPreviewAttachment: (MessageAttachmentPreview, [MessageAttachmentPreview]) -> Void
+    let onPreviewTranscriptMedia: (TranscriptMediaReference, [TranscriptMediaReference]) -> Void
     let onAskHermex: (String) -> Void
     let onToggleListening: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void

@@ -17,7 +17,12 @@ final class TranscriptMediaPreviewViewModel {
     private var isPastPreviewCap = false
     private var temporaryVideoURL: URL?
 
-    private(set) var previewData: Data?
+    private(set) var previewData: Data? {
+        didSet { previewImage = previewData.flatMap(UIImage.init(data:)) }
+    }
+    /// `previewData` decoded once, so a redraw hands the lightbox the same image and keeps
+    /// its zoom.
+    private(set) var previewImage: UIImage?
     private(set) var audioData: Data?
     private(set) var videoFileURL: URL?
     private(set) var originalByteCount: Int?

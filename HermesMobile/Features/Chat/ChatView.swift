@@ -390,8 +390,10 @@ struct ChatView: View {
     @State private var showRegenerateDiscardConfirmation = false
     @State private var attachmentPreviewItem: ChatAttachmentPreviewItem?
     @State private var transcriptMediaPreviewItem: TranscriptMediaPreviewItem?
-    @State private var transcriptMediaImageItem: TranscriptMediaPreviewItem?
-    @State private var attachmentImageItem: ChatAttachmentPreviewItem?
+    /// A reply's images in the lightbox, opened at the tapped one.
+    @State private var transcriptImageGallery: ImageLightboxGallery<TranscriptMediaPreviewItem>?
+    /// A message's or the composer's image attachments in the lightbox.
+    @State private var attachmentImageGallery: ImageLightboxGallery<ChatAttachmentPreviewItem>?
     /// A Hermes sent file or MEDIA document in the shared native artifact preview.
     @State private var hermesFilePreviewItem: HermesFilePreviewItem?
     /// A workspace file a chat link named; presented on the source viewer at its line.
@@ -728,7 +730,11 @@ struct ChatView: View {
                 }
             },
             onPreviewAttachment: { attachment in
-                presentAttachmentPreview(ChatAttachmentPreviewItem(pending: attachment))
+                let pending = viewModel.pendingAttachments
+                guard let index = pending.firstIndex(where: { $0.id == attachment.id }) else {
+                    return presentAttachmentPreview([ChatAttachmentPreviewItem(pending: attachment)], at: 0)
+                }
+                presentAttachmentPreview(pending.map(ChatAttachmentPreviewItem.init(pending:)), at: index)
             },
             onDismissUploadAttachmentError: {
                 viewModel.setUploadAttachmentError(nil)
@@ -789,30 +795,43 @@ struct ChatView: View {
     }
 
     /// Hermes documents share BotArtifactPreview. An image is known to be an image
-    /// before it is fetched, so it opens in the full-bleed lightbox. Everything else
-    /// keeps the preview sheet, which still has to decide between audio, video, and
-    /// an unsupported file once the bytes arrive.
-    private func presentTranscriptMediaPreview(_ reference: TranscriptMediaReference) {
+    /// before it is fetched, so it opens in the full-bleed lightbox, paging through the
+    /// reply's other images. Everything else keeps the preview sheet, which still has to
+    /// decide between audio, video, and an unsupported file once the bytes arrive.
+    private func presentTranscriptMediaPreview(
+        _ reference: TranscriptMediaReference,
+        in replyMedia: [TranscriptMediaReference]
+    ) {
         presentPreviewRestoringComposerFocusIfNeeded {
-            let item = TranscriptMediaPreviewItem(reference: reference)
             if isHermesSession, reference.isHermesDocumentCandidate {
                 hermesFilePreviewItem = HermesFilePreviewItem(reference: reference)
                 return
             }
-            if reference.isRasterImageCandidate, !reference.isExtensionlessRemoteMediaCandidate {
-                transcriptMediaImageItem = item
+            if reference.opensInImageLightbox {
+                transcriptImageGallery = ImageLightboxGallery(tapped: reference, in: replyMedia)
             } else {
-                transcriptMediaPreviewItem = item
+                transcriptMediaPreviewItem = TranscriptMediaPreviewItem(reference: reference)
             }
         }
     }
 
     /// A Hermes chip with a host path opens from the host with Save to Files and Share
     /// (#1030); every other chip, a Hermes one still sending included, opens its local
-    /// copy or the webui file.
-    private func presentSentAttachmentPreview(_ attachment: MessageAttachment, localData: Data?) {
+    /// copy or the webui file. An image pages through the message's images that open
+    /// the same way.
+    private func presentSentAttachmentPreview(
+        _ tapped: MessageAttachmentPreview,
+        among siblings: [MessageAttachmentPreview]
+    ) {
+        let attachment = tapped.attachment
         guard isHermesSession, let path = attachment.path, !path.isEmpty else {
-            return presentAttachmentPreview(ChatAttachmentPreviewItem(message: attachment, localData: localData))
+            let pageable = siblings.filter { !isHermesSession || $0.attachment.path?.isEmpty != false }
+            guard let index = pageable.firstIndex(where: { $0.attachment == attachment }) else {
+                let item = ChatAttachmentPreviewItem(message: attachment, localData: tapped.localData)
+                return presentAttachmentPreview([item], at: 0)
+            }
+            let items = pageable.map { ChatAttachmentPreviewItem(message: $0.attachment, localData: $0.localData) }
+            return presentAttachmentPreview(items, at: index)
         }
         presentPreviewRestoringComposerFocusIfNeeded {
             hermesFilePreviewItem = HermesFilePreviewItem(
@@ -822,23 +841,31 @@ struct ChatView: View {
         }
     }
 
-    private func presentAttachmentPreview(_ item: ChatAttachmentPreviewItem) {
+    /// Opens `items[index]`: an image in the lightbox, paging through the image items;
+    /// anything else in the preview sheet.
+    private func presentAttachmentPreview(_ items: [ChatAttachmentPreviewItem], at index: Int) {
+        let item = items[index]
         presentPreviewRestoringComposerFocusIfNeeded {
             if item.inferredIsImage {
-                attachmentImageItem = item
+                attachmentImageGallery = ImageLightboxGallery(tapped: item, siblings: items, isImage: \.inferredIsImage)
             } else {
                 attachmentPreviewItem = item
             }
         }
     }
 
-    private func transcriptMediaImageLightbox(for item: TranscriptMediaPreviewItem) -> some View {
-        TranscriptMediaImageLightbox(
-            server: server,
-            files: transcriptMediaFiles,
-            item: item,
-            onAPIError: onAPIError
-        )
+    private func transcriptImageLightbox(
+        for gallery: ImageLightboxGallery<TranscriptMediaPreviewItem>
+    ) -> some View {
+        ImageLightboxPager(gallery: gallery) { item, page in
+            TranscriptMediaImageLightbox(
+                server: server,
+                files: transcriptMediaFiles,
+                item: item,
+                page: page,
+                onAPIError: onAPIError
+            )
+        }
     }
 
     private func transcriptMediaPreviewView(for item: TranscriptMediaPreviewItem) -> some View {
@@ -1243,15 +1270,18 @@ struct ChatView: View {
                 }
             }
             .sheet(item: $transcriptMediaPreviewItem, content: transcriptMediaPreviewView)
-            .fullScreenCover(item: $attachmentImageItem) { item in
-                ChatAttachmentImageLightbox(
-                    session: session,
-                    server: server,
-                    item: item,
-                    onAPIError: onAPIError
-                )
+            .fullScreenCover(item: $attachmentImageGallery) { gallery in
+                ImageLightboxPager(gallery: gallery) { item, page in
+                    ChatAttachmentImageLightbox(
+                        session: session,
+                        server: server,
+                        item: item,
+                        page: page,
+                        onAPIError: onAPIError
+                    )
+                }
             }
-            .onChange(of: attachmentImageItem == nil) { _, isDismissed in
+            .onChange(of: attachmentImageGallery == nil) { _, isDismissed in
                 if isDismissed {
                     restoreComposerFocusAfterPreviewIfNeeded()
                 }
@@ -1266,8 +1296,8 @@ struct ChatView: View {
                     restoreComposerFocusAfterPreviewIfNeeded()
                 }
             }
-            .fullScreenCover(item: $transcriptMediaImageItem, content: transcriptMediaImageLightbox)
-            .onChange(of: transcriptMediaImageItem == nil) { _, isDismissed in
+            .fullScreenCover(item: $transcriptImageGallery, content: transcriptImageLightbox)
+            .onChange(of: transcriptImageGallery == nil) { _, isDismissed in
                 if isDismissed {
                     restoreComposerFocusAfterPreviewIfNeeded()
                 }
@@ -2235,9 +2265,7 @@ struct ChatView: View {
                 scrollToLatestContent(proxy, animated: animated)
             },
             onPreviewAttachment: presentSentAttachmentPreview,
-            onPreviewTranscriptMedia: { reference in
-                presentTranscriptMediaPreview(reference)
-            },
+            onPreviewTranscriptMedia: presentTranscriptMediaPreview,
             onAskHermex: addSelectedPassageToDraft,
             onToggleListening: { context in
                 viewModel.toggleListening(to: context)
