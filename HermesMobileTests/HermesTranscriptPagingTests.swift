@@ -165,13 +165,13 @@ import Observation
             row(2, "user", skill + Self.cronHint + "Rewrite the changelog.\nKeep links."),
             row(3, "user", notice + "\n\nThe user has provided the following instruction alongside the skill invocation: "
                 + Self.cronHint + "Triage."),
-            row(4, "user", notice + "\n" + skill + Self.cronHint + "Rewrite.")
+            row(4, "user", notice + "\n" + skill + Self.cronHint + "Rewrite.\nKeep links.")
         ], root: "cron_job_20261031_090000").messages
 
         let prompts = try messages.map { try XCTUnwrap(CronRunPrompt($0), $0.content ?? "") }
         XCTAssertEqual(prompts.map(\.skills), [[], ["unslop"], [], ["unslop"]])
         XCTAssertEqual(prompts.map(\.body), ["Triage new mail.\nLabel billing.", "Rewrite the changelog. Keep links.",
-                                             "Triage.", "Rewrite."])
+                                             "Triage.", "Rewrite.\nKeep links."])
     }
 
     /// Any other row keeps its bubble: an ordinary prompt (or a host's clean `display_content`),

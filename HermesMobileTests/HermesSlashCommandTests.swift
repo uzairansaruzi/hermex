@@ -211,9 +211,11 @@ import Observation
     // MARK: Sessions (#1053)
 
     /// `/resume <name>` searches the chat's Profile for the name and opens the one session
-    /// titled exactly that, in any case; a title that only starts with it doesn't count.
+    /// titled exactly that, in any case; a title that only starts with it doesn't count. It opens
+    /// under the row's lineage root, so a compressed scheduled task's run shows its card (#1413).
     func testResumeOpensTheOneSessionTitledExactlyThat() async throws {
-        let chat = await openChat(search: [Self.searchResult("20261007_090000_aaaaaa", title: "Launch plan"),
+        let chat = await openChat(search: [Self.searchResult("20261007_090000_aaaaaa", title: "Launch plan",
+                                                             root: "cron_job_20261007_080000"),
                                            Self.searchResult("20261007_090000_bbbbbb", title: "Launch plan draft")])
 
         let result = await chat.model.runHermesSlashCommand("/resume launch PLAN")
@@ -222,6 +224,7 @@ import Observation
             return XCTFail("Expected the session titled Launch plan, got \(String(describing: result))")
         }
         XCTAssertEqual(opened.target, .session(profile: "default", key: "20261007_090000_aaaaaa"))
+        XCTAssertTrue(opened.isCronRun)
         let searches = HermesHostFixture.requests.filter { $0.url?.path == "/api/sessions/search" }
         XCTAssertEqual(searches.count, 1)
         let query = try XCTUnwrap(searches.first?.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems)
@@ -408,9 +411,9 @@ import Observation
     }
 
     /// One `GET /api/sessions/search` id match in the pin's shape (#1053).
-    private static func searchResult(_ id: String, title: String) -> BotJSON {
+    private static func searchResult(_ id: String, title: String, root: String? = nil) -> BotJSON {
         .object(["snippet": .string("Session ID: \(id)"), "role": .null, "session_id": .string(id), "id": .string(id),
-                 "lineage_root": .string(id), "profile": .string("default"), "title": .string(title),
+                 "lineage_root": .string(root ?? id), "profile": .string("default"), "title": .string(title),
                  "last_active": .number(1_791_400_927), "started_at": .number(1_791_400_926), "archived": .bool(false)])
     }
 

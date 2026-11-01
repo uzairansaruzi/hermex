@@ -357,9 +357,10 @@ enum HermesTranscriptProjection {
 
 /// A scheduled task's run prompt (#1413): a `cron_` session's row the host opens on its cron
 /// hint (`_CRON_HINT`, `cron/scheduler_prompt.py` at the pin), read from the text the history
-/// shows. The hint opens the row, follows the `/skill` label(s) `HermesTranscriptProjection.skillInvocation` rewrote a skill
-/// job's row to, or follows the notice of skills the job could not load. Nil for any other text,
-/// which keeps its bubble. The row's Copy still copies its `content` unchanged, hint included.
+/// shows. The hint opens the row, follows the `/skill` label(s)
+/// `HermesTranscriptProjection.skillInvocation` rewrote a skill job's row to, or follows the
+/// notice of skills the job could not load and the blocks of those it did. Nil for any other
+/// text, which keeps its bubble. The row's Copy still copies its `content` unchanged, hint included.
 struct CronRunPrompt: Equatable {
     /// The skills the job loaded, without their slash.
     let skills: [String]
@@ -369,22 +370,22 @@ struct CronRunPrompt: Equatable {
     private static let hint = "[IMPORTANT: You are running as a scheduled cron job."
     private static let missingSkills = "[IMPORTANT: The following skill(s) were listed for this job but could not be found and were skipped: "
     private static let instruction = "The user has provided the following instruction alongside the skill invocation: "
+    private static let skill = "[IMPORTANT: The user has invoked the \""
 
     init?(_ message: ChatMessage) {
         guard message.role == "user", let content = message.content else { return nil }
         var rest = content[...]
-        if rest.hasPrefix(Self.missingSkills) {
-            // The notice comes first, so the history left the row as stored: the skills that did
-            // load, or none and the instruction marker, then the hint.
-            guard let end = Self.end(ofBracketOpening: rest) else { return nil }
-            rest = rest[end...].drop(while: \.isWhitespace)
-            if let invocation = HermesTranscriptProjection.skillInvocation(String(rest)) {
-                rest = invocation[...]
-            } else if rest.hasPrefix(Self.instruction) {
-                rest = rest.dropFirst(Self.instruction.count)
-            }
-        }
         var skills: [String] = []
+        if rest.hasPrefix(Self.missingSkills) {
+            // The notice comes first, so the history left the row as stored: the blocks of the
+            // skills that did load, each on a line opening on its marker, then the instruction
+            // marker and the hint. The names come from the markers, leaving the body untouched.
+            guard let task = rest.range(of: Self.instruction + Self.hint) else { return nil }
+            for block in rest[..<task.lowerBound].split(separator: "\n") where block.hasPrefix(Self.skill) {
+                skills.append(String(block.dropFirst(Self.skill.count).prefix { $0 != "\"" }))
+            }
+            rest = rest[task.lowerBound...].dropFirst(Self.instruction.count)
+        }
         while rest.hasPrefix("/"), let space = rest.firstIndex(of: " ") {
             skills.append(String(rest[rest.index(after: rest.startIndex)..<space]))
             rest = rest[rest.index(after: space)...]

@@ -3176,7 +3176,7 @@ final class ChatViewModel {
         if match.id == engine.storedKey { return .executed(message: nil) }
         return .openedHermesSession(HermesSessionChat(server: engine.server, connection: engine.connection,
                                                       target: .session(profile: match.profile ?? profile, key: match.id),
-                                                      parentKey: match.parentSessionID))
+                                                      parentKey: match.parentSessionID, lineageRoot: match.lineageRootID))
     }
 
     /// Moves this new Hermes chat's draft, files included, to `chat`, which replaces it. A
