@@ -128,9 +128,10 @@ import Observation
             }
         } catch {
             guard context == owner, revision == readRevision, !Task.isCancelled else { return }
-            // A -32601 needs nothing here: the connection has recorded it.
+            // A -32601 needs nothing here: the connection has recorded it. A lost connection is
+            // the conversation's to report, and its reattach reads the catalog again.
             if isRefused(error) { refused.insert(call.method) }
-            else if !isUnsupported(error) { errorMessage = error.localizedDescription }
+            else if !isUnsupported(error), error as? BotFailure != .transport { errorMessage = error.localizedDescription }
         }
     }
 
