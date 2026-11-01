@@ -253,6 +253,10 @@ import XCTest
         let rootView = try XCTUnwrap(window.rootViewController?.view)
         XCTAssertTrue(overlay.superview === rootView.superview)
         XCTAssertFalse(overlay.isDescendant(of: rootView))
+        // The attachment picker's own local same-window overlay must still stop at the keyboard
+        // layout guide's top so the composer beneath it stays reachable, not fill the whole root view.
+        XCTAssertEqual(overlay.frame.maxY, rootView.keyboardLayoutGuide.layoutFrame.minY, accuracy: 0.5,
+                        "The attachment overlay must stop at the keyboard layout guide's top, not the root view's bottom")
 
         model.isPresented = false
         await settle(window)

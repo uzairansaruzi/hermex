@@ -1,0 +1,4 @@
+# Runtime-only symlink to native-preview/node_modules, created on demand so tsc can resolve
+# native/catalog/hermes's imports (see README.md's "node_modules symlink" note). No trailing
+# slash: the root .gitignore's node_modules/ pattern only matches directories, not this symlink.
+node_modules

@@ -1,0 +1,3 @@
+.build/
+.swiftpm/
+Tests/IconRenderTests/GeneratedNames.swift

@@ -93,17 +93,27 @@ struct HermesMobileApp: App {
     var body: some Scene {
         WindowGroup {
             #if DEBUG
-            ContentView(authManager: authManager)
-                .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
-                // Signs in from `HERMEX_DEV_*` launch environment variables
-                // (`scripts/sim-login`); a no-op when they are absent.
-                .task(id: authManager.state) { await DevAutoLogin.run(authManager: authManager) }
-                .overlay(alignment: .topLeading) {
-                    // `--hitch-meter`: frame-hitch readout for profiling (#870).
-                    if HitchMeter.isEnabled {
-                        HitchMeterOverlay()
-                    }
+            if ProcessInfo.processInfo.arguments.contains("--hermex-overlay-lab") {
+                // Launch argument hook so the unadopted custom overlay components (Dialog and
+                // Popover Menu) can be exercised in a signed simulator build without a
+                // production call site (issue #607): `xcrun simctl launch <udid>
+                // com.uzairansar.hermesmobile --hermex-overlay-lab`
+                NavigationStack {
+                    HermexOverlayLab()
                 }
+            } else {
+                ContentView(authManager: authManager)
+                    .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+                    // Signs in from `HERMEX_DEV_*` launch environment variables
+                    // (`scripts/sim-login`); a no-op when they are absent.
+                    .task(id: authManager.state) { await DevAutoLogin.run(authManager: authManager) }
+                    .overlay(alignment: .topLeading) {
+                        // `--hitch-meter`: frame-hitch readout for profiling (#870).
+                        if HitchMeter.isEnabled {
+                            HitchMeterOverlay()
+                        }
+                    }
+            }
             #else
             ContentView(authManager: authManager)
                 .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
