@@ -94,6 +94,74 @@ final class ActionToastStateTests: XCTestCase {
         XCTAssertNil(state.toast)
     }
 
+    func testBusyToastStaysUntilUpdatedThenDismissesOnTheResultClock() async {
+        let sleeper = ParkedSleeper()
+        let parked = expectation(description: "result dismissal parked")
+        sleeper.didPark = { _ in parked.fulfill() }
+        let state = ActionToastState(sleep: sleeper.sleep, isVoiceOverRunning: { false })
+
+        let id = state.show(ActionToast(message: "Pushing...", systemImage: "arrow.up.circle",
+                                        accessibilityLabel: "Pushing...", tone: .busy))
+        state.update(id, to: ActionToast(message: "Push complete", systemImage: "checkmark.circle.fill",
+                                         accessibilityLabel: "Push complete", tone: .success,
+                                         detailLines: ["main"]))
+        await fulfillment(of: [parked], timeout: 5)
+
+        // Main-actor tasks start in the order they were made, so a busy clock
+        // would have reached the sleeper before the result's did.
+        XCTAssertEqual(sleeper.durations, [.seconds(6)], "Only the result has a clock, and its detail earns six seconds")
+        XCTAssertEqual(state.toast?.id, id)
+
+        let dismissed = expectation(description: "result dismissed")
+        withObservationTracking { _ = state.toast } onChange: { dismissed.fulfill() }
+        sleeper.resume(0)
+        await fulfillment(of: [dismissed], timeout: 5)
+
+        XCTAssertNil(state.toast)
+    }
+
+    func testUpdateKeepsTheToastWhileShowReplacesIt() {
+        let state = ActionToastState(sleep: { _ in }, isVoiceOverRunning: { true })
+        let busy = state.show(ActionToast(message: "Committing...", systemImage: "smallcircle.filled.circle",
+                                          accessibilityLabel: "Committing...", tone: .busy))
+
+        state.update(busy, to: makeToast(message: "Pushing..."))
+        XCTAssertEqual(state.toast?.id, busy, "An update keeps the toast, and VoiceOver's focus on it")
+        XCTAssertEqual(state.toast?.message, "Pushing...")
+
+        let undo = state.show(makeToast(message: "Archived"))
+        XCTAssertNotEqual(undo, busy)
+
+        // The Git operation finishes after the Undo toast replaced its toast.
+        state.update(busy, to: makeToast(message: "Push complete"))
+        state.dismiss(busy)
+        XCTAssertEqual(state.toast?.id, undo)
+        XCTAssertEqual(state.toast?.message, "Archived")
+
+        // A toast swiped away stays gone when its operation reports late.
+        state.dismiss(undo)
+        state.update(undo, to: makeToast(message: "Push complete"))
+        XCTAssertNil(state.toast)
+    }
+
+    /// Chat shows Git feedback at the top and notices over the composer from one state, so a
+    /// notice such as an expired waiting send (#1407) takes over from a busy Git toast and a late
+    /// Git result can't bring the top toast back.
+    func testAToastShowsOnlyAtItsOwnEdgeAndANoticeAtTheOtherEdgeReplacesIt() {
+        let state = ActionToastState(sleep: { _ in }, isVoiceOverRunning: { true })
+        let git = state.show(ActionToast(message: "Pushing...", systemImage: "arrow.up.circle",
+                                         accessibilityLabel: "Pushing...", tone: .busy, edge: .top))
+        XCTAssertEqual(state.toast(at: .top)?.id, git)
+        XCTAssertNil(state.toast(at: .bottom))
+
+        let notice = state.show(ActionToast(message: "Not sent", systemImage: "clock", accessibilityLabel: "Not sent"))
+        state.update(git, to: ActionToast(message: "Push complete", systemImage: "checkmark.circle.fill",
+                                          accessibilityLabel: "Push complete", tone: .success, edge: .top))
+
+        XCTAssertNil(state.toast(at: .top))
+        XCTAssertEqual(state.toast(at: .bottom)?.id, notice)
+    }
+
     private func makeToast(
         message: String = "Archived",
         action: @escaping @MainActor () -> Void = {}
@@ -105,6 +173,28 @@ final class ActionToastStateTests: XCTestCase {
             actionTitle: "Undo",
             action: action
         )
+    }
+}
+
+/// A toast leaves on a sideways drag past a quarter of its width or a sideways
+/// flick (#1410); a vertical drag never dismisses it.
+final class ActionToastDismissPolicyTests: XCTestCase {
+    func testDismissesOnAQuarterWidthOrAFlickButNotAVerticalDrag() {
+        let width: CGFloat = 360
+
+        XCTAssertTrue(ActionToastDismissPolicy.shouldDismiss(
+            translation: CGSize(width: 95, height: 4), velocity: .zero, width: width))
+        XCTAssertTrue(ActionToastDismissPolicy.shouldDismiss(
+            translation: CGSize(width: -30, height: 2), velocity: CGSize(width: -900, height: 0), width: width))
+        XCTAssertFalse(ActionToastDismissPolicy.shouldDismiss(
+            translation: CGSize(width: 60, height: 3), velocity: CGSize(width: 100, height: 0), width: width),
+            "A short, slow drag springs back")
+        XCTAssertFalse(ActionToastDismissPolicy.shouldDismiss(
+            translation: CGSize(width: 100, height: 240), velocity: CGSize(width: 900, height: 1500), width: width),
+            "A mostly vertical drag is a scroll, not a dismissal")
+        XCTAssertFalse(ActionToastDismissPolicy.shouldDismiss(
+            translation: CGSize(width: 40, height: 0), velocity: CGSize(width: -900, height: 0), width: width),
+            "A flick back toward the start cancels the swipe")
     }
 }
 

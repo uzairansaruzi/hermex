@@ -8,6 +8,9 @@ enum AppConfig {
     static let reportProblemURL = URL(staticString: "https://github.com/uzairansaruzi/hermex/issues/new/choose")
     /// The bug report form; `SupportReport.issueURL` fills in its version inputs.
     static let bugReportURL = URL(staticString: "https://github.com/uzairansaruzi/hermex/issues/new?template=bug_report.yml")
+    /// The playbook a user's Hermes agent follows to triage a Hermex problem (#1477). Read from
+    /// `master` by the agent, so triage improves without an app release.
+    static let triagePlaybookURL = URL(staticString: "https://raw.githubusercontent.com/uzairansaruzi/hermex/master/.github/triage/PLAYBOOK.md")
     static let privacyPolicyURL = URL(staticString: "https://www.uzairansar.com/hermes-mobile/privacy")
     static let supportURL = URL(staticString: "https://www.uzairansar.com/hermes-mobile")
 }

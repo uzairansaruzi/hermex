@@ -39,7 +39,8 @@ struct ContentView: View {
             .onChange(of: shares.pending?.reservationID) {
                 switchServer(shares.shortcutRoute(state: authManager.state, servers: authManager.servers))
             }
-            .alert("Shortcut Can’t Open", isPresented: Binding(get: { unopenableShortcut != nil }, set: { isPresented in
+            .alert((unopenableShortcut?.share.sharedImport.shortcut?.origin ?? .shortcut).cantOpenTitle,
+                   isPresented: Binding(get: { unopenableShortcut != nil }, set: { isPresented in
                 // Dismissed without a button (Escape, VoiceOver's escape) is Not Now. A button's
                 // action may run after this, so the release waits a turn and skips a settled text.
                 guard !isPresented, let share = unopenableShortcut?.share else { return }
@@ -50,7 +51,10 @@ struct ContentView: View {
                 Button("Discard", role: .destructive) { consumePendingSharedImport(shortcut.share) }
                 Button("Not Now", role: .cancel) { releasePendingSharedImport(shortcut.share) }
             } message: { shortcut in
-                Text("\(shortcut.server) was removed from Hermex, so the text from Shortcuts can’t open there.")
+                switch shortcut.share.sharedImport.shortcut?.origin ?? .shortcut {
+                case .shortcut: Text("\(shortcut.server) was removed from Hermex, so the text from Shortcuts can’t open there.")
+                case .troubleshooting: Text("\(shortcut.server) was removed from Hermex, so the troubleshooting text can’t open there.")
+                }
             }
             .task {
                 // #246: on cold launch, end any Live Activity left "running" by a
@@ -120,7 +124,7 @@ struct ContentView: View {
         case .loggedIn(let server) where authManager.kind(of: server) == .hermes:
             HermesServerHome(authManager: authManager, server: server, pendingBotDestination: $pendingLinks.bot,
                              pendingSessionDestination: $pendingLinks.hermesSession,
-                             pendingNewChat: $pendingLinks.hermesNewChat,
+                             pendingNewChat: $pendingLinks.hermesNewChat, pendingUsage: $pendingLinks.hermesUsage,
                              pendingShare: shares.offered(to: server), claimShare: { shares.claim($0) },
                              didRouteShare: consumePendingSharedImport, didDeclineShare: releasePendingSharedImport,
                              didAbandonShare: { shares.abandon($0) }, shortcutReview: shortcutReview)
@@ -154,6 +158,7 @@ struct ContentView: View {
         pendingLinks.webuiPush = nil
         pendingLinks.hermesSession = nil
         pendingLinks.hermesNewChat = nil
+        pendingLinks.hermesUsage = nil
         if let destination = WebuiPushDestination(url: url) {
             switchServer(pendingLinks.open(destination, state: authManager.state, servers: authManager.servers))
             return
@@ -203,6 +208,13 @@ struct ContentView: View {
         if let destination = HermesDeepLink.botDestination(from: url) {
             switchServer(pendingLinks.route(destination, state: authManager.state, servers: authManager.servers,
                                             isBotModeEnabled: isBotModeEnabled))
+            return
+        }
+
+        // A Limits widget's tap opens Usage only on the signed-in active server and connection its
+        // limits were read through (#1409), never switching servers; anything else opens the app as is.
+        if let usage = HermesUsageDestination(url: url) {
+            if usage.opens(state: authManager.state, servers: authManager.servers) { pendingLinks.hermesUsage = usage }
             return
         }
 
@@ -650,8 +662,8 @@ enum SharedImportGate {
 /// servers on a hold, and takes the home's bar (`HermesHomeChrome`). The home keeps both sides'
 /// state, open chat included, so a switch or a size-class change shows the last roster, rows or
 /// chat at once while they refresh. It opens on the side last shown, Sessions at first, and a Bot
-/// link (a push tap, a search hit) turns it to Bots, where the inbox opens it. A session link (#1176), a Shortcut's new session (#1180) or a share
-/// (#1181) turns it to Sessions, where the list opens it.
+/// link (a push tap, a search hit) turns it to Bots, where the inbox opens it. A session link (#1176), a Shortcut's new session (#1180), a share
+/// (#1181) or a Limits widget's Usage link (#1409) turns it to Sessions, where the list opens it.
 struct HermesServerHome: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Bindable var authManager: AuthManager
@@ -660,6 +672,7 @@ struct HermesServerHome: View {
     @Binding var pendingBotDestination: BotDestination?
     @Binding var pendingSessionDestination: HermesSessionDestination?
     @Binding var pendingNewChat: HermesNewChatDestination?
+    @Binding var pendingUsage: HermesUsageDestination?
     /// The share `ContentView` reserved; the list claims it as it starts moving it into its new
     /// session's draft and routes it once the draft holds it, or once the user discards it after
     /// that move failed. The home declines it without a saved connection, and the list when it
@@ -681,6 +694,7 @@ struct HermesServerHome: View {
 
     init(authManager: AuthManager, server: URL, pendingBotDestination: Binding<BotDestination?>,
          pendingSessionDestination: Binding<HermesSessionDestination?>, pendingNewChat: Binding<HermesNewChatDestination?>,
+         pendingUsage: Binding<HermesUsageDestination?> = .constant(nil),
          pendingShare: SharedImportReservation?, claimShare: @escaping (SharedImportReservation) -> Bool,
          didRouteShare: @escaping (SharedImportReservation) -> Void,
          didDeclineShare: @escaping (SharedImportReservation) -> Void,
@@ -695,6 +709,7 @@ struct HermesServerHome: View {
         _pendingBotDestination = pendingBotDestination
         _pendingSessionDestination = pendingSessionDestination
         _pendingNewChat = pendingNewChat
+        _pendingUsage = pendingUsage
         self.pendingShare = pendingShare
         self.claimShare = claimShare
         self.didRouteShare = didRouteShare
@@ -760,6 +775,12 @@ struct HermesServerHome: View {
             if sessions == nil { pendingNewChat = nil; return }
             tab = .sessions; isShowingSettings = false; isPresentingAddServer = false
         }
+        // So does a Limits widget's Usage link (#1409), only on the connection it was read through.
+        .onChange(of: pendingUsage, initial: true) {
+            guard let pendingUsage else { return }
+            if sessions?.entry.connection.id != pendingUsage.connectionID { self.pendingUsage = nil; return }
+            tab = .sessions; isShowingSettings = false; isPresentingAddServer = false
+        }
         // And a share (#1181), which stays queued while there is no list to open it.
         .onChange(of: pendingShare?.reservationID, initial: true) {
             guard let pendingShare else { return }
@@ -778,6 +799,7 @@ struct HermesServerHome: View {
                 HermesSessionListView(entry: sessions.entry, model: sessions.model, home: home,
                                       navigation: sessions.navigation,
                                       pendingLink: $pendingSessionDestination, pendingNewChat: $pendingNewChat,
+                                      pendingUsage: $pendingUsage,
                                       pendingShare: pendingShare, claimShare: claimShare,
                                       didRouteShare: didRouteShare, didDeclineShare: didDeclineShare,
                                       didAbandonShare: didAbandonShare, shortcutReview: shortcutReview)
@@ -970,6 +992,9 @@ struct PendingLinks {
     /// The new Hermes session a Shortcut asked for (#1180). The Hermes home turns to Sessions,
     /// whose list opens it.
     var hermesNewChat: HermesNewChatDestination?
+    /// The Usage screen a Limits widget's tap asked for (#1409). The Hermes home turns to Sessions,
+    /// whose list opens it. Never routed to another server: a change of server drops it.
+    var hermesUsage: HermesUsageDestination?
 
     /// A webui conversation link replaces whatever other link was waiting.
     @MainActor mutating func open(_ destination: WebuiPushDestination, state: AuthManager.State,
@@ -1007,6 +1032,7 @@ struct PendingLinks {
         }
         if let hermesSession { account = route(hermesSession, state: state, servers: servers) ?? account }
         if let hermesNewChat { account = route(hermesNewChat, state: state, servers: servers) ?? account }
+        if let hermesUsage, !hermesUsage.opens(state: state, servers: servers) { self.hermesUsage = nil }
         return account
     }
 

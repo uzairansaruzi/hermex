@@ -1087,13 +1087,13 @@ final class SessionListMutationTests: XCTestCase {
         let didRename = await viewModel.rename(session, to: "   ")
 
         XCTAssertFalse(didRename)
-        XCTAssertEqual(viewModel.actionErrorMessage, "Enter a session title.")
+        XCTAssertEqual(viewModel.renameErrorMessage, "Enter a session title.")
         XCTAssertNil(viewModel.lastError)
         XCTAssertFalse(viewModel.isRenamingSession)
     }
 
     @MainActor
-    func testRenameSessionFailureKeepsOldTitleAndShowsActionError() async throws {
+    func testRenameSessionFailureKeepsOldTitleAndKeepsTheReasonInTheSheet() async throws {
         var requestedPaths: [String] = []
         let viewModel = try makeViewModel { request in
             let path = request.url?.path ?? "nil"
@@ -1125,9 +1125,53 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(requestedPaths, ["/api/sessions", "/api/session/rename"])
         XCTAssertEqual(viewModel.sessions, beforeSessions)
         XCTAssertEqual(viewModel.sessions.first?.title, "Planning")
-        XCTAssertNotNil(viewModel.actionErrorMessage)
+        XCTAssertNotNil(viewModel.renameErrorMessage)
+        XCTAssertNil(viewModel.actionErrorMessage)
         XCTAssertNotNil(viewModel.lastError)
         XCTAssertFalse(viewModel.isRenamingSession)
+    }
+
+    /// An archive that fails while a rename is saving keeps its toast; the rename that then
+    /// succeeds closes its sheet and must not take the archive's reason with it.
+    @MainActor
+    func testRowFailureDuringASuccessfulRenameStaysInTheListError() async throws {
+        let renameStarted = expectation(description: "rename request started")
+        let releaseRename = DispatchSemaphore(value: 0)
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+            case "/api/session/rename":
+                renameStarted.fulfill()
+                _ = releaseRename.wait(timeout: .now() + 5)
+                return apiTestJSONResponse(#"{"ok": true}"#, for: request)
+            case "/api/session/archive":
+                let response = HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 500,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )
+                return (try XCTUnwrap(response), Data(#"{"error":"archive failed"}"#.utf8))
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.load()
+        let session = try XCTUnwrap(viewModel.sessions.first)
+        let rename = Task { @MainActor in await viewModel.rename(session, to: "Launch Notes") }
+        await fulfillment(of: [renameStarted], timeout: 1)
+        let didArchive = await viewModel.archive(session)
+        let archiveFailure = try XCTUnwrap(viewModel.actionErrorMessage)
+        releaseRename.signal()
+        let didRename = await rename.value
+
+        XCTAssertFalse(didArchive)
+        XCTAssertTrue(didRename)
+        XCTAssertEqual(viewModel.actionErrorMessage, archiveFailure)
+        XCTAssertNil(viewModel.renameErrorMessage)
     }
 
     @MainActor
@@ -1157,7 +1201,7 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertTrue(viewModel.isViewingCachedData)
         XCTAssertEqual(requestedPaths, ["/api/sessions"])
         XCTAssertEqual(viewModel.sessions.first?.title, "Cached Planning")
-        XCTAssertEqual(viewModel.actionErrorMessage, "Reconnect to the server to rename a session.")
+        XCTAssertEqual(viewModel.renameErrorMessage, "Reconnect to the server to rename a session.")
         XCTAssertFalse(viewModel.isRenamingSession)
     }
 
@@ -1264,12 +1308,12 @@ final class SessionListMutationTests: XCTestCase {
         )
 
         XCTAssertFalse(didMove)
-        let actionErrorMessage = await MainActor.run { viewModel.actionErrorMessage }
+        let sheetErrorMessage = await MainActor.run { viewModel.projectSheetErrorMessage }
         let lastError = await MainActor.run { viewModel.lastError }
         let isCreatingProject = await MainActor.run { viewModel.isCreatingProject }
         let isMovingSession = await MainActor.run { viewModel.isMovingSession }
 
-        XCTAssertEqual(actionErrorMessage, "Enter a project name.")
+        XCTAssertEqual(sheetErrorMessage, "Enter a project name.")
         XCTAssertNil(lastError)
         XCTAssertFalse(isCreatingProject)
         XCTAssertFalse(isMovingSession)
@@ -1321,14 +1365,14 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(loadCount, 1)
         let sessions = await MainActor.run { viewModel.sessions }
         let projectIDs = await MainActor.run { viewModel.projects.compactMap(\.projectId) }
-        let actionErrorMessage = await MainActor.run { viewModel.actionErrorMessage }
+        let sheetErrorMessage = await MainActor.run { viewModel.projectSheetErrorMessage }
         let lastError = await MainActor.run { viewModel.lastError }
         let isCreatingProject = await MainActor.run { viewModel.isCreatingProject }
         let isMovingSession = await MainActor.run { viewModel.isMovingSession }
 
         XCTAssertEqual(sessions, before)
         XCTAssertEqual(projectIDs, ["project-new"])
-        XCTAssertNotNil(actionErrorMessage)
+        XCTAssertNotNil(sheetErrorMessage)
         XCTAssertNotNil(lastError)
         XCTAssertFalse(isCreatingProject)
         XCTAssertFalse(isMovingSession)
@@ -1421,12 +1465,12 @@ final class SessionListMutationTests: XCTestCase {
 
         XCTAssertFalse(didCreate)
         let projectIDs = await MainActor.run { viewModel.projects.compactMap(\.projectId) }
-        let actionErrorMessage = await MainActor.run { viewModel.actionErrorMessage }
+        let sheetErrorMessage = await MainActor.run { viewModel.projectSheetErrorMessage }
         let isCreatingProject = await MainActor.run { viewModel.isCreatingProject }
 
         XCTAssertEqual(requestedPaths, ["/api/projects/create"])
         XCTAssertTrue(projectIDs.isEmpty)
-        XCTAssertEqual(actionErrorMessage, "The server did not return the new project.")
+        XCTAssertEqual(sheetErrorMessage, "The server did not return the new project.")
         XCTAssertFalse(isCreatingProject)
     }
 
@@ -1529,6 +1573,7 @@ final class SessionListMutationTests: XCTestCase {
         let project = try XCTUnwrap(beforeProjects.first)
         let didRename = await viewModel.rename(project, named: "Client Archive", color: "#f5c542")
         let projects = await MainActor.run { viewModel.projects }
+        let sheetErrorMessage = await MainActor.run { viewModel.projectSheetErrorMessage }
         let actionErrorMessage = await MainActor.run { viewModel.actionErrorMessage }
         let lastError = await MainActor.run { viewModel.lastError }
         let isRenamingProject = await MainActor.run { viewModel.isRenamingProject }
@@ -1536,7 +1581,8 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertFalse(didRename)
         XCTAssertEqual(requestedPaths, ["/api/projects", "/api/projects/rename"])
         XCTAssertEqual(projects, beforeProjects)
-        XCTAssertNotNil(actionErrorMessage)
+        XCTAssertNotNil(sheetErrorMessage)
+        XCTAssertNil(actionErrorMessage)
         XCTAssertNotNil(lastError)
         XCTAssertFalse(isRenamingProject)
     }

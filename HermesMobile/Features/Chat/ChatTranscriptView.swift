@@ -102,8 +102,8 @@ struct ChatTranscriptView: View {
     let onScrollToBottom: (ScrollViewProxy) -> Void
     let onScrollToLatestTranscriptMessage: (ScrollViewProxy) -> Void
     let onScrollToLatestContent: (ScrollViewProxy, Bool) -> Void
-    let onPreviewAttachment: (MessageAttachment, Data?) -> Void
-    let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
+    let onPreviewAttachment: (MessageAttachmentPreview, [MessageAttachmentPreview]) -> Void
+    let onPreviewTranscriptMedia: (TranscriptMediaReference, [TranscriptMediaReference]) -> Void
     let onAskHermex: (String) -> Void
     let onToggleListening: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
@@ -131,11 +131,18 @@ struct ChatTranscriptView: View {
     /// A Hermes chat's queued prompt (`ChatViewModel.queuedPromptMessage`, #1379), drawn last
     /// as a pending bubble whose only action is `onCopyQueuedPrompt`.
     var queuedPrompt: ChatMessage? = nil
+    /// A Hermes scheduled task's run (#1413), whose prompt rows show as `CronRunPromptCard`s.
+    var isCronRun = false
     var onCopyQueuedPrompt: (String) -> Void = { _ in }
+    /// A Hermes chat's Send waiting for the reconnect (`ChatViewModel.waitingSendMessage`, #1407),
+    /// drawn last as a pending bubble whose only action is `onCancelWaitingSend`.
+    var waitingSend: ChatMessage? = nil
+    var onCancelWaitingSend: () -> Void = {}
 
     /// What stands in for a transcript with no rows. Nil draws the transcript, as for a Hermes
     /// turn that failed before the host saved any row, whose outcome row still shows (#1139),
-    /// or a prompt queued behind another client's first turn, whose bubble still shows (#1379).
+    /// or a prompt queued behind another client's first turn, or a waiting send, whose bubble
+    /// still shows (#1379, #1407).
     enum Placeholder: Equatable {
         case loading
         case loadFailed(String)
@@ -158,7 +165,8 @@ struct ChatTranscriptView: View {
 
     var body: some View {
         switch Placeholder(isLoading: isLoading, errorMessage: errorMessage, isEmpty: messages.isEmpty,
-                           showsTurnOutcome: turnOutcome != nil, showsQueuedPrompt: queuedPrompt != nil) {
+                           showsTurnOutcome: turnOutcome != nil,
+                           showsQueuedPrompt: queuedPrompt != nil || waitingSend != nil) {
         case .loading?:
             ChatTranscriptLoadingSkeletonView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -293,8 +301,8 @@ struct ChatTranscriptView: View {
                     }
                     releasingHold { onScrollToLatestContent(proxy, false) }
                 }
-                .onChange(of: queuedPrompt?.content) {
-                    // The queued bubble came, grew with a merged prompt, or went without
+                .onChange(of: [queuedPrompt?.content, waitingSend?.content]) {
+                    // A pending bubble came, grew with a merged prompt, or went without
                     // the transcript gaining a row: follow it only from the live edge.
                     guard isFollowingLatestContent else {
                         pinReader(proxy: proxy)
@@ -421,7 +429,8 @@ struct ChatTranscriptView: View {
                     onRegenerate: onRegenerate,
                     onEdit: onEdit,
                     onFork: onFork,
-                    onCopy: onCopy
+                    onCopy: onCopy,
+                    isCronRun: isCronRun
                 )
                 .equatable()
                 .transition(rowEntryTransition(for: transcriptMessage.message, now: now))
@@ -450,6 +459,10 @@ struct ChatTranscriptView: View {
             if let queuedPrompt {
                 ChatQueuedPromptRow(message: queuedPrompt, onCopy: onCopyQueuedPrompt)
                     .id(queuedPrompt.id)
+            }
+            if let waitingSend {
+                ChatWaitingSendRow(message: waitingSend, onCancel: onCancelWaitingSend)
+                    .id(waitingSend.id)
             }
 
             Color.clear
@@ -703,14 +716,16 @@ struct ChatTranscriptMessageBlock: View, Equatable {
     let transcriptMediaCacheNamespace: String
     let actionContext: (ChatMessage, Int) -> MessageActionContext?
     let shouldRenderMessageRow: (ChatMessage) -> Bool
-    let onPreviewAttachment: (MessageAttachment, Data?) -> Void
-    let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
+    let onPreviewAttachment: (MessageAttachmentPreview, [MessageAttachmentPreview]) -> Void
+    let onPreviewTranscriptMedia: (TranscriptMediaReference, [TranscriptMediaReference]) -> Void
     let onAskHermex: (String) -> Void
     let onToggleListening: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
     let onEdit: (MessageActionContext) -> Void
     let onFork: (MessageActionContext) -> Void
     let onCopy: (MessageActionContext) -> Void
+    /// A scheduled task's run (#1413): a row opening on the host's cron hint is its card.
+    var isCronRun = false
 
     // Equality over the value inputs only. The closures are pure functions of
     // these values (e.g. `actionContext` is determined by `transcriptMessage`,
@@ -743,7 +758,8 @@ struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.isEditingMessage == rhs.isEditingMessage &&
             lhs.isForkingMessage == rhs.isForkingMessage &&
             lhs.attachmentAudio == rhs.attachmentAudio &&
-            lhs.transcriptMediaCacheNamespace == rhs.transcriptMediaCacheNamespace
+            lhs.transcriptMediaCacheNamespace == rhs.transcriptMediaCacheNamespace &&
+            lhs.isCronRun == rhs.isCronRun
     }
 
     var body: some View {
@@ -859,7 +875,8 @@ struct ChatTranscriptMessageBlock: View, Equatable {
                     onRegenerate: onRegenerate,
                     onEdit: onEdit,
                     onFork: onFork,
-                    onCopy: onCopy
+                    onCopy: onCopy,
+                    isCronRun: isCronRun
                 )
     }
 
@@ -939,6 +956,33 @@ private struct ChatQueuedPromptRow: View {
     }
 }
 
+/// A Hermes chat's Send waiting for the reconnect (#1407): the queued prompt's dimmed bubble, with
+/// "Waiting for connection" in place of a time and Cancel, which puts the text back in the composer.
+/// Static: nothing animates while it waits.
+private struct ChatWaitingSendRow: View {
+    let message: ChatMessage
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            MessageBubbleView(message: message, transcriptMediaCacheNamespace: "", isQueued: true)
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(Text("Waiting for connection"))
+            HStack(spacing: 10) {
+                Text("Waiting for connection")
+                    .font(AppFont.caption(weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Button("Cancel", action: onCancel)
+                    .font(AppFont.caption(weight: .semibold))
+                    .chatMinimumHitTarget(horizontalPadding: 12, verticalPadding: 14, in: Rectangle())
+                    .accessibilityLabel(Text("Cancel waiting message"))
+            }
+            .padding(.horizontal, 2)
+        }
+    }
+}
+
 private struct ChatTranscriptMessageRow: View {
     @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey) private var showsTimestamps = ChatTranscriptDisplaySettings.defaultShowsTimestamps
 
@@ -961,14 +1005,15 @@ private struct ChatTranscriptMessageRow: View {
     let loadTranscriptMediaImage: (TranscriptMediaReference) async -> Data?
     let loadTranscriptMediaData: (TranscriptMediaReference) async -> Data?
     let transcriptMediaCacheNamespace: String
-    let onPreviewAttachment: (MessageAttachment, Data?) -> Void
-    let onPreviewTranscriptMedia: (TranscriptMediaReference) -> Void
+    let onPreviewAttachment: (MessageAttachmentPreview, [MessageAttachmentPreview]) -> Void
+    let onPreviewTranscriptMedia: (TranscriptMediaReference, [TranscriptMediaReference]) -> Void
     let onAskHermex: (String) -> Void
     let onToggleListening: (MessageActionContext) -> Void
     let onRegenerate: (MessageActionContext) -> Void
     let onEdit: (MessageActionContext) -> Void
     let onFork: (MessageActionContext) -> Void
     let onCopy: (MessageActionContext) -> Void
+    let isCronRun: Bool
 
     var body: some View {
         // Compaction marker messages render as collapsible cards (matching the
@@ -980,6 +1025,15 @@ private struct ChatTranscriptMessageRow: View {
             // A Hermes chat's async-delegation delivery (#1140): the host's turn, never a
             // user bubble, with the full report one tap away.
             HermesDelegationCompletionCard(completion: completion)
+        } else if isCronRun, let prompt = CronRunPrompt(message) {
+            // A scheduled task's prompt (#1413): the host's runbook, not the user's words. Its
+            // card is the row's only action; the time keeps its place below.
+            VStack(alignment: .trailing, spacing: metaRowSpacing) {
+                CronRunPromptCard(prompt: prompt, onCopy: actionContext.map { context in { onCopy(context) } })
+                if let metaTimeText {
+                    ChatMessageMetaRow(isUserMessage: true, timeText: metaTimeText, onCopy: nil)
+                }
+            }
         } else {
             VStack(alignment: isUserMessage ? .trailing : .leading, spacing: metaRowSpacing) {
                 bubble

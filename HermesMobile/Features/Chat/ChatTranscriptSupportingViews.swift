@@ -1292,19 +1292,31 @@ enum HiddenPromptCharacters {
     }
 }
 
-/// Another Shortcut text waiting behind the one a chat shows (#1402): Open Next opens it in that
+extension ImportedTextOrigin {
+    /// The title of the alert for a queued text that can't open where it was bound.
+    var cantOpenTitle: Text {
+        switch self {
+        case .shortcut: Text("Shortcut Can’t Open")
+        case .troubleshooting: Text("Troubleshooting Can’t Open")
+        }
+    }
+}
+
+/// Another queued text waiting behind the one a chat shows (#1402): Open Next opens it in that
 /// chat's place, Discard deletes it unopened.
 struct WaitingShortcutText {
     let openNext: () -> Void
     let discard: () -> Void
 }
 
-/// The composer's note that its text came from Shortcuts (#1402), above it until the user
-/// dismisses it or sends. Hidden characters make it a warning with Remove Hidden Characters;
-/// after a removal it offers Undo until the next edit. While another Shortcut text waits, it
-/// offers Open Next and Discard, which stay after the note itself is dismissed or sent.
+/// The composer's note that its text came from Shortcuts (#1402) or Troubleshoot with Hermes
+/// (#1476), above it until the user dismisses it or sends. Hidden characters make it a warning
+/// with Remove Hidden Characters; after a removal it offers Undo until the next edit. While another
+/// queued text waits, it offers Open Next and Discard, which stay after the note itself is
+/// dismissed or sent.
 struct ShortcutTextNotice: View {
-    let showsProvenance: Bool
+    /// Where the composer's added text came from; nil once its note is dismissed or sent.
+    let origin: ImportedTextOrigin?
     let hasHiddenCharacters: Bool
     let canUndoRemoval: Bool
     let removeHiddenCharacters: () -> Void
@@ -1312,20 +1324,27 @@ struct ShortcutTextNotice: View {
     let waiting: WaitingShortcutText?
     let dismiss: () -> Void
 
+    private var isWarning: Bool { origin != nil && hasHiddenCharacters }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: showsProvenance && hasHiddenCharacters ? "exclamationmark.triangle.fill" : "info.circle.fill")
+            Image(systemName: isWarning ? "exclamationmark.triangle.fill" : "info.circle.fill")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(showsProvenance && hasHiddenCharacters ? Color.orange : Color.secondary)
+                .foregroundStyle(isWarning ? Color.orange : Color.secondary)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 6) {
-                if showsProvenance {
+                if let origin {
                     Group {
-                        if hasHiddenCharacters {
+                        switch (origin, hasHiddenCharacters) {
+                        case (.shortcut, true):
                             Text("Added from Shortcuts with hidden characters. They can change how the text reads to the agent. Review before sending.")
-                        } else {
+                        case (.shortcut, false):
                             Text("Added from Shortcuts. Review before sending.")
+                        case (.troubleshooting, true):
+                            Text("Added from Troubleshooting with hidden characters. They can change how the text reads to the agent. Review before sending.")
+                        case (.troubleshooting, false):
+                            Text("Added from Troubleshooting. Review before sending.")
                         }
                     }
                     .font(.footnote)
@@ -1340,9 +1359,9 @@ struct ShortcutTextNotice: View {
                     }
                 }
                 if let waiting {
-                    Text("Another text from Shortcuts is waiting.")
+                    Text("Another text is waiting.")
                         .font(.footnote)
-                        .foregroundStyle(showsProvenance ? .secondary : .primary)
+                        .foregroundStyle(origin != nil ? .secondary : .primary)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 16) {
                         Button("Open Next", action: waiting.openNext)
@@ -1353,7 +1372,7 @@ struct ShortcutTextNotice: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            if showsProvenance {
+            if origin != nil {
                 Button(action: dismiss) {
                     Image(systemName: "xmark")
                         .font(.footnote.weight(.semibold))

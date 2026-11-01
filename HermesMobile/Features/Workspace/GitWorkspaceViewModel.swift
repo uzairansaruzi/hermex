@@ -673,6 +673,15 @@ enum GitRemoteAction: String, Equatable, Identifiable {
         case .push: String(localized: "Push complete")
         }
     }
+
+    /// The busy toast's static glyph (#1410).
+    var systemImage: String {
+        switch self {
+        case .fetch: "arrow.triangle.2.circlepath.circle"
+        case .pull: "arrow.down.circle"
+        case .push: "arrow.up.circle"
+        }
+    }
 }
 
 enum GitCheckoutOutcome: Equatable {
@@ -696,6 +705,14 @@ enum GitCommitPhase: Equatable {
         case .generatingMessage: String(localized: "Generating commit message...")
         case .committing: String(localized: "Committing...")
         case .pushing: String(localized: "Pushing...")
+        }
+    }
+
+    /// The busy toast's static glyph (#1410).
+    var systemImage: String {
+        switch self {
+        case .generatingMessage, .committing: "smallcircle.filled.circle"
+        case .pushing: "arrow.up.circle"
         }
     }
 

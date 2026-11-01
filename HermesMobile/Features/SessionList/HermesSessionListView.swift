@@ -56,6 +56,8 @@ struct HermesSessionListView: View {
     @Binding private var pendingLink: HermesSessionDestination?
     /// The new session a Shortcut asked for, held by `ContentView` until this list can open it.
     @Binding private var pendingNewChat: HermesNewChatDestination?
+    /// The Usage screen a Limits widget's tap asked for (#1409), held until this list reads the host.
+    @Binding private var pendingUsage: HermesUsageDestination?
     /// The share `ContentView` reserved, and how this list tells it the share is moving, let go
     /// (opened, or discarded after it failed), kept queued or cut short.
     private let pendingShare: SharedImportReservation?
@@ -87,6 +89,7 @@ struct HermesSessionListView: View {
          navigation: HermesSessionListNavigation? = nil,
          pendingLink: Binding<HermesSessionDestination?> = .constant(nil),
          pendingNewChat: Binding<HermesNewChatDestination?> = .constant(nil),
+         pendingUsage: Binding<HermesUsageDestination?> = .constant(nil),
          pendingShare: SharedImportReservation? = nil,
          claimShare: @escaping (SharedImportReservation) -> Bool = { _ in false },
          didRouteShare: @escaping (SharedImportReservation) -> Void = { _ in },
@@ -98,6 +101,7 @@ struct HermesSessionListView: View {
         self.home = home
         _pendingLink = pendingLink
         _pendingNewChat = pendingNewChat
+        _pendingUsage = pendingUsage
         self.pendingShare = pendingShare
         self.claimShare = claimShare
         self.didRouteShare = didRouteShare
@@ -279,7 +283,7 @@ struct HermesSessionListView: View {
         // Discard is the only action: kept, the same files would fail the same way. The share stays
         // claimed meanwhile; the alert closing any other way (a Cancel iOS adds, Escape, leaving)
         // queues it again instead.
-        .alert(failedShare?.share.sharedImport.shortcut == nil ? Text("Couldn’t Add Shared Files") : Text("Shortcut Can’t Open"),
+        .alert(failedShare?.share.sharedImport.shortcut.map(\.origin.cantOpenTitle) ?? Text("Couldn’t Add Shared Files"),
                isPresented: Binding(get: { failedShare != nil }, set: { if !$0 { queueFailedShareAgain() } }),
                presenting: failedShare) { failure in
             Button(failure.share.sharedImport.shortcut == nil ? "Discard Share" : "Discard", role: .destructive) {
@@ -292,7 +296,7 @@ struct HermesSessionListView: View {
                 : String(localized: "Nothing was sent. Discard deletes this text from Hermex.")))
         }
         .modifier(SessionActionConfirmations(
-            viewModel: viewModel, sessionPendingDeletion: $navigation.covers.deleting, projectPendingDeletion: $navigation.covers.deletingProject,
+            viewModel: viewModel, showFailure: { actionToast.show(.failure($0)) }, sessionPendingDeletion: $navigation.covers.deleting, projectPendingDeletion: $navigation.covers.deletingProject,
             deleteSession: { session in Task { await delete(session) } },
             deleteProject: { project in Task { _ = await viewModel.delete(project) } }
         ))
@@ -301,6 +305,8 @@ struct HermesSessionListView: View {
         // what it opens or says shows here.
         .onChange(of: pendingLink, initial: true) { covers.accept(pendingLink, on: entry.server) }
         .task(id: pendingLink) { await openPendingLink() }
+        .onChange(of: pendingUsage, initial: true) { if pendingUsage != nil { covers.bringForward() } }
+        .task(id: UsageReadiness(link: pendingUsage, isLive: viewModel.isHermesLive)) { await openPendingUsage() }
         // A Shortcut's new session and a share bring the rows forward at once, and open once the
         // list has read the host live, whichever Profile the request names. A share reserved while
         // another moves into its draft opens once that move ends.
@@ -353,7 +359,10 @@ struct HermesSessionListView: View {
         covers.selectedSessionID
     }
 
+    /// Clears the way for a root selection, which also supersedes a Limits widget's Usage link
+    /// still waiting on the host (#1409).
     private func prepareRootSelection() {
+        pendingUsage = nil
         if usesSplit { covers.bringForward() }
     }
 
@@ -410,7 +419,7 @@ struct HermesSessionListView: View {
                 .id(entry.id)
         }
         .navigationDestination(item: $navigation.covers.insights) { entry in
-            InsightsView(client: entry.client, profile: entry.client.profile, onAPIError: { _ in })
+            InsightsView(client: entry.client, profile: entry.client.profile, limitsScope: entry.limitsScope, onAPIError: { _ in })
                 .id(entry.id)
         }
         .navigationDestination(isPresented: $navigation.covers.showingKanban) {
@@ -436,7 +445,8 @@ struct HermesSessionListView: View {
         } else if let entry = covers.memory {
             MemoryView(server: entry.server, client: entry.client, profile: entry.client.profile, onAPIError: { _ in }).id(entry.id)
         } else if let entry = covers.insights {
-            InsightsView(client: entry.client, profile: entry.client.profile, onAPIError: { _ in }).id(entry.id)
+            InsightsView(client: entry.client, profile: entry.client.profile, limitsScope: entry.limitsScope,
+                         onAPIError: { _ in }).id(entry.id)
         } else if covers.showingKanban {
             KanbanView(server: entry.server, hermes: HermesConnections.shared.connection(for: entry.connection, server: entry.server))
         } else if covers.showingScheduled {
@@ -487,7 +497,7 @@ struct HermesSessionListView: View {
         case .memory:
             covers.memory = HermesMemoryEntry(server: server, client: HermesMemoryClient(saved: connection, server: server, profile: profile))
         case .insights:
-            covers.insights = HermesInsightsEntry(client: HermesInsightsClient(saved: connection, server: server, profile: profile))
+            covers.insights = HermesInsightsEntry(server: server, connection: connection, profile: profile)
         default:
             break
         }
@@ -770,6 +780,20 @@ struct HermesSessionListView: View {
         }
     }
 
+    /// Opens Usage for the Profile a Limits widget's tap names (#1409) once the list reads the host
+    /// live, and only while the host still has that Profile on this server and connection;
+    /// otherwise drops the link and leaves the rows as they are.
+    private func openPendingUsage() async {
+        guard let link = pendingUsage, viewModel.isHermesLive else { return }
+        let profiles = await viewModel.readHostProfiles()
+        guard !Task.isCancelled, pendingUsage == link else { return }
+        pendingUsage = nil
+        guard link.serverKey == BotHistoryCache.Scope.key(entry.server), link.connectionID == entry.connection.id,
+              profiles?.contains(link.profile) == true else { return }
+        prepareRootSelection()
+        covers.insights = HermesInsightsEntry(server: entry.server, connection: entry.connection, profile: link.profile)
+    }
+
     /// Opens the new session a Shortcut asked for (#1180) over whatever covers the rows.
     private func openPendingNewChat() {
         if covers.open(pendingNewChat, on: entry, listed: profile, isLive: viewModel.isHermesLive) { pendingNewChat = nil }
@@ -1014,7 +1038,7 @@ extension SharedImportReservation {
         let text = sharedImport.shortcut == nil ? HermesShareDraft.composerDraft(from: sharedImport.draft) : sharedImport.draft
         try await drafts.appendShare(occurrenceID, text: text, files: files, to: key,
                                      maximumFileBytes: BotAttachmentUpload.maximumFileBytes,
-                                     fromShortcut: sharedImport.shortcut != nil) { attachments in
+                                     origin: sharedImport.shortcut?.origin) { attachments in
             // A composer open on this draft may have added files since the check above.
             guard attachments.count <= HermexAttachmentPickerPolicy.maximumBotAttachments,
                   attachments.reduce(0, { $0 + ($1.size ?? BotAttachmentUpload.maximumFileBytes) })
@@ -1059,6 +1083,12 @@ private struct NewChatReadiness: Equatable {
     let profile: String?
     let isLive: Bool
     let isTransferringShare: Bool
+}
+
+/// A Limits widget's Usage link, and whether the list has read the host it waits on.
+private struct UsageReadiness: Equatable {
+    let link: HermesUsageDestination?
+    let isLive: Bool
 }
 
 /// What a search runs against: a new query, Profile or All Profiles cancels the one in flight.
@@ -1335,6 +1365,13 @@ struct HermesMemoryEntry: Hashable, Identifiable {
 struct HermesInsightsEntry: Hashable, Identifiable {
     let id = UUID()
     let client: HermesInsightsClient
+    /// Where its limits go for the Limits widget (#1409).
+    let limitsScope: ProviderLimitsPublisher.Scope
+
+    @MainActor init(server: URL, connection: BotConnection, profile: String) {
+        client = HermesInsightsClient(saved: connection, server: server, profile: profile)
+        limitsScope = ProviderLimitsPublisher.Scope(server: server, connectionID: connection.id, profile: profile)
+    }
 
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }

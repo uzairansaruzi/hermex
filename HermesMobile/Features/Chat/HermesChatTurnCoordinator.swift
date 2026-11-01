@@ -83,6 +83,15 @@ struct HermesSessionChat: Hashable, Identifiable {
     /// What the chat lets the user do (#1145): a bot's Bot Chat keeps Bot Chat's rules.
     var policy: HermesChatPolicy { HermesChatPolicy(target: target, botChatRoot: botChatRoot) }
 
+    /// Whether this is a scheduled task's run, which the host stores as `cron_<job>_<time>`, so
+    /// its prompt row can show as a `CronRunPromptCard` (#1413). A compressed run opened by its
+    /// tip has an ordinary key under a `cron_` root. The chat's `SessionSummary` is a placeholder
+    /// that cannot say so.
+    var isCronRun: Bool {
+        guard case .session(_, let key) = target else { return false }
+        return key.hasPrefix("cron_") || lineageRoot?.hasPrefix("cron_") == true
+    }
+
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
     func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }
@@ -459,11 +468,13 @@ struct HermesChatTranscript: Equatable {
     /// operation (`continueConnection`); a lost release holds the message. An idle Send in a local
     /// folder then waits for one HEAD read, the base its turn's File changes card compares
     /// against (#1392); a failed read sends without one, and a cancel or reattach meanwhile sends
-    /// nothing. `beforePrompt` runs just before the prompt goes out. Returns what the host said;
+    /// nothing. `beforePrompt` runs just before the prompt goes out, and `stillCurrent` at its
+    /// socket write, where a throw stops it. Returns what the host said;
     /// throws `NotSent` when it never went out, and the failure itself when its reply was refused
     /// or lost. Never resent: after a lost reply the next snapshot says what happened.
     func submit(_ text: String, mode: BotPromptMode, attachments: [OutgoingAttachment] = [],
-                beforePrompt: () async throws -> Void = {}) async throws -> BotPromptOutcome {
+                beforePrompt: () async throws -> Void = {},
+                stillCurrent: @escaping () throws -> Void = {}) async throws -> BotPromptOutcome {
         submitsInFlight += 1
         defer { submitsInFlight -= 1 }
         let runtime = try await attachForWrite()
@@ -512,7 +523,7 @@ struct HermesChatTranscript: Equatable {
         let reply: BotJSON
         do {
             reply = try await engine.write(mode.call(runtime: runtime, text: prompt + mentionNote), attempt: attempt,
-                                           runtime: runtime) { dispatched = true; self.promptSent = true }
+                                           runtime: runtime) { try stillCurrent(); dispatched = true; self.promptSent = true }
         } catch {
             // A reaped runtime (4001): reattach to the stored key, which reads only.
             if case BotFailure.rejected(4001) = error { reattach() }

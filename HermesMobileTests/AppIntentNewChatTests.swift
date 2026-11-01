@@ -138,6 +138,21 @@ final class AppIntentNewChatTests: XCTestCase {
         XCTAssertEqual(queued.sharedImport.shortcut, SharedShortcutDestination(server: studio, profile: "dev"))
     }
 
+    /// Troubleshoot with Hermes (#1476) queues through the same path, and its text keeps its origin
+    /// through the app-group inbox so the chat names Troubleshooting, not Shortcuts.
+    @MainActor
+    func testTroubleshootingTextKeepsItsOriginThroughTheInbox() throws {
+        let inbox = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: inbox) }
+
+        try AppIntentRouter.shared.openNewChat(prefilling: "Help me triage", server: studio, profile: nil,
+                                               origin: .troubleshooting, inbox: inbox)
+
+        let queued = try XCTUnwrap(try HermesShareDraft.reserveNextPendingImport(from: inbox))
+        XCTAssertEqual(queued.sharedImport.shortcut,
+                       SharedShortcutDestination(server: studio, profile: nil, origin: .troubleshooting))
+    }
+
     @MainActor
     func testNewChatWithContentOpensOnAHermesProfileOrTheActiveHermesServer() throws {
         let chosen = ProfileEntity(hermesServer: studio, profile: "dev", title: nil)

@@ -707,24 +707,55 @@ final class ChatDraftStoreTests: XCTestCase {
         )
     }
 
-    /// The Shortcuts review notice (#1402) comes back after a relaunch until the user clears it.
-    func testShortcutNoticeSurvivesARelaunchUntilCleared() async throws {
+    /// An added text's review notice comes back after a relaunch naming where the text came from
+    /// (#1402, #1476), until the user clears it; a draft saved before #1476 reads as a Shortcut's.
+    func testAddedTextNoticeSurvivesARelaunchWithItsOriginUntilCleared() async throws {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let key = ChatDraftKey(serverID: "https://example.com", context: .newChat)
-        var draft = ChatDraft(text: "From Shortcuts")
-        draft.isFromShortcut = true
-        try await ChatDraftFilePersistence(directoryURL: directory).write([key: draft])
+        let folder = directory.appendingPathComponent("ChatDrafts")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let json = #"{"version":4,"drafts":[{"serverID":"https://example.com","context":"newChat","text":"From Shortcuts","fromShortcut":true}]}"#
+        try Data(json.utf8).write(to: folder.appendingPathComponent("drafts.json"))
+        let persistence = ChatDraftFilePersistence(directoryURL: directory)
+        let legacy = await persistence.load()[ChatDraftKey(serverID: "https://example.com", context: .newChat)]
+        XCTAssertEqual(legacy?.textOrigin, .shortcut)
 
+        let key = ChatDraftKey(serverID: "https://studio.example", context: .newChat)
+        var draft = ChatDraft(text: "From Troubleshooting")
+        draft.textOrigin = .troubleshooting
+        try await persistence.write([key: draft])
         let relaunched = ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: directory), debounceDuration: .zero)
         let restored = await relaunched.draft(for: key)
-        XCTAssertEqual(restored?.isFromShortcut, true)
-        relaunched.setFromShortcut(false, for: key)
+        XCTAssertEqual(restored?.textOrigin, .troubleshooting)
+        relaunched.setTextOrigin(nil, for: key)
         try await relaunched.flush()
 
         let cleared = await ChatDraftFilePersistence(directoryURL: directory).load()[key]
-        XCTAssertEqual(cleared?.isFromShortcut, false)
-        XCTAssertEqual(cleared?.text, "From Shortcuts")
+        XCTAssertNil(cleared?.textOrigin)
+        XCTAssertEqual(cleared?.text, "From Troubleshooting")
+    }
+
+    /// A Hermes Send waiting for the reconnect (#1407) is on disk apart from the typed text, so a
+    /// relaunch finds it, and returning it puts it ahead of what was typed since, once.
+    func testAWaitingSendSurvivesARelaunchAndReturnsAheadOfNewerText() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let key = ChatDraftKey.hermesSession(server: URL(string: "https://hermes.example")!, connectionID: UUID(),
+                                             profile: "default", key: "tip")
+        let store = ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: directory), debounceDuration: .zero)
+        _ = await store.draft(for: key)
+        store.setDraft("Ship it", for: key)
+        store.holdWaitingSend(ChatDraft.WaitingSend(text: "Ship it", createdAt: Date(timeIntervalSince1970: 1_790_000_000)),
+                              replacing: "Ship it", for: key)
+        store.setDraft("And this", for: key)
+        try await store.flush()
+
+        let relaunched = ChatDraftStore(persistence: ChatDraftFilePersistence(directoryURL: directory), debounceDuration: .zero)
+        let restored = await relaunched.draft(for: key)
+        XCTAssertEqual(restored?.waitingSend?.text, "Ship it")
+        XCTAssertEqual(restored?.text, "And this")
+        XCTAssertEqual(relaunched.returnWaitingSend(for: key)?.text, "Ship it\n\nAnd this")
+        XCTAssertEqual(relaunched.returnWaitingSend(for: key)?.text, "Ship it\n\nAnd this")
     }
 
     func testHiddenPromptCharactersAreRemovedWhileJoinersAndMarksStay() {
