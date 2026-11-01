@@ -270,3 +270,36 @@ struct TranscriptTurnFoldRowView: View {
         )
     }
 }
+
+/// Keeps a chat's turn folds and end-of-turn rows between body passes (#1417). Both walk the
+/// whole loaded history, and a text-only reveal tick re-renders the chat without changing
+/// either, so they are derived again only when `Inputs` change.
+@MainActor
+final class TranscriptStructureMemo {
+    /// Everything the folds and end-of-turn rows depend on. `structureRevision`
+    /// (`ChatViewModel.transcriptStructureRevision`) stands in for the transcript rows,
+    /// messages, page offset and reasoning cards.
+    struct Inputs: Equatable {
+        let structureRevision: Int
+        let activityAnchorIDs: Set<String>
+        let foldsSettledTurns: Bool
+        let isStreamActive: Bool
+        let streamingAssistantMessageID: String?
+        let latestRunOutcome: TranscriptTurnRunOutcome?
+    }
+
+    struct Structure {
+        let folds: TranscriptTurnFolds
+        let terminalReplyRenderIDs: Set<String>
+    }
+
+    private var last: (inputs: Inputs, structure: Structure)?
+
+    func structure(for inputs: Inputs, derive: () -> Structure) -> Structure {
+        if let last, last.inputs == inputs { return last.structure }
+
+        let structure = derive()
+        last = (inputs, structure)
+        return structure
+    }
+}

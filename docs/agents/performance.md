@@ -10,6 +10,7 @@ limit, so read the value there.
 | Invariant | Lives in | Guard |
 |---|---|---|
 | Settled transcript rows skip re-evaluation while a reply streams: live-stream inputs reach only the anchor or streaming row, and rows compare by value | `ChatTranscriptView.transcriptScrollContent`, `.equatable()` on each `ChatTranscriptMessageBlock`, `ChatTranscriptMessageBlock.==` | `ChatTranscriptRenderBudgetTests` (zero settled-row body evaluations across text-only reveal ticks, counted by `RenderProbe`; local only, since PR CI skips it until #1516); `ChatTranscriptEnvironmentStabilityTests` (environment closures don't invalidate skipped rows) |
+| A text-only stream tick doesn't re-derive transcript structure: it patches the reply's row, and the chat reuses its turn folds and end-of-turn rows until `transcriptStructureRevision` or another memo input changes (#1417). Reasoning, a first visible reply, and every non-text change take the full path | `ChatViewModel.replaceStreamingReply(at:with:)`, `ChatViewModel.transcriptStructureRevision`, `TranscriptStructureMemo` | `ChatViewModelStreamingPaceTests` (`testTextOnlyTicksPatchTheReplyWithoutReDerivingTheTranscript`, `testATickThatCompletesInTextReasoningReDerivesTheTranscript`). The memo's inputs are review only. |
 | Transcript media loads only once it scrolls into view, and an admitted load is never cancelled by scrolling away (#1370) | `View.loadsOnceVisible(id:admit:)` on images, MEDIA probes, audio, and link previews | `TranscriptMediaVisibilityTests`, `ResponseSelectionVisibilityTests`. Link previews are gated but untested: `LPMetadataProvider` has no loader seam. |
 | The Sessions transcript is an eager `VStack` (#32). Hermes history arrives in pages, but loaded pages accumulate | `ChatTranscriptView.transcriptScrollContent`; page size `HermesREST.transcriptPageSize`; `ChatViewModel.loadOlderMessages` prepends | **None.** The page size is not a cap on rendered rows, and no total-row bound exists. Don't document or assume one. |
 | A Bot room opens building only its newest page of events; load earlier, a search jump, and later live events widen the anchored window | `BotRoomTranscriptWindow.pageSize` (`docs/agents/bots.md`) | `BotChatPresentationTests.testWarmRoomBuildsOnlyTheNewestPageOfReplies`, `BotRoomTranscriptWindowTests` |
@@ -56,6 +57,9 @@ gating, signpost privacy, the Release compile-out, and animations.
    values to the anchor or streaming row, as `transcriptScrollContent` does.
 3. Load new media or network content in a row through `loadsOnceVisible(id:admit:)`,
    never at mount.
+4. Give turn folds or end-of-turn rows a new input only through
+   `TranscriptStructureMemo.Inputs`. If reply text starts to affect transcript
+   structure, exclude that case from `ChatViewModel.textOnlyTranscriptRow`.
 
 Then run `ChatTranscriptRenderBudgetTests` and
 `ChatTranscriptEnvironmentStabilityTests`.
