@@ -8623,3 +8623,26 @@ test('Post-merge review: ActionToast icon traces cover every production supplier
   assert.doesNotMatch(hermes, /already-adopted SectionCard\/SettingsCard/);
   assert.match(hermes, /HermesSessionListView\.swift\); HermexBanner\.offlineCache\(\) is a foundation capability with no production caller/);
 });
+
+// PR #974 Greptile review (2026-11-01): radio state, Shimmer's Reduce Motion subscription race, and
+// Content Unavailable's Swift argument types.
+test('Greptile review: Radio announces checked, Shimmer re-reads Reduce Motion after subscribing, Content Unavailable matches its Swift API', () => {
+  const radio = read('native/components/Radio/Radio.tsx');
+  assert.match(radio, /accessibilityRole="radio"/);
+  assert.match(radio, /accessibilityState=\{\{ checked: selected, disabled \}\}/, 'a radio exposes its state through checked, not selected');
+  assert.match(read('native/catalog/CatalogExample.tsx'), /accessibilityRole="radio" and accessibilityState\.checked;/, 'expected the Radio entry to document checked');
+
+  const shimmer = read('native/components/Shimmer/Shimmer.tsx');
+  const hook = shimmer.match(/function useReduceMotion\(\)[\s\S]*?\n}\n/);
+  assert.ok(hook, 'expected Shimmer to define useReduceMotion()');
+  assert.match(hook[0], /reduceMotionListeners\.add\(setEnabled\);\s*(\/\/[^\n]*\n\s*)*setEnabled\(reduceMotionEnabled\);/, 'expected the hook to re-read the shared value right after subscribing');
+
+  const sections = read('native/catalog/hermes/hermesSections.tsx');
+  const entry = sections.slice(sections.indexOf("id: 'Content Unavailable'"), sections.indexOf('a11y:', sections.indexOf("id: 'Content Unavailable'")));
+  const swift = readFileSync(path.join(ROOT, '..', 'HermesMobile/Features/Shared/HermexContentUnavailable.swift'), 'utf8');
+  assert.match(swift, /var description: Text\?/);
+  assert.match(swift, /struct Action \{\s*let title: String\s*let handler: \(\) -> Void/);
+  assert.match(entry, /\{ name: 'description', type: 'Text\?'/);
+  assert.match(entry, /type: 'HermexContentUnavailable\.Action\? \(\{ title: String; handler: \(\) -> Void \}\)'/);
+  assert.doesNotMatch(entry, /label: String; onPress/);
+});

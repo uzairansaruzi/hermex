@@ -1703,7 +1703,7 @@ export const sections: SectionDef<SectionId>[] = [
     path: 'native/components/Radio',
     description: 'A single circular selection control — a filled dot appears in the ring when selected. A group of mutually-exclusive Radios is just multiple instances sharing one selected value in the consumer.',
     whenToUse: 'One selection from a mutually-exclusive set — checking one should un-check another. For an independent on/off fact, use Checkbox; for a setting that takes effect immediately, use Switch.',
-    a11y: 'Renders a Pressable with accessibilityRole="radio" and accessibilityState.selected; the optional label doubles as its accessibilityLabel.',
+    a11y: 'Renders a Pressable with accessibilityRole="radio" and accessibilityState.checked; the optional label doubles as its accessibilityLabel.',
     props: [
       { name: 'selected', type: 'boolean', required: true, desc: 'Whether this radio is the selected one.' },
       { name: 'onPress', type: '() => void', required: true, desc: 'Tap handler — select this option in the consumer\'s state.' },

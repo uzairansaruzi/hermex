@@ -72,6 +72,9 @@ function useReduceMotion(): boolean | null {
   const [enabled, setEnabled] = useState<boolean | null>(reduceMotionEnabled);
   useEffect(() => {
     reduceMotionListeners.add(setEnabled);
+    // The initial lookup may have resolved between render and this subscription; read it again
+    // so the hook can't stay null until the next preference change.
+    setEnabled(reduceMotionEnabled);
     return () => {
       reduceMotionListeners.delete(setEnabled);
     };

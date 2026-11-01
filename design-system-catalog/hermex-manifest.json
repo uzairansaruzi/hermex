@@ -3602,12 +3602,12 @@
         },
         {
           "name": "description",
-          "type": "String?",
+          "type": "Text?",
           "desc": "Optional secondary line under the title."
         },
         {
           "name": "primaryAction / secondaryAction",
-          "type": "{ label: String; onPress: () -> Void }?",
+          "type": "HermexContentUnavailable.Action? ({ title: String; handler: () -> Void })",
           "desc": "One action keeps its established secondary emphasis unchanged; both together stack vertically, primary first, with the primary action promoted to the primary hierarchy."
         },
         {

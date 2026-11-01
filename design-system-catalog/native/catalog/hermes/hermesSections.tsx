@@ -2665,8 +2665,8 @@ AttachmentFileBadge(
     whenToUse: 'Use it when a screen is loading, has no content, has no search results, cannot load its content, or needs a custom empty/error state with an action.',
     props: [
       { name: 'variant', type: "'loading' | 'empty' | 'noResults' | 'error' | 'unavailable' | 'custom'", required: true, desc: 'Selects the icon/title pairing; loading renders a plain spinner instead of an icon/title.' },
-      { name: 'description', type: 'String?', desc: 'Optional secondary line under the title.' },
-      { name: 'primaryAction / secondaryAction', type: '{ label: String; onPress: () -> Void }?', desc: 'One action keeps its established secondary emphasis unchanged; both together stack vertically, primary first, with the primary action promoted to the primary hierarchy.' },
+      { name: 'description', type: 'Text?', desc: 'Optional secondary line under the title.' },
+      { name: 'primaryAction / secondaryAction', type: 'HermexContentUnavailable.Action? ({ title: String; handler: () -> Void })', desc: 'One action keeps its established secondary emphasis unchanged; both together stack vertically, primary first, with the primary action promoted to the primary hierarchy.' },
       { name: 'layout', type: "'.intrinsic' | '.fullScreen'", default: '.intrinsic', desc: 'Additive placement choice. .intrinsic (default, unchanged) lets ContentUnavailableView center its own content. .fullScreen instead positions the top of the content cluster at roughly one third of the available container height, wrapped in a ScrollView so long content/Dynamic Type can grow rather than clip.' },
     ],
     a11y: 'Icon, title, and description combine into one accessible element; a primary/secondary action is a normal focusable Button, not part of that combined element. The .fullScreen layout changes only placement, not this accessibility grouping.',

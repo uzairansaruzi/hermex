@@ -54,7 +54,7 @@ export function Radio({ selected, onPress, label, disabled = false, style, color
       onBlur={() => setFocused(false)}
       disabled={disabled}
       accessibilityRole="radio"
-      accessibilityState={{ selected, disabled }}
+      accessibilityState={{ checked: selected, disabled }}
       accessibilityLabel={label}
       hitSlop={HIT_SLOP}
       style={[styles.row, disabled && styles.disabled, style]}
