@@ -2,7 +2,7 @@
 /// check that a stream tick re-renders only the row it changed
 /// (`ChatTranscriptRenderBudgetTests`). Each probed view calls `hit` once at the
 /// top of its `body` (or, for `ResponseTextSelection`, its host update), and
-/// `ChatTranscriptMessageBlock.==` counts each comparison that finds a change.
+/// `ChatTranscriptMessageBlock.==` counts each comparison and each that finds a change.
 ///
 /// Debug builds keep the counts in memory only, by name and by transcript row
 /// `renderID`; nothing is logged or sent anywhere. Release builds compile `hit` to an
@@ -16,6 +16,9 @@ enum RenderProbe {
         /// A `ChatTranscriptMessageBlock.==` that returned false: a row whose inputs
         /// changed, as opposed to an equal row SwiftUI re-ran anyway.
         case transcriptMessageBlockUnequal = "ChatTranscriptMessageBlock.unequal"
+        /// Every `ChatTranscriptMessageBlock.==` call. Zero while rows re-render means
+        /// SwiftUI never consulted the rows' `.equatable()` comparison.
+        case transcriptMessageBlockCompared = "ChatTranscriptMessageBlock.compared"
         case messageBubble = "MessageBubbleView"
         case markdownRenderer = "MarkdownRenderer"
         case toolActivityGroup = "ToolActivityGroupView"

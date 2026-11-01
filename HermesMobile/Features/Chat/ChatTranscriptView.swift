@@ -760,6 +760,7 @@ struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.attachmentAudio == rhs.attachmentAudio &&
             lhs.transcriptMediaCacheNamespace == rhs.transcriptMediaCacheNamespace &&
             lhs.isCronRun == rhs.isCronRun
+        RenderProbe.hit(.transcriptMessageBlockCompared)
         if !isEqual {
             RenderProbe.hit(.transcriptMessageBlockUnequal)
         }

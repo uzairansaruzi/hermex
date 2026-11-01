@@ -37,21 +37,27 @@ final class ChatTranscriptRenderBudgetTests: XCTestCase {
             viewModel.displayedTranscriptMessages.last { $0.message.messageId == viewModel.streamingAssistantMessageID }?.renderID
         )
         RenderProbe.reset()
+        BudgetTranscriptHost.passes = 0
 
         for tick in 2...31 {
             try await revealTick(tick, text: "word\(tick) ", streamClient: streamClient, ticks: ticks, viewModel: viewModel, window: window)
         }
 
-        XCTAssertGreaterThan(RenderProbe.count(renderID: streamingRenderID), 0, "The streaming row must render, or the budget proves nothing")
+        let streamingEvaluations = RenderProbe.count(renderID: streamingRenderID)
+        XCTAssertGreaterThan(streamingEvaluations, 0, "The streaming row must render, or the budget proves nothing")
         let settledEvaluations = settledRenderIDs.reduce(0) { $0 + RenderProbe.count(renderID: $1) }
         let settledRowsRendered = settledRenderIDs.filter { RenderProbe.count(renderID: $0) > 0 }.count
-        // The streaming row adds about one unequal comparison per tick. Beyond that, a
-        // count near the settled evaluations means a row input changed per tick; near
-        // zero, SwiftUI re-ran rows whose inputs were equal.
+        // Where a failure comes from. A passing run here compares each row a few times
+        // per tick, and the streaming row's comparisons find its change. No comparisons
+        // means SwiftUI never consulted `==`; comparisons without unequal ones mean a
+        // settled row re-ran on a dependency of its own. Host passes count the ticks
+        // that reached the transcript through its parent.
         XCTAssertEqual(
             settledEvaluations, 0,
-            "Text-only ticks re-rendered \(settledRowsRendered) of \(settledRenderIDs.count) settled rows; "
-                + "unequal row comparisons: \(RenderProbe.count(.transcriptMessageBlockUnequal))"
+            "Text-only ticks re-rendered \(settledRowsRendered) of \(settledRenderIDs.count) settled rows "
+                + "(streaming row: \(streamingEvaluations), host passes: \(BudgetTranscriptHost.passes)); "
+                + "row comparisons: \(RenderProbe.count(.transcriptMessageBlockCompared)), "
+                + "unequal: \(RenderProbe.count(.transcriptMessageBlockUnequal))"
         )
     }
 
@@ -137,9 +143,13 @@ final class ChatTranscriptRenderBudgetTests: XCTestCase {
 /// input that changes as a reply streams. Follow, scroll, fold and action inputs are
 /// fixed, so only the stream can move a row's inputs.
 private struct BudgetTranscriptHost: View {
+    /// Body passes since the test last cleared it.
+    static var passes = 0
+
     let viewModel: ChatViewModel
 
     var body: some View {
+        let _ = Self.passes += 1
         let transcript = viewModel.displayedTranscriptMessages
         ChatTranscriptView(
             isLoading: viewModel.isLoading,
