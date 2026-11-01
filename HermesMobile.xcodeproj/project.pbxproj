@@ -255,6 +255,7 @@
 		C8660A000000000000000001 /* InAppBrowserPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8660A000000000000000002 /* InAppBrowserPolicy.swift */; };
 		C8660A000000000000000005 /* SafariView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8660A000000000000000006 /* SafariView.swift */; };
 		C0DE25000000000000000003 /* ChatScrollPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DE25000000000000000004 /* ChatScrollPolicyTests.swift */; };
+		B14050000000000000000003 /* ChatTranscriptRenderBudgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14050000000000000000004 /* ChatTranscriptRenderBudgetTests.swift */; };
 		C8660A000000000000000003 /* InAppBrowserPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8660A000000000000000004 /* InAppBrowserPolicyTests.swift */; };
 		C87100000000000000000003 /* UserBubbleFoldPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C87100000000000000000004 /* UserBubbleFoldPolicyTests.swift */; };
 		C27800000000000000000001 /* ChatGitControlsVisibilityPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27800000000000000000002 /* ChatGitControlsVisibilityPolicy.swift */; };
@@ -354,6 +355,7 @@
 		531000000000000000000001 /* TipJarPromptState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531000000000000000000002 /* TipJarPromptState.swift */; };
 		870000000000000000000001 /* PerformanceSignposts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870000000000000000000002 /* PerformanceSignposts.swift */; };
 		870000000000000000000003 /* HitchMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 870000000000000000000004 /* HitchMeter.swift */; };
+		B14050000000000000000001 /* RenderProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14050000000000000000002 /* RenderProbe.swift */; };
 		C09200000000000000000001 /* AppFont.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09200000000000000000002 /* AppFont.swift */; };
 		1A2B3C4D5E6F700000000100 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F700000000101 /* AppTheme.swift */; };
 		863000000000000000000001 /* NotificationOffer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863000000000000000000002 /* NotificationOffer.swift */; };
@@ -958,6 +960,7 @@
 		C8660A000000000000000002 /* InAppBrowserPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppBrowserPolicy.swift; sourceTree = "<group>"; };
 		C8660A000000000000000006 /* SafariView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariView.swift; sourceTree = "<group>"; };
 		C0DE25000000000000000004 /* ChatScrollPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatScrollPolicyTests.swift; sourceTree = "<group>"; };
+		B14050000000000000000004 /* ChatTranscriptRenderBudgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptRenderBudgetTests.swift; sourceTree = "<group>"; };
 		C8660A000000000000000004 /* InAppBrowserPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InAppBrowserPolicyTests.swift; sourceTree = "<group>"; };
 		C87100000000000000000004 /* UserBubbleFoldPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserBubbleFoldPolicyTests.swift; sourceTree = "<group>"; };
 		C27800000000000000000002 /* ChatGitControlsVisibilityPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGitControlsVisibilityPolicy.swift; sourceTree = "<group>"; };
@@ -1057,6 +1060,7 @@
 		531000000000000000000002 /* TipJarPromptState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TipJarPromptState.swift; sourceTree = "<group>"; };
 		870000000000000000000002 /* PerformanceSignposts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceSignposts.swift; sourceTree = "<group>"; };
 		870000000000000000000004 /* HitchMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitchMeter.swift; sourceTree = "<group>"; };
+		B14050000000000000000002 /* RenderProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenderProbe.swift; sourceTree = "<group>"; };
 		C09200000000000000000002 /* AppFont.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppFont.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000101 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		863000000000000000000002 /* NotificationOffer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationOffer.swift; sourceTree = "<group>"; };
@@ -1629,6 +1633,7 @@
 				C14300000000000000000004 /* StreamingMarkdownSupportTests.swift */,
 				C13000000000000000000002 /* ChatVerticalScrollAxisGuardTests.swift */,
 				C0DE25000000000000000004 /* ChatScrollPolicyTests.swift */,
+				B14050000000000000000004 /* ChatTranscriptRenderBudgetTests.swift */,
 				C8660A000000000000000004 /* InAppBrowserPolicyTests.swift */,
 				C87100000000000000000004 /* UserBubbleFoldPolicyTests.swift */,
 				C27800000000000000000004 /* ChatGitControlsVisibilityPolicyTests.swift */,
@@ -2225,6 +2230,7 @@
 				531000000000000000000002 /* TipJarPromptState.swift */,
 				870000000000000000000002 /* PerformanceSignposts.swift */,
 				870000000000000000000004 /* HitchMeter.swift */,
+				B14050000000000000000002 /* RenderProbe.swift */,
 				C09200000000000000000002 /* AppFont.swift */,
 				1A2B3C4D5E6F700000000101 /* AppTheme.swift */,
 				863000000000000000000002 /* NotificationOffer.swift */,
@@ -2814,6 +2820,7 @@
 				531000000000000000000001 /* TipJarPromptState.swift in Sources */,
 				870000000000000000000001 /* PerformanceSignposts.swift in Sources */,
 				870000000000000000000003 /* HitchMeter.swift in Sources */,
+				B14050000000000000000001 /* RenderProbe.swift in Sources */,
 				C09200000000000000000001 /* AppFont.swift in Sources */,
 				1A2B3C4D5E6F700000000100 /* AppTheme.swift in Sources */,
 				863000000000000000000001 /* NotificationOffer.swift in Sources */,
@@ -3132,6 +3139,7 @@
 				C14300000000000000000003 /* StreamingMarkdownSupportTests.swift in Sources */,
 				C13000000000000000000001 /* ChatVerticalScrollAxisGuardTests.swift in Sources */,
 				C0DE25000000000000000003 /* ChatScrollPolicyTests.swift in Sources */,
+				B14050000000000000000003 /* ChatTranscriptRenderBudgetTests.swift in Sources */,
 				C8660A000000000000000003 /* InAppBrowserPolicyTests.swift in Sources */,
 				C87100000000000000000003 /* UserBubbleFoldPolicyTests.swift in Sources */,
 				C27800000000000000000003 /* ChatGitControlsVisibilityPolicyTests.swift in Sources */,

@@ -349,7 +349,7 @@ The `HERMEX_DEV_*` environment variables (`HERMEX_DEV_SERVER_URL`, `HERMEX_DEV_P
 | `Load Earlier` | Load earlier (button or pull) to the layout of the prepended rows | `messages` |
 | `Transcript Apply` | Painting the cached transcript, or applying a reloaded one | `messages` |
 | `Markdown Parse` | Parsing one markdown block | `chars` |
-| `Stream Batch Apply` | Applying one batch of streamed tokens | `mutated` (0 or 1) |
+| `Stream Batch Apply` | Applying one batch of streamed tokens and reasoning: each reveal tick of a stream (`forced=0`), or a flush on completion, cancel, error, interim reply or snapshot (`forced=1`; completion can flush more than once) | `mutated` (0 or 1), `forced` (0 or 1) |
 | `Cache Read` | A SwiftData read of cached sessions or messages | `rows` |
 | `Cache Write` | A SwiftData write of cached sessions or messages | `rows` |
 
@@ -363,6 +363,10 @@ xcrun xctrace record --template 'Time Profiler' --instrument os_signpost \
 xcrun xctrace export --input /tmp/hermex.trace \
   --xpath '/trace-toc/run[@number="1"]/data/table[@schema="OSSignpostIntervals"][1]'
 ```
+
+### Counting transcript renders
+
+Debug builds count the body evaluations of the transcript's heavy views in memory (`HermesMobile/Config/RenderProbe.swift`): `ChatTranscriptMessageBlock` (also per row `renderID`), `MessageBubbleView`, `MarkdownRenderer`, `ToolActivityGroupView`, `ReasoningBlockView`, and `ResponseTextSelection`'s host updates. `ChatTranscriptMessageBlock.compared` counts every row equality check and `ChatTranscriptMessageBlock.unequal` the ones that failed, which tells a row whose inputs changed apart from an equal row SwiftUI re-ran anyway, and both apart from rows SwiftUI never compared. Release builds compile the probe to an empty function. `ChatTranscriptRenderBudgetTests` uses it to check that a stream's text-only ticks re-render no settled row. To read it by hand, pause a Debug build in lldb, run `expr RenderProbe.reset()`, continue through a stream, pause again and run `po RenderProbe.snapshot`. Only the named totals may leave the process; never log row identities.
 
 ### Watching the Bot connection log
 

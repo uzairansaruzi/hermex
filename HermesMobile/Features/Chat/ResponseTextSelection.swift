@@ -41,6 +41,7 @@ struct ResponseTextSelection<Content: View>: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: ResponseSelectionController, context: Context) {
+        RenderProbe.hit(.responseSelectionUpdate)
         controller.scope.collectsGlyphs = collectsGlyphs
         controller.input.onAskHermex = onAskHermex
         controller.openURL = openURL

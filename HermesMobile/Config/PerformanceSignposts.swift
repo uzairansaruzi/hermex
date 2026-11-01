@@ -4,7 +4,9 @@ import OSLog
 /// instrument: filter by the app's subsystem and category `Performance`
 /// (`DEVELOPMENT.md` § Launch arguments and profiling). The intervals are
 /// `Launch`, `Session Open`, `Load Earlier`, `Transcript Apply`, `Markdown Parse`,
-/// `Stream Batch Apply`, `Cache Read`, and `Cache Write`.
+/// `Stream Batch Apply`, `Cache Read`, and `Cache Write`. `Stream Batch Apply` covers
+/// both a stream's reveal ticks (`forced=0`) and the flushes that skip the tick on
+/// completion, cancel, error, interim reply and snapshot (`forced=1`).
 ///
 /// Compiled into every build, because Instruments profiles Release builds and an
 /// idle signposter costs almost nothing until a recording turns it on.

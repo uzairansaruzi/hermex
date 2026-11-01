@@ -95,6 +95,9 @@ jobs:
       SIMULATOR_NAME: iPhone 17
       CI_LOG_DIR: ci-logs
       TEST_WORKER_COUNT: 1
+      # xcodebuild hands TEST_RUNNER_-prefixed variables to the tests without
+      # the prefix; tests that are local-only check HERMEX_CI.
+      TEST_RUNNER_HERMEX_CI: "1"
 
     steps:
       - name: Check out

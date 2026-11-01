@@ -735,7 +735,7 @@ struct ChatTranscriptMessageBlock: View, Equatable {
     // This lets `.equatable()` skip re-evaluating rows whose data is unchanged
     // even though their closure props are recreated on every parent body pass.
     static func == (lhs: ChatTranscriptMessageBlock, rhs: ChatTranscriptMessageBlock) -> Bool {
-        lhs.transcriptMessage == rhs.transcriptMessage &&
+        let isEqual = lhs.transcriptMessage == rhs.transcriptMessage &&
             lhs.transcriptSpacing == rhs.transcriptSpacing &&
             lhs.showsThinkingAndToolCards == rhs.showsThinkingAndToolCards &&
             lhs.foldState == rhs.foldState &&
@@ -760,9 +760,15 @@ struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.attachmentAudio == rhs.attachmentAudio &&
             lhs.transcriptMediaCacheNamespace == rhs.transcriptMediaCacheNamespace &&
             lhs.isCronRun == rhs.isCronRun
+        RenderProbe.hit(.transcriptMessageBlockCompared)
+        if !isEqual {
+            RenderProbe.hit(.transcriptMessageBlockUnequal)
+        }
+        return isEqual
     }
 
     var body: some View {
+        let _ = RenderProbe.hit(.transcriptMessageBlock, renderID: transcriptMessage.renderID)
         let foldedQuestions = Self.foldedQuestionLines(
             in: toolCallGroups,
             foldState: foldState,

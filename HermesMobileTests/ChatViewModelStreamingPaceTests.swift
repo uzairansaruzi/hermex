@@ -320,7 +320,7 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
 /// `release(_:)`. The tick is main-actor isolated, so the view model's code
 /// after it runs in the same main-actor job that marks the tick returned.
 @MainActor
-private final class ManualRevealTicks {
+final class ManualRevealTicks {
     private var inFlight: [Int: CheckedContinuation<Void, Never>] = [:]
     private var requestExpectations: [Int: XCTestExpectation] = [:]
     private var returnExpectations: [Int: XCTestExpectation] = [:]
@@ -375,7 +375,7 @@ private final class ManualRevealTicks {
     }
 }
 
-private final class PacingSpySSEStreamingClient: SSEStreamingClient {
+final class PacingSpySSEStreamingClient: SSEStreamingClient {
     private(set) var lastEventID: String?
     private var onEvent: (@MainActor (SSEEvent) -> Void)?
 

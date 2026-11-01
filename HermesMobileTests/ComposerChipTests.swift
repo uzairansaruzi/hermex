@@ -979,7 +979,10 @@ final class ComposerLargePasteTests: XCTestCase {
         let (textView, pasteboard) = makeEditor()
         window.addSubview(textView)
         window.makeKeyAndVisible()
-        defer { window.isHidden = true }
+        defer {
+            window.endEditing(true)
+            window.isHidden = true
+        }
         XCTAssertNil(pasteAsTextCommand(in: textView), "Rooms and webui keep plain paste only")
         textView.onPasteLargeText = { _ in XCTFail("Paste as Text never stages a file") }
         XCTAssertTrue(textView.becomeFirstResponder())
