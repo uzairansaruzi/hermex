@@ -273,7 +273,7 @@ struct ChatAttachmentPreviewView: View {
 /// An attachment that is already known to be an image opens in the full-bleed lightbox.
 /// Text, audio, Quick Look documents, and anything without a preview keep
 /// `ChatAttachmentPreviewView`, which only learns what it has once the server answers.
-/// `page` says whether this image may load yet.
+/// `page` ties it to its gallery's pager.
 struct ChatAttachmentImageLightbox: View {
     let onAPIError: (Error) -> Void
 
@@ -305,19 +305,15 @@ struct ChatAttachmentImageLightbox: View {
             page: page,
             onRetry: { Task { await loadAttachment(force: true) } }
         )
-        .task(id: page.isAdmitted) {
-            if page.isAdmitted {
-                await loadAttachment()
-            } else {
-                viewModel.release()
-            }
+        .task {
+            await loadAttachment()
         }
     }
 
     private var content: ImageLightboxContent {
         switch viewModel.preview {
         case let .image(file):
-            if let image = UIImage(data: file.data) {
+            if let image = viewModel.previewImage {
                 return .image(
                     image,
                     detail: ByteCountFormatter.string(
@@ -357,9 +353,15 @@ final class ChatAttachmentPreviewViewModel {
     private let item: ChatAttachmentPreviewItem
     private let apiClient: APIClient
     private var didLoad = false
-    private var loadGeneration = 0
 
-    private(set) var preview: FilePreviewContent?
+    private(set) var preview: FilePreviewContent? {
+        didSet {
+            previewImage = if case let .image(file) = preview { UIImage(data: file.data) } else { nil }
+        }
+    }
+    /// An image preview decoded once, so a redraw hands the lightbox the same image and
+    /// keeps its zoom.
+    private(set) var previewImage: UIImage?
     private(set) var isLoading = false
     private(set) var errorMessage: String?
     private(set) var lastError: Error?
@@ -372,8 +374,6 @@ final class ChatAttachmentPreviewViewModel {
 
     func load(force: Bool = false) async {
         guard force || !didLoad else { return }
-        loadGeneration += 1
-        let generation = loadGeneration
         didLoad = true
         preview = nil
 
@@ -393,61 +393,38 @@ final class ChatAttachmentPreviewViewModel {
         isLoading = true
         errorMessage = nil
         lastError = nil
-        defer {
-            if loadGeneration == generation {
-                isLoading = false
-            }
-        }
+        defer { isLoading = false }
 
         do {
-            let loaded = try await serverPreview(sessionID: sessionID, path: path)
-            guard loadGeneration == generation else { return }
-            preview = loaded
+            if item.inferredIsImage {
+                let data = try await apiClient.rawFileData(sessionID: sessionID, path: path)
+                if let previewData = ImagePreviewDownsampler.previewData(
+                    from: data,
+                    maxPixelSize: ImagePreviewDownsampler.filePreviewMaxPixelSize
+                ) {
+                    preview = .image(.init(data: previewData, originalByteCount: data.count))
+                } else {
+                    preview = .unavailable(String(localized: "Could not decode this image."))
+                }
+            } else if item.inferredIsAudio {
+                // Raw bytes (no downsampling) so AVAudioPlayer gets the original
+                // encoded audio; checked before the Quick Look list, which would
+                // otherwise take m4a/mp3/wav/flac away from the inline player.
+                preview = .audio(try await apiClient.rawFileData(sessionID: sessionID, path: path))
+            } else if item.binaryPreview == .quickLook {
+                let apiClient = apiClient
+                preview = try await FilePreviewContent.loadQuickLook(name: item.displayName, knownSize: item.size) {
+                    try await apiClient.rawFilePreviewData(sessionID: sessionID, path: path)
+                }.content
+            } else if item.binaryPreview == .unavailable {
+                preview = .unavailable(String(localized: "Preview is not available for this file type."))
+            } else {
+                preview = .text(try await apiClient.file(sessionID: sessionID, path: path))
+            }
         } catch {
-            guard loadGeneration == generation else { return }
             lastError = error
             errorMessage = error.localizedDescription
         }
-    }
-
-    /// Lets go of the preview and drops a load still in flight, so a gallery page outside
-    /// the admission window holds no full-size image. The next `load()` starts over.
-    func release() {
-        loadGeneration += 1
-        didLoad = false
-        preview = nil
-        isLoading = false
-        errorMessage = nil
-        lastError = nil
-    }
-
-    private func serverPreview(sessionID: String, path: String) async throws -> FilePreviewContent {
-        if item.inferredIsImage {
-            let data = try await apiClient.rawFileData(sessionID: sessionID, path: path)
-            guard let previewData = ImagePreviewDownsampler.previewData(
-                from: data,
-                maxPixelSize: ImagePreviewDownsampler.filePreviewMaxPixelSize
-            ) else {
-                return .unavailable(String(localized: "Could not decode this image."))
-            }
-            return .image(.init(data: previewData, originalByteCount: data.count))
-        }
-        if item.inferredIsAudio {
-            // Raw bytes (no downsampling) so AVAudioPlayer gets the original
-            // encoded audio; checked before the Quick Look list, which would
-            // otherwise take m4a/mp3/wav/flac away from the inline player.
-            return .audio(try await apiClient.rawFileData(sessionID: sessionID, path: path))
-        }
-        if item.binaryPreview == .quickLook {
-            let apiClient = apiClient
-            return try await FilePreviewContent.loadQuickLook(name: item.displayName, knownSize: item.size) {
-                try await apiClient.rawFilePreviewData(sessionID: sessionID, path: path)
-            }.content
-        }
-        if item.binaryPreview == .unavailable {
-            return .unavailable(String(localized: "Preview is not available for this file type."))
-        }
-        return .text(try await apiClient.file(sessionID: sessionID, path: path))
     }
 
     private var localFallbackPreview: FilePreviewContent {

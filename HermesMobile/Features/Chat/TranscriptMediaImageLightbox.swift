@@ -25,7 +25,7 @@ extension ImageLightboxGallery where Item == TranscriptMediaPreviewItem {
 /// The transcript's viewer for an image. Audio, video, and unsupported media keep
 /// `TranscriptMediaPreviewView`, which can only tell them apart after the bytes arrive;
 /// an image is known to be an image before anything is fetched, so it can open straight
-/// into the full-bleed lightbox. `page` says whether this image may load yet.
+/// into the full-bleed lightbox. `page` ties it to its gallery's pager.
 struct TranscriptMediaImageLightbox: View {
     let onAPIError: (Error) -> Void
 
@@ -87,12 +87,8 @@ struct TranscriptMediaImageLightbox: View {
                 )
             }
         }
-        .task(id: page.isAdmitted) {
-            if page.isAdmitted {
-                await loadMedia()
-            } else {
-                viewModel.release()
-            }
+        .task {
+            await loadMedia()
         }
         .fileExporter(
             isPresented: $isFileExporterPresented,
@@ -144,8 +140,8 @@ struct TranscriptMediaImageLightbox: View {
     }
 
     private var content: ImageLightboxContent {
-        if let data = viewModel.previewData {
-            guard let image = UIImage(data: data) else {
+        if viewModel.previewData != nil {
+            guard let image = viewModel.previewImage else {
                 return .failure(String(localized: "Could not decode this image."))
             }
             return .image(image, detail: detailText)

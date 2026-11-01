@@ -17,7 +17,12 @@ final class TranscriptMediaPreviewViewModel {
     private var isPastPreviewCap = false
     private var temporaryVideoURL: URL?
 
-    private(set) var previewData: Data?
+    private(set) var previewData: Data? {
+        didSet { previewImage = previewData.flatMap(UIImage.init(data:)) }
+    }
+    /// `previewData` decoded once, so a redraw hands the lightbox the same image and keeps
+    /// its zoom.
+    private(set) var previewImage: UIImage?
     private(set) var audioData: Data?
     private(set) var videoFileURL: URL?
     private(set) var originalByteCount: Int?
@@ -132,13 +137,10 @@ final class TranscriptMediaPreviewViewModel {
             return originalData
         }
 
-        let generation = loadGeneration
         let data = try await transcriptMediaData()
         try Task.checkCancellation()
-        if loadGeneration == generation {
-            originalData = data
-            originalByteCount = data.count
-        }
+        originalData = data
+        originalByteCount = data.count
         return data
     }
 
@@ -163,19 +165,6 @@ final class TranscriptMediaPreviewViewModel {
         case let .remoteURL(url):
             return try await apiClient.remoteTranscriptMediaData(from: url)
         }
-    }
-
-    /// Lets go of everything loaded and drops a load still in flight, so a gallery page
-    /// outside the admission window holds no full-size image. The next `load()` starts over.
-    func release() {
-        cleanupTemporaryFiles()
-        didLoad = false
-        previewData = nil
-        originalData = nil
-        originalByteCount = nil
-        isPastPreviewCap = false
-        errorMessage = nil
-        lastError = nil
     }
 
     func cleanupTemporaryFiles() {

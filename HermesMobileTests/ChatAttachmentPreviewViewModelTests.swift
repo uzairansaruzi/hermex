@@ -1,5 +1,3 @@
-import os
-import UIKit
 import XCTest
 @testable import HermesMobile
 
@@ -68,51 +66,6 @@ final class ChatAttachmentPreviewViewModelTests: APIClientTestCase {
         guard case .unavailable = viewModel.preview else {
             return XCTFail("Expected the too-large state, got \(String(describing: viewModel.preview))")
         }
-    }
-
-    /// A gallery page that leaves the admission window lets go of its image: a download
-    /// still in flight lands nowhere, and the page loads again when the user swipes back.
-    func testAReleasedImageDropsItsLateDownloadAndLoadsAgain() async throws {
-        let image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).pngData { context in
-            UIColor.systemRed.setFill()
-            context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
-        }
-        let requestCount = OSAllocatedUnfairLock(initialState: 0)
-        let firstDownloadStarted = expectation(description: "first download started")
-        let finishFirstDownload = DispatchSemaphore(value: 0)
-        let client = makeClient { request in
-            let count = requestCount.withLock { count in
-                count += 1
-                return count
-            }
-            if count == 1 {
-                firstDownloadStarted.fulfill()
-                finishFirstDownload.wait()
-            }
-            return (try Self.response(for: request), image)
-        }
-        let viewModel = try ChatAttachmentPreviewViewModel(
-            session: makeFilePreviewSession(),
-            server: XCTUnwrap(URL(string: "https://example.test")),
-            item: ChatAttachmentPreviewItem(
-                message: MessageAttachment(name: "after.png", path: "/tmp/workspace/after.png", isImage: true),
-                localData: nil
-            ),
-            apiClient: client
-        )
-
-        let firstLoad = Task { await viewModel.load() }
-        await fulfillment(of: [firstDownloadStarted], timeout: 5)
-        viewModel.release()
-        finishFirstDownload.signal()
-        await firstLoad.value
-        XCTAssertNil(viewModel.preview)
-
-        await viewModel.load()
-        guard case .image = viewModel.preview else {
-            return XCTFail("A page back in the window loads again, got \(String(describing: viewModel.preview))")
-        }
-        XCTAssertEqual(requestCount.withLock { $0 }, 2)
     }
 
     private func makeViewModel(name: String, size: Int? = nil, client: APIClient) throws -> ChatAttachmentPreviewViewModel {
