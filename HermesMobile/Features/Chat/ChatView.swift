@@ -465,7 +465,8 @@ struct ChatView: View {
     @State private var showsStopConfirmation = false
     /// What the share this new chat opened for left out (#1401), shown once over the composer.
     private let shareNotice: SharedSkipsNotice?
-    @State private var shareNoticeToast = ActionToastState()
+    /// The notice over the composer: the share's skips, or a waiting send that expired (#1407).
+    @State private var noticeToast = ActionToastState()
 
     init(
         session: SessionSummary,
@@ -573,8 +574,11 @@ struct ChatView: View {
             isCompressingSession: viewModel.isCompressingSession,
             isWaitingForStream: viewModel.activeStreamID != nil,
             isCancellingStream: viewModel.isCancellingStream,
-            // Offline the draft stays editable and Send waits for the reconnect (#1375).
-            access: ChatComposerAccess(session: session, isViewingCachedData: viewModel.showsOfflineCache),
+            // Offline the draft stays editable and Send waits for the reconnect (#1375); a Hermes
+            // chat's plain-text Send waits as the transcript's waiting bubble (#1407).
+            access: ChatComposerAccess(session: session, isViewingCachedData: viewModel.showsOfflineCache,
+                                       offersWaitingSend: viewModel.offersWaitingSend,
+                                       hasWaitingSend: viewModel.waitingSend != nil),
             errorMessage: viewModel.sendErrorMessage,
             errorFixPrompt: viewModel.sendErrorRuntimeStale?.fixPrompt,
             configurationErrorMessage: viewModel.composerConfigurationErrorMessage
@@ -1013,7 +1017,7 @@ struct ChatView: View {
                 messageComposer
                     .frame(maxWidth: composerMaximumWidth)
 
-                ActionToastView(state: shareNoticeToast)
+                ActionToastView(state: noticeToast)
                     .frame(maxWidth: 420)
                     .padding(.horizontal, 24)
                     .padding(.bottom, composerHeight + 8)
@@ -1042,7 +1046,7 @@ struct ChatView: View {
             }
             .task {
                 guard let skipped = shareNotice?.take(), let toast = ActionToast(sharedSkips: skipped) else { return }
-                shareNoticeToast.show(toast)
+                noticeToast.show(toast)
             }
             .onChange(of: scenePhase) {
                 handleScenePhaseChange(scenePhase)
@@ -1081,11 +1085,13 @@ struct ChatView: View {
             }
             .onDisappear {
                 isOnScreen = false
-                shareNoticeToast.dismiss()
+                noticeToast.dismiss()
                 composerFocusRevision += 1
                 completionScrollPolicy.readerDidInteract()
                 hydratedCompletionStreamID = nil
                 parkQueuedMessages()
+                // A waiting send never sends from a chat that left; its text goes back to the draft (#1407).
+                viewModel.leaveWaitingSend()
                 flushDraftsBestEffort()
                 appearanceTask?.cancel()
                 appearanceTask = nil
@@ -1100,6 +1106,14 @@ struct ChatView: View {
             .onAppear {
                 viewModel.protectDraftAttachments(for: draftKey)
                 isOnScreen = true
+                // Holds only the composer's text and the toast, never this view (#1407).
+                viewModel.onWaitingSendReturned = { [composerText = $draftMessage, toast = noticeToast] text, reason in
+                    composerText.wrappedValue = text
+                    if reason == .expired {
+                        let notice = String(localized: "Not sent after 10 minutes offline. Your message is back in the composer.")
+                        toast.show(ActionToast(message: notice, systemImage: "clock", accessibilityLabel: notice))
+                    }
+                }
                 gitAvailabilityViewModel.resumePullRequestReads()
                 appearanceTask?.cancel()
                 appearanceTask = Task {
@@ -2239,7 +2253,9 @@ struct ChatView: View {
             onCopyQueuedPrompt: { text in
                 UIPasteboard.general.string = text
                 ChatHaptics.copied(isEnabled: isHapticsEnabled)
-            }
+            },
+            waitingSend: viewModel.waitingSendMessage,
+            onCancelWaitingSend: viewModel.cancelWaitingSend
         )
         // Off the main body chain, which is at the type-checker's limit.
         .onChange(of: viewModel.latestRunOutcome) {
@@ -2822,7 +2838,7 @@ struct ChatView: View {
             }
         }
 
-        let didStart: Bool
+        let outcome: ChatSendOutcome
         if viewModel.activeStreamID != nil {
             let behavior = behavior ?? StreamingSendBehavior.storedValue(streamingSendBehaviorRawValue)
             if ChatScrollPolicy.streamingSendReArmsFollow(behavior) {
@@ -2837,20 +2853,22 @@ struct ChatView: View {
                 submittedDraftRevision: submittedDraftRevision,
                 consumesDraft: result.isSuccessfulSubmission
             )
-            didStart = result.isSuccessfulSubmission
+            outcome = result.isSuccessfulSubmission ? .started : .kept
         } else {
-            didStart = await sendStandardMessage(
+            outcome = await sendStandardMessage(
                 submittedContent,
                 outboundMessage: outboundMessage,
                 submittedDraftRevision: submittedDraftRevision
             )
         }
 
-        if !didStart {
+        switch outcome {
+        case .kept:
             await openCompressionContinuationIfNeeded()
-        }
-        if didStart {
+        case .started:
             ChatHaptics.messageSent(isEnabled: isHapticsEnabled)
+            applySubmissionFocus()
+        case .waiting:
             applySubmissionFocus()
         }
 
@@ -2879,18 +2897,22 @@ struct ChatView: View {
         }
     }
 
+    /// Sends the composer's content when no response runs. Plain text in a Hermes chat may wait for
+    /// the reconnect (#1407): the composer clears as for a send, but nothing claims the host took it.
     private func sendStandardMessage(
         _ submittedContent: ComposerDraftContent,
         outboundMessage: String,
         submittedDraftRevision: Int
-    ) async -> Bool {
+    ) async -> ChatSendOutcome {
         // Attachment-only sends (empty text and quotes) flow through; the view
         // model synthesizes their message text. Clearing the captured composer
         // content below is the correct end state after sending.
         let hasStagedAttachments = !viewModel.pendingAttachments.isEmpty
-        guard !outboundMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || hasStagedAttachments else {
-            return false
+        let trimmedMessage = outboundMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedMessage.isEmpty || hasStagedAttachments else {
+            return .kept
         }
+        let isPlainText = submittedContent.quotes.isEmpty && !hasStagedAttachments && !trimmedMessage.hasPrefix("/")
 
         prepareTranscriptForExplicitSend()
 
@@ -2906,9 +2928,11 @@ struct ChatView: View {
         draftMessage = ""
         draftQuotes = []
 
-        let didStart = await viewModel.sendMessage(outboundMessage, modelContext: modelContext)
+        let outcome = await viewModel.send(outboundMessage, isPlainText: isPlainText, modelContext: modelContext)
+        // A waiting send left the composer as a sent one does; the view model holds its text.
+        let didStart = outcome != .kept
+        if outcome == .started { onConversationStarted() }
         if didStart {
-            onConversationStarted()
             draftAttachmentsPendingRetry = sendReconciliation.retained
             if textOrigin != nil { dismissShortcutNotice() }
         }
@@ -2928,10 +2952,10 @@ struct ChatView: View {
             // open. Deterministic here rather than waiting on the observation
             // sync that the emptied composer strip will also trigger.
             syncDraftAttachments()
-            offerNotificationsIfNeeded()
+            if outcome == .started { offerNotificationsIfNeeded() }
         }
 
-        return didStart
+        return outcome
     }
 
     private func openCompressionContinuationIfNeeded() async {
@@ -3119,7 +3143,7 @@ struct ChatView: View {
         await draftStore.markUsed(draftKey)
         let textBeforeHydration = draftMessage
         let quotesBeforeHydration = draftQuotes
-        let persistedDraft = await draftStore.draft(for: draftKey)
+        var persistedDraft = await draftStore.draft(for: draftKey)
         viewModel.protectDraftAttachments(for: draftKey, restoring: persistedDraft?.attachments ?? [])
         viewModel.restoreSubmissionMark(persistedDraft?.botSubmissionUncertain == true)
         guard !Task.isCancelled,
@@ -3127,12 +3151,16 @@ struct ChatView: View {
               draftQuotes == quotesBeforeHydration
         else { return }
 
+        // A send still waiting when the app quit comes back for a deliberate Send, never on its own (#1407).
+        let returnedWaitingSend = viewModel.waitingSend == nil ? persistedDraft?.waitingSend?.text : nil
+        if returnedWaitingSend != nil { persistedDraft = draftStore.returnWaitingSend(for: draftKey) }
         if textBeforeHydration.isEmpty {
             if let persistedDraft, !persistedDraft.text.isEmpty {
                 draftMessage = persistedDraft.text
             }
         } else {
-            draftStore.setDraft(textBeforeHydration, for: draftKey)
+            if let returnedWaitingSend { draftMessage = returnedWaitingSend + "\n\n" + textBeforeHydration }
+            draftStore.setDraft(draftMessage, for: draftKey)
         }
         if quotesBeforeHydration.isEmpty {
             draftQuotes = persistedDraft?.quotes ?? []
@@ -3950,8 +3978,9 @@ struct ChatView: View {
         animated: Bool = true,
         isUserInitiated: Bool = false
     ) {
-        // An empty chat still draws the transcript for a queued prompt (#1379).
-        guard !viewModel.messages.isEmpty || viewModel.queuedPromptMessage != nil else { return }
+        // An empty chat still draws the transcript for a queued prompt (#1379) or a waiting send (#1407).
+        guard !viewModel.messages.isEmpty || viewModel.queuedPromptMessage != nil
+            || viewModel.waitingSendMessage != nil else { return }
 
         scheduleFollowScroll(
             proxy,

@@ -141,6 +141,21 @@ final class ChatComposerSendGateTests: XCTestCase {
         }
         XCTAssertNil(block(-1))
     }
+
+    /// Offline, a Hermes chat's plain-text Send waits for the reconnect (#1407); quotes, files, a
+    /// `/` command and a read-only session stay held, and while one waits every Send holds.
+    func testOfflineHoldsEverySendButAWaitingPlainTextOne() {
+        let offline = ChatComposerAccess(session: SessionSummary(profile: "default"), isViewingCachedData: true,
+                                         offersWaitingSend: true)
+        XCTAssertFalse(offline.holdsSendOffline(isPlainText: true))
+        XCTAssertTrue(offline.holdsSendOffline(isPlainText: false))
+        let readOnly = ChatComposerAccess(session: SessionSummary(profile: "default", readOnly: true),
+                                          isViewingCachedData: true, offersWaitingSend: true)
+        XCTAssertTrue(readOnly.holdsSendOffline(isPlainText: true))
+        XCTAssertEqual(ChatComposerSendBlock(isWaitingForConnection: true, isOffline: false, isSending: false,
+                                             isCompressingSession: false, isUploadingAttachment: false,
+                                             isUpdatingConfiguration: false), .waitingForConnection)
+    }
 }
 
 final class HermexAttachmentPickerPolicyTests: XCTestCase {

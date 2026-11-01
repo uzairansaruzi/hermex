@@ -132,10 +132,15 @@ struct ChatTranscriptView: View {
     /// as a pending bubble whose only action is `onCopyQueuedPrompt`.
     var queuedPrompt: ChatMessage? = nil
     var onCopyQueuedPrompt: (String) -> Void = { _ in }
+    /// A Hermes chat's Send waiting for the reconnect (`ChatViewModel.waitingSendMessage`, #1407),
+    /// drawn last as a pending bubble whose only action is `onCancelWaitingSend`.
+    var waitingSend: ChatMessage? = nil
+    var onCancelWaitingSend: () -> Void = {}
 
     /// What stands in for a transcript with no rows. Nil draws the transcript, as for a Hermes
     /// turn that failed before the host saved any row, whose outcome row still shows (#1139),
-    /// or a prompt queued behind another client's first turn, whose bubble still shows (#1379).
+    /// or a prompt queued behind another client's first turn, or a waiting send, whose bubble
+    /// still shows (#1379, #1407).
     enum Placeholder: Equatable {
         case loading
         case loadFailed(String)
@@ -158,7 +163,8 @@ struct ChatTranscriptView: View {
 
     var body: some View {
         switch Placeholder(isLoading: isLoading, errorMessage: errorMessage, isEmpty: messages.isEmpty,
-                           showsTurnOutcome: turnOutcome != nil, showsQueuedPrompt: queuedPrompt != nil) {
+                           showsTurnOutcome: turnOutcome != nil,
+                           showsQueuedPrompt: queuedPrompt != nil || waitingSend != nil) {
         case .loading?:
             ChatTranscriptLoadingSkeletonView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -293,8 +299,8 @@ struct ChatTranscriptView: View {
                     }
                     releasingHold { onScrollToLatestContent(proxy, false) }
                 }
-                .onChange(of: queuedPrompt?.content) {
-                    // The queued bubble came, grew with a merged prompt, or went without
+                .onChange(of: [queuedPrompt?.content, waitingSend?.content]) {
+                    // A pending bubble came, grew with a merged prompt, or went without
                     // the transcript gaining a row: follow it only from the live edge.
                     guard isFollowingLatestContent else {
                         pinReader(proxy: proxy)
@@ -450,6 +456,10 @@ struct ChatTranscriptView: View {
             if let queuedPrompt {
                 ChatQueuedPromptRow(message: queuedPrompt, onCopy: onCopyQueuedPrompt)
                     .id(queuedPrompt.id)
+            }
+            if let waitingSend {
+                ChatWaitingSendRow(message: waitingSend, onCancel: onCancelWaitingSend)
+                    .id(waitingSend.id)
             }
 
             Color.clear
@@ -935,6 +945,33 @@ private struct ChatQueuedPromptRow: View {
                 .accessibilityValue(Text("Queued"))
             ChatMessageMetaRow(isUserMessage: true, timeText: String(localized: "Queued"),
                                onCopy: { onCopy(message.content ?? "") })
+        }
+    }
+}
+
+/// A Hermes chat's Send waiting for the reconnect (#1407): the queued prompt's dimmed bubble, with
+/// "Waiting for connection" in place of a time and Cancel, which puts the text back in the composer.
+/// Static: nothing animates while it waits.
+private struct ChatWaitingSendRow: View {
+    let message: ChatMessage
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 4) {
+            MessageBubbleView(message: message, transcriptMediaCacheNamespace: "", isQueued: true)
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(Text("Waiting for connection"))
+            HStack(spacing: 10) {
+                Text("Waiting for connection")
+                    .font(AppFont.caption(weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Button("Cancel", action: onCancel)
+                    .font(AppFont.caption(weight: .semibold))
+                    .chatMinimumHitTarget(horizontalPadding: 12, verticalPadding: 14, in: Rectangle())
+                    .accessibilityLabel(Text("Cancel waiting message"))
+            }
+            .padding(.horizontal, 2)
         }
     }
 }

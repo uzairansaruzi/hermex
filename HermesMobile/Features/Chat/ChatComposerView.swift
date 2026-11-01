@@ -1546,7 +1546,10 @@ struct MessageComposerView: View {
 
     private var sendBlock: ChatComposerSendBlock? {
         ChatComposerSendBlock(
-            isOffline: access.isOffline,
+            isWaitingForConnection: access.hasWaitingSend,
+            isOffline: access.holdsSendOffline(
+                isPlainText: quotes.isEmpty && pendingAttachments.isEmpty && !trimmedDraftMessage.hasPrefix("/")
+            ),
             isSending: isSending,
             isCompressingSession: isCompressingSession,
             isUploadingAttachment: isUploadingAttachment,
