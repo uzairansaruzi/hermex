@@ -70,6 +70,7 @@ final class MarkdownMathRendererTests: XCTestCase {
 
     func testPriceAndPathWithoutMathOpenerStayPlain() {
         let input = String(repeating: "Plain prose line.\n", count: 50) + #"It costs $5 and saves to C:\Users\me."#
+        XCTAssertFalse(MarkdownMathFormatter.mayContainMath(input))
         XCTAssertEqual(MarkdownMathLayoutCache.uncachedLayout(for: input), .plain(input))
     }
 
@@ -77,6 +78,10 @@ final class MarkdownMathRendererTests: XCTestCase {
         for input in ["Use $HOME/foo:$PATH.", "Set $FOO_BAR/$BAZ before running.", "The shell prints $$ and $$."] {
             XCTAssertEqual(MarkdownMathLayoutCache.uncachedLayout(for: input), .plain(input))
         }
+        XCTAssertEqual(
+            MarkdownMathSegmenter.segments(in: "The shell prints $$ and $$; a non-zero exit stops it.\n\n$$x^2$$"),
+            [.markdown("The shell prints $$ and $$; a non-zero exit stops it.\n\n"), .displayMath("x^2")]
+        )
     }
 
     func testRealInlineMathStillRendersAlongsideShellVariableRules() {
@@ -88,6 +93,7 @@ final class MarkdownMathRendererTests: XCTestCase {
             XCTAssertTrue(rendered.contains("hermex-math:///"), input)
             XCTAssertFalse(rendered.contains("$"), input)
         }
+        XCTAssertEqual(MarkdownMathSegmenter.segments(in: "$$42$$"), [.displayMath("42")])
     }
 
     func testLetterLedInlineMathStillRendersAfterBoundaryGuards() {

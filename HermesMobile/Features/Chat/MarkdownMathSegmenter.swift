@@ -46,9 +46,11 @@ struct MarkdownMathSegmenter {
                 continue
             }
             let latex = String(characters[(index + delimiter.openLength)..<closeIndex])
-            // `$$` is also the shell's PID, so `$$ and $$` must carry a math signal.
-            if delimiter == .dollars, !MarkdownMathFormatter.looksLikeMath(latex) {
-                index += 1
+            // `$$` is also the shell's PID: `$$ and $$` is prose, `$$42$$` is math.
+            // A rejected pair stays literal, and its closer never opens a later span.
+            if delimiter == .dollars, latex.contains(where: \.isWhitespace),
+               !MarkdownMathFormatter.looksLikeMath(latex) {
+                index = closeIndex + delimiter.closeLength
                 continue
             }
 
@@ -376,7 +378,7 @@ enum MarkdownMathLayoutCache {
             // second full-string walk for an identical result.
             //
             // One exception: the segmenter *recognises* a display-math span but
-            // drops it when the body is empty or whitespace-only (`\[ \]`).
+            // drops it when the body is empty or whitespace-only (`$$$$`, `\[ \]`).
             // Those produce no `.displayMath` segment, so
             // `containsMath` is false, yet the surrounding markdown segments no
             // longer contain the delimiters — joining them would silently
