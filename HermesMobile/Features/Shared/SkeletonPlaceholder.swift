@@ -47,8 +47,8 @@ extension View {
 
     /// Groups one or more `.skeletonPlaceholder()` rows behind a single VoiceOver announcement and,
     /// by default, blocks interaction with the placeholder — the pattern
-    /// `ChatTranscriptLoadingSkeletonView` and `ProviderLimitsPlaceholderCard` each built ad hoc
-    /// before this extraction.
+    /// `ChatTranscriptLoadingSkeletonView` and `ProviderLimitsPlaceholderCard` each build ad hoc;
+    /// neither uses this modifier.
     func skeletonAnnouncement(label: Text, value: Text? = nil, disablesHitTesting: Bool = true) -> some View {
         modifier(SkeletonAnnouncementModifier(label: label, value: value, disablesHitTesting: disablesHitTesting))
     }

@@ -20,7 +20,7 @@ enum HermexListCompactOverlayMetrics {
 
 /// The shared native List container. It deliberately keeps SwiftUI List semantics—navigation,
 /// swipe actions, refresh, editing, keyboard support, and platform accessibility—while giving
-/// production screens one reusable entry point for list-level defaults.
+/// callers one reusable entry point for list-level defaults.
 struct HermexList<Content: View>: View {
     /// `.standard` is the original, still-default behavior: native List chrome plus a 12pt
     /// vertical scroll-content margin. `.compactOverlay` is the plain, transparent, separator-free

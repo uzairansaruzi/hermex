@@ -199,8 +199,9 @@ struct HermexBanner: View {
 }
 
 extension HermexBanner {
-    /// The Session-list and Chat offline-cache notice, unified: both read "Offline — viewing cached
-    /// version" over an orange full-width banner with a wifi-slash glyph.
+    /// An offline-cache notice preset: "Offline — viewing cached version" over an orange full-width
+    /// banner with a wifi-slash glyph. No production screen calls it; Sessions and Chat keep their own
+    /// `OfflineCacheBanner` and `ChatOfflineCacheBanner`.
     static func offlineCache(horizontalPadding: CGFloat = HermesSpacing.s16) -> HermexBanner {
         HermexBanner(
             .offline,

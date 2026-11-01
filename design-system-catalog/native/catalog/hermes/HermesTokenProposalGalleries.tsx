@@ -262,11 +262,10 @@ export function HermesTokenCoverageGallery() {
     <View style={styles.stack}>
       <ProposalStatus classification="Proposed — not yet adopted" note="This page states current production status alongside what the catalog now proposes." />
       <Text style={styles.migrationLine}>
-        Production has adopted global HermesSpacing, HermesRadius, and HermesShadow token families (see
+        The foundation layer defines global HermesSpacing, HermesRadius, and HermesShadow token families (see
         the Hermex Spacing and Hermex Radius & Geometry pages, and HermesMobile/Config/HermesShadow.swift
-        for HermesShadow's exact case values); HermesShadow's own dedicated catalog documentation is
-        added separately. Production still has no owned icon set and no semantic-color token family —
-        see below.
+        for HermesShadow's exact case values), but no production file reads them yet. Production also has
+        no owned icon set and no semantic-color token family — see below.
       </Text>
       <Text style={styles.migrationLine}>· No owned icon set — Hermex draws its icons from Apple's own SF Symbols, not a Hermex-authored icon library.</Text>
       <Text style={styles.migrationLine}>· No semantic surface/text/border color layer in production — SwiftUI's own semantic Color values are used directly at each call site.</Text>

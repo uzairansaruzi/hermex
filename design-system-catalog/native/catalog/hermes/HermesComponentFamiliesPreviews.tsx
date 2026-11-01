@@ -714,21 +714,21 @@ export function TagGallery() {
         <TagSwatch label="Read-only" tint="#8E8E93" hPad={8} vPad={2} />
         <TagSwatch label="claude-code" tint="#3478F6" hPad={8} vPad={2} />
       </View>
-      <Text style={preview.caption}>Sessions' Cached/Read-only/source tags, hidden from VoiceOver (decorative)</Text>
+      <Text style={preview.caption}>decorative (isDecorative) — hidden from VoiceOver, as production's Sessions badges are</Text>
       <View style={preview.tagRow}>
         <TagSwatch label="Modified" tint="#FFCC00" hPad={8} vPad={2} opacity={0.18} />
         <TagSwatch label="Staged" tint="#34C759" hPad={8} vPad={2} opacity={0.18} />
       </View>
-      <Text style={preview.caption}>Workspace/Git's change-kind tag (0.18 fill)</Text>
+      <Text style={preview.caption}>a 0.18 fill, as production's Workspace/Git change-kind chips use</Text>
       <View style={preview.tagRow}>
         <TagSwatch label="Running" tint="#34C759" hPad={8} vPad={4} iconGlyph="●" />
         <TagSwatch label="Selected" tint="#3478F6" hPad={8} vPad={4} />
       </View>
-      <Text style={preview.caption}>size: regular (8/4 padding, optional icon) — Tasks' status tag, Settings' profile tag</Text>
+      <Text style={preview.caption}>size: regular (8/4 padding, optional icon)</Text>
       <View style={preview.tagRow}>
         <TagSwatch label="Connected" tint="#34C759" hPad={12} vPad={8} />
       </View>
-      <Text style={preview.caption}>size: prominent (12/8 padding, caption not caption2) — Settings' connection tag</Text>
+      <Text style={preview.caption}>size: prominent (12/8 padding)</Text>
       <Text style={[preview.label, { marginTop: 4 }]}>Every Tag instance above is display-only</Text>
       <Text style={preview.caption}>
         No Tag prop, example, or styling is interactive anywhere in this section — a tappable element
@@ -829,7 +829,7 @@ export function ButtonDecisionAndTactilePreview() {
 
 // ─── Skeleton — static, production-faithful (no animation) ──────────────────
 /**
- * Deliberately NOT the animated `Shimmer` component below — production's `SkeletonPlaceholder` is
+ * Deliberately NOT the animated `Shimmer` component below — the foundation `SkeletonPlaceholder` is
  * static (a platform `.redacted(reason: .placeholder)` treatment), so this gallery reproduces that
  * static appearance for every required shape instead of introducing/describing continuous shimmer.
  */
@@ -857,8 +857,8 @@ export function HermesSkeletonGallery() {
         </View>
       </SkeletonGroup>
       <Text style={preview.caption}>
-        Every shape here is static — no pulse, no loop — matching production's shared text-line,
-        block, circle, and rounded-rectangle Skeleton shapes. Content-shaped cards keep
+        Every shape here is static — no pulse, no loop — matching the foundation Skeleton's text-line,
+        block, circle, and rounded-rectangle shapes. Content-shaped cards keep
         `.skeletonPlaceholder()` when the final view already owns the right geometry. Reduce Motion
         needs no separate fallback here because nothing in this gallery ever animates.
       </Text>
@@ -1091,8 +1091,8 @@ export function HermexTextInputFamilyGallery() {
         layered under a decorative digit-box row hidden from accessibility, demonstrating lengths 4,
         6, and 8 across partial, complete, error, and disabled states without any auto-submit; helper
         and error text stay mutually exclusive per specimen, matching the native HermexTextInputShell
-        contract. Production owns focus, keyboard, autocorrection, capitalization, and content type
-        through these native controls, not through custom Hermex field chrome. TextEditor (long-form
+        contract. The native controls own focus, keyboard, autocorrection, capitalization, and content type,
+        not custom Hermex field chrome. TextEditor (long-form
         body text) and Search stay outside this family — see their own entries.
       </Text>
     </View>
@@ -1626,7 +1626,7 @@ export function SegmentedControlGallery() {
         name="Fixed"
         details={
           <Text style={preview.detailsText}>
-            Used by Tasks, Usage window selection, and the Cost/Tokens selector. A distinct 40pt
+            The equal-width layout, as in the segmented selectors Tasks and Usage draw natively. A distinct 40pt
             visual-track background sits behind the row (the 36pt selected pill plus one padding step
             above and below), while each option's interactive row keeps the full 44pt touch target that
             extends beyond it. At accessibility text sizes the equal-width segments grow vertically and
@@ -1641,7 +1641,7 @@ export function SegmentedControlGallery() {
         name="Scrolling"
         details={
           <Text style={preview.detailsText}>
-            Used by Kanban when the status set no longer fits an equal-width control. The selected pill
+            The layout for a set that no longer fits an equal-width control, as in Kanban's own status strip. The selected pill
             transitions between options, uses a compact 36pt visual height inside a 44pt touch target,
             and switches instantly when Reduce Motion is enabled.
           </Text>
@@ -1679,9 +1679,9 @@ export function ShimmerFamilyGallery() {
         </View>
       </SkeletonGroup>
       <Text style={preview.caption}>
-        Production now composes the shared `SkeletonPlaceholder` primitive (Sessions row,
-        Insights provider-limits card, chat transcript) — see the static gallery above for the
-        production-faithful shapes. This animated Shimmer remains the catalog/reference-only
+        No production screen composes the foundation `SkeletonPlaceholder` primitive (the Sessions row,
+        Insights provider-limits card, and chat transcript keep their own placeholders) — see the
+        static gallery above for its shapes. This animated Shimmer is the catalog/reference-only
         counterpart, never a claimed production mapping.
       </Text>
     </View>
@@ -2148,7 +2148,7 @@ export function CheckboxFamilyGallery() {
         name="Adaptive selected fill"
         details={
           <Text style={preview.detailsText}>
-            Production HermexCheckbox fills and borders the checked box with the adaptive semantic
+            The native HermexCheckbox fills and borders the checked box with the adaptive semantic
             Neutral mapping — deep Neutral.s950 in light appearance and near-white Neutral.s50 in dark — not
             a fixed accent color; the checkmark uses the inverse Neutral pair so it remains legible
             against either. Every Checkbox specimen above now passes that same light-appearance mapping
@@ -2380,9 +2380,9 @@ export function BannerFamilyGallery() {
         fill
         details={
           <Text style={preview.detailsText}>
-            One shared Offline Banner replaces the two near-duplicate offline-cache notices (Sessions
-            list and Chat transcript), which previously differed in copy (hyphen vs. em dash), padding,
-            and whether their icon was hidden from VoiceOver. HermexBanner.offlineCache() presents an
+            Production's two offline-cache notices (Sessions list and Chat transcript) still differ in
+            copy (hyphen vs. em dash), padding, and whether their icon is hidden from VoiceOver.
+            HermexBanner.offlineCache() is a foundation preset with no production caller; it presents an
             orange, full-width, square-cornered, borderless band with a wifi-slash glyph — the warning
             variant's tint and triangle-alert glyph are this icon set's closest stand-ins for that
             orange wifi-slash SF Symbol, and borderRadius: 0 reconstructs the square-cornered edge.
@@ -2505,8 +2505,8 @@ export function TopNavFamilyGallery() {
         fill
         details={
           <Text style={preview.detailsText}>
-            The long title truncates rather than overlapping the actions on either side. Production
-            renders this anatomy through native `ToolbarContent`; a simple screen with no custom
+            The long title truncates rather than overlapping the actions on either side. The native
+            TopNav renders this anatomy through `ToolbarContent`; a simple screen with no custom
             leading/trailing actions may just set a native navigation title instead of composing TopNav
             at all. Bottom and keyboard toolbars are a separate concern, out of scope for TopNav.
             Every slot's action keeps its own accessibilityLabel and a ≥44×44pt hit target regardless of
@@ -2597,8 +2597,8 @@ export function TranscriptLogRowPreview() {
       </View>
 
       <Text style={preview.caption}>
-        Production's three call sites — a tool-call log, the "Thinking" reasoning block (Chat), and
-        a bot activity/plan row (Bots) — compose this exact, already-adopted TranscriptLogRowView
+        Production's three call sites — a tool-call log, the "Thinking" reasoning block, and a plan
+        row (all in Chat) — compose this exact, already-adopted TranscriptLogRowView
         anatomy: icon slot, summary, a chevron, then a compact 16×16 status glyph at the extreme
         trailing edge (a checkmark/xmark/ellipsis in secondary, or red for a failure — never a wide
         status word), and a chevron that expands into a scrollable detail body. This catalog
@@ -2829,8 +2829,8 @@ export function ComposerToolbarFamilyGallery() {
             demonstrates or owns. A caller inserts `HermexComposerToolbarDivider` explicitly between
             logical control groups (last example) — a hairline, 24pt-tall, vertically centered, decorative
             divider that scrolls with the row's own content; the toolbar never inserts one automatically.
-            Foundation-available; zero production screens have adopted it — the current Chat/Bots composer
-            toolbars keep their own separate, feature-local ComposerToolbarScroller unchanged.
+            Foundation-available; zero production screens have adopted it — the Chat composer's
+            toolbar keeps its own separate, feature-local ComposerToolbarScroller unchanged.
           </Text>
         }
       >
@@ -2918,7 +2918,7 @@ export function ToastFamilyGallery() {
         details={
           <Text style={preview.detailsText}>
             The generic catalog Toast owns its own slide-in/out animation directly on `visible`.
-            Production HermexToast is the message/icon/action card alone — animation and lifecycle live
+            The native HermexToast is the message/icon/action card alone — animation and lifecycle live
             in the separate `hermexToast(isPresented:toast:)` presentation modifier that overlays it, left
             entirely caller-owned rather than baked into the toast view itself. That modifier's default
             motion enters by moving down from the top edge combined with opacity and exits back toward
@@ -2990,7 +2990,7 @@ export function TooltipFamilyGallery() {
       <TooltipContentSurfacePreview />
       <Text style={preview.caption}>
         The generic catalog Tooltip is a fully-controlled bubble a caller drives from press
-        in/out — mobile has no hover. Production HermexTooltip anchors the same explanatory content
+        in/out — mobile has no hover. The native HermexTooltip anchors the same explanatory content
         through the native `.popover` presentation path instead of a hand-drawn bubble/arrow, behind
         an explicit tap trigger (a plain Button that opens the popover and leaves it open); dismissal
         is the popover's own native recovery path (tap outside, or Escape on a hardware keyboard)
@@ -3029,10 +3029,10 @@ export function RadioFamilyGallery() {
         A group is just multiple Radio instances sharing one selected value in the caller — the same
         way a native radio group works — this component only knows its own selected state.
       </Text>
-      <Text style={[preview.label, { marginTop: 8 }]}>Adaptive selected fill (production HermexRadio)</Text>
+      <Text style={[preview.label, { marginTop: 8 }]}>Adaptive selected fill (native HermexRadio)</Text>
       <AdaptiveSelectedFillSwatch shape="circle" />
       <Text style={preview.caption}>
-        Production HermexRadio fills the selected ring and inner dot with the adaptive semantic
+        The native HermexRadio fills the selected ring and inner dot with the adaptive semantic
         Neutral mapping — deep Neutral.s950 in light appearance and near-white Neutral.s50 in dark — not
         a fixed accent color, mirroring HermexCheckbox's own adaptive treatment. Every Radio specimen
         above now passes that same light-appearance mapping via the shared colors prop, matching

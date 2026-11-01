@@ -1,22 +1,22 @@
 import SwiftUI
 
-/// The shared display-only tinted-capsule chrome behind Sessions' Cached/Read-only/source badges,
-/// Tasks' status badge, Workspace/Git's change-kind chip, and Settings' profile/connection pills.
-/// Each caller keeps its own type name and domain mapping (label, color, whether it's decorative) —
-/// this only unifies the capsule's text style, padding, fill, and shape, so every migrated site
-/// renders pixel-identical to what shipped before this extraction.
+/// A display-only tinted-capsule chrome modeled on the separate capsules production draws for
+/// Sessions' Cached/Read-only/source badges, Tasks' status badge, Workspace/Git's change-kind chip,
+/// and Settings' profile/connection pills. Each of those keeps its own padding and type; none of
+/// them uses Tag. A caller would keep its own type name and domain mapping (label, color, whether
+/// it's decorative) — Tag supplies only the capsule's text style, padding, fill, and shape.
 ///
 /// Tag is always display-only: it exposes no action closure and no gesture, so it cannot become
 /// tappable by accident. A tappable file or resource reference is an Inline Reference Link, not a
 /// Tag styled to look interactive.
 struct Tag: View {
-    /// The retained display-only sizes used by production call sites.
+    /// The display-only padding steps.
     enum Size: Equatable {
-        /// Sessions and Workspace/Git's compact status chips.
+        /// The compact status-chip step (8/2 padding).
         case compact
-        /// Tasks' status badge and Settings' profile "Selected"/"Server Default" badge.
+        /// The default step (8/4 padding).
         case regular
-        /// Settings' connection-state pill — the largest instance.
+        /// The largest step (12/8 padding).
         case prominent
 
         var horizontalPadding: CGFloat {
@@ -47,8 +47,8 @@ struct Tag: View {
     var size: Size = .regular
     var font: AppFont.Role = .captionSemibold
     var minimumScaleFactor: CGFloat = 1
-    /// Hides the tag from VoiceOver — Sessions' badges are decorative because the row around
-    /// them already announces the same fact in its own accessibility label.
+    /// Hides the tag from VoiceOver, for a caller whose surrounding row already announces the same
+    /// fact in its own accessibility label (as Sessions' badges, which Tag does not draw, are).
     var isDecorative: Bool = false
 
     init(

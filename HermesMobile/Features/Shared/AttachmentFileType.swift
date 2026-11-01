@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Maps an attachment's file name to the icon, tint, and extension label its tile shows — shared by
-/// a sent message's file cell (`MessageBubbleView`) and the composer's pending-attachment preview
-/// (`ChatComposerAttachmentStripView`), which independently implemented the exact same switch.
+/// Maps an attachment's file name to the icon, tint, and extension label its tile shows. A sent
+/// message's file cell (`MessageBubbleView`) and the composer's pending-attachment preview
+/// (`ChatComposerAttachmentStripView`) each implement the same switch independently; neither calls this.
 struct AttachmentFileType {
     let iconName: String
     let tintColor: Color

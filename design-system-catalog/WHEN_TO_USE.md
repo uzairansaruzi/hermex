@@ -95,7 +95,7 @@ A few representative, real Hermex disambiguations — read as examples of how `u
   a 4–8 digit caller-owned string, supports paste and one-time-code autofill, and never submits on
   its own — the caller decides when to act on a complete code.
 - **Composer Toolbar** — `HermexComposerToolbar` is a new, foundation-available Components entry
-  with zero production adoption: the current Chat/Bots composer toolbars keep their own separate,
+  with zero production adoption: the Chat composer's toolbar keeps its own separate,
   unmigrated `ComposerToolbarScroller` unchanged. It is one ordered, zero-or-more arbitrary-content
   slot — not a button-only concept — laid out in one horizontally scrollable row (elevated or
   transparent appearance), mixing generic views, controls, and display-only content (e.g. a Tag)
@@ -109,7 +109,7 @@ A few representative, real Hermex disambiguations — read as examples of how `u
 - **Search vs a generic Text Input** — `HermexSearchField` is the Hermex-owned Search foundation and
   is `foundation-available`: `HermexSelectionSheet.swift` composes it directly, but that sheet has no
   normal-runtime production caller of its own — its only caller is the DEBUG-only `HermexOverlayLab`
-  — so no shipped screen renders `HermexSearchField` today. Production's eight existing screen-level
+  — so no shipped screen renders `HermexSearchField` today. Production's eleven existing screen-level
   `.searchable` call sites remain unchanged, and native `.searchable` stays a valid choice when the
   system should own search placement in navigation chrome. Use `HermexSearchField` or `.hermexSearch`
   when the field belongs in the content; migrating an existing screen is deliberate work for a

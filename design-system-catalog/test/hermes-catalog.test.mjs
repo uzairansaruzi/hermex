@@ -200,7 +200,7 @@ test('Search guidance reports the foundation-available Hermex foundation without
     'expected the bullet to state why the HermexSelectionSheet composition is not production adoption',
   );
   assert.match(searchBullet, /HermexOverlayLab/, 'expected the bullet to name the DEBUG-only lab as the sheet’s only caller');
-  assert.match(searchBullet, /eight existing screen-level `\.searchable` call sites/);
+  assert.match(searchBullet, /eleven existing screen-level `\.searchable` call sites/);
   assert.match(searchBullet, /separate issue/);
   assert.doesNotMatch(guide, /no Hermex-owned alternative to adopt later/);
   assert.doesNotMatch(guide, /Search[\s\S]{0,500}adoptionStatus[^\n]*native-platform/);
@@ -1163,9 +1163,9 @@ function extractSwiftArgument(source, call, label) {
 }
 
 function computedSiteEntriesForStruct(source, sourcePath, structName, trace) {
-  const structStart = source.indexOf(`private struct ${structName}`);
-  assert.notEqual(structStart, -1, `expected private struct ${structName}`);
-  const openIndex = source.indexOf('{', structStart);
+  const structMatch = source.match(new RegExp(`(?:private\\s+)?struct\\s+${structName}\\b`));
+  assert.ok(structMatch, `expected struct ${structName}`);
+  const openIndex = source.indexOf('{', structMatch.index);
   const body = extractBalancedSwiftBlock(source, openIndex);
   const entries = [];
   for (const match of body.matchAll(/\bsystem(?:Image|Name)\s*:\s*(?:String|systemImage)\b/g)) {
@@ -1208,8 +1208,9 @@ test('Live Activity computed icon traces stay synchronized with AgentRunStatusSt
   assert.equal(resolvedNames.length, 13, 'expected one concrete SF Symbol for every AgentRunActivityStatus case');
   const trace = JSON.parse(read(HERMES_ICON_TRACE_PATH));
   for (const site of [
-    'HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift:338',
-    'HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift:352',
+    'HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift:88',
+    'HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift:421',
+    'HermesLiveActivityWidget/AgentRunLiveActivityWidget.swift:488',
   ]) {
     const entry = trace.entries.find((candidate) => candidate.site === site);
     assert.ok(entry, `expected a computed-site trace entry for ${site}`);
@@ -1242,20 +1243,42 @@ test('ToolCallLogRowView icon trace stays synchronized with ToolCallSummaryForma
   );
 });
 
-test('Settings wrapper computed icon traces stay synchronized with every production caller', () => {
-  const sourcePath = 'HermesMobile/Features/Settings/SettingsView.swift';
+function productionSwiftSources(directory) {
+  const sources = [];
+  const walk = (relativeDirectory) => {
+    for (const entry of readdirSync(path.join(ROOT, '..', relativeDirectory), { withFileTypes: true })) {
+      const relativePath = `${relativeDirectory}/${entry.name}`;
+      if (entry.isDirectory()) walk(relativePath);
+      else if (entry.name.endsWith('.swift')) sources.push({ sourcePath: relativePath, source: read(`../${relativePath}`) });
+    }
+  };
+  walk(directory);
+  return sources;
+}
+
+function callerIconUnionAcrossApp(callee, trace) {
+  const names = new Set();
+  let calls = 0;
+  for (const { sourcePath, source } of productionSwiftSources('HermesMobile')) {
+    const union = callerIconUnion(source, sourcePath, callee, trace);
+    calls += union.calls.length;
+    for (const name of union.names) names.add(name);
+  }
+  return { calls, names: [...names].sort((a, b) => a.localeCompare(b)) };
+}
+
+test('Settings row label traces stay synchronized with every production caller', () => {
+  const sourcePath = 'HermesMobile/Features/Settings/SettingsRows.swift';
   const source = read(`../${sourcePath}`);
   const trace = JSON.parse(read(HERMES_ICON_TRACE_PATH));
-  const picker = callerIconUnion(source, sourcePath, 'SettingsPickerRow', trace);
-  const toggle = callerIconUnion(source, sourcePath, 'SettingsToggleRow', trace);
-  const accessory = callerIconUnion(source, sourcePath, 'SettingsAccessoryRow', trace);
-  const rowLabelNames = [...new Set([...picker.names, ...toggle.names])].sort((a, b) => a.localeCompare(b));
+  // SettingsExternalLink hands its symbol on to SettingsLabel, so the label also carries every external-link symbol.
+  const label = callerIconUnionAcrossApp('SettingsLabel', trace);
+  const externalLink = callerIconUnionAcrossApp('SettingsExternalLink', trace);
+  assert.ok(label.calls > 0 && externalLink.calls > 0, 'expected production SettingsLabel and SettingsExternalLink callers');
 
   const contracts = [
-    ['SettingsPickerRow', picker.names],
-    ['SettingsToggleRow', toggle.names],
-    ['SettingsAccessoryRow', accessory.names],
-    ['SettingsRowLabel', rowLabelNames],
+    ['SettingsLabel', label.names],
+    ['SettingsExternalLink', externalLink.names],
   ];
   for (const [structName, names] of contracts) {
     const entries = computedSiteEntriesForStruct(source, sourcePath, structName, trace);
@@ -1311,7 +1334,7 @@ test('message attachment file icon trace stays synchronized with GridAttachmentC
   assert.notEqual(start, -1, `expected ${signature} in MessageBubbleView.swift`);
   const names = returnedSwiftStringLiterals(extractBalancedSwiftBlock(source, source.indexOf('{', start)));
   const trace = JSON.parse(read(HERMES_ICON_TRACE_PATH));
-  const entry = trace.entries.find((candidate) => candidate.site === 'HermesMobile/Features/Chat/MessageBubbleView.swift:740');
+  const entry = trace.entries.find((candidate) => candidate.site === 'HermesMobile/Features/Chat/MessageBubbleView.swift:843');
   assert.ok(entry, 'expected the fileIconName computed-site trace');
   assert.deepEqual(entry.resolvedNames, names);
 });
@@ -1333,41 +1356,45 @@ test('composer chip renderer trace stays synchronized with the skill and quote s
   assert.deepEqual(entry.resolvedNames, [skill[1], quote[1]].sort((a, b) => a.localeCompare(b)));
 });
 
-test('Settings accessory icon trace stays synchronized with its default and explicit caller overrides', () => {
-  const sourcePath = 'HermesMobile/Features/Settings/SettingsView.swift';
+test('Settings external link icon trace stays synchronized with its explicit caller symbols', () => {
+  const sourcePath = 'HermesMobile/Features/Settings/SettingsRows.swift';
   const source = read(`../${sourcePath}`);
-  const defaultMatch = source.match(/var accessorySystemImage\s*=\s*"([^"]+)"/);
-  assert.ok(defaultMatch, 'expected SettingsAccessoryRow.accessorySystemImage default');
-  const names = new Set([defaultMatch[1]]);
-  for (const call of extractSwiftCalls(source, 'SettingsAccessoryRow')) {
-    const override = call.arguments.match(/\baccessorySystemImage\s*:\s*"([^"]+)"/);
-    if (override) names.add(override[1]);
+  assert.match(source, /Image\(systemName: "arrow\.up\.forward"\)/, 'expected SettingsExternalLink to render its fixed outward arrow');
+  const names = new Set();
+  for (const { source: callerSource } of productionSwiftSources('HermesMobile')) {
+    for (const call of extractSwiftCalls(callerSource, 'SettingsExternalLink')) {
+      const argument = extractSwiftArgument(callerSource, call, 'systemImage');
+      assert.match(argument.expression, /^"[^"]+"$/, 'expected every SettingsExternalLink caller to pass a literal symbol');
+      names.add(argument.expression.slice(1, -1));
+    }
   }
 
   const trace = JSON.parse(read(HERMES_ICON_TRACE_PATH));
-  const entry = trace.entries.find((candidate) => candidate.site === `${sourcePath}:1970`);
-  assert.ok(entry, 'expected SettingsAccessoryRow.accessorySystemImage trace');
-  assert.deepEqual(entry.resolvedNames, [...names].sort((a, b) => a.localeCompare(b)));
+  const entries = computedSiteEntriesForStruct(source, sourcePath, 'SettingsExternalLink', trace);
+  assert.ok(entries.length > 0, 'expected computed icon sites inside SettingsExternalLink');
+  for (const entry of entries) {
+    assert.deepEqual(entry.resolvedNames, [...names].sort((a, b) => a.localeCompare(b)), `expected ${entry.site} to list every external-link symbol`);
+  }
 });
 
 test('server update and task pause/resume traces stay synchronized with their value suppliers', () => {
-  const settingsSource = read('../HermesMobile/Features/Settings/SettingsView.swift');
+  const settingsSource = read('../HermesMobile/Features/Settings/WebuiServerSettings.swift');
   const taskSource = read('../HermesMobile/Features/Tasks/TaskAgenda.swift');
   const trace = JSON.parse(read(HERMES_ICON_TRACE_PATH));
 
   const settingsContracts = [
     ['private var serverUpdateNote: some View {', [
-      'HermesMobile/Features/Settings/SettingsView.swift:1153',
-      'HermesMobile/Features/Settings/SettingsView.swift:1155',
+      'HermesMobile/Features/Settings/WebuiServerSettings.swift:308',
+      'HermesMobile/Features/Settings/WebuiServerSettings.swift:310',
     ]],
     ['private var serverUpdateAction: some View {', [
-      'HermesMobile/Features/Settings/SettingsView.swift:1219',
-      'HermesMobile/Features/Settings/SettingsView.swift:1221',
+      'HermesMobile/Features/Settings/WebuiServerSettings.swift:368',
+      'HermesMobile/Features/Settings/WebuiServerSettings.swift:370',
     ]],
   ];
   for (const [signature, sites] of settingsContracts) {
     const start = settingsSource.indexOf(signature);
-    assert.notEqual(start, -1, `expected ${signature} in SettingsView.swift`);
+    assert.notEqual(start, -1, `expected ${signature} in WebuiServerSettings.swift`);
     const body = extractBalancedSwiftBlock(settingsSource, settingsSource.indexOf('{', start));
     const names = [...new Set([...body.matchAll(/systemImage:\s*"([^"]+)"/g)].map((match) => match[1]))]
       .sort((a, b) => a.localeCompare(b));
@@ -1459,8 +1486,8 @@ test('ContentUnavailableView cites the verified production files + source refere
     /28 call sites/i,
     'ContentUnavailableView must not claim "28 call sites"',
   );
-  assert.match(src, /30 production files/i, 'ContentUnavailableView should cite the verified 30 production files');
-  assert.match(src, /68 source references/i, 'ContentUnavailableView should cite the verified 68 source references');
+  assert.match(src, /33 production files/i, 'ContentUnavailableView should cite the verified 33 production files');
+  assert.match(src, /78 source references/i, 'ContentUnavailableView should cite the verified 78 source references');
   const section = extractHermesSection(src, 'Content Unavailable');
   assert.match(section, /none imports HermexContentUnavailable\.swift/i);
 });
@@ -1479,8 +1506,8 @@ test('Content Unavailable does not claim the adoption audit freezes the ContentU
     /adoption_audit\.py freezes this file\/reference-count baseline/i,
     'Content Unavailable must not claim the adoption audit freezes the file/reference-count baseline — the audit intentionally does not count or restrict ContentUnavailableView call sites',
   );
-  assert.match(section, /30 production files/i);
-  assert.match(section, /68 source references/i);
+  assert.match(section, /33 production files/i);
+  assert.match(section, /78 source references/i);
   assert.match(
     section,
     /does not count or restrict/i,
@@ -1925,9 +1952,9 @@ test('Hermex Colors renders Color ramps / Semantic roles / Product palettes thro
   assert.match(spacingGallery, /Separate content groups — 24 pt/);
 });
 
-// ─── Task 4: searchable 230-name visual icon inventory ──────────────────────────────────────────
+// ─── Task 4: searchable 243-name visual icon inventory ──────────────────────────────────────────
 
-test('buildHermesIconNames deduplicates the generated literal/computed inventories into the authoritative 230-name union, and HermesIconReference renders a searchable grid of simulator-generated glyph previews with a per-tile fallback', () => {
+test('buildHermesIconNames deduplicates the generated literal/computed inventories into the authoritative 243-name union, and HermesIconReference renders a searchable grid of simulator-generated glyph previews with a per-tile fallback', () => {
   const iconInventory = JSON.parse(read(HERMES_ICON_INVENTORY_PATH));
   const iconTrace = JSON.parse(read(HERMES_ICON_TRACE_PATH));
   const literalNames = new Set(iconInventory.literals.map((entry) => entry.name));
@@ -1939,10 +1966,10 @@ test('buildHermesIconNames deduplicates the generated literal/computed inventori
   // badly out of date against current production source (158 literal names, missing hundreds of real
   // call sites) — these counts match the current generated inventory plus the reconciled computed-site
   // trace. Empty string arguments are no-symbol sites rather than literal SF Symbol names.
-  assert.equal(literalNames.size, 177);
-  assert.equal(computedNames.size, 177);
-  assert.equal(union.length, 230);
-  assert.equal(union.filter((name) => !literalNames.has(name)).length, 53);
+  assert.equal(literalNames.size, 187);
+  assert.equal(computedNames.size, 187);
+  assert.equal(union.length, 243);
+  assert.equal(union.filter((name) => !literalNames.has(name)).length, 56);
 
   const referenceSrc = read(HERMES_ICON_REFERENCE_PATH);
   assert.match(referenceSrc, /import\s+hermesIconInventory\s+from\s+'\.\/hermesIconInventory\.generated\.json'/);
@@ -2041,9 +2068,9 @@ test('generate-icon-previews.mjs\'s hardcoded SIZE_STEP_POINTS mirrors HERMES_IC
   assert.deepEqual(points, [12, 16, 20, 24, 32]);
 });
 
-test('generate-icon-previews.mjs renders and exports the five size-scale specimens as a second, independently-counted attachment group, alongside (not instead of) the 230-name overview union', () => {
+test('generate-icon-previews.mjs renders and exports the five size-scale specimens as a second, independently-counted attachment group, alongside (not instead of) the 243-name overview union', () => {
   const generatorSrc = read(ICON_GENERATOR_SCRIPT_PATH);
-  assert.match(generatorSrc, /EXPECTED_COUNT\s*=\s*230/);
+  assert.match(generatorSrc, /EXPECTED_COUNT\s*=\s*243/);
   assert.match(generatorSrc, /SIZE_SCALE_SYMBOL_NAME\s*=\s*'star\.fill'/);
   assert.match(generatorSrc, /icon_size_/, 'expected a distinct attachment-name prefix for size-scale specimens');
   assert.match(generatorSrc, /sizeAttachments\.length\s*!==\s*SIZE_STEP_POINTS\.length/, 'expected the size-scale attachment count to be validated independently of the overview count');
@@ -2188,7 +2215,7 @@ test('generate-icon-previews.mjs orchestrates a real iOS-runtime render on a por
   assert.match(src, /xcresulttool/);
   assert.match(src, /export/);
   assert.match(src, /attachments/);
-  assert.match(src, /230/, 'expected the generator to assert the authoritative 230-name count');
+  assert.match(src, /243/, 'expected the generator to assert the authoritative 243-name count');
   assert.match(src, /public[\\/]generated-icons/);
 
   // Fail-closed: a short symbol count, or any renderer failure, must stop the script rather than
@@ -2218,8 +2245,8 @@ test('Correction (2026-09-28): generate-icon-previews.mjs distinguishes optional
   );
 
   const mainBody = extractFunctionBody(src, 'main');
-  assert.match(mainBody, /names, found/, 'expected the 230-name union count check to remain unconditional inside main()');
-  assert.match(mainBody, /rendered PNG attachments, found/, 'expected the exact-230-attachments check to remain unconditional inside main()');
+  assert.match(mainBody, /names, found/, 'expected the 243-name union count check to remain unconditional inside main()');
+  assert.match(mainBody, /rendered PNG attachments, found/, 'expected the exact-243-attachments check to remain unconditional inside main()');
   assert.doesNotMatch(
     mainBody,
     /runSimulatorRender\([^)]*\)[\s\S]{0,40}catch[\s\S]{0,120}if\s*\(optional/,
@@ -2254,7 +2281,7 @@ test('Correction: npm run web is browser-only and consumes a complete checked-in
     ...inventory.literals.map((entry) => entry.name),
     ...trace.entries.flatMap((entry) => entry.resolvedNames),
   ])].sort((a, b) => a.localeCompare(b));
-  assert.equal(names.length, 230);
+  assert.equal(names.length, 243);
 
   const manifest = JSON.parse(read(`${GENERATED_ICON_DIRECTORY_PATH}/manifest.json`));
   assert.deepEqual(manifest, { schemaVersion: 1, count: names.length, names });
@@ -2286,7 +2313,7 @@ test('Correction: npm run web is browser-only and consumes a complete checked-in
   assert.equal(
     publishableAssets.length,
     names.length + 1 + sizeStepPoints.length + 1,
-    'expected all 230 overview PNGs + their manifest.json, plus all 5 size-scale PNGs + their own sizes/manifest.json, to be publishable by Git',
+    'expected all 243 overview PNGs + their manifest.json, plus all 5 size-scale PNGs + their own sizes/manifest.json, to be publishable by Git',
   );
 });
 
@@ -3203,7 +3230,7 @@ test('Banner remains foundation-available with zero production call sites, while
 
   assert.doesNotMatch(section, /HermesMobile\/Features\/Chat\/ChatView\.swift/, 'ChatView.swift does not import HermexBanner.swift and must not be cited as a caller');
   assert.doesNotMatch(section, /HermesMobile\/Features\/SessionList\/SessionListView\.swift/, 'SessionListView.swift does not import HermexBanner.swift and must not be cited as a caller');
-  assert.match(section, /ChatView\.swift and SessionListView\.swift each still implement their own offline-cache notice independently/i, 'expected the offline-cache consolidation narrative itself to remain foundation-only, unaffected by the composer adoption');
+  assert.match(section, /Production keeps two independent offline-cache notices — ChatOfflineCacheBanner[\s\S]*OfflineCacheBanner[\s\S]*HermexBanner\.offlineCache\(\) is a foundation capability with no production caller/i, 'expected the offline-cache consolidation narrative itself to remain foundation-only, unaffected by the composer adoption');
 
   assert.match(section, /zero production|foundation-only|not adopted/i, 'expected implementation notes to state the foundation-only boundary');
 });
@@ -3945,7 +3972,7 @@ test('Search is a custom Hermex-owned HermexSearchField/.hermexSearch foundation
   );
   assert.match(search, /HermexSelectionSheet(\.swift)?/, 'expected the adoptionStatus/notes to name HermexSelectionSheet as the internal, non-production caller of HermexSearchField');
   assert.doesNotMatch(search, /a real,? current production call site|real current caller of HermexSearchField/i, 'HermexSelectionSheet.swift must not be called a production call site — it has no normal-runtime caller itself');
-  assert.match(search, /eight existing|eight current/i, 'expected the adoptionStatus detail to still name the eight unchanged production .searchable *screen* callers');
+  assert.match(search, /eleven existing|eleven current/i, 'expected the adoptionStatus detail to still name the eleven unchanged production .searchable *screen* callers');
   assert.match(search, /deferred to a separate issue|scoped to a separate issue|separate issue|separate slice/i, 'expected the adoptionStatus/notes to state migrating a screen is deferred to another slice/issue');
   assert.doesNotMatch(search, /adoptionStatus:\s*\{\s*state:\s*'production-adopted'/, 'Search must not claim full production adoption — no screen has migrated off .searchable');
   assert.doesNotMatch(search, /adoptionStatus:\s*\{\s*state:\s*'partially-adopted'/, 'Search must not claim partial production adoption — HermexSelectionSheet.swift has no normal-runtime production caller');
@@ -3997,15 +4024,12 @@ test('Materials — Hermex holds exactly Adaptive Glass, and Patterns — Hermex
 // Divider must own its opacity as a component prop instead of the preview hacking it in via
 // external `style`.
 
-test('Correction (2026-09-26): the catalog-only animated Shimmer gallery copy names the shared production SkeletonPlaceholder primitive rather than contradicting it', () => {
+test('Correction (2026-09-26, updated after the master merge): the catalog-only animated Shimmer gallery copy names the foundation SkeletonPlaceholder primitive and states no production screen composes it', () => {
   const previewsSrc = read(COMPONENT_FAMILIES_PREVIEWS_PATH);
   const previewBody = extractFunctionBody(previewsSrc, 'ShimmerFamilyGallery');
-  assert.match(previewBody, /shared `?SkeletonPlaceholder`? primitive/i);
-  assert.doesNotMatch(
-    previewBody,
-    /uses SwiftUI's platform `?\.redacted\(reason: \.placeholder\)`? directly/i,
-    'the rendered preview copy must not contradict the shared production skeleton adoption',
-  );
+  assert.match(previewBody, /foundation `?SkeletonPlaceholder`? primitive/i);
+  assert.match(previewBody, /No production screen composes/i);
+  assert.doesNotMatch(previewBody, /Production now composes/i, 'no production file calls SkeletonPlaceholder.swift');
 });
 
 test('Correction (2026-09-26): the generic catalog Shimmer honors system Reduce Motion with a static fallback, observed at runtime, with no new dependency', () => {
@@ -4899,8 +4923,8 @@ test('Correction (design-system-foundation truthfulness pass): Content Unavailab
   ]) {
     assert.doesNotMatch(section, new RegExp(picker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `${picker} does not import HermexContentUnavailable.swift and must not be cited as an adopted call site`);
   }
-  assert.match(section, /30 production files/i);
-  assert.match(section, /68 source references/i);
+  assert.match(section, /33 production files/i);
+  assert.match(section, /78 source references/i);
 });
 
 // ─── Explicit full-screen placement (HermexContentUnavailable.Layout) ───────────────────────────
@@ -8493,4 +8517,109 @@ test('Correction (#607 final review, browser console): native icon keys are pass
   assert.match(iconSrc, /Platform\.OS === 'web'/, 'web SVG accessibility should use web-native attributes');
   assert.match(iconSrc, /'aria-label': accessibilityLabel/, 'web SVGs should keep their accessible name without leaking React Native props');
   assert.doesNotMatch(iconSrc, /accessibilityLabel=\{accessibilityLabel\}/, 'accessibilityLabel must not be passed unconditionally to the web SVG element');
+});
+
+// PR #974 master-merge re-verification (a50490c3): production facts the catalog states, checked
+// against the current Swift source so a stale file name, destination, caller list, or count fails here.
+const REPO_ROOT_DIR = path.join(ROOT, '..');
+const readRepo = (rel) => readFileSync(path.join(REPO_ROOT_DIR, rel), 'utf8');
+const walkSwift = (dir) => readdirSync(path.join(REPO_ROOT_DIR, dir), { withFileTypes: true }).flatMap((entry) => {
+  const rel = `${dir}/${entry.name}`;
+  if (entry.isDirectory()) return walkSwift(rel);
+  return entry.name.endsWith('.swift') ? [rel] : [];
+});
+
+test('Master-merge re-verification: every production Swift file the catalog names exists, and removed Bot Chat / GitActionToastOverlay / Settings destinations are gone', () => {
+  const sections = read(HERMES_SECTIONS_PATH);
+  const previews = read(COMPONENT_FAMILIES_PREVIEWS_PATH);
+  const guide = read('WHEN_TO_USE.md');
+  const allSwift = walkSwift('HermesMobile').concat(walkSwift('HermesMobileTests'));
+  const swiftNames = new Set(allSwift.map((p) => path.basename(p)));
+  for (const [label, text] of [['hermesSections.tsx', sections], ['HermesComponentFamiliesPreviews.tsx', previews], ['WHEN_TO_USE.md', guide]]) {
+    for (const name of new Set(text.match(/\b[A-Za-z0-9_+]+\.swift\b/g) ?? [])) {
+      if (name === 'main.swift') continue; // the Transcript Log Row usage example's sample summary text, not a file
+      assert.ok(swiftNames.has(name), `${label} names ${name}, which no longer exists in HermesMobile/ or HermesMobileTests/`);
+    }
+    assert.doesNotMatch(text, /BotChatComposerView|BotActivityViews|BotPlanRowView|GitActionToastOverlay|Bots → open a bot conversation|Chat\/Bots/, `${label} cites a deleted Bot Chat / GitActionToastOverlay symbol or destination`);
+  }
+  // Toast: production's toast is ActionToast; HermexToast documents itself without mirroring it.
+  const toast = extractHermesSection(sections, 'Hermes Toast');
+  assert.match(toast, /ActionToast\.swift/);
+  assert.match(toast, /ActionToastView/);
+  assert.doesNotMatch(toast, /mirrors/i);
+  const toastSwift = readRepo('HermesMobile/Features/Shared/HermexToast.swift');
+  assert.doesNotMatch(toastSwift, /GitActionToastOverlay|mirrors/);
+  assert.match(toastSwift, /ActionToast/);
+  const actionToast = readRepo('HermesMobile/Features/Shared/ActionToast.swift');
+  assert.match(actionToast, /displayDuration: Duration = \.seconds\(4\)/);
+  assert.match(actionToast, /detailedDisplayDuration: Duration = \.seconds\(6\)/);
+});
+
+test('Master-merge re-verification: Settings, Avatar, plan-row, and toolbar destinations match the current Swift callers', () => {
+  const sections = read(HERMES_SECTIONS_PATH);
+  // Settings no longer draws glass cards; only the add-server form's private SettingsCard does.
+  assert.doesNotMatch(extractHermesSection(sections, 'Adaptive Glass'), /Grouped settings cards/);
+  assert.doesNotMatch(sections, /Settings → Appearance|Settings -> Appearance|Settings → Identity|SettingsRows?\.swift\b[^']*private/);
+  assert.match(readRepo('HermesMobile/Features/Settings/AddServerView.swift'), /private struct SettingsCard/);
+  assert.equal(walkSwift('HermesMobile/Features/Settings').filter((p) => /ServerAvatarBadge\(/.test(readRepo(p))).length, 2);
+  assert.match(readRepo('HermesMobile/Features/Settings/SettingsRows.swift'), /struct ServerAvatarBadge: View/);
+  assert.match(readRepo('HermesMobile/Features/SessionList/SessionListComponents.swift'), /struct SessionsHeader: View/);
+  const avatar = extractHermesSection(sections, 'Hermes Avatar');
+  assert.match(avatar, /drawn directly in SessionsHeader/);
+  assert.doesNotMatch(avatar, /SessionListView, not ServerAvatarBadge|Identity editor each draw their own inline circle|private to Settings/);
+  // Plan rows (not a Bot Chat row) compose TranscriptLogRowView.
+  assert.match(readRepo('HermesMobile/Features/Chat/HermesPlanViews.swift'), /TranscriptLogRowView\(/);
+  assert.match(extractHermesSection(sections, 'Transcript Log Row'), /HermesPlanViews\.swift/);
+  assert.equal(walkSwift('HermesMobile/Features/Bots').filter((p) => /TranscriptLogRowView\(/.test(readRepo(p))).length, 0);
+  // ComposerToolbarScroller has exactly one production caller: ChatComposerView.
+  const scrollerCallers = walkSwift('HermesMobile').filter((p) => /\bComposerToolbarScroller\s*\{/.test(readRepo(p)));
+  assert.deepEqual(scrollerCallers, ['HermesMobile/Features/Chat/ChatComposerView.swift']);
+});
+
+test('Master-merge re-verification: production counts and Tag/Skeleton/token claims match the current Swift source', () => {
+  const sections = read(HERMES_SECTIONS_PATH);
+  const previews = read(COMPONENT_FAMILIES_PREVIEWS_PATH);
+  // Production = everything except the branch-added foundation files.
+  const foundation = /\/(Features\/Shared\/(Hermex(Avatar|Banner|BottomSheet|Button|Card|Checkbox|ComposerToolbar|ContentUnavailable|Dialog|Divider|List|OverlayLab|OverlayLifecycle|PopoverMenu|Radio|SameWindowOverlay|Search|SelectionSheet|SurfaceBorder|TextInput|Toast|Tooltip)|AccordionList|AttachmentFileType|AttachmentTile|SegmentedControl|SkeletonPlaceholder|Tag|TopNav|ListItem)|Config\/Hermes(Color|Motion|Radius|Shadow|Spacing))\.swift$/;
+  const production = walkSwift('HermesMobile').filter((p) => !foundation.test(p));
+  const withText = (needle) => production.filter((p) => readRepo(p).includes(needle));
+  // .searchable( and .chatTactile( file counts (cited as "eleven" and "19").
+  assert.equal(withText('.searchable(').length, 11);
+  for (const name of ['APIKeyEditor.swift', 'GitDiffFileJumpList.swift', 'HermesSessionListView.swift']) {
+    assert.ok(withText('.searchable(').some((p) => p.endsWith(`/${name}`)), `${name} calls .searchable(`);
+    assert.match(extractHermesSection(sections, 'Search'), new RegExp(name.replace('.', '\\.')));
+  }
+  assert.equal(withText('.chatTactile(').length, 19);
+  assert.match(extractHermesSection(sections, 'Buttons'), /19 production files/);
+  // Tag and SkeletonPlaceholder have no production caller, so no copy may call production a migrated site.
+  assert.equal(withText('Tag(label:').length, 0);
+  assert.equal(withText('.skeletonPlaceholder()').length, 0);
+  assert.doesNotMatch(extractHermesSection(sections, 'Tag'), /real call site uses today|Settings\\' inverted/);
+  assert.doesNotMatch(previews, /Production now composes|replaces the two near-duplicate|Tasks' status tag, Settings' profile tag/);
+  assert.doesNotMatch(read(HERMES_TOKEN_GALLERIES_PATH), /Production has adopted global HermesSpacing/);
+  assert.equal(withText('HermesSpacing.').length + withText('HermesRadius.').length + withText('HermesShadow.').length, 0);
+  // Branch-added Swift doc comments make no production-adoption claim the source contradicts.
+  assert.doesNotMatch(readRepo('HermesMobile/Features/Shared/Tag.swift'), /pixel-identical|migrated site|used by production call sites/);
+  assert.doesNotMatch(readRepo('HermesMobile/Config/HermesSpacing.swift'), /Shared by `UsageChartCard`|Shared by `MessageBubbleView`|shared by production Avatar/);
+  assert.doesNotMatch(readRepo('HermesMobile/Features/Shared/HermexCard.swift'), /used by `ClarificationRequestCard`|Sessions approval overlay, and the Bot pending-request card/);
+  assert.doesNotMatch(readRepo('HermesMobile/Features/Shared/HermexBanner.swift'), /unified: both read/);
+});
+
+// PR #974 post-merge review: ActionToast's glyph comes from every production supplier after #1517,
+// and the foundation-file filter must not hide real production Hermex* files (App Intents, push).
+test('Post-merge review: ActionToast icon traces cover every production supplier, and the foundation filter is anchored', () => {
+  const trace = JSON.parse(read(HERMES_ICON_TRACE_PATH));
+  const toastSites = trace.entries.filter((e) => e.site.startsWith('HermesMobile/Features/Shared/ActionToast.swift:'));
+  assert.equal(toastSites.length, 2, 'expected the stored systemImage and the rendered Image(systemName:) ActionToast sites');
+  // ActionToast( literals and .failure, init?(sharedSkips:), ChatView's gitResult, and the
+  // GitRemoteAction / GitCommitPhase systemImage switches that feed gitProgress.
+  const expected = ['archivebox', 'arrow.down.circle', 'arrow.triangle.2.circlepath.circle', 'arrow.up.circle', 'checkmark.circle.fill', 'clock', 'exclamationmark.triangle', 'exclamationmark.triangle.fill', 'folder', 'smallcircle.filled.circle'];
+  for (const entry of toastSites) {
+    assert.deepEqual(entry.resolvedNames, expected, `expected ${entry.site} to resolve exactly the production ActionToast suppliers`);
+  }
+  const src = read('test/hermes-catalog.test.mjs');
+  assert.doesNotMatch(src, /const foundation = \/\\\/\(Hermex\[A-Za-z\]\*/, 'expected the foundation filter not to exclude every Hermex*.swift file');
+  const hermes = read('native/catalog/hermes/hermesSections.tsx');
+  assert.doesNotMatch(hermes, /already-adopted SectionCard\/SettingsCard/);
+  assert.match(hermes, /HermesSessionListView\.swift\); HermexBanner\.offlineCache\(\) is a foundation capability with no production caller/);
 });

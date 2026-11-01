@@ -14,8 +14,8 @@ enum HermexComposerToolbarAppearance {
 /// toolbar owns horizontal ordering, spacing, scrolling, fades, and its own optional surface;
 /// each child owns its own semantics, interaction, and minimum hit target. Accepted content
 /// includes any generic SwiftUI View, a control (e.g. `Button`), and display-only content (e.g.
-/// a `Tag`) — mixed freely in the same row. Catalog foundation for future adoption; current
-/// Chat/Bots feature-local scrollers (`ComposerToolbarScroller`) are unchanged by this type.
+/// a `Tag`) — mixed freely in the same row. Catalog foundation for future adoption; the
+/// Chat feature-local scroller (`ComposerToolbarScroller`) is unchanged by this type.
 struct HermexComposerToolbar<Content: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection

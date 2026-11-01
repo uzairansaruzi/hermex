@@ -494,7 +494,7 @@ function AvatarFamilyGallery() {
           <Text style={recon.caption}>Initials</Text>
         </View>
       </View>
-      <Text style={[recon.caption, { marginTop: 8 }]}>Production identity — ServerAvatarBadge · SessionListView inline avatar · bot face</Text>
+      <Text style={[recon.caption, { marginTop: 8 }]}>Production identity — ServerAvatarBadge · SessionsHeader inline avatar · bot face</Text>
       <View style={recon.avatarPreviewRow}>
         <IdentityAvatarPreview label="Standalone" initials="HM" bg="#3478F6" />
         <IdentityAvatarPreview label="Cross-fades to ×" initials="HM" bg="#34C759" />
@@ -505,7 +505,7 @@ function AvatarFamilyGallery() {
         <IdentityAvatarPreview label="Light fill → dark foreground" initials="AB" bg="#FFD60A" />
         <IdentityAvatarPreview label="Dark fill → light foreground" initials="CD" bg="#1c1c1e" dark />
       </View>
-      <Text style={[recon.caption, { marginTop: 8 }]}>System-image identity (production HermexAvatar) — used inside Content Unavailable</Text>
+      <Text style={[recon.caption, { marginTop: 8 }]}>System-image identity (native HermexAvatar) — used inside Content Unavailable</Text>
       <AvatarSystemImageIdentityPreview />
     </View>
   );
@@ -673,7 +673,7 @@ function HermesProductPaletteGallery() {
   const projectPalette = HERMEX_PROJECT_COLOR_PALETTE;
   return (
     <DividedStack>
-      <VariantGroup name="Header accents" desc="Settings → Appearance" align="left">
+      <VariantGroup name="Header accents" desc="Settings → a server → Identity" align="left">
         <View style={recon.row}>
           {headerAccents.map((p) => (
             <Swatch key={p.name} name={p.name} value={p.hex} valueLabel={p.hex} width={168} />
@@ -1111,7 +1111,7 @@ export const hermesSections: SectionDef<HermesSectionId>[] = [
       ],
       adoptionStatus: PRODUCTION_ADOPTED_ADOPTION,
       usedIn: [
-        { screen: 'Settings', effect: 'Grouped settings cards use the shared glass treatment.' },
+        { screen: 'Add Server', path: 'Settings → Add Server', effect: 'The add-server form\'s grouped cards (its private SettingsCard) use the shared glass treatment.' },
         { screen: 'Tasks', path: 'Tasks → open a task', effect: 'Section cards use the shared surface treatment.' },
         { screen: 'Usage', effect: 'Totals, charts, and provider-limit cards use the same card foundation.' },
       ],
@@ -1161,7 +1161,7 @@ export const hermesSections: SectionDef<HermesSectionId>[] = [
         { key: 'outlined-card', name: 'Outlined Card — white with grey border', node: <CardChromePreview body="Enjoying Hermex?" kind="outlined" /> },
         { key: 'request-card', name: 'Request Card — opaque approval surface', node: <CardChromePreview title="CLARIFICATION" body="Which branch should this target?" kind="request" /> },
         { key: 'compact-card', name: 'Compact Card — explicit compact density', node: <CardChromePreview title="COMPACT" body="Reduced (not 16pt) padding" kind="compact" /> },
-        { key: 'settings-required-title', name: 'SettingsCard — required title (private)', node: <CardChromePreview title="APPEARANCE" body="Header logo color" /> },
+        { key: 'settings-required-title', name: 'SettingsCard — required title (private)', node: <CardChromePreview title="IDENTITY" body="Header logo color" /> },
       ],
     },
     states: {
@@ -1174,9 +1174,9 @@ export const hermesSections: SectionDef<HermesSectionId>[] = [
     },
     hermesReference: {
       useWhen: 'Reach for the default surface (.hermexCardSurface(.glass)) for grouped content, .hermexCardSurface(.outlined) for a quiet system-background surface with a separator border, and .compactCardSurface only where a component composition documents the reduced density. For an approval/clarification surface, use the Pending Request pattern.',
-      avoidWhen: 'Avoid HermexCard.swift on a production screen today — no screen imports it yet; reach for the existing, already-adopted SectionCard/SettingsCard instead. Never use .compactCardSurface as a silent caller-side padding override.',
+      avoidWhen: 'Avoid HermexCard.swift on a production screen today — no screen imports it yet; reach for the existing production SectionCard instead (SettingsCard is private to the add-server form). Never use .compactCardSurface as a silent caller-side padding override.',
       alternatives: [
-        { name: 'SectionCard / SettingsCard (production)', useWhen: 'For any current production screen — these pre-existing components (with their own real title/content/footer anatomy) are what developers actually reach for today.' },
+        { name: 'SectionCard / SettingsCard (production)', useWhen: 'For a current production screen\'s grouped content — SectionCard (Usage, Task Detail) or, inside the add-server form only, its private SettingsCard; both are pre-existing components with their own title/content anatomy.' },
         { name: 'Pending Request', useWhen: 'For any approval/clarification surface over live transcript text — pendingRequestCardSurface is the adopted implementation; HermexCard\'s own .requestCardSurface has no caller.' },
       ],
       adoptionStatus: FOUNDATION_AVAILABLE_ADOPTION,
@@ -1188,7 +1188,7 @@ export const hermesSections: SectionDef<HermesSectionId>[] = [
         notes: [
           'HermexCard.swift\'s canonical chrome is a family of View modifiers, not a view with its own content anatomy: .hermexCardSurface(_:cornerRadius:) resolves HermexCardSurface.glass to an adaptive-glass background plus a hairline border, and .outlined to an opaque background plus a 1pt border; .compactCardSurface(cornerRadius:fill:) is the separate, explicitly compact-density surface for component compositions such as normal Attachment tiles — not Card\'s 16pt default; .requestCardSurface(cornerRadius:material:) is the opaque approval/clarification surface Request Card describes, with .translucentOverScrim the one documented exception for a card over its own dimmed scrim. Every variant\'s background resolves to HermexCardColors.primarySurface or .secondarySurface (never a platform color), and every variant\'s border resolves to the shared HermexSurfaceBorderColors.resting or HermexSurfaceBorderColors.increasedContrast — HermexCardColors itself declares no border color. None of these modifiers add a shadow; .hermexCardSurface applies no elevation. HermexCardMetrics.contentPadding (HermesSpacing.s16) is a caller-owned constant applied with the caller\'s own .padding(...) before the surface modifier runs (see the usage example below) — the modifiers themselves add no padding.',
           'HermexSurfaceBorderColors.resting is Neutral.adaptive(light: Neutral.s600 / #808084, dark: Neutral.s400 / #AEAEB1); .increasedContrast is Neutral.adaptive(light: Neutral.s800 / #58585B, dark: Neutral.s200 / #DFDFE1). This static web catalog renders only the light .resting anchor (Neutral[600]) on its default specimens; the remaining anchors above are documented here, not rendered. A pure hex contrast-ratio calculation (not a visual-only pass) confirms both the resting and increasedContrast anchors are >=3:1 against the primary and secondary Card surfaces in their respective appearance, per hermes-catalog.test.mjs.',
-          'SectionCard.swift and SettingsCard (both pre-existing, unmodified, and genuinely used at the screens listed above) implement their own chrome, and their own real title/content/footer anatomy, independently — this branch does not change them to delegate to HermexCard.swift, and no production file imports HermexCard.swift. HermexCard.swift itself owns no title or footer slot; those belong to SectionCard/SettingsCard, not to this surface-modifier family.',
+          'SectionCard.swift (used by the Usage and Task Detail screens) and SettingsCard (private to AddServerView.swift, where it frames the add-server form) are both pre-existing and unmodified, and implement their own chrome and title/content anatomy independently — this branch does not change them to delegate to HermexCard.swift, and no production file imports HermexCard.swift. HermexCard.swift itself owns no title or footer slot; SectionCard owns a title and footer and SettingsCard a title; this surface-modifier family owns neither.',
           'Pending-request fields, choices, command blocks, decision logic, and request lifecycle stay part of the Pending Request pattern, which also does not depend on HermexCard.swift — see that entry\'s own corrected sourcePaths.',
         ],
       },
@@ -1302,8 +1302,8 @@ AttachmentFileBadge(
           'HermesMobile/Features/Shared/HermexBanner.swift',
         ],
         notes: [
-          'ChatView.swift and SessionListView.swift each still implement their own offline-cache notice independently in this branch — a future HermexBanner.offlineCache() consolidation, described here as a foundation capability, has not been made against either call site.',
-          'ChatComposerView.swift, BotChatComposerView.swift, and BotRoomComposerView.swift retain their existing status surfaces; none calls HermexBanner( in this branch.',
+          'Production keeps two independent offline-cache notices — ChatOfflineCacheBanner (ChatTranscriptSupportingViews.swift, shown from ChatView.swift) and OfflineCacheBanner (SessionListComponents.swift, shown from SessionListView.swift and HermesSessionListView.swift); HermexBanner.offlineCache() is a foundation capability with no production caller.',
+          'ChatComposerView.swift and BotRoomComposerView.swift retain their existing status surfaces; neither calls HermexBanner( in this branch.',
           `The inline icon renders at HermesIconSize.small (${HERMES_ICON_SIZE.small}) — a size choice this component makes, not a fact about either existing offline-cache notice.`,
           'This native/components/Banner/Banner.tsx is a React Native documentation reconstruction of the native HermexBanner.swift above, not the production component itself — Issue #607 corrected its standard layout so a description-only composition renders the description in the header row beside the icon, rather than an icon-only header plus an indented second row.',
         ],
@@ -1377,7 +1377,7 @@ AttachmentFileBadge(
     a11y: 'ServerAvatarBadge is hidden from VoiceOver — the row around it supplies the accessible name instead. The inline Sessions header version shares the enclosing button\'s label. BotInteractiveFaceView is also hidden from VoiceOver — it is a decorative, non-content-bearing hero illustration. HermexAvatar defaults to decorative, matching Content Unavailable\'s combined title+icon element. The generic catalog Avatar exposes accessibilityRole="image" with a label (defaulting to its initials).',
     render: () => <AvatarFamilyGallery />,
     hermesReference: {
-      useWhen: 'For an initials identity, production has no shared component yet: ServerAvatarBadge is private to Settings, and the Sessions header and Identity editor each draw their own inline circle; use HermexAvatar for a circular SF Symbol identity badge at a named HermesAvatarSize, such as the glyph inside an empty or error state; use the bot-face system only for the Bots hero/idle face. HermexAvatar takes a system image only — it has no photo or initials mode.',
+      useWhen: 'For an initials identity, production has no cross-feature shared component: ServerAvatarBadge lives in the Settings feature (SettingsRows.swift) and serves the server list and the identity editor, while the Sessions header draws its own inline circle; use HermexAvatar for a circular SF Symbol identity badge at a named HermesAvatarSize, such as the glyph inside an empty or error state; use the bot-face system only for the Bots hero/idle face. HermexAvatar takes a system image only — it has no photo or initials mode.',
       avoidWhen: 'Avoid the new HermexAvatar.swift system-image badge as a production dependency today — no screen composes it yet. Avoid reaching for the bot-face system outside Bots — it is a separate drawing/motion system, not a general-purpose Avatar.',
       alternatives: [
         { name: 'Content Unavailable', useWhen: 'When an identity-style icon badge belongs inside an empty/error state rather than standing alone — Content Unavailable already composes an Avatar-style icon slot for that.' },
@@ -1388,15 +1388,16 @@ AttachmentFileBadge(
       },
       useSummary: 'Two separate stories under one umbrella section: ServerAvatarBadge and the bot-face system are pre-existing, unchanged production identity components; HermexAvatar.swift and HermesAvatarSize are new in this branch, with no production call site yet.',
       usedIn: [
-        { screen: 'Sessions', effect: 'The pre-existing inline header avatar (drawn directly in SessionListView, not ServerAvatarBadge) opens account and server controls; it becomes the search-close control when needed.' },
-        { screen: 'Servers', path: 'Settings → Servers', effect: 'The pre-existing ServerAvatarBadge gives each configured server an initials badge in the server list and the server editor.' },
-        { screen: 'Identity', path: 'Settings → Identity', effect: 'The pre-existing Sessions Avatar editor previews the selected initials and header color with its own inline circle.' },
+        { screen: 'Sessions', effect: 'The pre-existing inline header avatar (drawn directly in SessionsHeader, not ServerAvatarBadge) opens Settings, switches servers on long press, and becomes the search-close control while search is open.' },
+        { screen: 'Servers', path: 'Settings → Servers', effect: 'The pre-existing ServerAvatarBadge gives each configured server an initials badge in the Settings server list.' },
+        { screen: 'Identity', path: 'Settings → a server → Identity', effect: 'The pre-existing identity editor (also in the Add Server form) previews the selected initials and header color with ServerAvatarBadge.' },
         { screen: 'Bots', effect: 'The pre-existing bot-face system blinks idly (BotAnimatedFaceView) and reacts to a drag/tap on its create/edit hero face (BotInteractiveFaceView) — a separately implemented system, unrelated to the new HermexAvatar.swift.' },
       ],
       implementationNotes: {
         status: 'ServerAvatarBadge and the bot-face system: adopted, pre-existing production components, unchanged by this branch. HermexAvatar.swift and HermesAvatarSize: new in this branch\'s foundation layer, with no production call site yet.',
         sourcePaths: [
-          'HermesMobile/Features/Settings/SettingsView.swift',
+          'HermesMobile/Features/Settings/SettingsRows.swift',
+          'HermesMobile/Features/SessionList/SessionListComponents.swift',
           'HermesMobile/Features/Bots/BotAvatarStore.swift',
           'HermesMobile/Features/Bots/BotProfileAppearance.swift',
           'HermesMobile/Features/Bots/BotFaceMotion.swift',
@@ -1439,10 +1440,10 @@ AttachmentFileBadge(
       avoidWhen: 'Avoid it inside a native List, HermexList, or Accordion List — those containers draw their own separators. Do not invent a second, differently-styled divider for a new screen.',
       alternatives: [
         { name: 'List / ListItem', useWhen: 'For rows inside a List container, which owns the separators.' },
-        { name: 'Native Divider (production)', useWhen: 'For current Settings groups and the SectionCard footer, which keep the native hairline today.' },
+        { name: 'Native Divider (production)', useWhen: 'For the SectionCard footer and the add-server form\'s private SettingsDivider, which keep the native Divider today.' },
       ],
       adoptionStatus: FOUNDATION_AVAILABLE_ADOPTION,
-      useSummary: 'A new, foundation-only component; Settings and SectionCard\'s footer keep their own existing native Divider/hairline styling in this branch, not HermexDivider.',
+      useSummary: 'A new, foundation-only component; SectionCard\'s footer and the add-server form\'s private SettingsDivider keep their own existing native Divider styling in this branch, not HermexDivider.',
       implementationNotes: {
         status: FOUNDATION_ONLY_STATUS,
         sourcePaths: ['HermesMobile/Features/Shared/HermexDivider.swift'],
@@ -1470,12 +1471,12 @@ AttachmentFileBadge(
     whenToUse: 'Use it for a short, glanceable status word or two; a longer message belongs in body text, not a Tag. Never make a Tag (or anything styled like one) tappable.',
     props: [
       { name: 'label', type: 'String', required: true, desc: 'The status text.' },
-      { name: 'tint / foreground+fill', type: 'Color', required: true, desc: 'Drives both the text color and the fill (tint.opacity(_:)) in the common case; foreground/fill can also be set independently (Settings\' inverted profile pill).' },
+      { name: 'tint / foreground+fill', type: 'Color', required: true, desc: 'Drives both the text color and the fill (tint.opacity(_:)) in the common case; foreground/fill can also be set independently (for example an inverted pill).' },
       { name: 'icon', type: 'Optional glyph', desc: 'Optional leading icon shown alongside the label (e.g. a running-status dot).' },
-      { name: 'size', type: '.compact | .regular | .prominent', default: '.regular', desc: 'Every horizontal/vertical padding pair a real call site uses today.' },
-      { name: 'isDecorative', type: 'Bool', default: 'false', desc: 'Hides the Tag from VoiceOver when the row around it already announces the same fact (Sessions); otherwise announced normally as meaningful content.' },
+      { name: 'size', type: '.compact | .regular | .prominent', default: '.regular', desc: 'Tag\'s own horizontal/vertical padding steps: compact 8/2, regular 8/4, prominent 12/8. Production\'s separate capsules each keep their own paddings.' },
+      { name: 'isDecorative', type: 'Bool', default: 'false', desc: 'Hides the Tag from VoiceOver when the row around it already announces the same fact; otherwise announced normally as meaningful content.' },
     ],
-    a11y: 'Sessions\' tags are decorative (isDecorative: true) since the row supplies the accessible name; Tasks/Git/Settings tags are announced normally. No Tag prop, example, or styling anywhere in this section is interactive.',
+    a11y: 'A Tag is announced normally unless isDecorative is true, for a caller whose row already supplies the accessible name (production\'s Sessions badges are hidden from VoiceOver for that reason). No Tag prop, example, or styling anywhere in this section is interactive.',
     render: () => <TagGallery />,
     hermesReference: {
       useWhen: 'Use it for a short, glanceable status word or two, always display-only.',
@@ -1821,9 +1822,9 @@ AttachmentFileBadge(
       ],
       adoptionStatus: {
         state: 'foundation-available',
-        detail: 'HermexSearchField is internally composed by the foundation-only `HermexSelectionSheet.swift` for its optional search slot — but HermexSelectionSheet itself has no normal-runtime production call site (its only caller is the DEBUG-only HermexOverlayLab), so that internal composition is not a production adoption of Search. Production\'s eight existing screen-level search fields (Sessions, Model picker, Skills, Default profile, Cron job profile/skill pickers, Git branch picker, Kanban) still call native `.searchable` directly; migrating a screen onto `.hermexSearch` is deferred to a separate issue.',
+        detail: 'HermexSearchField is internally composed by the foundation-only `HermexSelectionSheet.swift` for its optional search slot — but HermexSelectionSheet itself has no normal-runtime production call site (its only caller is the DEBUG-only HermexOverlayLab), so that internal composition is not a production adoption of Search. Production\'s eleven existing screen-level search call sites (Sessions, Hermes session list, Model picker, Skills, Default profile, API key editor, Cron job profile/skill pickers, Git branch picker, Git diff file jump list, Kanban) still call native `.searchable` directly; migrating a screen onto `.hermexSearch` is deferred to a separate issue.',
       },
-      useSummary: 'HermexSearchField is foundation-only: it is composed internally by the foundation-only `HermexSelectionSheet.swift`, which itself has no normal-runtime production call site. No production screen has adopted `HermexSearchField` or `.hermexSearch`; production keeps its existing eight direct `.searchable` call sites unchanged.',
+      useSummary: 'HermexSearchField is foundation-only: it is composed internally by the foundation-only `HermexSelectionSheet.swift`, which itself has no normal-runtime production call site. No production screen has adopted `HermexSearchField` or `.hermexSearch`; production keeps its existing eleven direct `.searchable` call sites unchanged.',
       implementationNotes: {
         status: 'Foundation-available; composed internally by the foundation-only HermexSelectionSheet.swift, which has no normal-runtime production call site. No screen-level `.searchable` call site has migrated yet.',
         sourcePaths: ['HermesMobile/Features/Shared/HermexSearch.swift', 'HermesMobile/Features/Shared/HermexSelectionSheet.swift'],
@@ -1831,7 +1832,7 @@ AttachmentFileBadge(
           'One canonical visual implementation: `HermexSearchField` owns chrome, local `@FocusState`, the clear control, and `.submitLabel(.search)`/`.onSubmit` wiring around a native `TextField`; `.hermexSearch(...)` only composes that same field as a `.safeAreaInset(edge: .top)` — there is no second field implementation.',
           'Native `.searchable` remains valid and production-used: HermexSearchField is an additional Hermex-owned option, not a replacement. A Hermex-drawn field cannot reproduce the system\'s navigation-chrome placement, so a screen that wants that placement keeps `.searchable`.',
           'HermexSelectionSheet.swift\'s optional search slot renders HermexSearchField directly, but HermexSelectionSheet.swift itself is only called by the DEBUG-only HermexOverlayLab — not a normal-runtime production screen — so this internal composition is not a production call site for Search.',
-          'Report only: production\'s eight existing direct `.searchable` screen call sites (SessionListComponents.swift, ModelPickerSheet.swift, SkillsView.swift, DefaultProfilePickerView.swift, CronJobConfigurationPickers.swift, CronJobSkillsPicker.swift, GitBranchPickerView.swift, KanbanLabView.swift) are unchanged by this branch and continue to call `.searchable` directly; migrating a screen onto `.hermexSearch` is scoped to a separate issue, not this slice.',
+          'Report only: production\'s eleven existing direct `.searchable` screen call sites (SessionListComponents.swift, HermesSessionListView.swift, ModelPickerSheet.swift, SkillsView.swift, DefaultProfilePickerView.swift, APIKeyEditor.swift, CronJobConfigurationPickers.swift, CronJobSkillsPicker.swift, GitBranchPickerView.swift, GitDiffFileJumpList.swift, KanbanLabView.swift) are unchanged by this branch and continue to call `.searchable` directly; migrating a screen onto `.hermexSearch` is scoped to a separate issue, not this slice.',
         ],
       },
       canonicalSymbols: ['HermexSearchField', '.hermexSearch(_:text:prompt:isEnabled:onSubmit:)'],
@@ -1913,13 +1914,13 @@ AttachmentFileBadge(
         { name: 'ChatTactileButtonStyle / ChatDecisionButtonStyle (production)', useWhen: 'For any current Sessions, Bots, or composer control — the adopted styles every production call site still uses.' },
       ],
       adoptionStatus: FOUNDATION_AVAILABLE_ADOPTION,
-      useSummary: 'A new, foundation-only pair of ButtonStyle modifiers; the Sessions/Bots decision controls and the 18+ composer/thumbnail/capsule/card controls named below all still call the pre-existing, unmigrated ChatTactileButtonStyle (.chatTactile(_:)) and ChatDecisionButtonStyle in this branch, not HermexButtonStyle/HermexButtonPressOnlyStyle.',
+      useSummary: 'A new, foundation-only pair of ButtonStyle modifiers; the Sessions/Bots decision controls and the 19 composer/thumbnail/capsule/card controls named below all still call the pre-existing, unmigrated ChatTactileButtonStyle (.chatTactile(_:)) and ChatDecisionButtonStyle in this branch, not HermexButtonStyle/HermexButtonPressOnlyStyle.',
       implementationNotes: {
         status: FOUNDATION_ONLY_STATUS,
         sourcePaths: ['HermesMobile/Features/Shared/HermexButton.swift'],
         notes: [
           'The generic catalog\'s own Button component (primary/secondary/tertiary/white/ghost/destructive, extraSmall/small/medium/large) is the closest reusable emphasis and size model shown above — HermexButtonStyle/HermexButtonPressOnlyStyle are ButtonStyle modifiers applied to a native Button, not a separate label/variant component, so they are documented here rather than reproduced as a second custom tap view.',
-          'ChatTactileButtonStyle.swift (HermesMobile/Features/Chat/ChatTactileButtonStyle.swift) is unchanged and still actively used by 18+ production files via .chatTactile(_:) in this branch — HermexButtonPressOnlyStyle does not replace or rename it, and no .hermexPressOnly(_:) call site exists in production yet. Likewise, the Sessions approval overlay and the Bot pending-request card keep calling .chatDecision(_:) directly, not .hermex(_:emphasis:).',
+          'ChatTactileButtonStyle.swift (HermesMobile/Features/Chat/ChatTactileButtonStyle.swift) is unchanged and still actively used by 19 production files via .chatTactile(_:) in this branch — HermexButtonPressOnlyStyle does not replace or rename it, and no .hermexPressOnly(_:) call site exists in production yet. Likewise, the Sessions approval overlay and the Bot pending-request card keep calling .chatDecision(_:) directly, not .hermex(_:emphasis:).',
         ],
       },
       canonicalSymbols: [
@@ -2115,12 +2116,12 @@ AttachmentFileBadge(
         { name: 'Hermes Banner', useWhen: 'When the condition remains relevant until resolved, rather than a one-off confirmation.' },
       ],
       adoptionStatus: { state: 'foundation-available', detail: 'Component exists (HermexToast.swift) with no production call site yet.' },
-      useSummary: 'New production primitive; no screen has adopted it yet in this slice. Distinct from Workspace/Git\'s own GitActionToastOverlay, a separate progress/success state machine that predates this generic primitive.',
+      useSummary: 'A foundation-only primitive; no screen has adopted it yet in this slice. Production\'s toast is the separate ActionToast (ActionToast.swift: ActionToast, ActionToastState, ActionToastView), which carries its own tones, auto-dismiss timing, and top or bottom edge; HermexToast\'s visibility is caller-owned.',
       implementationNotes: {
         status: 'Component exists (HermexToast.swift) with no production call site yet.',
         sourcePaths: ['HermesMobile/Features/Shared/HermexToast.swift'],
         notes: [
-          'Presentation (`hermexToast(isPresented:toast:)`) mirrors GitActionToastOverlay\'s established top-anchored, Reduce-Motion-safe transition, so a new caller gets the same feel without hand-rolling it again: it enters by moving down from the top edge combined with opacity (HermesMotion.Bundle.overlayEnter) and exits back toward the top combined with opacity (HermesMotion.Bundle.overlayExit). Reduce Motion drops the directional move and falls back to an opacity-only state change. Visibility itself stays entirely caller-owned — no internal timer.',
+          'Presentation (`hermexToast(isPresented:toast:)`) is top-anchored: it enters by moving down from the top edge combined with opacity (HermesMotion.Bundle.overlayEnter) and exits back toward the top combined with opacity (HermesMotion.Bundle.overlayExit). Reduce Motion drops the directional move and falls back to an opacity-only state change. Visibility itself stays entirely caller-owned — no internal timer. Production\'s own toast, ActionToast (ActionToast.swift), is a separate type: ActionToastView draws it at the edge its host pins it to, it dismisses itself after 4 seconds (6 with detail lines) unless it is busy or VoiceOver is running, and it swaps its move-plus-opacity transition for opacity alone under Reduce Motion.',
           'The trailing action is a plain `Button(action.title) { … }` styled `.foregroundStyle(.white)` with `.buttonStyle(.hermexPressOnly(.compactControl))` and a 44pt minimum tap target — never a filled capsule or a separate neutral-button composition. The catalog gallery demonstrates the same white-on-dark-surface treatment by overriding the generic Toast\'s own background per semantic (Blue.s700/Green.s800/Orange.s800/Red.s700) while leaving its default white icon/message/action colors untouched, since the generic Toast\'s own light-tinted `variant` styles do not match this contract.',
           'Each of the four semantic surfaces resolves to one fixed ramp step: .information to Blue.s700, .success to Green.s800, .warning to Orange.s800, and .error to Red.s700 — with the icon, message, and action content all rendering as white on top of that colored surface, never platform-adaptive text/icon colors.',
         ],
@@ -2531,10 +2532,9 @@ AttachmentFileBadge(
         { name: 'Accordion List', useWhen: 'When the expandable row repeats across a list rather than standing alone.' },
       ],
       adoptionStatus: { state: 'production-adopted', detail: 'Pre-existing production component already on master; this branch documents it without changing its implementation.' },
-      useSummary: 'TranscriptLogRowView.swift is the real, already-adopted production row: a tool call\'s log line, the "Thinking" reasoning block, and a bot activity/plan row all compose it directly today. This entry documents that same production component, not a separate foundation candidate.',
+      useSummary: 'TranscriptLogRowView.swift is the real, already-adopted production row: a tool call\'s log line, the "Thinking" reasoning block, and a Hermes plan row all compose it directly today. This entry documents that same production component, not a separate foundation candidate.',
       usedIn: [
-        { screen: 'Conversation', path: 'Sessions → open a conversation', effect: 'A tool call\'s log line and the "Thinking" reasoning block both expand into a detail body, via TranscriptLogRowView.' },
-        { screen: 'Bots', path: 'Bots → open a bot conversation', effect: 'A bot\'s activity/plan row (BotPlanRowView) composes the same TranscriptLogRowView.' },
+        { screen: 'Conversation', path: 'Sessions → open a conversation', effect: 'A tool call\'s log line, the "Thinking" reasoning block, and a Hermes plan row (HermesPlanRowView) each expand into a detail body, via TranscriptLogRowView.' },
       ],
       implementationNotes: {
         status: ADOPTED_STATUS,
@@ -2542,7 +2542,7 @@ AttachmentFileBadge(
           'HermesMobile/Features/Chat/TranscriptLogRowView.swift',
         ],
         notes: [
-          'ToolCallLogRowView.swift, ReasoningBlockView.swift, and BotActivityViews.swift all compose this pre-existing TranscriptLogRowView directly — the real, unchanged, already-adopted row anatomy, not a foundation candidate awaiting migration.',
+          'ToolCallLogRowView.swift, ReasoningBlockView.swift, and HermesPlanViews.swift (HermesPlanRowView) all compose this pre-existing TranscriptLogRowView directly — the real, unchanged, already-adopted row anatomy, not a foundation candidate awaiting migration.',
           'The geometry facts catalogued under Hermex Radius & Geometry are sourced from this same real, adopted TranscriptLogRowMetrics.',
           'Current-base integration correction (PR #974): current master added an optional generic `accessory` ViewBuilder slot between `icon` and `status` (an `Accessory == EmptyView` convenience initializer keeps callers with no accessory unchanged). At ordinary Dynamic Type sizes it renders trailing, before the chevron; at accessibility sizes it moves below the summary/detail. The row ignores the accessory\'s own child accessibility semantics, so a caller that supplies one must fold its meaning into `accessibilityLabel`.',
         ],
@@ -2599,7 +2599,7 @@ AttachmentFileBadge(
     id: 'Composer Toolbar',
     displayName: 'Composer Toolbar',
     description:
-      'A shared horizontal composer-toolbar row — `HermexComposerToolbar` (HermexComposerToolbar.swift) — one `ScrollView(.horizontal)` accepting one ordered, zero-or-more arbitrary-content slot (never a typed toolbar-item model or named leading/trailing slots), with an elevated appearance (its own adaptive surface, `HermesRadius.r24` radius, and shadow) and a transparent appearance (leaves the surface to the caller). `HermesSpacing.s8` padding applies on all sides (not only horizontal). Generalized from the current Chat/Bots feature-local `ComposerToolbarScroller`, which keeps its own current behavior unchanged. Owns no composer primary-action (dispatch/interrupt) control or any other composer-domain action.',
+      'A shared horizontal composer-toolbar row — `HermexComposerToolbar` (HermexComposerToolbar.swift) — one `ScrollView(.horizontal)` accepting one ordered, zero-or-more arbitrary-content slot (never a typed toolbar-item model or named leading/trailing slots), with an elevated appearance (its own adaptive surface, `HermesRadius.r24` radius, and shadow) and a transparent appearance (leaves the surface to the caller). `HermesSpacing.s8` padding applies on all sides (not only horizontal). Generalized from the Chat feature-local `ComposerToolbarScroller`, which keeps its own current behavior unchanged. Owns no composer primary-action (dispatch/interrupt) control or any other composer-domain action.',
     whenToUse: 'Reach for it when a caller needs one horizontally scrollable row of arbitrary secondary content — controls (a model picker, a profile switcher), display-only content (a status Tag/pill), or a mix of both — whose content either fits or overflows the available width, in either an elevated card-like surface or a transparent surface inside an existing container.',
     props: [
       { name: 'appearance', type: '.elevated | .transparent', default: '.elevated', desc: 'Elevated draws Color(.systemBackground), HermesRadius.r24, and the controlElevatedResting shadow; transparent renders none of that chrome.' },
@@ -2620,7 +2620,7 @@ AttachmentFileBadge(
         state: 'foundation-available',
         detail: 'Available in this branch\'s foundation layer; no production call site exists yet.',
       },
-      useSummary: 'A new, foundation-only component; zero production screens use it. The current Chat/Bots feature-local ComposerToolbarScroller (HermesMobile/Features/Chat/ChatComposerToolbarScroller.swift) keeps its own separate, unchanged implementation — migrating it onto this shared foundation is deferred to a separate adoption issue.',
+      useSummary: 'A new, foundation-only component; zero production screens use it. The Chat feature-local ComposerToolbarScroller (HermesMobile/Features/Chat/ChatComposerToolbarScroller.swift, used by ChatComposerView.swift) keeps its own separate, unchanged implementation — migrating it onto this shared foundation is deferred to a separate adoption issue.',
       implementationNotes: {
         status: FOUNDATION_ONLY_STATUS,
         sourcePaths: ['HermesMobile/Features/Shared/HermexComposerToolbar.swift'],
@@ -2628,7 +2628,7 @@ AttachmentFileBadge(
           'Generalized from ComposerToolbarScroller\'s own layout skeleton in ChatComposerToolbarScroller.swift (one ScrollView(.horizontal) + one HStack, HermesSpacing.s8 item spacing, a 44pt minimum row height, hidden scroll indicators, size-based horizontal bounce, and never dismissing the keyboard on scroll) plus an edge-fades rule modelled on production\'s HorizontalOverflowEdgeFades (HorizontalOverflowEdgeFades.swift, unchanged and still applied via .horizontalOverflowFades(_:) by ChatComposerToolbarScroller.swift and MarkdownRenderer.swift) — the new type is HermexComposerToolbarEdgeFades, with an unreferenced ComposerToolbarEdgeFades typealias; the row now applies HermesSpacing.s8 padding on all sides rather than only horizontal.',
           'Issue #607 round 3/4 correction: the elevated appearance\'s radius is the explicit HermesRadius.r24 token, superseding the earlier HermesRadius.card, and its all-around padding is HermesSpacing.s8, superseding the earlier HermesSpacing.s16 — this catalog reconstruction (HermesComponentFamiliesPreviews.tsx\'s composerToolbarElevated style) now matches both corrected values.',
           'The content slot is one ordered, zero-or-more arbitrary-content slot, not a button-only concept: the DEBUG overlay lab\'s "Elevated, mixed content" specimen and this catalog\'s "Elevated — mixed content" gallery specimen both demonstrate a display-only Tag alongside a real Button in the same row.',
-          'Report only: no production call site imports or composes HermexComposerToolbar( in this branch; ChatComposerView.swift and BotChatComposerView.swift keep calling their own existing ComposerToolbarScroller unchanged. Migrating one onto Composer Toolbar is scoped to a separate adoption issue, not this slice.',
+          'Report only: no production call site imports or composes HermexComposerToolbar( in this branch; ChatComposerView.swift keeps calling its own existing ComposerToolbarScroller unchanged. Migrating one onto Composer Toolbar is scoped to a separate adoption issue, not this slice.',
         ],
       },
       canonicalSymbols: ['HermexComposerToolbar', 'HermexComposerToolbarDivider'],
@@ -2702,7 +2702,7 @@ AttachmentFileBadge(
           'HermesMobile/Features/Shared/HermexContentUnavailable.swift',
         ],
         notes: [
-          'The platform ContentUnavailableView is used directly across 30 production files (68 source references) in the current working tree, including ModelPickerSheet.swift, DefaultProfilePickerView.swift, CronJobSkillsPicker.swift, CronJobConfigurationPickers.swift, KanbanLabView.swift, InsightsView.swift, TasksView.swift, SkillsView.swift, and MemoryView.swift — none imports HermexContentUnavailable.swift. That file/reference count is a descriptive snapshot of the current tree, not an enforced baseline: scripts/hermex_design_system_adoption_audit.py intentionally does not count or restrict native ContentUnavailableView call sites, so a future migration is ordinary issue-driven work, not something this script gates.',
+          'The platform ContentUnavailableView is used directly across 33 production files (78 source references) in the current working tree, including ModelPickerSheet.swift, DefaultProfilePickerView.swift, CronJobSkillsPicker.swift, CronJobConfigurationPickers.swift, KanbanLabView.swift, InsightsView.swift, TasksView.swift, SkillsView.swift, and MemoryView.swift — none imports HermexContentUnavailable.swift. That file/reference count is a descriptive snapshot of the current tree, not an enforced baseline: scripts/hermex_design_system_adoption_audit.py intentionally does not count or restrict native ContentUnavailableView call sites, so a future migration is ordinary issue-driven work, not something this script gates.',
           'HermexAvatar (also new, unadopted) is composed by HermexContentUnavailable\'s own icon-bearing variants for their identity glyph — an internal foundation-layer composition, not a claim about any production picker sheet\'s current icon treatment.',
           'The additive layout prop (.intrinsic default / .fullScreen) is also new and unadopted in this branch — no production screen passes layout: .fullScreen yet. .fullScreen reads the container height via GeometryReader and positions the content cluster at roughly one third of it, wrapped in a ScrollView for Dynamic Type/long-content robustness, instead of ContentUnavailableView\'s own centering.',
         ],
@@ -2756,7 +2756,7 @@ AttachmentFileBadge(
       adoptionStatus: PRODUCTION_ADOPTED_ADOPTION,
       usedIn: [
         { screen: 'Sessions', path: 'Sessions → open a conversation', effect: 'Clarification requests appear above the composer, using pendingRequestCardSurface(cornerRadius:).' },
-        { screen: 'Bots', path: 'Bots → open a bot conversation', effect: 'Pending requests appear inline with the transcript, and the bot room composer\'s pending card shares the same pendingRequestCardSurface(cornerRadius:).' },
+        { screen: 'Bots', path: 'Bots → open a room', effect: 'A room\'s pending requests appear inline with the room transcript (BotRoomActionCard), and its needs-attention card shares the same pendingRequestCardSurface(cornerRadius:).' },
       ],
       implementationNotes: {
         status: ADOPTED_STATUS,
@@ -2832,7 +2832,6 @@ AttachmentFileBadge(
       useSummary: 'TranscriptLogRowView (pre-existing) is the real, adopted Activity Disclosure Row — see Transcript Log Row. Turn Summary stays a separate component because its semantics, height, and expansion contract differ.',
       usedIn: [
         { screen: 'Conversation', path: 'Sessions → open a conversation', effect: 'Tool-call log lines and the "Thinking" reasoning block compose this pattern through the existing TranscriptLogRowView; a turn\'s summary disclosure uses its own TranscriptTurnFoldRowView.' },
-        { screen: 'Bots', path: 'Bots → open a bot conversation', effect: 'A bot\'s grouped tool-activity history composes the same existing TranscriptLogRowView anatomy.' },
       ],
       implementationNotes: {
         status: 'TranscriptLogRowView.swift (pre-existing) is the adopted Activity Disclosure Row — see Transcript Log Row, itself production-adopted.',
@@ -2968,12 +2967,12 @@ AttachmentFileBadge(
         { name: 'HermesColorRamp.Orange', value: '500 anchor #FB923C (11 steps, 50-950)' },
         { name: 'HermesColorRamp.Cyan', value: '500 anchor #67E8F9 (11 steps, 50-950)' },
         { name: 'HermesColorRamp.Pink', value: '500 anchor #F472B6 (11 steps, 50-950)' },
-        { name: 'HermesProductPalette.headerAccentYellow', value: '#FFD700', purpose: 'Settings -> Appearance header accent preset.' },
-        { name: 'HermesProductPalette.headerAccentBlue', value: '#5B7CFF', purpose: 'Settings -> Appearance header accent preset.' },
-        { name: 'HermesProductPalette.headerAccentPurple', value: '#AF52DE', purpose: 'Settings -> Appearance header accent preset.' },
-        { name: 'HermesProductPalette.headerAccentRed', value: '#FF3B30', purpose: 'Settings -> Appearance header accent preset.' },
-        { name: 'HermesProductPalette.headerAccentGreen', value: '#34C759', purpose: 'Settings -> Appearance header accent preset.' },
-        { name: 'HermesProductPalette.headerAccentWhite', value: '#FFFFFF', purpose: 'Settings -> Appearance header accent preset.' },
+        { name: 'HermesProductPalette.headerAccentYellow', value: '#FFD700', purpose: 'Settings -> a server -> Identity header color preset.' },
+        { name: 'HermesProductPalette.headerAccentBlue', value: '#5B7CFF', purpose: 'Settings -> a server -> Identity header color preset.' },
+        { name: 'HermesProductPalette.headerAccentPurple', value: '#AF52DE', purpose: 'Settings -> a server -> Identity header color preset.' },
+        { name: 'HermesProductPalette.headerAccentRed', value: '#FF3B30', purpose: 'Settings -> a server -> Identity header color preset.' },
+        { name: 'HermesProductPalette.headerAccentGreen', value: '#34C759', purpose: 'Settings -> a server -> Identity header color preset.' },
+        { name: 'HermesProductPalette.headerAccentWhite', value: '#FFFFFF', purpose: 'Settings -> a server -> Identity header color preset.' },
         { name: 'HermesProductPalette project palette', value: '8 presets (projectSky, projectGold, projectRed, projectGreen, projectViolet, projectOrange, projectCyan, projectPink)', purpose: 'Sessions -> Projects -> New Project palette.' },
       ],
       compositionSlots: [],

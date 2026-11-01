@@ -2,9 +2,9 @@ import SwiftUI
 
 /// Shared Attachment file-tile anatomy: the icon (`AttachmentFileGlyph`), the extension label
 /// (`AttachmentExtensionLabel`), and composer's boxed icon badge that composes both over the file
-/// type's token-tinted fill (`AttachmentFileBadge`). `MessageBubbleView`'s grid cell and
-/// `ChatComposerAttachmentStripView`'s pending-attachment preview keep their own square-grid vs.
-/// horizontal-card layouts as focused variants over this shared anatomy, not a single god component.
+/// type's token-tinted fill (`AttachmentFileBadge`). A square grid cell and a horizontal pending-
+/// attachment card would stay focused variants over this shared anatomy, not a single god component;
+/// `MessageBubbleView` and `ChatComposerAttachmentStripView` keep their own layouts and do not use it.
 
 /// A file type's icon glyph in its token tint, at the caller's icon size.
 struct AttachmentFileGlyph: View {
@@ -63,8 +63,8 @@ struct AttachmentLoadingTile: View {
     }
 }
 
-/// The image-tile outer surface both the chat grid cell and the composer's pending-attachment
-/// preview clip their thumbnail content into: a fixed frame, rounded clip, and Compact Card's
+/// The image-tile outer surface a chat grid cell or a composer pending-attachment preview would clip
+/// its thumbnail content into: a fixed frame, rounded clip, and Compact Card's
 /// hairline border with no fill, since the image content beneath already covers the surface.
 /// `cornerRadius` defaults to `HermesRadius.card` — the outer radius every normal Attachment
 /// surface shares with Card — so a caller only overrides it for a deliberately different tile.

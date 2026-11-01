@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// The Card family's shared defaults. `SectionCard` (adaptive-glass grouped content) and Request
-/// Card (`requestCardSurface`, used by `ClarificationRequestCard`, `ApprovalRequestOverlay`,
-/// and `BotPendingRequestCard`) both wrap their content in exactly this padding on every edge —
-/// this is the one place that default lives, instead of each surface repeating the literal.
+/// The Card family's shared defaults: the 16pt content padding a caller applies on every edge
+/// before one of the surface modifiers below. The pre-existing `SectionCard` is a separate
+/// component and does not read it.
 enum HermexCardMetrics {
     static let contentPadding: CGFloat = HermesSpacing.s16
 }
@@ -83,16 +82,16 @@ private struct HermexCardSurfaceModifier: ViewModifier {
 }
 
 /// Compact Card: the explicit, documented compact-density surface for component compositions —
-/// today, the composer and message Attachment file tiles' outer surface. It is not Card's 16-point
-/// default; a component owns its own compact geometry, and this only unifies the fill-plus-hairline
-/// chrome those tiles each drew by hand into one named, shared treatment.
+/// for example the outer surface of the foundation Attachment file tiles (`AttachmentTile.swift`). It
+/// is not Card's 16-point default; a component owns its own compact geometry, and this only names the
+/// fill-plus-hairline chrome such a tile composes.
 enum HermexCompactCardMetrics {
     static let borderWidth: CGFloat = 0.5
 }
 
 extension View {
     /// Compact Card's opaque surface: a tinted fill plus the hairline border every normal (non-mini)
-    /// Attachment tile already drew by hand. `fill` defaults to the shared file-badge tint; pass
+    /// Attachment tile composes. `fill` defaults to the shared file-badge tint; pass
     /// `.clear` for a tile whose own image content already covers the surface and only wants the
     /// border. `cornerRadius` defaults to `HermesRadius.card` — the one outer radius every normal
     /// Attachment tile shares with Card — so a call site only overrides it for a deliberately
@@ -130,10 +129,9 @@ enum RequestCardMaterial {
 }
 
 extension View {
-    /// Request Card: the shared approval/clarification surface used by the Sessions clarification
-    /// card, the Sessions approval overlay, and the Bot pending-request card. Placement differs per
-    /// caller — the Sessions clarification pins above the composer, the Bot card sits in the
-    /// transcript, the approval overlay floats over a scrim — but the surface itself does not.
+    /// Request Card: the opaque approval/clarification surface this family defines. It has no caller:
+    /// production's Pending Request surfaces use the separate `pendingRequestCardSurface(cornerRadius:)`,
+    /// and `ApprovalRequestOverlay` draws its own surface.
     func requestCardSurface(cornerRadius: CGFloat, material: RequestCardMaterial = .opaque) -> some View {
         modifier(RequestCardSurfaceModifier(cornerRadius: cornerRadius, material: material))
     }

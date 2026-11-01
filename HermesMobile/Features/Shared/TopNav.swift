@@ -40,9 +40,9 @@ enum TopNavActionStyle: Equatable {
 /// editor semantics. The placement value itself, not which named slot authored it, decides where
 /// the system renders it and whether it keeps native back/cancel/confirm behavior.
 ///
-/// `center` wraps a single `.principal` item for a custom header (Chat's title label, Kanban's
-/// board picker). A screen that only needs `.navigationTitle` leaves `center` at its default and
-/// gets no interfering empty principal item.
+/// `center` wraps a single `.principal` item for a custom header (the kind Chat's title label and
+/// Kanban's board picker draw directly as `.principal` items). A screen that only needs
+/// `.navigationTitle` leaves `center` at its default and gets no interfering empty principal item.
 ///
 /// `trailingSpacer` inserts a `ToolbarSpacer` (iOS 26+) between `trailingPrimary` and
 /// `trailingSecondary`, for the one real case that needs two visually separated trailing clusters

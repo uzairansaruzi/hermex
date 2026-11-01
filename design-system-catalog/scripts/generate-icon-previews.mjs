@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Renders the Hermex Iconography catalog's authoritative 230-name SF Symbol union through the
+// Renders the Hermex Iconography catalog's authoritative 243-name SF Symbol union through the
 // real iOS UIKit runtime (icon-renderer/, a SwiftPM XCTest bundle) on an iOS Simulator, then
 // extracts the rendered PNGs into native-preview/public/generated-icons/ for the browser catalog
 // to load. Those browser assets are checked in so ordinary catalog startup remains browser-only;
@@ -28,7 +28,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, exis
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-const EXPECTED_COUNT = 230;
+const EXPECTED_COUNT = 243;
 
 // Mirrors HERMES_ICON_SIZE's five steps (xs/small/medium/large/extraLarge) in
 // native/catalog/hermes/hermesIconSize.ts — kept as a plain literal here (like EXPECTED_COUNT

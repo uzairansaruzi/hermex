@@ -20,7 +20,7 @@ enum HermesSpacing {
 
 /// The Usage family's fixed geometry that exceeds or is not spacing-scale geometry: the chart's
 /// height, the legend swatch diameter, and the remaining-balance bar's height and minimum visible
-/// fill. Shared by `UsageChartCard` and `ProviderLimitsCard`.
+/// fill. Foundation-only: no production file reads these constants.
 enum HermesUsageSize {
     static let chartHeight: CGFloat = 180
     static let legendIndicator: CGFloat = 7
@@ -53,7 +53,8 @@ enum HermesIconSize {
     }
 }
 
-/// Named Avatar diameters shared by production Avatar compositions and the design-system catalog.
+/// Named Avatar diameters read by `HermexAvatar` and `AccordionList` in this foundation layer and
+/// documented in the design-system catalog. No production screen reads them.
 enum HermesAvatarSize: CGFloat, CaseIterable {
     case small = 32
     case medium = 40
@@ -61,8 +62,8 @@ enum HermesAvatarSize: CGFloat, CaseIterable {
 }
 
 /// The Attachment family's fixed geometry: file/image tile frames, the composer's icon-badge panel,
-/// and its text and remove-control insets. Shared by `MessageBubbleView`'s message grid and
-/// `ChatComposerAttachmentStripView`'s pending-attachment strip.
+/// and its text and remove-control insets. Foundation-only: no file reads these constants yet;
+/// `MessageBubbleView` and `ChatComposerAttachmentStripView` keep their own literals.
 enum HermesAttachmentSize {
     static let compactPreview: CGFloat = 30
     static let messageGridCell: CGFloat = 118

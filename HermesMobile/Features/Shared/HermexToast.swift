@@ -2,8 +2,8 @@ import SwiftUI
 
 /// A transient status notice: a semantic surface/icon, a message, and an optional action, presented via
 /// `hermexToast(isPresented:toast:)`. Distinct from `HermexBanner` (a persistent in-flow notice) and from
-/// `GitActionToastOverlay` (Workspace/Git's own progress/success state machine) — this is the generic
-/// version, with lifecycle left entirely to the caller's `isPresented` binding.
+/// production's `ActionToast` (`ActionToast.swift`), a separate toast with its own tones and
+/// auto-dismiss — this one leaves its lifecycle entirely to the caller's `isPresented` binding.
 struct HermexToast: View {
     enum Semantic: Equatable {
         case information
@@ -98,8 +98,8 @@ enum HermexToastColors {
 }
 
 /// Caller-owned visibility for a `HermexToast`: no internal timer, no auto-dismiss — the caller's
-/// `isPresented` binding is the only thing that shows or hides it. Presentation mirrors
-/// `GitActionToastOverlay`'s established top-anchored, Reduce-Motion-safe transition: it enters by
+/// `isPresented` binding is the only thing that shows or hides it. Presentation is
+/// top-anchored: it enters by
 /// moving down from the top edge combined with opacity (`HermesMotion.Bundle.overlayEnter`) and
 /// exits back toward the top combined with opacity (`HermesMotion.Bundle.overlayExit`). Reduce
 /// Motion drops the directional move entirely, falling back to an opacity-only state change.

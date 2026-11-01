@@ -196,7 +196,7 @@ npm run web          # expo start --web --port 8096 — the default route is the
 ```
 
 `npm run web` is a plain `expo start --web` — it never invokes Xcode, `xcodebuild`, or `simctl`,
-and never selects a Simulator. The "Hermex Iconography" page's 230-symbol grid loads its checked-in
+and never selects a Simulator. The "Hermex Iconography" page's 243-symbol grid loads its checked-in
 browser baseline from `native-preview/public/generated-icons/`; any unexpectedly missing or failed
 asset shows its own honest, per-tile "Glyph unavailable in browser" text label rather than failing
 to load.
