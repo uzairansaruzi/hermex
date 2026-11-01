@@ -27,6 +27,9 @@ struct ActionToast: Identifiable {
     /// ("Planning, Archived").
     let accessibilityLabel: String
     var tone: Tone = .neutral
+    /// The edge of its host the toast shows at. A host with one placement
+    /// leaves the default; chat puts Git feedback at the top (#1410).
+    var edge: Edge = .bottom
     /// Secondary lines under the message, such as a Git action's branch and
     /// commit. A result with detail stays longer.
     var detailLines: [String] = []
@@ -102,6 +105,12 @@ final class ActionToastState {
         present(updated)
     }
 
+    /// The current toast when it shows at `edge`, so a host that places
+    /// toasts at two edges still shows only one at a time.
+    func toast(at edge: Edge) -> ActionToast? {
+        toast?.edge == edge ? toast : nil
+    }
+
     /// Runs the toast's action once and removes the toast. A second tap on a
     /// toast that already acted, or was replaced, does nothing.
     func performAction(of actedOn: ActionToast) {
@@ -161,8 +170,8 @@ enum ActionToastDismissPolicy {
 /// Draws `state`'s toast as a glass capsule that fills its host's width, or a
 /// rounded card when it has detail lines, is a failure, or uses an
 /// accessibility text size (the action then drops below the message). `edge`
-/// is the edge the host pins it to. A sideways swipe dismisses it; Reduce
-/// Motion swaps every slide for a fade.
+/// is the edge the host pins it to; it draws only a toast that shows there. A
+/// sideways swipe dismisses it; Reduce Motion swaps every slide for a fade.
 struct ActionToastView: View {
     let state: ActionToastState
     var edge: Edge = .bottom
@@ -173,7 +182,7 @@ struct ActionToastView: View {
 
     var body: some View {
         ZStack {
-            if let toast = state.toast {
+            if let toast = state.toast(at: edge) {
                 toastBody(toast)
                     .modifier(ActionToastSwipe { state.dismiss(toast.id) })
                     .id(toast.id)
@@ -195,7 +204,7 @@ struct ActionToastView: View {
                     }
             }
         }
-        .animation(ActionToastState.animation(reduceMotion: reduceMotion), value: state.toast?.id)
+        .animation(ActionToastState.animation(reduceMotion: reduceMotion), value: state.toast(at: edge)?.id)
     }
 
     @ViewBuilder

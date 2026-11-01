@@ -144,6 +144,24 @@ final class ActionToastStateTests: XCTestCase {
         XCTAssertNil(state.toast)
     }
 
+    /// Chat shows Git feedback at the top and notices over the composer from one state, so a
+    /// notice such as an expired waiting send (#1407) takes over from a busy Git toast and a late
+    /// Git result can't bring the top toast back.
+    func testAToastShowsOnlyAtItsOwnEdgeAndANoticeAtTheOtherEdgeReplacesIt() {
+        let state = ActionToastState(sleep: { _ in }, isVoiceOverRunning: { true })
+        let git = state.show(ActionToast(message: "Pushing...", systemImage: "arrow.up.circle",
+                                         accessibilityLabel: "Pushing...", tone: .busy, edge: .top))
+        XCTAssertEqual(state.toast(at: .top)?.id, git)
+        XCTAssertNil(state.toast(at: .bottom))
+
+        let notice = state.show(ActionToast(message: "Not sent", systemImage: "clock", accessibilityLabel: "Not sent"))
+        state.update(git, to: ActionToast(message: "Push complete", systemImage: "checkmark.circle.fill",
+                                          accessibilityLabel: "Push complete", tone: .success, edge: .top))
+
+        XCTAssertNil(state.toast(at: .top))
+        XCTAssertEqual(state.toast(at: .bottom)?.id, notice)
+    }
+
     private func makeToast(
         message: String = "Archived",
         action: @escaping @MainActor () -> Void = {}
